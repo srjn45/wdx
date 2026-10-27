@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -35,14 +36,93 @@ func wdx(t *testing.T, home string, args ...string) output {
 		Stdout: &stdout,
 		Stderr: &stderr,
 		Getenv: func(key string) string {
-			if key == "WDX_HOME" {
+			switch key {
+			case "WDX_HOME":
 				return home
+			case "WDX_LOG_LEVEL":
+				return "debug"
 			}
 			return ""
 		},
 	}
 	exit := Run(context.Background(), args, env)
-	return output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
+	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
+	wantLogged(t, home, args, out)
+	return out
+}
+
+type logLine struct {
+	Time     string          `json:"time"`
+	Level    string          `json:"level"`
+	Msg      string          `json:"msg"`
+	DebugID  string          `json:"debug_id"`
+	Exit     *int            `json:"exit"`
+	Response json.RawMessage `json:"response"`
+}
+
+// wantLogged checks that the run that produced out is logged in home from the
+// command line it received to the response it returned, and that every line
+// in the log is a JSON object tagged with a debug id.
+func wantLogged(t *testing.T, home string, args []string, out output) {
+	t.Helper()
+	if info, err := os.Stat(home); err != nil || !info.IsDir() {
+		return // nowhere to log: the run must still work, which its test checks
+	}
+	files, err := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("%v: no log file in %s", args, home)
+	}
+	var lines []logLine
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for raw := range strings.Lines(string(b)) {
+			var l logLine
+			if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" {
+				t.Fatalf("%v: bad log line %q: %v", args, raw, err)
+			}
+			lines = append(lines, l)
+		}
+	}
+
+	// Runs in one home are sequential, so the last one received is this one.
+	var id string
+	for _, l := range lines {
+		if l.Msg == "command received" {
+			id = l.DebugID
+		}
+	}
+	var run []logLine
+	for _, l := range lines {
+		if l.DebugID == id {
+			run = append(run, l)
+		}
+	}
+	first, last := run[0], run[len(run)-1]
+	if first.Msg != "command received" || last.Msg != "command returned" {
+		t.Fatalf("%v: want the run logged from received to returned, got %q to %q", args, first.Msg, last.Msg)
+	}
+	if last.Exit == nil || *last.Exit != out.exit || (last.Level == "ERROR") != (out.exit != exitOK) {
+		t.Fatalf("%v: logged exit %v at %s, want exit %d", args, last.Exit, last.Level, out.exit)
+	}
+	if string(last.Response) == "null" || len(last.Response) == 0 {
+		t.Fatalf("%v: no response logged", args)
+	}
+	if slices.Contains(args, "--json") {
+		var logged, printed any
+		json.Unmarshal(last.Response, &logged)
+		json.Unmarshal([]byte(out.stdout), &printed)
+		if !reflect.DeepEqual(logged, printed) {
+			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
+		}
+		if out.exit != exitOK && !strings.Contains(out.stdout, `"debug_id": "`+id+`"`) {
+			t.Fatalf("%v: want debug_id %s in the error, got %s", args, id, out.stdout)
+		}
+	} else if out.exit != exitOK && !strings.HasSuffix(out.stderr, " (debug_id "+id+")\n") {
+		t.Fatalf("%v: want debug_id %s on the error line, got %q", args, id, out.stderr)
+	}
 }
 
 type jsonOutput struct {
@@ -244,7 +324,7 @@ func TestUsageErrors(t *testing.T) {
 	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
 	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
 	out := wdx(t, t.TempDir(), "project", "bogus")
-	if out.exit != exitUsage || out.stdout != "" || !strings.HasSuffix(out.stderr, "; see 'wdx project --help'\n") {
+	if out.exit != exitUsage || out.stdout != "" || !strings.Contains(out.stderr, "; see 'wdx project --help' (debug_id dbg-") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
@@ -758,5 +838,45 @@ func TestHelpJSON(t *testing.T) {
 	}
 	if !slices.Equal(v.Command.Actions, []string{"cloned", "opened", "registered", "removed"}) {
 		t.Fatalf("unexpected actions: %v", v.Command.Actions)
+	}
+}
+
+func TestPanicIsInternalError(t *testing.T) {
+	t.Parallel()
+	cmd := &cobra.Command{Use: "boom", RunE: func(*cobra.Command, []string) error { panic("kaboom") }}
+	cmd.SetContext(context.Background())
+	wrapRun(cmd)
+	err := cmd.RunE(cmd, nil)
+	p, ok := err.(*panicError)
+	if !ok || p.Error() != "panic: kaboom" || !strings.Contains(string(p.stack), "TestPanicIsInternalError") {
+		t.Fatalf("want a panicError with its stack, got %v", err)
+	}
+	if v, exit := classify(err); v.Code != codeInternal || exit != exitSystem {
+		t.Fatalf("want internal, got %s", v.Code)
+	}
+}
+
+func TestBadLogSettings(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	settings := map[string]string{"WDX_HOME": home, "WDX_LOG_LEVEL": "loud", "WDX_LOG_RETENTION_DAYS": "0"}
+	env := Env{
+		Stdin:  strings.NewReader(""),
+		Stdout: &bytes.Buffer{},
+		Stderr: &bytes.Buffer{},
+		Getenv: func(key string) string { return settings[key] },
+	}
+	if exit := Run(context.Background(), []string{"version"}, env); exit != exitOK {
+		t.Fatalf("want bad settings ignored, got exit %d", exit)
+	}
+	files, _ := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
+	b, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, setting := range []string{"WDX_LOG_LEVEL", "WDX_LOG_RETENTION_DAYS"} {
+		if !strings.Contains(string(b), `"level":"WARN","msg":"log setting ignored","debug_id":`) || !strings.Contains(string(b), `"setting":"`+setting+`"`) {
+			t.Fatalf("want a warning about %s, got:\n%s", setting, b)
+		}
 	}
 }

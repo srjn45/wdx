@@ -165,6 +165,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 ## 15. Observability, cost and notifications
 
+- [x] P0 Structured logs: JSON lines in daily files with retention, a `debug_id` per command shown on errors
+- [ ] P1 Command metrics: runs, successes and failures per command and error code
 - [ ] P1 Action audit log
 - [ ] P1 Event stream (for the TUI / web)
 - [ ] P1 Health / environment doctor

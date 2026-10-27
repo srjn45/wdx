@@ -18,8 +18,20 @@ import (
 // terminal and neither --json nor --no-input (which $WDX_NO_INPUT defaults)
 // is set.
 func canPrompt(cmd *cobra.Command) bool {
+	return noPromptReason(cmd) == ""
+}
+
+func noPromptReason(cmd *cobra.Command) string {
 	noInput, _ := cmd.Flags().GetBool("no-input")
-	return !noInput && !jsonMode(cmd) && isTerminal(cmd.InOrStdin())
+	switch {
+	case noInput:
+		return "--no-input"
+	case jsonMode(cmd):
+		return "--json"
+	case !isTerminal(cmd.InOrStdin()):
+		return "stdin is not a terminal"
+	}
+	return ""
 }
 
 func isTerminal(r io.Reader) bool {

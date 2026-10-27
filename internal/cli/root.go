@@ -5,13 +5,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/warden/internal/logging"
 )
 
 // Command annotations. Lists are space-separated.
@@ -39,30 +42,40 @@ type Env struct {
 
 // Run executes the command line args and returns the process exit code.
 func Run(ctx context.Context, args []string, env Env) int {
+	start := time.Now()
+	home := identity.HomeDir(env.Getenv)
+	debugID := logging.NewDebugID()
+	logFile, log := newLogger(env, home, debugID)
+	defer logFile.Close()
+	logReceived(log, args, env, home)
+
 	root := newRoot(env)
 	root.SetArgs(args)
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
-
-	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
-	started := false
-	wrapRun(root, &started)
-	root.SetContext(ctx)
+	wrapRun(root)
+	inv := &invocation{}
+	root.SetContext(logging.NewContext(context.WithValue(ctx, invocationKey{}, inv), log))
 	cmd, err := root.ExecuteC()
 	if err == nil {
+		logReturned(log, cmd, start, exitOK, inv.response, nil)
 		return exitOK
 	}
-	if !started {
+	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
+	if !inv.started {
 		err = &usageError{err}
 	}
 
 	v, exit := classify(err)
+	v.DebugID = debugID
 	if v.Code == codeUsage {
 		v.Hint = withHelpHint(v.Hint, cmd)
 	}
+	response := errorResponse{Error: v}
+	logReturned(log, cmd, start, exit, response, err)
 	if wantsJSON(cmd, args) {
-		writeJSON(env.Stdout, errorResponse{Error: v})
+		writeJSON(env.Stdout, response)
 		return exit
 	}
 	msg := v.Message
@@ -72,26 +85,55 @@ func Run(ctx context.Context, args []string, env Env) int {
 	if v.Hint != nil {
 		msg += "; " + *v.Hint
 	}
-	fmt.Fprintf(env.Stderr, "%s: %s\n", identity.Name, msg)
+	fmt.Fprintf(env.Stderr, "%s: %s (debug_id %s)\n", identity.Name, msg, debugID)
 	return exit
 }
 
-// wrapRun makes every RunE in the tree check the flags --json requires and
-// then set started.
-func wrapRun(cmd *cobra.Command, started *bool) {
+// invocation is what Run learns from the command it executes.
+type invocation struct {
+	started  bool // RunE was reached, so the command line was valid
+	response any  // what the command printed
+}
+
+type invocationKey struct{}
+
+func invocationOf(cmd *cobra.Command) *invocation {
+	if inv, ok := cmd.Context().Value(invocationKey{}).(*invocation); ok {
+		return inv
+	}
+	return &invocation{}
+}
+
+// wrapRun makes every RunE in the tree log its start, check the flags --json
+// requires and turn a panic into an error.
+func wrapRun(cmd *cobra.Command) {
 	if run := cmd.RunE; run != nil {
-		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cmd.RunE = func(cmd *cobra.Command, args []string) (err error) {
+			logStarted(cmd, args)
 			if err := checkJSONRequires(cmd); err != nil {
 				return err
 			}
-			*started = true
+			invocationOf(cmd).started = true
+			defer func() {
+				if r := recover(); r != nil {
+					err = &panicError{value: r, stack: debug.Stack()}
+				}
+			}()
 			return run(cmd, args)
 		}
 	}
 	for _, sub := range cmd.Commands() {
-		wrapRun(sub, started)
+		wrapRun(sub)
 	}
 }
+
+// panicError is a panic recovered while a command ran.
+type panicError struct {
+	value any
+	stack []byte
+}
+
+func (e *panicError) Error() string { return fmt.Sprintf("panic: %v", e.value) }
 
 // checkJSONRequires fails when --json is given without one of the flags that
 // answer the command's prompts.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/srjn45/warden/internal/git"
+	"github.com/srjn45/warden/internal/logging"
 )
 
 // State is a project's lifecycle state.
@@ -225,6 +227,8 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		return Opened{}, err
 	}
 	key := git.RepoKey(origin)
+	log := logging.FromContext(ctx)
+	log.Info("repository resolved", "path", abs, "root", root, "git_common_dir", commonDir, "origin", origin)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -240,6 +244,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 	if err != nil {
 		return Opened{}, err
 	}
+	log.Info("project looked up", "by_checkout", byClone, "by_origin", byOrigin)
 	if byClone != "" && byOrigin != "" && byClone != byOrigin {
 		tx.Rollback()
 		return Opened{}, s.mismatch(ctx, root, origin, byClone, byOrigin)
@@ -259,12 +264,13 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		if id, err = newID("proj"); err != nil {
 			return Opened{}, err
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if err := execSQL(ctx, tx, `
 			INSERT INTO projects (id, name, origin_url, origin_key, state, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			id, name, nullable(origin), nullable(key), StateOpen, now, now); err != nil {
 			return Opened{}, err
 		}
+		log.Info("project registered", "project_id", id, "name", name, "origin", origin)
 	} else {
 		if name != "" {
 			if err := s.checkName(ctx, tx, name, id); err != nil {
@@ -275,7 +281,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 			return Opened{}, err
 		}
 		// Keep the stored origin when this checkout has none; another clone may.
-		if _, err := tx.ExecContext(ctx, `
+		if err := execSQL(ctx, tx, `
 			UPDATE projects SET
 				name       = coalesce(?, name),
 				origin_url = coalesce(?, origin_url),
@@ -286,6 +292,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 			nullable(name), nullable(origin), nullable(key), StateOpen, now, id); err != nil {
 			return Opened{}, err
 		}
+		log.Info("project reopened", "project_id", id, "new_name", name, "origin", origin)
 	}
 
 	// A known path is re-pointed, in case it was deleted and re-cloned.
@@ -293,7 +300,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 	if err != nil {
 		return Opened{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if err := execSQL(ctx, tx, `
 		INSERT INTO project_worktrees (id, project_id, path, git_common_dir, created_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
@@ -305,6 +312,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 	if err := tx.Commit(); err != nil {
 		return Opened{}, err
 	}
+	log.Info("worktree recorded", "project_id", id, "path", root, "git_common_dir", commonDir)
 	p, err := s.Get(ctx, id)
 	return Opened{Project: p, Registered: registered, Dropped: dropped}, err
 }
@@ -333,13 +341,14 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 	if key == "" {
 		return Opened{}, ErrEmptyURL
 	}
-	var id string
-	err := s.db.QueryRowContext(ctx, "SELECT id FROM projects WHERE origin_key = ?", key).Scan(&id)
-	if err == nil {
-		return s.openKnown(ctx, id, name)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	log := logging.FromContext(ctx)
+	id, err := queryID(ctx, s.db, "SELECT id FROM projects WHERE origin_key = ?", key)
+	if err != nil {
 		return Opened{}, err
+	}
+	log.Info("origin looked up", "url", url, "origin_key", key, "project_id", id)
+	if id != "" {
+		return s.openKnown(ctx, id, name)
 	}
 
 	if name == "" {
@@ -362,9 +371,11 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 		if err != nil {
 			return Opened{}, err
 		}
+		log.Info("clone path taken", "path", dest, "is_checkout", ok, "origin", origin)
 		if !ok || git.RepoKey(origin) != key {
 			return Opened{}, &PathExistsError{Path: dest}
 		}
+		log.Info("existing checkout reused", "path", dest)
 		return s.OpenLocal(ctx, dest, name)
 	}
 	return s.cloneAndOpen(ctx, url, dest, name, progress)
@@ -384,6 +395,7 @@ func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Op
 	if _, err := os.Stat(dest); err == nil {
 		return Opened{}, &PathExistsError{Path: dest}
 	}
+	logging.FromContext(ctx).Info("recloning", "project_id", p.ID, "dest", dest)
 	return s.cloneAndOpen(ctx, p.OriginURL, dest, "", progress)
 }
 
@@ -407,10 +419,12 @@ func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error)
 	if err != nil {
 		return Opened{}, err
 	}
+	log := logging.FromContext(ctx)
 	existing, err := existingAncestor(dest)
 	if err != nil {
 		return Opened{}, err
 	}
+	log.Info("destination resolved", "dest", dest, "existing_ancestor", existing)
 	if root, err := git.TopLevel(ctx, existing); err == nil {
 		return Opened{}, s.repoExists(ctx, dest, root)
 	} else if !errors.Is(err, git.ErrNotRepo) {
@@ -433,9 +447,15 @@ func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error)
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return Opened{}, err
 	}
+	log.Info("directory created", "path", dest)
 	o, err := s.initAndOpen(ctx, dest, name)
 	if err != nil {
-		return Opened{}, errors.Join(err, os.RemoveAll(created))
+		if rmErr := os.RemoveAll(created); rmErr != nil {
+			log.Error("undo failed", "path", created, "err", rmErr.Error())
+			return Opened{}, errors.Join(err, rmErr)
+		}
+		log.Info("creation undone", "removed", created, "err", err.Error())
+		return Opened{}, err
 	}
 	return o, nil
 }
@@ -505,9 +525,11 @@ func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) 
 			return Opened{}, err
 		}
 		if ok {
+			logging.FromContext(ctx).Info("checkout chosen", "project_id", id, "path", w.Path)
 			return s.OpenLocal(ctx, w.Path, name)
 		}
 	}
+	logging.FromContext(ctx).Info("no checkout left", "project_id", id, "worktrees", len(p.Worktrees))
 	return Opened{}, &CheckoutMissingError{Project: p}
 }
 
@@ -551,6 +573,7 @@ func (s *Store) get(ctx context.Context, column, value string) (Project, error) 
 		SELECT id, name, origin_url, state, created_at, updated_at FROM projects
 		WHERE `+column+` = ?`, value).
 		Scan(&p.ID, &p.Name, &origin, &p.State, &created, &updated)
+	logging.FromContext(ctx).Debug("project looked up", "by", column, "value", value, "found", err == nil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, value)
 	}
@@ -603,6 +626,7 @@ func (s *Store) List(ctx context.Context, state State) ([]Summary, error) {
 		p.CreatedAt, p.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
 		list = append(list, p)
 	}
+	logging.FromContext(ctx).Debug("projects listed", "state", state, "count", len(list))
 	return list, rows.Err()
 }
 
@@ -635,10 +659,11 @@ func (s *Store) Close(ctx context.Context, ref string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE projects SET state = ?, updated_at = ? WHERE id = ?",
+	if err := execSQL(ctx, s.db, "UPDATE projects SET state = ?, updated_at = ? WHERE id = ?",
 		StateClosed, time.Now().UnixMilli(), p.ID); err != nil {
 		return Project{}, err
 	}
+	logging.FromContext(ctx).Info("project closed", "project_id", p.ID, "name", p.Name)
 	return s.Get(ctx, p.ID)
 }
 
@@ -650,9 +675,10 @@ func (s *Store) Remove(ctx context.Context, ref string) (Project, error) {
 		return Project{}, err
 	}
 	// Related rows go via ON DELETE CASCADE.
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM projects WHERE id = ?", p.ID); err != nil {
+	if err := execSQL(ctx, s.db, "DELETE FROM projects WHERE id = ?", p.ID); err != nil {
 		return Project{}, err
 	}
+	logging.FromContext(ctx).Info("project removed", "project_id", p.ID, "name", p.Name, "worktrees", len(p.Worktrees))
 	return p, nil
 }
 
@@ -690,9 +716,10 @@ func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree,
 		if ok {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM project_worktrees WHERE id = ?", w.ID); err != nil {
+		if err := execSQL(ctx, tx, "DELETE FROM project_worktrees WHERE id = ?", w.ID); err != nil {
 			return nil, err
 		}
+		logging.FromContext(ctx).Info("worktree dropped", "project_id", projectID, "worktree_id", w.ID, "path", w.Path)
 		dropped = append(dropped, w)
 	}
 	return dropped, nil
@@ -702,6 +729,7 @@ func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree,
 func isCheckout(ctx context.Context, path string) (bool, error) {
 	root, err := git.TopLevel(ctx, path)
 	if errors.Is(err, git.ErrNotRepo) {
+		logging.FromContext(ctx).Info("checkout checked", "path", path, "present", false)
 		return false, nil
 	}
 	if err != nil {
@@ -711,6 +739,7 @@ func isCheckout(ctx context.Context, path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	logging.FromContext(ctx).Info("checkout checked", "path", path, "root", root, "present", root == real)
 	return root == real, nil
 }
 
@@ -726,6 +755,7 @@ func (s *Store) checkName(ctx context.Context, q queryRower, name, self string) 
 	if err != nil || other == "" {
 		return err
 	}
+	logging.FromContext(ctx).Info("name taken", "name", name, "project_id", other)
 	p, err := s.Get(ctx, other)
 	if err != nil {
 		return err
@@ -746,9 +776,39 @@ func queryID(ctx context.Context, q queryRower, query string, args ...any) (stri
 	var id string
 	err := q.QueryRowContext(ctx, query, args...).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		err = nil
 	}
+	logging.FromContext(ctx).Debug("sql query", "query", query, "args", args, "id", id)
 	return id, err
+}
+
+// execer is satisfied by *sql.DB and *sql.Tx.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// execSQL runs a statement that changes rows.
+func execSQL(ctx context.Context, e execer, query string, args ...any) error {
+	res, err := e.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	logging.FromContext(ctx).Debug("sql exec", "query", strings.Join(strings.Fields(query), " "), "args", sqlValues(args), "rows", rows)
+	return err
+}
+
+// sqlValues returns args as the database receives them: NULL for an invalid
+// sql.NullString rather than the struct.
+func sqlValues(args []any) []any {
+	values := make([]any, len(args))
+	for i, a := range args {
+		values[i] = a
+		if v, ok := a.(driver.Valuer); ok {
+			values[i], _ = v.Value()
+		}
+	}
+	return values
 }
 
 func nullable(s string) sql.NullString {

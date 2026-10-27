@@ -11,6 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/srjn45/warden/internal/logging"
 )
 
 // ErrNotRepo is returned when a directory is not inside a git work tree.
@@ -63,12 +66,18 @@ func (e *CloneError) Unwrap() error { return e.Err }
 // Clone clones url into dest, writing git's output to progress. On failure git
 // removes dest.
 func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
+	log := logging.FromContext(ctx).With("url", url, "dest", dest)
+	log.Info("cloning")
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", "clone", "--", url, dest)
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = progress, io.MultiWriter(progress, &stderr)
 	if err := cmd.Run(); err != nil {
-		return &CloneError{URL: url, Output: strings.TrimSpace(stderr.String()), Err: err}
+		e := &CloneError{URL: url, Output: strings.TrimSpace(stderr.String()), Err: err}
+		log.Error("clone failed", "err", err.Error(), "output", e.Output, logging.Duration(start))
+		return e
 	}
+	log.Info("cloned", logging.Duration(start))
 	return nil
 }
 
@@ -104,15 +113,26 @@ func RepoKey(url string) string {
 	return host + "/" + strings.Trim(path, "/")
 }
 
+// run runs git in dir and returns its trimmed stdout. A non-zero exit is often
+// an answer, such as "not a repository", so it is logged as info and left to
+// the caller to judge.
 func run(ctx context.Context, dir string, args ...string) (string, error) {
+	log := logging.FromContext(ctx).With("dir", dir, "args", args)
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if _, ok := errors.AsType[*exec.ExitError](err); ok {
-			return "", err
-		}
+	err := cmd.Run()
+	if e, ok := errors.AsType[*exec.ExitError](err); ok {
+		log.Info("git ran", "exit", e.ExitCode(), "stderr", strings.TrimSpace(stderr.String()), logging.Duration(start))
+		return "", err
+	}
+	if err != nil {
+		log.Error("git could not run", "err", err.Error(), logging.Duration(start))
 		return "", fmt.Errorf("run git: %w", err)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	out := strings.TrimSpace(stdout.String())
+	log.Info("git ran", "exit", 0, logging.Duration(start))
+	log.Debug("git output", "stdout", out)
+	return out, nil
 }

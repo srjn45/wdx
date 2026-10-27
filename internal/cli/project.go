@@ -92,13 +92,17 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 			return conflict
 		}
 
+		const question = "create conflict"
 		var choice string
 		switch {
 		case opts.openOnConflict:
 			choice = "o"
+			logAnswer(cmd, question, "open", "--open")
 		case opts.cancelOnConflict:
 			choice = "c"
+			logAnswer(cmd, question, "cancel", "--cancel")
 		case !canPrompt(cmd):
+			logUnanswered(cmd, question)
 			return &hinted{conflict, "pass --open or --cancel, or " + retry}
 		default:
 			prompt := cmd.ErrOrStderr()
@@ -109,10 +113,12 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 			if choice, err = ask(prompt, answers, "choose [o/n/c]: ", "o", "n", "c"); err != nil {
 				return err
 			}
+			logAnswer(cmd, question, map[string]string{"o": "open", "n": "new name", "c": "cancel"}[choice], "prompt")
 			if choice == "n" {
 				if opts.name, err = ask(prompt, answers, "new name (empty to cancel): "); err != nil {
 					return err
 				}
+				logAnswer(cmd, "new name", opts.name, "prompt")
 				if opts.name != "" {
 					continue
 				}
@@ -267,8 +273,10 @@ func newProjectOpenCmd(home string) *cobra.Command {
 				var choice string
 				if reclone {
 					choice = "c"
+					logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
 				} else if remove {
 					choice = "r"
+					logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
 				}
 				return resolveMissingCheckout(cmd, store, missing, choice, "pass --reclone or --remove")
 			}
@@ -291,6 +299,8 @@ func newProjectOpenCmd(home string) *cobra.Command {
 	return cmd
 }
 
+const missingCheckoutQuestion = "missing checkout"
+
 // resolveMissingCheckout clones the project again ("c") or removes it ("r"),
 // asking when choice is empty. hint tells how to choose without a prompt.
 func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *project.CheckoutMissingError, choice, hint string) error {
@@ -299,6 +309,7 @@ func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *p
 	prompt := cmd.ErrOrStderr()
 	if choice == "" {
 		if !canPrompt(cmd) {
+			logUnanswered(cmd, missingCheckoutQuestion)
 			return &hinted{missing, hint}
 		}
 		fmt.Fprintf(prompt, "%s (was %s)\n", missing, p.ClonePath())
@@ -308,6 +319,7 @@ func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *p
 		if choice, err = ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose [c/r]: ", "c", "r"); err != nil {
 			return err
 		}
+		logAnswer(cmd, missingCheckoutQuestion, map[string]string{"c": "reclone", "r": "remove"}[choice], "prompt")
 	}
 	if choice == "c" {
 		o, err := store.Reclone(ctx, p.ID, progress(cmd))

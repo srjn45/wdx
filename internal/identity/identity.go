@@ -46,3 +46,8 @@ func DBPath(home string) string {
 func ProjectsDir(home string) string {
 	return filepath.Join(home, "projects")
 }
+
+// LogsDir is where the daily log files are written under home.
+func LogsDir(home string) string {
+	return filepath.Join(home, "logs")
+}

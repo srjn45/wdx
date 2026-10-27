@@ -276,6 +276,7 @@ func (r versionResponse) text(w io.Writer) {
 
 // printResult writes r to stdout as JSON or as text.
 func printResult(cmd *cobra.Command, r result) error {
+	invocationOf(cmd).response = r
 	if jsonMode(cmd) {
 		return writeJSON(cmd.OutOrStdout(), r)
 	}
@@ -304,6 +305,7 @@ type errorView struct {
 	Message string         `json:"message"`
 	Hint    *string        `json:"hint"`
 	Details map[string]any `json:"details"`
+	DebugID string         `json:"debug_id,omitempty"` // ties a failure to its logs
 }
 
 // usageError is a command line that cannot run as given.

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
+
+	"github.com/srjn45/warden/internal/logging"
 )
 
 //go:embed migrations/*.sql
@@ -31,6 +33,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	logging.FromContext(ctx).Info("database opened", "path", path)
 	return db, nil
 }
 
@@ -52,25 +55,32 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 
 	for i := current; i < len(names); i++ {
-		body, err := migrationsFS.ReadFile(names[i])
-		if err != nil {
-			return err
-		}
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
-			tx.Rollback()
+		if err := apply(ctx, db, names[i], i+1); err != nil {
+			logging.FromContext(ctx).Error("migration failed", "migration", names[i], "err", err.Error())
 			return fmt.Errorf("migration %s: %w", names[i], err)
 		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %s: %w", names[i], err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("migration %s: %w", names[i], err)
-		}
+		logging.FromContext(ctx).Info("schema migrated", "migration", names[i], "version", i+1)
 	}
 	return nil
+}
+
+// apply runs the migration name and sets the schema version to version in one
+// transaction.
+func apply(ctx context.Context, db *sql.DB, name string, version int) error {
+	body, err := migrationsFS.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, string(body)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", version)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

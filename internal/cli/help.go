@@ -17,7 +17,8 @@ const conventions = `Output:
   Results go to stdout and errors to stderr. With --json nothing prompts, and
   stdout holds exactly one JSON object and nothing else:
     success: {"ok": true, "action": "created", "project": {...}}
-    failure: {"ok": false, "error": {"code": "not_found", "message": "...", "hint": "...", "details": {...}}}
+    failure: {"ok": false, "error": {"code": "not_found", "message": "...", "hint": "...", "details": {...},
+              "debug_id": "dbg-..."}}
   "action" names what happened; commands that change nothing have none.
   Each command's help lists its actions and error codes; add --json to get
   the help itself as JSON.
@@ -26,7 +27,13 @@ Exit codes:
   0  ok
   1  rejected: a conflict, not found or cancelled
   2  usage: the command line is invalid
-  3  system: an unexpected failure`
+  3  system: an unexpected failure
+
+Logs:
+  Every run is logged as JSON lines to ~/.wdx/logs/wdx-<date>.log (under
+  $WDX_HOME if set); a failure's debug_id finds its lines. WDX_LOG_LEVEL
+  (debug, info, warn or error; default info) and WDX_LOG_RETENTION_DAYS (days
+  of files kept besides today's; default 7) configure it.`
 
 // setHelp makes --help print the flag rules, output and errors of a command
 // after cobra's usage text, or all of it as JSON with --json.
@@ -34,8 +41,10 @@ func setHelp(root *cobra.Command) {
 	usage := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		v := newCommandView(cmd)
+		r := helpResponse{OK: true, Command: v}
+		invocationOf(cmd).response = r
 		if jsonMode(cmd) {
-			writeJSON(cmd.OutOrStdout(), helpResponse{OK: true, Command: v})
+			writeJSON(cmd.OutOrStdout(), r)
 			return
 		}
 		usage(cmd, args)
