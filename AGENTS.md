@@ -44,6 +44,7 @@ internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 
 Every command serves both humans and scripts or AIs.
 
+- Only commands are positional; every input is a flag. An entity is named by `--id` or `--name`, exactly one of them.
 - Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `WDX_NO_INPUT=1`), fail when the question comes up, with a hint naming the flags.
 - Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else:
   - success: `{"ok": true, "action": "created", "project": {...}}`, with the key named after the entity and command-specific extras such as `dropped`;

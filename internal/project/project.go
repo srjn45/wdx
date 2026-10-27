@@ -313,16 +313,16 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		return Opened{}, err
 	}
 	log.Info("worktree recorded", "project_id", id, "path", root, "git_common_dir", commonDir)
-	p, err := s.Get(ctx, id)
+	p, err := s.GetByID(ctx, id)
 	return Opened{Project: p, Registered: registered, Dropped: dropped}, err
 }
 
 func (s *Store) mismatch(ctx context.Context, root, origin, byCloneID, byOriginID string) error {
-	byClone, err := s.Get(ctx, byCloneID)
+	byClone, err := s.GetByID(ctx, byCloneID)
 	if err != nil {
 		return err
 	}
-	byOrigin, err := s.Get(ctx, byOriginID)
+	byOrigin, err := s.GetByID(ctx, byOriginID)
 	if err != nil {
 		return err
 	}
@@ -381,10 +381,10 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 	return s.cloneAndOpen(ctx, url, dest, name, progress)
 }
 
-// Reclone clones the project whose id or name is ref back into its clone path,
+// Reclone clones the project with id back into its clone path,
 // for when none of its checkouts are left on disk.
-func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Opened, error) {
-	p, err := s.Get(ctx, ref)
+func (s *Store) Reclone(ctx context.Context, id string, progress io.Writer) (Opened, error) {
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return Opened{}, err
 	}
@@ -473,7 +473,7 @@ func (s *Store) repoExists(ctx context.Context, dest, root string) error {
 	if err != nil || id == "" {
 		return cmp.Or(err, error(e))
 	}
-	p, err := s.Get(ctx, id)
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -504,10 +504,10 @@ func existingAncestor(path string) (string, error) {
 	}
 }
 
-// Open opens the known project whose id or name is ref from one of its
+// Open opens the known project with id from one of its
 // checkouts; if none is left on disk, a *CheckoutMissingError is returned.
-func (s *Store) Open(ctx context.Context, ref string) (Opened, error) {
-	p, err := s.Get(ctx, ref)
+func (s *Store) Open(ctx context.Context, id string) (Opened, error) {
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return Opened{}, err
 	}
@@ -515,7 +515,7 @@ func (s *Store) Open(ctx context.Context, ref string) (Opened, error) {
 }
 
 func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) {
-	p, err := s.Get(ctx, id)
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return Opened{}, err
 	}
@@ -543,15 +543,6 @@ func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progre
 	o, err := s.OpenLocal(ctx, dest, name)
 	o.Cloned = err == nil
 	return o, err
-}
-
-// Get returns the project whose id or name is ref. An id match wins.
-func (s *Store) Get(ctx context.Context, ref string) (Project, error) {
-	p, err := s.GetByID(ctx, ref)
-	if errors.Is(err, ErrNotFound) {
-		return s.GetByName(ctx, ref)
-	}
-	return p, err
 }
 
 // GetByID returns the project with id, whatever its state.
@@ -653,9 +644,9 @@ func (s *Store) DiskStatus(ctx context.Context, p Project) (DiskStatus, error) {
 	return st, nil
 }
 
-// Close marks the project whose id or name is ref as closed.
-func (s *Store) Close(ctx context.Context, ref string) (Project, error) {
-	p, err := s.Get(ctx, ref)
+// Close marks the project with id as closed.
+func (s *Store) Close(ctx context.Context, id string) (Project, error) {
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return Project{}, err
 	}
@@ -664,13 +655,13 @@ func (s *Store) Close(ctx context.Context, ref string) (Project, error) {
 		return Project{}, err
 	}
 	logging.FromContext(ctx).Info("project closed", "project_id", p.ID, "name", p.Name)
-	return s.Get(ctx, p.ID)
+	return s.GetByID(ctx, p.ID)
 }
 
-// Remove deletes the project whose id or name is ref along with everything
+// Remove deletes the project with id along with everything
 // that belongs to it. Files on disk are not touched.
-func (s *Store) Remove(ctx context.Context, ref string) (Project, error) {
-	p, err := s.Get(ctx, ref)
+func (s *Store) Remove(ctx context.Context, id string) (Project, error) {
+	p, err := s.GetByID(ctx, id)
 	if err != nil {
 		return Project{}, err
 	}
@@ -748,15 +739,19 @@ type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// checkName returns a *NameTakenError if a project other than self already
-// uses name.
+// checkName returns an *InvalidNameError if name contains a colon, which
+// marks an id reference such as "id:proj-1a2b3c4d", or a *NameTakenError if
+// a project other than self already uses name.
 func (s *Store) checkName(ctx context.Context, q queryRower, name, self string) error {
+	if strings.Contains(name, ":") {
+		return &InvalidNameError{Name: name, Reason: `cannot contain ":"`}
+	}
 	other, err := queryID(ctx, q, "SELECT id FROM projects WHERE name = ? AND id <> ?", name, self)
 	if err != nil || other == "" {
 		return err
 	}
 	logging.FromContext(ctx).Info("name taken", "name", name, "project_id", other)
-	p, err := s.Get(ctx, other)
+	p, err := s.GetByID(ctx, other)
 	if err != nil {
 		return err
 	}

@@ -182,7 +182,7 @@ func TestOpenLocalReopensClosed(t *testing.T) {
 	repo := gitRepo(t, "myrepo", "")
 
 	p := open(t, s, repo, "")
-	if _, err := s.Close(context.Background(), p.Name); err != nil {
+	if _, err := s.Close(context.Background(), p.ID); err != nil {
 		t.Fatal(err)
 	}
 	if p = open(t, s, repo, ""); p.State != StateOpen {
@@ -298,21 +298,17 @@ func TestOpenLocalMissingDir(t *testing.T) {
 	}
 }
 
-func TestCloseByNameAndID(t *testing.T) {
+func TestClose(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	s := newStore(t)
 	p := open(t, s, gitRepo(t, "MyRepo", ""), "")
 
-	for _, ref := range []string{p.Name, "myrepo", p.ID} {
-		open(t, s, p.Worktrees[0].Path, "")
-		closed, err := s.Close(ctx, ref)
-		if err != nil {
-			t.Fatalf("close %q: %v", ref, err)
-		}
-		if closed.ID != p.ID || closed.State != StateClosed {
-			t.Fatalf("close %q: unexpected project %+v", ref, closed)
-		}
+	closed, err := s.Close(context.Background(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed.ID != p.ID || closed.State != StateClosed {
+		t.Fatalf("unexpected project %+v", closed)
 	}
 }
 
@@ -333,20 +329,20 @@ func TestRemoveDeletesProjectAndWorktrees(t *testing.T) {
 	open(t, s, worktree(t, repo), "")
 	keep := open(t, s, gitRepo(t, "other", ""), "")
 
-	removed, err := s.Remove(ctx, "MYREPO")
+	removed, err := s.Remove(ctx, p.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if removed.ID != p.ID || len(removed.Worktrees) != 2 {
 		t.Fatalf("unexpected removed project: %+v", removed)
 	}
-	if _, err := s.Get(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetByID(ctx, p.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound after remove, got %v", err)
 	}
 	if n := countRows(t, s, "project_worktrees"); n != 1 {
 		t.Fatalf("want only the other project's worktree left, got %d rows", n)
 	}
-	if _, err := s.Get(ctx, keep.ID); err != nil {
+	if _, err := s.GetByID(ctx, keep.ID); err != nil {
 		t.Fatalf("other project affected: %v", err)
 	}
 	// Opening the path again starts a fresh project.
@@ -685,6 +681,25 @@ func TestCreateRejectsPathAsName(t *testing.T) {
 	}
 }
 
+func TestNameCannotContainColon(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	p := open(t, s, gitRepo(t, "app", ""), "")
+	for what, f := range map[string]func() error{
+		"create":   func() error { _, err := s.Create(ctx, "id:app", ""); return err },
+		"register": func() error { _, err := s.OpenLocal(ctx, gitRepo(t, "a:b", ""), ""); return err },
+		"rename":   func() error { _, err := s.OpenLocal(ctx, p.Worktrees[0].Path, "id:"+p.ID); return err },
+	} {
+		if _, ok := errors.AsType[*InvalidNameError](f()); !ok {
+			t.Fatalf("%s: want InvalidNameError", what)
+		}
+	}
+	if got, err := s.GetByID(ctx, p.ID); err != nil || got.Name != "app" || countRows(t, s, "projects") != 1 {
+		t.Fatalf("want only app unchanged, got %+v, %v", got, err)
+	}
+}
+
 func failInserts(t *testing.T, s *Store) {
 	t.Helper()
 	if _, err := s.db.Exec("CREATE TRIGGER fail BEFORE INSERT ON projects BEGIN SELECT RAISE(ABORT, 'boom'); END"); err != nil {
@@ -775,8 +790,7 @@ func TestGetByIDAndName(t *testing.T) {
 	for _, get := range []func() (Project, error){
 		func() (Project, error) { return s.GetByID(ctx, p.ID) },
 		func() (Project, error) { return s.GetByName(ctx, "app") },
-		func() (Project, error) { return s.Get(ctx, p.ID) },
-		func() (Project, error) { return s.Get(ctx, "APP") },
+		func() (Project, error) { return s.GetByName(ctx, "APP") },
 	} {
 		if got, err := get(); err != nil || got.ID != p.ID || got.State != StateClosed || len(got.Worktrees) != 1 {
 			t.Fatalf("want closed project %s with its worktree, got %+v, %v", p.ID, got, err)
@@ -828,7 +842,7 @@ func TestDiskStatus(t *testing.T) {
 	if st, err := s.DiskStatus(ctx, Project{}); err != nil || !st.Orphaned {
 		t.Fatalf("a project without worktrees is orphaned, got %+v, %v", st, err)
 	}
-	if got, err := s.Get(ctx, p.ID); err != nil || len(got.Worktrees) != 2 {
+	if got, err := s.GetByID(ctx, p.ID); err != nil || len(got.Worktrees) != 2 {
 		t.Fatalf("DiskStatus must not drop checkouts, got %+v, %v", got, err)
 	}
 }

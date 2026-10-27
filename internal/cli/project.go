@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -183,7 +184,7 @@ func newProjectListCmd(home string) *cobra.Command {
 }
 
 func newProjectGetCmd(home string) *cobra.Command {
-	var id, name string
+	var ref projectRef
 	cmd := &cobra.Command{
 		Use:   "get (--id <id> | --name <name>)",
 		Short: "Show a project and which of its checkouts are on disk",
@@ -206,12 +207,7 @@ func newProjectGetCmd(home string) *cobra.Command {
 			defer d.Close()
 
 			store := project.NewStore(d, identity.ProjectsDir(home))
-			var p project.Project
-			if cmd.Flags().Changed("id") {
-				p, err = store.GetByID(ctx, id)
-			} else {
-				p, err = store.GetByName(ctx, name)
-			}
+			p, err := ref.get(ctx, store)
 			if err != nil {
 				return err
 			}
@@ -222,11 +218,28 @@ func newProjectGetCmd(home string) *cobra.Command {
 			return printResult(cmd, newProjectDetail(p, status))
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "project id")
-	cmd.Flags().StringVar(&name, "name", "", "project name (case-insensitive)")
+	ref.addFlags(cmd)
+	return cmd
+}
+
+// projectRef is a project named on the command line by --id or --name,
+// exactly one of which is required.
+type projectRef struct {
+	id, name string
+}
+
+func (r *projectRef) addFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&r.id, "id", "", "project id")
+	cmd.Flags().StringVar(&r.name, "name", "", "project name (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	return cmd
+}
+
+func (r projectRef) get(ctx context.Context, store *project.Store) (project.Project, error) {
+	if r.id != "" {
+		return store.GetByID(ctx, r.id)
+	}
+	return store.GetByName(ctx, r.name)
 }
 
 func newProjectOpenCmd(home string) *cobra.Command {
@@ -359,24 +372,25 @@ func openHint(err error) error {
 
 func missingCheckoutHint(p project.Project) string {
 	if p.OriginURL == "" {
-		return fmt.Sprintf("remove it with %s project remove %s", identity.Name, p.Name)
+		return fmt.Sprintf("remove it with %s project remove --id %s", identity.Name, p.ID)
 	}
 	return fmt.Sprintf("run %s project open --git %s with --reclone or --remove", identity.Name, p.OriginURL)
 }
 
 func newProjectCloseCmd(home string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "close <name|id>",
+	var ref projectRef
+	cmd := &cobra.Command{
+		Use:   "close (--id <id> | --name <name>)",
 		Short: "Close a project",
 		Long: "Mark a project closed. Nothing on disk is touched; open it again with\n" +
 			identity.Name + " project open.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The closed project.\n" + `With --json: {"ok": true, "action": "closed", "project": {...}}`,
 			actionList: "closed",
 			errorList:  annotation(codeNotFound),
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
@@ -384,28 +398,35 @@ func newProjectCloseCmd(home string) *cobra.Command {
 			}
 			defer d.Close()
 
-			p, err := project.NewStore(d, identity.ProjectsDir(home)).Close(ctx, args[0])
+			store := project.NewStore(d, identity.ProjectsDir(home))
+			p, err := ref.get(ctx, store)
 			if err != nil {
+				return err
+			}
+			if p, err = store.Close(ctx, p.ID); err != nil {
 				return err
 			}
 			return printResult(cmd, projectResponse("closed", p))
 		},
 	}
+	ref.addFlags(cmd)
+	return cmd
 }
 
 func newProjectRemoveCmd(home string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove <name|id>",
+	var ref projectRef
+	cmd := &cobra.Command{
+		Use:   "remove (--id <id> | --name <name>)",
 		Short: "Delete a project and everything that belongs to it",
 		Long: "Delete a project and everything that belongs to it from " + identity.Name + ".\n" +
 			"Files on disk are not touched.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The removed project.\n" + `With --json: {"ok": true, "action": "removed", "project": {...}}`,
 			actionList: "removed",
 			errorList:  annotation(codeNotFound),
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
@@ -413,11 +434,17 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 			}
 			defer d.Close()
 
-			p, err := project.NewStore(d, identity.ProjectsDir(home)).Remove(ctx, args[0])
+			store := project.NewStore(d, identity.ProjectsDir(home))
+			p, err := ref.get(ctx, store)
 			if err != nil {
+				return err
+			}
+			if p, err = store.Remove(ctx, p.ID); err != nil {
 				return err
 			}
 			return printResult(cmd, projectResponse("removed", p))
 		},
 	}
+	ref.addFlags(cmd)
+	return cmd
 }
