@@ -59,6 +59,9 @@ type jsonOutput struct {
 			Path string `json:"path"`
 		} `json:"worktrees"`
 	} `json:"project"`
+	Conflict *struct {
+		Code string `json:"code"`
+	} `json:"conflict"`
 	Error *struct {
 		Code    string         `json:"code"`
 		Message string         `json:"message"`
@@ -99,10 +102,10 @@ func wantError(t *testing.T, v jsonOutput, exit int, code string, wantExit int) 
 // newProject creates a project named name in home and returns its id.
 func newProject(t *testing.T, home, name string) string {
 	t.Helper()
-	if out := wdx(t, home, "project", "create", "--name", name); out.exit != exitOK {
-		t.Fatalf("create %s: %+v", name, out)
+	v, exit := wdxJSON(t, home, "project", "create", "--name", name, "--cancel")
+	if exit != exitOK {
+		t.Fatalf("create %s: %+v", name, v.Error)
 	}
-	v, _ := wdxJSON(t, home, "project", "close", name)
 	return v.Project.ID
 }
 
@@ -368,5 +371,112 @@ func TestOpenGitErrors(t *testing.T) {
 	wantError(t, v, exit, codeCloneFailed, exitRejected)
 	if output, _ := v.Error.Details["output"].(string); !strings.Contains(output, "nope.git") {
 		t.Fatalf("want git's output in details, got %+v", v.Error.Details)
+	}
+}
+
+func TestCreate(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--cancel")
+	want := filepath.Join(home, "projects", "app")
+	if exit != exitOK || v.Action != "created" || v.Conflict != nil || v.Project.Worktrees[0].Path != want {
+		t.Fatalf("unexpected create: %+v", v)
+	}
+	if out := wdx(t, home, "project", "create", "--name", "web"); !strings.HasPrefix(out.stdout, "created project web (") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestCreateJSONRequiresAnswer(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "app")
+	wantError(t, v, exit, codeUsage, exitUsage)
+	wantHint(t, v, "--open or --cancel")
+	if _, err := os.Stat(filepath.Join(home, "projects", "app")); !os.IsNotExist(err) {
+		t.Fatalf("nothing should be created: %v", err)
+	}
+}
+
+func TestCreateNameTaken(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	id := newProject(t, home, "app")
+
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "APP", "--cancel")
+	wantError(t, v, exit, codeNameTaken, exitRejected)
+	wantHint(t, v, "--name")
+	if p, _ := v.Error.Details["project"].(map[string]any); p["id"] != id {
+		t.Fatalf("want details.project %s, got %+v", id, v.Error.Details)
+	}
+
+	v, exit = wdxJSON(t, home, "project", "create", "--name", "APP", "--open")
+	if exit != exitOK || v.Action != "opened" || v.Project.ID != id || v.Conflict == nil || v.Conflict.Code != codeNameTaken {
+		t.Fatalf("want %s opened after name_taken, got %+v", id, v)
+	}
+
+	out := wdx(t, home, "project", "create", "--name", "app")
+	if out.exit != exitRejected || !strings.HasPrefix(out.stderr, "wdx: not created: ") || !strings.Contains(out.stderr, "pass --open or --cancel") {
+		t.Fatalf("unexpected text error: %+v", out)
+	}
+	out = wdx(t, home, "project", "create", "--name", "app", "--open")
+	if !strings.HasPrefix(out.stdout, "opened existing project app ("+id+"); nothing was created\n") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestCreateRepoExists(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	repo := gitRepo(t, "app")
+
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--path", filepath.Dir(repo), "--cancel")
+	wantError(t, v, exit, codeRepoExists, exitRejected)
+	wantHint(t, v, "--path")
+	if v.Error.Details["root"] != repo || v.Error.Details["project"] != nil {
+		t.Fatalf("want unknown repo %s in details, got %+v", repo, v.Error.Details)
+	}
+
+	v, exit = wdxJSON(t, home, "project", "create", "--name", "sub", "--path", repo, "--open")
+	if exit != exitOK || v.Action != "registered" || v.Project.Worktrees[0].Path != repo || v.Conflict.Code != codeRepoExists {
+		t.Fatalf("want %s registered after repo_exists, got %+v", repo, v)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "sub")); !os.IsNotExist(err) {
+		t.Fatalf("nothing should be created: %v", err)
+	}
+}
+
+func TestCreateOpenCheckoutMissing(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	newProject(t, home, "app")
+	if err := os.RemoveAll(filepath.Join(home, "projects", "app")); err != nil {
+		t.Fatal(err)
+	}
+
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--open")
+	wantError(t, v, exit, codeCheckoutMissing, exitRejected)
+	wantHint(t, v, "project remove app")
+}
+
+func TestCreateInvalid(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+
+	v, exit := wdxJSON(t, home, "project", "create", "--name", "../app", "--cancel")
+	wantError(t, v, exit, codeInvalidName, exitRejected)
+	wantHint(t, v, "--name")
+
+	file := filepath.Join(home, "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxJSON(t, home, "project", "create", "--name", "app", "--path", file, "--cancel")
+	wantError(t, v, exit, codeInvalidPath, exitRejected)
+	wantHint(t, v, "--path")
+
+	if out := wdx(t, home, "project", "create"); out.exit != exitUsage || !strings.HasPrefix(out.stderr, "wdx: not created: ") {
+		t.Fatalf("want usage error with prefix, got %+v", out)
 	}
 }

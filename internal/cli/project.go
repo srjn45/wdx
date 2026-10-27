@@ -39,13 +39,15 @@ func newProjectCreateCmd(home string) *cobra.Command {
 			"is not in a git repository is initialized in place.\n\n" +
 			"If the name is taken or the directory is in a git repository, you are\n" +
 			"asked to open that project, try another name or cancel; --open and\n" +
-			"--cancel answer in advance. Every failure starts with \"not created:\".",
-		Args: cobra.NoArgs,
+			"--cancel answer in advance, and with --json one of them is required.\n" +
+			"Every failure starts with \"not created:\".",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{failurePrefix: "not created"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := runCreate(cmd, home, opts); err != nil {
-				return fmt.Errorf("not created: %w", err)
+			if jsonMode(cmd) && !opts.openOnConflict && !opts.cancelOnConflict {
+				return &hinted{&usageError{errors.New("--json requires --open or --cancel")}, "pass --open or --cancel"}
 			}
-			return nil
+			return runCreate(cmd, home, opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "project name, also the repository directory name")
@@ -70,14 +72,19 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 	for {
 		o, conflict := store.Create(ctx, opts.name, opts.parent)
 		if conflict == nil {
-			printProject(cmd.OutOrStdout(), "created", o.Project)
-			return nil
+			return printResult(cmd, projectResponse("created", o.Project))
 		}
 		var open func() (project.Opened, error)
+		retry := "choose another --name"
 		if taken, ok := errors.AsType[*project.NameTakenError](conflict); ok {
 			open = func() (project.Opened, error) { return store.Open(ctx, taken.Project.ID) }
 		} else if exists, ok := errors.AsType[*project.RepoExistsError](conflict); ok {
 			open = func() (project.Opened, error) { return store.OpenLocal(ctx, exists.Root, "") }
+			retry = "choose another --name or --path"
+		} else if _, ok := errors.AsType[*project.InvalidPathError](conflict); ok {
+			return &hinted{conflict, "choose another --path"}
+		} else if _, ok := errors.AsType[*project.InvalidNameError](conflict); ok {
+			return &hinted{conflict, retry}
 		} else {
 			return conflict
 		}
@@ -89,7 +96,7 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 		case opts.cancelOnConflict:
 			choice = "c"
 		case !canPrompt(cmd):
-			return fmt.Errorf("%w; pass --open or --cancel, or choose another --name", conflict)
+			return &hinted{conflict, "pass --open or --cancel, or " + retry}
 		default:
 			prompt := cmd.ErrOrStderr()
 			fmt.Fprintln(prompt, conflict)
@@ -110,7 +117,7 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 			}
 		}
 		if choice == "c" {
-			return conflict
+			return &hinted{conflict, retry}
 		}
 
 		o, err = open()
@@ -120,11 +127,10 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 		if err != nil {
 			return err
 		}
-		w := cmd.OutOrStdout()
-		fmt.Fprintf(w, "opened existing project %s (%s); nothing was created\n", o.Name, o.ID)
-		printDetails(w, o.Project)
-		printDropped(w, o.Dropped)
-		return nil
+		r := openedResponse(o)
+		v, _ := classify(conflict)
+		r.Conflict = &v
+		return printResult(cmd, r)
 	}
 }
 
@@ -295,31 +301,5 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 			}
 			return printResult(cmd, projectResponse("removed", p))
 		},
-	}
-}
-
-func printProject(w io.Writer, verb string, p project.Project) {
-	fmt.Fprintf(w, "%s project %s (%s)\n", verb, p.Name, p.ID)
-	printDetails(w, p)
-}
-
-func printDetails(w io.Writer, p project.Project) {
-	origin := p.OriginURL
-	if origin == "" {
-		origin = "(none)"
-	}
-	fmt.Fprintf(w, "  origin:    %s\n", origin)
-	for i, wt := range p.Worktrees {
-		label := "worktrees:"
-		if i > 0 {
-			label = ""
-		}
-		fmt.Fprintf(w, "  %-10s %s\n", label, wt.Path)
-	}
-}
-
-func printDropped(w io.Writer, dropped []project.Worktree) {
-	for _, wt := range dropped {
-		fmt.Fprintf(w, "  dropped missing checkout %s\n", wt.Path)
 	}
 }

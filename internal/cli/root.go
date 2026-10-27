@@ -13,6 +13,10 @@ import (
 	"github.com/srjn45/warden/internal/identity"
 )
 
+// failurePrefix is a command annotation: text that starts each of its error
+// messages in text mode, such as "not created".
+const failurePrefix = "failurePrefix"
+
 // Env is everything a command takes from the process it runs in.
 type Env struct {
 	Stdin          io.Reader
@@ -46,6 +50,9 @@ func Run(ctx context.Context, args []string, env Env) int {
 		return exit
 	}
 	msg := v.Message
+	if prefix := cmd.Annotations[failurePrefix]; prefix != "" {
+		msg = prefix + ": " + msg
+	}
 	if v.Hint != nil {
 		msg += "; " + *v.Hint
 	}

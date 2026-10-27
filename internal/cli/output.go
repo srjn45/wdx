@@ -69,7 +69,14 @@ func openedResponse(o project.Opened) response {
 
 func (r response) text(w io.Writer) {
 	p := r.Project
-	fmt.Fprintf(w, "%s project %s (%s)\n", r.Action, p.Name, p.ID)
+	switch {
+	case r.Conflict == nil:
+		fmt.Fprintf(w, "%s project %s (%s)\n", r.Action, p.Name, p.ID)
+	case r.Action == "registered":
+		fmt.Fprintf(w, "registered existing repository as project %s (%s); nothing was created\n", p.Name, p.ID)
+	default:
+		fmt.Fprintf(w, "%s existing project %s (%s); nothing was created\n", r.Action, p.Name, p.ID)
+	}
 	origin := "(none)"
 	if p.Origin != nil {
 		origin = *p.Origin
