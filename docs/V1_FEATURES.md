@@ -185,7 +185,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 ## 17. Operator UX
 
-- [ ] P1 Config file (YAML) with live hot-reload (a bad edit keeps the last good config)
+- [x] P0 Config file `<home>/config.yaml` (YAML), read at startup; only `WDX_HOME` comes from the environment
+- [ ] P1 Live hot-reload of the config file (a bad edit keeps the last good config)
 - [ ] P1 Shell completion
 - [ ] P2 Presets (saved spawn options) and prompt templates
 - [ ] P2 Plugins: custom task types, lifecycle hooks (pre/post spawn, commit, check, teardown)

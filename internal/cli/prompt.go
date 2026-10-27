@@ -15,7 +15,7 @@ import (
 )
 
 // canPrompt reports whether cmd may ask the user questions: stdin is a
-// terminal and neither --json nor --no-input (which $WDX_NO_INPUT defaults)
+// terminal and neither --json nor --no-input (which the no_input setting defaults)
 // is set.
 func canPrompt(cmd *cobra.Command) bool {
 	return noPromptReason(cmd) == ""

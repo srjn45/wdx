@@ -865,8 +865,12 @@ func TestPanicIsInternalError(t *testing.T) {
 
 func TestConfigError(t *testing.T) {
 	t.Parallel()
-	settings := map[string]string{"WDX_LOG_LEVEL": "loud", "WDX_LOG_RETENTION_DAYS": "0"}
-	_, err := config.Load(config.Env(func(key string) string { return settings[key] }))
+	home := t.TempDir()
+	path := filepath.Join(home, "config.yaml")
+	if err := os.WriteFile(path, []byte("log:\n  level: loud\n  retention_days: 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := config.Load(func(key string) string { return map[string]string{"WDX_HOME": home}[key] })
 	if err == nil {
 		t.Fatal("want bad settings rejected")
 	}
@@ -880,7 +884,7 @@ func TestConfigError(t *testing.T) {
 			Code    string `json:"code"`
 			Details struct {
 				Settings []struct {
-					Name  string `json:"name"`
+					From  string `json:"from"`
 					Value string `json:"value"`
 				} `json:"settings"`
 			} `json:"details"`
@@ -889,13 +893,14 @@ func TestConfigError(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil || stderr.Len() != 0 {
 		t.Fatalf("want one JSON error, got %q, %q", stdout.String(), stderr.String())
 	}
-	if s := v.Error.Details.Settings; v.Error.Code != codeUsage || len(s) != 2 || s[0].Name != "WDX_LOG_LEVEL" || s[0].Value != "loud" {
+	if s := v.Error.Details.Settings; v.Error.Code != codeUsage || len(s) != 2 || s[0].From != path+":2" || s[0].Value != "loud" {
 		t.Fatalf("unexpected error %+v", v.Error)
 	}
 
 	stdout.Reset()
 	ConfigError([]string{"version"}, env, err)
-	want := `wdx: invalid settings: WDX_LOG_LEVEL: "loud" is not one of debug, info, warn, error; WDX_LOG_RETENTION_DAYS: "0" is not a whole number of at least 1; fix or unset them` + "\n"
+	want := "wdx: invalid settings: " + path + `:2: log.level: "loud" is not one of debug, info, warn, error; ` +
+		path + `:3: log.retention_days: "0" is not a whole number of at least 1; fix or remove them` + "\n"
 	if stderr.String() != want || stdout.Len() != 0 {
 		t.Fatalf("got %q, want %q", stderr.String(), want)
 	}

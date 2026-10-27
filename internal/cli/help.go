@@ -39,7 +39,9 @@ Logs:
   debug_id finds its lines.
 
 Settings:
-  Read from the environment when ` + identity.Name + ` starts; an invalid one fails every command.
+  Read when ` + identity.Name + ` starts; an invalid one fails every command. The home is
+  read from the environment, the rest from <home>/config.yaml, where
+  log.level is written as "log: {level: debug}".
 `)
 	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	for _, s := range config.Settings() {
@@ -47,7 +49,7 @@ Settings:
 		if !s.Required {
 			def = "default " + s.Default
 		}
-		fmt.Fprintf(tw, "  %s\t%s (%s)\n", s.EnvVar, s.Description, def)
+		fmt.Fprintf(tw, "  %s\t%s (%s)\n", cmp.Or(s.EnvVar, s.Key), s.Description, def)
 	}
 	tw.Flush()
 	return strings.TrimSuffix(b.String(), "\n")

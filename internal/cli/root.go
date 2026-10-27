@@ -81,7 +81,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 // ConfigError reports the settings that failed to load, before any command
 // runs, and returns the exit code.
 func ConfigError(args []string, env Env, err error) int {
-	hint := "fix or unset them"
+	hint := "fix or remove them"
 	v := errorView{Code: codeUsage, Message: err.Error(), Hint: &hint}
 	if e, ok := errors.AsType[*config.Error](err); ok {
 		v.Details = map[string]any{"settings": e.Problems}
@@ -201,7 +201,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
-	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set "+config.EnvVar("no_input")+"=1)")
+	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set no_input: true in "+identity.ConfigPath(cfg.Home)+")")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
 	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home))
 	root.InitDefaultHelpCmd()

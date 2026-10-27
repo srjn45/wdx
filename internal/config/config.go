@@ -1,15 +1,21 @@
 // Package config holds the settings of wdx. They are loaded once when wdx
-// starts and passed down as a value; nothing else reads the environment.
+// starts and passed down as a value; nothing else reads the environment or
+// the config file.
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/srjn45/warden/internal/identity"
 )
@@ -21,34 +27,36 @@ type Config struct {
 	LogLevel         slog.Level
 	LogRetentionDays int
 
-	// From tells where each setting was taken from, by key: "default" or
-	// the name the source knows it by, such as "WDX_HOME".
+	// From tells where each setting was taken from, by key: "default", the
+	// environment variable, or the config file and line.
 	From map[string]string
 }
 
 // Source supplies raw setting values.
 type Source interface {
-	// Lookup returns the value of key and the name the source knows it by;
-	// ok is false when the source does not set key.
-	Lookup(key string) (value, name string, ok bool)
+	// Lookup returns the value of key and where it was found; ok is false
+	// when the source does not set key.
+	Lookup(key string) (value, from string, ok bool)
 }
 
-type envSource func(string) string
-
-// Env is the source that reads key "log.level" from $WDX_LOG_LEVEL. An empty
-// variable is not set.
-func Env(getenv func(string) string) Source {
-	return envSource(getenv)
+// envSource reads the settings that live in the environment, key "home"
+// from $WDX_HOME. An empty variable is not set.
+type envSource struct {
+	getenv func(string) string
+	table  []setting
 }
 
-func (getenv envSource) Lookup(key string) (string, string, bool) {
-	name := EnvVar(key)
-	v := getenv(name)
+func (e envSource) Lookup(key string) (string, string, bool) {
+	i := slices.IndexFunc(e.table, func(s setting) bool { return s.key == key })
+	if i < 0 || !e.table[i].fromEnv {
+		return "", "", false
+	}
+	name := envVar(key)
+	v := e.getenv(name)
 	return v, name, v != ""
 }
 
-// EnvVar is the environment variable that sets key.
-func EnvVar(key string) string {
+func envVar(key string) string {
 	return identity.Env(strings.ToUpper(strings.ReplaceAll(key, ".", "_")))
 }
 
@@ -56,6 +64,7 @@ func EnvVar(key string) string {
 type setting struct {
 	key         string
 	description string
+	fromEnv     bool   // read from the environment instead of the config file
 	required    bool   // has no default; Load fails when no source sets it
 	def         string // parsed by set like any other value
 	set         func(c *Config, value string) error
@@ -67,10 +76,12 @@ var logLevels = []string{"debug", "info", "warn", "error"}
 var settings = []setting{
 	{
 		key:         "home",
-		description: "directory holding the database, logs and cloned projects",
-		def:         defaultHome(),
-		set:         func(c *Config, v string) error { c.Home = v; return nil },
-		get:         func(c Config) string { return c.Home },
+		description: "directory holding the config file, database, logs and cloned projects",
+		// The config file lives in home, so home cannot come from it.
+		fromEnv: true,
+		def:     defaultHome(),
+		set:     func(c *Config, v string) error { c.Home = v; return nil },
+		get:     func(c Config) string { return c.Home },
 	},
 	{
 		key:         "no_input",
@@ -123,36 +134,57 @@ func defaultHome() string {
 // Default returns the defaults of the optional settings; required ones are
 // left zero.
 func Default() Config {
-	c, _ := load(settings)
+	c, _ := resolve(settings, nil)
 	return c
 }
 
-// Load returns the settings from the defaults overridden by each source in
-// turn, so a later source wins. It fails with an *Error listing every
-// required setting missing and every value that does not parse.
-func Load(sources ...Source) (Config, error) {
-	return load(settings, sources...)
+// Load returns the settings: home from $WDX_HOME, the others from the config
+// file in home, each defaulting when not set. A missing file sets nothing. It
+// fails with an *Error listing every problem: a file that cannot be read or
+// parsed, an unknown key, a required setting missing, a value that does not
+// parse.
+func Load(getenv func(string) string) (Config, error) {
+	return load(settings, getenv)
 }
 
-func load(table []setting, sources ...Source) (Config, error) {
+func load(table []setting, getenv func(string) string) (Config, error) {
+	env := envSource{getenv, table}
+	home, _, ok := env.Lookup("home")
+	if !ok {
+		home = defaultHome()
+	}
+	file, problems := readFile(identity.ConfigPath(home), table)
+	c, err := resolve(table, []Source{file, env})
+	if e, ok := errors.AsType[*Error](err); ok {
+		problems = append(problems, e.Problems...)
+	}
+	if len(problems) > 0 {
+		return c, &Error{Problems: problems}
+	}
+	return c, nil
+}
+
+// resolve returns the settings from the defaults overridden by each source
+// in turn, so a later source wins.
+func resolve(table []setting, sources []Source) (Config, error) {
 	c := Config{From: map[string]string{}}
 	var problems []Problem
 	for _, s := range table {
 		value, from, found := s.def, "default", !s.required
 		for _, src := range sources {
-			if v, name, ok := src.Lookup(s.key); ok {
-				value, from, found = v, name, true
+			if v, f, ok := src.Lookup(s.key); ok {
+				value, from, found = v, f, true
 			}
 		}
 		if !found {
-			problems = append(problems, Problem{Key: s.key, Name: EnvVar(s.key), Reason: "required"})
+			problems = append(problems, Problem{Key: s.key, Reason: "required"})
 			continue
 		}
 		if err := s.set(&c, value); err != nil {
 			if from == "default" {
 				panic(fmt.Sprintf("config: default of %s: %v", s.key, err))
 			}
-			problems = append(problems, Problem{Key: s.key, Name: from, Value: &value, Reason: err.Error()})
+			problems = append(problems, Problem{Key: s.key, From: from, Value: &value, Reason: err.Error()})
 			continue
 		}
 		c.From[s.key] = from
@@ -163,23 +195,139 @@ func load(table []setting, sources ...Source) (Config, error) {
 	return c, nil
 }
 
+// fileSource holds the values of a config file by key, with where each was
+// found.
+type fileSource map[string]fileValue
+
+type fileValue struct {
+	value, from string
+}
+
+func (f fileSource) Lookup(key string) (string, string, bool) {
+	v, ok := f[key]
+	return v.value, v.from, ok
+}
+
+// readFile reads the config file at path, a YAML mapping whose nested keys
+// make the dotted keys of table: "log: {level: debug}" sets log.level.
+func readFile(path string, table []setting) (fileSource, []Problem) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		if pe, ok := errors.AsType[*fs.PathError](err); ok {
+			err = pe.Err
+		}
+		return nil, []Problem{{From: path, Reason: "cannot be read: " + err.Error()}}
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, yamlProblems(path, err)
+	}
+	if len(doc.Content) == 0 {
+		return nil, nil
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, []Problem{{From: at(path, root), Reason: "not a mapping of settings"}}
+	}
+	r := fileReader{path: path, table: table, values: fileSource{}, lines: map[string]int{}}
+	r.walk("", root)
+	return r.values, r.problems
+}
+
+// fileReader collects the values of a config file and its problems.
+type fileReader struct {
+	path     string
+	table    []setting
+	values   fileSource
+	lines    map[string]int // where each key was first seen
+	problems []Problem
+}
+
+func (r *fileReader) walk(prefix string, m *yaml.Node) {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		k, v := m.Content[i], m.Content[i+1]
+		key := prefix + k.Value
+		from := at(r.path, k)
+		j := slices.IndexFunc(r.table, func(s setting) bool { return s.key == key })
+		if line, ok := r.lines[key]; ok {
+			r.problem(key, from, fmt.Sprintf("already set at line %d", line))
+			continue
+		}
+		r.lines[key] = k.Line
+		switch {
+		case j >= 0 && r.table[j].fromEnv:
+			r.problem(key, from, "set by "+envVar(key)+", not the config file")
+		case j >= 0 && v.Kind == yaml.ScalarNode:
+			if v.Tag != "!!null" {
+				r.values[key] = fileValue{v.Value, from}
+			}
+		case j >= 0:
+			r.problem(key, from, "not a single value")
+		case v.Kind == yaml.MappingNode && slices.ContainsFunc(r.table, func(s setting) bool { return strings.HasPrefix(s.key, key+".") }):
+			r.walk(key+".", v)
+		default:
+			r.problem(key, from, "unknown setting")
+		}
+	}
+}
+
+func (r *fileReader) problem(key, from, reason string) {
+	r.problems = append(r.problems, Problem{Key: key, From: from, Reason: reason})
+}
+
+var yamlLine = regexp.MustCompile(`^line (\d+): `)
+
+// yamlProblems turns a YAML error, "yaml: line 3: ...", into problems found
+// at path:3.
+func yamlProblems(path string, err error) []Problem {
+	msgs := []string{strings.TrimPrefix(err.Error(), "yaml: ")}
+	if te, ok := errors.AsType[*yaml.TypeError](err); ok {
+		msgs = te.Errors
+	}
+	var problems []Problem
+	for _, msg := range msgs {
+		p := Problem{From: path, Reason: msg}
+		if m := yamlLine.FindStringSubmatch(msg); m != nil {
+			p.From, p.Reason = path+":"+m[1], msg[len(m[0]):]
+		}
+		problems = append(problems, p)
+	}
+	return problems
+}
+
+func at(path string, n *yaml.Node) string {
+	return fmt.Sprintf("%s:%d", path, n.Line)
+}
+
 // Error lists every setting that is missing or invalid.
 type Error struct {
 	Problems []Problem
 }
 
-// Problem is a setting that is missing or invalid.
+// Problem is a setting that is missing or invalid, or a config file that
+// cannot be used.
 type Problem struct {
-	Key    string  `json:"key"`
-	Name   string  `json:"name"`  // what the source calls it, such as "WDX_LOG_LEVEL"
-	Value  *string `json:"value"` // nil when missing
+	Key    string  `json:"key"`   // "" for the whole file
+	From   string  `json:"from"`  // the variable or file and line; "" when missing
+	Value  *string `json:"value"` // nil when missing or not a single value
 	Reason string  `json:"reason"`
+}
+
+func (p Problem) String() string {
+	parts := []string{p.From, p.Key, p.Reason}
+	if p.From == envVar(p.Key) {
+		parts[1] = "" // the variable names the key
+	}
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ": ")
 }
 
 func (e *Error) Error() string {
 	var msgs []string
 	for _, p := range e.Problems {
-		msgs = append(msgs, p.Name+": "+p.Reason)
+		msgs = append(msgs, p.String())
 	}
 	return "invalid settings: " + strings.Join(msgs, "; ")
 }
@@ -187,7 +335,7 @@ func (e *Error) Error() string {
 // Setting describes a setting for help and logs.
 type Setting struct {
 	Key         string
-	EnvVar      string
+	EnvVar      string // the variable it is read from; "" for the config file
 	Description string
 	Default     string // "" when required
 	Required    bool
@@ -197,7 +345,11 @@ type Setting struct {
 func Settings() []Setting {
 	list := make([]Setting, 0, len(settings))
 	for _, s := range settings {
-		list = append(list, Setting{Key: s.key, EnvVar: EnvVar(s.key), Description: s.description, Default: s.def, Required: s.required})
+		v := Setting{Key: s.key, Description: s.description, Default: s.def, Required: s.required}
+		if s.fromEnv {
+			v.EnvVar = envVar(s.key)
+		}
+		list = append(list, v)
 	}
 	return list
 }

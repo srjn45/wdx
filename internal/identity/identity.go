@@ -24,6 +24,11 @@ func Env(key string) string {
 	return strings.ToUpper(strings.ReplaceAll(Name, "-", "_")) + "_" + key
 }
 
+// ConfigPath is the config file under home.
+func ConfigPath(home string) string {
+	return filepath.Join(home, "config.yaml")
+}
+
 // DBPath is the SQLite database file under home.
 func DBPath(home string) string {
 	return filepath.Join(home, Name+".db")

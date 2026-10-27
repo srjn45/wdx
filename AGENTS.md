@@ -45,7 +45,7 @@ internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 Every command serves both humans and scripts or AIs.
 
 - Only commands are positional; every input is a flag. An entity is named by `--id` or `--name`, exactly one of them.
-- Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `WDX_NO_INPUT=1`), fail when the question comes up, with a hint naming the flags.
+- Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `no_input: true` in the config file), fail when the question comes up, with a hint naming the flags.
 - Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else:
   - success: `{"ok": true, "action": "created", "project": {...}}`, with the key named after the entity and command-specific extras such as `dropped`;
   - failure: `{"ok": false, "error": {"code": "name_taken", "message": "...", "hint": "...", "details": {"project": {...}}}}`.
@@ -59,10 +59,11 @@ Every command serves both humans and scripts or AIs.
 ## Config
 
 - Every setting is a row in the table in `internal/config`: key, description, default (or required) and parser. The help's Settings section and the logs are built from it.
-- `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv`.
+- `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv` or reads the config file.
 - An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
 - `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.
-- Sources are layered, later winning: defaults, then the environment (`log.level` is `WDX_LOG_LEVEL`). A config file will slot in before the environment.
+- Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
+- Sources are layered, later winning: defaults, then the config file, then the environment. Unknown keys, duplicates and values that are not a single value are errors, reported with the file and line.
 
 ## Logging
 
