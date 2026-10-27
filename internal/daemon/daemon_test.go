@@ -21,6 +21,7 @@ import (
 	"github.com/srjn45/warden/internal/gittest"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/telemetry"
 )
 
 func TestMain(m *testing.M) {
@@ -32,27 +33,37 @@ type testDaemon struct {
 	home, socket string
 	client       *api.ClientWithResponses
 	http         *http.Client
+	stop         func() // stops the daemon once it has served
 }
 
 // start runs a daemon on a new home until the test ends, and checks then
 // that every request was logged from received to returned.
 func start(t *testing.T) *testDaemon {
 	t.Helper()
+	return startMeasured(t, telemetry.Options{})
+}
+
+// startMeasured is start, with the daemon's metrics going where metrics says.
+func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
+	t.Helper()
 	home := t.TempDir()
 	td := &testDaemon{home: home, socket: socketPath(t)}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
-	ctx, stop := context.WithCancel(context.Background())
-	d, err := Listen(ctx, Options{Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug)})
+	ctx, cancel := context.WithCancel(context.Background())
+	d, err := Listen(ctx, Options{Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics})
 	if err != nil {
 		t.Fatal(err)
 	}
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(ctx) }()
-	t.Cleanup(func() {
-		stop()
+	td.stop = sync.OnceFunc(func() {
+		cancel()
 		if err := <-served; err != nil {
 			t.Errorf("serve: %v", err)
 		}
+	})
+	t.Cleanup(func() {
+		td.stop()
 		logs.Close()
 		wantRequestsLogged(t, home)
 	})

@@ -54,7 +54,7 @@ Settings:
 	for _, s := range config.Settings() {
 		def := "required"
 		if !s.Required {
-			def = "default " + s.Default
+			def = "default " + cmp.Or(s.Default, `""`)
 		}
 		fmt.Fprintf(tw, "  %s\t%s (%s)\n", cmp.Or(s.EnvVar, s.Key), s.Description, def)
 	}

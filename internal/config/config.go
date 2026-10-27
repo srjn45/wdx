@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -26,6 +28,8 @@ type Config struct {
 	NoInput          bool
 	LogLevel         slog.Level
 	LogRetentionDays int
+	OtelEndpoint     string
+	OtelInterval     time.Duration
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -120,6 +124,36 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return strconv.Itoa(c.LogRetentionDays) },
+	},
+	{
+		key:         "otel.endpoint",
+		description: "OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP, such as http://localhost:4318; empty sends none",
+		def:         "",
+		set: func(c *Config, v string) error {
+			if v != "" {
+				u, err := url.Parse(v)
+				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					return fmt.Errorf("%q is not an http or https URL", v)
+				}
+			}
+			c.OtelEndpoint = v
+			return nil
+		},
+		get: func(c Config) string { return c.OtelEndpoint },
+	},
+	{
+		key:         "otel.interval_seconds",
+		description: "seconds between two sends of the metrics",
+		def:         "15",
+		set: func(c *Config, v string) error {
+			seconds, err := strconv.Atoi(v)
+			if err != nil || seconds < 1 {
+				return fmt.Errorf("%q is not a whole number of at least 1", v)
+			}
+			c.OtelInterval = time.Duration(seconds) * time.Second
+			return nil
+		},
+		get: func(c Config) string { return strconv.Itoa(int(c.OtelInterval / time.Second)) },
 	},
 }
 
@@ -337,7 +371,7 @@ type Setting struct {
 	Key         string
 	EnvVar      string // the variable it is read from; "" for the config file
 	Description string
-	Default     string // "" when required
+	Default     string // "" when required or empty
 	Required    bool
 }
 

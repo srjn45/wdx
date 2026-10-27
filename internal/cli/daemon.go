@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/telemetry"
 )
 
 const (
@@ -110,7 +111,11 @@ func runForeground(cmd *cobra.Command) error {
 	defer logs.Close()
 	log := logging.New(logs, cfg.LogLevel).With("pid", os.Getpid(), "process", "daemon")
 
-	d, err := daemon.Listen(ctx, daemon.Options{Home: cfg.Home, Log: log})
+	d, err := daemon.Listen(ctx, daemon.Options{
+		Home:    cfg.Home,
+		Log:     log,
+		Metrics: telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+	})
 	if err != nil {
 		return err
 	}

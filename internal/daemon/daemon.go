@@ -18,11 +18,14 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/db"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
 	"github.com/srjn45/warden/internal/project"
+	"github.com/srjn45/warden/internal/telemetry"
 )
 
 // shutdownTimeout is how long requests in flight get to finish once the
@@ -31,9 +34,10 @@ const shutdownTimeout = 30 * time.Second
 
 // Options configure a daemon.
 type Options struct {
-	Home   string
-	Socket string       // identity.SocketPath(Home) when empty
-	Log    *slog.Logger // without a debug_id; each request adds its own
+	Home    string
+	Socket  string       // identity.SocketPath(Home) when empty
+	Log     *slog.Logger // without a debug_id; each request adds its own
+	Metrics telemetry.Options
 }
 
 // Daemon is a daemon listening on its socket.
@@ -46,6 +50,9 @@ type Daemon struct {
 	store    *project.Store
 	changes  sync.Mutex // one request changing state at a time
 	started  time.Time
+
+	stopMetrics     func(context.Context) error
+	requestDuration metric.Float64Histogram
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -93,6 +100,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if err := os.Chmod(opts.Socket, 0o600); err != nil {
 		return nil, err
 	}
+	if err := d.meter(logging.NewContext(ctx, d.log)); err != nil {
+		return nil, err
+	}
 	if d.db, err = db.Open(logging.NewContext(ctx, d.log), identity.DBPath(opts.Home)); err != nil {
 		return nil, err
 	}
@@ -103,6 +113,21 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		"version", identity.Version,
 		"commit", identity.Commit)
 	return d, nil
+}
+
+// meter starts sending the metrics and creates the instruments.
+func (d *Daemon) meter(ctx context.Context) error {
+	provider, stop, err := telemetry.Start(ctx, d.opts.Metrics)
+	if err != nil {
+		return err
+	}
+	d.stopMetrics = stop
+	d.requestDuration, err = provider.Meter("github.com/srjn45/warden/internal/daemon").Float64Histogram("wdx.request.duration",
+		metric.WithDescription("how long requests took, by operation, status and error code"),
+		metric.WithUnit("s"),
+		// A clone can take minutes.
+		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120))
+	return err
 }
 
 // Info describes the daemon.
@@ -207,6 +232,12 @@ func (d *Daemon) close() {
 	}
 	if d.db != nil {
 		d.db.Close()
+	}
+	if d.stopMetrics != nil {
+		// The last send is bounded by the reader's own timeout.
+		if err := d.stopMetrics(context.Background()); err != nil {
+			d.log.Warn("last metrics not sent", "err", err)
+		}
 	}
 	if d.lock != nil {
 		// Unlock before closing: a child process forked meanwhile shares the

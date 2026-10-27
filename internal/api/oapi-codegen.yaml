@@ -8,3 +8,5 @@ generate:
   embedded-spec: true
 compatibility:
   always-prefix-enum-values: true
+  # Keeps operationIds in the embedded spec as written: they label metrics.
+  preserve-original-operation-id-casing-in-embedded-spec: true

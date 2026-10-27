@@ -31,11 +31,12 @@ internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service
+internal/telemetry/  sends the daemon's metrics to an OpenTelemetry collector
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, and cli -> daemon -> domain -> db/git. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -95,6 +96,14 @@ The log must tell the story of any run: what was asked, every step taken and why
 - Messages are short lowercase statements of what happened (`project registered`); keys are snake_case and reused (`project_id`, `path`, `name`, `duration_ms`, `err`).
 - Never log the environment beyond wdx's own settings, prompt text or agent output. URL credentials are redacted by the logger.
 - Logging never fails a command and never writes to stdout or stderr.
+
+## Metrics
+
+- Only the daemon measures: it lives long enough to send metrics, which `wdx` runs do not. It sends them over OTLP/HTTP to `otel.endpoint`, and nothing when that is empty.
+- Metrics are named `wdx.<noun>...` in OpenTelemetry's dotted style, with the unit in `WithUnit` (seconds for durations), never in the name.
+- Labels take values from a fixed set (an operation, a status, an error code), never ids, names, paths or anything a user types.
+- A collector that is down or refuses the metrics is logged once and never fails or slows a request.
+- Tests receive the metrics with a collector served in the test, not a fake meter.
 
 ## Testing
 

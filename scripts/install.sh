@@ -153,6 +153,13 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 #   level: info
 #   # Days of log files kept besides today's.
 #   retention_days: 7
+
+# otel:
+#   # OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP,
+#   # such as http://localhost:4318; empty sends none.
+#   endpoint: ""
+#   # Seconds between two sends of the metrics.
+#   interval_seconds: 15
 EOF
 	chmod 0600 "$HOME_DIR/config.yaml"
 	info "wrote the settings template $HOME_DIR/config.yaml"

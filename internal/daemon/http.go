@@ -14,7 +14,11 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers"
+	"github.com/getkin/kin-openapi/routers/gorillamux"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/identity"
@@ -40,11 +44,15 @@ func (d *Daemon) handler() http.Handler {
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
 	})
+	router, err := gorillamux.NewRouter(spec)
+	if err != nil {
+		panic(fmt.Sprintf("daemon: router: %v", err))
+	}
 	routes := api.HandlerWithOptions(strict, api.StdHTTPServerOptions{
 		BaseRouter:       http.NewServeMux(),
 		ErrorHandlerFunc: badRequest,
 	})
-	return d.logRequests(validate(d.oneChangeAtATime(routes)))
+	return d.logRequests(router, validate(d.oneChangeAtATime(routes)))
 }
 
 // invalidRequest reports a request the spec does not allow.
@@ -79,9 +87,9 @@ func debugID(ctx context.Context) string {
 }
 
 // logRequests logs every request from what was received to what was
-// returned, under the caller's debug id when it sent one, and turns a panic
-// into an internal error.
-func (d *Daemon) logRequests(next http.Handler) http.Handler {
+// returned, under the caller's debug id when it sent one, measures it, and
+// turns a panic into an internal error.
+func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		id := r.Header.Get(api.DebugIDHeader)
@@ -97,7 +105,12 @@ func (d *Daemon) logRequests(next http.Handler) http.Handler {
 			log.Error("request body unreadable", "err", err)
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
+		var operation string
+		if route, _, err := router.FindRoute(r); err == nil {
+			operation = route.Operation.OperationID
+		}
 		log.Info("request received",
+			"operation", operation,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
@@ -116,11 +129,18 @@ func (d *Daemon) logRequests(next http.Handler) http.Handler {
 				}
 			}
 			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status, logging.Duration(start)}
+			measured := []attribute.KeyValue{attribute.Int("status", rec.status)}
+			if operation != "" {
+				measured = append(measured, attribute.String("operation", operation))
+			}
 			level := slog.LevelInfo
 			if rec.status >= http.StatusBadRequest {
 				level = slog.LevelError
-				attrs = append(attrs, "code", rec.code())
+				code := rec.code()
+				attrs = append(attrs, "code", code)
+				measured = append(measured, attribute.String("code", string(code)))
 			}
+			d.requestDuration.Record(context.Background(), time.Since(start).Seconds(), metric.WithAttributes(measured...))
 			if stack != nil {
 				attrs = append(attrs, "stack", string(stack))
 			}
