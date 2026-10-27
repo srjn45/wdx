@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/service"
 )
 
 // Command annotations. Lists are space-separated.
@@ -42,6 +43,10 @@ type Env struct {
 	Stdout, Stderr io.Writer
 	Config         config.Config
 	Executable     string // the wdx binary, run to start the daemon
+	// Service runs the daemon when it is installed as a service of the OS
+	// for the home; the daemon commands manage the process themselves when
+	// it is nil.
+	Service *service.Manager
 }
 
 // Run executes the command line args and returns the process exit code.

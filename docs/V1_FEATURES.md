@@ -17,7 +17,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 ## 1. Foundation (daemon, sessions, PTY)
 
-- [ ] P0 Daemon running as a local service (systemd user unit / launchd)
+- [x] P0 Daemon running as a local service (systemd user unit / launchd): see docs/DAEMON.md
 - [x] P0 Local API over a Unix socket, with client/daemon version handshake (the CLI warns when the versions differ)
 - [ ] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption
 - [ ] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach)

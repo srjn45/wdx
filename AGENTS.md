@@ -30,10 +30,12 @@ internal/config/   the settings, loaded once at startup from their sources
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
+internal/service/  finds the daemon installed as a systemd or launchd service
+scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, and cli -> daemon -> domain -> db/git. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, and cli -> daemon -> domain -> db/git. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

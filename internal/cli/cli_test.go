@@ -23,6 +23,7 @@ import (
 	"github.com/srjn45/warden/internal/gittest"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/service"
 )
 
 // wdxBinary is wdx built from this tree, which starting the daemon in the
@@ -88,11 +89,17 @@ type output struct {
 // wdx runs the command line args against home, which stands in for ~/.wdx.
 func wdx(t *testing.T, home string, args ...string) output {
 	t.Helper()
+	return wdxService(t, home, nil, args...)
+}
+
+// wdxService runs args with svc as the service the daemon is installed as.
+func wdxService(t *testing.T, home string, svc *service.Manager, args ...string) output {
+	t.Helper()
 	cfg := config.Default()
 	cfg.Home = home
 	cfg.LogLevel = slog.LevelDebug
 	var stdout, stderr bytes.Buffer
-	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg, Executable: wdxBinary}
+	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg, Executable: wdxBinary, Service: svc}
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
 	wantLogged(t, home, args, out)

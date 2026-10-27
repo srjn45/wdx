@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -205,6 +206,37 @@ func TestSettingsDescribed(t *testing.T) {
 	for _, s := range Settings() {
 		if s.Description == "" || (s.Default == "") != s.Required || (s.EnvVar != "") != (s.Key == "home") {
 			t.Fatalf("incomplete setting %+v", s)
+		}
+	}
+}
+
+// TestInstallerTemplate checks the settings template scripts/install.sh
+// writes: uncommented, it sets every setting the file can hold to its
+// default.
+func TestInstallerTemplate(t *testing.T) {
+	t.Parallel()
+	script, err := os.ReadFile("../../scripts/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, template, found := strings.Cut(string(script), "/config.yaml\" <<'EOF'\n")
+	template, _, ended := strings.Cut(template, "\nEOF\n")
+	if !found || !ended {
+		t.Fatal("no settings template in install.sh")
+	}
+	uncommented := regexp.MustCompile(`(?m)^# ( *[a-z_]+:.*)$`).ReplaceAllString(template, "$1")
+	_, e := homeWith(t, uncommented)
+	c, err := Load(e.getenv)
+	if err != nil {
+		t.Fatalf("the template does not load: %v\n%s", err, uncommented)
+	}
+	d := Default()
+	for _, s := range Settings() {
+		if s.EnvVar != "" {
+			continue
+		}
+		if !strings.Contains(c.From[s.Key], "config.yaml:") || c.Value(s.Key) != d.Value(s.Key) {
+			t.Errorf("%s: want the template to set its default %q, got %q from %q", s.Key, d.Value(s.Key), c.Value(s.Key), c.From[s.Key])
 		}
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/warden/internal/service"
 )
 
 // TestDaemonLifecycle starts, restarts and stops a daemon running the wdx
@@ -137,5 +140,60 @@ func TestDaemonForeground(t *testing.T) {
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil || r.Result != "stopped" || r.Daemon.Pid != os.Getpid() || r.Daemon.Home != home {
 		t.Fatalf("want stopped, got %s, %v", stdout.String(), err)
+	}
+}
+
+// TestDaemonAsService starts and stops the daemon through a service manager,
+// one that runs wdx itself.
+func TestDaemonAsService(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	t.Cleanup(func() {
+		if pid, _ := daemon.Running(home); pid != 0 {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+	ran := filepath.Join(t.TempDir(), "ran")
+	manage := func(verb string) []string {
+		return []string{"sh", "-c", fmt.Sprintf("echo %s >> %s && WDX_HOME=%s %s daemon %s", verb, ran, home, wdxBinary, verb)}
+	}
+	svc := &service.Manager{Name: "fake", Start: manage("start"), Stop: manage("stop"), Logs: "the fake's log"}
+	status := func() map[string]any {
+		t.Helper()
+		var v map[string]any
+		if err := json.Unmarshal([]byte(wdxService(t, home, svc, "daemon", "status", "--json").stdout), &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	if v := status(); v["running"] != false || v["manager"] != "fake" {
+		t.Fatalf("want stopped under fake, got %v", v)
+	}
+	if out := wdxService(t, home, svc, "daemon", "start"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+		t.Fatalf("want started, got %+v", out)
+	}
+	if v := status(); v["running"] != true || v["daemon"] == nil {
+		t.Fatalf("want running, got %v", v)
+	}
+	if out := wdxService(t, home, svc, "daemon", "restart"); out.exit != api.ExitOK {
+		t.Fatalf("want restarted, got %+v", out)
+	}
+	if out := wdxService(t, home, svc, "daemon", "stop"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
+		t.Fatalf("want stopped, got %+v", out)
+	}
+	if b, err := os.ReadFile(ran); err != nil || string(b) != "start\nstop\nstart\nstop\n" {
+		t.Fatalf("want the service manager to do the starting and stopping, got %q, %v", b, err)
+	}
+}
+
+func TestDaemonServiceFails(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	svc := &service.Manager{Name: "fake", Start: []string{"sh", "-c", "echo unit wdx.service not found >&2; exit 5"}}
+	out := wdxService(t, home, svc, "daemon", "start", "--json")
+	var v map[string]any
+	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != api.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
+		t.Fatalf("want the service manager's failure, got %+v", out)
 	}
 }

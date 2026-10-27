@@ -71,7 +71,8 @@ func newDaemonStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start [--foreground]",
 		Short: "Start the daemon",
-		Long: "Start the daemon in the background and wait until it answers. With\n" +
+		Long: "Start the daemon and wait until it answers: through systemd or launchd when\n" +
+			"the installer set it up as a service, else in the background. With\n" +
 			"--foreground it runs in this process until interrupted, as a service\n" +
 			"manager runs it.",
 		Args: cobra.NoArgs,
@@ -140,6 +141,16 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 		d, err := waitAnswering(cmd, nil)
 		return d, false, err
 	}
+	if m := inv.env.Service; m != nil {
+		if err := m.Run(ctx, m.Start); err != nil {
+			return api.Daemon{}, false, err
+		}
+		d, err := waitAnswering(cmd, nil)
+		if err != nil {
+			return api.Daemon{}, false, &hinted{err, "see the log in " + identity.LogsDir(home) + " and " + m.Logs}
+		}
+		return d, true, nil
+	}
 
 	// The daemon's stderr goes to a file read only if it exits at once; a
 	// pipe would break once this process exits.
@@ -196,8 +207,9 @@ func newDaemonStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the daemon",
-		Long:  "Stop the daemon, letting the requests in flight finish first.",
-		Args:  cobra.NoArgs,
+		Long: "Stop the daemon, letting the requests in flight finish first: through\n" +
+			"systemd or launchd when it runs as a service, else by signalling it.",
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
 			resultList: annotation("not_running", "stopped"),
@@ -227,6 +239,17 @@ func stopDaemon(cmd *cobra.Command) (*api.Daemon, error) {
 	d := api.Daemon{Pid: pid}
 	if answered, err := clientOf(cmd).Daemon(cmd.Context()); err == nil {
 		d = answered
+	}
+	if m := invocationOf(cmd).env.Service; m != nil {
+		if err := m.Run(cmd.Context(), m.Stop); err != nil {
+			return nil, err
+		}
+	}
+	// A daemon started by hand is still running when a service manager runs
+	// none.
+	if running, err := daemon.Running(home); err != nil || running == 0 {
+		log.Info("daemon gone", "daemon_pid", pid)
+		return &d, err
 	}
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 		return nil, fmt.Errorf("signal the daemon (pid %d): %w", pid, err)
@@ -278,7 +301,8 @@ func newDaemonRestartCmd() *cobra.Command {
 type daemonStatus struct {
 	Running bool        `json:"running"`
 	Pid     *int        `json:"pid"`
-	Daemon  *api.Daemon `json:"daemon"` // null when it does not answer
+	Daemon  *api.Daemon `json:"daemon"`  // null when it does not answer
+	Manager *string     `json:"manager"` // the service manager that runs it, null when none is installed
 	socket  string
 }
 
@@ -296,6 +320,9 @@ func (s daemonStatus) text(w io.Writer) {
 		fmt.Fprintf(w, "  home:    %s\n", d.Home)
 		fmt.Fprintf(w, "  socket:  %s\n", d.Socket)
 	}
+	if s.Manager != nil {
+		fmt.Fprintf(w, "  service: %s\n", *s.Manager)
+	}
 }
 
 func newDaemonStatusCmd() *cobra.Command {
@@ -304,8 +331,9 @@ func newDaemonStatusCmd() *cobra.Command {
 		Short: "Show whether the daemon is running",
 		Args:  cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Whether the daemon is running, its pid, and what it says about itself when it answers.\n" +
-				`With --json: {"running": ..., "pid": ..., "daemon": {...}}`,
+			outputNote: "Whether the daemon is running, its pid, what it says about itself when it answers, and the\n" +
+				"service manager that runs it, if it is installed as a service.\n" +
+				`With --json: {"running": ..., "pid": ..., "daemon": {...}, "manager": ...}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			home := invocationOf(cmd).env.Config.Home
@@ -314,6 +342,9 @@ func newDaemonStatusCmd() *cobra.Command {
 				return err
 			}
 			s := daemonStatus{Running: pid != 0, socket: identity.SocketPath(home)}
+			if m := invocationOf(cmd).env.Service; m != nil {
+				s.Manager = &m.Name
+			}
 			if pid != 0 {
 				s.Pid = &pid
 				d, err := clientOf(cmd).Daemon(cmd.Context())
