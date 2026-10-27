@@ -86,7 +86,8 @@ func (r *reporting) Export(ctx context.Context, rm *metricdata.ResourceMetrics) 
 	err := r.Exporter.Export(ctx, rm)
 	switch {
 	case err != nil && !r.failing.Swap(true):
-		r.log.Warn("metrics could not be sent", "url", r.url, "err", err)
+		// Info, not warn: without wdx observe running, nothing listens.
+		r.log.Info("metrics could not be sent", "url", r.url, "err", err)
 	case err == nil && r.failing.Swap(false):
 		r.log.Info("metrics sent again", "url", r.url)
 	}

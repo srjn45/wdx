@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"runtime"
 
 	"github.com/srjn45/warden/internal/cli"
@@ -11,7 +12,7 @@ import (
 )
 
 func main() {
-	env := cli.Env{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
+	env := cli.Env{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, LookPath: exec.LookPath}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		os.Exit(cli.ConfigError(os.Args[1:], env, err))

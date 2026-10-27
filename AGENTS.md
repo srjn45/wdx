@@ -32,11 +32,12 @@ internal/git/   thin wrapper over the git CLI
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service
 internal/telemetry/  sends the daemon's metrics to an OpenTelemetry collector
+internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon` and `observe`, which manage the daemon and the observability stack themselves. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -99,11 +100,12 @@ The log must tell the story of any run: what was asked, every step taken and why
 
 ## Metrics
 
-- Only the daemon measures: it lives long enough to send metrics, which `wdx` runs do not. It sends them over OTLP/HTTP to `otel.endpoint`, and nothing when that is empty.
+- Only the daemon measures: it lives long enough to send metrics, which `wdx` runs do not. It sends them over OTLP/HTTP to `otel.endpoint`, by default `http://localhost:4318` where `wdx observe` listens, and nothing when that is empty.
 - Metrics are named `wdx.<noun>...` in OpenTelemetry's dotted style, with the unit in `WithUnit` (seconds for durations), never in the name.
 - Labels take values from a fixed set (an operation, a status, an error code), never ids, names, paths or anything a user types.
 - A collector that is down or refuses the metrics is logged once and never fails or slows a request.
 - Tests receive the metrics with a collector served in the test, not a fake meter.
+- Every other test sends no metrics: test homes set `otel.endpoint` to empty, so nothing reaches a collector the developer runs.
 
 ## Testing
 

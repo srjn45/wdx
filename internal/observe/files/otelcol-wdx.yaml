@@ -1,0 +1,51 @@
+# Merged over the collector config of grafana/otel-lgtm: adds wdx's log
+# files to the logs it sends to Loki. Maps merge; lists replace the image's,
+# so the lists below repeat what they keep.
+
+extensions:
+  # Remembers how far each file was read, so a restart neither loses nor
+  # repeats lines.
+  file_storage/wdx:
+    directory: /data/otelcol-wdx
+    create_directory: true
+
+receivers:
+  filelog/wdx:
+    include: [/wdx/logs/wdx-*.log]
+    start_at: beginning
+    storage: file_storage/wdx
+    include_file_name: false
+    operators:
+      # The body stays the whole JSON line; Grafana's `| json` reads the rest.
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999999Z07:00"
+        severity:
+          parse_from: attributes.level
+      # Only flat fields worth filtering on: nested ones such as response
+      # would each become many attributes.
+      - type: retain
+        fields:
+          - attributes.msg
+          - attributes.debug_id
+          - attributes.process
+          - attributes.pid
+          - attributes.command
+          - attributes.operation
+          - attributes.outcome
+          - attributes.exit
+          - attributes.status
+          - attributes.code
+          - attributes.duration_ms
+          - attributes.project_id
+      - type: add
+        field: resource["service.name"]
+        value: wdx
+
+service:
+  extensions: [health_check, file_storage/wdx]
+  pipelines:
+    logs:
+      receivers: [otlp, filelog/wdx]

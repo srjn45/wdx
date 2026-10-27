@@ -337,8 +337,9 @@ components:
     ErrorCode:
       type: string
       description: |
-        Stable error code; never changed or reused. daemon_unavailable and
-        already_running are reported by the CLI, never by the daemon.
+        Stable error code; never changed or reused. daemon_unavailable,
+        already_running, runtime_missing, port_in_use and runtime_failed are
+        reported by the CLI, never by the daemon.
       enum:
         - usage
         - internal
@@ -355,6 +356,9 @@ components:
         - clone_failed
         - daemon_unavailable
         - already_running
+        - runtime_missing
+        - port_in_use
+        - runtime_failed
 
     Problem:
       type: object

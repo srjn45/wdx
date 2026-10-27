@@ -34,6 +34,9 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeCloneFailed:       {http.StatusBadGateway, ExitRejected, "git clone failed"},
 	ErrorCodeDaemonUnavailable: {http.StatusServiceUnavailable, ExitSystem, "the daemon is not running or not answering"},
 	ErrorCodeAlreadyRunning:    {http.StatusConflict, ExitRejected, "a daemon already serves this home"},
+	ErrorCodeRuntimeMissing:    {http.StatusServiceUnavailable, ExitSystem, "neither Docker nor Podman is installed"},
+	ErrorCodePortInUse:         {http.StatusConflict, ExitRejected, "a port the observability stack needs is taken"},
+	ErrorCodeRuntimeFailed:     {http.StatusBadGateway, ExitSystem, "Docker or Podman failed"},
 }
 
 // NewProblem returns the problem of code, with the status and title the code

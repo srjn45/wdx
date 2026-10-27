@@ -54,7 +54,21 @@ func shortHome(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(home) })
+	// Daemons the wdx binary starts read it: they must not send metrics to
+	// the collector wdx observe may be running.
+	if err := os.WriteFile(identity.ConfigPath(home), []byte("otel:\n  endpoint: \"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return home
+}
+
+// testConfig returns the settings of a run against home, sending no metrics.
+func testConfig(home string) config.Config {
+	cfg := config.Default()
+	cfg.Home = home
+	cfg.LogLevel = slog.LevelDebug
+	cfg.OtelEndpoint = ""
+	return cfg
 }
 
 // newHome returns a home with a daemon serving it in this process until the
@@ -95,11 +109,15 @@ func wdx(t *testing.T, home string, args ...string) output {
 // wdxService runs args with svc as the service the daemon is installed as.
 func wdxService(t *testing.T, home string, svc *service.Manager, args ...string) output {
 	t.Helper()
-	cfg := config.Default()
-	cfg.Home = home
-	cfg.LogLevel = slog.LevelDebug
+	return wdxWith(t, home, func(env *Env) { env.Service = svc }, args...)
+}
+
+// wdxWith runs args in an environment that adjust changes.
+func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) output {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
-	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg, Executable: wdxBinary, Service: svc}
+	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary}
+	adjust(&env)
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
 	wantLogged(t, home, args, out)
@@ -225,6 +243,16 @@ type jsonProject struct {
 
 // jsonOutput holds every field a command prints with --json: a result, or a
 // problem.
+type jsonStack struct {
+	Runtime      string `json:"runtime"`
+	Container    string `json:"container"`
+	Image        string `json:"image"`
+	Status       string `json:"status"`
+	GrafanaURL   string `json:"grafana_url"`
+	OTLPEndpoint string `json:"otlp_endpoint"`
+	Logs         string `json:"logs"`
+}
+
 type jsonOutput struct {
 	Result  string `json:"result"`
 	Dropped []struct {
@@ -245,6 +273,10 @@ type jsonOutput struct {
 	Daemon  *api.Daemon  `json:"daemon"`
 	Running *bool        `json:"running"`
 	Pid     *int         `json:"pid"`
+
+	Runtime     *string    `json:"runtime"`
+	Stack       *jsonStack `json:"stack"`
+	DataRemoved *bool      `json:"data_removed"`
 
 	Type    string         `json:"type"`
 	Title   string         `json:"title"`
@@ -279,7 +311,12 @@ type jsonOutput struct {
 // JSON object and stderr nothing: a problem exactly when the run failed.
 func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	t.Helper()
-	out := wdx(t, home, append(args, "--json")...)
+	return wdxJSONWith(t, home, func(*Env) {}, args...)
+}
+
+func wdxJSONWith(t *testing.T, home string, adjust func(*Env), args ...string) (jsonOutput, int) {
+	t.Helper()
+	out := wdxWith(t, home, adjust, append(args, "--json")...)
 	if out.stderr != "" {
 		t.Fatalf("%v: want empty stderr, got %q", args, out.stderr)
 	}
@@ -936,7 +973,7 @@ func TestHelp(t *testing.T) {
 		args       []string
 		want, deny []string
 	}{
-		{[]string{"--help"}, []string{"daemon ", "project ", "version ", "Exit codes:", "Daemon:"}, []string{"completion", "\n  help "}},
+		{[]string{"--help"}, []string{"daemon ", "observe ", "project ", "version ", "Exit codes:", "Daemon:"}, []string{"completion", "\n  help "}},
 		{[]string{"daemon", "-h"}, []string{"restart ", "start ", "status ", "stop "}, []string{"Errors:"}},
 		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove "}, []string{"Errors:"}},
 		{[]string{"project", "open", "--help"}, []string{"--local", "--git", "--reclone", "Flag rules:", "Output:", "result: cloned", "checkout_missing    1", "daemon_unavailable  3", "internal            3"}, nil},

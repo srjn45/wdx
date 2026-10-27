@@ -156,8 +156,8 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 
 # otel:
 #   # OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP,
-#   # such as http://localhost:4318; empty sends none.
-#   endpoint: ""
+#   # such as the one wdx observe starts; empty sends none.
+#   endpoint: http://localhost:4318
 #   # Seconds between two sends of the metrics.
 #   interval_seconds: 15
 EOF
@@ -257,3 +257,4 @@ esac
 # fails if it does not answer.
 wdx daemon start >/dev/null || die "the daemon did not start; see $NAME daemon status and the log in $HOME_DIR/logs"
 wdx daemon status
+info "to see the logs and metrics in Grafana, run: $NAME observe start (needs Docker or Podman)"

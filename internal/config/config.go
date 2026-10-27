@@ -127,8 +127,8 @@ var settings = []setting{
 	},
 	{
 		key:         "otel.endpoint",
-		description: "OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP, such as http://localhost:4318; empty sends none",
-		def:         "",
+		description: "OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP, such as the one wdx observe starts; empty sends none",
+		def:         "http://localhost:4318",
 		set: func(c *Config, v string) error {
 			if v != "" {
 				u, err := url.Parse(v)

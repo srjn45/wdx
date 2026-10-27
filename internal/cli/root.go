@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/observe"
 	"github.com/srjn45/warden/internal/service"
 )
 
@@ -47,6 +48,12 @@ type Env struct {
 	// for the home; the daemon commands manage the process themselves when
 	// it is nil.
 	Service *service.Manager
+	// LookPath finds the container runtime the observe commands run, as
+	// exec.LookPath does.
+	LookPath func(file string) (string, error)
+	// ObservePorts are the ports of the observability stack;
+	// observe.DefaultPorts when zero.
+	ObservePorts observe.Ports
 }
 
 // Run executes the command line args and returns the process exit code.
@@ -231,7 +238,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root.CompletionOptions.HiddenDefaultCmd = true
 	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set no_input: true in "+identity.ConfigPath(cfg.Home)+")")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home))
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd())
 	root.InitDefaultHelpCmd()
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "help" {

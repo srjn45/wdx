@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/service"
@@ -103,8 +102,7 @@ func TestDaemonStartFails(t *testing.T) {
 func TestDaemonForeground(t *testing.T) {
 	t.Parallel()
 	home := shortHome(t)
-	cfg := config.Default()
-	cfg.Home = home
+	cfg := testConfig(home)
 	ctx, stop := context.WithCancel(context.Background())
 	var stdout bytes.Buffer
 	done := make(chan int, 1)
