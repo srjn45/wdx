@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -26,11 +27,51 @@ func Run(ctx context.Context, args []string, env Env) int {
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
-	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintf(env.Stderr, "%s: %v\n", identity.Name, err)
-		return 1
+
+	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
+	started := false
+	markStart(root, &started)
+	root.SetContext(ctx)
+	cmd, err := root.ExecuteC()
+	if err == nil {
+		return exitOK
 	}
-	return 0
+	if !started {
+		err = &usageError{err}
+	}
+
+	v, exit := classify(err)
+	if wantsJSON(cmd, args) {
+		writeJSON(env.Stdout, errorResponse{Error: v})
+		return exit
+	}
+	msg := v.Message
+	if v.Hint != nil {
+		msg += "; " + *v.Hint
+	}
+	fmt.Fprintf(env.Stderr, "%s: %s\n", identity.Name, msg)
+	return exit
+}
+
+func markStart(cmd *cobra.Command, started *bool) {
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			*started = true
+			return run(cmd, args)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		markStart(sub, started)
+	}
+}
+
+// wantsJSON reports whether --json was given; args are checked too, since a
+// usage error may stop cobra before it parses the flag.
+func wantsJSON(cmd *cobra.Command, args []string) bool {
+	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
+		return f.Value.String() == "true"
+	}
+	return slices.Contains(args, "--json")
 }
 
 func newRoot(env Env) *cobra.Command {
@@ -42,6 +83,7 @@ func newRoot(env Env) *cobra.Command {
 	}
 	noInput, _ := strconv.ParseBool(env.Getenv(identity.Env("NO_INPUT")))
 	root.PersistentFlags().Bool("no-input", noInput, "never prompt; fail where a question would be asked (or set "+identity.Env("NO_INPUT")+"=1)")
+	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
 	root.AddCommand(newVersionCmd(), newProjectCmd(identity.HomeDir(env.Getenv)))
 	return root
 }
@@ -51,8 +93,8 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s (%s)\n", identity.Name, identity.Version, identity.Commit)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return printResult(cmd, versionResponse{OK: true, Name: identity.Name, Version: identity.Version, Commit: identity.Commit})
 		},
 	}
 }

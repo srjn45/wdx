@@ -15,10 +15,11 @@ import (
 )
 
 // canPrompt reports whether cmd may ask the user questions: stdin is a
-// terminal and --no-input (which $WDX_NO_INPUT defaults) is not set.
+// terminal and neither --json nor --no-input (which $WDX_NO_INPUT defaults)
+// is set.
 func canPrompt(cmd *cobra.Command) bool {
 	noInput, _ := cmd.Flags().GetBool("no-input")
-	return !noInput && isTerminal(cmd.InOrStdin())
+	return !noInput && !jsonMode(cmd) && isTerminal(cmd.InOrStdin())
 }
 
 func isTerminal(r io.Reader) bool {

@@ -17,6 +17,8 @@ func newProjectCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects",
+		Args:  cobra.NoArgs,
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newProjectCreateCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
 	return cmd
@@ -245,8 +247,7 @@ func newProjectCloseCmd(home string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printProject(cmd.OutOrStdout(), "closed", p)
-			return nil
+			return printResult(cmd, projectResponse("closed", p))
 		},
 	}
 }
@@ -270,8 +271,7 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printProject(cmd.OutOrStdout(), "removed", p)
-			return nil
+			return printResult(cmd, projectResponse("removed", p))
 		},
 	}
 }
