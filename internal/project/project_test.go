@@ -498,3 +498,154 @@ func TestClonePathSkipsLinkedWorktrees(t *testing.T) {
 		t.Fatalf("ClonePath() = %s, want %s", got, repo)
 	}
 }
+
+func create(t *testing.T, s *Store, name, parent string) Project {
+	t.Helper()
+	o, err := s.Create(context.Background(), name, parent)
+	if err != nil {
+		t.Fatalf("create %s: %v", name, err)
+	}
+	return o.Project
+}
+
+func TestCreateInProjectsDir(t *testing.T) {
+	s := newStore(t)
+	p := create(t, s, "app", "")
+
+	want := filepath.Join(s.projectsDir, "app")
+	if p.Name != "app" || p.OriginURL != "" || p.State != StateOpen || paths(p)[0] != want {
+		t.Fatalf("unexpected project: %+v", p)
+	}
+	if ok, err := isCheckout(context.Background(), want); err != nil || !ok {
+		t.Fatalf("want git repository at %s: %v", want, err)
+	}
+}
+
+func TestCreateInPath(t *testing.T) {
+	s := newStore(t)
+	parent := filepath.Join(realPath(t, t.TempDir()), "a", "b")
+
+	if p := create(t, s, "app", parent); paths(p)[0] != filepath.Join(parent, "app") {
+		t.Fatalf("want project in %s, got %v", parent, paths(p))
+	}
+}
+
+func TestCreateInitsExistingDirectory(t *testing.T) {
+	s := newStore(t)
+	parent := realPath(t, t.TempDir())
+	file := filepath.Join(parent, "app", "main.go")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	create(t, s, "app", parent)
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("existing files must be kept: %v", err)
+	}
+}
+
+func TestCreateNameTaken(t *testing.T) {
+	s := newStore(t)
+	p := create(t, s, "app", "")
+
+	_, err := s.Create(context.Background(), "APP", t.TempDir())
+	taken, ok := errors.AsType[*NameTakenError](err)
+	if !ok || taken.Project.ID != p.ID {
+		t.Fatalf("want NameTakenError for %s, got %v", p.ID, err)
+	}
+	if o, err := s.Open(context.Background(), taken.Project.ID); err != nil || o.ID != p.ID {
+		t.Fatalf("open taken project: %+v, %v", o, err)
+	}
+}
+
+func TestCreateRepoExists(t *testing.T) {
+	s := newStore(t)
+	repo := gitRepo(t, "app", "")
+
+	_, err := s.Create(context.Background(), "app", filepath.Dir(repo))
+	exists, ok := errors.AsType[*RepoExistsError](err)
+	if !ok || exists.Root != repo || exists.Project != nil {
+		t.Fatalf("want RepoExistsError for unknown repo %s, got %v", repo, err)
+	}
+
+	p := open(t, s, repo, "other")
+	_, err = s.Create(context.Background(), "app", filepath.Dir(repo))
+	if exists, ok := errors.AsType[*RepoExistsError](err); !ok || exists.Project == nil || exists.Project.ID != p.ID {
+		t.Fatalf("want RepoExistsError for project %s, got %v", p.ID, err)
+	}
+}
+
+func TestCreateInsideRepo(t *testing.T) {
+	s := newStore(t)
+	repo := gitRepo(t, "outer", "")
+
+	_, err := s.Create(context.Background(), "app", filepath.Join(repo, "sub"))
+	if exists, ok := errors.AsType[*RepoExistsError](err); !ok || exists.Root != repo {
+		t.Fatalf("want RepoExistsError for %s, got %v", repo, err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "sub")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nothing should be created, got %v", err)
+	}
+}
+
+func TestCreatePathIsFile(t *testing.T) {
+	s := newStore(t)
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Create(context.Background(), "app", file); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("want not a directory error, got %v", err)
+	}
+}
+
+func TestCreateRejectsPathAsName(t *testing.T) {
+	_, err := newStore(t).Create(context.Background(), "../app", "")
+	if err == nil || !strings.Contains(err.Error(), "directory name") {
+		t.Fatalf("want invalid name error, got %v", err)
+	}
+}
+
+func failInserts(t *testing.T, s *Store) {
+	t.Helper()
+	if _, err := s.db.Exec("CREATE TRIGGER fail BEFORE INSERT ON projects BEGIN SELECT RAISE(ABORT, 'boom'); END"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateFailureRemovesCreatedDirectory(t *testing.T) {
+	s := newStore(t)
+	failInserts(t, s)
+	parent := realPath(t, t.TempDir())
+
+	if _, err := s.Create(context.Background(), "app", filepath.Join(parent, "new")); err == nil {
+		t.Fatal("want error")
+	}
+	if _, err := os.Stat(filepath.Join(parent, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want created directory removed, got %v", err)
+	}
+}
+
+func TestCreateFailureKeepsExistingDirectory(t *testing.T) {
+	s := newStore(t)
+	failInserts(t, s)
+	parent := realPath(t, t.TempDir())
+	dest := filepath.Join(parent, "app")
+	if err := os.Mkdir(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Create(context.Background(), "app", parent); err == nil {
+		t.Fatal("want error")
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("want existing directory kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".git")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want .git removed, got %v", err)
+	}
+}

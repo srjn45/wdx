@@ -79,6 +79,36 @@ func (e *CheckoutMissingError) Error() string {
 	return fmt.Sprintf("project %s: no checkout found on disk", e.Project.Name)
 }
 
+// NameTakenError is returned when creating a project whose name another
+// project already uses.
+type NameTakenError struct {
+	Name    string
+	Project Project
+}
+
+func (e *NameTakenError) Error() string {
+	return fmt.Sprintf("project name %q is already used by project %s", e.Name, e.Project.ID)
+}
+
+// RepoExistsError is returned when creating a project at Dest, which is or is
+// inside the git repository Root. Project is set when Root is a known checkout.
+type RepoExistsError struct {
+	Dest    string
+	Root    string
+	Project *Project
+}
+
+func (e *RepoExistsError) Error() string {
+	msg := fmt.Sprintf("%s is already a git repository", e.Dest)
+	if e.Root != e.Dest {
+		msg = fmt.Sprintf("%s is inside git repository %s", e.Dest, e.Root)
+	}
+	if e.Project != nil {
+		msg += fmt.Sprintf(" (project %s)", e.Project.Name)
+	}
+	return msg
+}
+
 // ErrNotGitRepo is returned when opening a directory that is not a git repository.
 var ErrNotGitRepo = errors.New("can only work with git projects use " + identity.Name + " init")
 
@@ -245,8 +275,8 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 	if err := checkName(ctx, s.db, name, ""); err != nil {
 		return Opened{}, err
 	}
-	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-		return Opened{}, fmt.Errorf("project name %q cannot be used as a directory name; choose another with --name", name)
+	if err := checkDirName(name); err != nil {
+		return Opened{}, err
 	}
 	dest := filepath.Join(s.projectsDir, name)
 	if _, err := os.Stat(dest); err == nil {
@@ -278,6 +308,120 @@ func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Op
 		return Opened{}, fmt.Errorf("%s already exists", dest)
 	}
 	return s.cloneAndOpen(ctx, p.OriginURL, dest, "", progress)
+}
+
+// Create creates an empty git repository at parent/name and opens it as a new
+// project named name; parent defaults to the projects directory. An existing
+// directory that is not in a git repository is initialized in place. A taken
+// name returns a *NameTakenError, a destination in a git repository a
+// *RepoExistsError.
+func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error) {
+	if name == "" {
+		return Opened{}, errors.New("project name is empty")
+	}
+	if err := checkDirName(name); err != nil {
+		return Opened{}, err
+	}
+	taken, err := queryID(ctx, s.db, "SELECT id FROM projects WHERE name = ?", name)
+	if err != nil {
+		return Opened{}, err
+	}
+	if taken != "" {
+		p, err := s.Get(ctx, taken)
+		if err != nil {
+			return Opened{}, err
+		}
+		return Opened{}, &NameTakenError{Name: name, Project: p}
+	}
+
+	dest, err := filepath.Abs(filepath.Join(cmp.Or(parent, s.projectsDir), name))
+	if err != nil {
+		return Opened{}, err
+	}
+	existing, err := existingAncestor(dest)
+	if err != nil {
+		return Opened{}, err
+	}
+	if root, err := git.TopLevel(ctx, existing); err == nil {
+		return Opened{}, s.repoExists(ctx, dest, root)
+	} else if !errors.Is(err, git.ErrNotRepo) {
+		return Opened{}, err
+	}
+
+	// Undo only what Create made: the first missing directory, or else .git.
+	created := filepath.Join(dest, ".git")
+	if existing == dest {
+		if _, err := os.Lstat(created); err == nil {
+			return Opened{}, fmt.Errorf("%s already exists but is not a git repository", created)
+		}
+	} else {
+		rel, err := filepath.Rel(existing, dest)
+		if err != nil {
+			return Opened{}, err
+		}
+		created = filepath.Join(existing, strings.Split(rel, string(filepath.Separator))[0])
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return Opened{}, err
+	}
+	o, err := s.initAndOpen(ctx, dest, name)
+	if err != nil {
+		return Opened{}, errors.Join(err, os.RemoveAll(created))
+	}
+	return o, nil
+}
+
+func (s *Store) initAndOpen(ctx context.Context, dest, name string) (Opened, error) {
+	if err := git.Init(ctx, dest); err != nil {
+		return Opened{}, err
+	}
+	return s.OpenLocal(ctx, dest, name)
+}
+
+func (s *Store) repoExists(ctx context.Context, dest, root string) error {
+	e := &RepoExistsError{Dest: dest, Root: root}
+	id, err := queryID(ctx, s.db, "SELECT project_id FROM project_worktrees WHERE path = ?", root)
+	if err != nil || id == "" {
+		return cmp.Or(err, error(e))
+	}
+	p, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	e.Project = &p
+	return e
+}
+
+// existingAncestor returns path or its nearest ancestor that exists, which
+// must be a directory.
+func existingAncestor(path string) (string, error) {
+	for {
+		info, err := os.Stat(path)
+		if err == nil {
+			if !info.IsDir() {
+				return "", fmt.Errorf("%s: not a directory", path)
+			}
+			return path, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return "", err
+		}
+		path = parent
+	}
+}
+
+// Open opens the known project whose id or name is ref from one of its
+// checkouts; if none is left on disk, a *CheckoutMissingError is returned.
+func (s *Store) Open(ctx context.Context, ref string) (Opened, error) {
+	p, err := s.Get(ctx, ref)
+	if err != nil {
+		return Opened{}, err
+	}
+	return s.openKnown(ctx, p.ID, "")
 }
 
 func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) {
@@ -443,6 +587,14 @@ func checkName(ctx context.Context, q queryRower, name, self string) error {
 	}
 	if other != "" {
 		return fmt.Errorf("project name %q is already used by project %s; choose another with --name", name, other)
+	}
+	return nil
+}
+
+// checkDirName fails if name cannot be used as a directory name.
+func checkDirName(name string) error {
+	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("project name %q cannot be used as a directory name; choose another with --name", name)
 	}
 	return nil
 }

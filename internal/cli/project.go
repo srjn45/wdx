@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,8 +23,106 @@ func newProjectCmd() *cobra.Command {
 		Use:   "project",
 		Short: "Manage projects",
 	}
-	cmd.AddCommand(newProjectOpenCmd(), newProjectCloseCmd(), newProjectRemoveCmd())
+	cmd.AddCommand(newProjectCreateCmd(), newProjectOpenCmd(), newProjectCloseCmd(), newProjectRemoveCmd())
 	return cmd
+}
+
+func newProjectCreateCmd() *cobra.Command {
+	var name, parent string
+	cmd := &cobra.Command{
+		Use:   "create --name <name> [--path <dir>]",
+		Short: "Create a project in a new git repository",
+		Long: "Create an empty git repository at <dir>/<name> and open it as a project.\n" +
+			"<dir> defaults to " + identity.ProjectsDir() + ". An existing directory that\n" +
+			"is not in a git repository is initialized in place.\n\n" +
+			"If the name is taken or the directory is in a git repository, you are\n" +
+			"asked to open that project or choose another name.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			d, err := db.Open(ctx, identity.DBPath())
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			store := project.NewStore(d, identity.ProjectsDir())
+			answers := bufio.NewScanner(cmd.InOrStdin())
+			for {
+				o, err := store.Create(ctx, name, parent)
+				if err == nil {
+					printProject(cmd.OutOrStdout(), "created", o.Project)
+					return nil
+				}
+				var open func() (project.Opened, error)
+				if taken, ok := errors.AsType[*project.NameTakenError](err); ok {
+					open = func() (project.Opened, error) { return store.Open(ctx, taken.Project.ID) }
+				} else if exists, ok := errors.AsType[*project.RepoExistsError](err); ok {
+					open = func() (project.Opened, error) { return store.OpenLocal(ctx, exists.Root, "") }
+				} else {
+					return err
+				}
+				if !isTerminal(cmd.InOrStdin()) {
+					return fmt.Errorf("%w; run in a terminal to open it, or choose another --name", err)
+				}
+
+				prompt := cmd.ErrOrStderr()
+				fmt.Fprintln(prompt, err)
+				fmt.Fprintln(prompt, "[o] open it")
+				fmt.Fprintln(prompt, "[n] try a different name")
+				fmt.Fprintln(prompt, "[c] cancel")
+				choice, err := ask(prompt, answers, "choose [o/n/c]: ", "o", "n", "c")
+				if err != nil {
+					return err
+				}
+				switch choice {
+				case "c":
+					return errCancelled
+				case "n":
+					if name, err = ask(prompt, answers, "new name (empty to cancel): "); err != nil {
+						return err
+					}
+					if name == "" {
+						return errCancelled
+					}
+					continue
+				}
+				o, err = open()
+				if missing, ok := errors.AsType[*project.CheckoutMissingError](err); ok {
+					return resolveMissingCheckout(cmd, store, missing)
+				}
+				if err != nil {
+					return err
+				}
+				printOpened(cmd.OutOrStdout(), o)
+				return nil
+			}
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "project name, also the repository directory name")
+	cmd.Flags().StringVar(&parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir()+")")
+	cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+var errCancelled = errors.New("cancelled")
+
+// ask prompts until one of choices is given; with no choices any answer,
+// even an empty one, is accepted.
+func ask(prompt io.Writer, answers *bufio.Scanner, question string, choices ...string) (string, error) {
+	for {
+		fmt.Fprint(prompt, question)
+		if !answers.Scan() {
+			return "", cmp.Or(answers.Err(), errors.New("no answer given"))
+		}
+		answer := strings.TrimSpace(answers.Text())
+		if len(choices) == 0 {
+			return answer, nil
+		}
+		if answer = strings.ToLower(answer); slices.Contains(choices, answer) {
+			return answer, nil
+		}
+	}
 }
 
 func newProjectOpenCmd() *cobra.Command {
@@ -87,29 +186,24 @@ func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *p
 	fmt.Fprintf(prompt, "%s (was %s)\n", missing, p.ClonePath())
 	fmt.Fprintf(prompt, "[c] clone again to %s\n", p.ClonePath())
 	fmt.Fprintf(prompt, "[r] remove from %s\n", identity.Name)
-	answers := bufio.NewScanner(cmd.InOrStdin())
-	for {
-		fmt.Fprint(prompt, "choose [c/r]: ")
-		if !answers.Scan() {
-			return cmp.Or(answers.Err(), errors.New("no answer given"))
-		}
-		switch strings.ToLower(strings.TrimSpace(answers.Text())) {
-		case "c":
-			o, err := store.Reclone(ctx, p.ID, prompt)
-			if err != nil {
-				return err
-			}
-			printOpened(cmd.OutOrStdout(), o)
-			return nil
-		case "r":
-			removed, err := store.Remove(ctx, p.ID)
-			if err != nil {
-				return err
-			}
-			printProject(cmd.OutOrStdout(), "removed", removed)
-			return nil
-		}
+	choice, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose [c/r]: ", "c", "r")
+	if err != nil {
+		return err
 	}
+	if choice == "c" {
+		o, err := store.Reclone(ctx, p.ID, prompt)
+		if err != nil {
+			return err
+		}
+		printOpened(cmd.OutOrStdout(), o)
+		return nil
+	}
+	removed, err := store.Remove(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	printProject(cmd.OutOrStdout(), "removed", removed)
+	return nil
 }
 
 func isTerminal(r io.Reader) bool {

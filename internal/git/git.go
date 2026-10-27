@@ -57,6 +57,14 @@ func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
 	return nil
 }
 
+// Init creates an empty git repository in dir.
+func Init(ctx context.Context, dir string) error {
+	if _, err := run(ctx, dir, "init", "-q"); err != nil {
+		return fmt.Errorf("git init %s: %w", dir, err)
+	}
+	return nil
+}
+
 // RepoKey normalizes a remote URL so that different spellings of the same
 // repository compare equal: scheme, user, port, host case and a trailing
 // ".git" or "/" are ignored. An empty URL yields "".
