@@ -10,10 +10,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/srjn45/warden/internal/config"
+	"github.com/srjn45/warden/internal/identity"
 )
 
 // conventions follows the root's usage text, so its commands come first.
-const conventions = `Output:
+func conventions() string {
+	var b strings.Builder
+	b.WriteString(`Output:
   Results go to stdout and errors to stderr. With --json nothing prompts, and
   stdout holds exactly one JSON object and nothing else:
     success: {"ok": true, "action": "created", "project": {...}}
@@ -26,14 +31,27 @@ const conventions = `Output:
 Exit codes:
   0  ok
   1  rejected: a conflict, not found or cancelled
-  2  usage: the command line is invalid
+  2  usage: the command line or a setting is invalid
   3  system: an unexpected failure
 
 Logs:
-  Every run is logged as JSON lines to ~/.wdx/logs/wdx-<date>.log (under
-  $WDX_HOME if set); a failure's debug_id finds its lines. WDX_LOG_LEVEL
-  (debug, info, warn or error; default info) and WDX_LOG_RETENTION_DAYS (days
-  of files kept besides today's; default 7) configure it.`
+  Every run is logged as JSON lines to <home>/logs/` + identity.Name + `-<date>.log; a failure's
+  debug_id finds its lines.
+
+Settings:
+  Read from the environment when ` + identity.Name + ` starts; an invalid one fails every command.
+`)
+	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	for _, s := range config.Settings() {
+		def := "required"
+		if !s.Required {
+			def = "default " + s.Default
+		}
+		fmt.Fprintf(tw, "  %s\t%s (%s)\n", s.EnvVar, s.Description, def)
+	}
+	tw.Flush()
+	return strings.TrimSuffix(b.String(), "\n")
+}
 
 // setHelp makes --help print the flag rules, output and errors of a command
 // after cobra's usage text, or all of it as JSON with --json.
@@ -49,7 +67,7 @@ func setHelp(root *cobra.Command) {
 		}
 		usage(cmd, args)
 		if !cmd.HasParent() {
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", conventions)
+			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", conventions())
 		}
 		if !cmd.HasAvailableSubCommands() {
 			v.text(cmd.OutOrStdout())
@@ -128,7 +146,7 @@ func newCommandView(cmd *cobra.Command) commandView {
 		}
 	}
 	if !cmd.HasParent() {
-		v.Description += "\n\n" + conventions
+		v.Description += "\n\n" + conventions()
 	}
 	if note, ok := cmd.Annotations[outputNote]; ok {
 		v.Output = &note

@@ -3,72 +3,32 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
 )
 
-const defaultRetentionDays = 7
-
-// logSettings are the environment variables that configure logging.
-var logSettings = []string{identity.Env("LOG_LEVEL"), identity.Env("LOG_RETENTION_DAYS")}
-
-// newLogger returns the log file under home and a logger writing to it that
-// tags every record with debugID. Bad settings fall back to the defaults and
-// are logged as warnings.
-func newLogger(env Env, home, debugID string) (*logging.DailyFile, *slog.Logger) {
-	level, levelErr := parseLevel(env.Getenv(logSettings[0]))
-	retention, retentionErr := parseRetention(env.Getenv(logSettings[1]))
-	file := logging.NewDailyFile(identity.LogsDir(home), retention, time.Now)
-	log := logging.New(file, level).With("debug_id", debugID, "pid", os.Getpid())
-	for i, err := range []error{levelErr, retentionErr} {
-		if err != nil {
-			log.Warn("log setting ignored", "setting", logSettings[i], "err", err.Error())
-		}
-	}
-	return file, log
-}
-
-func parseLevel(s string) (slog.Level, error) {
-	var level slog.Level
-	if s == "" {
-		return slog.LevelInfo, nil
-	}
-	if err := level.UnmarshalText([]byte(s)); err != nil {
-		return slog.LevelInfo, err
-	}
-	return level, nil
-}
-
-func parseRetention(s string) (int, error) {
-	if s == "" {
-		return defaultRetentionDays, nil
-	}
-	days, err := strconv.Atoi(s)
-	if err == nil && days < 1 {
-		err = fmt.Errorf("%d is less than 1", days)
-	}
-	if err != nil {
-		return defaultRetentionDays, err
-	}
-	return days, nil
+// newLogger returns the log file under the configured home and a logger
+// writing to it that tags every record with debugID.
+func newLogger(cfg config.Config, debugID string) (*logging.DailyFile, *slog.Logger) {
+	file := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
+	return file, logging.New(file, cfg.LogLevel).With("debug_id", debugID, "pid", os.Getpid())
 }
 
 // logReceived logs the command line as given and what else decides how it
-// runs.
-func logReceived(log *slog.Logger, args []string, env Env, home string) {
-	settings := []any{}
-	for _, key := range append([]string{identity.Env("HOME"), identity.Env("NO_INPUT")}, logSettings...) {
-		settings = append(settings, slog.String(key, env.Getenv(key)))
+// runs: every setting with where it came from.
+func logReceived(log *slog.Logger, args []string, env Env) {
+	var settings []any
+	for _, s := range config.Settings() {
+		settings = append(settings, slog.Group(s.Key, "value", env.Config.Value(s.Key), "from", env.Config.From[s.Key]))
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -78,10 +38,9 @@ func logReceived(log *slog.Logger, args []string, env Env, home string) {
 		"args", args,
 		"version", identity.Version,
 		"commit", identity.Commit,
-		"home", home,
 		"cwd", cwd,
 		"stdin_terminal", isTerminal(env.Stdin),
-		slog.Group("env", settings...))
+		slog.Group("settings", settings...))
 }
 
 // logStarted logs the command cobra resolved and the value of every flag.

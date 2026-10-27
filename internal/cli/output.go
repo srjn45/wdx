@@ -44,7 +44,7 @@ type codeInfo struct {
 }
 
 var codes = map[string]codeInfo{
-	codeUsage:           {exitUsage, "the command line is invalid"},
+	codeUsage:           {exitUsage, "the command line or a setting is invalid"},
 	codeInternal:        {exitSystem, "an unexpected failure: database, filesystem or git"},
 	codeNotFound:        {exitRejected, "no project has this name or id"},
 	codeNameTaken:       {exitRejected, "another project has this name"},

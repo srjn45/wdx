@@ -5,13 +5,15 @@ import (
 	"os"
 
 	"github.com/srjn45/warden/internal/cli"
+	"github.com/srjn45/warden/internal/config"
 )
 
 func main() {
-	os.Exit(cli.Run(context.Background(), os.Args[1:], cli.Env{
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Getenv: os.Getenv,
-	}))
+	env := cli.Env{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
+	cfg, err := config.Load(config.Env(os.Getenv))
+	if err != nil {
+		os.Exit(cli.ConfigError(os.Args[1:], env, err))
+	}
+	env.Config = cfg
+	os.Exit(cli.Run(context.Background(), os.Args[1:], env))
 }

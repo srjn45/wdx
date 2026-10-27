@@ -3,16 +3,17 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"runtime/debug"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
 )
@@ -37,19 +38,18 @@ const (
 type Env struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
-	Getenv         func(string) string
+	Config         config.Config
 }
 
 // Run executes the command line args and returns the process exit code.
 func Run(ctx context.Context, args []string, env Env) int {
 	start := time.Now()
-	home := identity.HomeDir(env.Getenv)
 	debugID := logging.NewDebugID()
-	logFile, log := newLogger(env, home, debugID)
+	logFile, log := newLogger(env.Config, debugID)
 	defer logFile.Close()
-	logReceived(log, args, env, home)
+	logReceived(log, args, env)
 
-	root := newRoot(env)
+	root := newRoot(env.Config)
 	root.SetArgs(args)
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
@@ -74,19 +74,40 @@ func Run(ctx context.Context, args []string, env Env) int {
 	}
 	response := errorResponse{Error: v}
 	logReturned(log, cmd, start, exit, response, err)
-	if wantsJSON(cmd, args) {
-		writeJSON(env.Stdout, response)
-		return exit
+	printError(env, wantsJSON(cmd, args), response, cmd.Annotations[failurePrefix])
+	return exit
+}
+
+// ConfigError reports the settings that failed to load, before any command
+// runs, and returns the exit code.
+func ConfigError(args []string, env Env, err error) int {
+	hint := "fix or unset them"
+	v := errorView{Code: codeUsage, Message: err.Error(), Hint: &hint}
+	if e, ok := errors.AsType[*config.Error](err); ok {
+		v.Details = map[string]any{"settings": e.Problems}
 	}
+	printError(env, slices.Contains(args, "--json"), errorResponse{Error: v}, "")
+	return codes[codeUsage].exit
+}
+
+// printError writes r to stdout as JSON or to stderr as one line of text.
+func printError(env Env, asJSON bool, r errorResponse, prefix string) {
+	if asJSON {
+		writeJSON(env.Stdout, r)
+		return
+	}
+	v := r.Error
 	msg := v.Message
-	if prefix := cmd.Annotations[failurePrefix]; prefix != "" {
+	if prefix != "" {
 		msg = prefix + ": " + msg
 	}
 	if v.Hint != nil {
 		msg += "; " + *v.Hint
 	}
-	fmt.Fprintf(env.Stderr, "%s: %s (debug_id %s)\n", identity.Name, msg, debugID)
-	return exit
+	if v.DebugID != "" {
+		msg += " (debug_id " + v.DebugID + ")"
+	}
+	fmt.Fprintf(env.Stderr, "%s: %s\n", identity.Name, msg)
 }
 
 // invocation is what Run learns from the command it executes.
@@ -172,7 +193,7 @@ func wantsJSON(cmd *cobra.Command, args []string) bool {
 	return slices.Contains(args, "--json")
 }
 
-func newRoot(env Env) *cobra.Command {
+func newRoot(cfg config.Config) *cobra.Command {
 	root := &cobra.Command{
 		Use:           identity.Name,
 		Short:         "Manage AI coding agents across CLIs",
@@ -180,10 +201,9 @@ func newRoot(env Env) *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
-	noInput, _ := strconv.ParseBool(env.Getenv(identity.Env("NO_INPUT")))
-	root.PersistentFlags().Bool("no-input", noInput, "never prompt; fail where a question would be asked (or set "+identity.Env("NO_INPUT")+"=1)")
+	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set "+config.EnvVar("no_input")+"=1)")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
-	root.AddCommand(newVersionCmd(), newProjectCmd(identity.HomeDir(env.Getenv)))
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home))
 	root.InitDefaultHelpCmd()
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "help" {

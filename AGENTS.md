@@ -22,6 +22,7 @@ warden manages AI CLI agents in PTYs, plus projects, messaging, a TUI and later 
 ```
 cmd/wdx/        entry point
 internal/cli/   cobra commands: parse args and print, no business logic
+internal/config/   the settings, loaded once at startup from their sources
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
@@ -54,6 +55,14 @@ Every command serves both humans and scripts or AIs.
 - The domain returns typed errors and knows nothing about output. `internal/cli/output.go` owns the error codes (each with its exit code and a description), maps errors to them and renders both formats from one response value. Hints are added by the cli, not written into domain messages.
 - Every command documents itself with annotations: `output` (what it prints), `actions`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them after cobra's usage text, or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
 
+## Config
+
+- Every setting is a row in the table in `internal/config`: key, description, default (or required) and parser. The help's Settings section and the logs are built from it.
+- `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv`.
+- An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
+- `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.
+- Sources are layered, later winning: defaults, then the environment (`log.level` is `WDX_LOG_LEVEL`). A config file will slot in before the environment.
+
 ## Logging
 
 The log must tell the story of any run: what was asked, every step taken and why, and what was returned.
@@ -71,7 +80,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - Every `wdx` run in the cli tests is checked to be logged from `command received` to `command returned`, with the logged response equal to what was printed.
 - A command fails the tests when it returns an action or error code its help does not list, and `TestCommandDocs` checks every command's help is complete; keep both in sync rather than loosening them.
 - Every command has integration tests that call `cli.Run` with `--json` and a temp `WDX_HOME`: one test per outcome, asserting `ok`, `action` or `error.code`, and the exit code. Domain edge cases stay in domain tests; text output gets one smoke test per command.
-- Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared globals; pass the environment in through `cli.Env`.
+- Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared globals; build settings with `config.Default()` and pass them in through `cli.Env`.
 - All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports.
 - git runs with the user's config ignored (set in each package's `TestMain`).
 - Run tests with `make test` (race detector, shuffled order).

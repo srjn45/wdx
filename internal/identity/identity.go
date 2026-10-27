@@ -5,7 +5,6 @@
 package identity
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -23,18 +22,6 @@ var (
 // Env returns the environment variable name for key, e.g. Env("HOME") == "WDX_HOME".
 func Env(key string) string {
 	return strings.ToUpper(strings.ReplaceAll(Name, "-", "_")) + "_" + key
-}
-
-// HomeDir is the root of all state: $WDX_HOME if set, else ~/.wdx.
-func HomeDir(getenv func(string) string) string {
-	if h := getenv(Env("HOME")); h != "" {
-		return h
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir()
-	}
-	return filepath.Join(home, "."+Name)
 }
 
 // DBPath is the SQLite database file under home.

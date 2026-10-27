@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/gittest"
 )
 
@@ -30,21 +32,11 @@ type output struct {
 // wdx runs the command line args against home, which stands in for ~/.wdx.
 func wdx(t *testing.T, home string, args ...string) output {
 	t.Helper()
+	cfg := config.Default()
+	cfg.Home = home
+	cfg.LogLevel = slog.LevelDebug
 	var stdout, stderr bytes.Buffer
-	env := Env{
-		Stdin:  strings.NewReader(""),
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Getenv: func(key string) string {
-			switch key {
-			case "WDX_HOME":
-				return home
-			case "WDX_LOG_LEVEL":
-				return "debug"
-			}
-			return ""
-		},
-	}
+	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg}
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
 	wantLogged(t, home, args, out)
@@ -207,7 +199,7 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 // and error codes it returned.
 func wantDeclared(t *testing.T, args []string, v jsonOutput) {
 	t.Helper()
-	cmd, _, err := newRoot(Env{Getenv: func(string) string { return "" }}).Find(args)
+	cmd, _, err := newRoot(config.Default()).Find(args)
 	if err != nil {
 		return
 	}
@@ -781,7 +773,7 @@ func TestCommandDocs(t *testing.T) {
 			}
 		}
 	}
-	check(newRoot(Env{Getenv: func(string) string { return "" }}))
+	check(newRoot(config.Default()))
 }
 
 func TestHelp(t *testing.T) {
@@ -856,27 +848,40 @@ func TestPanicIsInternalError(t *testing.T) {
 	}
 }
 
-func TestBadLogSettings(t *testing.T) {
+func TestConfigError(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
-	settings := map[string]string{"WDX_HOME": home, "WDX_LOG_LEVEL": "loud", "WDX_LOG_RETENTION_DAYS": "0"}
-	env := Env{
-		Stdin:  strings.NewReader(""),
-		Stdout: &bytes.Buffer{},
-		Stderr: &bytes.Buffer{},
-		Getenv: func(key string) string { return settings[key] },
+	settings := map[string]string{"WDX_LOG_LEVEL": "loud", "WDX_LOG_RETENTION_DAYS": "0"}
+	_, err := config.Load(config.Env(func(key string) string { return settings[key] }))
+	if err == nil {
+		t.Fatal("want bad settings rejected")
 	}
-	if exit := Run(context.Background(), []string{"version"}, env); exit != exitOK {
-		t.Fatalf("want bad settings ignored, got exit %d", exit)
+	var stdout, stderr bytes.Buffer
+	env := Env{Stdout: &stdout, Stderr: &stderr}
+	if exit := ConfigError([]string{"project", "list", "--json"}, env, err); exit != exitUsage {
+		t.Fatalf("want exit %d, got %d", exitUsage, exit)
 	}
-	files, _ := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
-	b, err := os.ReadFile(files[0])
-	if err != nil {
-		t.Fatal(err)
+	var v struct {
+		Error struct {
+			Code    string `json:"code"`
+			Details struct {
+				Settings []struct {
+					Name  string `json:"name"`
+					Value string `json:"value"`
+				} `json:"settings"`
+			} `json:"details"`
+		} `json:"error"`
 	}
-	for _, setting := range []string{"WDX_LOG_LEVEL", "WDX_LOG_RETENTION_DAYS"} {
-		if !strings.Contains(string(b), `"level":"WARN","msg":"log setting ignored","debug_id":`) || !strings.Contains(string(b), `"setting":"`+setting+`"`) {
-			t.Fatalf("want a warning about %s, got:\n%s", setting, b)
-		}
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil || stderr.Len() != 0 {
+		t.Fatalf("want one JSON error, got %q, %q", stdout.String(), stderr.String())
+	}
+	if s := v.Error.Details.Settings; v.Error.Code != codeUsage || len(s) != 2 || s[0].Name != "WDX_LOG_LEVEL" || s[0].Value != "loud" {
+		t.Fatalf("unexpected error %+v", v.Error)
+	}
+
+	stdout.Reset()
+	ConfigError([]string{"version"}, env, err)
+	want := `wdx: invalid settings: WDX_LOG_LEVEL: "loud" is not one of debug, info, warn, error; WDX_LOG_RETENTION_DAYS: "0" is not a whole number of at least 1; fix or unset them` + "\n"
+	if stderr.String() != want || stdout.Len() != 0 {
+		t.Fatalf("got %q, want %q", stderr.String(), want)
 	}
 }
