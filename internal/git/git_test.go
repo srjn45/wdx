@@ -1,0 +1,30 @@
+package git
+
+import "testing"
+
+func TestRepoKey(t *testing.T) {
+	const want = "github.com/srjn45/warden"
+	for _, url := range []string{
+		"git@github.com:srjn45/warden.git",
+		"git@GitHub.com:srjn45/warden",
+		"https://github.com/srjn45/warden",
+		"https://github.com/srjn45/warden.git/",
+		"https://user@github.com:443/srjn45/warden.git",
+		"ssh://git@github.com/srjn45/warden.git",
+		"ssh://git@github.com:22/srjn45/warden",
+	} {
+		if got := RepoKey(url); got != want {
+			t.Errorf("RepoKey(%q) = %q, want %q", url, got, want)
+		}
+	}
+	for url, want := range map[string]string{
+		"":                       "",
+		"/srv/git/repo.git":      "/srv/git/repo",
+		"file:///srv/git/repo":   "/srv/git/repo",
+		"git@github.com:a/b.git": "github.com/a/b",
+	} {
+		if got := RepoKey(url); got != want {
+			t.Errorf("RepoKey(%q) = %q, want %q", url, got, want)
+		}
+	}
+}
