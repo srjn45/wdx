@@ -40,6 +40,17 @@ type Project struct {
 	UpdatedAt time.Time
 }
 
+// Summary is a project as listed, without its worktrees.
+type Summary struct {
+	ID            string
+	Name          string
+	OriginURL     string // "" when the repo has no origin remote
+	State         State
+	WorktreeCount int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 // Worktree is a local checkout of a project: a clone or a linked worktree.
 type Worktree struct {
 	ID           string
@@ -546,6 +557,34 @@ func (s *Store) Get(ctx context.Context, ref string) (Project, error) {
 		p.Worktrees = append(p.Worktrees, w)
 	}
 	return p, rows.Err()
+}
+
+// List returns the projects in state, or all of them when state is "",
+// sorted by name.
+func (s *Store) List(ctx context.Context, state State) ([]Summary, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.id, p.name, p.origin_url, p.state, p.created_at, p.updated_at,
+			(SELECT count(*) FROM project_worktrees w WHERE w.project_id = p.id)
+		FROM projects p
+		WHERE ?1 = '' OR p.state = ?1
+		ORDER BY p.name, p.id`, state)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []Summary
+	for rows.Next() {
+		var p Summary
+		var origin sql.NullString
+		var created, updated int64
+		if err := rows.Scan(&p.ID, &p.Name, &origin, &p.State, &created, &updated, &p.WorktreeCount); err != nil {
+			return nil, err
+		}
+		p.OriginURL = origin.String
+		p.CreatedAt, p.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
+		list = append(list, p)
+	}
+	return list, rows.Err()
 }
 
 // Close marks the project whose id or name is ref as closed.

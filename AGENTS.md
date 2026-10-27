@@ -46,7 +46,7 @@ Every command serves both humans and scripts or AIs.
 - Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else:
   - success: `{"ok": true, "action": "created", "project": {...}}`, with the key named after the entity and command-specific extras such as `dropped`;
   - failure: `{"ok": false, "error": {"code": "name_taken", "message": "...", "hint": "...", "details": {"project": {...}}}}`.
-- `action` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`.
+- `action` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`. Read-only commands have no `action`; they return the entity under its own key (`project`, or `projects` for a list).
 - JSON keys are snake_case, absent values are `null`, timestamps are RFC 3339. Leave internal fields out: everything in the JSON is a contract.
 - Text mode prints results to stdout and errors to stderr; the first line says what happened.
 - Exit codes: 0 ok, 1 rejected (conflict, not found, cancelled), 2 usage, 3 system failure.

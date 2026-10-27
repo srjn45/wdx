@@ -3,10 +3,12 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/warden/internal/db"
@@ -722,5 +724,41 @@ func TestCreateFailureKeepsExistingDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, ".git")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("want .git removed, got %v", err)
+	}
+}
+
+func TestListEmpty(t *testing.T) {
+	t.Parallel()
+	list, err := newStore(t).List(context.Background(), "")
+	if err != nil || len(list) != 0 {
+		t.Fatalf("want no projects, got %+v, %v", list, err)
+	}
+}
+
+func TestListSortsAndFilters(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	beta := gitRepo(t, "Beta", "")
+	open(t, s, worktree(t, beta), "Beta")
+	open(t, s, beta, "")
+	open(t, s, gitRepo(t, "cat", ""), "")
+	app := open(t, s, gitRepo(t, "app", ""), "")
+	if _, err := s.Close(ctx, app.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for state, want := range map[State]string{"": "app:1 Beta:2 cat:1", StateOpen: "Beta:2 cat:1", StateClosed: "app:1"} {
+		list, err := s.List(ctx, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, p := range list {
+			got = append(got, fmt.Sprintf("%s:%d", p.Name, p.WorktreeCount))
+		}
+		if strings.Join(got, " ") != want {
+			t.Fatalf("List(%q) = %v, want %s", state, got, want)
+		}
 	}
 }

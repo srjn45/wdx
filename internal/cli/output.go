@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -134,6 +135,62 @@ func worktreeViews(wts []project.Worktree) []worktreeView {
 
 func timestamp(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+}
+
+type listResponse struct {
+	OK       bool                 `json:"ok"`
+	Projects []projectSummaryView `json:"projects"`
+	state    project.State
+}
+
+func newListResponse(state project.State, list []project.Summary) listResponse {
+	r := listResponse{OK: true, Projects: make([]projectSummaryView, 0, len(list)), state: state}
+	for _, p := range list {
+		v := projectSummaryView{
+			ID:            p.ID,
+			Name:          p.Name,
+			State:         string(p.State),
+			WorktreeCount: p.WorktreeCount,
+			CreatedAt:     timestamp(p.CreatedAt),
+			UpdatedAt:     timestamp(p.UpdatedAt),
+		}
+		if p.OriginURL != "" {
+			v.Origin = &p.OriginURL
+		}
+		r.Projects = append(r.Projects, v)
+	}
+	return r
+}
+
+func (r listResponse) text(w io.Writer) {
+	if len(r.Projects) == 0 {
+		if r.state == "" {
+			fmt.Fprintln(w, "no projects")
+		} else {
+			fmt.Fprintf(w, "no %s projects\n", r.state)
+		}
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tID\tSTATE\tORIGIN\tWORKTREES")
+	for _, p := range r.Projects {
+		origin := "-"
+		if p.Origin != nil {
+			origin = *p.Origin
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\n", p.Name, p.ID, p.State, origin, p.WorktreeCount)
+	}
+	tw.Flush()
+}
+
+type projectSummaryView struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Origin        *string `json:"origin"`
+	State         string  `json:"state"`
+	WorktreeCount int     `json:"worktree_count"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 type versionResponse struct {

@@ -59,6 +59,12 @@ type jsonOutput struct {
 			Path string `json:"path"`
 		} `json:"worktrees"`
 	} `json:"project"`
+	Projects []struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		State         string `json:"state"`
+		WorktreeCount int    `json:"worktree_count"`
+	} `json:"projects"`
 	Conflict *struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
@@ -176,6 +182,8 @@ func TestUsageErrors(t *testing.T) {
 		{"project", "create"},
 		{"project", "create", "--name", "app", "--open", "--cancel"},
 		{"project", "open", "--local", ".", "--git", "x"},
+		{"project", "list", "--open", "--closed"},
+		{"project", "list", "app"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
 		wantError(t, v, exit, codeUsage, exitUsage)
@@ -478,5 +486,60 @@ func TestCreateInvalid(t *testing.T) {
 
 	if out := wdx(t, home, "project", "create"); out.exit != exitUsage || !strings.HasPrefix(out.stderr, "wdx: not created: ") {
 		t.Fatalf("want usage error with prefix, got %+v", out)
+	}
+}
+
+func names(v jsonOutput) string {
+	var names []string
+	for _, p := range v.Projects {
+		names = append(names, p.Name)
+	}
+	return strings.Join(names, " ")
+}
+
+func TestListEmpty(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	for filter, text := range map[string]string{"--all": "no projects\n", "--open": "no open projects\n", "--closed": "no closed projects\n"} {
+		out := wdx(t, home, "project", "list", filter, "--json")
+		if out.exit != exitOK || !strings.Contains(out.stdout, `"projects": []`) {
+			t.Fatalf("%s: want an empty array, got %+v", filter, out)
+		}
+		if out := wdx(t, home, "project", "list", filter); out.stdout != text {
+			t.Fatalf("%s: want %q, got %q", filter, text, out.stdout)
+		}
+	}
+}
+
+func TestList(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	for _, name := range []string{"cat", "app", "Beta"} {
+		newProject(t, home, name)
+	}
+	wdxJSON(t, home, "project", "close", "cat")
+
+	for args, want := range map[string]string{"": "app Beta cat", "--all": "app Beta cat", "--open": "app Beta", "--closed": "cat"} {
+		v, exit := wdxJSON(t, home, strings.Fields("project list "+args)...)
+		if exit != exitOK || v.Action != "" || names(v) != want {
+			t.Fatalf("list %s: want %s, got %+v", args, want, v)
+		}
+	}
+
+	out := wdx(t, home, "project", "list", "--json")
+	var raw struct{ Projects []map[string]any }
+	if err := json.Unmarshal([]byte(out.stdout), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if p := raw.Projects[0]; p["worktree_count"] != 1.0 || p["origin"] != nil || p["worktrees"] != nil {
+		t.Fatalf("unexpected list item: %v", p)
+	}
+	if _, ok := raw.Projects[0]["worktrees"]; ok {
+		t.Fatalf("a list item must not carry worktrees: %v", raw.Projects[0])
+	}
+
+	lines := strings.Split(strings.TrimSpace(wdx(t, home, "project", "list").stdout), "\n")
+	if len(lines) != 4 || !strings.HasPrefix(lines[0], "NAME") || !strings.HasPrefix(lines[1], "app ") || !strings.Contains(lines[3], "closed") {
+		t.Fatalf("unexpected table:\n%s", strings.Join(lines, "\n"))
 	}
 }

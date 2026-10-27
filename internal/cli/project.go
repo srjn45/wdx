@@ -20,7 +20,7 @@ func newProjectCmd(home string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newProjectCreateCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
 	return cmd
 }
 
@@ -132,6 +132,40 @@ func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 		r.Conflict = &v
 		return printResult(cmd, r)
 	}
+}
+
+func newProjectListCmd(home string) *cobra.Command {
+	var open, closed bool
+	cmd := &cobra.Command{
+		Use:   "list [--all | --open | --closed]",
+		Short: "List projects",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var state project.State
+			if open {
+				state = project.StateOpen
+			} else if closed {
+				state = project.StateClosed
+			}
+			ctx := cmd.Context()
+			d, err := db.Open(ctx, identity.DBPath(home))
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			list, err := project.NewStore(d, identity.ProjectsDir(home)).List(ctx, state)
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, newListResponse(state, list))
+		},
+	}
+	cmd.Flags().Bool("all", false, "list every project (the default)")
+	cmd.Flags().BoolVar(&open, "open", false, "list only open projects")
+	cmd.Flags().BoolVar(&closed, "closed", false, "list only closed projects")
+	cmd.MarkFlagsMutuallyExclusive("all", "open", "closed")
+	return cmd
 }
 
 func newProjectOpenCmd(home string) *cobra.Command {
