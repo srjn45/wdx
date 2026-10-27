@@ -264,3 +264,40 @@ func TestCloseNotFound(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+func TestRemoveDeletesProjectAndWorktrees(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gitRepo(t, "myrepo", "")
+	p := open(t, s, repo, "")
+	open(t, s, worktree(t, repo), "")
+	keep := open(t, s, gitRepo(t, "other", ""), "")
+
+	removed, err := s.Remove(ctx, "MYREPO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed.ID != p.ID || len(removed.Worktrees) != 2 {
+		t.Fatalf("unexpected removed project: %+v", removed)
+	}
+	if _, err := s.Get(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound after remove, got %v", err)
+	}
+	if n := countRows(t, s, "project_worktrees"); n != 1 {
+		t.Fatalf("want only the other project's worktree left, got %d rows", n)
+	}
+	if _, err := s.Get(ctx, keep.ID); err != nil {
+		t.Fatalf("other project affected: %v", err)
+	}
+	// Opening the path again starts a fresh project.
+	if q := open(t, s, repo, ""); q.ID == p.ID {
+		t.Fatalf("want a new project id after remove, got %s", q.ID)
+	}
+}
+
+func TestRemoveNotFound(t *testing.T) {
+	_, err := newStore(t).Remove(context.Background(), "nope")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}

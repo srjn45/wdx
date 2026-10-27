@@ -226,6 +226,20 @@ func (s *Store) Close(ctx context.Context, ref string) (Project, error) {
 	return s.Get(ctx, p.ID)
 }
 
+// Remove deletes the project whose id or name is ref along with everything
+// that belongs to it. Files on disk are not touched.
+func (s *Store) Remove(ctx context.Context, ref string) (Project, error) {
+	p, err := s.Get(ctx, ref)
+	if err != nil {
+		return Project{}, err
+	}
+	// Related rows go via ON DELETE CASCADE.
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM projects WHERE id = ?", p.ID); err != nil {
+		return Project{}, err
+	}
+	return p, nil
+}
+
 // checkName fails if another project than self already uses name.
 func checkName(ctx context.Context, tx *sql.Tx, name, self string) error {
 	other, err := queryID(ctx, tx, "SELECT id FROM projects WHERE name = ? AND id <> ?", name, self)

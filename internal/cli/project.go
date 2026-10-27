@@ -16,7 +16,7 @@ func newProjectCmd() *cobra.Command {
 		Use:   "project",
 		Short: "Manage projects",
 	}
-	cmd.AddCommand(newProjectOpenCmd(), newProjectCloseCmd())
+	cmd.AddCommand(newProjectOpenCmd(), newProjectCloseCmd(), newProjectRemoveCmd())
 	return cmd
 }
 
@@ -71,6 +71,31 @@ func newProjectCloseCmd() *cobra.Command {
 				return err
 			}
 			printProject(cmd.OutOrStdout(), "closed", p)
+			return nil
+		},
+	}
+}
+
+func newProjectRemoveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove <name|id>",
+		Short: "Delete a project and everything that belongs to it",
+		Long: "Delete a project and everything that belongs to it from " + identity.Name + ".\n" +
+			"Files on disk are not touched.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			d, err := db.Open(ctx, identity.DBPath())
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			p, err := project.NewStore(d).Remove(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			printProject(cmd.OutOrStdout(), "removed", p)
 			return nil
 		},
 	}
