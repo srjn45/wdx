@@ -54,9 +54,11 @@ type jsonOutput struct {
 		Name      string  `json:"name"`
 		Origin    *string `json:"origin"`
 		State     string  `json:"state"`
+		Orphaned  *bool   `json:"orphaned"`
 		Worktrees []struct {
-			ID   string `json:"id"`
-			Path string `json:"path"`
+			ID      string `json:"id"`
+			Path    string `json:"path"`
+			Present *bool  `json:"present"`
 		} `json:"worktrees"`
 	} `json:"project"`
 	Projects []struct {
@@ -184,6 +186,9 @@ func TestUsageErrors(t *testing.T) {
 		{"project", "open", "--local", ".", "--git", "x"},
 		{"project", "list", "--open", "--closed"},
 		{"project", "list", "app"},
+		{"project", "get"},
+		{"project", "get", "--id", "x", "--name", "y"},
+		{"project", "get", "app"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
 		wantError(t, v, exit, codeUsage, exitUsage)
@@ -541,5 +546,66 @@ func TestList(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(wdx(t, home, "project", "list").stdout), "\n")
 	if len(lines) != 4 || !strings.HasPrefix(lines[0], "NAME") || !strings.HasPrefix(lines[1], "app ") || !strings.Contains(lines[3], "closed") {
 		t.Fatalf("unexpected table:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestGet(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	id := newProject(t, home, "App")
+	wdxJSON(t, home, "project", "close", id)
+
+	for _, args := range [][]string{{"--id", id}, {"--name", "app"}} {
+		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
+		if exit != exitOK || v.Action != "" || v.Project.ID != id || v.Project.State != "closed" {
+			t.Fatalf("get %v: unexpected %+v", args, v)
+		}
+		p := v.Project
+		if p.Orphaned == nil || *p.Orphaned || len(p.Worktrees) != 1 || p.Worktrees[0].Present == nil || !*p.Worktrees[0].Present {
+			t.Fatalf("get %v: want one present checkout, got %+v", args, p)
+		}
+	}
+
+	out := wdx(t, home, "project", "get", "--name", "app")
+	if !strings.HasPrefix(out.stdout, "project App ("+id+")\n  state:     closed\n") || strings.Contains(out.stdout, "orphaned") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestGetOrphaned(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	newProject(t, home, "app")
+	if err := os.RemoveAll(filepath.Join(home, "projects", "app")); err != nil {
+		t.Fatal(err)
+	}
+
+	v, exit := wdxJSON(t, home, "project", "get", "--name", "app")
+	if exit != exitOK || !*v.Project.Orphaned || *v.Project.Worktrees[0].Present {
+		t.Fatalf("want an orphaned project with its missing checkout, got %+v", v.Project)
+	}
+	out := wdx(t, home, "project", "get", "--name", "app")
+	if !strings.Contains(out.stdout, "(missing)\n") || !strings.Contains(out.stdout, "orphaned:  no checkout on disk; remove it with wdx project remove app") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestGetNotFound(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	id := newProject(t, home, "app")
+	for _, args := range [][]string{{"--id", "proj-nope"}, {"--name", "nope"}, {"--id", "app"}, {"--name", id}} {
+		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
+		wantError(t, v, exit, codeNotFound, exitRejected)
+	}
+}
+
+func TestWorktreeFieldsOnlyInGet(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	newProject(t, home, "app")
+	out := wdx(t, home, "project", "close", "app", "--json")
+	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || !strings.Contains(out.stdout, `"created_at"`) {
+		t.Fatalf("close must not carry disk status: %s", out.stdout)
 	}
 }

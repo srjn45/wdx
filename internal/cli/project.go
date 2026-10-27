@@ -20,7 +20,7 @@ func newProjectCmd(home string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(home), newProjectGetCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
 	return cmd
 }
 
@@ -165,6 +165,47 @@ func newProjectListCmd(home string) *cobra.Command {
 	cmd.Flags().BoolVar(&open, "open", false, "list only open projects")
 	cmd.Flags().BoolVar(&closed, "closed", false, "list only closed projects")
 	cmd.MarkFlagsMutuallyExclusive("all", "open", "closed")
+	return cmd
+}
+
+func newProjectGetCmd(home string) *cobra.Command {
+	var id, name string
+	cmd := &cobra.Command{
+		Use:   "get (--id <id> | --name <name>)",
+		Short: "Show a project and which of its checkouts are on disk",
+		Long: "Show a project, open or closed, with its worktrees and whether each is\n" +
+			"still on disk. A project with no checkout left on disk is orphaned.\n" +
+			"Nothing is changed.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			d, err := db.Open(ctx, identity.DBPath(home))
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			store := project.NewStore(d, identity.ProjectsDir(home))
+			var p project.Project
+			if cmd.Flags().Changed("id") {
+				p, err = store.GetByID(ctx, id)
+			} else {
+				p, err = store.GetByName(ctx, name)
+			}
+			if err != nil {
+				return err
+			}
+			status, err := store.DiskStatus(ctx, p)
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, newProjectDetail(p, status))
+		},
+	}
+	cmd.Flags().StringVar(&id, "id", "", "project id")
+	cmd.Flags().StringVar(&name, "name", "", "project name (case-insensitive)")
+	cmd.MarkFlagsOneRequired("id", "name")
+	cmd.MarkFlagsMutuallyExclusive("id", "name")
 	return cmd
 }
 

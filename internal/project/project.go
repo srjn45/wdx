@@ -525,15 +525,34 @@ func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progre
 
 // Get returns the project whose id or name is ref. An id match wins.
 func (s *Store) Get(ctx context.Context, ref string) (Project, error) {
+	p, err := s.GetByID(ctx, ref)
+	if errors.Is(err, ErrNotFound) {
+		return s.GetByName(ctx, ref)
+	}
+	return p, err
+}
+
+// GetByID returns the project with id, whatever its state.
+func (s *Store) GetByID(ctx context.Context, id string) (Project, error) {
+	return s.get(ctx, "id", id)
+}
+
+// GetByName returns the project named name, ignoring case, whatever its state.
+func (s *Store) GetByName(ctx context.Context, name string) (Project, error) {
+	return s.get(ctx, "name", name)
+}
+
+// get returns the project whose column equals value; column is a constant.
+func (s *Store) get(ctx context.Context, column, value string) (Project, error) {
 	var p Project
 	var origin sql.NullString
 	var created, updated int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, name, origin_url, state, created_at, updated_at FROM projects
-		WHERE id = ?1 OR name = ?1 ORDER BY id = ?1 DESC LIMIT 1`, ref).
+		WHERE `+column+` = ?`, value).
 		Scan(&p.ID, &p.Name, &origin, &p.State, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, ref)
+		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, value)
 	}
 	if err != nil {
 		return Project{}, err
@@ -585,6 +604,29 @@ func (s *Store) List(ctx context.Context, state State) ([]Summary, error) {
 		list = append(list, p)
 	}
 	return list, rows.Err()
+}
+
+// DiskStatus is which of a project's checkouts are still on disk.
+type DiskStatus struct {
+	Present  map[string]bool // by worktree id
+	Orphaned bool            // none of the checkouts is on disk
+}
+
+// DiskStatus checks which of p's checkouts are still on disk. Unlike opening
+// the project, it changes nothing.
+func (s *Store) DiskStatus(ctx context.Context, p Project) (DiskStatus, error) {
+	st := DiskStatus{Present: make(map[string]bool, len(p.Worktrees)), Orphaned: true}
+	for _, w := range p.Worktrees {
+		ok, err := isCheckout(ctx, w.Path)
+		if err != nil {
+			return DiskStatus{}, err
+		}
+		st.Present[w.ID] = ok
+		if ok {
+			st.Orphaned = false
+		}
+	}
+	return st, nil
 }
 
 // Close marks the project whose id or name is ref as closed.

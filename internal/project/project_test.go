@@ -762,3 +762,84 @@ func TestListSortsAndFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestGetByIDAndName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	p := open(t, s, gitRepo(t, "App", ""), "")
+	if _, err := s.Close(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, get := range []func() (Project, error){
+		func() (Project, error) { return s.GetByID(ctx, p.ID) },
+		func() (Project, error) { return s.GetByName(ctx, "app") },
+		func() (Project, error) { return s.Get(ctx, p.ID) },
+		func() (Project, error) { return s.Get(ctx, "APP") },
+	} {
+		if got, err := get(); err != nil || got.ID != p.ID || got.State != StateClosed || len(got.Worktrees) != 1 {
+			t.Fatalf("want closed project %s with its worktree, got %+v, %v", p.ID, got, err)
+		}
+	}
+	if _, err := s.GetByID(ctx, "App"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetByID must not match a name, got %v", err)
+	}
+	if _, err := s.GetByName(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetByName must not match an id, got %v", err)
+	}
+}
+
+func TestDiskStatus(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gitRepo(t, "app", "")
+	wt := worktree(t, repo)
+	open(t, s, wt, "")
+	p := open(t, s, repo, "")
+
+	status := func() DiskStatus {
+		t.Helper()
+		st, err := s.DiskStatus(ctx, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	if st := status(); st.Orphaned || !st.Present[p.Worktrees[0].ID] || !st.Present[p.Worktrees[1].ID] {
+		t.Fatalf("want both checkouts present, got %+v", st)
+	}
+
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(); st.Orphaned || st.Present[idOf(t, p, wt)] || !st.Present[idOf(t, p, repo)] {
+		t.Fatalf("want only %s missing, not orphaned, got %+v", wt, st)
+	}
+
+	// A directory that is no longer a repository is not a checkout either.
+	if err := os.RemoveAll(filepath.Join(repo, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(); !st.Orphaned || st.Present[idOf(t, p, repo)] {
+		t.Fatalf("want orphaned, got %+v", st)
+	}
+	if st, err := s.DiskStatus(ctx, Project{}); err != nil || !st.Orphaned {
+		t.Fatalf("a project without worktrees is orphaned, got %+v, %v", st, err)
+	}
+	if got, err := s.Get(ctx, p.ID); err != nil || len(got.Worktrees) != 2 {
+		t.Fatalf("DiskStatus must not drop checkouts, got %+v, %v", got, err)
+	}
+}
+
+func idOf(t *testing.T, p Project, path string) string {
+	t.Helper()
+	for _, w := range p.Worktrees {
+		if w.Path == path {
+			return w.ID
+		}
+	}
+	t.Fatalf("no worktree at %s in %+v", path, p.Worktrees)
+	return ""
+}

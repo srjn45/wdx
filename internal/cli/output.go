@@ -45,7 +45,7 @@ type result interface {
 
 type response struct {
 	OK       bool           `json:"ok"`
-	Action   string         `json:"action"`
+	Action   string         `json:"action,omitempty"`
 	Project  *projectView   `json:"project,omitempty"`
 	Dropped  []worktreeView `json:"dropped,omitempty"`
 	Conflict *errorView     `json:"conflict,omitempty"`
@@ -100,6 +100,7 @@ type projectView struct {
 	Name      string         `json:"name"`
 	Origin    *string        `json:"origin"`
 	State     string         `json:"state"`
+	Orphaned  *bool          `json:"orphaned,omitempty"` // set by get only
 	Worktrees []worktreeView `json:"worktrees"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
@@ -121,16 +122,64 @@ func newProjectView(p project.Project) projectView {
 }
 
 type worktreeView struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	Present   *bool  `json:"present,omitempty"` // set by get only
+	CreatedAt string `json:"created_at"`
 }
 
 func worktreeViews(wts []project.Worktree) []worktreeView {
 	views := make([]worktreeView, 0, len(wts))
 	for _, w := range wts {
-		views = append(views, worktreeView{ID: w.ID, Path: w.Path})
+		views = append(views, worktreeView{ID: w.ID, Path: w.Path, CreatedAt: timestamp(w.CreatedAt)})
 	}
 	return views
+}
+
+// projectDetail is a project with which of its checkouts are on disk.
+type projectDetail struct {
+	response
+	project project.Project
+}
+
+func newProjectDetail(p project.Project, status project.DiskStatus) projectDetail {
+	v := newProjectView(p)
+	v.Orphaned = &status.Orphaned
+	for i := range v.Worktrees {
+		present := status.Present[v.Worktrees[i].ID]
+		v.Worktrees[i].Present = &present
+	}
+	return projectDetail{response: response{OK: true, Project: &v}, project: p}
+}
+
+func (d projectDetail) text(w io.Writer) {
+	v := d.Project
+	origin := "(none)"
+	if v.Origin != nil {
+		origin = *v.Origin
+	}
+	fmt.Fprintf(w, "project %s (%s)\n", v.Name, v.ID)
+	fmt.Fprintf(w, "  state:     %s\n", v.State)
+	fmt.Fprintf(w, "  origin:    %s\n", origin)
+	fmt.Fprintf(w, "  created:   %s\n", d.project.CreatedAt.Local().Format(time.DateTime))
+	fmt.Fprintf(w, "  updated:   %s\n", d.project.UpdatedAt.Local().Format(time.DateTime))
+	if len(v.Worktrees) == 0 {
+		fmt.Fprintf(w, "  worktrees: (none)\n")
+	}
+	for i, wt := range v.Worktrees {
+		label := "worktrees:"
+		if i > 0 {
+			label = ""
+		}
+		missing := ""
+		if !*wt.Present {
+			missing = " (missing)"
+		}
+		fmt.Fprintf(w, "  %-10s %s%s\n", label, wt.Path, missing)
+	}
+	if *v.Orphaned {
+		fmt.Fprintf(w, "  orphaned:  no checkout on disk; %s\n", missingCheckoutHint(d.project))
+	}
 }
 
 func timestamp(t time.Time) string {
