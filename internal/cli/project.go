@@ -41,14 +41,17 @@ func newProjectCreateCmd(home string) *cobra.Command {
 			"asked to open that project, try another name or cancel; --open and\n" +
 			"--cancel answer in advance, and with --json one of them is required.\n" +
 			"Every failure starts with \"not created:\".",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{failurePrefix: "not created"},
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if jsonMode(cmd) && !opts.openOnConflict && !opts.cancelOnConflict {
-				return &hinted{&usageError{errors.New("--json requires --open or --cancel")}, "pass --open or --cancel"}
-			}
-			return runCreate(cmd, home, opts)
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not created",
+			outputNote: "The created project. On a conflict answered with --open, the project opened instead,\n" +
+				"with the conflict under \"conflict\".\n" +
+				`With --json: {"ok": true, "action": ..., "project": {...}, "conflict": {...}}`,
+			actionList:   annotation("cloned", "created", "opened", "registered", "removed"),
+			errorList:    annotation(codeCheckoutMissing, codeCloneFailed, codeInvalidName, codeInvalidPath, codeNameTaken, codeRepoExists),
+			jsonRequires: annotation("open", "cancel"),
 		},
+		RunE: func(cmd *cobra.Command, _ []string) error { return runCreate(cmd, home, opts) },
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "project name, also the repository directory name")
 	cmd.Flags().StringVar(&opts.parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir(home)+")")
@@ -139,7 +142,12 @@ func newProjectListCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [--all | --open | --closed]",
 		Short: "List projects",
+		Long:  "List projects, without their worktrees. With no flag, every project is listed.",
 		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The projects sorted by name, each with its number of worktrees; an empty list when none match.\n" +
+				`With --json: {"ok": true, "projects": [...]}`,
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var state project.State
 			if open {
@@ -177,6 +185,12 @@ func newProjectGetCmd(home string) *cobra.Command {
 			"still on disk. A project with no checkout left on disk is orphaned.\n" +
 			"Nothing is changed.",
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk and \"orphaned\"\n" +
+				"that none is.\n" +
+				`With --json: {"ok": true, "project": {...}}`,
+			errorList: annotation(codeNotFound),
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
@@ -226,10 +240,15 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			"Projects are named after their root directory or URL unless --name is\n" +
 			"given. Names are unique.",
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\".\n" +
+				`With --json: {"ok": true, "action": ..., "project": {...}, "dropped": [...]}`,
+			actionList: annotation("cloned", "opened", "registered", "removed"),
+			errorList: annotation(codeCheckoutMissing, codeCloneFailed, codeInvalidArgument, codeInvalidName, codeInvalidPath,
+				codeNameTaken, codeNotGitRepo, codePathExists, codeProjectMismatch),
+			jsonRequires: "git:" + annotation("reclone", "remove"),
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if gitURL != "" && jsonMode(cmd) && !reclone && !remove {
-				return &hinted{&usageError{errors.New("--json with --git requires --reclone or --remove")}, "pass --reclone or --remove"}
-			}
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
@@ -337,7 +356,14 @@ func newProjectCloseCmd(home string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "close <name|id>",
 		Short: "Close a project",
-		Args:  cobra.ExactArgs(1),
+		Long: "Mark a project closed. Nothing on disk is touched; open it again with\n" +
+			identity.Name + " project open.",
+		Args: cobra.ExactArgs(1),
+		Annotations: map[string]string{
+			outputNote: "The closed project.\n" + `With --json: {"ok": true, "action": "closed", "project": {...}}`,
+			actionList: "closed",
+			errorList:  annotation(codeNotFound),
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
@@ -362,6 +388,11 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 		Long: "Delete a project and everything that belongs to it from " + identity.Name + ".\n" +
 			"Files on disk are not touched.",
 		Args: cobra.ExactArgs(1),
+		Annotations: map[string]string{
+			outputNote: "The removed project.\n" + `With --json: {"ok": true, "action": "removed", "project": {...}}`,
+			actionList: "removed",
+			errorList:  annotation(codeNotFound),
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))

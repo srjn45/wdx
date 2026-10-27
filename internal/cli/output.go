@@ -38,6 +38,27 @@ const (
 	exitSystem   = 3
 )
 
+type codeInfo struct {
+	exit        int
+	description string
+}
+
+var codes = map[string]codeInfo{
+	codeUsage:           {exitUsage, "the command line is invalid"},
+	codeInternal:        {exitSystem, "an unexpected failure: database, filesystem or git"},
+	codeNotFound:        {exitRejected, "no project has this name or id"},
+	codeNameTaken:       {exitRejected, "another project has this name"},
+	codeRepoExists:      {exitRejected, "the directory is already in a git repository"},
+	codeCheckoutMissing: {exitRejected, "none of the project's checkouts is left on disk"},
+	codeNotGitRepo:      {exitRejected, "the path is not in a git repository"},
+	codeInvalidName:     {exitRejected, "the project name is not allowed"},
+	codeInvalidPath:     {exitRejected, "the path cannot be used"},
+	codeInvalidArgument: {exitRejected, "an argument is empty or malformed"},
+	codePathExists:      {exitRejected, "the directory to clone into already exists"},
+	codeProjectMismatch: {exitRejected, "the repository is a worktree of one project but has the origin of another"},
+	codeCloneFailed:     {exitRejected, "git clone failed"},
+}
+
 // result is what a command prints on success.
 type result interface {
 	text(w io.Writer)
@@ -310,11 +331,7 @@ func classify(err error) (errorView, int) {
 	}
 	if _, ok := errors.AsType[*usageError](err); ok {
 		v.Code = codeUsage
-		return v, exitUsage
-	}
-
-	exit := exitRejected
-	if e, ok := errors.AsType[*project.NameTakenError](err); ok {
+	} else if e, ok := errors.AsType[*project.NameTakenError](err); ok {
 		v.Code, v.Details = codeNameTaken, map[string]any{"name": e.Name, "project": newProjectView(e.Project)}
 	} else if e, ok := errors.AsType[*project.RepoExistsError](err); ok {
 		var p *projectView
@@ -346,8 +363,6 @@ func classify(err error) (errorView, int) {
 		v.Code = codeNotGitRepo
 	} else if errors.Is(err, project.ErrEmptyURL) {
 		v.Code = codeInvalidArgument
-	} else {
-		exit = exitSystem
 	}
-	return v, exit
+	return v, codes[v.Code].exit
 }

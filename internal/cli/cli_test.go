@@ -7,8 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/srjn45/warden/internal/gittest"
 )
@@ -76,6 +79,25 @@ type jsonOutput struct {
 		Hint    *string        `json:"hint"`
 		Details map[string]any `json:"details"`
 	} `json:"error"`
+	Command *struct {
+		Path     string `json:"path"`
+		Commands []struct {
+			Name string `json:"name"`
+		} `json:"commands"`
+		Flags []struct {
+			Name string `json:"name"`
+		} `json:"flags"`
+		FlagRules []struct {
+			Rule  string   `json:"rule"`
+			Flags []string `json:"flags"`
+			When  *string  `json:"when"`
+		} `json:"flag_rules"`
+		Actions []string `json:"actions"`
+		Errors  []struct {
+			Code string `json:"code"`
+			Exit int    `json:"exit"`
+		} `json:"errors"`
+	} `json:"command"`
 }
 
 // wdxJSON runs args with --json and checks that stdout holds exactly one
@@ -97,7 +119,32 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	if v.OK != (out.exit == exitOK) || v.OK != (v.Error == nil) {
 		t.Fatalf("%v: ok %v, exit %d and error %+v disagree", args, v.OK, out.exit, v.Error)
 	}
+	wantDeclared(t, args, v)
 	return v, out.exit
+}
+
+// wantDeclared checks that the help of the command args ran lists the action
+// and error codes it returned.
+func wantDeclared(t *testing.T, args []string, v jsonOutput) {
+	t.Helper()
+	cmd, _, err := newRoot(Env{Getenv: func(string) string { return "" }}).Find(args)
+	if err != nil {
+		return
+	}
+	help := newCommandView(cmd)
+	var codes []string
+	for _, e := range help.Errors {
+		codes = append(codes, e.Code)
+	}
+	if v.Action != "" && !slices.Contains(help.Actions, v.Action) {
+		t.Fatalf("%v: action %q is not in the help of %s", args, v.Action, help.Path)
+	}
+	if v.Error != nil && !slices.Contains(codes, v.Error.Code) {
+		t.Fatalf("%v: error %q is not in the help of %s", args, v.Error.Code, help.Path)
+	}
+	if v.Conflict != nil && !slices.Contains(codes, v.Conflict.Code) {
+		t.Fatalf("%v: conflict %q is not in the help of %s", args, v.Conflict.Code, help.Path)
+	}
 }
 
 func wantError(t *testing.T, v jsonOutput, exit int, code string, wantExit int) {
@@ -192,8 +239,12 @@ func TestUsageErrors(t *testing.T) {
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
 		wantError(t, v, exit, codeUsage, exitUsage)
+		wantHint(t, v, "--help'")
 	}
-	if out := wdx(t, t.TempDir(), "project", "bogus"); out.exit != exitUsage || out.stdout != "" || out.stderr == "" {
+	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
+	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
+	out := wdx(t, t.TempDir(), "project", "bogus")
+	if out.exit != exitUsage || out.stdout != "" || !strings.HasSuffix(out.stderr, "; see 'wdx project --help'\n") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
@@ -607,5 +658,105 @@ func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 	out := wdx(t, home, "project", "close", "app", "--json")
 	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || !strings.Contains(out.stdout, `"created_at"`) {
 		t.Fatalf("close must not carry disk status: %s", out.stdout)
+	}
+}
+
+// TestCommandDocs checks that every command documents itself, so a new
+// command fails here until its help is complete.
+func TestCommandDocs(t *testing.T) {
+	t.Parallel()
+	for code, info := range codes {
+		if info.description == "" || info.exit < exitRejected || info.exit > exitSystem {
+			t.Errorf("error code %s: incomplete %+v", code, info)
+		}
+	}
+	var check func(cmd *cobra.Command)
+	check = func(cmd *cobra.Command) {
+		path := cmd.CommandPath()
+		if cmd.Short == "" {
+			t.Errorf("%s: no summary", path)
+		}
+		if !cmd.HasAvailableSubCommands() && cmd.Annotations[outputNote] == "" {
+			t.Errorf("%s: no output note", path)
+		}
+		for _, code := range annotationList(cmd, errorList) {
+			if _, ok := codes[code]; !ok || code == codeUsage || code == codeInternal {
+				t.Errorf("%s: unexpected error code %q", path, code)
+			}
+		}
+		for _, r := range flagRules(cmd) {
+			names := r.Flags
+			if r.When != nil {
+				names = append(names, *r.When)
+			}
+			for _, name := range names {
+				if cmd.Flags().Lookup(name) == nil {
+					t.Errorf("%s: rule %s names unknown flag %q", path, r.Rule, name)
+				}
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			if sub.IsAvailableCommand() {
+				check(sub)
+			}
+		}
+	}
+	check(newRoot(Env{Getenv: func(string) string { return "" }}))
+}
+
+func TestHelp(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args       []string
+		want, deny []string
+	}{
+		{[]string{"--help"}, []string{"project ", "version ", "Exit codes:"}, []string{"completion", "\n  help "}},
+		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove "}, []string{"Errors:"}},
+		{[]string{"project", "open", "--help"}, []string{"--local", "--git", "--reclone", "Flag rules:", "Output:", "action: cloned", "checkout_missing  1", "internal          3"}, nil},
+		{[]string{"help", "project", "get"}, []string{"wdx project get (--id <id> | --name <name>)", "not_found"}, nil},
+	} {
+		out := wdx(t, t.TempDir(), tc.args...)
+		if out.exit != exitOK || out.stderr != "" {
+			t.Fatalf("%v: unexpected %+v", tc.args, out)
+		}
+		for _, s := range tc.want {
+			if !strings.Contains(out.stdout, s) {
+				t.Errorf("%v: want %q in:\n%s", tc.args, s, out.stdout)
+			}
+		}
+		for _, s := range tc.deny {
+			if strings.Contains(out.stdout, s) {
+				t.Errorf("%v: unexpected %q in:\n%s", tc.args, s, out.stdout)
+			}
+		}
+	}
+}
+
+// TestHelpJSON walks the whole command tree through --help --json.
+func TestHelpJSON(t *testing.T) {
+	t.Parallel()
+	var walk func(path []string)
+	walk = func(path []string) {
+		v, exit := wdxJSON(t, t.TempDir(), append(path, "--help")...)
+		c := v.Command
+		if exit != exitOK || c == nil || c.Path != strings.Join(append([]string{"wdx"}, path...), " ") {
+			t.Fatalf("%v: unexpected help %+v", path, v)
+		}
+		if n := len(c.Errors); n < 2 || c.Errors[n-2].Code != codeUsage || c.Errors[n-1].Code != codeInternal {
+			t.Fatalf("%v: errors must end with usage and internal: %+v", path, c.Errors)
+		}
+		for _, sub := range c.Commands {
+			walk(append(slices.Clone(path), sub.Name))
+		}
+	}
+	walk(nil)
+
+	v, _ := wdxJSON(t, t.TempDir(), "help", "project", "open")
+	rule := v.Command.FlagRules[len(v.Command.FlagRules)-1]
+	if rule.Rule != "one_required_with_json" || *rule.When != "git" || !slices.Equal(rule.Flags, []string{"reclone", "remove"}) {
+		t.Fatalf("unexpected json rule: %+v", rule)
+	}
+	if !slices.Equal(v.Command.Actions, []string{"cloned", "opened", "registered", "removed"}) {
+		t.Fatalf("unexpected actions: %v", v.Command.Actions)
 	}
 }
