@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/srjn45/warden/internal/db"
+	"github.com/srjn45/warden/internal/git"
 	"github.com/srjn45/warden/internal/gittest"
 )
 
@@ -128,6 +128,22 @@ func TestOpenLocal(t *testing.T) {
 	}
 }
 
+func TestOpenLocalRegisteredOnlyFirstTime(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	repo := gitRepo(t, "myrepo", "")
+
+	for i, want := range []bool{true, false} {
+		o, err := s.OpenLocal(context.Background(), repo, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o.Registered != want {
+			t.Fatalf("open #%d: Registered = %v, want %v", i+1, o.Registered, want)
+		}
+	}
+}
+
 func TestOpenLocalSubdirResolvesToRoot(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
@@ -221,8 +237,9 @@ func TestOriginAddedLater(t *testing.T) {
 	stray := gitRepo(t, "stray", "")
 	open(t, s, stray, "")
 	gitCmd(t, stray, "remote", "add", "origin", "https://example.com/r.git")
-	if _, err := s.OpenLocal(context.Background(), stray, ""); err == nil || !strings.Contains(err.Error(), "belongs to project "+p.ID) {
-		t.Fatalf("want origin conflict, got %v", err)
+	_, err := s.OpenLocal(context.Background(), stray, "")
+	if m, ok := errors.AsType[*ProjectMismatchError](err); !ok || m.ByOrigin.ID != p.ID || m.Root != stray {
+		t.Fatalf("want ProjectMismatchError for %s, got %v", p.ID, err)
 	}
 }
 
@@ -231,9 +248,10 @@ func TestOpenLocalNameCollision(t *testing.T) {
 	s := newStore(t)
 	a, b := gitRepo(t, "api", ""), gitRepo(t, "API", "")
 
-	open(t, s, a, "")
-	if _, err := s.OpenLocal(context.Background(), b, ""); err == nil || !strings.Contains(err.Error(), "--name") {
-		t.Fatalf("want name collision error, got %v", err)
+	p := open(t, s, a, "")
+	_, err := s.OpenLocal(context.Background(), b, "")
+	if taken, ok := errors.AsType[*NameTakenError](err); !ok || taken.Project.ID != p.ID {
+		t.Fatalf("want NameTakenError for %s, got %v", p.ID, err)
 	}
 	if p := open(t, s, b, "api-2"); p.Name != "api-2" {
 		t.Fatalf("want name api-2, got %q", p.Name)
@@ -273,8 +291,8 @@ func TestOpenLocalNotGitRepo(t *testing.T) {
 func TestOpenLocalMissingDir(t *testing.T) {
 	t.Parallel()
 	_, err := newStore(t).OpenLocal(context.Background(), filepath.Join(t.TempDir(), "nope"), "")
-	if err == nil {
-		t.Fatal("want error for missing directory")
+	if _, ok := errors.AsType[*InvalidPathError](err); !ok {
+		t.Fatalf("want InvalidPathError, got %v", err)
 	}
 }
 
@@ -395,7 +413,7 @@ func TestOpenGitClones(t *testing.T) {
 
 	o := openGit(t, s, remote, "")
 	want := filepath.Join(s.projectsDir, "app")
-	if !o.Cloned || o.Name != "app" || o.OriginURL != remote {
+	if !o.Cloned || !o.Registered || o.Name != "app" || o.OriginURL != remote {
 		t.Fatalf("unexpected project: %+v", o)
 	}
 	if got := paths(o.Project); len(got) != 1 || got[0] != want {
@@ -414,7 +432,7 @@ func TestOpenGitOpensKnownProject(t *testing.T) {
 	}
 
 	o := openGit(t, s, "https://gitlab.com/group/sub/app", "")
-	if o.Cloned || o.ID != p.ID || o.State != StateOpen {
+	if o.Cloned || o.Registered || o.ID != p.ID || o.State != StateOpen {
 		t.Fatalf("want project %s reopened without cloning, got %+v", p.ID, o)
 	}
 	if _, err := os.Stat(s.projectsDir); !errors.Is(err, os.ErrNotExist) {
@@ -433,8 +451,15 @@ func TestOpenGitReusesLeftoverClone(t *testing.T) {
 	}
 
 	o := openGit(t, s, remote, "")
-	if o.Cloned || o.ID == p.ID || paths(o.Project)[0] != paths(p.Project)[0] {
+	if o.Cloned || !o.Registered || o.ID == p.ID || paths(o.Project)[0] != paths(p.Project)[0] {
 		t.Fatalf("want new project on the existing clone, got %+v", o)
+	}
+}
+
+func TestOpenGitEmptyURL(t *testing.T) {
+	t.Parallel()
+	if _, err := newStore(t).OpenGit(context.Background(), " ", "", io.Discard); !errors.Is(err, ErrEmptyURL) {
+		t.Fatalf("want ErrEmptyURL, got %v", err)
 	}
 }
 
@@ -446,8 +471,8 @@ func TestOpenGitDirectoryTaken(t *testing.T) {
 	}
 
 	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "--name") {
-		t.Fatalf("want directory taken error, got %v", err)
+	if exists, ok := errors.AsType[*PathExistsError](err); !ok || exists.Path != filepath.Join(s.projectsDir, "app") {
+		t.Fatalf("want PathExistsError, got %v", err)
 	}
 	if o := openGit(t, s, bareRemote(t, "app"), "app-2"); o.Name != "app-2" {
 		t.Fatalf("want name app-2, got %q", o.Name)
@@ -457,11 +482,11 @@ func TestOpenGitDirectoryTaken(t *testing.T) {
 func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
-	open(t, s, gitRepo(t, "app", ""), "")
+	p := open(t, s, gitRepo(t, "app", ""), "")
 
 	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "--name") {
-		t.Fatalf("want name collision error, got %v", err)
+	if taken, ok := errors.AsType[*NameTakenError](err); !ok || taken.Project.ID != p.ID {
+		t.Fatalf("want NameTakenError for %s, got %v", p.ID, err)
 	}
 	if _, err := os.Stat(s.projectsDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("nothing should be cloned, stat %s: %v", s.projectsDir, err)
@@ -471,8 +496,8 @@ func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
 func TestOpenGitRejectsPathAsName(t *testing.T) {
 	t.Parallel()
 	_, err := newStore(t).OpenGit(context.Background(), bareRemote(t, "app"), "../app", io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "directory name") {
-		t.Fatalf("want invalid name error, got %v", err)
+	if _, ok := errors.AsType[*InvalidNameError](err); !ok {
+		t.Fatalf("want InvalidNameError, got %v", err)
 	}
 }
 
@@ -481,8 +506,9 @@ func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
 	s := newStore(t)
 	missing := filepath.Join(t.TempDir(), "nope.git")
 
-	if _, err := s.OpenGit(context.Background(), missing, "", io.Discard); err == nil {
-		t.Fatal("want clone error")
+	_, err := s.OpenGit(context.Background(), missing, "", io.Discard)
+	if failed, ok := errors.AsType[*git.CloneError](err); !ok || failed.Output == "" {
+		t.Fatalf("want CloneError with git's output, got %v", err)
 	}
 	if n := countRows(t, s, "projects"); n != 0 {
 		t.Fatalf("want no projects, got %d", n)
@@ -513,7 +539,7 @@ func TestOpenGitCheckoutMissingThenReclone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !o.Cloned || o.ID != p.ID || len(o.Worktrees) != 1 || o.Worktrees[0].Path != dest {
+	if !o.Cloned || o.Registered || o.ID != p.ID || len(o.Worktrees) != 1 || o.Worktrees[0].Path != dest {
 		t.Fatalf("want %s cloned back into %s, got %+v", p.ID, dest, o)
 	}
 }
@@ -536,6 +562,9 @@ func create(t *testing.T, s *Store, name, parent string) Project {
 	o, err := s.Create(context.Background(), name, parent)
 	if err != nil {
 		t.Fatalf("create %s: %v", name, err)
+	}
+	if !o.Registered || o.Cloned {
+		t.Fatalf("create %s: want registered, not cloned: %+v", name, o)
 	}
 	return o.Project
 }
@@ -637,16 +666,20 @@ func TestCreatePathIsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Create(context.Background(), "app", file); err == nil || !strings.Contains(err.Error(), "not a directory") {
-		t.Fatalf("want not a directory error, got %v", err)
+	_, err := s.Create(context.Background(), "app", file)
+	if invalid, ok := errors.AsType[*InvalidPathError](err); !ok || invalid.Path != file {
+		t.Fatalf("want InvalidPathError for %s, got %v", file, err)
 	}
 }
 
 func TestCreateRejectsPathAsName(t *testing.T) {
 	t.Parallel()
-	_, err := newStore(t).Create(context.Background(), "../app", "")
-	if err == nil || !strings.Contains(err.Error(), "directory name") {
-		t.Fatalf("want invalid name error, got %v", err)
+	for _, name := range []string{"", "../app", "a/b", "."} {
+		if _, err := newStore(t).Create(context.Background(), name, ""); err == nil {
+			t.Fatalf("create %q: want error", name)
+		} else if _, ok := errors.AsType[*InvalidNameError](err); !ok {
+			t.Fatalf("create %q: want InvalidNameError, got %v", name, err)
+		}
 	}
 }
 

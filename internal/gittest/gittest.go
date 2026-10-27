@@ -25,6 +25,12 @@ func Isolate() {
 		"GIT_AUTHOR_EMAIL":    "test@example.com",
 		"GIT_COMMITTER_NAME":  "test",
 		"GIT_COMMITTER_EMAIL": "test@example.com",
+		// Not covered by GIT_CONFIG_GLOBAL: these default to files under ~/.config/git.
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "core.excludesFile",
+		"GIT_CONFIG_VALUE_0": os.DevNull,
+		"GIT_CONFIG_KEY_1":   "core.attributesFile",
+		"GIT_CONFIG_VALUE_1": os.DevNull,
 	} {
 		os.Setenv(key, value)
 	}

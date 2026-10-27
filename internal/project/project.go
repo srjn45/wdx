@@ -14,10 +14,10 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/srjn45/warden/internal/git"
-	"github.com/srjn45/warden/internal/identity"
 )
 
 // State is a project's lifecycle state.
@@ -65,8 +65,9 @@ func (p Project) ClonePath() string {
 // Opened is the result of opening a project.
 type Opened struct {
 	Project
-	Cloned  bool       // the repository was cloned to open it
-	Dropped []Worktree // checkouts no longer on disk, removed from the project
+	Registered bool       // the project did not exist before
+	Cloned     bool       // the repository was cloned to open it
+	Dropped    []Worktree // checkouts no longer on disk, removed from the project
 }
 
 // CheckoutMissingError is returned when none of a known project's checkouts
@@ -79,8 +80,8 @@ func (e *CheckoutMissingError) Error() string {
 	return fmt.Sprintf("project %s: no checkout found on disk", e.Project.Name)
 }
 
-// NameTakenError is returned when creating a project whose name another
-// project already uses.
+// NameTakenError is returned when a project would get a name another project
+// already uses.
 type NameTakenError struct {
 	Name    string
 	Project Project
@@ -109,8 +110,55 @@ func (e *RepoExistsError) Error() string {
 	return msg
 }
 
+// InvalidNameError is returned for a project name that cannot be used.
+type InvalidNameError struct {
+	Name   string
+	Reason string
+}
+
+func (e *InvalidNameError) Error() string {
+	return fmt.Sprintf("invalid project name %q: %s", e.Name, e.Reason)
+}
+
+// InvalidPathError is returned for a path that cannot be used as asked.
+type InvalidPathError struct {
+	Path   string
+	Reason string
+}
+
+func (e *InvalidPathError) Error() string {
+	return e.Path + ": " + e.Reason
+}
+
+// PathExistsError is returned when a project would be cloned to a path that
+// is already taken by something else.
+type PathExistsError struct {
+	Path string
+}
+
+func (e *PathExistsError) Error() string {
+	return e.Path + " already exists"
+}
+
+// ProjectMismatchError is returned when the work tree at Root is a checkout of
+// project ByClone but its origin belongs to project ByOrigin.
+type ProjectMismatchError struct {
+	Root     string
+	Origin   string
+	ByClone  Project
+	ByOrigin Project
+}
+
+func (e *ProjectMismatchError) Error() string {
+	return fmt.Sprintf("%s is a worktree of project %s but its origin %s belongs to project %s",
+		e.Root, e.ByClone.Name, e.Origin, e.ByOrigin.Name)
+}
+
+// ErrEmptyURL is returned when opening an empty git URL.
+var ErrEmptyURL = errors.New("git URL is empty")
+
 // ErrNotGitRepo is returned when opening a directory that is not a git repository.
-var ErrNotGitRepo = errors.New("can only work with git projects use " + identity.Name + " init")
+var ErrNotGitRepo = errors.New("not a git repository")
 
 // ErrNotFound is returned when no project matches a name or id.
 var ErrNotFound = errors.New("project not found")
@@ -142,12 +190,12 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 	info, err := os.Stat(abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Opened{}, fmt.Errorf("%s: no such directory", abs)
+			return Opened{}, &InvalidPathError{Path: abs, Reason: "no such directory"}
 		}
 		return Opened{}, err
 	}
 	if !info.IsDir() {
-		return Opened{}, fmt.Errorf("%s: not a directory", abs)
+		return Opened{}, &InvalidPathError{Path: abs, Reason: "not a directory"}
 	}
 
 	root, err := git.TopLevel(ctx, abs)
@@ -182,17 +230,19 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		return Opened{}, err
 	}
 	if byClone != "" && byOrigin != "" && byClone != byOrigin {
-		return Opened{}, fmt.Errorf("%s is a worktree of project %s but its origin %s belongs to project %s", root, byClone, origin, byOrigin)
+		tx.Rollback()
+		return Opened{}, s.mismatch(ctx, root, origin, byClone, byOrigin)
 	}
 	id := cmp.Or(byClone, byOrigin)
 	now := time.Now().UnixMilli()
+	registered := id == ""
 	var dropped []Worktree
 
-	if id == "" {
+	if registered {
 		if name == "" {
 			name = filepath.Base(root)
 		}
-		if err := checkName(ctx, tx, name, ""); err != nil {
+		if err := s.checkName(ctx, tx, name, ""); err != nil {
 			return Opened{}, err
 		}
 		if id, err = newID("proj"); err != nil {
@@ -206,7 +256,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		}
 	} else {
 		if name != "" {
-			if err := checkName(ctx, tx, name, id); err != nil {
+			if err := s.checkName(ctx, tx, name, id); err != nil {
 				return Opened{}, err
 			}
 		}
@@ -245,7 +295,19 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		return Opened{}, err
 	}
 	p, err := s.Get(ctx, id)
-	return Opened{Project: p, Dropped: dropped}, err
+	return Opened{Project: p, Registered: registered, Dropped: dropped}, err
+}
+
+func (s *Store) mismatch(ctx context.Context, root, origin, byCloneID, byOriginID string) error {
+	byClone, err := s.Get(ctx, byCloneID)
+	if err != nil {
+		return err
+	}
+	byOrigin, err := s.Get(ctx, byOriginID)
+	if err != nil {
+		return err
+	}
+	return &ProjectMismatchError{Root: root, Origin: origin, ByClone: byClone, ByOrigin: byOrigin}
 }
 
 // OpenGit opens the project whose origin is url. A known project is opened
@@ -258,7 +320,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Writer) (Opened, error) {
 	key := git.RepoKey(url)
 	if key == "" {
-		return Opened{}, errors.New("git URL is empty")
+		return Opened{}, ErrEmptyURL
 	}
 	var id string
 	err := s.db.QueryRowContext(ctx, "SELECT id FROM projects WHERE origin_key = ?", key).Scan(&id)
@@ -272,7 +334,7 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 	if name == "" {
 		name = path.Base(key)
 	}
-	if err := checkName(ctx, s.db, name, ""); err != nil {
+	if err := s.checkName(ctx, s.db, name, ""); err != nil {
 		return Opened{}, err
 	}
 	if err := checkDirName(name); err != nil {
@@ -285,8 +347,12 @@ func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Write
 		if err != nil {
 			return Opened{}, err
 		}
-		if ok, err := isCheckout(ctx, dest); err != nil || !ok || git.RepoKey(origin) != key {
-			return Opened{}, cmp.Or(err, fmt.Errorf("%s already exists; choose another --name", dest))
+		ok, err := isCheckout(ctx, dest)
+		if err != nil {
+			return Opened{}, err
+		}
+		if !ok || git.RepoKey(origin) != key {
+			return Opened{}, &PathExistsError{Path: dest}
 		}
 		return s.OpenLocal(ctx, dest, name)
 	}
@@ -305,7 +371,7 @@ func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Op
 	}
 	dest := cmp.Or(p.ClonePath(), filepath.Join(s.projectsDir, p.Name))
 	if _, err := os.Stat(dest); err == nil {
-		return Opened{}, fmt.Errorf("%s already exists", dest)
+		return Opened{}, &PathExistsError{Path: dest}
 	}
 	return s.cloneAndOpen(ctx, p.OriginURL, dest, "", progress)
 }
@@ -317,21 +383,13 @@ func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Op
 // *RepoExistsError.
 func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error) {
 	if name == "" {
-		return Opened{}, errors.New("project name is empty")
+		return Opened{}, &InvalidNameError{Name: name, Reason: "empty"}
 	}
 	if err := checkDirName(name); err != nil {
 		return Opened{}, err
 	}
-	taken, err := queryID(ctx, s.db, "SELECT id FROM projects WHERE name = ?", name)
-	if err != nil {
+	if err := s.checkName(ctx, s.db, name, ""); err != nil {
 		return Opened{}, err
-	}
-	if taken != "" {
-		p, err := s.Get(ctx, taken)
-		if err != nil {
-			return Opened{}, err
-		}
-		return Opened{}, &NameTakenError{Name: name, Project: p}
 	}
 
 	dest, err := filepath.Abs(filepath.Join(cmp.Or(parent, s.projectsDir), name))
@@ -352,7 +410,7 @@ func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error)
 	created := filepath.Join(dest, ".git")
 	if existing == dest {
 		if _, err := os.Lstat(created); err == nil {
-			return Opened{}, fmt.Errorf("%s already exists but is not a git repository", created)
+			return Opened{}, &InvalidPathError{Path: created, Reason: "exists but is not a git repository"}
 		}
 	} else {
 		rel, err := filepath.Rel(existing, dest)
@@ -399,11 +457,12 @@ func existingAncestor(path string) (string, error) {
 		info, err := os.Stat(path)
 		if err == nil {
 			if !info.IsDir() {
-				return "", fmt.Errorf("%s: not a directory", path)
+				return "", &InvalidPathError{Path: path, Reason: "not a directory"}
 			}
 			return path, nil
 		}
-		if !errors.Is(err, os.ErrNotExist) {
+		// ENOTDIR: an ancestor is a file, which the loop reaches and reports.
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
 			return "", err
 		}
 		parent := filepath.Dir(path)
@@ -579,22 +638,24 @@ type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// checkName fails if another project than self already uses name.
-func checkName(ctx context.Context, q queryRower, name, self string) error {
+// checkName returns a *NameTakenError if a project other than self already
+// uses name.
+func (s *Store) checkName(ctx context.Context, q queryRower, name, self string) error {
 	other, err := queryID(ctx, q, "SELECT id FROM projects WHERE name = ? AND id <> ?", name, self)
+	if err != nil || other == "" {
+		return err
+	}
+	p, err := s.Get(ctx, other)
 	if err != nil {
 		return err
 	}
-	if other != "" {
-		return fmt.Errorf("project name %q is already used by project %s; choose another with --name", name, other)
-	}
-	return nil
+	return &NameTakenError{Name: name, Project: p}
 }
 
 // checkDirName fails if name cannot be used as a directory name.
 func checkDirName(name string) error {
 	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-		return fmt.Errorf("project name %q cannot be used as a directory name; choose another with --name", name)
+		return &InvalidNameError{Name: name, Reason: "cannot be used as a directory name"}
 	}
 	return nil
 }
