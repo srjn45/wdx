@@ -41,3 +41,8 @@ func HomeDir() string {
 func DBPath() string {
 	return filepath.Join(HomeDir(), Name+".db")
 }
+
+// ProjectsDir is where projects opened from a git URL are cloned.
+func ProjectsDir() string {
+	return filepath.Join(HomeDir(), "projects")
+}

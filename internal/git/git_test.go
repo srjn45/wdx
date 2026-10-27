@@ -18,10 +18,12 @@ func TestRepoKey(t *testing.T) {
 		}
 	}
 	for url, want := range map[string]string{
-		"":                       "",
-		"/srv/git/repo.git":      "/srv/git/repo",
-		"file:///srv/git/repo":   "/srv/git/repo",
-		"git@github.com:a/b.git": "github.com/a/b",
+		"":                                      "",
+		"/srv/git/repo.git":                     "/srv/git/repo",
+		"file:///srv/git/repo":                  "/srv/git/repo",
+		"git@github.com:a/b.git":                "github.com/a/b",
+		"https://gitlab.com/group/sub/repo.git": "gitlab.com/group/sub/repo",
+		"git@gitlab.com:group/sub/repo.git":     "gitlab.com/group/sub/repo",
 	} {
 		if got := RepoKey(url); got != want {
 			t.Errorf("RepoKey(%q) = %q, want %q", url, got, want)

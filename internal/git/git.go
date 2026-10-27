@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,17 @@ func RemoteURL(ctx context.Context, dir, remote string) (string, error) {
 		return "", err
 	}
 	return out, nil
+}
+
+// Clone clones url into dest, writing git's output to progress. On failure git
+// removes dest.
+func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
+	cmd := exec.CommandContext(ctx, "git", "clone", "--", url, dest)
+	cmd.Stdout, cmd.Stderr = progress, progress
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone %s: %w", url, err)
+	}
+	return nil
 }
 
 // RepoKey normalizes a remote URL so that different spellings of the same

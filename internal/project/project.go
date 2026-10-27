@@ -9,8 +9,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/srjn45/warden/internal/git"
@@ -45,6 +48,37 @@ type Worktree struct {
 	CreatedAt    time.Time
 }
 
+// ClonePath is where the project was first cloned: its earliest checkout that
+// is not a linked worktree.
+func (p Project) ClonePath() string {
+	for _, w := range p.Worktrees {
+		if w.GitCommonDir == filepath.Join(w.Path, ".git") {
+			return w.Path
+		}
+	}
+	if len(p.Worktrees) > 0 {
+		return p.Worktrees[0].Path
+	}
+	return ""
+}
+
+// Opened is the result of opening a project.
+type Opened struct {
+	Project
+	Cloned  bool       // the repository was cloned to open it
+	Dropped []Worktree // checkouts no longer on disk, removed from the project
+}
+
+// CheckoutMissingError is returned when none of a known project's checkouts
+// exist on disk anymore. Reclone or Remove resolves it.
+type CheckoutMissingError struct {
+	Project Project
+}
+
+func (e *CheckoutMissingError) Error() string {
+	return fmt.Sprintf("project %s: no checkout found on disk", e.Project.Name)
+}
+
 // ErrNotGitRepo is returned when opening a directory that is not a git repository.
 var ErrNotGitRepo = errors.New("can only work with git projects use " + identity.Name + " init")
 
@@ -53,95 +87,101 @@ var ErrNotFound = errors.New("project not found")
 
 // Store persists projects.
 type Store struct {
-	db *sql.DB
+	db          *sql.DB
+	projectsDir string
 }
 
-// NewStore returns a Store backed by db.
-func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+// NewStore returns a Store backed by db that clones projects into projectsDir.
+func NewStore(db *sql.DB, projectsDir string) *Store {
+	return &Store{db: db, projectsDir: projectsDir}
 }
 
 // OpenLocal opens the git repository containing path; a path inside a repo
 // resolves to its work tree root. The work tree joins an existing project when
 // it is a worktree of a known clone or a clone of a known origin; otherwise a
-// new project is created. Opening is idempotent.
+// new project is created. Checkouts of a known project that are no longer on
+// disk are dropped. Opening is idempotent.
 //
 // name names the project; when empty, a new project is named after its work
 // tree directory and a known project keeps its name. Names are unique.
-func (s *Store) OpenLocal(ctx context.Context, path, name string) (Project, error) {
+func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Project{}, fmt.Errorf("%s: no such directory", abs)
+			return Opened{}, fmt.Errorf("%s: no such directory", abs)
 		}
-		return Project{}, err
+		return Opened{}, err
 	}
 	if !info.IsDir() {
-		return Project{}, fmt.Errorf("%s: not a directory", abs)
+		return Opened{}, fmt.Errorf("%s: not a directory", abs)
 	}
 
 	root, err := git.TopLevel(ctx, abs)
 	if errors.Is(err, git.ErrNotRepo) {
-		return Project{}, ErrNotGitRepo
+		return Opened{}, ErrNotGitRepo
 	}
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	commonDir, err := git.CommonDir(ctx, root)
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	origin, err := git.RemoteURL(ctx, root, "origin")
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	key := git.RepoKey(origin)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	defer tx.Rollback()
 
 	byClone, err := queryID(ctx, tx, "SELECT project_id FROM project_worktrees WHERE git_common_dir = ? LIMIT 1", commonDir)
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	byOrigin, err := queryID(ctx, tx, "SELECT id FROM projects WHERE origin_key = ?", key)
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	if byClone != "" && byOrigin != "" && byClone != byOrigin {
-		return Project{}, fmt.Errorf("%s is a worktree of project %s but its origin %s belongs to project %s", root, byClone, origin, byOrigin)
+		return Opened{}, fmt.Errorf("%s is a worktree of project %s but its origin %s belongs to project %s", root, byClone, origin, byOrigin)
 	}
 	id := cmp.Or(byClone, byOrigin)
 	now := time.Now().UnixMilli()
+	var dropped []Worktree
 
 	if id == "" {
 		if name == "" {
 			name = filepath.Base(root)
 		}
 		if err := checkName(ctx, tx, name, ""); err != nil {
-			return Project{}, err
+			return Opened{}, err
 		}
 		if id, err = newID("proj"); err != nil {
-			return Project{}, err
+			return Opened{}, err
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO projects (id, name, origin_url, origin_key, state, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			id, name, nullable(origin), nullable(key), StateOpen, now, now); err != nil {
-			return Project{}, err
+			return Opened{}, err
 		}
 	} else {
 		if name != "" {
 			if err := checkName(ctx, tx, name, id); err != nil {
-				return Project{}, err
+				return Opened{}, err
 			}
+		}
+		if dropped, err = dropMissing(ctx, tx, id); err != nil {
+			return Opened{}, err
 		}
 		// Keep the stored origin when this checkout has none; another clone may.
 		if _, err := tx.ExecContext(ctx, `
@@ -153,14 +193,14 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Project, erro
 				updated_at = ?
 			WHERE id = ?`,
 			nullable(name), nullable(origin), nullable(key), StateOpen, now, id); err != nil {
-			return Project{}, err
+			return Opened{}, err
 		}
 	}
 
 	// A known path is re-pointed, in case it was deleted and re-cloned.
 	wtID, err := newID("wt")
 	if err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO project_worktrees (id, project_id, path, git_common_dir, created_at)
@@ -169,12 +209,104 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Project, erro
 			project_id     = excluded.project_id,
 			git_common_dir = excluded.git_common_dir`,
 		wtID, id, root, commonDir, now); err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return Project{}, err
+		return Opened{}, err
 	}
-	return s.Get(ctx, id)
+	p, err := s.Get(ctx, id)
+	return Opened{Project: p, Dropped: dropped}, err
+}
+
+// OpenGit opens the project whose origin is url. A known project is opened
+// from one of its checkouts; if none is left on disk, a *CheckoutMissingError
+// is returned. An unknown repository is cloned into the projects directory,
+// writing git's output to progress, and opened from there.
+//
+// name names the project as in OpenLocal; when empty, a new project is named
+// after the last element of the URL path.
+func (s *Store) OpenGit(ctx context.Context, url, name string, progress io.Writer) (Opened, error) {
+	key := git.RepoKey(url)
+	if key == "" {
+		return Opened{}, errors.New("git URL is empty")
+	}
+	var id string
+	err := s.db.QueryRowContext(ctx, "SELECT id FROM projects WHERE origin_key = ?", key).Scan(&id)
+	if err == nil {
+		return s.openKnown(ctx, id, name)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Opened{}, err
+	}
+
+	if name == "" {
+		name = path.Base(key)
+	}
+	if err := checkName(ctx, s.db, name, ""); err != nil {
+		return Opened{}, err
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return Opened{}, fmt.Errorf("project name %q cannot be used as a directory name; choose another with --name", name)
+	}
+	dest := filepath.Join(s.projectsDir, name)
+	if _, err := os.Stat(dest); err == nil {
+		// Left behind by a removed project: reuse it if it is the same repository.
+		origin, err := git.RemoteURL(ctx, dest, "origin")
+		if err != nil {
+			return Opened{}, err
+		}
+		if ok, err := isCheckout(ctx, dest); err != nil || !ok || git.RepoKey(origin) != key {
+			return Opened{}, cmp.Or(err, fmt.Errorf("%s already exists; choose another --name", dest))
+		}
+		return s.OpenLocal(ctx, dest, name)
+	}
+	return s.cloneAndOpen(ctx, url, dest, name, progress)
+}
+
+// Reclone clones the project whose id or name is ref back into its clone path,
+// for when none of its checkouts are left on disk.
+func (s *Store) Reclone(ctx context.Context, ref string, progress io.Writer) (Opened, error) {
+	p, err := s.Get(ctx, ref)
+	if err != nil {
+		return Opened{}, err
+	}
+	if p.OriginURL == "" {
+		return Opened{}, fmt.Errorf("project %s has no origin to clone from", p.Name)
+	}
+	dest := cmp.Or(p.ClonePath(), filepath.Join(s.projectsDir, p.Name))
+	if _, err := os.Stat(dest); err == nil {
+		return Opened{}, fmt.Errorf("%s already exists", dest)
+	}
+	return s.cloneAndOpen(ctx, p.OriginURL, dest, "", progress)
+}
+
+func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) {
+	p, err := s.Get(ctx, id)
+	if err != nil {
+		return Opened{}, err
+	}
+	for _, w := range p.Worktrees {
+		ok, err := isCheckout(ctx, w.Path)
+		if err != nil {
+			return Opened{}, err
+		}
+		if ok {
+			return s.OpenLocal(ctx, w.Path, name)
+		}
+	}
+	return Opened{}, &CheckoutMissingError{Project: p}
+}
+
+func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progress io.Writer) (Opened, error) {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return Opened{}, err
+	}
+	if err := git.Clone(ctx, url, dest, progress); err != nil {
+		return Opened{}, err
+	}
+	o, err := s.OpenLocal(ctx, dest, name)
+	o.Cloned = err == nil
+	return o, err
 }
 
 // Get returns the project whose id or name is ref. An id match wins.
@@ -240,9 +372,72 @@ func (s *Store) Remove(ctx context.Context, ref string) (Project, error) {
 	return p, nil
 }
 
+// dropMissing deletes the project's checkouts that are no longer on disk and
+// returns them.
+func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, path, git_common_dir, created_at FROM project_worktrees
+		WHERE project_id = ? ORDER BY created_at, path`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var all []Worktree
+	for rows.Next() {
+		var w Worktree
+		var created int64
+		if err := rows.Scan(&w.ID, &w.Path, &w.GitCommonDir, &created); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		w.CreatedAt = time.UnixMilli(created)
+		all = append(all, w)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var dropped []Worktree
+	for _, w := range all {
+		ok, err := isCheckout(ctx, w.Path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM project_worktrees WHERE id = ?", w.ID); err != nil {
+			return nil, err
+		}
+		dropped = append(dropped, w)
+	}
+	return dropped, nil
+}
+
+// isCheckout reports whether path is still the root of a git work tree.
+func isCheckout(ctx context.Context, path string) (bool, error) {
+	root, err := git.TopLevel(ctx, path)
+	if errors.Is(err, git.ErrNotRepo) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false, err
+	}
+	return root == real, nil
+}
+
+// queryRower is satisfied by *sql.DB and *sql.Tx.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // checkName fails if another project than self already uses name.
-func checkName(ctx context.Context, tx *sql.Tx, name, self string) error {
-	other, err := queryID(ctx, tx, "SELECT id FROM projects WHERE name = ? AND id <> ?", name, self)
+func checkName(ctx context.Context, q queryRower, name, self string) error {
+	other, err := queryID(ctx, q, "SELECT id FROM projects WHERE name = ? AND id <> ?", name, self)
 	if err != nil {
 		return err
 	}
@@ -253,9 +448,9 @@ func checkName(ctx context.Context, tx *sql.Tx, name, self string) error {
 }
 
 // queryID returns the single string column of the first row, or "" if none.
-func queryID(ctx context.Context, tx *sql.Tx, query string, args ...any) (string, error) {
+func queryID(ctx context.Context, q queryRower, query string, args ...any) (string, error) {
 	var id string
-	err := tx.QueryRowContext(ctx, query, args...).Scan(&id)
+	err := q.QueryRowContext(ctx, query, args...).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}

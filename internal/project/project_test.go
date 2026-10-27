@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +20,7 @@ func newStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	return NewStore(d)
+	return NewStore(d, filepath.Join(realPath(t, t.TempDir()), "projects"))
 }
 
 // gitRepo creates a git repo named name; origin is added when non-empty.
@@ -37,6 +38,16 @@ func gitRepo(t *testing.T, name, origin string) string {
 }
 
 // worktree adds a linked worktree of repo and returns its path.
+// bareRemote creates a bare repository with one commit to clone from.
+func bareRemote(t *testing.T, name string) string {
+	t.Helper()
+	src := gitRepo(t, name, "")
+	gitCmd(t, src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	bare := filepath.Join(realPath(t, t.TempDir()), name+".git")
+	gitCmd(t, src, "clone", "-q", "--bare", src, bare)
+	return bare
+}
+
 func worktree(t *testing.T, repo string) string {
 	t.Helper()
 	gitCmd(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
@@ -72,11 +83,20 @@ func paths(p Project) []string {
 
 func open(t *testing.T, s *Store, path, name string) Project {
 	t.Helper()
-	p, err := s.OpenLocal(context.Background(), path, name)
+	o, err := s.OpenLocal(context.Background(), path, name)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	return p
+	return o.Project
+}
+
+func openGit(t *testing.T, s *Store, url, name string) Opened {
+	t.Helper()
+	o, err := s.OpenGit(context.Background(), url, name, io.Discard)
+	if err != nil {
+		t.Fatalf("open --git %s: %v", url, err)
+	}
+	return o
 }
 
 func countRows(t *testing.T, s *Store, table string) int {
@@ -299,5 +319,182 @@ func TestRemoveNotFound(t *testing.T) {
 	_, err := newStore(t).Remove(context.Background(), "nope")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
+	s := newStore(t)
+	repo := gitRepo(t, "myrepo", "")
+	wt := worktree(t, repo)
+	open(t, s, repo, "")
+	open(t, s, wt, "")
+
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	o, err := s.OpenLocal(context.Background(), repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(o.Dropped) != 1 || o.Dropped[0].Path != wt {
+		t.Fatalf("want %s dropped, got %+v", wt, o.Dropped)
+	}
+	if got := paths(o.Project); len(got) != 1 || got[0] != repo {
+		t.Fatalf("want only %s left, got %v", repo, got)
+	}
+}
+
+func TestOpenLocalNewCloneReplacesDeletedOne(t *testing.T) {
+	s := newStore(t)
+	old := gitRepo(t, "app", "git@github.com:me/app.git")
+	p := open(t, s, old, "")
+	if err := os.RemoveAll(old); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := gitRepo(t, "app2", "https://github.com/me/app")
+	o, err := s.OpenLocal(context.Background(), clone, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.ID != p.ID || len(o.Dropped) != 1 || o.Dropped[0].Path != old {
+		t.Fatalf("want project %s with %s dropped, got %+v", p.ID, old, o)
+	}
+	if got := paths(o.Project); len(got) != 1 || got[0] != clone {
+		t.Fatalf("want only %s left, got %v", clone, got)
+	}
+}
+
+func TestOpenGitClones(t *testing.T) {
+	s := newStore(t)
+	remote := bareRemote(t, "app")
+
+	o := openGit(t, s, remote, "")
+	want := filepath.Join(s.projectsDir, "app")
+	if !o.Cloned || o.Name != "app" || o.OriginURL != remote {
+		t.Fatalf("unexpected project: %+v", o)
+	}
+	if got := paths(o.Project); len(got) != 1 || got[0] != want {
+		t.Fatalf("want checkout %s, got %v", want, got)
+	}
+}
+
+func TestOpenGitOpensKnownProject(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gitRepo(t, "app", "git@gitlab.com:group/sub/app.git")
+	p := open(t, s, repo, "")
+	if _, err := s.Close(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	o := openGit(t, s, "https://gitlab.com/group/sub/app", "")
+	if o.Cloned || o.ID != p.ID || o.State != StateOpen {
+		t.Fatalf("want project %s reopened without cloning, got %+v", p.ID, o)
+	}
+	if _, err := os.Stat(s.projectsDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nothing should be cloned, stat %s: %v", s.projectsDir, err)
+	}
+}
+
+func TestOpenGitReusesLeftoverClone(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	remote := bareRemote(t, "app")
+	p := openGit(t, s, remote, "")
+	if _, err := s.Remove(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	o := openGit(t, s, remote, "")
+	if o.Cloned || o.ID == p.ID || paths(o.Project)[0] != paths(p.Project)[0] {
+		t.Fatalf("want new project on the existing clone, got %+v", o)
+	}
+}
+
+func TestOpenGitDirectoryTaken(t *testing.T) {
+	s := newStore(t)
+	if err := os.MkdirAll(filepath.Join(s.projectsDir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--name") {
+		t.Fatalf("want directory taken error, got %v", err)
+	}
+	if o := openGit(t, s, bareRemote(t, "app"), "app-2"); o.Name != "app-2" {
+		t.Fatalf("want name app-2, got %q", o.Name)
+	}
+}
+
+func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
+	s := newStore(t)
+	open(t, s, gitRepo(t, "app", ""), "")
+
+	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--name") {
+		t.Fatalf("want name collision error, got %v", err)
+	}
+	if _, err := os.Stat(s.projectsDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nothing should be cloned, stat %s: %v", s.projectsDir, err)
+	}
+}
+
+func TestOpenGitRejectsPathAsName(t *testing.T) {
+	_, err := newStore(t).OpenGit(context.Background(), bareRemote(t, "app"), "../app", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "directory name") {
+		t.Fatalf("want invalid name error, got %v", err)
+	}
+}
+
+func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
+	s := newStore(t)
+	missing := filepath.Join(t.TempDir(), "nope.git")
+
+	if _, err := s.OpenGit(context.Background(), missing, "", io.Discard); err == nil {
+		t.Fatal("want clone error")
+	}
+	if n := countRows(t, s, "projects"); n != 0 {
+		t.Fatalf("want no projects, got %d", n)
+	}
+	if _, err := os.Stat(filepath.Join(s.projectsDir, "nope")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want no leftover directory, got %v", err)
+	}
+}
+
+func TestOpenGitCheckoutMissingThenReclone(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	remote := bareRemote(t, "app")
+	p := openGit(t, s, remote, "")
+	dest := paths(p.Project)[0]
+	if err := os.RemoveAll(dest); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.OpenGit(ctx, remote, "", io.Discard)
+	missing, ok := errors.AsType[*CheckoutMissingError](err)
+	if !ok || missing.Project.ID != p.ID || missing.Project.ClonePath() != dest {
+		t.Fatalf("want CheckoutMissingError for %s, got %v", p.ID, err)
+	}
+
+	o, err := s.Reclone(ctx, p.ID, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o.Cloned || o.ID != p.ID || len(o.Worktrees) != 1 || o.Worktrees[0].Path != dest {
+		t.Fatalf("want %s cloned back into %s, got %+v", p.ID, dest, o)
+	}
+}
+
+func TestClonePathSkipsLinkedWorktrees(t *testing.T) {
+	repo := gitRepo(t, "myrepo", "")
+	wt := worktree(t, repo)
+	s := newStore(t)
+	open(t, s, wt, "")
+	p := open(t, s, repo, "")
+
+	if got := p.ClonePath(); got != repo {
+		t.Fatalf("ClonePath() = %s, want %s", got, repo)
 	}
 }
