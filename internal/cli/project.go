@@ -13,12 +13,12 @@ import (
 	"github.com/srjn45/warden/internal/project"
 )
 
-func newProjectCmd() *cobra.Command {
+func newProjectCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects",
 	}
-	cmd.AddCommand(newProjectCreateCmd(), newProjectOpenCmd(), newProjectCloseCmd(), newProjectRemoveCmd())
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
 	return cmd
 }
 
@@ -27,27 +27,27 @@ type createOptions struct {
 	openOnConflict, cancelOnConflict bool
 }
 
-func newProjectCreateCmd() *cobra.Command {
+func newProjectCreateCmd(home string) *cobra.Command {
 	var opts createOptions
 	cmd := &cobra.Command{
 		Use:   "create --name <name> [--path <dir>]",
 		Short: "Create a project in a new git repository",
 		Long: "Create an empty git repository at <dir>/<name> and open it as a project.\n" +
-			"<dir> defaults to " + identity.ProjectsDir() + ". An existing directory that\n" +
+			"<dir> defaults to " + identity.ProjectsDir(home) + ". An existing directory that\n" +
 			"is not in a git repository is initialized in place.\n\n" +
 			"If the name is taken or the directory is in a git repository, you are\n" +
 			"asked to open that project, try another name or cancel; --open and\n" +
 			"--cancel answer in advance. Every failure starts with \"not created:\".",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := runCreate(cmd, opts); err != nil {
+			if err := runCreate(cmd, home, opts); err != nil {
 				return fmt.Errorf("not created: %w", err)
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "project name, also the repository directory name")
-	cmd.Flags().StringVar(&opts.parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir()+")")
+	cmd.Flags().StringVar(&opts.parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir(home)+")")
 	cmd.Flags().BoolVar(&opts.openOnConflict, "open", false, "on a conflict, open the existing project without asking")
 	cmd.Flags().BoolVar(&opts.cancelOnConflict, "cancel", false, "on a conflict, create nothing without asking")
 	cmd.MarkFlagRequired("name")
@@ -55,15 +55,15 @@ func newProjectCreateCmd() *cobra.Command {
 	return cmd
 }
 
-func runCreate(cmd *cobra.Command, opts createOptions) error {
+func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
 	ctx := cmd.Context()
-	d, err := db.Open(ctx, identity.DBPath())
+	d, err := db.Open(ctx, identity.DBPath(home))
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 
-	store := project.NewStore(d, identity.ProjectsDir())
+	store := project.NewStore(d, identity.ProjectsDir(home))
 	answers := bufio.NewScanner(cmd.InOrStdin())
 	for {
 		o, conflict := store.Create(ctx, opts.name, opts.parent)
@@ -126,7 +126,7 @@ func runCreate(cmd *cobra.Command, opts createOptions) error {
 	}
 }
 
-func newProjectOpenCmd() *cobra.Command {
+func newProjectOpenCmd(home string) *cobra.Command {
 	var local, gitURL, name string
 	var reclone, remove bool
 	cmd := &cobra.Command{
@@ -137,7 +137,7 @@ func newProjectOpenCmd() *cobra.Command {
 			"its project. Opening a known project marks it open again and drops its\n" +
 			"checkouts that are no longer on disk.\n\n" +
 			"--git opens the project with that origin, or clones it into\n" +
-			identity.ProjectsDir() + "/<name> if it is unknown. If none of a known\n" +
+			identity.ProjectsDir(home) + "/<name> if it is unknown. If none of a known\n" +
 			"project's checkouts are left, you are asked to clone it again or remove it;\n" +
 			"--reclone and --remove answer in advance.\n\n" +
 			"Projects are named after their root directory or URL unless --name is\n" +
@@ -145,13 +145,13 @@ func newProjectOpenCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath())
+			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
 				return err
 			}
 			defer d.Close()
 
-			store := project.NewStore(d, identity.ProjectsDir())
+			store := project.NewStore(d, identity.ProjectsDir(home))
 			var o project.Opened
 			if local != "" {
 				o, err = store.OpenLocal(ctx, local, name)
@@ -228,20 +228,20 @@ func missingCheckoutHint(p project.Project) string {
 	return fmt.Sprintf("run %s project open --git %s with --reclone or --remove", identity.Name, p.OriginURL)
 }
 
-func newProjectCloseCmd() *cobra.Command {
+func newProjectCloseCmd(home string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "close <name|id>",
 		Short: "Close a project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath())
+			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
 				return err
 			}
 			defer d.Close()
 
-			p, err := project.NewStore(d, identity.ProjectsDir()).Close(ctx, args[0])
+			p, err := project.NewStore(d, identity.ProjectsDir(home)).Close(ctx, args[0])
 			if err != nil {
 				return err
 			}
@@ -251,7 +251,7 @@ func newProjectCloseCmd() *cobra.Command {
 	}
 }
 
-func newProjectRemoveCmd() *cobra.Command {
+func newProjectRemoveCmd(home string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <name|id>",
 		Short: "Delete a project and everything that belongs to it",
@@ -260,13 +260,13 @@ func newProjectRemoveCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath())
+			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
 				return err
 			}
 			defer d.Close()
 
-			p, err := project.NewStore(d, identity.ProjectsDir()).Remove(ctx, args[0])
+			p, err := project.NewStore(d, identity.ProjectsDir(home)).Remove(ctx, args[0])
 			if err != nil {
 				return err
 			}

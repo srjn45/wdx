@@ -26,8 +26,8 @@ func Env(key string) string {
 }
 
 // HomeDir is the root of all state: $WDX_HOME if set, else ~/.wdx.
-func HomeDir() string {
-	if h := os.Getenv(Env("HOME")); h != "" {
+func HomeDir(getenv func(string) string) string {
+	if h := getenv(Env("HOME")); h != "" {
 		return h
 	}
 	home, err := os.UserHomeDir()
@@ -37,12 +37,12 @@ func HomeDir() string {
 	return filepath.Join(home, "."+Name)
 }
 
-// DBPath is the SQLite database file.
-func DBPath() string {
-	return filepath.Join(HomeDir(), Name+".db")
+// DBPath is the SQLite database file under home.
+func DBPath(home string) string {
+	return filepath.Join(home, Name+".db")
 }
 
-// ProjectsDir is where projects opened from a git URL are cloned.
-func ProjectsDir() string {
-	return filepath.Join(HomeDir(), "projects")
+// ProjectsDir is where projects are created and cloned under home.
+func ProjectsDir(home string) string {
+	return filepath.Join(home, "projects")
 }

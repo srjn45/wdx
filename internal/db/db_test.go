@@ -8,6 +8,7 @@ import (
 )
 
 func TestOpenMigratesAndIsIdempotent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "nested", "test.db")
 
@@ -25,6 +26,7 @@ func TestOpenMigratesAndIsIdempotent(t *testing.T) {
 }
 
 func TestOpenRefusesNewerSchema(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "test.db")
 

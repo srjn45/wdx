@@ -11,7 +11,13 @@ import (
 	"testing"
 
 	"github.com/srjn45/warden/internal/db"
+	"github.com/srjn45/warden/internal/gittest"
 )
+
+func TestMain(m *testing.M) {
+	gittest.Isolate()
+	m.Run()
+}
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
@@ -42,7 +48,7 @@ func gitRepo(t *testing.T, name, origin string) string {
 func bareRemote(t *testing.T, name string) string {
 	t.Helper()
 	src := gitRepo(t, name, "")
-	gitCmd(t, src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	gitCmd(t, src, "commit", "-q", "--allow-empty", "-m", "init")
 	bare := filepath.Join(realPath(t, t.TempDir()), name+".git")
 	gitCmd(t, src, "clone", "-q", "--bare", src, bare)
 	return bare
@@ -50,7 +56,7 @@ func bareRemote(t *testing.T, name string) string {
 
 func worktree(t *testing.T, repo string) string {
 	t.Helper()
-	gitCmd(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	gitCmd(t, repo, "commit", "-q", "--allow-empty", "-m", "init")
 	wt := filepath.Join(t.TempDir(), "wt")
 	gitCmd(t, repo, "worktree", "add", "-q", wt)
 	return realPath(t, wt)
@@ -109,6 +115,7 @@ func countRows(t *testing.T, s *Store, table string) int {
 }
 
 func TestOpenLocal(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "git@github.com:me/myrepo.git")
 
@@ -122,6 +129,7 @@ func TestOpenLocal(t *testing.T) {
 }
 
 func TestOpenLocalSubdirResolvesToRoot(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 	sub := filepath.Join(repo, "a", "b")
@@ -136,6 +144,7 @@ func TestOpenLocalSubdirResolvesToRoot(t *testing.T) {
 }
 
 func TestOpenLocalIsIdempotent(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 
@@ -150,6 +159,7 @@ func TestOpenLocalIsIdempotent(t *testing.T) {
 }
 
 func TestOpenLocalReopensClosed(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 
@@ -163,6 +173,7 @@ func TestOpenLocalReopensClosed(t *testing.T) {
 }
 
 func TestWorktreeJoinsProject(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "") // no origin: matched by git common dir
 	wt := worktree(t, repo)
@@ -178,6 +189,7 @@ func TestWorktreeJoinsProject(t *testing.T) {
 }
 
 func TestCloneOfSameOriginJoinsProject(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	a := gitRepo(t, "app", "git@github.com:me/app.git")
 	b := gitRepo(t, "app-copy", "https://github.com/me/app")
@@ -190,6 +202,7 @@ func TestCloneOfSameOriginJoinsProject(t *testing.T) {
 }
 
 func TestOriginAddedLater(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 	p := open(t, s, repo, "")
@@ -214,6 +227,7 @@ func TestOriginAddedLater(t *testing.T) {
 }
 
 func TestOpenLocalNameCollision(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	a, b := gitRepo(t, "api", ""), gitRepo(t, "API", "")
 
@@ -230,6 +244,7 @@ func TestOpenLocalNameCollision(t *testing.T) {
 }
 
 func TestReinitInSamePathKeepsProject(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 	old := open(t, s, repo, "")
@@ -248,6 +263,7 @@ func TestReinitInSamePathKeepsProject(t *testing.T) {
 }
 
 func TestOpenLocalNotGitRepo(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).OpenLocal(context.Background(), t.TempDir(), "")
 	if !errors.Is(err, ErrNotGitRepo) {
 		t.Fatalf("want ErrNotGitRepo, got %v", err)
@@ -255,6 +271,7 @@ func TestOpenLocalNotGitRepo(t *testing.T) {
 }
 
 func TestOpenLocalMissingDir(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).OpenLocal(context.Background(), filepath.Join(t.TempDir(), "nope"), "")
 	if err == nil {
 		t.Fatal("want error for missing directory")
@@ -262,6 +279,7 @@ func TestOpenLocalMissingDir(t *testing.T) {
 }
 
 func TestCloseByNameAndID(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
 	p := open(t, s, gitRepo(t, "MyRepo", ""), "")
@@ -279,6 +297,7 @@ func TestCloseByNameAndID(t *testing.T) {
 }
 
 func TestCloseNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).Close(context.Background(), "nope")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
@@ -286,6 +305,7 @@ func TestCloseNotFound(t *testing.T) {
 }
 
 func TestRemoveDeletesProjectAndWorktrees(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
@@ -316,6 +336,7 @@ func TestRemoveDeletesProjectAndWorktrees(t *testing.T) {
 }
 
 func TestRemoveNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).Remove(context.Background(), "nope")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
@@ -323,6 +344,7 @@ func TestRemoveNotFound(t *testing.T) {
 }
 
 func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
 	wt := worktree(t, repo)
@@ -345,6 +367,7 @@ func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
 }
 
 func TestOpenLocalNewCloneReplacesDeletedOne(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	old := gitRepo(t, "app", "git@github.com:me/app.git")
 	p := open(t, s, old, "")
@@ -366,6 +389,7 @@ func TestOpenLocalNewCloneReplacesDeletedOne(t *testing.T) {
 }
 
 func TestOpenGitClones(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	remote := bareRemote(t, "app")
 
@@ -380,6 +404,7 @@ func TestOpenGitClones(t *testing.T) {
 }
 
 func TestOpenGitOpensKnownProject(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
 	repo := gitRepo(t, "app", "git@gitlab.com:group/sub/app.git")
@@ -398,6 +423,7 @@ func TestOpenGitOpensKnownProject(t *testing.T) {
 }
 
 func TestOpenGitReusesLeftoverClone(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
 	remote := bareRemote(t, "app")
@@ -413,6 +439,7 @@ func TestOpenGitReusesLeftoverClone(t *testing.T) {
 }
 
 func TestOpenGitDirectoryTaken(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	if err := os.MkdirAll(filepath.Join(s.projectsDir, "app"), 0o755); err != nil {
 		t.Fatal(err)
@@ -428,6 +455,7 @@ func TestOpenGitDirectoryTaken(t *testing.T) {
 }
 
 func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	open(t, s, gitRepo(t, "app", ""), "")
 
@@ -441,6 +469,7 @@ func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
 }
 
 func TestOpenGitRejectsPathAsName(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).OpenGit(context.Background(), bareRemote(t, "app"), "../app", io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "directory name") {
 		t.Fatalf("want invalid name error, got %v", err)
@@ -448,6 +477,7 @@ func TestOpenGitRejectsPathAsName(t *testing.T) {
 }
 
 func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	missing := filepath.Join(t.TempDir(), "nope.git")
 
@@ -463,6 +493,7 @@ func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
 }
 
 func TestOpenGitCheckoutMissingThenReclone(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
 	remote := bareRemote(t, "app")
@@ -488,6 +519,7 @@ func TestOpenGitCheckoutMissingThenReclone(t *testing.T) {
 }
 
 func TestClonePathSkipsLinkedWorktrees(t *testing.T) {
+	t.Parallel()
 	repo := gitRepo(t, "myrepo", "")
 	wt := worktree(t, repo)
 	s := newStore(t)
@@ -509,6 +541,7 @@ func create(t *testing.T, s *Store, name, parent string) Project {
 }
 
 func TestCreateInProjectsDir(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	p := create(t, s, "app", "")
 
@@ -522,6 +555,7 @@ func TestCreateInProjectsDir(t *testing.T) {
 }
 
 func TestCreateInPath(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	parent := filepath.Join(realPath(t, t.TempDir()), "a", "b")
 
@@ -531,6 +565,7 @@ func TestCreateInPath(t *testing.T) {
 }
 
 func TestCreateInitsExistingDirectory(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	parent := realPath(t, t.TempDir())
 	file := filepath.Join(parent, "app", "main.go")
@@ -548,6 +583,7 @@ func TestCreateInitsExistingDirectory(t *testing.T) {
 }
 
 func TestCreateNameTaken(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	p := create(t, s, "app", "")
 
@@ -562,6 +598,7 @@ func TestCreateNameTaken(t *testing.T) {
 }
 
 func TestCreateRepoExists(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "app", "")
 
@@ -579,6 +616,7 @@ func TestCreateRepoExists(t *testing.T) {
 }
 
 func TestCreateInsideRepo(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "outer", "")
 
@@ -592,6 +630,7 @@ func TestCreateInsideRepo(t *testing.T) {
 }
 
 func TestCreatePathIsFile(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	file := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
@@ -604,6 +643,7 @@ func TestCreatePathIsFile(t *testing.T) {
 }
 
 func TestCreateRejectsPathAsName(t *testing.T) {
+	t.Parallel()
 	_, err := newStore(t).Create(context.Background(), "../app", "")
 	if err == nil || !strings.Contains(err.Error(), "directory name") {
 		t.Fatalf("want invalid name error, got %v", err)
@@ -618,6 +658,7 @@ func failInserts(t *testing.T, s *Store) {
 }
 
 func TestCreateFailureRemovesCreatedDirectory(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	failInserts(t, s)
 	parent := realPath(t, t.TempDir())
@@ -631,6 +672,7 @@ func TestCreateFailureRemovesCreatedDirectory(t *testing.T) {
 }
 
 func TestCreateFailureKeepsExistingDirectory(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	failInserts(t, s)
 	parent := realPath(t, t.TempDir())

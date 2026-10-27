@@ -8,21 +8,17 @@ import (
 	"io"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
-
-	"github.com/srjn45/warden/internal/identity"
 )
 
 // canPrompt reports whether cmd may ask the user questions: stdin is a
-// terminal and neither --no-input nor $WDX_NO_INPUT forbids it.
+// terminal and --no-input (which $WDX_NO_INPUT defaults) is not set.
 func canPrompt(cmd *cobra.Command) bool {
 	noInput, _ := cmd.Flags().GetBool("no-input")
-	envNoInput, _ := strconv.ParseBool(os.Getenv(identity.Env("NO_INPUT")))
-	return !noInput && !envNoInput && isTerminal(cmd.InOrStdin())
+	return !noInput && isTerminal(cmd.InOrStdin())
 }
 
 func isTerminal(r io.Reader) bool {

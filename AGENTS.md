@@ -37,3 +37,25 @@ internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 - One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file.
 - Migrations live in `internal/db/migrations`, are numbered, and are append-only: never edit a committed migration.
 - Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE, user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
+
+## CLI conventions
+
+Every command serves both humans and scripts or AIs.
+
+- Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `WDX_NO_INPUT=1`), fail when the question comes up, with a hint naming the flags.
+- Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else:
+  - success: `{"ok": true, "action": "created", "project": {...}}`, with the key named after the entity and command-specific extras such as `dropped`;
+  - failure: `{"ok": false, "error": {"code": "name_taken", "message": "...", "hint": "...", "details": {"project": {...}}}}`.
+- `action` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`.
+- JSON keys are snake_case, absent values are `null`, timestamps are RFC 3339. Leave internal fields out: everything in the JSON is a contract.
+- Text mode prints results to stdout and errors to stderr; the first line says what happened.
+- Exit codes: 0 ok, 1 rejected (conflict, not found, cancelled), 2 usage, 3 system failure.
+- The domain returns typed errors and knows nothing about output. `internal/cli/output.go` owns the error codes, maps errors to them and renders both formats from one response value. Hints are added by the cli, not written into domain messages.
+
+## Testing
+
+- Every command has integration tests that call `cli.Run` with `--json` and a temp `WDX_HOME`: one test per outcome, asserting `ok`, `action` or `error.code`, and the exit code. Domain edge cases stay in domain tests; text output gets one smoke test per command.
+- Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared globals; pass the environment in through `cli.Env`.
+- All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports.
+- git runs with the user's config ignored (set in each package's `TestMain`).
+- Run tests with `make test` (race detector, shuffled order).

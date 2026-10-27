@@ -3,6 +3,7 @@ package git
 import "testing"
 
 func TestRepoKey(t *testing.T) {
+	t.Parallel()
 	const want = "github.com/srjn45/warden"
 	for _, url := range []string{
 		"git@github.com:srjn45/warden.git",
