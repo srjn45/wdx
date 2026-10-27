@@ -17,6 +17,7 @@ func NewRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.PersistentFlags().Bool("no-input", false, "never prompt; fail where a question would be asked (or set "+identity.Env("NO_INPUT")+"=1)")
 	root.AddCommand(newVersionCmd(), newProjectCmd())
 	return root
 }
