@@ -1,0 +1,10 @@
+package: api
+output: api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  client: true
+  embedded-spec: true
+compatibility:
+  always-prefix-enum-values: true

@@ -167,6 +167,9 @@ func (e *ProjectMismatchError) Error() string {
 		e.Root, e.ByClone.Name, e.Origin, e.ByOrigin.Name)
 }
 
+// ErrNoOrigin is returned when recloning a project that has no origin.
+var ErrNoOrigin = errors.New("project has no origin to clone from")
+
 // ErrEmptyURL is returned when opening an empty git URL.
 var ErrEmptyURL = errors.New("git URL is empty")
 
@@ -389,7 +392,7 @@ func (s *Store) Reclone(ctx context.Context, id string, progress io.Writer) (Ope
 		return Opened{}, err
 	}
 	if p.OriginURL == "" {
-		return Opened{}, fmt.Errorf("project %s has no origin to clone from", p.Name)
+		return Opened{}, fmt.Errorf("%w: %s", ErrNoOrigin, p.Name)
 	}
 	dest := cmp.Or(p.ClonePath(), filepath.Join(s.projectsDir, p.Name))
 	if _, err := os.Stat(dest); err == nil {

@@ -159,7 +159,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 - [ ] P2 In-browser attach terminal (xterm.js over WebSocket)
 - [ ] P2 Pipelines tab with live DAG; terminals tab; context and messages; archive
 - [ ] P2 Spawn modal; bulk actions; activity feed; keyboard shortcuts
-- [ ] P2 REST API docs (OpenAPI)
+- [x] P2 REST API docs (OpenAPI): `api/openapi.yaml`, the source the server and client are generated from
 - [ ] ? Remote access (LAN / Tailscale / Cloudflare tunnel) with bearer tokens (incl. read-only)
 - [ ] ? Docker / container deployment
 

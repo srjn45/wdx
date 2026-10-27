@@ -29,6 +29,17 @@ func ConfigPath(home string) string {
 	return filepath.Join(home, "config.yaml")
 }
 
+// SocketPath is the Unix socket the daemon listens on under home.
+func SocketPath(home string) string {
+	return filepath.Join(home, Name+".sock")
+}
+
+// LockPath is the file the running daemon holds locked under home; it holds
+// the daemon's pid.
+func LockPath(home string) string {
+	return filepath.Join(home, "daemon.lock")
+}
+
 // DBPath is the SQLite database file under home.
 func DBPath(home string) string {
 	return filepath.Join(home, Name+".db")

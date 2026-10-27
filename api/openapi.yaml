@@ -1,0 +1,347 @@
+openapi: 3.0.3
+info:
+  title: wdx daemon API
+  version: v1
+  description: |
+    The API of the wdx daemon, served over the Unix socket <home>/wdx.sock.
+
+    A request may send a Wdx-Debug-Id header (dbg- and 12 hex digits) to have
+    the daemon log it under that id; the response echoes the id the request
+    was logged under.
+
+    Errors are Problem Details (RFC 9457) with a stable "code"; each
+    operation lists the codes it can return besides usage and internal.
+paths:
+  /v1/version:
+    get:
+      operationId: getVersion
+      summary: Version of the daemon
+      responses:
+        "200":
+          description: The name, version and commit the daemon was built from.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Version" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/projects:
+    get:
+      operationId: listProjects
+      summary: List projects, without their worktrees, sorted by name
+      parameters:
+        - name: state
+          in: query
+          description: Only projects in this state; every project when absent.
+          schema: { $ref: "#/components/schemas/ProjectState" }
+      responses:
+        "200":
+          description: The projects.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createProject
+      summary: Create a project or open a git repository as one
+      description: |
+        source.type picks what happens:
+        - new: create an empty git repository at <path>/<name> (path defaults
+          to <home>/projects) and open it. An existing directory that is not
+          in a git repository is initialized in place. When the name is taken
+          or the directory is in a git repository, on_conflict "open" opens
+          that project instead and returns the conflict under "conflict";
+          without it the conflict is returned as the error.
+        - local: open the repository holding path. Worktrees and other clones
+          of a known repository join its project.
+        - git: open the project with that origin, or clone it into
+          <home>/projects/<name> if it is unknown.
+
+        Opening a known project marks it open and drops its checkouts no
+        longer on disk. When none is left, on_missing_checkout "reclone"
+        clones it again and "remove" removes it; without it checkout_missing
+        is returned.
+
+        Errors: checkout_missing, clone_failed, invalid_argument,
+        invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
+        project_mismatch, repo_exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProject" }
+      responses:
+        "200":
+          description: An existing project was opened, or removed by on_missing_checkout.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectResult" }
+        "201":
+          description: A project was created, registered or cloned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/projects/{project}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: getProject
+      summary: A project, open or closed, with which of its checkouts are on disk
+      description: "Errors: not_found."
+      responses:
+        "200":
+          description: The project, with "present" on each worktree and "orphaned" set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateProject
+      summary: Close a project, or open it again from one of its checkouts
+      description: |
+        Closing touches nothing on disk. Opening drops the checkouts no longer
+        on disk; when none is left, checkout_missing is returned.
+
+        Errors: checkout_missing, not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProject" }
+      responses:
+        "200":
+          description: The project, with result closed or opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteProject
+      summary: Delete a project and everything that belongs to it
+      description: |
+        Files on disk are not touched.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The removed project, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/projects/{project}/worktrees:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    post:
+      operationId: recloneProject
+      summary: Clone a project with no checkout left back into its clone path
+      description: "Errors: clone_failed, invalid_argument, not_found, path_exists."
+      responses:
+        "201":
+          description: The project, with result cloned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+components:
+  parameters:
+    ProjectRef:
+      name: project
+      in: path
+      required: true
+      description: The project's name (case-insensitive), or "id:" and its id, as in id:proj-1a2b3c4d.
+      schema: { type: string, minLength: 1 }
+
+  responses:
+    Problem:
+      description: The request failed.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Version:
+      type: object
+      required: [name, version, commit]
+      properties:
+        name: { type: string }
+        version: { type: string }
+        commit: { type: string }
+
+    ProjectState:
+      type: string
+      enum: [open, closed]
+
+    Result:
+      type: string
+      description: The most significant thing that happened.
+      enum: [created, registered, cloned, opened, closed, removed]
+
+    Worktree:
+      type: object
+      required: [id, path, created_at]
+      properties:
+        id: { type: string }
+        path: { type: string }
+        present:
+          type: boolean
+          description: Whether the checkout is on disk; set by getProject only.
+        created_at: { type: string, format: date-time }
+
+    Project:
+      type: object
+      required: [id, name, origin, state, worktrees, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        origin: { type: string, nullable: true }
+        state: { $ref: "#/components/schemas/ProjectState" }
+        orphaned:
+          type: boolean
+          description: Whether none of the checkouts is on disk; set by getProject only.
+        worktrees:
+          type: array
+          items: { $ref: "#/components/schemas/Worktree" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectSummary:
+      type: object
+      required: [id, name, origin, state, worktree_count, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        origin: { type: string, nullable: true }
+        state: { $ref: "#/components/schemas/ProjectState" }
+        worktree_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectList:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectSummary" }
+
+    ProjectEnvelope:
+      type: object
+      required: [project]
+      properties:
+        project: { $ref: "#/components/schemas/Project" }
+
+    ProjectResult:
+      type: object
+      required: [result, project]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        project: { $ref: "#/components/schemas/Project" }
+        dropped:
+          type: array
+          description: The checkouts dropped because they are no longer on disk.
+          items: { $ref: "#/components/schemas/Worktree" }
+        conflict:
+          $ref: "#/components/schemas/Problem"
+
+    CreateProject:
+      type: object
+      required: [source]
+      additionalProperties: false
+      properties:
+        source: { $ref: "#/components/schemas/Source" }
+        name:
+          type: string
+          description: Required for source new; otherwise the repository directory or URL name by default.
+        on_conflict:
+          type: string
+          enum: [open, cancel]
+        on_missing_checkout:
+          type: string
+          enum: [reclone, remove]
+
+    Source:
+      oneOf:
+        - $ref: "#/components/schemas/NewSource"
+        - $ref: "#/components/schemas/LocalSource"
+        - $ref: "#/components/schemas/GitSource"
+      discriminator:
+        propertyName: type
+        mapping:
+          new: "#/components/schemas/NewSource"
+          local: "#/components/schemas/LocalSource"
+          git: "#/components/schemas/GitSource"
+
+    NewSource:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [new] }
+        path:
+          type: string
+          description: Absolute directory to create the repository in; <home>/projects by default.
+
+    LocalSource:
+      type: object
+      required: [type, path]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [local] }
+        path:
+          type: string
+          description: Absolute path in a git repository.
+
+    GitSource:
+      type: object
+      required: [type, url]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [git] }
+        url: { type: string, description: Clone URL. }
+
+    UpdateProject:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state: { $ref: "#/components/schemas/ProjectState" }
+
+    ErrorCode:
+      type: string
+      description: Stable error code; never changed or reused.
+      enum:
+        - usage
+        - internal
+        - not_found
+        - name_taken
+        - repo_exists
+        - checkout_missing
+        - not_git_repo
+        - invalid_name
+        - invalid_path
+        - invalid_argument
+        - path_exists
+        - project_mismatch
+        - clone_failed
+
+    Problem:
+      type: object
+      description: An error as Problem Details (RFC 9457).
+      required: [type, title, status, detail, code, hint, details, debug_id]
+      properties:
+        type: { type: string, description: "urn:wdx:error: and the code." }
+        title: { type: string, description: What the code means. }
+        status: { type: integer }
+        detail: { type: string, description: What went wrong this time. }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        hint: { type: string, nullable: true, description: What to do about it. }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: The values involved, such as the conflicting project.
+        debug_id: { type: string, description: Finds the request's log lines. }

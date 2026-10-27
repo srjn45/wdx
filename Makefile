@@ -7,11 +7,15 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 PKG     := github.com/srjn45/warden/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build test dist install uninstall clean
+.PHONY: build generate test dist install uninstall clean
 
 # Build for this machine only.
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/wdx ./cmd/wdx
+
+# Regenerate internal/api from api/openapi.yaml.
+generate:
+	go generate ./...
 
 # Run every test in parallel, with the race detector and in shuffled order.
 test:

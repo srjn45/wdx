@@ -20,8 +20,11 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 warden manages AI CLI agents in PTYs, plus projects, messaging, a TUI and later pipelines. The CLI is `wdx`.
 
 ```
+api/openapi.yaml   the API contract; everything in internal/api is generated from it
 cmd/wdx/        entry point
+internal/api/   generated types, server interface and client, plus the error codes
 internal/cli/   cobra commands: parse args and print, no business logic
+internal/daemon/   serves the API over the Unix socket on top of the domain
 internal/config/   the settings, loaded once at startup from their sources
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
@@ -29,7 +32,7 @@ internal/logging/  JSON-line logs in daily files; the logger travels in the cont
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> domain -> db/git. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> daemon -> domain -> db/git; cli and daemon share api. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -39,6 +42,15 @@ internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 - One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file.
 - Migrations live in `internal/db/migrations`, are numbered, and are append-only: never edit a committed migration.
 - Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE, user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
+
+## API
+
+- The spec comes first: change `api/openapi.yaml`, then run `make generate`. Never edit `api.gen.go`; a test fails when it is stale.
+- Resources are plural nouns under `/v1`, with standard methods and statuses: 201 when something was created, 409 for a conflict, 422 for a value that cannot be used, 400 for a request the spec does not allow.
+- A `{project}` in a path is its name, or `id:` and its id; names cannot contain `:`.
+- Paths in requests are absolute: the daemon's working directory means nothing to a client.
+- Errors are Problem Details (`application/problem+json`) with a stable `code` from the `ErrorCode` enum. `internal/api/codes.go` gives each code its HTTP status, CLI exit code and description; the daemon maps domain errors to codes in one place.
+- Requests are validated against the spec before a handler runs. Requests that change anything run one at a time.
 
 ## CLI conventions
 
@@ -71,6 +83,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 
 - Get the logger with `logging.FromContext(ctx)`; it already carries the run's `debug_id`. Never use slog's default logger or a global, and pass `ctx` to every goroutine so its lines keep the id.
 - `cli.Run` logs `command received` (raw args and settings), `command started` (resolved command and every flag) and `command returned` (exit, outcome and the exact response). Failures are logged there at error level; don't log the same error again on its way up.
+- The daemon logs `request received` and `request returned` (status and the exact response) for every request, under the debug id the client sent in `Wdx-Debug-Id`, so one id traces a command through both processes.
 - Log each step where it happens, at info: lookups and what they matched, decisions and their reason, every change to the database or disk, git commands, and how each question was answered. At error level, log what a failure knows that its returned error does not (git's stderr, a failed cleanup).
 - Debug is for detail: SQL with arguments, git output.
 - Messages are short lowercase statements of what happened (`project registered`); keys are snake_case and reused (`project_id`, `path`, `name`, `duration_ms`, `err`).
@@ -83,6 +96,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - A command fails the tests when it returns an action or error code its help does not list, and `TestCommandDocs` checks every command's help is complete; keep both in sync rather than loosening them.
 - Every command has integration tests that call `cli.Run` with `--json` and a temp `WDX_HOME`: one test per outcome, asserting `ok`, `action` or `error.code`, and the exit code. Domain edge cases stay in domain tests; text output gets one smoke test per command.
 - Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared globals; build settings with `config.Default()` and pass them in through `cli.Env`.
-- All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports.
+- All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports. Unix sockets are the one exception: they go in a fresh directory under `/tmp`, since a path under `t.TempDir()` can exceed the 104 bytes macOS allows.
+- Daemon tests run an in-process daemon and call it through the generated client, checking every request is logged from received to returned.
 - git runs with the user's config ignored (set in each package's `TestMain`).
 - Run tests with `make test` (race detector, shuffled order).

@@ -67,6 +67,14 @@ func NewDebugID() string {
 	return "dbg-" + hex.EncodeToString(b)
 }
 
+var debugIDPattern = regexp.MustCompile(`^dbg-[0-9a-f]{12}$`)
+
+// IsDebugID reports whether s has the form NewDebugID returns, so an id
+// received from another process can be trusted in the logs.
+func IsDebugID(s string) bool {
+	return debugIDPattern.MatchString(s)
+}
+
 // Duration is the time elapsed since start, as an attribute.
 func Duration(start time.Time) slog.Attr {
 	return slog.Int64("duration_ms", time.Since(start).Milliseconds())
