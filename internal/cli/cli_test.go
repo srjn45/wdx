@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -12,16 +13,71 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/config"
+	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/gittest"
+	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/warden/internal/logging"
 )
+
+// wdxBinary is wdx built from this tree, which starting the daemon in the
+// background runs.
+var wdxBinary string
 
 func TestMain(m *testing.M) {
 	gittest.Isolate()
-	m.Run()
+	dir, err := os.MkdirTemp("", "wdx-bin")
+	if err != nil {
+		panic(err)
+	}
+	wdxBinary = filepath.Join(dir, identity.Name)
+	if out, err := exec.Command("go", "build", "-o", wdxBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("build wdx: %v\n%s", err, out))
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// shortHome returns an empty home under /tmp: its socket path must fit the
+// 104 bytes macOS allows, which a path under t.TempDir() may exceed.
+func shortHome(t *testing.T) string {
+	t.Helper()
+	home, err := os.MkdirTemp("/tmp", "wdx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
+	return home
+}
+
+// newHome returns a home with a daemon serving it in this process until the
+// test ends.
+func newHome(t *testing.T) string {
+	t.Helper()
+	home := shortHome(t)
+	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
+	log := logging.New(logs, slog.LevelDebug).With("process", "daemon")
+	ctx, stop := context.WithCancel(context.Background())
+	d, err := daemon.Listen(ctx, daemon.Options{Home: home, Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- d.Serve(ctx) }()
+	t.Cleanup(func() {
+		stop()
+		if err := <-served; err != nil {
+			t.Errorf("daemon: %v", err)
+		}
+		logs.Close()
+	})
+	return home
 }
 
 type output struct {
@@ -36,7 +92,7 @@ func wdx(t *testing.T, home string, args ...string) output {
 	cfg.Home = home
 	cfg.LogLevel = slog.LevelDebug
 	var stdout, stderr bytes.Buffer
-	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg}
+	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg, Executable: wdxBinary}
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
 	wantLogged(t, home, args, out)
@@ -48,13 +104,17 @@ type logLine struct {
 	Level    string          `json:"level"`
 	Msg      string          `json:"msg"`
 	DebugID  string          `json:"debug_id"`
+	Process  string          `json:"process"`
+	Pid      int             `json:"pid"`
+	Args     json.RawMessage `json:"args"` // a command's arguments, or SQL's
 	Exit     *int            `json:"exit"`
 	Response json.RawMessage `json:"response"`
 }
 
 // wantLogged checks that the run that produced out is logged in home from the
-// command line it received to the response it returned, and that every line
-// in the log is a JSON object tagged with a debug id.
+// command line it received to the response it returned, with the daemon's
+// lines for its requests under the same debug id, and that every line in the
+// log is a JSON object tagged with a debug id and a process.
 func wantLogged(t *testing.T, home string, args []string, out output) {
 	t.Helper()
 	if info, err := os.Stat(home); err != nil || !info.IsDir() {
@@ -72,31 +132,49 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 		}
 		for raw := range strings.Lines(string(b)) {
 			var l logLine
-			if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" {
+			if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" || l.Process == "" {
 				t.Fatalf("%v: bad log line %q: %v", args, raw, err)
 			}
 			lines = append(lines, l)
 		}
 	}
 
-	// Runs in one home are sequential, so the last one received is this one.
+	// Runs of the same command line in one home are sequential, so the last
+	// one received is this one; a daemon started in the home runs others.
 	var id string
 	for _, l := range lines {
-		if l.Msg == "command received" {
+		if l.Msg != "command received" || l.Pid != os.Getpid() {
+			continue
+		}
+		var received []string
+		if json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, args) {
 			id = l.DebugID
 		}
 	}
 	var run []logLine
+	called, served := 0, 0
 	for _, l := range lines {
-		if l.DebugID == id {
+		if l.DebugID != id {
+			continue
+		}
+		switch {
+		case l.Process == "cli":
 			run = append(run, l)
+			if l.Msg == "daemon called" {
+				called++
+			}
+		case l.Msg == "request returned":
+			served++
 		}
 	}
 	first, last := run[0], run[len(run)-1]
 	if first.Msg != "command received" || last.Msg != "command returned" {
 		t.Fatalf("%v: want the run logged from received to returned, got %q to %q", args, first.Msg, last.Msg)
 	}
-	if last.Exit == nil || *last.Exit != out.exit || (last.Level == "ERROR") != (out.exit != exitOK) {
+	if called != served {
+		t.Fatalf("%v: the daemon logged %d requests under %s, the cli %d", args, served, id, called)
+	}
+	if last.Exit == nil || *last.Exit != out.exit || (last.Level == "ERROR") != (out.exit != api.ExitOK) {
 		t.Fatalf("%v: logged exit %v at %s, want exit %d", args, last.Exit, last.Level, out.exit)
 	}
 	if string(last.Response) == "null" || len(last.Response) == 0 {
@@ -109,33 +187,35 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
 		}
-		if out.exit != exitOK && !strings.Contains(out.stdout, `"debug_id": "`+id+`"`) {
+		if out.exit != api.ExitOK && !strings.Contains(out.stdout, `"debug_id": "`+id+`"`) {
 			t.Fatalf("%v: want debug_id %s in the error, got %s", args, id, out.stdout)
 		}
-	} else if out.exit != exitOK && !strings.HasSuffix(out.stderr, " (debug_id "+id+")\n") {
+	} else if out.exit != api.ExitOK && !strings.HasSuffix(out.stderr, " (debug_id "+id+")\n") {
 		t.Fatalf("%v: want debug_id %s on the error line, got %q", args, id, out.stderr)
 	}
 }
 
+type jsonProject struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Origin    *string `json:"origin"`
+	State     string  `json:"state"`
+	Orphaned  *bool   `json:"orphaned"`
+	Worktrees []struct {
+		ID      string `json:"id"`
+		Path    string `json:"path"`
+		Present *bool  `json:"present"`
+	} `json:"worktrees"`
+}
+
+// jsonOutput holds every field a command prints with --json: a result, or a
+// problem.
 type jsonOutput struct {
-	OK      bool   `json:"ok"`
-	Action  string `json:"action"`
-	Name    string `json:"name"`
+	Result  string `json:"result"`
 	Dropped []struct {
 		Path string `json:"path"`
 	} `json:"dropped"`
-	Project *struct {
-		ID        string  `json:"id"`
-		Name      string  `json:"name"`
-		Origin    *string `json:"origin"`
-		State     string  `json:"state"`
-		Orphaned  *bool   `json:"orphaned"`
-		Worktrees []struct {
-			ID      string `json:"id"`
-			Path    string `json:"path"`
-			Present *bool  `json:"present"`
-		} `json:"worktrees"`
-	} `json:"project"`
+	Project  *jsonProject `json:"project"`
 	Projects []struct {
 		ID            string `json:"id"`
 		Name          string `json:"name"`
@@ -145,12 +225,20 @@ type jsonOutput struct {
 	Conflict *struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
-	Error *struct {
-		Code    string         `json:"code"`
-		Message string         `json:"message"`
-		Hint    *string        `json:"hint"`
-		Details map[string]any `json:"details"`
-	} `json:"error"`
+
+	CLI     *api.Version `json:"cli"`
+	Daemon  *api.Daemon  `json:"daemon"`
+	Running *bool        `json:"running"`
+	Pid     *int         `json:"pid"`
+
+	Type    string         `json:"type"`
+	Title   string         `json:"title"`
+	Status  int            `json:"status"`
+	Detail  string         `json:"detail"`
+	Code    string         `json:"code"`
+	Hint    *string        `json:"hint"`
+	Details map[string]any `json:"details"`
+
 	Command *struct {
 		Path     string `json:"path"`
 		Commands []struct {
@@ -164,7 +252,7 @@ type jsonOutput struct {
 			Flags []string `json:"flags"`
 			When  *string  `json:"when"`
 		} `json:"flag_rules"`
-		Actions []string `json:"actions"`
+		Results []string `json:"results"`
 		Errors  []struct {
 			Code string `json:"code"`
 			Exit int    `json:"exit"`
@@ -173,7 +261,7 @@ type jsonOutput struct {
 }
 
 // wdxJSON runs args with --json and checks that stdout holds exactly one
-// JSON object and stderr nothing.
+// JSON object and stderr nothing: a problem exactly when the run failed.
 func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	t.Helper()
 	out := wdx(t, home, append(args, "--json")...)
@@ -188,14 +276,20 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	if dec.More() {
 		t.Fatalf("%v: want one JSON object, got more:\n%s", args, out.stdout)
 	}
-	if v.OK != (out.exit == exitOK) || v.OK != (v.Error == nil) {
-		t.Fatalf("%v: ok %v, exit %d and error %+v disagree", args, v.OK, out.exit, v.Error)
+	if failed := out.exit != api.ExitOK; failed != (v.Code != "") {
+		t.Fatalf("%v: exit %d and code %q disagree", args, out.exit, v.Code)
+	}
+	if v.Code != "" {
+		info := api.Codes[api.ErrorCode(v.Code)]
+		if v.Type != "urn:wdx:error:"+v.Code || v.Title != info.Description || v.Status != info.Status || v.Detail == "" || info.Exit != out.exit {
+			t.Fatalf("%v: not the problem of %s: %s", args, v.Code, out.stdout)
+		}
 	}
 	wantDeclared(t, args, v)
 	return v, out.exit
 }
 
-// wantDeclared checks that the help of the command args ran lists the action
+// wantDeclared checks that the help of the command args ran lists the result
 // and error codes it returned.
 func wantDeclared(t *testing.T, args []string, v jsonOutput) {
 	t.Helper()
@@ -208,21 +302,21 @@ func wantDeclared(t *testing.T, args []string, v jsonOutput) {
 	for _, e := range help.Errors {
 		codes = append(codes, e.Code)
 	}
-	if v.Action != "" && !slices.Contains(help.Actions, v.Action) {
-		t.Fatalf("%v: action %q is not in the help of %s", args, v.Action, help.Path)
+	if v.Result != "" && !slices.Contains(help.Results, v.Result) {
+		t.Fatalf("%v: result %q is not in the help of %s", args, v.Result, help.Path)
 	}
-	if v.Error != nil && !slices.Contains(codes, v.Error.Code) {
-		t.Fatalf("%v: error %q is not in the help of %s", args, v.Error.Code, help.Path)
+	if v.Code != "" && !slices.Contains(codes, v.Code) {
+		t.Fatalf("%v: error %q is not in the help of %s", args, v.Code, help.Path)
 	}
 	if v.Conflict != nil && !slices.Contains(codes, v.Conflict.Code) {
 		t.Fatalf("%v: conflict %q is not in the help of %s", args, v.Conflict.Code, help.Path)
 	}
 }
 
-func wantError(t *testing.T, v jsonOutput, exit int, code string, wantExit int) {
+func wantError(t *testing.T, v jsonOutput, exit int, code api.ErrorCode, wantExit int) {
 	t.Helper()
-	if v.Error == nil || v.Error.Code != code || exit != wantExit {
-		t.Fatalf("want %s with exit %d, got exit %d and %+v", code, wantExit, exit, v.Error)
+	if v.Code != string(code) || exit != wantExit {
+		t.Fatalf("want %s with exit %d, got exit %d and %+v", code, wantExit, exit, v)
 	}
 }
 
@@ -230,30 +324,43 @@ func wantError(t *testing.T, v jsonOutput, exit int, code string, wantExit int) 
 func newProject(t *testing.T, home, name string) string {
 	t.Helper()
 	v, exit := wdxJSON(t, home, "project", "create", "--name", name, "--cancel")
-	if exit != exitOK {
-		t.Fatalf("create %s: %+v", name, v.Error)
+	if exit != api.ExitOK {
+		t.Fatalf("create %s: %+v", name, v)
 	}
 	return v.Project.ID
 }
 
 func TestVersion(t *testing.T) {
 	t.Parallel()
-	v, exit := wdxJSON(t, t.TempDir(), "version")
-	if exit != exitOK || v.Name != "wdx" {
+	home := newHome(t)
+	v, exit := wdxJSON(t, home, "version")
+	if exit != api.ExitOK || v.CLI.Name != "wdx" || v.CLI.Version != identity.Version || v.Daemon == nil || v.Daemon.Version != identity.Version {
 		t.Fatalf("unexpected version: %+v", v)
 	}
-	if out := wdx(t, t.TempDir(), "version"); !strings.HasPrefix(out.stdout, "wdx ") {
+	if out := wdx(t, home, "version"); out.stdout != "wdx dev (none)\ndaemon dev (none)\n" {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestVersionWithoutDaemon(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	v, exit := wdxJSON(t, home, "version")
+	if exit != api.ExitOK || v.CLI.Name != "wdx" || v.Daemon != nil {
+		t.Fatalf("unexpected version: %+v", v)
+	}
+	if out := wdx(t, home, "version"); !strings.HasSuffix(out.stdout, "\ndaemon not running\n") {
 		t.Fatalf("unexpected text: %q", out.stdout)
 	}
 }
 
 func TestClose(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 
 	v, exit := wdxJSON(t, home, "project", "close", "--id", id)
-	if exit != exitOK || v.Action != "closed" || v.Project.ID != id || v.Project.State != "closed" {
+	if exit != api.ExitOK || v.Result != "closed" || v.Project.ID != id || v.Project.State != "closed" {
 		t.Fatalf("unexpected close: %+v", v)
 	}
 	if v.Project.Origin != nil || len(v.Project.Worktrees) != 1 {
@@ -266,33 +373,34 @@ func TestClose(t *testing.T) {
 
 func TestRemove(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 
 	v, exit := wdxJSON(t, home, "project", "remove", "--id", id)
-	if exit != exitOK || v.Action != "removed" || v.Project.ID != id {
+	if exit != api.ExitOK || v.Result != "removed" || v.Project.ID != id {
 		t.Fatalf("unexpected remove: %+v", v)
 	}
 	v, exit = wdxJSON(t, home, "project", "remove", "--name", "app")
-	wantError(t, v, exit, codeNotFound, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
 
 func TestNotFound(t *testing.T) {
 	t.Parallel()
+	home := newHome(t)
 	for _, args := range [][]string{
 		{"close", "--id", "nope"},
 		{"close", "--name", "nope"},
 		{"remove", "--id", "nope"},
 		{"remove", "--name", "nope"},
 	} {
-		v, exit := wdxJSON(t, t.TempDir(), append([]string{"project"}, args...)...)
-		wantError(t, v, exit, codeNotFound, exitRejected)
-		if v.Error.Hint != nil || v.Error.Details != nil {
-			t.Fatalf("%v: want null hint and details, got %+v", args, v.Error)
+		v, exit := wdxJSON(t, home, append([]string{"project"}, args...)...)
+		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+		if v.Hint != nil || v.Details != nil {
+			t.Fatalf("%v: want null hint and details, got %+v", args, v)
 		}
 	}
-	out := wdx(t, t.TempDir(), "project", "close", "--name", "nope")
-	if out.exit != exitRejected || out.stdout != "" || !strings.HasPrefix(out.stderr, "wdx: project not found") {
+	out := wdx(t, home, "project", "close", "--name", "nope")
+	if out.exit != api.ExitRejected || out.stdout != "" || !strings.HasPrefix(out.stderr, "wdx: project not found") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 }
@@ -319,25 +427,46 @@ func TestUsageErrors(t *testing.T) {
 		{"project", "get", "app"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
-		wantError(t, v, exit, codeUsage, exitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 		wantHint(t, v, "--help'")
 	}
 	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
 	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
 	out := wdx(t, t.TempDir(), "project", "bogus")
-	if out.exit != exitUsage || out.stdout != "" || !strings.Contains(out.stderr, "; see 'wdx project --help' (debug_id dbg-") {
+	if out.exit != api.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "; see 'wdx project --help' (debug_id dbg-") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
 
-func TestSystemError(t *testing.T) {
+func TestDaemonUnavailable(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	for _, args := range [][]string{
+		{"project", "list"},
+		{"project", "get", "--name", "app"},
+		{"project", "create", "--name", "app", "--cancel"},
+		{"project", "open", "--local", "."},
+		{"project", "close", "--name", "app"},
+		{"project", "remove", "--name", "app"},
+	} {
+		v, exit := wdxJSON(t, home, args...)
+		wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
+		wantHint(t, v, "run wdx daemon start")
+	}
+	out := wdx(t, home, "project", "list")
+	if out.exit != api.ExitSystem || !strings.HasPrefix(out.stderr, "wdx: the daemon is not answering on "+identity.SocketPath(home)+": connect: ") {
+		t.Fatalf("unexpected text error: %+v", out)
+	}
+}
+
+func TestNoHome(t *testing.T) {
 	t.Parallel()
 	home := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(home, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	v, exit := wdxJSON(t, home, "project", "close", "--name", "app")
-	wantError(t, v, exit, codeInternal, exitSystem)
+	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
 }
 
 func gitCmd(t *testing.T, dir string, args ...string) {
@@ -370,21 +499,21 @@ func bareRemote(t *testing.T, name string) string {
 
 func wantHint(t *testing.T, v jsonOutput, hint string) {
 	t.Helper()
-	if v.Error.Hint == nil || !strings.Contains(*v.Error.Hint, hint) {
-		t.Fatalf("want hint containing %q, got %+v", hint, v.Error)
+	if v.Hint == nil || !strings.Contains(*v.Hint, hint) {
+		t.Fatalf("want hint containing %q, got %+v", hint, v)
 	}
 }
 
 func TestOpenLocal(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	repo := gitRepo(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--local", repo)
-	if exit != exitOK || v.Action != "registered" || v.Project.Name != "app" || v.Project.Worktrees[0].Path != repo {
+	if exit != api.ExitOK || v.Result != "registered" || v.Project.Name != "app" || v.Project.Worktrees[0].Path != repo {
 		t.Fatalf("unexpected first open: %+v", v)
 	}
-	if v, _ = wdxJSON(t, home, "project", "open", "--local", repo); v.Action != "opened" {
+	if v, _ = wdxJSON(t, home, "project", "open", "--local", repo); v.Result != "opened" {
 		t.Fatalf("want opened, got %+v", v)
 	}
 	if out := wdx(t, home, "project", "open", "--local", repo); !strings.HasPrefix(out.stdout, "opened project app (") {
@@ -394,7 +523,7 @@ func TestOpenLocal(t *testing.T) {
 
 func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	repo := gitRepo(t, "app")
 	wt := filepath.Join(filepath.Dir(repo), "wt")
 	gitCmd(t, repo, "worktree", "add", "-q", wt)
@@ -404,34 +533,34 @@ func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
 	}
 
 	v, _ := wdxJSON(t, home, "project", "open", "--local", repo)
-	if v.Action != "opened" || len(v.Dropped) != 1 || v.Dropped[0].Path != wt {
+	if v.Result != "opened" || len(v.Dropped) != 1 || v.Dropped[0].Path != wt {
 		t.Fatalf("want %s dropped, got %+v", wt, v)
 	}
 }
 
 func TestOpenLocalErrors(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 
 	v, exit := wdxJSON(t, home, "project", "open", "--local", filepath.Join(home, "nope"))
-	wantError(t, v, exit, codeInvalidPath, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidPath, api.ExitRejected)
 
 	v, exit = wdxJSON(t, home, "project", "open", "--local", t.TempDir())
-	wantError(t, v, exit, codeNotGitRepo, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotGitRepo, api.ExitRejected)
 	wantHint(t, v, "git init")
 
 	id := newProject(t, home, "app")
 	v, exit = wdxJSON(t, home, "project", "open", "--local", gitRepo(t, "other"), "--name", "APP")
-	wantError(t, v, exit, codeNameTaken, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
 	wantHint(t, v, "--name")
-	if p, _ := v.Error.Details["project"].(map[string]any); p["id"] != id {
-		t.Fatalf("want details.project %s, got %+v", id, v.Error.Details)
+	if p, _ := v.Details["project"].(map[string]any); p["id"] != id {
+		t.Fatalf("want details.project %s, got %+v", id, v.Details)
 	}
 }
 
 func TestOpenLocalProjectMismatch(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	a, b := gitRepo(t, "a"), gitRepo(t, "b")
 	gitCmd(t, a, "remote", "add", "origin", "https://example.com/a.git")
 	wdxJSON(t, home, "project", "open", "--local", a)
@@ -439,20 +568,20 @@ func TestOpenLocalProjectMismatch(t *testing.T) {
 	gitCmd(t, b, "remote", "add", "origin", "https://example.com/a.git")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--local", b)
-	wantError(t, v, exit, codeProjectMismatch, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectMismatch, api.ExitRejected)
 }
 
 func TestOpenGit(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	remote := bareRemote(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
 	want := filepath.Join(home, "projects", "app")
-	if exit != exitOK || v.Action != "cloned" || *v.Project.Origin != remote || v.Project.Worktrees[0].Path != want {
+	if exit != api.ExitOK || v.Result != "cloned" || *v.Project.Origin != remote || v.Project.Worktrees[0].Path != want {
 		t.Fatalf("unexpected clone: %+v", v)
 	}
-	if v, _ = wdxJSON(t, home, "project", "open", "--git", remote, "--reclone"); v.Action != "opened" {
+	if v, _ = wdxJSON(t, home, "project", "open", "--git", remote, "--reclone"); v.Result != "opened" {
 		t.Fatalf("want opened, got %+v", v)
 	}
 }
@@ -460,13 +589,13 @@ func TestOpenGit(t *testing.T) {
 func TestOpenGitJSONRequiresAnswer(t *testing.T) {
 	t.Parallel()
 	v, exit := wdxJSON(t, t.TempDir(), "project", "open", "--git", bareRemote(t, "app"))
-	wantError(t, v, exit, codeUsage, exitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	wantHint(t, v, "--reclone or --remove")
 }
 
 func TestOpenGitCheckoutMissing(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	remote := bareRemote(t, "app")
 	clone := filepath.Join(home, "projects", "app")
 	first, _ := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
@@ -475,11 +604,11 @@ func TestOpenGitCheckoutMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := wdx(t, home, "project", "open", "--git", remote)
-	if out.exit != exitRejected || !strings.Contains(out.stderr, "pass --reclone or --remove") {
+	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "pass --reclone or --remove") {
 		t.Fatalf("want checkout missing with hint, got %+v", out)
 	}
 	v, _ := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
-	if v.Action != "cloned" || v.Project.ID != first.Project.ID {
+	if v.Result != "cloned" || v.Project.ID != first.Project.ID {
 		t.Fatalf("want %s cloned again, got %+v", first.Project.ID, v)
 	}
 
@@ -487,45 +616,45 @@ func TestOpenGitCheckoutMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, _ = wdxJSON(t, home, "project", "open", "--git", remote, "--remove")
-	if v.Action != "removed" || v.Project.ID != first.Project.ID {
+	if v.Result != "removed" || v.Project.ID != first.Project.ID {
 		t.Fatalf("want %s removed, got %+v", first.Project.ID, v)
 	}
 	v, exit := wdxJSON(t, home, "project", "close", "--id", first.Project.ID)
-	wantError(t, v, exit, codeNotFound, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
 
 func TestOpenGitErrors(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 
 	v, exit := wdxJSON(t, home, "project", "open", "--git", "", "--reclone")
-	wantError(t, v, exit, codeInvalidArgument, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 
 	v, exit = wdxJSON(t, home, "project", "open", "--git", bareRemote(t, "app"), "--name", "../x", "--reclone")
-	wantError(t, v, exit, codeInvalidName, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
 	wantHint(t, v, "--name")
 
 	if err := os.MkdirAll(filepath.Join(home, "projects", "taken"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	v, exit = wdxJSON(t, home, "project", "open", "--git", bareRemote(t, "taken"), "--reclone")
-	wantError(t, v, exit, codePathExists, exitRejected)
+	wantError(t, v, exit, api.ErrorCodePathExists, api.ExitRejected)
 	wantHint(t, v, "--name")
 
 	v, exit = wdxJSON(t, home, "project", "open", "--git", filepath.Join(home, "nope.git"), "--reclone")
-	wantError(t, v, exit, codeCloneFailed, exitRejected)
-	if output, _ := v.Error.Details["output"].(string); !strings.Contains(output, "nope.git") {
-		t.Fatalf("want git's output in details, got %+v", v.Error.Details)
+	wantError(t, v, exit, api.ErrorCodeCloneFailed, api.ExitRejected)
+	if output, _ := v.Details["output"].(string); !strings.Contains(output, "nope.git") {
+		t.Fatalf("want git's output in details, got %+v", v.Details)
 	}
 }
 
 func TestCreate(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--cancel")
 	want := filepath.Join(home, "projects", "app")
-	if exit != exitOK || v.Action != "created" || v.Conflict != nil || v.Project.Worktrees[0].Path != want {
+	if exit != api.ExitOK || v.Result != "created" || v.Conflict != nil || v.Project.Worktrees[0].Path != want {
 		t.Fatalf("unexpected create: %+v", v)
 	}
 	if out := wdx(t, home, "project", "create", "--name", "web"); !strings.HasPrefix(out.stdout, "created project web (") {
@@ -535,9 +664,9 @@ func TestCreate(t *testing.T) {
 
 func TestCreateJSONRequiresAnswer(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "app")
-	wantError(t, v, exit, codeUsage, exitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	wantHint(t, v, "--open or --cancel")
 	if _, err := os.Stat(filepath.Join(home, "projects", "app")); !os.IsNotExist(err) {
 		t.Fatalf("nothing should be created: %v", err)
@@ -546,23 +675,23 @@ func TestCreateJSONRequiresAnswer(t *testing.T) {
 
 func TestCreateNameTaken(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "APP", "--cancel")
-	wantError(t, v, exit, codeNameTaken, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
 	wantHint(t, v, "--name")
-	if p, _ := v.Error.Details["project"].(map[string]any); p["id"] != id {
-		t.Fatalf("want details.project %s, got %+v", id, v.Error.Details)
+	if p, _ := v.Details["project"].(map[string]any); p["id"] != id {
+		t.Fatalf("want details.project %s, got %+v", id, v.Details)
 	}
 
 	v, exit = wdxJSON(t, home, "project", "create", "--name", "APP", "--open")
-	if exit != exitOK || v.Action != "opened" || v.Project.ID != id || v.Conflict == nil || v.Conflict.Code != codeNameTaken {
+	if exit != api.ExitOK || v.Result != "opened" || v.Project.ID != id || v.Conflict == nil || v.Conflict.Code != string(api.ErrorCodeNameTaken) {
 		t.Fatalf("want %s opened after name_taken, got %+v", id, v)
 	}
 
 	out := wdx(t, home, "project", "create", "--name", "app")
-	if out.exit != exitRejected || !strings.HasPrefix(out.stderr, "wdx: not created: ") || !strings.Contains(out.stderr, "pass --open or --cancel") {
+	if out.exit != api.ExitRejected || !strings.HasPrefix(out.stderr, "wdx: not created: ") || !strings.Contains(out.stderr, "pass --open or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 	out = wdx(t, home, "project", "create", "--name", "app", "--open")
@@ -573,18 +702,18 @@ func TestCreateNameTaken(t *testing.T) {
 
 func TestCreateRepoExists(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	repo := gitRepo(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--path", filepath.Dir(repo), "--cancel")
-	wantError(t, v, exit, codeRepoExists, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeRepoExists, api.ExitRejected)
 	wantHint(t, v, "--path")
-	if v.Error.Details["root"] != repo || v.Error.Details["project"] != nil {
-		t.Fatalf("want unknown repo %s in details, got %+v", repo, v.Error.Details)
+	if v.Details["root"] != repo || v.Details["project"] != nil {
+		t.Fatalf("want unknown repo %s in details, got %+v", repo, v.Details)
 	}
 
 	v, exit = wdxJSON(t, home, "project", "create", "--name", "sub", "--path", repo, "--open")
-	if exit != exitOK || v.Action != "registered" || v.Project.Worktrees[0].Path != repo || v.Conflict.Code != codeRepoExists {
+	if exit != api.ExitOK || v.Result != "registered" || v.Project.Worktrees[0].Path != repo || v.Conflict.Code != string(api.ErrorCodeRepoExists) {
 		t.Fatalf("want %s registered after repo_exists, got %+v", repo, v)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "sub")); !os.IsNotExist(err) {
@@ -594,37 +723,37 @@ func TestCreateRepoExists(t *testing.T) {
 
 func TestCreateOpenCheckoutMissing(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 	if err := os.RemoveAll(filepath.Join(home, "projects", "app")); err != nil {
 		t.Fatal(err)
 	}
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--open")
-	wantError(t, v, exit, codeCheckoutMissing, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeCheckoutMissing, api.ExitRejected)
 	wantHint(t, v, "project remove --id "+id)
 }
 
 func TestCreateInvalid(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "../app", "--cancel")
-	wantError(t, v, exit, codeInvalidName, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
 	wantHint(t, v, "--name")
 
 	v, exit = wdxJSON(t, home, "project", "create", "--name", "id:app", "--cancel")
-	wantError(t, v, exit, codeInvalidName, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
 
 	file := filepath.Join(home, "file")
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	v, exit = wdxJSON(t, home, "project", "create", "--name", "app", "--path", file, "--cancel")
-	wantError(t, v, exit, codeInvalidPath, exitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidPath, api.ExitRejected)
 	wantHint(t, v, "--path")
 
-	if out := wdx(t, home, "project", "create"); out.exit != exitUsage || !strings.HasPrefix(out.stderr, "wdx: not created: ") {
+	if out := wdx(t, home, "project", "create"); out.exit != api.ExitUsage || !strings.HasPrefix(out.stderr, "wdx: not created: ") {
 		t.Fatalf("want usage error with prefix, got %+v", out)
 	}
 }
@@ -639,10 +768,10 @@ func names(v jsonOutput) string {
 
 func TestListEmpty(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	for filter, text := range map[string]string{"--all": "no projects\n", "--open": "no open projects\n", "--closed": "no closed projects\n"} {
 		out := wdx(t, home, "project", "list", filter, "--json")
-		if out.exit != exitOK || !strings.Contains(out.stdout, `"projects": []`) {
+		if out.exit != api.ExitOK || !strings.Contains(out.stdout, `"projects": []`) {
 			t.Fatalf("%s: want an empty array, got %+v", filter, out)
 		}
 		if out := wdx(t, home, "project", "list", filter); out.stdout != text {
@@ -653,7 +782,7 @@ func TestListEmpty(t *testing.T) {
 
 func TestList(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	for _, name := range []string{"cat", "app", "Beta"} {
 		newProject(t, home, name)
 	}
@@ -661,7 +790,7 @@ func TestList(t *testing.T) {
 
 	for args, want := range map[string]string{"": "app Beta cat", "--all": "app Beta cat", "--open": "app Beta", "--closed": "cat"} {
 		v, exit := wdxJSON(t, home, strings.Fields("project list "+args)...)
-		if exit != exitOK || v.Action != "" || names(v) != want {
+		if exit != api.ExitOK || v.Result != "" || names(v) != want {
 			t.Fatalf("list %s: want %s, got %+v", args, want, v)
 		}
 	}
@@ -686,13 +815,13 @@ func TestList(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "App")
 	wdxJSON(t, home, "project", "close", "--id", id)
 
 	for _, args := range [][]string{{"--id", id}, {"--name", "app"}} {
 		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
-		if exit != exitOK || v.Action != "" || v.Project.ID != id || v.Project.State != "closed" {
+		if exit != api.ExitOK || v.Result != "" || v.Project.ID != id || v.Project.State != "closed" {
 			t.Fatalf("get %v: unexpected %+v", args, v)
 		}
 		p := v.Project
@@ -709,14 +838,14 @@ func TestGet(t *testing.T) {
 
 func TestGetOrphaned(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 	if err := os.RemoveAll(filepath.Join(home, "projects", "app")); err != nil {
 		t.Fatal(err)
 	}
 
 	v, exit := wdxJSON(t, home, "project", "get", "--name", "app")
-	if exit != exitOK || !*v.Project.Orphaned || *v.Project.Worktrees[0].Present {
+	if exit != api.ExitOK || !*v.Project.Orphaned || *v.Project.Worktrees[0].Present {
 		t.Fatalf("want an orphaned project with its missing checkout, got %+v", v.Project)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
@@ -727,17 +856,17 @@ func TestGetOrphaned(t *testing.T) {
 
 func TestGetNotFound(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	id := newProject(t, home, "app")
 	for _, args := range [][]string{{"--id", "proj-nope"}, {"--name", "nope"}, {"--id", "app"}, {"--name", id}} {
 		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
-		wantError(t, v, exit, codeNotFound, exitRejected)
+		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 	}
 }
 
 func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	newProject(t, home, "app")
 	out := wdx(t, home, "project", "close", "--name", "app", "--json")
 	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || !strings.Contains(out.stdout, `"created_at"`) {
@@ -749,11 +878,6 @@ func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 // command fails here until its help is complete.
 func TestCommandDocs(t *testing.T) {
 	t.Parallel()
-	for code, info := range codes {
-		if info.description == "" || info.exit < exitRejected || info.exit > exitSystem {
-			t.Errorf("error code %s: incomplete %+v", code, info)
-		}
-	}
 	var check func(cmd *cobra.Command)
 	check = func(cmd *cobra.Command) {
 		path := cmd.CommandPath()
@@ -764,7 +888,7 @@ func TestCommandDocs(t *testing.T) {
 			t.Errorf("%s: no output note", path)
 		}
 		for _, code := range annotationList(cmd, errorList) {
-			if _, ok := codes[code]; !ok || code == codeUsage || code == codeInternal {
+			if _, ok := api.Codes[api.ErrorCode(code)]; !ok || code == string(api.ErrorCodeUsage) || code == string(api.ErrorCodeInternal) {
 				t.Errorf("%s: unexpected error code %q", path, code)
 			}
 		}
@@ -797,13 +921,14 @@ func TestHelp(t *testing.T) {
 		args       []string
 		want, deny []string
 	}{
-		{[]string{"--help"}, []string{"project ", "version ", "Exit codes:"}, []string{"completion", "\n  help "}},
+		{[]string{"--help"}, []string{"daemon ", "project ", "version ", "Exit codes:", "Daemon:"}, []string{"completion", "\n  help "}},
+		{[]string{"daemon", "-h"}, []string{"restart ", "start ", "status ", "stop "}, []string{"Errors:"}},
 		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove "}, []string{"Errors:"}},
-		{[]string{"project", "open", "--help"}, []string{"--local", "--git", "--reclone", "Flag rules:", "Output:", "action: cloned", "checkout_missing  1", "internal          3"}, nil},
+		{[]string{"project", "open", "--help"}, []string{"--local", "--git", "--reclone", "Flag rules:", "Output:", "result: cloned", "checkout_missing    1", "daemon_unavailable  3", "internal            3"}, nil},
 		{[]string{"help", "project", "get"}, []string{"wdx project get (--id <id> | --name <name>)", "not_found"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
-		if out.exit != exitOK || out.stderr != "" {
+		if out.exit != api.ExitOK || out.stderr != "" {
 			t.Fatalf("%v: unexpected %+v", tc.args, out)
 		}
 		for _, s := range tc.want {
@@ -826,10 +951,10 @@ func TestHelpJSON(t *testing.T) {
 	walk = func(path []string) {
 		v, exit := wdxJSON(t, t.TempDir(), append(path, "--help")...)
 		c := v.Command
-		if exit != exitOK || c == nil || c.Path != strings.Join(append([]string{"wdx"}, path...), " ") {
+		if exit != api.ExitOK || c == nil || c.Path != strings.Join(append([]string{"wdx"}, path...), " ") {
 			t.Fatalf("%v: unexpected help %+v", path, v)
 		}
-		if n := len(c.Errors); n < 2 || c.Errors[n-2].Code != codeUsage || c.Errors[n-1].Code != codeInternal {
+		if n := len(c.Errors); n < 2 || c.Errors[n-2].Code != string(api.ErrorCodeUsage) || c.Errors[n-1].Code != string(api.ErrorCodeInternal) {
 			t.Fatalf("%v: errors must end with usage and internal: %+v", path, c.Errors)
 		}
 		for _, sub := range c.Commands {
@@ -843,8 +968,8 @@ func TestHelpJSON(t *testing.T) {
 	if rule.Rule != "one_required_with_json" || *rule.When != "git" || !slices.Equal(rule.Flags, []string{"reclone", "remove"}) {
 		t.Fatalf("unexpected json rule: %+v", rule)
 	}
-	if !slices.Equal(v.Command.Actions, []string{"cloned", "opened", "registered", "removed"}) {
-		t.Fatalf("unexpected actions: %v", v.Command.Actions)
+	if !slices.Equal(v.Command.Results, []string{"cloned", "opened", "registered", "removed"}) {
+		t.Fatalf("unexpected results: %v", v.Command.Results)
 	}
 }
 
@@ -858,14 +983,14 @@ func TestPanicIsInternalError(t *testing.T) {
 	if !ok || p.Error() != "panic: kaboom" || !strings.Contains(string(p.stack), "TestPanicIsInternalError") {
 		t.Fatalf("want a panicError with its stack, got %v", err)
 	}
-	if v, exit := classify(err); v.Code != codeInternal || exit != exitSystem {
-		t.Fatalf("want internal, got %s", v.Code)
+	if p, exit := problem(err); p.Code != api.ErrorCodeInternal || exit != api.ExitSystem {
+		t.Fatalf("want internal, got %s", p.Code)
 	}
 }
 
 func TestConfigError(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	path := filepath.Join(home, "config.yaml")
 	if err := os.WriteFile(path, []byte("log:\n  level: loud\n  retention_days: 0\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -876,25 +1001,23 @@ func TestConfigError(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdout: &stdout, Stderr: &stderr}
-	if exit := ConfigError([]string{"project", "list", "--json"}, env, err); exit != exitUsage {
-		t.Fatalf("want exit %d, got %d", exitUsage, exit)
+	if exit := ConfigError([]string{"project", "list", "--json"}, env, err); exit != api.ExitUsage {
+		t.Fatalf("want exit %d, got %d", api.ExitUsage, exit)
 	}
 	var v struct {
-		Error struct {
-			Code    string `json:"code"`
-			Details struct {
-				Settings []struct {
-					From  string `json:"from"`
-					Value string `json:"value"`
-				} `json:"settings"`
-			} `json:"details"`
-		} `json:"error"`
+		Code    string `json:"code"`
+		Details struct {
+			Settings []struct {
+				From  string `json:"from"`
+				Value string `json:"value"`
+			} `json:"settings"`
+		} `json:"details"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil || stderr.Len() != 0 {
 		t.Fatalf("want one JSON error, got %q, %q", stdout.String(), stderr.String())
 	}
-	if s := v.Error.Details.Settings; v.Error.Code != codeUsage || len(s) != 2 || s[0].From != path+":2" || s[0].Value != "loud" {
-		t.Fatalf("unexpected error %+v", v.Error)
+	if s := v.Details.Settings; v.Code != string(api.ErrorCodeUsage) || len(s) != 2 || s[0].From != path+":2" || s[0].Value != "loud" {
+		t.Fatalf("unexpected error %+v", v)
 	}
 
 	stdout.Reset()

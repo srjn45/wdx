@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
@@ -20,7 +21,7 @@ import (
 // writing to it that tags every record with debugID.
 func newLogger(cfg config.Config, debugID string) (*logging.DailyFile, *slog.Logger) {
 	file := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
-	return file, logging.New(file, cfg.LogLevel).With("debug_id", debugID, "pid", os.Getpid())
+	return file, logging.New(file, cfg.LogLevel).With("debug_id", debugID, "pid", os.Getpid(), "process", "cli")
 }
 
 // logReceived logs the command line as given and what else decides how it
@@ -61,7 +62,7 @@ func logStarted(cmd *cobra.Command, args []string) {
 		"flags_set", set)
 }
 
-var outcomes = map[int]string{exitOK: "ok", exitRejected: "rejected", exitUsage: "usage", exitSystem: "system"}
+var outcomes = map[int]string{api.ExitOK: "ok", api.ExitRejected: "rejected", api.ExitUsage: "usage", api.ExitSystem: "system"}
 
 // logReturned logs what the command returned: response is exactly what it
 // printed, or would have printed as JSON.

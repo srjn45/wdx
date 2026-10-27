@@ -2,16 +2,15 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
-	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/db"
+	"github.com/srjn45/warden/internal/api"
+	"github.com/srjn45/warden/internal/client"
 	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/project"
 )
 
 func newProjectCmd(home string) *cobra.Command {
@@ -21,7 +20,7 @@ func newProjectCmd(home string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(home), newProjectGetCmd(home), newProjectOpenCmd(home), newProjectCloseCmd(home), newProjectRemoveCmd(home))
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectRemoveCmd())
 	return cmd
 }
 
@@ -47,12 +46,13 @@ func newProjectCreateCmd(home string) *cobra.Command {
 			failurePrefix: "not created",
 			outputNote: "The created project. On a conflict answered with --open, the project opened instead,\n" +
 				"with the conflict under \"conflict\".\n" +
-				`With --json: {"ok": true, "action": ..., "project": {...}, "conflict": {...}}`,
-			actionList:   annotation("cloned", "created", "opened", "registered", "removed"),
-			errorList:    annotation(codeCheckoutMissing, codeCloneFailed, codeInvalidName, codeInvalidPath, codeNameTaken, codeRepoExists),
+				`With --json: {"result": ..., "project": {...}, "conflict": {...}}`,
+			resultList: annotation("cloned", "created", "opened", "registered", "removed"),
+			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+				api.ErrorCodeNameTaken, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
 			jsonRequires: annotation("open", "cancel"),
 		},
-		RunE: func(cmd *cobra.Command, _ []string) error { return runCreate(cmd, home, opts) },
+		RunE: func(cmd *cobra.Command, _ []string) error { return runCreate(cmd, opts) },
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "project name, also the repository directory name")
 	cmd.Flags().StringVar(&opts.parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir(home)+")")
@@ -63,88 +63,83 @@ func newProjectCreateCmd(home string) *cobra.Command {
 	return cmd
 }
 
-func runCreate(cmd *cobra.Command, home string, opts createOptions) error {
-	ctx := cmd.Context()
-	d, err := db.Open(ctx, identity.DBPath(home))
+const createConflictQuestion = "create conflict"
+
+func runCreate(cmd *cobra.Command, opts createOptions) error {
+	parent, err := absolute(opts.parent)
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	var source api.Source
+	source.FromNewSource(api.NewSource{Type: api.NewSourceTypeNew, Path: optional(parent)})
+	req := api.CreateProject{Source: source, Name: &opts.name}
+	if opts.openOnConflict {
+		req.OnConflict = ptr(api.CreateProjectOnConflictOpen)
+		logAnswer(cmd, createConflictQuestion, "open", "--open")
+	}
 
-	store := project.NewStore(d, identity.ProjectsDir(home))
 	answers := bufio.NewScanner(cmd.InOrStdin())
 	for {
-		o, conflict := store.Create(ctx, opts.name, opts.parent)
+		r, conflict := clientOf(cmd).CreateProject(cmd.Context(), req)
 		if conflict == nil {
-			return printResult(cmd, projectResponse("created", o.Project))
+			return printResult(cmd, projectResult(r))
 		}
-		var open func() (project.Opened, error)
 		retry := "choose another --name"
-		if taken, ok := errors.AsType[*project.NameTakenError](conflict); ok {
-			open = func() (project.Opened, error) { return store.Open(ctx, taken.Project.ID) }
-		} else if exists, ok := errors.AsType[*project.RepoExistsError](conflict); ok {
-			open = func() (project.Opened, error) { return store.OpenLocal(ctx, exists.Root, "") }
+		switch problemCode(conflict) {
+		case api.ErrorCodeNameTaken:
+		case api.ErrorCodeRepoExists:
 			retry = "choose another --name or --path"
-		} else if _, ok := errors.AsType[*project.InvalidPathError](conflict); ok {
+		case api.ErrorCodeInvalidPath:
 			return &hinted{conflict, "choose another --path"}
-		} else if _, ok := errors.AsType[*project.InvalidNameError](conflict); ok {
+		case api.ErrorCodeInvalidName:
 			return &hinted{conflict, retry}
-		} else {
+		case api.ErrorCodeCheckoutMissing:
+			if req.OnMissingCheckout, err = askMissingCheckout(cmd, conflict, ""); err != nil {
+				return err
+			}
+			continue
+		default:
 			return conflict
 		}
 
-		const question = "create conflict"
-		var choice string
 		switch {
-		case opts.openOnConflict:
-			choice = "o"
-			logAnswer(cmd, question, "open", "--open")
 		case opts.cancelOnConflict:
-			choice = "c"
-			logAnswer(cmd, question, "cancel", "--cancel")
-		case !canPrompt(cmd):
-			logUnanswered(cmd, question)
-			return &hinted{conflict, "pass --open or --cancel, or " + retry}
-		default:
-			prompt := cmd.ErrOrStderr()
-			fmt.Fprintln(prompt, conflict)
-			fmt.Fprintln(prompt, "[o] open it")
-			fmt.Fprintln(prompt, "[n] try a different name")
-			fmt.Fprintln(prompt, "[c] cancel")
-			if choice, err = ask(prompt, answers, "choose [o/n/c]: ", "o", "n", "c"); err != nil {
-				return err
-			}
-			logAnswer(cmd, question, map[string]string{"o": "open", "n": "new name", "c": "cancel"}[choice], "prompt")
-			if choice == "n" {
-				if opts.name, err = ask(prompt, answers, "new name (empty to cancel): "); err != nil {
-					return err
-				}
-				logAnswer(cmd, "new name", opts.name, "prompt")
-				if opts.name != "" {
-					continue
-				}
-				choice = "c"
-			}
-		}
-		if choice == "c" {
+			logAnswer(cmd, createConflictQuestion, "cancel", "--cancel")
 			return &hinted{conflict, retry}
+		case !canPrompt(cmd):
+			logUnanswered(cmd, createConflictQuestion)
+			return &hinted{conflict, "pass --open or --cancel, or " + retry}
 		}
-
-		o, err = open()
-		if missing, ok := errors.AsType[*project.CheckoutMissingError](err); ok {
-			return resolveMissingCheckout(cmd, store, missing, "", missingCheckoutHint(missing.Project))
-		}
+		prompt := cmd.ErrOrStderr()
+		fmt.Fprintln(prompt, conflict)
+		fmt.Fprintln(prompt, "[o] open it")
+		fmt.Fprintln(prompt, "[n] try a different name")
+		fmt.Fprintln(prompt, "[c] cancel")
+		choice, err := ask(prompt, answers, "choose [o/n/c]: ", "o", "n", "c")
 		if err != nil {
 			return err
 		}
-		r := openedResponse(o)
-		v, _ := classify(conflict)
-		r.Conflict = &v
-		return printResult(cmd, r)
+		logAnswer(cmd, createConflictQuestion, map[string]string{"o": "open", "n": "new name", "c": "cancel"}[choice], "prompt")
+		switch choice {
+		case "o":
+			req.OnConflict = ptr(api.CreateProjectOnConflictOpen)
+		case "n":
+			name, err := ask(prompt, answers, "new name (empty to cancel): ")
+			if err != nil {
+				return err
+			}
+			logAnswer(cmd, "new name", name, "prompt")
+			if name == "" {
+				return &hinted{conflict, retry}
+			}
+			req.Name = &name
+		default:
+			return &hinted{conflict, retry}
+		}
 	}
 }
 
-func newProjectListCmd(home string) *cobra.Command {
+func newProjectListCmd() *cobra.Command {
 	var open, closed bool
 	cmd := &cobra.Command{
 		Use:   "list [--all | --open | --closed]",
@@ -153,27 +148,21 @@ func newProjectListCmd(home string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The projects sorted by name, each with its number of worktrees; an empty list when none match.\n" +
-				`With --json: {"ok": true, "projects": [...]}`,
+				`With --json: {"projects": [...]}`,
+			errorList: codeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var state project.State
+			var state api.ProjectState
 			if open {
-				state = project.StateOpen
+				state = api.ProjectStateOpen
 			} else if closed {
-				state = project.StateClosed
+				state = api.ProjectStateClosed
 			}
-			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath(home))
+			list, err := clientOf(cmd).ListProjects(cmd.Context(), state)
 			if err != nil {
 				return err
 			}
-			defer d.Close()
-
-			list, err := project.NewStore(d, identity.ProjectsDir(home)).List(ctx, state)
-			if err != nil {
-				return err
-			}
-			return printResult(cmd, newListResponse(state, list))
+			return printResult(cmd, projectList{list, state})
 		},
 	}
 	cmd.Flags().Bool("all", false, "list every project (the default)")
@@ -183,7 +172,7 @@ func newProjectListCmd(home string) *cobra.Command {
 	return cmd
 }
 
-func newProjectGetCmd(home string) *cobra.Command {
+func newProjectGetCmd() *cobra.Command {
 	var ref projectRef
 	cmd := &cobra.Command{
 		Use:   "get (--id <id> | --name <name>)",
@@ -195,27 +184,15 @@ func newProjectGetCmd(home string) *cobra.Command {
 		Annotations: map[string]string{
 			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk and \"orphaned\"\n" +
 				"that none is.\n" +
-				`With --json: {"ok": true, "project": {...}}`,
-			errorList: annotation(codeNotFound),
+				`With --json: {"project": {...}}`,
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath(home))
+			p, err := clientOf(cmd).GetProject(cmd.Context(), ref.path())
 			if err != nil {
 				return err
 			}
-			defer d.Close()
-
-			store := project.NewStore(d, identity.ProjectsDir(home))
-			p, err := ref.get(ctx, store)
-			if err != nil {
-				return err
-			}
-			status, err := store.DiskStatus(ctx, p)
-			if err != nil {
-				return err
-			}
-			return printResult(cmd, newProjectDetail(p, status))
+			return printResult(cmd, projectDetail(p))
 		},
 	}
 	ref.addFlags(cmd)
@@ -235,11 +212,12 @@ func (r *projectRef) addFlags(cmd *cobra.Command) {
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
 }
 
-func (r projectRef) get(ctx context.Context, store *project.Store) (project.Project, error) {
+// path is how the API names the project.
+func (r projectRef) path() string {
 	if r.id != "" {
-		return store.GetByID(ctx, r.id)
+		return "id:" + r.id
 	}
-	return store.GetByName(ctx, r.name)
+	return r.name
 }
 
 func newProjectOpenCmd(home string) *cobra.Command {
@@ -261,42 +239,43 @@ func newProjectOpenCmd(home string) *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\".\n" +
-				`With --json: {"ok": true, "action": ..., "project": {...}, "dropped": [...]}`,
-			actionList: annotation("cloned", "opened", "registered", "removed"),
-			errorList: annotation(codeCheckoutMissing, codeCloneFailed, codeInvalidArgument, codeInvalidName, codeInvalidPath,
-				codeNameTaken, codeNotGitRepo, codePathExists, codeProjectMismatch),
+				`With --json: {"result": ..., "project": {...}, "dropped": [...]}`,
+			resultList: annotation("cloned", "opened", "registered", "removed"),
+			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+				api.ErrorCodeNameTaken, api.ErrorCodeNotGitRepo, api.ErrorCodePathExists, api.ErrorCodeProjectMismatch, api.ErrorCodeDaemonUnavailable),
 			jsonRequires: "git:" + annotation("reclone", "remove"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath(home))
-			if err != nil {
-				return err
-			}
-			defer d.Close()
-
-			store := project.NewStore(d, identity.ProjectsDir(home))
-			var o project.Opened
-			if local != "" {
-				o, err = store.OpenLocal(ctx, local, name)
-			} else {
-				o, err = store.OpenGit(ctx, gitURL, name, progress(cmd))
-			}
-			if missing, ok := errors.AsType[*project.CheckoutMissingError](err); ok {
-				var choice string
-				if reclone {
-					choice = "c"
-					logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
-				} else if remove {
-					choice = "r"
-					logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
+			var source api.Source
+			if cmd.Flags().Changed("local") {
+				path, err := absolute(local)
+				if err != nil {
+					return err
 				}
-				return resolveMissingCheckout(cmd, store, missing, choice, "pass --reclone or --remove")
+				source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
+			} else {
+				source.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: gitURL})
 			}
-			if err != nil {
-				return openHint(err)
+			req := api.CreateProject{Source: source, Name: optional(name)}
+			if reclone {
+				req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutReclone)
+				logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
+			} else if remove {
+				req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutRemove)
+				logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
 			}
-			return printResult(cmd, openedResponse(o))
+			for {
+				r, err := clientOf(cmd).CreateProject(cmd.Context(), req)
+				if err == nil {
+					return printResult(cmd, projectResult(r))
+				}
+				if problemCode(err) != api.ErrorCodeCheckoutMissing || req.OnMissingCheckout != nil {
+					return openHint(err)
+				}
+				if req.OnMissingCheckout, err = askMissingCheckout(cmd, err, "pass --reclone or --remove"); err != nil {
+					return err
+				}
+			}
 		},
 	}
 	cmd.Flags().StringVar(&local, "local", "", "path to a local git repository")
@@ -314,70 +293,61 @@ func newProjectOpenCmd(home string) *cobra.Command {
 
 const missingCheckoutQuestion = "missing checkout"
 
-// resolveMissingCheckout clones the project again ("c") or removes it ("r"),
-// asking when choice is empty. hint tells how to choose without a prompt.
-func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *project.CheckoutMissingError, choice, hint string) error {
-	ctx := cmd.Context()
-	p := missing.Project
+// askMissingCheckout asks whether to clone the project of the
+// checkout_missing problem in err again or to remove it. hint tells how to
+// answer without a prompt; the project's own hint when empty.
+func askMissingCheckout(cmd *cobra.Command, err error, hint string) (*api.CreateProjectOnMissingCheckout, error) {
+	var problem api.Problem
+	if e, ok := errors.AsType[*client.ProblemError](err); ok {
+		problem = e.Problem
+	}
+	p, _ := detailProject(problem, "project")
+	if !canPrompt(cmd) {
+		logUnanswered(cmd, missingCheckoutQuestion)
+		if hint == "" {
+			hint = missingCheckoutHint(p)
+		}
+		return nil, &hinted{err, hint}
+	}
+	var clonePath string
+	if problem.Details != nil {
+		clonePath, _ = (*problem.Details)["clone_path"].(string)
+	}
 	prompt := cmd.ErrOrStderr()
-	if choice == "" {
-		if !canPrompt(cmd) {
-			logUnanswered(cmd, missingCheckoutQuestion)
-			return &hinted{missing, hint}
-		}
-		fmt.Fprintf(prompt, "%s (was %s)\n", missing, p.ClonePath())
-		fmt.Fprintf(prompt, "[c] clone again to %s\n", p.ClonePath())
-		fmt.Fprintf(prompt, "[r] remove from %s\n", identity.Name)
-		var err error
-		if choice, err = ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose [c/r]: ", "c", "r"); err != nil {
-			return err
-		}
-		logAnswer(cmd, missingCheckoutQuestion, map[string]string{"c": "reclone", "r": "remove"}[choice], "prompt")
-	}
-	if choice == "c" {
-		o, err := store.Reclone(ctx, p.ID, progress(cmd))
-		if err != nil {
-			return err
-		}
-		return printResult(cmd, openedResponse(o))
-	}
-	removed, err := store.Remove(ctx, p.ID)
+	fmt.Fprintf(prompt, "%s (was %s)\n", err, clonePath)
+	fmt.Fprintf(prompt, "[c] clone again to %s\n", clonePath)
+	fmt.Fprintf(prompt, "[r] remove from %s\n", identity.Name)
+	choice, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose [c/r]: ", "c", "r")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return printResult(cmd, projectResponse("removed", removed))
-}
-
-// progress is where git's clone output goes: the terminal, never JSON.
-func progress(cmd *cobra.Command) io.Writer {
-	if jsonMode(cmd) {
-		return io.Discard
+	if choice == "r" {
+		logAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
+		return ptr(api.CreateProjectOnMissingCheckoutRemove), nil
 	}
-	return cmd.ErrOrStderr()
+	logAnswer(cmd, missingCheckoutQuestion, "reclone", "prompt")
+	return ptr(api.CreateProjectOnMissingCheckoutReclone), nil
 }
 
 // openHint tells what to do about the errors opening a project can return.
 func openHint(err error) error {
-	_, taken := errors.AsType[*project.NameTakenError](err)
-	_, exists := errors.AsType[*project.PathExistsError](err)
-	_, invalid := errors.AsType[*project.InvalidNameError](err)
-	switch {
-	case taken, exists, invalid:
+	switch problemCode(err) {
+	case api.ErrorCodeNameTaken, api.ErrorCodePathExists, api.ErrorCodeInvalidName:
 		return &hinted{err, "choose another with --name"}
-	case errors.Is(err, project.ErrNotGitRepo):
+	case api.ErrorCodeNotGitRepo:
 		return &hinted{err, "run git init there first, or use " + identity.Name + " project create"}
 	}
 	return err
 }
 
-func missingCheckoutHint(p project.Project) string {
-	if p.OriginURL == "" {
-		return fmt.Sprintf("remove it with %s project remove --id %s", identity.Name, p.ID)
+func missingCheckoutHint(p api.Project) string {
+	if p.Origin == nil {
+		return fmt.Sprintf("remove it with %s project remove --id %s", identity.Name, p.Id)
 	}
-	return fmt.Sprintf("run %s project open --git %s with --reclone or --remove", identity.Name, p.OriginURL)
+	return fmt.Sprintf("run %s project open --git %s with --reclone or --remove", identity.Name, *p.Origin)
 }
 
-func newProjectCloseCmd(home string) *cobra.Command {
+func newProjectCloseCmd() *cobra.Command {
 	var ref projectRef
 	cmd := &cobra.Command{
 		Use:   "close (--id <id> | --name <name>)",
@@ -386,34 +356,23 @@ func newProjectCloseCmd(home string) *cobra.Command {
 			identity.Name + " project open.",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The closed project.\n" + `With --json: {"ok": true, "action": "closed", "project": {...}}`,
-			actionList: "closed",
-			errorList:  annotation(codeNotFound),
+			outputNote: "The closed project.\n" + `With --json: {"result": "closed", "project": {...}}`,
+			resultList: "closed",
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath(home))
+			r, err := clientOf(cmd).UpdateProject(cmd.Context(), ref.path(), api.ProjectStateClosed)
 			if err != nil {
 				return err
 			}
-			defer d.Close()
-
-			store := project.NewStore(d, identity.ProjectsDir(home))
-			p, err := ref.get(ctx, store)
-			if err != nil {
-				return err
-			}
-			if p, err = store.Close(ctx, p.ID); err != nil {
-				return err
-			}
-			return printResult(cmd, projectResponse("closed", p))
+			return printResult(cmd, projectResult(r))
 		},
 	}
 	ref.addFlags(cmd)
 	return cmd
 }
 
-func newProjectRemoveCmd(home string) *cobra.Command {
+func newProjectRemoveCmd() *cobra.Command {
 	var ref projectRef
 	cmd := &cobra.Command{
 		Use:   "remove (--id <id> | --name <name>)",
@@ -422,29 +381,40 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 			"Files on disk are not touched.",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The removed project.\n" + `With --json: {"ok": true, "action": "removed", "project": {...}}`,
-			actionList: "removed",
-			errorList:  annotation(codeNotFound),
+			outputNote: "The removed project.\n" + `With --json: {"result": "removed", "project": {...}}`,
+			resultList: "removed",
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			d, err := db.Open(ctx, identity.DBPath(home))
+			r, err := clientOf(cmd).DeleteProject(cmd.Context(), ref.path())
 			if err != nil {
 				return err
 			}
-			defer d.Close()
-
-			store := project.NewStore(d, identity.ProjectsDir(home))
-			p, err := ref.get(ctx, store)
-			if err != nil {
-				return err
-			}
-			if p, err = store.Remove(ctx, p.ID); err != nil {
-				return err
-			}
-			return printResult(cmd, projectResponse("removed", p))
+			return printResult(cmd, projectResult(r))
 		},
 	}
 	ref.addFlags(cmd)
 	return cmd
+}
+
+// absolute makes path absolute against the working directory, which the
+// daemon does not share; "" stays "".
+func absolute(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	return filepath.Abs(path)
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
+// optional is nil for the zero value, a pointer to v otherwise.
+func optional[T comparable](v T) *T {
+	var zero T
+	if v == zero {
+		return nil
+	}
+	return &v
 }

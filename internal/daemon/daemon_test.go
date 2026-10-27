@@ -640,3 +640,38 @@ func TestStopReleasesSocketAndLock(t *testing.T) {
 		}
 	}
 }
+
+func TestDaemonInfoAndRunning(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	r, err := td.client.GetDaemonWithResponse(context.Background())
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("get daemon: %v %s", err, r.Body)
+	}
+	if d := r.JSON200; d.Pid != os.Getpid() || d.Home != td.home || d.Socket != td.socket || d.Version != identity.Version || time.Since(d.StartedAt) > time.Minute {
+		t.Fatalf("unexpected daemon %+v", d)
+	}
+	if pid, err := Running(td.home); err != nil || pid != os.Getpid() {
+		t.Fatalf("want running as %d, got %d, %v", os.Getpid(), pid, err)
+	}
+	if pid, err := Running(t.TempDir()); err != nil || pid != 0 {
+		t.Fatalf("want none running in an empty home, got %d, %v", pid, err)
+	}
+}
+
+func TestNotRunningAfterStop(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	ctx, stop := context.WithCancel(context.Background())
+	d, err := Listen(ctx, Options{Home: home, Socket: socketPath(t), Log: logging.New(io.Discard, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if err := d.Serve(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if pid, err := Running(home); err != nil || pid != 0 {
+		t.Fatalf("want none running, got %d, %v", pid, err)
+	}
+}

@@ -62,27 +62,33 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeCheckoutMissing ErrorCode = "checkout_missing"
-	ErrorCodeCloneFailed     ErrorCode = "clone_failed"
-	ErrorCodeInternal        ErrorCode = "internal"
-	ErrorCodeInvalidArgument ErrorCode = "invalid_argument"
-	ErrorCodeInvalidName     ErrorCode = "invalid_name"
-	ErrorCodeInvalidPath     ErrorCode = "invalid_path"
-	ErrorCodeNameTaken       ErrorCode = "name_taken"
-	ErrorCodeNotFound        ErrorCode = "not_found"
-	ErrorCodeNotGitRepo      ErrorCode = "not_git_repo"
-	ErrorCodePathExists      ErrorCode = "path_exists"
-	ErrorCodeProjectMismatch ErrorCode = "project_mismatch"
-	ErrorCodeRepoExists      ErrorCode = "repo_exists"
-	ErrorCodeUsage           ErrorCode = "usage"
+	ErrorCodeAlreadyRunning    ErrorCode = "already_running"
+	ErrorCodeCheckoutMissing   ErrorCode = "checkout_missing"
+	ErrorCodeCloneFailed       ErrorCode = "clone_failed"
+	ErrorCodeDaemonUnavailable ErrorCode = "daemon_unavailable"
+	ErrorCodeInternal          ErrorCode = "internal"
+	ErrorCodeInvalidArgument   ErrorCode = "invalid_argument"
+	ErrorCodeInvalidName       ErrorCode = "invalid_name"
+	ErrorCodeInvalidPath       ErrorCode = "invalid_path"
+	ErrorCodeNameTaken         ErrorCode = "name_taken"
+	ErrorCodeNotFound          ErrorCode = "not_found"
+	ErrorCodeNotGitRepo        ErrorCode = "not_git_repo"
+	ErrorCodePathExists        ErrorCode = "path_exists"
+	ErrorCodeProjectMismatch   ErrorCode = "project_mismatch"
+	ErrorCodeRepoExists        ErrorCode = "repo_exists"
+	ErrorCodeUsage             ErrorCode = "usage"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeAlreadyRunning:
+		return true
 	case ErrorCodeCheckoutMissing:
 		return true
 	case ErrorCodeCloneFailed:
+		return true
+	case ErrorCodeDaemonUnavailable:
 		return true
 	case ErrorCodeInternal:
 		return true
@@ -219,7 +225,19 @@ type CreateProjectOnConflict string
 // CreateProjectOnMissingCheckout defines model for CreateProject.OnMissingCheckout.
 type CreateProjectOnMissingCheckout string
 
-// ErrorCode Stable error code; never changed or reused.
+// Daemon defines model for Daemon.
+type Daemon struct {
+	Commit    string    `json:"commit"`
+	Home      string    `json:"home"`
+	Name      string    `json:"name"`
+	Pid       int       `json:"pid"`
+	Socket    string    `json:"socket"`
+	StartedAt time.Time `json:"started_at"`
+	Version   string    `json:"version"`
+}
+
+// ErrorCode Stable error code; never changed or reused. daemon_unavailable and
+// already_running are reported by the CLI, never by the daemon.
 type ErrorCode string
 
 // GitSource defines model for GitSource.
@@ -255,7 +273,8 @@ type NewSourceType string
 
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
-	// Code Stable error code; never changed or reused.
+	// Code Stable error code; never changed or reused. daemon_unavailable and
+	// already_running are reported by the CLI, never by the daemon.
 	Code ErrorCode `json:"code"`
 
 	// DebugId Finds the request's log lines.
@@ -585,6 +604,11 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// GetDaemon The daemon serving this socket
+	//
+	// Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
+	GetDaemon(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListProjects List projects, without their worktrees, sorted by name
 	//
 	// Corresponds with GET /v1/projects (the `ListProjects` operationId).
@@ -697,6 +721,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// GetDaemon The daemon serving this socket
+//
+// Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
+func (c *Client) GetDaemon(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDaemonRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // ListProjects List projects, without their worktrees, sorted by name
@@ -900,6 +939,33 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewGetDaemonRequest constructs an http.Request for the GetDaemon method
+func NewGetDaemonRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/daemon")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewListProjectsRequest constructs an http.Request for the ListProjects method
@@ -1216,6 +1282,13 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// GetDaemonWithResponse The daemon serving this socket
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
+	GetDaemonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDaemonResponse, error)
+
 	// ListProjectsWithResponse List projects, without their worktrees, sorted by name
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1338,6 +1411,54 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
+}
+
+type GetDaemonResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Daemon
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDaemonResponse) GetJSON200() *Daemon {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetDaemonResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDaemonResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDaemonResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDaemonResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDaemonResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ListProjectsResponse struct {
@@ -1683,6 +1804,19 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
+// GetDaemonWithResponse The daemon serving this socket
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
+func (c *ClientWithResponses) GetDaemonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDaemonResponse, error) {
+	rsp, err := c.GetDaemon(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDaemonResponse(rsp)
+}
+
 // ListProjectsWithResponse List projects, without their worktrees, sorted by name
 //
 // Returns a wrapper object for the known response body format(s).
@@ -1858,6 +1992,39 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetVersionResponse(rsp)
+}
+
+// ParseGetDaemonResponse parses an HTTP response from a GetDaemonWithResponse call
+func ParseGetDaemonResponse(rsp *http.Response) (*GetDaemonResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDaemonResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Daemon
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseListProjectsResponse parses an HTTP response from a ListProjectsWithResponse call
@@ -2100,6 +2267,9 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetDaemon The daemon serving this socket
+	// (GET /v1/daemon)
+	GetDaemon(w http.ResponseWriter, r *http.Request)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -2131,6 +2301,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetDaemon operation middleware
+func (siw *ServerInterfaceWrapper) GetDaemon(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDaemon(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -2418,6 +2602,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/version", wrapper.GetVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/daemon", wrapper.GetDaemon)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects", wrapper.ListProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/projects/{project}", wrapper.DeleteProject)
@@ -2429,6 +2614,44 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type ProblemApplicationProblemPlusJSONResponse Problem
+
+type GetDaemonRequestObject struct {
+}
+
+type GetDaemonResponseObject interface {
+	VisitGetDaemonResponse(w http.ResponseWriter) error
+}
+
+type GetDaemon200JSONResponse Daemon
+
+func (response GetDaemon200JSONResponse) VisitGetDaemonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDaemondefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetDaemondefaultApplicationProblemPlusJSONResponse) VisitGetDaemonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListProjectsRequestObject struct {
 	Params ListProjectsParams
@@ -2719,6 +2942,9 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetDaemon The daemon serving this socket
+	// (GET /v1/daemon)
+	GetDaemon(ctx context.Context, request GetDaemonRequestObject) (GetDaemonResponseObject, error)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -2779,6 +3005,30 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetDaemon operation middleware
+func (sh *strictHandler) GetDaemon(w http.ResponseWriter, r *http.Request) {
+	var request GetDaemonRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDaemon(ctx, request.(GetDaemonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDaemon")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDaemonResponseObject); ok {
+		if err := validResponse.VisitGetDaemonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListProjects operation middleware
@@ -2978,50 +3228,53 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

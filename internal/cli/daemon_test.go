@@ -1,0 +1,141 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/srjn45/warden/internal/api"
+	"github.com/srjn45/warden/internal/config"
+	"github.com/srjn45/warden/internal/daemon"
+	"github.com/srjn45/warden/internal/identity"
+)
+
+// TestDaemonLifecycle starts, restarts and stops a daemon running the wdx
+// binary in its own process.
+func TestDaemonLifecycle(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	t.Cleanup(func() {
+		if pid, _ := daemon.Running(home); pid != 0 {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	v, exit := wdxJSON(t, home, "daemon", "status")
+	if exit != api.ExitOK || v.Running == nil || *v.Running || v.Pid != nil || v.Daemon != nil {
+		t.Fatalf("want not running, got %+v", v)
+	}
+
+	v, exit = wdxJSON(t, home, "daemon", "start")
+	if exit != api.ExitOK || v.Result != "started" || v.Daemon == nil || v.Daemon.Pid == os.Getpid() || v.Daemon.Home != home || v.Daemon.Socket != identity.SocketPath(home) {
+		t.Fatalf("want started in its own process, got %+v", v)
+	}
+	first := v.Daemon.Pid
+	if v, _ = wdxJSON(t, home, "daemon", "start"); v.Result != "running" || v.Daemon.Pid != first {
+		t.Fatalf("want the running daemon %d, got %+v", first, v)
+	}
+	if v, _ = wdxJSON(t, home, "daemon", "status"); !*v.Running || *v.Pid != first || v.Daemon.Pid != first {
+		t.Fatalf("want running as %d, got %+v", first, v)
+	}
+	newProject(t, home, "app")
+
+	v, exit = wdxJSON(t, home, "daemon", "restart")
+	if exit != api.ExitOK || v.Result != "restarted" || v.Daemon.Pid == first {
+		t.Fatalf("want restarted in a new process, got %+v", v)
+	}
+	if v, _ = wdxJSON(t, home, "project", "get", "--name", "app"); v.Project == nil {
+		t.Fatalf("want the project served after the restart, got %+v", v)
+	}
+	second := v.Daemon
+
+	v, exit = wdxJSON(t, home, "daemon", "stop")
+	if exit != api.ExitOK || v.Result != "stopped" {
+		t.Fatalf("want stopped, got %+v", v)
+	}
+	if pid, err := daemon.Running(home); err != nil || pid != 0 {
+		t.Fatalf("want none running, got %d, %v", pid, err)
+	}
+	if v, _ = wdxJSON(t, home, "daemon", "stop"); v.Result != "not_running" || v.Daemon != nil {
+		t.Fatalf("want not running, got %+v (second daemon %+v)", v, second)
+	}
+
+	out := wdx(t, home, "daemon", "start")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+	if out = wdx(t, home, "daemon", "status"); !strings.HasPrefix(out.stdout, "daemon running (pid ") || !strings.Contains(out.stdout, "  socket:  "+identity.SocketPath(home)) {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+	if out = wdx(t, home, "daemon", "stop"); !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+	if out = wdx(t, home, "daemon", "status"); out.stdout != "daemon not running\n" {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestDaemonStartFails(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	// A config file the daemon refuses makes it exit at once.
+	if err := os.WriteFile(identity.ConfigPath(home), []byte("colour: red\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, exit := wdxJSON(t, home, "daemon", "start")
+	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
+	if !strings.Contains(v.Detail, "colour: unknown setting") {
+		t.Fatalf("want the daemon's own error in the detail, got %q", v.Detail)
+	}
+	wantHint(t, v, "see the log in "+identity.LogsDir(home))
+}
+
+// TestDaemonForeground runs the daemon in a command until its context ends,
+// as a signal would end it.
+func TestDaemonForeground(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	cfg := config.Default()
+	cfg.Home = home
+	ctx, stop := context.WithCancel(context.Background())
+	var stdout bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- Run(ctx, []string{"daemon", "start", "--foreground", "--json"}, Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &bytes.Buffer{}, Config: cfg})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if v, _ := wdxJSON(t, home, "daemon", "status"); v.Daemon != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the daemon did not answer")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	newProject(t, home, "app")
+
+	v, exit := wdxJSON(t, home, "daemon", "start", "--foreground")
+	wantError(t, v, exit, api.ErrorCodeAlreadyRunning, api.ExitRejected)
+	if pid, _ := v.Details["pid"].(float64); int(pid) != os.Getpid() {
+		t.Fatalf("want the running daemon's pid in details, got %+v", v.Details)
+	}
+
+	stop()
+	if exit := <-done; exit != api.ExitOK {
+		t.Fatalf("want exit 0, got %d: %s", exit, stdout.String())
+	}
+	var r struct {
+		Result string     `json:"result"`
+		Daemon api.Daemon `json:"daemon"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil || r.Result != "stopped" || r.Daemon.Pid != os.Getpid() || r.Daemon.Home != home {
+		t.Fatalf("want stopped, got %s, %v", stdout.String(), err)
+	}
+}

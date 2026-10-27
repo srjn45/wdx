@@ -19,12 +19,17 @@ const idPrefix = "id:"
 // server implements the API on the project store.
 type server struct {
 	store *project.Store
+	self  api.Daemon
 }
 
 var _ api.StrictServerInterface = (*server)(nil)
 
 func (s *server) GetVersion(context.Context, api.GetVersionRequestObject) (api.GetVersionResponseObject, error) {
 	return api.GetVersion200JSONResponse{Name: identity.Name, Version: identity.Version, Commit: identity.Commit}, nil
+}
+
+func (s *server) GetDaemon(context.Context, api.GetDaemonRequestObject) (api.GetDaemonResponseObject, error) {
+	return api.GetDaemon200JSONResponse(s.self), nil
 }
 
 func (s *server) ListProjects(ctx context.Context, req api.ListProjectsRequestObject) (api.ListProjectsResponseObject, error) {

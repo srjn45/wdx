@@ -24,6 +24,18 @@ paths:
               schema: { $ref: "#/components/schemas/Version" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/daemon:
+    get:
+      operationId: getDaemon
+      summary: The daemon serving this socket
+      responses:
+        "200":
+          description: Its build, process, home and socket.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Daemon" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/projects:
     get:
       operationId: listProjects
@@ -171,6 +183,18 @@ components:
         version: { type: string }
         commit: { type: string }
 
+    Daemon:
+      type: object
+      required: [name, version, commit, pid, home, socket, started_at]
+      properties:
+        name: { type: string }
+        version: { type: string }
+        commit: { type: string }
+        pid: { type: integer }
+        home: { type: string }
+        socket: { type: string }
+        started_at: { type: string, format: date-time }
+
     ProjectState:
       type: string
       enum: [open, closed]
@@ -312,7 +336,9 @@ components:
 
     ErrorCode:
       type: string
-      description: Stable error code; never changed or reused.
+      description: |
+        Stable error code; never changed or reused. daemon_unavailable and
+        already_running are reported by the CLI, never by the daemon.
       enum:
         - usage
         - internal
@@ -327,6 +353,8 @@ components:
         - path_exists
         - project_mismatch
         - clone_failed
+        - daemon_unavailable
+        - already_running
 
     Problem:
       type: object

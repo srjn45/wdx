@@ -1,0 +1,330 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/srjn45/warden/internal/api"
+	"github.com/srjn45/warden/internal/client"
+	"github.com/srjn45/warden/internal/daemon"
+	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/warden/internal/logging"
+)
+
+const (
+	// startTimeout is how long a started daemon gets to answer.
+	startTimeout = 10 * time.Second
+	// stopTimeout is how long a daemon gets to stop: longer than it gives
+	// the requests in flight.
+	stopTimeout = 40 * time.Second
+	// pollInterval is how often starting and stopping check on the daemon.
+	pollInterval = 50 * time.Millisecond
+)
+
+func newDaemonCmd(home string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Start, stop and inspect the daemon",
+		Long: "The daemon serves the project commands on " + identity.SocketPath(home) + ".\n" +
+			"It reads the settings when it starts; restart it after changing them or\n" +
+			"updating " + identity.Name + ".",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
+	cmd.AddCommand(newDaemonStartCmd(), newDaemonStopCmd(), newDaemonRestartCmd(), newDaemonStatusCmd())
+	return cmd
+}
+
+// daemonResult is what starting or stopping the daemon did.
+type daemonResult struct {
+	Result string      `json:"result"`
+	Daemon *api.Daemon `json:"daemon"` // the daemon started or stopped; null when unknown
+}
+
+func (r daemonResult) text(w io.Writer) {
+	if r.Daemon == nil {
+		fmt.Fprintf(w, "daemon %s\n", strings.ReplaceAll(r.Result, "_", " "))
+		return
+	}
+	d := r.Daemon
+	switch r.Result {
+	case "stopped":
+		fmt.Fprintf(w, "daemon stopped (pid %d)\n", d.Pid)
+	case "running":
+		fmt.Fprintf(w, "daemon already running (pid %d, version %s) on %s\n", d.Pid, d.Version, d.Socket)
+	default:
+		fmt.Fprintf(w, "daemon %s (pid %d, version %s) on %s\n", r.Result, d.Pid, d.Version, d.Socket)
+	}
+}
+
+func newDaemonStartCmd() *cobra.Command {
+	var foreground bool
+	cmd := &cobra.Command{
+		Use:   "start [--foreground]",
+		Short: "Start the daemon",
+		Long: "Start the daemon in the background and wait until it answers. With\n" +
+			"--foreground it runs in this process until interrupted, as a service\n" +
+			"manager runs it.",
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The daemon, already running or started; with --foreground, the daemon once stopped.\n" +
+				`With --json: {"result": ..., "daemon": {...}}`,
+			resultList: annotation("running", "started", "stopped"),
+			errorList:  codeList(api.ErrorCodeAlreadyRunning, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if foreground {
+				return runForeground(cmd)
+			}
+			d, started, err := startDaemon(cmd)
+			if err != nil {
+				return err
+			}
+			result := "running"
+			if started {
+				result = "started"
+			}
+			return printResult(cmd, daemonResult{Result: result, Daemon: &d})
+		},
+	}
+	cmd.Flags().BoolVar(&foreground, "foreground", false, "run in this process until interrupted")
+	return cmd
+}
+
+// runForeground runs the daemon in this process until SIGINT or SIGTERM.
+func runForeground(cmd *cobra.Command) error {
+	cfg := invocationOf(cmd).env.Config
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	logs := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
+	defer logs.Close()
+	log := logging.New(logs, cfg.LogLevel).With("pid", os.Getpid(), "process", "daemon")
+
+	d, err := daemon.Listen(ctx, daemon.Options{Home: cfg.Home, Log: log})
+	if err != nil {
+		return err
+	}
+	info := d.Info()
+	logging.FromContext(ctx).Info("daemon serving", "socket", info.Socket)
+	if !jsonMode(cmd) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "daemon running on %s (pid %d); stop it with Ctrl-C or %s daemon stop\n", info.Socket, info.Pid, identity.Name)
+	}
+	if err := d.Serve(ctx); err != nil {
+		return err
+	}
+	return printResult(cmd, daemonResult{Result: "stopped", Daemon: &info})
+}
+
+// startDaemon starts the daemon in the background unless one is running,
+// and returns it once it answers; started tells whether it was started.
+func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
+	ctx := cmd.Context()
+	log := logging.FromContext(ctx)
+	inv := invocationOf(cmd)
+	home := inv.env.Config.Home
+	pid, err := daemon.Running(home)
+	if err != nil {
+		return api.Daemon{}, false, err
+	}
+	if pid != 0 {
+		log.Info("daemon already running", "daemon_pid", pid)
+		d, err := waitAnswering(cmd, nil)
+		return d, false, err
+	}
+
+	// The daemon's stderr goes to a file read only if it exits at once; a
+	// pipe would break once this process exits.
+	stderr, err := os.CreateTemp("", identity.Name+"-daemon-*.log")
+	if err != nil {
+		return api.Daemon{}, false, err
+	}
+	defer os.Remove(stderr.Name())
+	defer stderr.Close()
+	c := exec.Command(inv.env.Executable, "daemon", "start", "--foreground")
+	c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
+	c.Stderr = stderr
+	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := c.Start(); err != nil {
+		return api.Daemon{}, false, err
+	}
+	log.Info("daemon process started", "daemon_pid", c.Process.Pid, "executable", inv.env.Executable)
+	exited := make(chan error, 1)
+	go func() { exited <- c.Wait() }()
+
+	d, err := waitAnswering(cmd, exited)
+	if err != nil {
+		if out, _ := os.ReadFile(stderr.Name()); len(out) > 0 {
+			log.Error("daemon failed to start", "stderr", string(out))
+			err = fmt.Errorf("%w: %s", err, out)
+		}
+		return api.Daemon{}, false, &hinted{err, "see the log in " + identity.LogsDir(home)}
+	}
+	return d, true, nil
+}
+
+// waitAnswering waits until the daemon answers, giving up when it exits
+// (when exited is not nil) or after startTimeout.
+func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) {
+	deadline := time.After(startTimeout)
+	tick := time.NewTicker(pollInterval)
+	defer tick.Stop()
+	for {
+		d, err := clientOf(cmd).Daemon(cmd.Context())
+		if _, unavailable := errors.AsType[*client.UnavailableError](err); !unavailable {
+			return d, err
+		}
+		select {
+		case err := <-exited:
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("the daemon exited: %v", err)}
+		case <-deadline:
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("no answer within %s", startTimeout)}
+		case <-tick.C:
+		}
+	}
+}
+
+func newDaemonStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop",
+		Short: "Stop the daemon",
+		Long:  "Stop the daemon, letting the requests in flight finish first.",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
+			resultList: annotation("not_running", "stopped"),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			d, err := stopDaemon(cmd)
+			if err != nil {
+				return err
+			}
+			if d == nil {
+				return printResult(cmd, daemonResult{Result: "not_running"})
+			}
+			return printResult(cmd, daemonResult{Result: "stopped", Daemon: d})
+		},
+	}
+}
+
+// stopDaemon stops the daemon serving the home and returns it, or nil when
+// none was running.
+func stopDaemon(cmd *cobra.Command) (*api.Daemon, error) {
+	log := logging.FromContext(cmd.Context())
+	home := invocationOf(cmd).env.Config.Home
+	pid, err := daemon.Running(home)
+	if err != nil || pid == 0 {
+		return nil, err
+	}
+	d := api.Daemon{Pid: pid}
+	if answered, err := clientOf(cmd).Daemon(cmd.Context()); err == nil {
+		d = answered
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		return nil, fmt.Errorf("signal the daemon (pid %d): %w", pid, err)
+	}
+	log.Info("daemon signalled", "daemon_pid", pid)
+	deadline := time.Now().Add(stopTimeout)
+	for {
+		running, err := daemon.Running(home)
+		if err != nil {
+			return nil, err
+		}
+		if running == 0 {
+			log.Info("daemon gone", "daemon_pid", pid)
+			return &d, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("the daemon (pid %d) did not stop within %s", pid, stopTimeout)
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
+func newDaemonRestartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "restart",
+		Short: "Restart the daemon, or start it",
+		Long:  "Stop the daemon if it is running, then start it, as after updating " + identity.Name + " or its settings.",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
+			resultList: "restarted",
+			errorList:  codeList(api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := stopDaemon(cmd); err != nil {
+				return err
+			}
+			d, _, err := startDaemon(cmd)
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, daemonResult{Result: "restarted", Daemon: &d})
+		},
+	}
+}
+
+// daemonStatus is whether the daemon is running and, when it answers, what
+// it says about itself.
+type daemonStatus struct {
+	Running bool        `json:"running"`
+	Pid     *int        `json:"pid"`
+	Daemon  *api.Daemon `json:"daemon"` // null when it does not answer
+	socket  string
+}
+
+func (s daemonStatus) text(w io.Writer) {
+	switch {
+	case !s.Running:
+		fmt.Fprintln(w, "daemon not running")
+	case s.Daemon == nil:
+		fmt.Fprintf(w, "daemon running (pid %d) but not answering on %s\n", *s.Pid, s.socket)
+	default:
+		d := s.Daemon
+		fmt.Fprintf(w, "daemon running (pid %d)\n", d.Pid)
+		fmt.Fprintf(w, "  version: %s (%s)\n", d.Version, d.Commit)
+		fmt.Fprintf(w, "  started: %s (up %s)\n", d.StartedAt.Local().Format(time.DateTime), time.Since(d.StartedAt).Round(time.Second))
+		fmt.Fprintf(w, "  home:    %s\n", d.Home)
+		fmt.Fprintf(w, "  socket:  %s\n", d.Socket)
+	}
+}
+
+func newDaemonStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show whether the daemon is running",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "Whether the daemon is running, its pid, and what it says about itself when it answers.\n" +
+				`With --json: {"running": ..., "pid": ..., "daemon": {...}}`,
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			home := invocationOf(cmd).env.Config.Home
+			pid, err := daemon.Running(home)
+			if err != nil {
+				return err
+			}
+			s := daemonStatus{Running: pid != 0, socket: identity.SocketPath(home)}
+			if pid != 0 {
+				s.Pid = &pid
+				d, err := clientOf(cmd).Daemon(cmd.Context())
+				if _, unavailable := errors.AsType[*client.UnavailableError](err); err != nil && !unavailable {
+					return err
+				}
+				if err == nil {
+					s.Daemon = &d
+				}
+			}
+			return printResult(cmd, s)
+		},
+	}
+}

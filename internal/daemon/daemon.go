@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/db"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
@@ -101,6 +103,48 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		"version", identity.Version,
 		"commit", identity.Commit)
 	return d, nil
+}
+
+// Info describes the daemon.
+func (d *Daemon) Info() api.Daemon {
+	return api.Daemon{
+		Name:      identity.Name,
+		Version:   identity.Version,
+		Commit:    identity.Commit,
+		Pid:       os.Getpid(),
+		Home:      d.opts.Home,
+		Socket:    d.opts.Socket,
+		StartedAt: d.started.UTC(),
+	}
+}
+
+// Running returns the pid of the daemon serving home, or 0 when none is.
+func Running(home string) (int, error) {
+	f, err := os.Open(identity.LockPath(home))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+	if err == nil {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		return 0, nil
+	}
+	if !errors.Is(err, syscall.EWOULDBLOCK) {
+		return 0, err
+	}
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return 0, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return 0, fmt.Errorf("daemon lock %s holds no pid: %q", f.Name(), b)
+	}
+	return pid, nil
 }
 
 // lock locks the file at path, failing with an *AlreadyRunningError when

@@ -23,7 +23,8 @@ warden manages AI CLI agents in PTYs, plus projects, messaging, a TUI and later 
 api/openapi.yaml   the API contract; everything in internal/api is generated from it
 cmd/wdx/        entry point
 internal/api/   generated types, server interface and client, plus the error codes
-internal/cli/   cobra commands: parse args and print, no business logic
+internal/cli/   cobra commands: parse args, call the daemon, print; no business logic
+internal/client/   calls the daemon's API over its socket
 internal/daemon/   serves the API over the Unix socket on top of the domain
 internal/config/   the settings, loaded once at startup from their sources
 internal/db/    opens the single SQLite DB, runs embedded migrations
@@ -32,7 +33,7 @@ internal/logging/  JSON-line logs in daily files; the logger travels in the cont
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> daemon -> domain -> db/git; cli and daemon share api. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, and cli -> daemon -> domain -> db/git. The cli runs the daemon but never calls the domain: every command goes through the API. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -58,15 +59,18 @@ Every command serves both humans and scripts or AIs.
 
 - Only commands are positional; every input is a flag. An entity is named by `--id` or `--name`, exactly one of them.
 - Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `no_input: true` in the config file), fail when the question comes up, with a hint naming the flags.
-- Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else:
-  - success: `{"ok": true, "action": "created", "project": {...}}`, with the key named after the entity and command-specific extras such as `dropped`;
-  - failure: `{"ok": false, "error": {"code": "name_taken", "message": "...", "hint": "...", "details": {"project": {...}}}}`.
-- `action` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`. Read-only commands have no `action`; they return the entity under its own key (`project`, or `projects` for a list).
+- Every command supports `--json`, which never prompts: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else, the same the API returns:
+  - success: the API's body, such as `{"result": "created", "project": {...}}`, with the key named after the entity and extras such as `dropped`;
+  - failure: Problem Details, as the API returns them: `{"type": "urn:wdx:error:name_taken", "title": "...", "status": 409, "detail": "...", "code": "name_taken", "hint": "...", "details": {"project": {...}}, "debug_id": "dbg-..."}`. Errors only the CLI reports (`usage`, `daemon_unavailable`, `already_running`, `internal`) take the same shape.
+- `result` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`. Read-only commands have no `result`; they return the entity under its own key (`project`, or `projects` for a list).
+- A command that cannot reach the daemon fails with `daemon_unavailable` (exit 3) and the hint `run wdx daemon start`; it never starts the daemon itself. A daemon of another version gets a warning on stderr.
+- Paths given on the command line are made absolute before they are sent: the daemon does not share the working directory.
+- Prompts stay in the CLI: on a conflict it asks, then sends the request again with the answer (`on_conflict`, `on_missing_checkout`).
 - JSON keys are snake_case, absent values are `null`, timestamps are RFC 3339. Leave internal fields out: everything in the JSON is a contract.
 - Text mode prints results to stdout and errors to stderr; the first line says what happened.
 - Exit codes: 0 ok, 1 rejected (conflict, not found, cancelled), 2 usage, 3 system failure.
-- The domain returns typed errors and knows nothing about output. `internal/cli/output.go` owns the error codes (each with its exit code and a description), maps errors to them and renders both formats from one response value. Hints are added by the cli, not written into domain messages.
-- Every command documents itself with annotations: `output` (what it prints), `actions`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them after cobra's usage text, or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
+- The domain returns typed errors and knows nothing about output; the daemon maps them to codes, and `internal/api/codes.go` gives each code its exit code. The cli renders both formats from one response value. Hints are added by the cli, not written into domain messages.
+- Every command documents itself with annotations: `output` (what it prints), `results`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them after cobra's usage text, or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
 
 ## Config
 
@@ -92,11 +96,12 @@ The log must tell the story of any run: what was asked, every step taken and why
 
 ## Testing
 
-- Every `wdx` run in the cli tests is checked to be logged from `command received` to `command returned`, with the logged response equal to what was printed.
-- A command fails the tests when it returns an action or error code its help does not list, and `TestCommandDocs` checks every command's help is complete; keep both in sync rather than loosening them.
-- Every command has integration tests that call `cli.Run` with `--json` and a temp `WDX_HOME`: one test per outcome, asserting `ok`, `action` or `error.code`, and the exit code. Domain edge cases stay in domain tests; text output gets one smoke test per command.
-- Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared globals; build settings with `config.Default()` and pass them in through `cli.Env`.
-- All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports. Unix sockets are the one exception: they go in a fresh directory under `/tmp`, since a path under `t.TempDir()` can exceed the 104 bytes macOS allows.
+- Every `wdx` run in the cli tests is checked to be logged from `command received` to `command returned`, with the logged response equal to what was printed, and every request it sent logged by the daemon under the same debug id.
+- A command fails the tests when it returns a result or error code its help does not list, and `TestCommandDocs` checks every command's help is complete; keep both in sync rather than loosening them.
+- Every command has integration tests that call `cli.Run` with `--json` against a home from `newHome`, which a daemon serves in the test process: one test per outcome, asserting `result` or `code`, and the exit code. Domain edge cases stay in domain tests; text output gets one smoke test per command.
+- Starting the daemon in the background runs the `wdx` binary the cli tests build in `TestMain`; tests that do so stop it when they end.
+- Every test calls `t.Parallel()`. Never use `t.Setenv`, `os.Chdir` or shared mutable globals; build settings with `config.Default()` and pass them in through `cli.Env`.
+- All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports. Unix sockets are the one exception: they, and homes that hold one, go in a fresh directory under `/tmp`, since a path under `t.TempDir()` can exceed the 104 bytes macOS allows.
 - Daemon tests run an in-process daemon and call it through the generated client, checking every request is logged from received to returned.
 - git runs with the user's config ignored (set in each package's `TestMain`).
 - Run tests with `make test` (race detector, shuffled order).

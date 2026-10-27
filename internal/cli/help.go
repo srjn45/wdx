@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 )
@@ -20,13 +21,19 @@ func conventions() string {
 	var b strings.Builder
 	b.WriteString(`Output:
   Results go to stdout and errors to stderr. With --json nothing prompts, and
-  stdout holds exactly one JSON object and nothing else:
-    success: {"ok": true, "action": "created", "project": {...}}
-    failure: {"ok": false, "error": {"code": "not_found", "message": "...", "hint": "...", "details": {...},
-              "debug_id": "dbg-..."}}
-  "action" names what happened; commands that change nothing have none.
-  Each command's help lists its actions and error codes; add --json to get
+  stdout holds exactly one JSON object and nothing else, the same the
+  daemon's API returns:
+    success: {"result": "created", "project": {...}}
+    failure: Problem Details (RFC 9457): {"type": "urn:wdx:error:not_found", "title": "...",
+             "status": 404, "detail": "...", "code": "not_found", "hint": "...", "details": {...},
+             "debug_id": "dbg-..."}
+  "result" names what happened; commands that change nothing have none.
+  Each command's help lists its results and error codes; add --json to get
   the help itself as JSON.
+
+Daemon:
+  Project commands are served by the daemon on <home>/` + identity.Name + `.sock, which
+  ` + identity.Name + ` daemon start runs; it reads the settings when it starts.
 
 Exit codes:
   0  ok
@@ -61,7 +68,7 @@ func setHelp(root *cobra.Command) {
 	usage := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		v := newCommandView(cmd)
-		r := helpResponse{OK: true, Command: v}
+		r := helpResponse{Command: v}
 		invocationOf(cmd).response = r
 		if jsonMode(cmd) {
 			writeJSON(cmd.OutOrStdout(), r)
@@ -78,7 +85,6 @@ func setHelp(root *cobra.Command) {
 }
 
 type helpResponse struct {
-	OK      bool        `json:"ok"`
 	Command commandView `json:"command"`
 }
 
@@ -91,7 +97,7 @@ type commandView struct {
 	FlagRules   []flagRule       `json:"flag_rules"`
 	Commands    []commandSummary `json:"commands"`
 	Output      *string          `json:"output"`
-	Actions     []string         `json:"actions"`
+	Results     []string         `json:"results"`
 	Errors      []codeView       `json:"errors"`
 }
 
@@ -130,7 +136,7 @@ func newCommandView(cmd *cobra.Command) commandView {
 		Flags:       []flagView{},
 		FlagRules:   flagRules(cmd),
 		Commands:    []commandSummary{},
-		Actions:     annotationList(cmd, actionList),
+		Results:     annotationList(cmd, resultList),
 		Errors:      []codeView{},
 	}
 	addFlags := func(flags *pflag.FlagSet, global bool) {
@@ -153,8 +159,9 @@ func newCommandView(cmd *cobra.Command) commandView {
 	if note, ok := cmd.Annotations[outputNote]; ok {
 		v.Output = &note
 	}
-	for _, code := range append(slices.Sorted(slices.Values(annotationList(cmd, errorList))), codeUsage, codeInternal) {
-		v.Errors = append(v.Errors, codeView{Code: code, Exit: codes[code].exit, Description: codes[code].description})
+	for _, code := range append(slices.Sorted(slices.Values(annotationList(cmd, errorList))), string(api.ErrorCodeUsage), string(api.ErrorCodeInternal)) {
+		info := api.Codes[api.ErrorCode(code)]
+		v.Errors = append(v.Errors, codeView{Code: code, Exit: info.Exit, Description: info.Description})
 	}
 	return v
 }
@@ -229,6 +236,14 @@ func annotation(items ...string) string {
 	return strings.Join(items, " ")
 }
 
+func codeList(codes ...api.ErrorCode) string {
+	var items []string
+	for _, c := range codes {
+		items = append(items, string(c))
+	}
+	return annotation(items...)
+}
+
 // text writes the sections cobra's usage text lacks.
 func (v commandView) text(w io.Writer) {
 	if len(v.FlagRules) > 0 {
@@ -244,8 +259,8 @@ func (v commandView) text(w io.Writer) {
 		}
 		fmt.Fprintln(w)
 	}
-	if len(v.Actions) > 0 {
-		fmt.Fprintf(w, "  action: %s\n", orList(v.Actions))
+	if len(v.Results) > 0 {
+		fmt.Fprintf(w, "  result: %s\n", orList(v.Results))
 	}
 	fmt.Fprintln(w, "\nErrors:")
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

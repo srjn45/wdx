@@ -15,5 +15,7 @@ func main() {
 		os.Exit(cli.ConfigError(os.Args[1:], env, err))
 	}
 	env.Config = cfg
+	// Without it only starting the daemon in the background fails.
+	env.Executable, _ = os.Executable()
 	os.Exit(cli.Run(context.Background(), os.Args[1:], env))
 }

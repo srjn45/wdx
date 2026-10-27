@@ -36,7 +36,7 @@ func (d *Daemon) handler() http.Handler {
 		ErrorHandlerWithOpts:  invalidRequest,
 	})
 
-	strict := api.NewStrictHandlerWithOptions(&server{store: d.store}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&server{store: d.store, self: d.Info()}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
 	})

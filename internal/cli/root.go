@@ -13,6 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/warden/internal/api"
+	"github.com/srjn45/warden/internal/client"
 	"github.com/srjn45/warden/internal/config"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
@@ -24,8 +26,8 @@ const (
 	failurePrefix = "failurePrefix"
 	// outputNote tells what the command prints on success.
 	outputNote = "output"
-	// actionList holds the actions the command can return.
-	actionList = "actions"
+	// resultList holds the results the command can return.
+	resultList = "results"
 	// errorList holds the error codes the command can return besides usage
 	// and internal.
 	errorList = "errors"
@@ -39,6 +41,7 @@ type Env struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	Config         config.Config
+	Executable     string // the wdx binary, run to start the daemon
 }
 
 // Run executes the command line args and returns the process exit code.
@@ -55,65 +58,68 @@ func Run(ctx context.Context, args []string, env Env) int {
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
 	wrapRun(root)
-	inv := &invocation{}
+	inv := &invocation{env: env, debugID: debugID}
 	root.SetContext(logging.NewContext(context.WithValue(ctx, invocationKey{}, inv), log))
 	cmd, err := root.ExecuteC()
 	if err == nil {
-		logReturned(log, cmd, start, exitOK, inv.response, nil)
-		return exitOK
+		logReturned(log, cmd, start, api.ExitOK, inv.response, nil)
+		return api.ExitOK
 	}
 	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
 	if !inv.started {
 		err = &usageError{err}
 	}
 
-	v, exit := classify(err)
-	v.DebugID = debugID
-	if v.Code == codeUsage {
-		v.Hint = withHelpHint(v.Hint, cmd)
+	p, exit := problem(err)
+	p.DebugId = debugID
+	if p.Code == api.ErrorCodeUsage {
+		p.Hint = withHelpHint(p.Hint, cmd)
 	}
-	response := errorResponse{Error: v}
-	logReturned(log, cmd, start, exit, response, err)
-	printError(env, wantsJSON(cmd, args), response, cmd.Annotations[failurePrefix])
+	logReturned(log, cmd, start, exit, p, err)
+	printError(env, wantsJSON(cmd, args), p, cmd.Annotations[failurePrefix])
 	return exit
 }
 
 // ConfigError reports the settings that failed to load, before any command
 // runs, and returns the exit code.
 func ConfigError(args []string, env Env, err error) int {
+	p := api.NewProblem(api.ErrorCodeUsage, err.Error())
 	hint := "fix or remove them"
-	v := errorView{Code: codeUsage, Message: err.Error(), Hint: &hint}
+	p.Hint = &hint
 	if e, ok := errors.AsType[*config.Error](err); ok {
-		v.Details = map[string]any{"settings": e.Problems}
+		p.Details = &map[string]any{"settings": e.Problems}
 	}
-	printError(env, slices.Contains(args, "--json"), errorResponse{Error: v}, "")
-	return codes[codeUsage].exit
+	printError(env, slices.Contains(args, "--json"), p, "")
+	return api.Codes[api.ErrorCodeUsage].Exit
 }
 
-// printError writes r to stdout as JSON or to stderr as one line of text.
-func printError(env Env, asJSON bool, r errorResponse, prefix string) {
+// printError writes p to stdout as JSON or to stderr as one line of text.
+func printError(env Env, asJSON bool, p api.Problem, prefix string) {
 	if asJSON {
-		writeJSON(env.Stdout, r)
+		writeJSON(env.Stdout, p)
 		return
 	}
-	v := r.Error
-	msg := v.Message
+	msg := p.Detail
 	if prefix != "" {
 		msg = prefix + ": " + msg
 	}
-	if v.Hint != nil {
-		msg += "; " + *v.Hint
+	if p.Hint != nil {
+		msg += "; " + *p.Hint
 	}
-	if v.DebugID != "" {
-		msg += " (debug_id " + v.DebugID + ")"
+	if p.DebugId != "" {
+		msg += " (debug_id " + p.DebugId + ")"
 	}
 	fmt.Fprintf(env.Stderr, "%s: %s\n", identity.Name, msg)
 }
 
-// invocation is what Run learns from the command it executes.
+// invocation is what Run learns from the command it executes, and what the
+// command takes from Run.
 type invocation struct {
+	env      Env
+	debugID  string
 	started  bool // RunE was reached, so the command line was valid
 	response any  // what the command printed
+	client   *client.Client
 }
 
 type invocationKey struct{}
@@ -123,6 +129,23 @@ func invocationOf(cmd *cobra.Command) *invocation {
 		return inv
 	}
 	return &invocation{}
+}
+
+// clientOf returns the client of the daemon serving the configured home. A
+// daemon of another version gets a warning on stderr, once.
+func clientOf(cmd *cobra.Command) *client.Client {
+	inv := invocationOf(cmd)
+	if inv.client == nil {
+		inv.client = client.New(client.Options{
+			Socket:  identity.SocketPath(inv.env.Config.Home),
+			DebugID: inv.debugID,
+			VersionMismatch: func(daemonVersion string) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: the daemon is version %s but %s is %s; run %s daemon restart\n",
+					identity.Name, daemonVersion, identity.Name, identity.Version, identity.Name)
+			},
+		})
+	}
+	return inv.client
 }
 
 // wrapRun makes every RunE in the tree log its start, check the flags --json
@@ -203,7 +226,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root.CompletionOptions.HiddenDefaultCmd = true
 	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set no_input: true in "+identity.ConfigPath(cfg.Home)+")")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home))
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home))
 	root.InitDefaultHelpCmd()
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "help" {
@@ -219,13 +242,22 @@ func newRoot(cfg config.Config) *cobra.Command {
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print version information",
+		Short: "Print the version of " + identity.Name + " and of the daemon",
 		Args:  cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The name, version and commit of " + identity.Name + ".\n" + `With --json: {"ok": true, "name": ..., "version": ..., "commit": ...}`,
+			outputNote: "The name, version and commit of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
+				`With --json: {"cli": {"name": ..., "version": ..., "commit": ...}, "daemon": {...}}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return printResult(cmd, versionResponse{OK: true, Name: identity.Name, Version: identity.Version, Commit: identity.Commit})
+			r := versionResponse{CLI: api.Version{Name: identity.Name, Version: identity.Version, Commit: identity.Commit}}
+			v, err := clientOf(cmd).Version(cmd.Context())
+			if _, unavailable := errors.AsType[*client.UnavailableError](err); err != nil && !unavailable {
+				return err
+			}
+			if err == nil {
+				r.Daemon = &v
+			}
+			return printResult(cmd, r)
 		},
 	}
 }
