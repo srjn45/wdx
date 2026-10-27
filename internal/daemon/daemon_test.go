@@ -93,6 +93,9 @@ func wantRequestsLogged(t *testing.T, home string) {
 			if line["response"] == nil || line["status"] == nil {
 				t.Errorf("incomplete line %v", line)
 			}
+			if failed := line["status"].(float64) >= 400; failed != (line["code"] != nil) {
+				t.Errorf("want a code exactly when the request failed: %v", line)
+			}
 			received[line["debug_id"].(string)]--
 		}
 	}

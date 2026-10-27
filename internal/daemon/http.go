@@ -119,6 +119,7 @@ func (d *Daemon) logRequests(next http.Handler) http.Handler {
 			level := slog.LevelInfo
 			if rec.status >= http.StatusBadRequest {
 				level = slog.LevelError
+				attrs = append(attrs, "code", rec.code())
 			}
 			if stack != nil {
 				attrs = append(attrs, "stack", string(stack))
@@ -142,6 +143,15 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	body   bytes.Buffer
+}
+
+// code is the error code of the problem written.
+func (r *recorder) code() api.ErrorCode {
+	var p struct {
+		Code api.ErrorCode `json:"code"`
+	}
+	json.Unmarshal(r.body.Bytes(), &p)
+	return p.Code
 }
 
 func (r *recorder) WriteHeader(status int) {

@@ -115,6 +115,7 @@ type logLine struct {
 	Pid      int             `json:"pid"`
 	Args     json.RawMessage `json:"args"` // a command's arguments, or SQL's
 	Exit     *int            `json:"exit"`
+	Code     string          `json:"code"`
 	Response json.RawMessage `json:"response"`
 }
 
@@ -186,6 +187,13 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 	}
 	if string(last.Response) == "null" || len(last.Response) == 0 {
 		t.Fatalf("%v: no response logged", args)
+	}
+	var printed struct {
+		Code string `json:"code"`
+	}
+	json.Unmarshal(last.Response, &printed)
+	if last.Code != printed.Code {
+		t.Fatalf("%v: logged code %q, want the response's %q", args, last.Code, printed.Code)
 	}
 	if slices.Contains(args, "--json") {
 		var logged, printed any

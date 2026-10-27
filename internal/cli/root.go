@@ -67,7 +67,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 	root.SetContext(logging.NewContext(context.WithValue(ctx, invocationKey{}, inv), log))
 	cmd, err := root.ExecuteC()
 	if err == nil {
-		logReturned(log, cmd, start, api.ExitOK, inv.response, nil)
+		logReturned(log, cmd, start, api.ExitOK, "", inv.response, nil)
 		return api.ExitOK
 	}
 	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
@@ -80,7 +80,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 	if p.Code == api.ErrorCodeUsage {
 		p.Hint = withHelpHint(p.Hint, cmd)
 	}
-	logReturned(log, cmd, start, exit, p, err)
+	logReturned(log, cmd, start, exit, p.Code, p, err)
 	printError(env, wantsJSON(cmd, args), p, cmd.Annotations[failurePrefix])
 	return exit
 }

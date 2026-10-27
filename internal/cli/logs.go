@@ -65,12 +65,14 @@ func logStarted(cmd *cobra.Command, args []string) {
 var outcomes = map[int]string{api.ExitOK: "ok", api.ExitRejected: "rejected", api.ExitUsage: "usage", api.ExitSystem: "system"}
 
 // logReturned logs what the command returned: response is exactly what it
-// printed, or would have printed as JSON.
-func logReturned(log *slog.Logger, cmd *cobra.Command, start time.Time, exit int, response any, err error) {
+// printed, or would have printed as JSON, and code its error code if it
+// failed.
+func logReturned(log *slog.Logger, cmd *cobra.Command, start time.Time, exit int, code api.ErrorCode, response any, err error) {
 	attrs := []any{"command", cmd.CommandPath(), "outcome", outcomes[exit], "exit", exit, logging.Duration(start)}
 	level := slog.LevelInfo
 	if err != nil {
 		level = slog.LevelError
+		attrs = append(attrs, "code", code)
 		if p, ok := errors.AsType[*panicError](err); ok {
 			attrs = append(attrs, "stack", string(p.stack))
 		}

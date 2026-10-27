@@ -88,8 +88,8 @@ Every command serves both humans and scripts or AIs.
 The log must tell the story of any run: what was asked, every step taken and why, and what was returned.
 
 - Get the logger with `logging.FromContext(ctx)`; it already carries the run's `debug_id`. Never use slog's default logger or a global, and pass `ctx` to every goroutine so its lines keep the id.
-- `cli.Run` logs `command received` (raw args and settings), `command started` (resolved command and every flag) and `command returned` (exit, outcome and the exact response). Failures are logged there at error level; don't log the same error again on its way up.
-- The daemon logs `request received` and `request returned` (status and the exact response) for every request, under the debug id the client sent in `Wdx-Debug-Id`, so one id traces a command through both processes.
+- `cli.Run` logs `command received` (raw args and settings), `command started` (resolved command and every flag) and `command returned` (exit, outcome, the error `code` when it failed and the exact response). Failures are logged there at error level; don't log the same error again on its way up.
+- The daemon logs `request received` and `request returned` (status, the error `code` when it failed and the exact response) for every request, under the debug id the client sent in `Wdx-Debug-Id`, so one id traces a command through both processes.
 - Log each step where it happens, at info: lookups and what they matched, decisions and their reason, every change to the database or disk, git commands, and how each question was answered. At error level, log what a failure knows that its returned error does not (git's stderr, a failed cleanup).
 - Debug is for detail: SQL with arguments, git output.
 - Messages are short lowercase statements of what happened (`project registered`); keys are snake_case and reused (`project_id`, `path`, `name`, `duration_ms`, `err`).
