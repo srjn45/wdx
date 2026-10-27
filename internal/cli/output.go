@@ -55,6 +55,18 @@ func projectResponse(action string, p project.Project) response {
 	return response{OK: true, Action: action, Project: &v}
 }
 
+func openedResponse(o project.Opened) response {
+	action := "opened"
+	if o.Cloned {
+		action = "cloned"
+	} else if o.Registered {
+		action = "registered"
+	}
+	r := projectResponse(action, o.Project)
+	r.Dropped = worktreeViews(o.Dropped)
+	return r
+}
+
 func (r response) text(w io.Writer) {
 	p := r.Project
 	fmt.Fprintf(w, "%s project %s (%s)\n", r.Action, p.Name, p.ID)
@@ -214,7 +226,7 @@ func classify(err error) (errorView, int) {
 			"origin_of":   newProjectView(e.ByOrigin),
 		}
 	} else if e, ok := errors.AsType[*git.CloneError](err); ok {
-		v.Code, v.Details = codeCloneFailed, map[string]any{"url": e.URL}
+		v.Code, v.Details = codeCloneFailed, map[string]any{"url": e.URL, "output": e.Output}
 	} else if errors.Is(err, project.ErrNotFound) {
 		v.Code = codeNotFound
 	} else if errors.Is(err, project.ErrNotGitRepo) {

@@ -3,7 +3,6 @@ package git
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -48,7 +47,7 @@ func RemoteURL(ctx context.Context, dir, remote string) (string, error) {
 }
 
 // CloneError is returned when git fails to clone URL. Output is what git
-// printed on stderr.
+// printed on stderr, which Clone has already written to its progress writer.
 type CloneError struct {
 	URL    string
 	Output string
@@ -56,7 +55,7 @@ type CloneError struct {
 }
 
 func (e *CloneError) Error() string {
-	return fmt.Sprintf("git clone %s: %s", e.URL, cmp.Or(e.Output, e.Err.Error()))
+	return fmt.Sprintf("git clone %s failed", e.URL)
 }
 
 func (e *CloneError) Unwrap() error { return e.Err }

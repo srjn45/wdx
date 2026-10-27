@@ -141,11 +141,14 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			"--git opens the project with that origin, or clones it into\n" +
 			identity.ProjectsDir(home) + "/<name> if it is unknown. If none of a known\n" +
 			"project's checkouts are left, you are asked to clone it again or remove it;\n" +
-			"--reclone and --remove answer in advance.\n\n" +
+			"--reclone and --remove answer in advance; with --json one of them is required.\n\n" +
 			"Projects are named after their root directory or URL unless --name is\n" +
 			"given. Names are unique.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if gitURL != "" && jsonMode(cmd) && !reclone && !remove {
+				return &hinted{&usageError{errors.New("--json with --git requires --reclone or --remove")}, "pass --reclone or --remove"}
+			}
 			ctx := cmd.Context()
 			d, err := db.Open(ctx, identity.DBPath(home))
 			if err != nil {
@@ -158,7 +161,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			if local != "" {
 				o, err = store.OpenLocal(ctx, local, name)
 			} else {
-				o, err = store.OpenGit(ctx, gitURL, name, cmd.ErrOrStderr())
+				o, err = store.OpenGit(ctx, gitURL, name, progress(cmd))
 			}
 			if missing, ok := errors.AsType[*project.CheckoutMissingError](err); ok {
 				var choice string
@@ -170,10 +173,9 @@ func newProjectOpenCmd(home string) *cobra.Command {
 				return resolveMissingCheckout(cmd, store, missing, choice, "pass --reclone or --remove")
 			}
 			if err != nil {
-				return err
+				return openHint(err)
 			}
-			printOpened(cmd.OutOrStdout(), o)
-			return nil
+			return printResult(cmd, openedResponse(o))
 		},
 	}
 	cmd.Flags().StringVar(&local, "local", "", "path to a local git repository")
@@ -197,7 +199,7 @@ func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *p
 	prompt := cmd.ErrOrStderr()
 	if choice == "" {
 		if !canPrompt(cmd) {
-			return fmt.Errorf("%w; %s", missing, hint)
+			return &hinted{missing, hint}
 		}
 		fmt.Fprintf(prompt, "%s (was %s)\n", missing, p.ClonePath())
 		fmt.Fprintf(prompt, "[c] clone again to %s\n", p.ClonePath())
@@ -208,19 +210,39 @@ func resolveMissingCheckout(cmd *cobra.Command, store *project.Store, missing *p
 		}
 	}
 	if choice == "c" {
-		o, err := store.Reclone(ctx, p.ID, prompt)
+		o, err := store.Reclone(ctx, p.ID, progress(cmd))
 		if err != nil {
 			return err
 		}
-		printOpened(cmd.OutOrStdout(), o)
-		return nil
+		return printResult(cmd, openedResponse(o))
 	}
 	removed, err := store.Remove(ctx, p.ID)
 	if err != nil {
 		return err
 	}
-	printProject(cmd.OutOrStdout(), "removed", removed)
-	return nil
+	return printResult(cmd, projectResponse("removed", removed))
+}
+
+// progress is where git's clone output goes: the terminal, never JSON.
+func progress(cmd *cobra.Command) io.Writer {
+	if jsonMode(cmd) {
+		return io.Discard
+	}
+	return cmd.ErrOrStderr()
+}
+
+// openHint tells what to do about the errors opening a project can return.
+func openHint(err error) error {
+	_, taken := errors.AsType[*project.NameTakenError](err)
+	_, exists := errors.AsType[*project.PathExistsError](err)
+	_, invalid := errors.AsType[*project.InvalidNameError](err)
+	switch {
+	case taken, exists, invalid:
+		return &hinted{err, "choose another with --name"}
+	case errors.Is(err, project.ErrNotGitRepo):
+		return &hinted{err, "run git init there first, or use " + identity.Name + " project create"}
+	}
+	return err
 }
 
 func missingCheckoutHint(p project.Project) string {
@@ -274,15 +296,6 @@ func newProjectRemoveCmd(home string) *cobra.Command {
 			return printResult(cmd, projectResponse("removed", p))
 		},
 	}
-}
-
-func printOpened(w io.Writer, o project.Opened) {
-	verb := "opened"
-	if o.Cloned {
-		verb = "cloned and opened"
-	}
-	printProject(w, verb, o.Project)
-	printDropped(w, o.Dropped)
 }
 
 func printProject(w io.Writer, verb string, p project.Project) {
