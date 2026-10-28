@@ -19,20 +19,20 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 - [x] P0 Daemon running as a local service (systemd user unit / launchd): see docs/DAEMON.md
 - [x] P0 Local API over a Unix socket, with client/daemon version handshake (the CLI warns when the versions differ)
-- [ ] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption
+- [x] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption (terminals for now; docs/TERMINALS.md)
 - [ ] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach)
-- [ ] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI)
+- [~] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`; attaching to them comes next
 - [ ] P0 Session output tail / recent output
 - [ ] P0 Send text into a session
 - [ ] P1 PTY observability: runtime status, `warden_pty_*` metrics, decision trace
-- [ ] P1 Bounded child cleanup (TERM → KILL grace, process-group kill, reap timeouts)
+- [~] P1 Bounded child cleanup (TERM → KILL grace, process-group kill, reap timeouts): terminals are hung up on, then killed with their process groups after 5 s
 - [ ] P1 PTY event journal and stream
 
 ## 2. Projects
 
 - [ ] P0 Projects as first-class entities (git repo, local path, open / close / new / list)
 - [ ] P1 Zero-touch auto-registration (spawning in a directory registers or reopens its project)
-- [ ] P1 Close a project → hibernate members; reopen → restore them (no auto-spawn)
+- [~] P1 Close a project → hibernate members; reopen → restore them (no auto-spawn): terminals stop on close and start fresh shells on reopen
 - [ ] P2 Project groups (named collections shown in the TUI tree)
 - [ ] ? Open remote projects
 

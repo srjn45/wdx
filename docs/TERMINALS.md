@@ -1,6 +1,6 @@
 # Terminals
 
-Status: design approved in discussion, not implemented.
+Status: implemented, without attach (next slice).
 
 A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents will later run in the same kind of PTY; terminals come first because they need no AI CLI.
 
@@ -266,7 +266,7 @@ swift-falcon  running       /home/me/dev/warden    term-1a2b3c4d
 
 ## Implementation plan
 
-Each step builds and passes `make test` on its own. Steps 1 to 5 are done.
+Each step builds and passes `make test` on its own. All of them are done.
 
 1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.

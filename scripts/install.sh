@@ -294,6 +294,9 @@ ExecStart=$TARGET daemon start --foreground
 Environment="PATH=$PATH"
 Restart=on-failure
 RestartSec=2
+# Stopping or restarting the daemon stops only the daemon: terminals' holders
+# run in its cgroup and must outlive it.
+KillMode=process
 
 [Install]
 WantedBy=default.target
@@ -345,6 +348,9 @@ install_launchd() {
 		<key>SuccessfulExit</key>
 		<false/>
 	</dict>
+	<!-- Terminals' holders must outlive the daemon. -->
+	<key>AbandonProcessGroup</key>
+	<true/>
 	<key>StandardOutPath</key>
 	<string>$SERVICE_LOG</string>
 	<key>StandardErrorPath</key>

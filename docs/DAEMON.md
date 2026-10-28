@@ -1,6 +1,6 @@
 # The wdx daemon
 
-Every `wdx` command that touches projects is served by the daemon: one process per home (`~/.wdx`) that holds the database and runs git. The CLI talks to it over the Unix socket `~/.wdx/wdx.sock`; its API is `api/openapi.yaml`.
+Every `wdx` command that touches projects or terminals is served by the daemon: one process per home (`~/.wdx`) that holds the database, runs git and starts terminals. The CLI talks to it over the Unix socket `~/.wdx/wdx.sock`; its API is `api/openapi.yaml`.
 
 ```
 wdx daemon start      start it (through the service when installed) and wait until it answers
@@ -25,6 +25,8 @@ Commands never start the daemon themselves: without it they fail with `daemon_un
 `wdx daemon start` and `stop` go through the service manager when the service is installed and the home is the default `~/.wdx`; with another `WDX_HOME` they manage the process directly. A daemon stopped with `wdx daemon stop` stays stopped until `wdx daemon start` or the next boot or login.
 
 Without a systemd user session (containers, some WSL setups), the installer starts the daemon directly; start it again after a reboot.
+
+Terminals outlive the daemon: each shell runs in its own `wdx holder` process, which the next daemon adopts (docs/TERMINALS.md). So the unit has `KillMode=process` and the plist `AbandonProcessGroup`, which make stopping or restarting the service stop the daemon alone. An install from before terminals lacks them; install again to get them.
 
 `scripts/install.sh --uninstall` stops and removes the service and the binary. `~/.wdx` (settings, database, logs, projects) stays, and so does linger, which other services may need.
 
@@ -57,5 +59,6 @@ Suggestions shown in grey as you type come from the shell: fish has them built i
   ```
 
   On macOS the system ssh-agent's socket usually reaches launchd agents; a third-party agent may need the same treatment in the plist's EnvironmentVariables.
+- **Terminals' environment.** A terminal's shell gets `PATH`, the locale, `SSH_AUTH_SOCK` and the desktop session's variables from the daemon, not from the command that created it (docs/TERMINALS.md). Under the service they are the service's, so set them as above for `SSH_AUTH_SOCK`; `wdx daemon restart` picks up new values, and shells already running keep the old ones. `wdx daemon restart` and `wdx update` leave running shells alone.
 - **Settings** are read when the daemon starts: run `wdx daemon restart` after changing `~/.wdx/config.yaml`.
 - **Logs.** The CLI and the daemon log to the same daily files in `~/.wdx/logs`; the `debug_id` an error prints finds the lines of both.
