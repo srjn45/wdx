@@ -9,6 +9,12 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Work on one feature at a time. Do not add scope the human did not ask for; suggest it instead.
 - Commit only when the human asks.
 
+## Releases
+
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `chore:`): the next version and `CHANGELOG.md` are worked out from them, so the type must say what the change is.
+- A change a user or script can notice breaks them: the `--json` output, error codes, exit codes, commands and flags, settings, the API. Mark it with `!` (`feat!:`) and say what breaks in a `BREAKING CHANGE:` footer.
+- Never edit `CHANGELOG.md` or move a tag. Release only when the human asks (`make release-dev`, `make release`); see docs/RELEASING.md.
+
 ## Code style
 
 - Keep the code clean and readable by a human.
@@ -35,6 +41,7 @@ internal/telemetry/  sends the daemon's metrics to an OpenTelemetry collector
 internal/style/  colors text output on a terminal with semantic styles
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
+scripts/release.sh tags releases and builds them; cliff.toml and docs/RELEASING.md explain the versions
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 

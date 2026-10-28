@@ -3,7 +3,11 @@
 #
 #   dist/v<version>/wdx_<version>_<os>_<arch>.tar.gz
 #   dist/v<version>/checksums.txt
-#   dist/LATEST                      (contains v<version>)
+#   dist/LATEST-dev                  (contains v<version>)
+#   dist/LATEST                      (the same, for a stable version only)
+#
+# A version with a pre-release suffix (0.2.0-dev.3) is a dev release; the
+# installer's channels read these files.
 #
 # Usage: scripts/dist.sh <version> <commit>
 set -eu
@@ -41,5 +45,9 @@ else
 	(cd "$OUT" && shasum -a 256 ./*.tar.gz | sed 's| \./| |' > checksums.txt)
 fi
 
-echo "v$VERSION" > dist/LATEST
+echo "v$VERSION" > dist/LATEST-dev
+case "$VERSION" in
+	*-*) ;;
+	*) echo "v$VERSION" > dist/LATEST ;;
+esac
 echo "release v$VERSION -> $OUT"

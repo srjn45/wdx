@@ -11,7 +11,9 @@
 # required.
 #
 # Env:
-#   WDX_VERSION        release to install (e.g. 0.1.0); default: latest
+#   WDX_CHANNEL        stable (default) installs the latest stable release;
+#                      dev the latest release of either kind
+#   WDX_VERSION        release to install (e.g. 0.1.0), whatever the channel
 #   WDX_DOWNLOAD_BASE  where releases live; default: GitHub Releases.
 #                      Local builds use file://<repo>/dist (see `make install`).
 #   WDX_BIN_DIR        install directory; default: ~/.local/bin
@@ -166,14 +168,22 @@ case "$arch" in
 esac
 
 # --- version --------------------------------------------------------------
+# GitHub's latest release is never a pre-release, while its list of releases
+# starts with the newest of either kind.
+channel="${WDX_CHANNEL:-stable}"
+case "$channel" in
+	stable) latest_api=releases/latest latest_file=LATEST ;;
+	dev) latest_api='releases?per_page=1' latest_file=LATEST-dev ;;
+	*) die "unknown WDX_CHANNEL '$channel' (stable or dev)" ;;
+esac
 if [ -n "${WDX_VERSION:-}" ]; then
 	tag="v${WDX_VERSION#v}"
 elif [ "$BASE" = "$GITHUB_BASE" ]; then
-	tag="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
+	tag="$(curl -fsSL "https://api.github.com/repos/$REPO/$latest_api" |
 		sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)" ||
-		die "failed to resolve the latest release"
+		die "failed to resolve the latest $channel release"
 else
-	tag="$(curl -fsSL "$BASE/LATEST")" || die "failed to read $BASE/LATEST"
+	tag="$(curl -fsSL "$BASE/$latest_file")" || die "failed to read $BASE/$latest_file"
 fi
 [ -n "$tag" ] || die "could not determine which version to install"
 version="${tag#v}"
