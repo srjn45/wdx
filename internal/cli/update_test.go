@@ -329,7 +329,9 @@ func TestUpdateChecksumMismatch(t *testing.T) {
 	base, dir := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	sums := filepath.Join(dir, "v"+releaseVersion, "checksums.txt")
 	b, _ := os.ReadFile(sums)
-	writeFile(t, sums, "0"+string(b[1:]))
+	// Any other first digit breaks it.
+	b[0] = map[bool]byte{true: '1', false: '0'}[b[0] == '0']
+	writeFile(t, sums, string(b))
 	in := install(t, base)
 
 	v, exit := in.json(t, "update", "--apply")
