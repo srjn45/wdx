@@ -24,6 +24,8 @@ type Client struct {
 type Options struct {
 	Socket  string
 	DebugID string // sent with every request, so the daemon logs under it
+	// Quiet asks the daemon to log the requests at debug level.
+	Quiet bool
 	// VersionMismatch is called once when the daemon's version differs from
 	// this binary's.
 	VersionMismatch func(daemonVersion string)
@@ -75,6 +77,9 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 	req.Header.Set(api.DebugIDHeader, d.opts.DebugID)
 	req.Header.Set(api.VersionHeader, identity.Version)
+	if d.opts.Quiet {
+		req.Header.Set(api.LogLevelHeader, api.LogLevelDebug)
+	}
 	log := logging.FromContext(req.Context())
 	resp, err := d.http.Do(req)
 	if err != nil {

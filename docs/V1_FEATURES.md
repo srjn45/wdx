@@ -188,7 +188,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 - [x] P0 Config file `<home>/config.yaml` (YAML), read at startup; only `WDX_HOME` comes from the environment
 - [ ] P1 Live hot-reload of the config file (a bad edit keeps the last good config)
-- [ ] P1 Shell completion
+- [x] P1 Shell completion (bash, zsh, fish; installed by the installer): see docs/DAEMON.md
 - [ ] P2 Presets (saved spawn options) and prompt templates
 - [ ] P2 Plugins: custom task types, lifecycle hooks (pre/post spawn, commit, check, teardown)
 - [ ] ? Interactive REPL (`wd repl`) with `/` commands and guided forms

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -687,5 +688,34 @@ func TestNotRunningAfterStop(t *testing.T) {
 	}
 	if pid, err := Running(home); err != nil || pid != 0 {
 		t.Fatalf("want none running, got %d, %v", pid, err)
+	}
+}
+
+func TestLogLevelHeader(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	ids := map[string]string{"debug": "dbg-00000000000d", "loud": "dbg-00000000000e", "": "dbg-00000000000f"}
+	for level, id := range ids {
+		td.do(t, http.MethodGet, "/v1/projects", "", api.DebugIDHeader, id, api.LogLevelHeader, level)
+	}
+	td.do(t, http.MethodGet, "/v1/projects/nope", "", api.DebugIDHeader, "dbg-0000000000ff", api.LogLevelHeader, "debug")
+	td.stop()
+	want := map[string]string{
+		ids["debug"] + " request received": "DEBUG", ids["debug"] + " request returned": "DEBUG",
+		ids["loud"] + " request received": "INFO", ids["loud"] + " request returned": "INFO",
+		ids[""] + " request received": "INFO", ids[""] + " request returned": "INFO",
+		"dbg-0000000000ff request received": "DEBUG", "dbg-0000000000ff request returned": "ERROR",
+	}
+	for _, line := range logLines(t, td.home) {
+		key := fmt.Sprint(line["debug_id"], " ", line["msg"])
+		if level, ok := want[key]; ok {
+			if line["level"] != level {
+				t.Errorf("%s: want level %s, got %v", key, level, line["level"])
+			}
+			delete(want, key)
+		}
+	}
+	if len(want) > 0 {
+		t.Errorf("lines not logged: %v", want)
 	}
 }

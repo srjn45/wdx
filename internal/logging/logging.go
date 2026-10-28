@@ -26,6 +26,41 @@ func New(w io.Writer, level slog.Level) *slog.Logger {
 	}))
 }
 
+// Quiet returns a logger that writes what l would at debug level instead,
+// errors excepted: for runs too frequent to be worth reading, such as tab
+// completions.
+func Quiet(l *slog.Logger) *slog.Logger {
+	return slog.New(quiet{l.Handler()})
+}
+
+type quiet struct {
+	slog.Handler
+}
+
+func (q quiet) Enabled(ctx context.Context, level slog.Level) bool {
+	return q.Handler.Enabled(ctx, demote(level))
+}
+
+func (q quiet) Handle(ctx context.Context, r slog.Record) error {
+	r.Level = demote(r.Level)
+	return q.Handler.Handle(ctx, r)
+}
+
+func (q quiet) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return quiet{q.Handler.WithAttrs(attrs)}
+}
+
+func (q quiet) WithGroup(name string) slog.Handler {
+	return quiet{q.Handler.WithGroup(name)}
+}
+
+func demote(level slog.Level) slog.Level {
+	if level < slog.LevelError {
+		return min(level, slog.LevelDebug)
+	}
+	return level
+}
+
 // credentials matches the user info of a URL, such as a token in
 // https://token@github.com/org/repo.
 var credentials = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s"]+@`)

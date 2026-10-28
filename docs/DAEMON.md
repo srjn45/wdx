@@ -28,6 +28,22 @@ Without a systemd user session (containers, some WSL setups), the installer star
 
 `scripts/install.sh --uninstall` stops and removes the service and the binary. `~/.wdx` (settings, database, logs, projects) stays, and so does linger, which other services may need.
 
+## Shell completion
+
+The installer also installs the completion of every shell it finds, so Tab completes commands, flags and their values: project names and ids from the daemon (only open ones for `wdx project close`), directories for `--local` and `--path`, and the help topics after `wdx help`.
+
+| Shell | File | Loaded by |
+|---|---|---|
+| bash | `~/.local/share/bash-completion/completions/wdx` | the bash-completion package; without it the installer prints the `source <(wdx completion bash)` line for `~/.bashrc` |
+| zsh | Homebrew's `share/zsh/site-functions/_wdx` when it is writable, else `~/.zsh/completions/_wdx` | zsh, from its `fpath`; when the directory is not in it the installer prints the `fpath=(...)` line for `~/.zshrc` |
+| fish | `~/.config/fish/completions/wdx.fish` | fish |
+
+The installer never edits shell startup files. `scripts/install.sh --completions` installs them again for the installed `wdx`, say after installing a new shell; `--uninstall` removes them. The scripts ask `wdx` for the candidates on every Tab, so they keep up with new commands without reinstalling. `wdx completion bash|zsh|fish` prints a script to load by hand.
+
+A completion waits at most half a second for the daemon and offers nothing when it does not answer. It is logged at debug level in both processes (the CLI sends `Wdx-Log-Level: debug`), so Tab presses do not crowd the log.
+
+Suggestions shown in grey as you type come from the shell: fish has them built in, zsh with the zsh-autosuggestions plugin. They draw on these completions with nothing more to set up.
+
 ## Gotchas
 
 - **Environment.** The service does not run from your shell, so it does not see your shell's variables. The installer gives it the `PATH` you installed with, so it finds the same git; reinstall after moving git.

@@ -4,10 +4,11 @@
 #   curl -fsSL https://github.com/srjn45/warden/releases/latest/download/install.sh | sh
 #
 # Downloads the archive for this OS/arch, verifies its checksum, installs the
-# binary into ~/.local/bin and runs the daemon as a service: a systemd user
-# unit on Linux (with linger, so it runs from boot), a launchd agent on macOS
-# (from login). Every install restarts the daemon on the new binary. No git or
-# Go required.
+# binary into ~/.local/bin, the completion of every shell found among bash,
+# zsh and fish, and runs the daemon as a service: a systemd user unit on
+# Linux (with linger, so it runs from boot), a launchd agent on macOS (from
+# login). Every install restarts the daemon on the new binary. No git or Go
+# required.
 #
 # Env:
 #   WDX_VERSION        release to install (e.g. 0.1.0); default: latest
@@ -15,7 +16,9 @@
 #                      Local builds use file://<repo>/dist (see `make install`).
 #   WDX_BIN_DIR        install directory; default: ~/.local/bin
 #
-# Flags: --uninstall   stop and remove the service and the binary; ~/.wdx stays
+# Flags: --uninstall    stop and remove the service, the binary and the
+#                      completions; ~/.wdx stays
+#        --completions  only (re)install the completions of the installed wdx
 set -eu
 
 NAME=wdx
@@ -32,6 +35,12 @@ LABEL="com.github.srjn45.$NAME"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SERVICE_LOG="$HOME/Library/Logs/$NAME.log"
 
+# The shell completions. Each shell loads the files of these directories
+# when it starts.
+BASH_COMPLETION="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/$NAME"
+ZSH_COMPLETIONS="$HOME/.zsh/completions"
+FISH_COMPLETION="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/$NAME.fish"
+
 info() { printf '==> %s\n' "$*"; }
 warn() { printf 'warn: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -45,6 +54,69 @@ case "$os" in
 	linux | darwin) ;;
 	*) die "unsupported OS '$os' (linux and darwin only)" ;;
 esac
+
+# --- shell completion -----------------------------------------------------
+# brew_zsh_dir prints Homebrew's zsh site-functions, which zsh installed by
+# Homebrew searches, when Homebrew is installed.
+brew_zsh_dir() {
+	command -v brew >/dev/null 2>&1 && printf '%s/share/zsh/site-functions' "$(brew --prefix)"
+}
+
+# write_completion writes the completion script of shell $1 to file $2.
+write_completion() {
+	mkdir -p "$(dirname "$2")"
+	if wdx completion "$1" >"$2.tmp.$$" && mv -f "$2.tmp.$$" "$2"; then
+		info "installed the $1 completion $2"
+		return 0
+	fi
+	rm -f "$2.tmp.$$"
+	warn "could not write the $1 completion to $2"
+	return 1
+}
+
+# install_completions installs the completion of every shell found. It never
+# edits a shell's startup file: it says what to add when the shell would not
+# find the script.
+install_completions() {
+	if command -v bash >/dev/null 2>&1 && write_completion bash "$BASH_COMPLETION"; then
+		loader=
+		for f in /usr/share/bash-completion/bash_completion /etc/bash_completion \
+			"$(brew --prefix 2>/dev/null)/etc/profile.d/bash_completion.sh"; do
+			[ -f "$f" ] && loader="$f"
+		done
+		if [ -z "$loader" ]; then
+			warn "the bash-completion package, which loads it, is not installed; or add this to ~/.bashrc:"
+			printf '    source <(%s completion bash)\n' "$NAME" >&2
+		fi
+	fi
+	if command -v zsh >/dev/null 2>&1; then
+		dir="$ZSH_COMPLETIONS"
+		brew_dir="$(brew_zsh_dir || true)"
+		if [ -n "$brew_dir" ] && [ -w "$brew_dir" ]; then
+			dir="$brew_dir"
+		fi
+		# Only zsh's own fpath is read: an interactive zsh would run the
+		# user's ~/.zshrc, which may do anything.
+		if write_completion zsh "$dir/_$NAME" &&
+			! zsh -c 'print -rl -- $fpath' 2>/dev/null | grep -qxF "$dir" &&
+			! grep -qsF ".zsh/completions" "${ZDOTDIR:-$HOME}/.zshrc"; then
+			warn "zsh does not search $dir yet; add this to ~/.zshrc, before compinit:"
+			printf '    fpath=(%s $fpath)\n' "$dir" >&2
+		fi
+	fi
+	if command -v fish >/dev/null 2>&1; then
+		write_completion fish "$FISH_COMPLETION" || true
+	fi
+}
+
+remove_completions() {
+	for f in "$BASH_COMPLETION" "$ZSH_COMPLETIONS/_$NAME" "$(brew_zsh_dir || true)/_$NAME" "$FISH_COMPLETION"; do
+		if [ -f "$f" ]; then
+			rm -f "$f"
+			info "removed the completion $f"
+		fi
+	done
+}
 
 # --- uninstall ------------------------------------------------------------
 uninstall() {
@@ -63,6 +135,7 @@ uninstall() {
 		rm -f "$PLIST"
 		info "removed the launchd agent $LABEL"
 	fi
+	remove_completions
 	rm -f "$TARGET"
 	info "removed $TARGET; your projects and settings stay in $HOME_DIR"
 }
@@ -71,6 +144,11 @@ case "${1:-}" in
 	"") ;;
 	--uninstall)
 		uninstall
+		exit 0
+		;;
+	--completions)
+		[ -x "$TARGET" ] || die "$TARGET is not installed"
+		install_completions
 		exit 0
 		;;
 	*) die "unknown argument: $1" ;;
@@ -135,6 +213,8 @@ case ":$PATH:" in
 		printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" >&2
 		;;
 esac
+
+install_completions
 
 # --- settings -------------------------------------------------------------
 mkdir -p "$HOME_DIR"

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -217,5 +218,32 @@ func TestFromContext(t *testing.T) {
 	FromContext(ctx).Info("kept")
 	if !strings.Contains(buf.String(), `"msg":"kept","debug_id":"dbg-`) {
 		t.Fatalf("unexpected log %s", buf.String())
+	}
+}
+
+func TestQuiet(t *testing.T) {
+	t.Parallel()
+	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo} {
+		var b bytes.Buffer
+		log := Quiet(New(&b, level)).With("debug_id", "dbg-0123456789ab")
+		log.Debug("detail")
+		log.Info("step")
+		log.Warn("odd")
+		log.Error("failed")
+		var got []string
+		for line := range strings.Lines(b.String()) {
+			var v struct{ Level, Msg string }
+			if err := json.Unmarshal([]byte(line), &v); err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, v.Level+" "+v.Msg)
+		}
+		want := []string{"ERROR failed"}
+		if level == slog.LevelDebug {
+			want = []string{"DEBUG detail", "DEBUG step", "DEBUG odd", "ERROR failed"}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("at %s: got %v, want %v", level, got, want)
+		}
 	}
 }

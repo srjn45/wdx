@@ -33,9 +33,10 @@ func setHelp(root *cobra.Command) {
 		r.text(cmd.OutOrStdout(), stdoutStyle(cmd))
 	})
 	root.SetHelpCommand(&cobra.Command{
-		Use:    "help [command | topic]",
-		Short:  "Show the help of a command or a topic",
-		Hidden: true,
+		Use:               "help [command | topic]",
+		Short:             "Show the help of a command or a topic",
+		Hidden:            true,
+		ValidArgsFunction: completeHelp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				if t, ok := findTopic(args[0]); ok {

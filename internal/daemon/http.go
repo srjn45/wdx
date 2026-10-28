@@ -97,6 +97,9 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 			id = logging.NewDebugID()
 		}
 		log := d.opts.Log.With("debug_id", id)
+		if r.Header.Get(api.LogLevelHeader) == api.LogLevelDebug {
+			log = logging.Quiet(log)
+		}
 		ctx := logging.NewContext(context.WithValue(r.Context(), debugIDKey{}, id), log)
 		r = r.WithContext(ctx)
 

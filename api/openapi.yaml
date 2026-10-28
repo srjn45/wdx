@@ -7,7 +7,9 @@ info:
 
     A request may send a Wdx-Debug-Id header (dbg- and 12 hex digits) to have
     the daemon log it under that id; the response echoes the id the request
-    was logged under.
+    was logged under. A Wdx-Log-Level header of debug has the daemon log the
+    request at debug level, its failures excepted, as for tab completions;
+    any other value is ignored.
 
     Errors are Problem Details (RFC 9457) with a stable "code"; each
     operation lists the codes it can return besides usage and internal.

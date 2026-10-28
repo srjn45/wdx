@@ -79,6 +79,7 @@ Every command serves both humans and scripts or AIs.
 - Every leaf command has `Example`s built with `examples(description, command line, ...)`: the common use first, then the flag combinations that answer prompts or that `--json` needs. `TestExamples` runs each through the command's flag parsing and rules, so they cannot go stale; keep them free of shell quoting.
 - A flag that takes a value names it in backticks in its description (``"`path` to a local git repository"``); help shows it as `--local <path>`.
 - `Long` does not repeat `Short`: help prints the summary on its first line, after the command path.
+- Every flag that takes a value registers its completion (`RegisterFlagCompletionFunc`), `cobra.NoFileCompletions` when it has none; `TestCommandDocs` checks it. Completions that ask the daemon never prompt, wait at most `completionTimeout` and offer nothing when it does not answer.
 - Reference that is about no single command is a help topic (`wdx help json`, `settings`, `logs`), not a section of the root help.
 
 ## Text output style
@@ -107,6 +108,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - The daemon logs `request received` and `request returned` (status, the error `code` when it failed and the exact response) for every request, under the debug id the client sent in `Wdx-Debug-Id`, so one id traces a command through both processes.
 - Log each step where it happens, at info: lookups and what they matched, decisions and their reason, every change to the database or disk, git commands, and how each question was answered. At error level, log what a failure knows that its returned error does not (git's stderr, a failed cleanup).
 - Debug is for detail: SQL with arguments, git output.
+- A tab completion (`__complete`) is the one run logged at debug level from received to returned, through `logging.Quiet`; it asks the daemon to do the same for its requests with `Wdx-Log-Level: debug`. Failures stay at error.
 - Messages are short lowercase statements of what happened (`project registered`); keys are snake_case and reused (`project_id`, `path`, `name`, `duration_ms`, `err`).
 - Never log the environment beyond wdx's own settings, prompt text or agent output. URL credentials are redacted by the logger.
 - Logging never fails a command and never writes to stdout or stderr.

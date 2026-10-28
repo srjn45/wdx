@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -67,6 +68,13 @@ func Run(ctx context.Context, args []string, env Env) int {
 	debugID := logging.NewDebugID()
 	logFile, log := newLogger(env.Config, debugID)
 	defer logFile.Close()
+	// A shell asks on every Tab: worth logging only when debugging.
+	completion := isCompletion(args)
+	var printed bytes.Buffer
+	if completion {
+		log = logging.Quiet(log)
+		env.Stdout = io.MultiWriter(env.Stdout, &printed)
+	}
 	logReceived(log, args, env)
 
 	root := newRoot(env.Config)
@@ -75,9 +83,12 @@ func Run(ctx context.Context, args []string, env Env) int {
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
 	wrapRun(root)
-	inv := &invocation{env: env, debugID: debugID}
+	inv := &invocation{env: env, debugID: debugID, quiet: completion}
 	root.SetContext(logging.NewContext(context.WithValue(ctx, invocationKey{}, inv), log))
 	cmd, err := root.ExecuteC()
+	if completion {
+		inv.response = completionResponse(printed.String())
+	}
 	if err == nil {
 		logReturned(log, cmd, start, api.ExitOK, "", inv.response, nil)
 		return api.ExitOK
@@ -198,6 +209,7 @@ type invocation struct {
 	env      Env
 	debugID  string
 	started  bool // RunE was reached, so the command line was valid
+	quiet    bool // the shell asks for completions; the daemon logs at debug
 	response any  // what the command printed
 	client   *client.Client
 }
@@ -219,6 +231,7 @@ func clientOf(cmd *cobra.Command) *client.Client {
 		inv.client = client.New(client.Options{
 			Socket:  identity.SocketPath(inv.env.Config.Home),
 			DebugID: inv.debugID,
+			Quiet:   inv.quiet,
 			VersionMismatch: func(daemonVersion string) {
 				st := stderrStyle(cmd)
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but %s is %s; run %s\n",
@@ -310,14 +323,16 @@ func newRoot(cfg config.Config) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.CompletionOptions.HiddenDefaultCmd = true
+	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd())
+	root.RegisterFlagCompletionFunc("color", completeColor)
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd(), newCompletionCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
+	setCompletions(root)
 	return root
 }
 

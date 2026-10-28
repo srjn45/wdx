@@ -45,15 +45,15 @@ func TestSendsDebugIDAndWarnsOnceOfAnotherVersion(t *testing.T) {
 		json.NewEncoder(w).Encode(api.Version{Name: identity.Name, Version: "9.9.9"})
 	})
 	var warned []string
-	c := New(Options{Socket: socket, DebugID: "dbg-0123456789ab", VersionMismatch: func(v string) { warned = append(warned, v) }})
+	c := New(Options{Socket: socket, DebugID: "dbg-0123456789ab", Quiet: true, VersionMismatch: func(v string) { warned = append(warned, v) }})
 	for range 2 {
 		v, err := c.Version(context.Background())
 		if err != nil || v.Version != "9.9.9" {
 			t.Fatalf("unexpected version %+v, %v", v, err)
 		}
 	}
-	if got.Get(api.DebugIDHeader) != "dbg-0123456789ab" || got.Get(api.VersionHeader) != identity.Version {
-		t.Fatalf("want the debug id and version sent, got %v", got)
+	if got.Get(api.DebugIDHeader) != "dbg-0123456789ab" || got.Get(api.VersionHeader) != identity.Version || got.Get(api.LogLevelHeader) != "debug" {
+		t.Fatalf("want the debug id, version and log level sent, got %v", got)
 	}
 	if len(warned) != 1 || warned[0] != "9.9.9" {
 		t.Fatalf("want one warning of 9.9.9, got %v", warned)

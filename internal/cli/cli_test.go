@@ -977,8 +977,14 @@ func TestCommandDocs(t *testing.T) {
 			flags = cmd.PersistentFlags()
 		}
 		flags.VisitAll(func(f *pflag.Flag) {
-			if name, _ := pflag.UnquoteUsage(f); f.Value.Type() != "bool" && !strings.Contains(f.Usage, "`"+name+"`") {
+			if f.Value.Type() == "bool" {
+				return
+			}
+			if name, _ := pflag.UnquoteUsage(f); !strings.Contains(f.Usage, "`"+name+"`") {
 				t.Errorf("%s: --%s does not name its value with backticks in %q", path, f.Name, f.Usage)
+			}
+			if _, ok := cmd.GetFlagCompletionFunc(f.Name); !ok {
+				t.Errorf("%s: --%s completes nothing; register its completion, cobra.NoFileCompletions if none", path, f.Name)
 			}
 		})
 		if cmd.Runnable() && cmd.ValidateArgs([]string{"x"}) == nil {
@@ -1010,8 +1016,8 @@ func TestHelp(t *testing.T) {
 		args       []string
 		want, deny []string
 	}{
-		{[]string{"--help"}, []string{"wdx: manage AI coding agents", "wdx <command> [flags]", "daemon ", "observe ", "project ", "version ", "--color <mode>", "Exit codes:", "Help topics:", "settings ", "wdx help <topic>"},
-			[]string{"completion", "\n  help ", "WDX_HOME", "Global flags:", "Errors:"}},
+		{[]string{"--help"}, []string{"wdx: manage AI coding agents", "wdx <command> [flags]", "completion ", "daemon ", "observe ", "project ", "version ", "--color <mode>", "Exit codes:", "Help topics:", "settings ", "wdx help <topic>"},
+			[]string{"\n  help ", "WDX_HOME", "Global flags:", "Errors:"}},
 		{[]string{"daemon", "-h"}, []string{"wdx daemon <command> [flags]", "restart ", "start ", "status ", "stop ", "Global flags: --color <mode>, --json, --no-input, -h/--help"}, []string{"Errors:", "[command]", "Examples:"}},
 		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove ", "Run wdx project <command> --help"}, []string{"Errors:", "\n  --json"}},
 		{[]string{"project", "open", "--help"}, []string{
