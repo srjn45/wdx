@@ -15,7 +15,8 @@ func main() {
 	env := cli.Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, LookPath: exec.LookPath,
 		// The conventions of terminals, not settings of wdx: https://no-color.org
-		NoColor: os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
+		NoColor:  os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
+		Terminal: cli.TerminalEnv(os.Environ()),
 	}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {

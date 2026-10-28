@@ -110,7 +110,7 @@ Every command serves both humans and scripts or AIs.
 - `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv` or reads the config file.
 - An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
 - `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.
-- Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. The one other exception is `NO_COLOR` and `TERM=dumb`, conventions of terminals rather than wdx settings: `main` reads them into `Env.NoColor`. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
+- Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. One exception is `NO_COLOR` and `TERM=dumb`, conventions of terminals rather than wdx settings: `main` reads them into `Env.NoColor`. The other is the fixed list of variables terminals inherit from the daemon (`PATH`, the locale, the ssh agent, the desktop session; docs/TERMINALS.md): `main` reads them into `Env.Terminal`, and they are never logged. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
 - Sources are layered, later winning: defaults, then the config file, then the environment. Unknown keys, duplicates and values that are not a single value are errors, reported with the file and line.
 
 ## Logging

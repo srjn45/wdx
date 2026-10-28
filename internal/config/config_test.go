@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -73,11 +73,12 @@ func TestFileSettings(t *testing.T) {
 	path := filepath.Join(home, "config.yaml")
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
-		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second,
+		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
 		UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		From: map[string]string{
 			"update.channel":        "default",
 			"update.base_url":       "default",
+			"terminal.shell":        path + ":11",
 			"home":                  "WDX_HOME",
 			"no_input":              path + ":5",
 			"color":                 path + ":9",
@@ -134,6 +135,8 @@ func TestEveryProblemReported(t *testing.T) {
 		"update:",
 		"  channel: beta",
 		"  base_url: ftp://example.com",
+		"terminal:",
+		"  shell: zsh",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -148,6 +151,7 @@ func TestEveryProblemReported(t *testing.T) {
 		path + `:13: color: "purple" is not one of auto, always, never`,
 		path + `:15: update.channel: "beta" is not one of stable, dev`,
 		path + `:16: update.base_url: "ftp://example.com" is not an http, https or file URL`,
+		path + `:18: terminal.shell: "zsh" is not an absolute path`,
 	}
 	slices.Sort(want)
 	var got []string

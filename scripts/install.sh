@@ -264,6 +264,10 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 #   # Where wdx update downloads releases, laid out as GitHub Releases;
 #   # file://<repo>/dist for local builds.
 #   base_url: https://github.com/srjn45/wdx/releases/download
+
+# terminal:
+#   # Absolute path of the shell terminals run; empty runs your login shell.
+#   shell: ""
 EOF
 	chmod 0600 "$HOME_DIR/config.yaml"
 	info "wrote the settings template $HOME_DIR/config.yaml"

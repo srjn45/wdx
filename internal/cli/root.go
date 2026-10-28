@@ -60,6 +60,27 @@ type Env struct {
 	// NoColor is true when the terminal asks for no color: NO_COLOR is set
 	// or TERM is dumb. It turns off color mode auto only.
 	NoColor bool
+	// Terminal holds the variables terminals take from the daemon's
+	// environment, as KEY=value: TerminalEnv of it. Never logged.
+	Terminal []string
+}
+
+// terminalVars are the variables of the daemon's environment that terminals
+// inherit, LC_* too: what a login shell's profile expects to find, the
+// locale, the ssh agent and the desktop session.
+var terminalVars = []string{"PATH", "LANG", "SSH_AUTH_SOCK", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"}
+
+// TerminalEnv returns the variables of environ, as os.Environ gives them,
+// that terminals inherit. Empty ones are left out.
+func TerminalEnv(environ []string) []string {
+	var vars []string
+	for _, kv := range environ {
+		name, value, _ := strings.Cut(kv, "=")
+		if value != "" && (slices.Contains(terminalVars, name) || strings.HasPrefix(name, "LC_")) {
+			vars = append(vars, kv)
+		}
+	}
+	return vars
 }
 
 // Run executes the command line args and returns the process exit code.

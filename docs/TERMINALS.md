@@ -27,7 +27,7 @@ A terminal is a shell running in a PTY that belongs to a project. It keeps runni
 
 ## The table
 
-`internal/db/migrations/0002_terminals.sql`:
+`internal/db/migrations/0003_terminals.sql`:
 
 ```sql
 -- A terminal is a shell in a PTY, owned by a holder process. The row outlives
@@ -179,7 +179,9 @@ Attach (next slice) adds `attach`, `snapshot`, `output`, `input` and `resize`, a
 
 | Key | Default | |
 |---|---|---|
-| `terminal.shell` | the user's login shell from the user database, `/bin/sh` when unknown | absolute path of the shell terminals run |
+| `terminal.shell` | empty: the user's login shell from the user database, `/bin/sh` when it names none | absolute path of the shell terminals run |
+
+The login shell is looked up when a terminal starts, not when wdx loads its settings: every command would pay for the lookup, and the user database can change while the daemon runs.
 
 ## API
 
@@ -263,7 +265,7 @@ swift-falcon  running       /home/me/dev/warden    term-1a2b3c4d
 
 Each step builds and passes `make test` on its own.
 
-1. **Table and settings**: migration `0002_terminals.sql`; `terminal.shell` with its user-database default; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
+1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.
 3. **`internal/terminal`**: the Store (rows, transitions, names with codenames, lookup by id or by name in a project, project by dir) and the supervisor that starts, watches, stops and reconciles holders. Tests with a temp DB and real holders.
 4. **API**: the terminal paths and schemas, `stop_running`, `started` / `stopped` on project results, the new codes; `make generate`.

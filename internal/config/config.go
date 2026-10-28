@@ -33,6 +33,7 @@ type Config struct {
 	OtelInterval     time.Duration
 	UpdateChannel    string
 	UpdateBaseURL    string
+	TerminalShell    string // "" for the user's login shell
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -218,6 +219,19 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return c.UpdateBaseURL },
+	},
+	{
+		key:         "terminal.shell",
+		description: "absolute path of the shell terminals run; empty runs the user's login shell, /bin/sh when the system names none",
+		def:         "",
+		set: func(c *Config, v string) error {
+			if v != "" && !filepath.IsAbs(v) {
+				return fmt.Errorf("%q is not an absolute path", v)
+			}
+			c.TerminalShell = v
+			return nil
+		},
+		get: func(c Config) string { return c.TerminalShell },
 	},
 }
 
