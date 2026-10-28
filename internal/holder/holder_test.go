@@ -35,6 +35,7 @@ func runHolder(args []string) int {
 		return 2
 	}
 	home := os.Getenv(identity.Env("HOME")) //nolint:forbidigo // the test binary is this holder's main, which reads its home as cmd/wdx does
+	o.Home = home
 	o.Socket = identity.HolderSocket(home, o.ID)
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, identity.Env("HOME")+"=") })
 	o.Ready = os.NewFile(3, "ready")
@@ -160,7 +161,7 @@ func TestShellEnvironment(t *testing.T) {
 	want := map[string]string{
 		"HOME": account.Home, "USER": account.Name, "LOGNAME": account.Name, "SHELL": account.LoginShell(),
 		"TERM": "xterm-256color", "WDX_TERMINAL_ID": "term-00000001", "WDX_PROJECT": "warden",
-		"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+		"WDX_HOME": f.home, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
 	}
 	// What sh sets itself.
 	added := []string{"PWD", "OLDPWD", "SHLVL", "_"}

@@ -153,7 +153,7 @@ Built, never inherited whole, and never taken from the CLI that asked: the termi
 | Variables | From |
 |---|---|
 | `HOME`, `USER`, `LOGNAME`, `SHELL` | the user database |
-| `TERM=xterm-256color`, `WDX_TERMINAL_ID`, `WDX_PROJECT` | wdx |
+| `TERM=xterm-256color`, `WDX_TERMINAL_ID`, `WDX_PROJECT`, `WDX_HOME` | wdx; `WDX_HOME` so that `wdx` run in the shell reaches the daemon that owns it |
 | `PATH`, `LANG`, `LC_*`, `SSH_AUTH_SOCK`, `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` | the daemon's environment, those set |
 
 - The last row is a fixed allowlist: what a login shell's profile assumes is already there. Without it the shell runs in the C locale, `git push` over ssh cannot reach the agent, and GUI and clipboard tools cannot reach the desktop. The login shell then reads the user's profile and rc, which build the rest.

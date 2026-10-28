@@ -39,7 +39,10 @@ type Options struct {
 	Project string // the project's name, for WDX_PROJECT
 	Dir     string
 	Shell   string
-	Socket  string
+	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
+	// reaches the daemon that owns it.
+	Home   string
+	Socket string
 	// Env holds the variables the shell inherits from the daemon, as
 	// KEY=value; the holder adds the user's and its own.
 	Env []string
@@ -114,6 +117,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		"TERM=xterm-256color",
 		identity.Env("TERMINAL_ID") + "=" + o.ID,
 		identity.Env("PROJECT") + "=" + o.Project,
+		identity.Env("HOME") + "=" + o.Home,
 	}, o.Env...)
 	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	if err != nil {

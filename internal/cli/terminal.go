@@ -367,7 +367,8 @@ func newHolderCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			env := invocationOf(cmd).env
-			o.Socket = identity.HolderSocket(env.Config.Home, o.ID)
+			o.Home = env.Config.Home
+			o.Socket = identity.HolderSocket(o.Home, o.ID)
 			// The daemon starts it with exactly the variables the shell gets.
 			o.Env = env.Terminal
 			o.Ready = os.NewFile(3, "ready")
