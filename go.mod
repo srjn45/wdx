@@ -1,6 +1,6 @@
 module github.com/srjn45/wdx
 
-go 1.26.4
+go 1.26.10
 
 require (
 	github.com/getkin/kin-openapi v0.152.0
