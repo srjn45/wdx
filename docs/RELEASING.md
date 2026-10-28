@@ -15,7 +15,7 @@ Both release targets need a clean working tree on `main`, not behind `origin/mai
 
 `.github/workflows/release.yml` publishes the GitHub Release of each `v*` tag pushed: it runs the jobs of `ci.yml` on the tag, then `scripts/publish.sh`, which checks that the tag is annotated and on `main`, builds the archives with the tag's own `scripts/dist.sh`, and uploads them with `checksums.txt` and the tag's `install.sh`. The tag's notes are the release's. A dev tag is a pre-release, so GitHub's latest release is always the newest stable one. A failed run leaves a draft at most; running it again replaces it. A tag pushed before releases were published is published by running the workflow by hand with that tag (`gh workflow run release.yml -f tag=v0.2.0-dev.20`), without the checks.
 
-The repository is private, so its releases download only with a token: `install.sh` and `wdx update` cannot reach them yet. Meanwhile `dist/` holds every release built here, and `make install` and `update.base_url: file://<repo>/dist` read it.
+`dist/` keeps every release built here: `make install` installs from it, and `update.base_url: file://<repo>/dist` makes `wdx update` read it instead of GitHub.
 
 The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
 
