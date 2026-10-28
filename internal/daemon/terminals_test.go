@@ -25,7 +25,7 @@ func (td *testDaemon) removeTerminals() {
 		return
 	}
 	for _, term := range l.JSON200.Terminals {
-		td.client.DeleteTerminalWithResponse(ctx, "id:"+term.Id, &api.DeleteTerminalParams{StopRunning: optional(true)})
+		_, _ = td.client.DeleteTerminalWithResponse(ctx, "id:"+term.Id, &api.DeleteTerminalParams{StopRunning: optional(true)})
 	}
 }
 

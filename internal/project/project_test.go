@@ -883,11 +883,11 @@ func TestGetByPath(t *testing.T) {
 	}
 
 	for path, want := range map[string]string{
-		outer:                             o.Project.ID,
-		filepath.Join(outer, "src", ".."): o.Project.ID,
-		filepath.Join(outer, "vendor"):    o.Project.ID,
-		filepath.Join(inner, "src"):       i.Project.ID,
-		filepath.Join(link, "src"):        o.Project.ID,
+		outer:                             o.ID,
+		filepath.Join(outer, "src", ".."): o.ID,
+		filepath.Join(outer, "vendor"):    o.ID,
+		filepath.Join(inner, "src"):       i.ID,
+		filepath.Join(link, "src"):        o.ID,
 	} {
 		p, err := s.GetByPath(ctx, path)
 		if err != nil || p.ID != want {
@@ -899,7 +899,7 @@ func TestGetByPath(t *testing.T) {
 			t.Errorf("%s: want not found, got %v", path, err)
 		}
 	}
-	if !o.Project.Holds(filepath.Join(inner, "src")) || o.Project.Holds(outer+"-sibling") {
+	if !o.Holds(filepath.Join(inner, "src")) || o.Holds(outer+"-sibling") {
 		t.Error("want outer to hold what is below it, and only that")
 	}
 }

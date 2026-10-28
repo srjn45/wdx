@@ -416,10 +416,11 @@ func (s *Supervisor) socket(id string) string {
 
 // kill kills a holder and its shell's process group, when known.
 func kill(holderPID, pid int) {
+	// What is gone already needs no killing.
 	if pid > 0 {
-		syscall.Kill(-pid, syscall.SIGKILL)
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
 	}
 	if holderPID > 0 {
-		syscall.Kill(holderPID, syscall.SIGKILL)
+		_ = syscall.Kill(holderPID, syscall.SIGKILL)
 	}
 }

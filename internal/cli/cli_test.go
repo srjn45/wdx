@@ -130,7 +130,7 @@ func removeTerminals(home string) {
 		return
 	}
 	for _, term := range list.Terminals {
-		c.DeleteTerminal(ctx, "id:"+term.Id, "", "", true)
+		_, _ = c.DeleteTerminal(ctx, "id:"+term.Id, "", "", true) // the daemon logs a failure, and the test fails on a leftover holder
 	}
 }
 

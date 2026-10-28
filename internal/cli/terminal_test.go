@@ -248,7 +248,7 @@ func TestCompleteTerminals(t *testing.T) {
 			continue
 		}
 		for i := range got {
-			if w := tc.want[i]; got[i] != w && !(strings.HasSuffix(w, "*") && strings.HasPrefix(got[i], strings.TrimSuffix(w, "*"))) {
+			if w := tc.want[i]; got[i] != w && (!strings.HasSuffix(w, "*") || !strings.HasPrefix(got[i], strings.TrimSuffix(w, "*"))) {
 				t.Errorf("%v: got %q, want %q", tc.args, got, tc.want)
 			}
 		}

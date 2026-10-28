@@ -59,19 +59,22 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 	}
 	log.Info("holder started", "terminal_id", o.ID, "holder_pid", cmd.Process.Pid)
 	// Reaps the holder should it exit while this process runs.
-	go cmd.Wait()
+	go func() { _ = cmd.Wait() }()
 
-	ready.SetReadDeadline(time.Now().Add(readyTimeout))
+	if err := ready.SetReadDeadline(time.Now().Add(readyTimeout)); err != nil {
+		_ = cmd.Process.Kill()
+		return Started{}, fmt.Errorf("wait for the holder: %w", err)
+	}
 	var m readyMessage
 	err = json.NewDecoder(ready).Decode(&m)
 	switch {
 	case errors.Is(err, os.ErrDeadlineExceeded):
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill() // it may have just exited
 		return Started{}, fmt.Errorf("the holder did not start the shell within %s", readyTimeout)
 	case errors.Is(err, io.EOF):
 		return Started{}, errors.New("the holder exited before starting the shell")
 	case err != nil:
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill() // it may have just exited
 		return Started{}, fmt.Errorf("read the holder's ready message: %w", err)
 	case m.Error != "":
 		return Started{}, errors.New(m.Error)

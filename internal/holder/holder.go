@@ -152,7 +152,7 @@ func listen(socket string) (*net.UnixListener, error) {
 
 func (h *holder) serve(ctx context.Context) error {
 	defer h.master.Close()
-	go io.Copy(h.output, h.master) // ends with an error once the PTY closes
+	go func() { _, _ = io.Copy(h.output, h.master) }() // ends with an error once the PTY closes
 	go h.wait()
 	go h.accept(ctx)
 
@@ -175,7 +175,7 @@ func (h *holder) serve(ctx context.Context) error {
 
 // wait reaps the shell and tells the daemon how it ended.
 func (h *holder) wait() {
-	h.cmd.Wait()
+	_ = h.cmd.Wait() // an exit status other than 0 is an error; ProcessState has it
 	exit := &Exit{Code: exitCode(h.cmd.ProcessState), At: time.Now()}
 	h.log.Info("shell exited", "exit_code", exit.Code)
 	h.mu.Lock()
@@ -206,7 +206,8 @@ func (h *holder) sendExit() {
 
 // write sends a frame to c; h.mu must be held.
 func (h *holder) write(c net.Conn, t frameType, payload any) error {
-	c.SetWriteDeadline(time.Now().Add(writeTimeout))
+	// Fails only on a closed connection, which the write reports.
+	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
 	return writeFrame(c, t, payload)
 }
 
@@ -228,12 +229,13 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 		h.log.Warn("connection refused", "peer_uid", uid, "err", err)
 		return
 	}
-	c.SetReadDeadline(time.Now().Add(writeTimeout))
+	// Fails only on a closed connection, which the read reports.
+	_ = c.SetReadDeadline(time.Now().Add(writeTimeout))
 	if t, _, err := readFrame(c); err != nil || t != frameHello {
 		h.log.Warn("connection without hello", "err", err)
 		return
 	}
-	c.SetReadDeadline(time.Time{})
+	_ = c.SetReadDeadline(time.Time{})
 
 	h.mu.Lock()
 	if h.conn != nil {
@@ -306,16 +308,18 @@ func (h *holder) stop(grace time.Duration) {
 // foreground one, when that is another.
 func (h *holder) signal(sig syscall.Signal) {
 	pid := h.cmd.Process.Pid
-	syscall.Kill(-pid, sig)
+	// A group that is gone needs no signal.
+	_ = syscall.Kill(-pid, sig)
 	raw, err := h.master.SyscallConn()
 	if err != nil {
 		return
 	}
 	foreground := 0
-	raw.Control(func(fd uintptr) {
+	// When the PTY is closed there is no foreground group to signal.
+	_ = raw.Control(func(fd uintptr) {
 		foreground, _ = unix.IoctlGetInt(int(fd), unix.TIOCGPGRP)
 	})
 	if foreground > 0 && foreground != pid {
-		syscall.Kill(-foreground, sig)
+		_ = syscall.Kill(-foreground, sig)
 	}
 }

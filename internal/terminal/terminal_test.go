@@ -67,12 +67,21 @@ func (f fixture) supervisor(t *testing.T) *Supervisor {
 	t.Cleanup(func() {
 		list, _ := s.store.List(context.Background(), "")
 		for _, term := range list {
-			s.Remove(context.Background(), term.ID, true)
+			// What removing leaves running is killed next.
+			_, _ = s.Remove(context.Background(), term.ID, true)
 			kill(term.HolderPID, term.PID)
 		}
 		s.Close()
 	})
 	return s
+}
+
+// exec changes the database behind the Supervisor's back.
+func (f fixture) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := f.db.Exec(query, args...); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (f fixture) project(t *testing.T, name string) string {
@@ -388,16 +397,18 @@ func TestReconcile(t *testing.T) {
 	if !alive(kept.HolderPID) || !alive(kept.PID) {
 		t.Fatal("want the holders left running")
 	}
-	os.WriteFile(filepath.Join(exitsDir, "go"), nil, 0o644)
+	if err := os.WriteFile(filepath.Join(exitsDir, "go"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	kill(killed.HolderPID, killed.PID)
 	waitGone(t, killed.HolderPID)
 	// The daemon died after recording a stop and before signalling, or while
 	// starting a holder: one that answers and one that does not.
-	f.db.Exec("UPDATE terminals SET state = 'stopped' WHERE id = ?", stopping.ID)
-	f.db.Exec("UPDATE terminals SET state = 'starting', pid = NULL, holder_pid = NULL WHERE id = ?", starting.ID)
+	f.exec(t, "UPDATE terminals SET state = 'stopped' WHERE id = ?", stopping.ID)
+	f.exec(t, "UPDATE terminals SET state = 'starting', pid = NULL, holder_pid = NULL WHERE id = ?", starting.ID)
 	kill(crashed.HolderPID, crashed.PID)
 	waitGone(t, crashed.HolderPID)
-	f.db.Exec("UPDATE terminals SET state = 'starting', pid = NULL, holder_pid = NULL WHERE id = ?", crashed.ID)
+	f.exec(t, "UPDATE terminals SET state = 'starting', pid = NULL, holder_pid = NULL WHERE id = ?", crashed.ID)
 	waitGone(t, exits.PID)
 
 	second := f.supervisor(t)

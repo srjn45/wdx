@@ -34,7 +34,8 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 		return nil, err
 	}
 	deadline, _ := ctx.Deadline()
-	c.SetDeadline(deadline)
+	// Fails only on a closed connection, which greeting reports.
+	_ = c.SetDeadline(deadline)
 	hello, err := greet(c)
 	if err == nil && hello.TerminalID != id {
 		err = fmt.Errorf("the holder on %s runs terminal %s, not %s", socket, hello.TerminalID, id)
@@ -43,7 +44,7 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 		c.Close()
 		return nil, err
 	}
-	c.SetDeadline(time.Time{})
+	_ = c.SetDeadline(time.Time{})
 	conn := &Conn{c: c, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{})}
 	if hello.Exited != nil {
 		conn.exited <- *hello.Exited
@@ -131,6 +132,7 @@ func (c *Conn) Close() error {
 func (c *Conn) write(t frameType, payload any) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
-	c.c.SetWriteDeadline(time.Now().Add(writeTimeout))
+	// Fails only on a closed connection, which the write reports.
+	_ = c.c.SetWriteDeadline(time.Now().Add(writeTimeout))
 	return writeFrame(c.c, t, payload)
 }

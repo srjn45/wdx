@@ -260,7 +260,7 @@ func result(r api.Result, p project.Project) api.ProjectResult {
 // opened relaunches the terminals closing the project stopped and returns
 // what opening it led to.
 func (s *server) opened(ctx context.Context, o project.Opened) (api.ProjectResult, error) {
-	started, err := s.terminals.StartProject(ctx, o.Project.ID)
+	started, err := s.terminals.StartProject(ctx, o.ID)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}

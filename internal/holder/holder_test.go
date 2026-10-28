@@ -34,7 +34,7 @@ func runHolder(args []string) int {
 	if flags.Parse(args) != nil {
 		return 2
 	}
-	home := os.Getenv(identity.Env("HOME"))
+	home := os.Getenv(identity.Env("HOME")) //nolint:forbidigo // the test binary is this holder's main, which reads its home as cmd/wdx does
 	o.Socket = identity.HolderSocket(home, o.ID)
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, identity.Env("HOME")+"=") })
 	o.Ready = os.NewFile(3, "ready")
@@ -93,8 +93,9 @@ func (f fixture) start(t *testing.T, id, shell string) Started {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		syscall.Kill(-s.PID, syscall.SIGKILL)
-		syscall.Kill(s.HolderPID, syscall.SIGKILL)
+		// Most tests end their shell and holder; this catches the rest.
+		_ = syscall.Kill(-s.PID, syscall.SIGKILL)
+		_ = syscall.Kill(s.HolderPID, syscall.SIGKILL)
 	})
 	return s
 }
@@ -251,7 +252,9 @@ func TestReconnectAndRelease(t *testing.T) {
 	case <-time.After(waitLimit):
 		t.Fatal("want the first connection replaced by the second")
 	}
-	second.Stop(5 * time.Second)
+	if err := second.Stop(5 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 	exit := waitExit(t, second)
 	second.Close()
 
@@ -275,7 +278,9 @@ func TestReleaseIgnoredWhileRunning(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	s := f.start(t, "term-00000007", f.script(t, "exec sleep 60"))
-	f.dial(t, "term-00000007").Release()
+	if err := f.dial(t, "term-00000007").Release(); err != nil {
+		t.Fatal(err)
+	}
 	c := f.dial(t, "term-00000007")
 	if h := c.Hello(); h.PID != s.PID || h.Exited != nil {
 		t.Fatalf("want the shell still running, got %+v", h)
@@ -287,7 +292,9 @@ func TestHolderGone(t *testing.T) {
 	f := newFixture(t)
 	s := f.start(t, "term-00000008", f.script(t, "exec sleep 60"))
 	c := f.dial(t, "term-00000008")
-	syscall.Kill(s.HolderPID, syscall.SIGKILL)
+	if err := syscall.Kill(s.HolderPID, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-c.Done():
 	case <-time.After(waitLimit):
@@ -343,16 +350,17 @@ func TestRunDirPrivate(t *testing.T) {
 func TestRing(t *testing.T) {
 	t.Parallel()
 	r := newRing(8)
-	r.Write([]byte("abc"))
+	// A ring never fails a write.
+	_, _ = r.Write([]byte("abc"))
 	if got := string(r.Bytes()); got != "abc" {
 		t.Fatalf("got %q", got)
 	}
-	r.Write([]byte("defgh"))
-	r.Write([]byte("ij"))
+	_, _ = r.Write([]byte("defgh"))
+	_, _ = r.Write([]byte("ij"))
 	if got := string(r.Bytes()); got != "cdefghij" {
 		t.Fatalf("want the last 8 bytes, got %q", got)
 	}
-	r.Write([]byte("0123456789"))
+	_, _ = r.Write([]byte("0123456789"))
 	if got := string(r.Bytes()); got != "23456789" {
 		t.Fatalf("want the end of a long write, got %q", got)
 	}

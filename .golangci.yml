@@ -26,6 +26,8 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/git$
               desc: the cli calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/terminal
+              desc: the cli calls the daemon's API, never the domain
         config-in-cli-only:
           files:
             - "$all"
