@@ -50,6 +50,12 @@ func ProjectsDir(home string) string {
 	return filepath.Join(home, "projects")
 }
 
+// HolderSocket is the Unix socket the holder of terminal id listens on under
+// home. Its directory is the holders' alone: only the user may enter it.
+func HolderSocket(home, id string) string {
+	return filepath.Join(home, "run", id+".sock")
+}
+
 // LogsDir is where the daily log files are written under home.
 func LogsDir(home string) string {
 	return filepath.Join(home, "logs")
