@@ -74,7 +74,10 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second,
+		UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/warden/releases/download",
 		From: map[string]string{
+			"update.channel":        "default",
+			"update.base_url":       "default",
 			"home":                  "WDX_HOME",
 			"no_input":              path + ":5",
 			"color":                 path + ":9",
@@ -128,6 +131,9 @@ func TestEveryProblemReported(t *testing.T) {
 		"  endpoint: localhost:4318",
 		"  interval_seconds: 0.5",
 		"color: purple",
+		"update:",
+		"  channel: beta",
+		"  base_url: ftp://example.com",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -140,6 +146,8 @@ func TestEveryProblemReported(t *testing.T) {
 		path + `:11: otel.endpoint: "localhost:4318" is not an http or https URL`,
 		path + `:12: otel.interval_seconds: "0.5" is not a whole number of at least 1`,
 		path + `:13: color: "purple" is not one of auto, always, never`,
+		path + `:15: update.channel: "beta" is not one of stable, dev`,
+		path + `:16: update.base_url: "ftp://example.com" is not an http, https or file URL`,
 	}
 	slices.Sort(want)
 	var got []string

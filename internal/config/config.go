@@ -31,6 +31,8 @@ type Config struct {
 	LogRetentionDays int
 	OtelEndpoint     string
 	OtelInterval     time.Duration
+	UpdateChannel    string
+	UpdateBaseURL    string
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -97,6 +99,10 @@ type setting struct {
 }
 
 var logLevels = []string{"debug", "info", "warn", "error"}
+
+// UpdateChannels are the release channels wdx update follows: stable
+// releases only, or every release.
+var UpdateChannels = []string{"stable", "dev"}
 
 var settings = []setting{
 	{
@@ -185,6 +191,33 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return strconv.Itoa(int(c.OtelInterval / time.Second)) },
+	},
+	{
+		key:         "update.channel",
+		description: "releases wdx update installs: stable, or dev for the newest release of either kind",
+		def:         "stable",
+		set: func(c *Config, v string) error {
+			if !slices.Contains(UpdateChannels, v) {
+				return fmt.Errorf("%q is not one of %s", v, strings.Join(UpdateChannels, ", "))
+			}
+			c.UpdateChannel = v
+			return nil
+		},
+		get: func(c Config) string { return c.UpdateChannel },
+	},
+	{
+		key:         "update.base_url",
+		description: "where wdx update downloads releases, laid out as GitHub Releases; file://<repo>/dist for local builds",
+		def:         identity.ReleasesURL,
+		set: func(c *Config, v string) error {
+			u, err := url.Parse(v)
+			if err != nil || !slices.Contains([]string{"http", "https", "file"}, u.Scheme) || (u.Scheme == "file") != (u.Host == "") || (u.Scheme == "file" && u.Path == "") {
+				return fmt.Errorf("%q is not an http, https or file URL", v)
+			}
+			c.UpdateBaseURL = strings.TrimSuffix(v, "/")
+			return nil
+		},
+		get: func(c Config) string { return c.UpdateBaseURL },
 	},
 }
 

@@ -254,6 +254,14 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 #   endpoint: http://localhost:4318
 #   # Seconds between two sends of the metrics.
 #   interval_seconds: 15
+
+# update:
+#   # Releases wdx update installs: stable, or dev for the newest release of
+#   # either kind.
+#   channel: stable
+#   # Where wdx update downloads releases, laid out as GitHub Releases;
+#   # file://<repo>/dist for local builds.
+#   base_url: https://github.com/srjn45/warden/releases/download
 EOF
 	chmod 0600 "$HOME_DIR/config.yaml"
 	info "wrote the settings template $HOME_DIR/config.yaml"

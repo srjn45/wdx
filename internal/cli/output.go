@@ -213,6 +213,8 @@ func problem(err error) (api.Problem, int) {
 			hint = "add your user to the docker group (sudo usermod -aG docker $USER) and log in again"
 		}
 		p.Hint = &hint
+	} else if up, found := updateProblem(err); found {
+		p = up
 	} else if _, ok := errors.AsType[*client.UnavailableError](err); ok {
 		p = api.NewProblem(api.ErrorCodeDaemonUnavailable, err.Error())
 		hint := "run " + identity.Name + " daemon start"

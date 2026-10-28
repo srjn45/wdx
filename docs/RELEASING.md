@@ -41,6 +41,25 @@ curl -fsSL https://github.com/srjn45/warden/releases/latest/download/install.sh 
 
 `WDX_VERSION` installs one release, whatever the channel.
 
+## Updating
+
+An installed wdx updates itself:
+
+```
+wdx update                        show the installed version, the newest on the channel and whether it is newer
+wdx update --apply                install the newest release on the channel
+wdx update --apply --version X    install release X, which must not be older
+wdx update --rollback             install the version the last update replaced
+```
+
+The channel is the `update.channel` setting (`stable` by default), or `--channel` for one run. Releases come from `update.base_url`: GitHub Releases by default, or `file://<repo>/dist` to update from local builds. Only a newer version installs: to go back, roll back, which also means a dev release waits for the next stable one rather than switching down to an older one.
+
+`--apply` downloads the archive, checks it against `checksums.txt` and runs the new binary's `version` before touching anything. Then it stops the daemon, keeps the installed binary and a backup of the database in `~/.wdx/previous/`, installs the new binary and starts the daemon on it, which migrates the database. If any of those steps fails, the old binary and database are put back and the daemon starts on them again (`update_failed`, with `undone` in its details). One update or rollback runs at a time.
+
+Only one previous version is kept, replaced by each update and removed by a rollback. A rollback keeps the database when the previous version can use it: migrations that only add things leave it usable. A migration marked `-- breaks-older: true` records itself in the database as the oldest schema a binary must know; rolling back across it can only restore the backup taken at the update, losing every change since, so it asks first (`--discard-changes` answers, and is needed with `--json`; without it the rollback fails with `restore_required`).
+
+`make install` and `scripts/install.sh` install without keeping a previous version.
+
 ## Tags and the changelog
 
 Tags are annotated, their message holding the release's notes, and are never moved or deleted: a broken release is fixed by the next one. `CHANGELOG.md` is generated: change a commit message's wording before releasing, never the file.

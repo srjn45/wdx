@@ -37,6 +37,13 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeRuntimeMissing:    {http.StatusServiceUnavailable, ExitSystem, "neither Docker nor Podman is installed"},
 	ErrorCodePortInUse:         {http.StatusConflict, ExitRejected, "a port the observability stack needs is taken"},
 	ErrorCodeRuntimeFailed:     {http.StatusBadGateway, ExitSystem, "Docker or Podman failed"},
+	ErrorCodeDownloadFailed:    {http.StatusBadGateway, ExitSystem, "the release could not be found or downloaded"},
+	ErrorCodeChecksumMismatch:  {http.StatusBadGateway, ExitSystem, "the downloaded release does not match its checksum"},
+	ErrorCodeOlderVersion:      {http.StatusConflict, ExitRejected, "the release is older than the installed version"},
+	ErrorCodeUpdateRunning:     {http.StatusConflict, ExitRejected, "another update or rollback is running"},
+	ErrorCodeUpdateFailed:      {http.StatusInternalServerError, ExitSystem, "the update or rollback failed and was undone"},
+	ErrorCodeNoPreviousVersion: {http.StatusConflict, ExitRejected, "no previous version is kept to roll back to"},
+	ErrorCodeRestoreRequired:   {http.StatusConflict, ExitRejected, "rolling back needs the database backup, losing the changes since the update"},
 }
 
 // NewProblem returns the problem of code, with the status and title the code

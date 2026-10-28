@@ -42,10 +42,11 @@ internal/style/  colors text output on a terminal with semantic styles
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases and builds them; cliff.toml and docs/RELEASING.md explain the versions
+internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon` and `observe`, which manage the daemon and the observability stack themselves. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe` and `update`, which manage the daemon, the observability stack and the installed binary themselves. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -54,6 +55,7 @@ internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 
 - One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file.
 - Migrations live in `internal/db/migrations`, are numbered, and are append-only: never edit a committed migration.
+- Prefer migrations that only add (a table, an index, a column that is nullable or has a default): the previous version keeps working on the database, so `wdx update --rollback` keeps the data. A migration that changes or removes what older binaries use starts with the line `-- breaks-older: true`; rolling back across it restores the database backup taken at the update.
 - Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE, user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
 
 ## API

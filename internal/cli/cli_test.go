@@ -29,8 +29,11 @@ import (
 )
 
 // wdxBinary is wdx built from this tree, which starting the daemon in the
-// background runs.
-var wdxBinary string
+// background runs; releaseBinary is the same built as release
+// releaseVersion, which the update tests install.
+var wdxBinary, releaseBinary string
+
+const releaseVersion = "0.2.0"
 
 func TestMain(m *testing.M) {
 	gittest.Isolate()
@@ -41,6 +44,11 @@ func TestMain(m *testing.M) {
 	wdxBinary = filepath.Join(dir, identity.Name)
 	if out, err := exec.Command("go", "build", "-o", wdxBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
 		panic(fmt.Sprintf("build wdx: %v\n%s", err, out))
+	}
+	releaseBinary = filepath.Join(dir, "release", identity.Name)
+	ldflags := "-X github.com/srjn45/warden/internal/identity.Version=" + releaseVersion
+	if out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", releaseBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("build wdx %s: %v\n%s", releaseVersion, err, out))
 	}
 	code := m.Run()
 	os.RemoveAll(dir)
@@ -280,6 +288,18 @@ type jsonOutput struct {
 	Daemon  *api.Daemon  `json:"daemon"`
 	Running *bool        `json:"running"`
 	Pid     *int         `json:"pid"`
+
+	Update *struct {
+		Current      string  `json:"current"`
+		Latest       string  `json:"latest"`
+		Available    bool    `json:"available"`
+		From         string  `json:"from"`
+		To           string  `json:"to"`
+		Channel      *string `json:"channel"`
+		SchemaFrom   int     `json:"schema_from"`
+		SchemaTo     int     `json:"schema_to"`
+		DataRestored *bool   `json:"data_restored"`
+	} `json:"update"`
 
 	Runtime     *string    `json:"runtime"`
 	Stack       *jsonStack `json:"stack"`

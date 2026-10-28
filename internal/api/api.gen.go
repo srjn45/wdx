@@ -64,21 +64,28 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 const (
 	ErrorCodeAlreadyRunning    ErrorCode = "already_running"
 	ErrorCodeCheckoutMissing   ErrorCode = "checkout_missing"
+	ErrorCodeChecksumMismatch  ErrorCode = "checksum_mismatch"
 	ErrorCodeCloneFailed       ErrorCode = "clone_failed"
 	ErrorCodeDaemonUnavailable ErrorCode = "daemon_unavailable"
+	ErrorCodeDownloadFailed    ErrorCode = "download_failed"
 	ErrorCodeInternal          ErrorCode = "internal"
 	ErrorCodeInvalidArgument   ErrorCode = "invalid_argument"
 	ErrorCodeInvalidName       ErrorCode = "invalid_name"
 	ErrorCodeInvalidPath       ErrorCode = "invalid_path"
 	ErrorCodeNameTaken         ErrorCode = "name_taken"
+	ErrorCodeNoPreviousVersion ErrorCode = "no_previous_version"
 	ErrorCodeNotFound          ErrorCode = "not_found"
 	ErrorCodeNotGitRepo        ErrorCode = "not_git_repo"
+	ErrorCodeOlderVersion      ErrorCode = "older_version"
 	ErrorCodePathExists        ErrorCode = "path_exists"
 	ErrorCodePortInUse         ErrorCode = "port_in_use"
 	ErrorCodeProjectMismatch   ErrorCode = "project_mismatch"
 	ErrorCodeRepoExists        ErrorCode = "repo_exists"
+	ErrorCodeRestoreRequired   ErrorCode = "restore_required"
 	ErrorCodeRuntimeFailed     ErrorCode = "runtime_failed"
 	ErrorCodeRuntimeMissing    ErrorCode = "runtime_missing"
+	ErrorCodeUpdateFailed      ErrorCode = "update_failed"
+	ErrorCodeUpdateRunning     ErrorCode = "update_running"
 	ErrorCodeUsage             ErrorCode = "usage"
 )
 
@@ -89,9 +96,13 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeCheckoutMissing:
 		return true
+	case ErrorCodeChecksumMismatch:
+		return true
 	case ErrorCodeCloneFailed:
 		return true
 	case ErrorCodeDaemonUnavailable:
+		return true
+	case ErrorCodeDownloadFailed:
 		return true
 	case ErrorCodeInternal:
 		return true
@@ -103,9 +114,13 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeNameTaken:
 		return true
+	case ErrorCodeNoPreviousVersion:
+		return true
 	case ErrorCodeNotFound:
 		return true
 	case ErrorCodeNotGitRepo:
+		return true
+	case ErrorCodeOlderVersion:
 		return true
 	case ErrorCodePathExists:
 		return true
@@ -115,9 +130,15 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeRepoExists:
 		return true
+	case ErrorCodeRestoreRequired:
+		return true
 	case ErrorCodeRuntimeFailed:
 		return true
 	case ErrorCodeRuntimeMissing:
+		return true
+	case ErrorCodeUpdateFailed:
+		return true
+	case ErrorCodeUpdateRunning:
 		return true
 	case ErrorCodeUsage:
 		return true
@@ -246,7 +267,8 @@ type Daemon struct {
 }
 
 // ErrorCode Stable error code; never changed or reused. daemon_unavailable,
-// already_running, runtime_missing, port_in_use and runtime_failed are
+// already_running, runtime_missing, port_in_use, runtime_failed and the
+// codes of wdx update (download_failed to restore_required) are
 // reported by the CLI, never by the daemon.
 type ErrorCode string
 
@@ -284,7 +306,8 @@ type NewSourceType string
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
 	// Code Stable error code; never changed or reused. daemon_unavailable,
-	// already_running, runtime_missing, port_in_use and runtime_failed are
+	// already_running, runtime_missing, port_in_use, runtime_failed and the
+	// codes of wdx update (download_failed to restore_required) are
 	// reported by the CLI, never by the daemon.
 	Code ErrorCode `json:"code"`
 
@@ -3249,44 +3272,46 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
+	"+98AAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

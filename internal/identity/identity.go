@@ -54,3 +54,22 @@ func ProjectsDir(home string) string {
 func LogsDir(home string) string {
 	return filepath.Join(home, "logs")
 }
+
+// Where releases are published; vars so a fork can build its own.
+var (
+	// ReleasesURL holds the releases, as <ReleasesURL>/v<version>/<archive>.
+	ReleasesURL = "https://github.com/srjn45/warden/releases/download"
+	// ReleasesAPI lists the releases, newest first.
+	ReleasesAPI = "https://api.github.com/repos/srjn45/warden/releases"
+)
+
+// PreviousDir holds the version an update replaced, and the database as it
+// was, until the next update or a rollback.
+func PreviousDir(home string) string {
+	return filepath.Join(home, "previous")
+}
+
+// UpdateLockPath is the file an update or rollback holds locked under home.
+func UpdateLockPath(home string) string {
+	return filepath.Join(home, "update.lock")
+}

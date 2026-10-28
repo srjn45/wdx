@@ -340,7 +340,8 @@ components:
       type: string
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
-        already_running, runtime_missing, port_in_use and runtime_failed are
+        already_running, runtime_missing, port_in_use, runtime_failed and the
+        codes of wdx update (download_failed to restore_required) are
         reported by the CLI, never by the daemon.
       enum:
         - usage
@@ -361,6 +362,13 @@ components:
         - runtime_missing
         - port_in_use
         - runtime_failed
+        - download_failed
+        - checksum_mismatch
+        - older_version
+        - update_running
+        - update_failed
+        - no_previous_version
+        - restore_required
 
     Problem:
       type: object
