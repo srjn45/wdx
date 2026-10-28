@@ -13,6 +13,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `chore:`): the next version and `CHANGELOG.md` are worked out from them, so the type must say what the change is.
 - A change a user or script can notice breaks them: the `--json` output, error codes, exit codes, commands and flags, settings, the API. Mark it with `!` (`feat!:`) and say what breaks in a `BREAKING CHANGE:` footer.
+- After adding, removing or upgrading a dependency, run `make notices` and commit `THIRD-PARTY-NOTICES.md` with it; never edit it by hand. A dependency must be under a permissive license (Apache-2.0, MIT, BSD, ISC); ask the human before adding any other.
 - Never edit `CHANGELOG.md` or move a tag. Release only when the human asks (`make release-dev`, `make release`); see docs/RELEASING.md.
 
 ## Code style
@@ -42,6 +43,7 @@ internal/style/  colors text output on a terminal with semantic styles
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases and builds them; cliff.toml and docs/RELEASING.md explain the versions
+scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
 internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```

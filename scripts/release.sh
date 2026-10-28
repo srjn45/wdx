@@ -31,6 +31,8 @@ cd "$(dirname "$0")/.."
 
 [ "$(git branch --show-current)" = "$BRANCH" ] || die "releases are cut from $BRANCH"
 [ -z "$(git status --porcelain)" ] || die "the working tree has uncommitted changes"
+scripts/notices.sh >/dev/null
+[ -z "$(git status --porcelain)" ] || die "THIRD-PARTY-NOTICES.md is out of date with the modules; commit it as scripts/notices.sh wrote it"
 # A stable release usually promotes a commit already released as dev.
 if [ "$channel" = stable ]; then
 	released="$(git tag --points-at HEAD --list "$STABLE_TAGS" | grep -v -- - || true)"

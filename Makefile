@@ -10,7 +10,7 @@ GIT_CLIFF         := bin/git-cliff-$(GIT_CLIFF_VERSION)
 PKG     := github.com/srjn45/warden/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build generate test dist install uninstall release release-dev changelog clean
+.PHONY: build generate test notices dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -23,6 +23,10 @@ generate:
 # Run every test in parallel, with the race detector and in shuffled order.
 test:
 	go test -race -shuffle=on ./...
+
+# Write THIRD-PARTY-NOTICES.md from the modules linked into wdx.
+notices:
+	scripts/notices.sh
 
 # Build release archives + checksums into dist/, laid out like GitHub Releases.
 dist:

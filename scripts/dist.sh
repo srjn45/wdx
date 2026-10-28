@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build release archives the same way the GitHub release will publish them:
 #
-#   dist/v<version>/wdx_<version>_<os>_<arch>.tar.gz
+#   dist/v<version>/wdx_<version>_<os>_<arch>.tar.gz   (wdx, LICENSE, NOTICE,
+#                                                      THIRD-PARTY-NOTICES.md)
 #   dist/v<version>/checksums.txt
 #   dist/LATEST-dev                  (contains v<version>)
 #   dist/LATEST                      (the same, for a stable version only)
@@ -36,7 +37,8 @@ for p in $PLATFORMS; do
 	mkdir -p "$STAGE/$os-$arch"
 	CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
 		go build -trimpath -ldflags "$LDFLAGS" -o "$STAGE/$os-$arch/$NAME" ./cmd/wdx
-	tar -czf "$OUT/${NAME}_${VERSION}_${os}_${arch}.tar.gz" -C "$STAGE/$os-$arch" "$NAME"
+	cp LICENSE NOTICE THIRD-PARTY-NOTICES.md "$STAGE/$os-$arch/"
+	tar -czf "$OUT/${NAME}_${VERSION}_${os}_${arch}.tar.gz" -C "$STAGE/$os-$arch" "$NAME" LICENSE NOTICE THIRD-PARTY-NOTICES.md
 done
 
 if command -v sha256sum >/dev/null 2>&1; then

@@ -6,6 +6,7 @@ A version is a git tag; there is no version file. The build reads it with `git d
 make release-dev   tag HEAD as the next dev release and build it into dist/
 make release       commit CHANGELOG.md, tag the next stable release and build it into dist/
 make changelog     print what changed since the last stable release
+make notices       write THIRD-PARTY-NOTICES.md from the modules linked into wdx
 ```
 
 Both release targets need a clean working tree on `main` and a passing `make test`, and refuse when there is nothing to release. Nothing is pushed: until the repository has a remote, `dist/` is the release, and `make install` installs from it. The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
@@ -59,6 +60,10 @@ The channel is the `update.channel` setting (`stable` by default), or `--channel
 Only one previous version is kept, replaced by each update and removed by a rollback. A rollback keeps the database when the previous version can use it: migrations that only add things leave it usable. A migration marked `-- breaks-older: true` records itself in the database as the oldest schema a binary must know; rolling back across it can only restore the backup taken at the update, losing every change since, so it asks first (`--discard-changes` answers, and is needed with `--json`; without it the rollback fails with `restore_required`).
 
 `make install` and `scripts/install.sh` install without keeping a previous version.
+
+## Licenses
+
+wdx is licensed under Apache 2.0 (`LICENSE`, `NOTICE`). Every archive carries `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md` next to the binary: the full license and notice files of Go and of every module linked into wdx, as their licenses ask of a binary release. `scripts/notices.sh` writes it from `go list`, so it changes with the dependencies; a release refuses to run while it is out of date, and the script fails on a license it does not know, so a new dependency's license is looked at before it ships.
 
 ## Tags and the changelog
 
