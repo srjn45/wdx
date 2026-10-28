@@ -131,6 +131,53 @@ func TestTerminalList(t *testing.T) {
 	}
 }
 
+func TestTerminalGet(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	newProject(t, home, "lib")
+	term := newTerminal(t, home, app, "build")
+
+	for _, args := range [][]string{{"--id", term.Id}, {"--name", "BUILD", "--project-name", "app"}} {
+		v, exit := wdxJSON(t, home, append([]string{"terminal", "get"}, args...)...)
+		if exit != api.ExitOK || v.Result != "" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
+			t.Fatalf("get %v: unexpected exit %d, %+v", args, exit, v)
+		}
+	}
+	v, exit := wdxJSONWith(t, home, in(filepath.Join(app, "sub")), "terminal", "get", "--name", "build")
+	if exit != api.ExitOK || v.Terminal.Id != term.Id {
+		t.Fatalf("want build from its project's dir, got exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSON(t, home, "terminal", "get", "--name", "build", "--project-name", "lib")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "terminal", "get", "--name", "build")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantHint(t, v, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id")
+
+	out := wdx(t, home, "terminal", "get", "--id", term.Id)
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "terminal build in app\n  state    running\n  dir      "+app+"\n") ||
+		!strings.Contains(out.stdout, "\n  id       "+term.Id+"\n") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
+func TestProjectGetTerminals(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "b")
+	newTerminal(t, home, app, "a")
+
+	v, exit := wdxJSON(t, home, "project", "get", "--name", "app")
+	if exit != api.ExitOK || v.Project.Terminals == nil || !slices.Equal(terminalNames(*v.Project.Terminals), []string{"app/a", "app/b"}) {
+		t.Fatalf("want terminals a and b, got exit %d, %+v", exit, v.Project)
+	}
+	out := wdx(t, home, "project", "get", "--name", "app")
+	if !strings.Contains(out.stdout, "\n  terminals: a  running  "+app+"  term-") || !strings.Contains(out.stdout, "\n             b  running  "+app+"  term-") {
+		t.Fatalf("unexpected text: %q", out.stdout)
+	}
+}
+
 func TestTerminalStart(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

@@ -144,6 +144,78 @@ func TestListTerminals(t *testing.T) {
 	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusBadRequest, api.ErrorCodeUsage)
 }
 
+func TestGetTerminal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	td.create(t, "lib")
+	term := td.createTerminal(t, "", app, "build")
+
+	for _, tc := range []struct {
+		ref    string
+		params api.GetTerminalParams
+	}{
+		{"id:" + term.Id, api.GetTerminalParams{}},
+		{"BUILD", api.GetTerminalParams{Project: optional("app")}},
+		{"build", api.GetTerminalParams{Dir: optional(filepath.Join(app, "deeper"))}},
+	} {
+		r, err := td.client.GetTerminalWithResponse(ctx, tc.ref, &tc.params)
+		if err != nil || r.JSON200 == nil || r.JSON200.Terminal.Id != term.Id || r.JSON200.Terminal.State != api.TerminalStateRunning {
+			t.Fatalf("%s: want build, got %v %s", tc.ref, err, r.Body)
+		}
+	}
+
+	for _, tc := range []struct {
+		ref    string
+		params api.GetTerminalParams
+		status int
+		code   api.ErrorCode
+	}{
+		{"build", api.GetTerminalParams{}, http.StatusBadRequest, api.ErrorCodeUsage},
+		{"build", api.GetTerminalParams{Project: optional("lib")}, http.StatusNotFound, api.ErrorCodeNotFound},
+		{"id:" + term.Id, api.GetTerminalParams{Project: optional("lib")}, http.StatusNotFound, api.ErrorCodeNotFound},
+		{"id:term-00000000", api.GetTerminalParams{}, http.StatusNotFound, api.ErrorCodeNotFound},
+	} {
+		r, err := td.client.GetTerminalWithResponse(ctx, tc.ref, &tc.params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantProblem(t, r.ApplicationproblemJSONDefault, tc.status, tc.code)
+	}
+}
+
+func TestGetProjectTerminals(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	lib := td.create(t, "lib").Worktrees[0].Path
+	td.createTerminal(t, "", app, "b")
+	td.createTerminal(t, "", app, "a")
+	td.createTerminal(t, "", lib, "c")
+
+	for project, want := range map[string]string{"app": "a b ", "lib": "c "} {
+		r, err := td.client.GetProjectWithResponse(ctx, project)
+		if err != nil || r.JSON200 == nil || r.JSON200.Project.Terminals == nil {
+			t.Fatalf("get %s: %v %s", project, err, r.Body)
+		}
+		var got string
+		for _, term := range *r.JSON200.Project.Terminals {
+			got += term.Name + " "
+		}
+		if got != want {
+			t.Errorf("%s: want terminals %s, got %s", project, want, got)
+		}
+	}
+
+	td.create(t, "empty")
+	r, err := td.client.GetProjectWithResponse(ctx, "empty")
+	if err != nil || r.JSON200 == nil || r.JSON200.Project.Terminals == nil || len(*r.JSON200.Project.Terminals) != 0 {
+		t.Fatalf("want an empty list of terminals, got %v %s", err, r.Body)
+	}
+}
+
 func TestRemoveTerminal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

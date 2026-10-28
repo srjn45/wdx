@@ -189,6 +189,7 @@ The login shell is looked up when a terminal starts, not when wdx loads its sett
 |---|---|---|
 | `POST /v1/terminals` `{"project": ref or null, "dir": "/abs", "name": null}` | 201 `{"result": "created", "terminal": {...}}` | `invalid_name`, `name_taken`, `not_found`, `project_closed`, `start_failed` |
 | `GET /v1/terminals?project=<ref>` or `?dir=/abs`, neither for all | 200 `{"terminals": [...]}`, by project then name | `not_found` |
+| `GET /v1/terminals/{terminal}` | 200 `{"terminal": {...}}` | `not_found` |
 | `POST /v1/terminals/{terminal}/start` | 200 `{"result": "started", "terminal": {...}}` | `not_found`, `project_closed`, `terminal_running`, `start_failed` |
 | `DELETE /v1/terminals/{terminal}?stop_running=true` | 200 `{"result": "removed", "terminal": {...}}` | `not_found`, `terminal_running` |
 
@@ -210,6 +211,7 @@ Projects:
 - Close marks those terminals `stopped` and stops them, then closes the project; the result lists them under `stopped`. Remove stops them, lists them under `stopped` too, then the cascade deletes every row. `on_missing_checkout: remove` on `POST /v1/projects` removes the same way, without `stop_running`: live terminals refuse it with `project_in_use`.
 - Opening a project (`PATCH` to open, `POST /v1/projects` reopening a known one, or recloning it) relaunches its `stopped` terminals and lists them under `started`, each with the state it reached: one whose dir is gone ends `failed`.
 - `started` and `stopped` are left out when empty, as `dropped` is.
+- `GET /v1/projects/{project}` sets `terminals` on the project: every terminal in it, in any state, by name; `[]` when it has none. Other results carry no `terminals`, as they carry no `orphaned`.
 
 New codes in `internal/api/codes.go`:
 
@@ -226,6 +228,7 @@ New codes in `internal/api/codes.go`:
 
 ```
 wdx terminal create [--project-id <id> | --project-name <name>] [--name <name>]
+wdx terminal get    (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx terminal list   [--project-id <id> | --project-name <name> | --all]
 wdx terminal start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx terminal remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]

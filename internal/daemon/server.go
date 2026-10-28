@@ -74,6 +74,12 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 		present := status.Present[v.Worktrees[i].Id]
 		v.Worktrees[i].Present = &present
 	}
+	terminals, err := s.terminals.Store().List(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	views := terminalViews(terminals)
+	v.Terminals = &views
 	return api.GetProject200JSONResponse{Project: v}, nil
 }
 

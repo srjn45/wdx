@@ -26,7 +26,7 @@ func newTerminalCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newTerminalCreateCmd(), newTerminalListCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
+	cmd.AddCommand(newTerminalCreateCmd(), newTerminalGetCmd(), newTerminalListCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
 	return cmd
 }
 
@@ -192,6 +192,38 @@ func (r terminalRef) notFoundHint(err error) error {
 		return err
 	}
 	return &hinted{err, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id"}
+}
+
+func newTerminalGetCmd() *cobra.Command {
+	var ref terminalRef
+	cmd := &cobra.Command{
+		Use:   "get (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
+		Short: "Show a terminal",
+		Long: "In any state, with why it failed when it did. Without a project flag, --name\n" +
+			"is looked up in the project the working directory is in. Nothing is changed.",
+		Example: examples(
+			"Show a terminal of the project you are in", identity.Name+" terminal get --name server",
+			"By id, as JSON", identity.Name+" terminal get --id term-1a2b3c4d --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The terminal.\n" + `With --json: {"terminal": {...}}`,
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path, project, dir, err := ref.resolve(cmd)
+			if err != nil {
+				return err
+			}
+			t, err := clientOf(cmd).GetTerminal(cmd.Context(), path, project, dir)
+			if err != nil {
+				return ref.notFoundHint(err)
+			}
+			return printResult(cmd, terminalDetail(t))
+		},
+	}
+	ref.addFlags(cmd)
+	return cmd
 }
 
 func newTerminalStartCmd() *cobra.Command {

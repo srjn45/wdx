@@ -103,11 +103,11 @@ paths:
       - $ref: "#/components/parameters/ProjectRef"
     get:
       operationId: getProject
-      summary: A project, open or closed, with which of its checkouts are on disk
+      summary: A project, open or closed, with which of its checkouts are on disk and its terminals
       description: "Errors: not_found."
       responses:
         "200":
-          description: The project, with "present" on each worktree and "orphaned" set.
+          description: The project, with "present" on each worktree, "orphaned" and "terminals" set.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProjectEnvelope" }
@@ -226,6 +226,17 @@ paths:
       - $ref: "#/components/parameters/TerminalRef"
       - $ref: "#/components/parameters/TerminalProject"
       - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getTerminal
+      summary: A terminal, in any state
+      description: "Errors: not_found."
+      responses:
+        "200":
+          description: The terminal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
     delete:
       operationId: deleteTerminal
       summary: Delete a terminal
@@ -363,6 +374,10 @@ components:
         worktrees:
           type: array
           items: { $ref: "#/components/schemas/Worktree" }
+        terminals:
+          type: array
+          items: { $ref: "#/components/schemas/Terminal" }
+          description: The project's terminals by name, in every state; set by getProject only.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -516,6 +531,12 @@ components:
         terminals:
           type: array
           items: { $ref: "#/components/schemas/Terminal" }
+
+    TerminalEnvelope:
+      type: object
+      required: [terminal]
+      properties:
+        terminal: { $ref: "#/components/schemas/Terminal" }
 
     TerminalResult:
       type: object

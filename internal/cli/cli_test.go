@@ -285,6 +285,7 @@ type jsonProject struct {
 		Path    string `json:"path"`
 		Present *bool  `json:"present"`
 	} `json:"worktrees"`
+	Terminals *[]api.Terminal `json:"terminals"`
 }
 
 // jsonOutput holds every field a command prints with --json: a result, or a
@@ -961,10 +962,14 @@ func TestGet(t *testing.T) {
 		if p.Orphaned == nil || *p.Orphaned || len(p.Worktrees) != 1 || p.Worktrees[0].Present == nil || !*p.Worktrees[0].Present {
 			t.Fatalf("get %v: want one present checkout, got %+v", args, p)
 		}
+		if p.Terminals == nil || len(*p.Terminals) != 0 {
+			t.Fatalf("get %v: want an empty list of terminals, got %v", args, p.Terminals)
+		}
 	}
 
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if !strings.HasPrefix(out.stdout, "project App ("+id+")\n  state:     closed\n") || strings.Contains(out.stdout, "orphaned") {
+	if !strings.HasPrefix(out.stdout, "project App ("+id+")\n  state:     closed\n") || strings.Contains(out.stdout, "orphaned") ||
+		!strings.Contains(out.stdout, "\n  terminals: (none)\n") {
 		t.Fatalf("unexpected text: %q", out.stdout)
 	}
 }
@@ -1002,7 +1007,7 @@ func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 	home := newHome(t)
 	newProject(t, home, "app")
 	out := wdx(t, home, "project", "close", "--name", "app", "--cancel", "--json")
-	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || !strings.Contains(out.stdout, `"created_at"`) {
+	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || strings.Contains(out.stdout, `"terminals"`) || !strings.Contains(out.stdout, `"created_at"`) {
 		t.Fatalf("close must not carry disk status: %s", out.stdout)
 	}
 }

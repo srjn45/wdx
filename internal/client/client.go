@@ -217,6 +217,15 @@ func (c *Client) CreateTerminal(ctx context.Context, body api.CreateTerminal) (a
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
 }
 
+// GetTerminal returns the terminal ref names, as StartTerminal does.
+func (c *Client) GetTerminal(ctx context.Context, ref, project, dir string) (api.TerminalEnvelope, error) {
+	r, err := c.api.GetTerminalWithResponse(ctx, ref, &api.GetTerminalParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.TerminalEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // StartTerminal starts the terminal ref names: "id:" and its id, or its
 // name in the project named by project or holding dir.
 func (c *Client) StartTerminal(ctx context.Context, ref, project, dir string) (api.TerminalResult, error) {

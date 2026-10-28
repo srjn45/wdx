@@ -81,6 +81,14 @@ func (s *server) CreateTerminal(ctx context.Context, req api.CreateTerminalReque
 	return api.CreateTerminal201JSONResponse{Result: api.ResultCreated, Terminal: terminalView(t)}, nil
 }
 
+func (s *server) GetTerminal(ctx context.Context, req api.GetTerminalRequestObject) (api.GetTerminalResponseObject, error) {
+	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetTerminal200JSONResponse{Terminal: terminalView(t)}, nil
+}
+
 func (s *server) StartTerminal(ctx context.Context, req api.StartTerminalRequestObject) (api.StartTerminalResponseObject, error) {
 	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
 	if err != nil {

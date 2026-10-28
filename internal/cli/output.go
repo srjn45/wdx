@@ -109,6 +109,34 @@ func (l terminalList) text(w io.Writer, st style.Style) {
 	table.Write(w)
 }
 
+// terminalDetail is one terminal, in any state.
+type terminalDetail api.TerminalEnvelope
+
+func (d terminalDetail) text(w io.Writer, st style.Style) {
+	t := d.Terminal
+	field := func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
+	}
+	fmt.Fprintf(w, "terminal %s in %s\n", st.Name(t.Name), st.Name(t.ProjectName))
+	field("state", terminalStateText(st, t))
+	if t.Error != nil {
+		field("error", st.Failure(*t.Error))
+	}
+	field("dir", t.Dir)
+	field("shell", t.Shell)
+	if t.Pid != nil {
+		field("pid", strconv.Itoa(*t.Pid))
+	}
+	field("id", t.Id)
+	field("created", t.CreatedAt.Local().Format(time.DateTime))
+	if t.StartedAt != nil {
+		field("started", t.StartedAt.Local().Format(time.DateTime))
+	}
+	if t.EndedAt != nil {
+		field("ended", t.EndedAt.Local().Format(time.DateTime))
+	}
+}
+
 func terminalStateText(st style.Style, t api.Terminal) string {
 	switch t.State {
 	case api.TerminalStateRunning, api.TerminalStateStarting:
@@ -146,8 +174,28 @@ func (d projectDetail) text(w io.Writer, st style.Style) {
 		}
 		field(label(i, "worktrees:"), wt.Path+missing)
 	}
+	if p.Terminals != nil {
+		terminals(field, st, *p.Terminals)
+	}
 	if p.Orphaned != nil && *p.Orphaned {
 		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), hintText(st, missingCheckoutHint(p)))
+	}
+}
+
+// terminals writes one field line per terminal, aligned as a table.
+func terminals(field func(name, value string), st style.Style, list []api.Terminal) {
+	if len(list) == 0 {
+		field("terminals:", st.Muted("(none)"))
+		return
+	}
+	var table style.Table
+	for _, t := range list {
+		table.Row(st.Name(t.Name), terminalStateText(st, t), t.Dir, st.Muted(t.Id))
+	}
+	var b strings.Builder
+	table.Write(&b)
+	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
+		field(label(i, "terminals:"), line)
 	}
 }
 

@@ -187,18 +187,18 @@ func newProjectGetCmd() *cobra.Command {
 	var ref projectRef
 	cmd := &cobra.Command{
 		Use:   "get (--id <id> | --name <name>)",
-		Short: "Show a project and which of its checkouts are on disk",
+		Short: "Show a project, which of its checkouts are on disk and its terminals",
 		Long: "Open and closed projects alike, with each worktree and whether it is still\n" +
-			"on disk. A project with no checkout left on disk is orphaned. Nothing is\n" +
-			"changed.",
+			"on disk, and every terminal in any state. A project with no checkout left\n" +
+			"on disk is orphaned. Nothing is changed.",
 		Example: examples(
 			"Show a project by name", identity.Name+" project get --name app",
 			"By id, as JSON", identity.Name+" project get --id proj-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk and \"orphaned\"\n" +
-				"that none is.\n" +
+			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk, \"orphaned\"\n" +
+				"that none is, and \"terminals\" by name.\n" +
 				`With --json: {"project": {...}}`,
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},

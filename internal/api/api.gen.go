@@ -396,10 +396,13 @@ type Project struct {
 	Origin    *string   `json:"origin"`
 
 	// Orphaned Whether none of the checkouts is on disk; set by getProject only.
-	Orphaned  *bool        `json:"orphaned,omitempty"`
-	State     ProjectState `json:"state"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Worktrees []Worktree   `json:"worktrees"`
+	Orphaned *bool        `json:"orphaned,omitempty"`
+	State    ProjectState `json:"state"`
+
+	// Terminals The project's terminals by name, in every state; set by getProject only.
+	Terminals *[]Terminal `json:"terminals,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	Worktrees []Worktree  `json:"worktrees"`
 }
 
 // ProjectEnvelope defines model for ProjectEnvelope.
@@ -483,6 +486,11 @@ type Terminal struct {
 	// stopped it; failed: its holder or shell did not start; lost: its
 	// holder is gone and nobody stopped it.
 	State TerminalState `json:"state"`
+}
+
+// TerminalEnvelope defines model for TerminalEnvelope.
+type TerminalEnvelope struct {
+	Terminal Terminal `json:"terminal"`
 }
 
 // TerminalList defines model for TerminalList.
@@ -569,6 +577,15 @@ type DeleteTerminalParams struct {
 	// StopRunning Stop the terminals that are starting or running instead of refusing.
 	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
 
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetTerminalParams defines parameters for GetTerminal.
+type GetTerminalParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -886,7 +903,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
 	DeleteProject(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetProject A project, open or closed, with which of its checkouts are on disk
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
 	//
 	// Errors: not_found.
 	//
@@ -992,6 +1009,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
 	DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTerminal A terminal, in any state
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
+	GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	//
@@ -1143,7 +1167,7 @@ func (c *Client) DeleteProject(ctx context.Context, project ProjectRef, params *
 	return c.Client.Do(req)
 }
 
-// GetProject A project, open or closed, with which of its checkouts are on disk
+// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
 //
 // Errors: not_found.
 //
@@ -1320,6 +1344,23 @@ func (c *Client) CreateTerminal(ctx context.Context, body CreateTerminalJSONRequ
 // Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
 func (c *Client) DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteTerminalRequest(c.Server, terminal, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTerminal A terminal, in any state
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
+func (c *Client) GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTerminalRequest(c.Server, terminal, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1856,6 +1897,79 @@ func NewDeleteTerminalRequest(server string, terminal TerminalRef, params *Delet
 	return req, nil
 }
 
+// NewGetTerminalRequest constructs an http.Request for the GetTerminal method
+func NewGetTerminalRequest(server string, terminal TerminalRef, params *GetTerminalParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "terminal", terminal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewStartTerminalRequest constructs an http.Request for the StartTerminal method
 func NewStartTerminalRequest(server string, terminal TerminalRef, params *StartTerminalParams) (*http.Request, error) {
 	var err error
@@ -2087,7 +2201,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
 	DeleteProjectWithResponse(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error)
 
-	// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk
+	// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals
 	//
 	// Errors: not_found.
 	//
@@ -2201,6 +2315,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
 	DeleteTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*DeleteTerminalResponse, error)
+
+	// GetTerminalWithResponse A terminal, in any state
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
+	GetTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*GetTerminalResponse, error)
 
 	// StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
 	//
@@ -2712,6 +2835,54 @@ func (r DeleteTerminalResponse) ContentType() string {
 	return ""
 }
 
+type GetTerminalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTerminalResponse) GetJSON200() *TerminalEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetTerminalResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTerminalResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTerminalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTerminalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTerminalResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type StartTerminalResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2925,7 +3096,7 @@ func (c *ClientWithResponses) DeleteProjectWithResponse(ctx context.Context, pro
 	return ParseDeleteProjectResponse(rsp)
 }
 
-// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk
+// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals
 //
 // Errors: not_found.
 //
@@ -3086,6 +3257,21 @@ func (c *ClientWithResponses) DeleteTerminalWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseDeleteTerminalResponse(rsp)
+}
+
+// GetTerminalWithResponse A terminal, in any state
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
+func (c *ClientWithResponses) GetTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*GetTerminalResponse, error) {
+	rsp, err := c.GetTerminal(ctx, terminal, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTerminalResponse(rsp)
 }
 
 // StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
@@ -3459,6 +3645,39 @@ func ParseDeleteTerminalResponse(rsp *http.Response) (*DeleteTerminalResponse, e
 	return response, nil
 }
 
+// ParseGetTerminalResponse parses an HTTP response from a GetTerminalWithResponse call
+func ParseGetTerminalResponse(rsp *http.Response) (*GetTerminalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTerminalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStartTerminalResponse parses an HTTP response from a StartTerminalWithResponse call
 func ParseStartTerminalResponse(rsp *http.Response) (*StartTerminalResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3539,7 +3758,7 @@ type ServerInterface interface {
 	// DeleteProject Delete a project and everything that belongs to it
 	// (DELETE /v1/projects/{project})
 	DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params DeleteProjectParams)
-	// GetProject A project, open or closed, with which of its checkouts are on disk
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
 	// (GET /v1/projects/{project})
 	GetProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
 	// UpdateProject Close a project, or open it again from one of its checkouts
@@ -3557,6 +3776,9 @@ type ServerInterface interface {
 	// DeleteTerminal Delete a terminal
 	// (DELETE /v1/terminals/{terminal})
 	DeleteTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params DeleteTerminalParams)
+	// GetTerminal A terminal, in any state
+	// (GET /v1/terminals/{terminal})
+	GetTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params GetTerminalParams)
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	// (POST /v1/terminals/{terminal}/start)
 	StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams)
@@ -3883,6 +4105,61 @@ func (siw *ServerInterfaceWrapper) DeleteTerminal(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetTerminal operation middleware
+func (siw *ServerInterfaceWrapper) GetTerminal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "terminal" -------------
+	var terminal TerminalRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "terminal", r.PathValue("terminal"), &terminal, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "terminal", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTerminalParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTerminal(w, r, terminal, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StartTerminal operation middleware
 func (siw *ServerInterfaceWrapper) StartTerminal(w http.ResponseWriter, r *http.Request) {
 
@@ -4083,6 +4360,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals", wrapper.ListTerminals)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals", wrapper.CreateTerminal)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.DeleteTerminal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.GetTerminal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals/{terminal}/start", wrapper.StartTerminal)
 
 	return m
@@ -4496,6 +4774,46 @@ func (response DeleteTerminaldefaultApplicationProblemPlusJSONResponse) VisitDel
 	return err
 }
 
+type GetTerminalRequestObject struct {
+	Terminal TerminalRef `json:"terminal"`
+	Params   GetTerminalParams
+}
+
+type GetTerminalResponseObject interface {
+	VisitGetTerminalResponse(w http.ResponseWriter) error
+}
+
+type GetTerminal200JSONResponse TerminalEnvelope
+
+func (response GetTerminal200JSONResponse) VisitGetTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTerminaldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetTerminaldefaultApplicationProblemPlusJSONResponse) VisitGetTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StartTerminalRequestObject struct {
 	Terminal TerminalRef `json:"terminal"`
 	Params   StartTerminalParams
@@ -4588,7 +4906,7 @@ type StrictServerInterface interface {
 	// DeleteProject Delete a project and everything that belongs to it
 	// (DELETE /v1/projects/{project})
 	DeleteProject(ctx context.Context, request DeleteProjectRequestObject) (DeleteProjectResponseObject, error)
-	// GetProject A project, open or closed, with which of its checkouts are on disk
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
 	// (GET /v1/projects/{project})
 	GetProject(ctx context.Context, request GetProjectRequestObject) (GetProjectResponseObject, error)
 	// UpdateProject Close a project, or open it again from one of its checkouts
@@ -4606,6 +4924,9 @@ type StrictServerInterface interface {
 	// DeleteTerminal Delete a terminal
 	// (DELETE /v1/terminals/{terminal})
 	DeleteTerminal(ctx context.Context, request DeleteTerminalRequestObject) (DeleteTerminalResponseObject, error)
+	// GetTerminal A terminal, in any state
+	// (GET /v1/terminals/{terminal})
+	GetTerminal(ctx context.Context, request GetTerminalRequestObject) (GetTerminalResponseObject, error)
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	// (POST /v1/terminals/{terminal}/start)
 	StartTerminal(ctx context.Context, request StartTerminalRequestObject) (StartTerminalResponseObject, error)
@@ -4930,6 +5251,33 @@ func (sh *strictHandler) DeleteTerminal(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// GetTerminal operation middleware
+func (sh *strictHandler) GetTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params GetTerminalParams) {
+	var request GetTerminalRequestObject
+
+	request.Terminal = terminal
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTerminal(ctx, request.(GetTerminalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTerminal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTerminalResponseObject); ok {
+		if err := validResponse.VisitGetTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // StartTerminal operation middleware
 func (sh *strictHandler) StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams) {
 	var request StartTerminalRequestObject
@@ -4986,78 +5334,79 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
