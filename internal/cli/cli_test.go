@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -82,21 +83,34 @@ func testConfig(home string) config.Config {
 	return cfg
 }
 
+// testShell is the shell of every test terminal: it stays alive until it
+// is hung up on.
+const testShell = "#!/bin/sh\nexec sleep 60\n"
+
 // newHome returns a home with a daemon serving it in this process until the
-// test ends.
+// test ends. Its terminals run testShell in holders of the wdx binary, and
+// are removed when the test ends.
 func newHome(t *testing.T) string {
 	t.Helper()
 	home := shortHome(t)
+	shell := filepath.Join(t.TempDir(), "shell")
+	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
 	log := logging.New(logs, slog.LevelDebug).With("process", "daemon")
 	ctx, stop := context.WithCancel(context.Background())
-	d, err := daemon.Listen(ctx, daemon.Options{Home: home, Log: log})
+	d, err := daemon.Listen(ctx, daemon.Options{
+		Home: home, Log: log,
+		Executable: wdxBinary, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(ctx) }()
 	t.Cleanup(func() {
+		removeTerminals(home)
 		stop()
 		if err := <-served; err != nil {
 			t.Errorf("daemon: %v", err)
@@ -104,6 +118,20 @@ func newHome(t *testing.T) string {
 		logs.Close()
 	})
 	return home
+}
+
+// removeTerminals removes every terminal in home, stopping the live ones,
+// so no holder outlives the test.
+func removeTerminals(home string) {
+	ctx := context.Background()
+	c := client.New(client.Options{Socket: identity.SocketPath(home), DebugID: logging.NewDebugID()})
+	list, err := c.ListTerminals(ctx, "", "")
+	if err != nil {
+		return
+	}
+	for _, term := range list.Terminals {
+		c.DeleteTerminal(ctx, "id:"+term.Id, "", "", true)
+	}
 }
 
 type output struct {
@@ -287,6 +315,11 @@ type jsonOutput struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
 
+	Terminal  *api.Terminal  `json:"terminal"`
+	Terminals []api.Terminal `json:"terminals"`
+	Started   []api.Terminal `json:"started"`
+	Stopped   []api.Terminal `json:"stopped"`
+
 	CLI     *api.Version `json:"cli"`
 	Daemon  *api.Daemon  `json:"daemon"`
 	Running *bool        `json:"running"`
@@ -459,7 +492,7 @@ func TestClose(t *testing.T) {
 	home := newHome(t)
 	id := newProject(t, home, "app")
 
-	v, exit := wdxJSON(t, home, "project", "close", "--id", id)
+	v, exit := wdxJSON(t, home, "project", "close", "--id", id, "--cancel")
 	if exit != api.ExitOK || v.Result != "closed" || v.Project.ID != id || v.Project.State != "closed" {
 		t.Fatalf("unexpected close: %+v", v)
 	}
@@ -476,11 +509,11 @@ func TestRemove(t *testing.T) {
 	home := newHome(t)
 	id := newProject(t, home, "app")
 
-	v, exit := wdxJSON(t, home, "project", "remove", "--id", id)
+	v, exit := wdxJSON(t, home, "project", "remove", "--id", id, "--cancel")
 	if exit != api.ExitOK || v.Result != "removed" || v.Project.ID != id {
 		t.Fatalf("unexpected remove: %+v", v)
 	}
-	v, exit = wdxJSON(t, home, "project", "remove", "--name", "app")
+	v, exit = wdxJSON(t, home, "project", "remove", "--name", "app", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
 
@@ -488,10 +521,10 @@ func TestNotFound(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	for _, args := range [][]string{
-		{"close", "--id", "nope"},
-		{"close", "--name", "nope"},
-		{"remove", "--id", "nope"},
-		{"remove", "--name", "nope"},
+		{"close", "--id", "nope", "--cancel"},
+		{"close", "--name", "nope", "--cancel"},
+		{"remove", "--id", "nope", "--cancel"},
+		{"remove", "--name", "nope", "--cancel"},
 	} {
 		v, exit := wdxJSON(t, home, append([]string{"project"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
@@ -546,8 +579,8 @@ func TestDaemonUnavailable(t *testing.T) {
 		{"project", "get", "--name", "app"},
 		{"project", "create", "--name", "app", "--cancel"},
 		{"project", "open", "--local", "."},
-		{"project", "close", "--name", "app"},
-		{"project", "remove", "--name", "app"},
+		{"project", "close", "--name", "app", "--cancel"},
+		{"project", "remove", "--name", "app", "--cancel"},
 	} {
 		v, exit := wdxJSON(t, home, args...)
 		wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
@@ -565,7 +598,7 @@ func TestNoHome(t *testing.T) {
 	if err := os.WriteFile(home, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	v, exit := wdxJSON(t, home, "project", "close", "--name", "app")
+	v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
 }
 
@@ -719,7 +752,7 @@ func TestOpenGitCheckoutMissing(t *testing.T) {
 	if v.Result != "removed" || v.Project.ID != first.Project.ID {
 		t.Fatalf("want %s removed, got %+v", first.Project.ID, v)
 	}
-	v, exit := wdxJSON(t, home, "project", "close", "--id", first.Project.ID)
+	v, exit := wdxJSON(t, home, "project", "close", "--id", first.Project.ID, "--cancel")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
 
@@ -886,7 +919,7 @@ func TestList(t *testing.T) {
 	for _, name := range []string{"cat", "app", "Beta"} {
 		newProject(t, home, name)
 	}
-	wdxJSON(t, home, "project", "close", "--name", "cat")
+	wdxJSON(t, home, "project", "close", "--name", "cat", "--cancel")
 
 	for args, want := range map[string]string{"": "app Beta cat", "--all": "app Beta cat", "--open": "app Beta", "--closed": "cat"} {
 		v, exit := wdxJSON(t, home, strings.Fields("project list "+args)...)
@@ -917,7 +950,7 @@ func TestGet(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	id := newProject(t, home, "App")
-	wdxJSON(t, home, "project", "close", "--id", id)
+	wdxJSON(t, home, "project", "close", "--id", id, "--cancel")
 
 	for _, args := range [][]string{{"--id", id}, {"--name", "app"}} {
 		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
@@ -968,7 +1001,7 @@ func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	newProject(t, home, "app")
-	out := wdx(t, home, "project", "close", "--name", "app", "--json")
+	out := wdx(t, home, "project", "close", "--name", "app", "--cancel", "--json")
 	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || !strings.Contains(out.stdout, `"created_at"`) {
 		t.Fatalf("close must not carry disk status: %s", out.stdout)
 	}

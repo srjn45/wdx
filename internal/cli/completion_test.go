@@ -44,7 +44,7 @@ func TestCompleteProjects(t *testing.T) {
 	home := newHome(t)
 	appID := newProject(t, home, "app")
 	betaID := newProject(t, home, "beta")
-	if _, exit := wdxJSON(t, home, "project", "close", "--name", "beta"); exit != api.ExitOK {
+	if _, exit := wdxJSON(t, home, "project", "close", "--name", "beta", "--cancel"); exit != api.ExitOK {
 		t.Fatal("close beta")
 	}
 	for _, tc := range []struct {

@@ -163,16 +163,28 @@ func (c *Client) CreateProject(ctx context.Context, body api.CreateProject) (api
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200, r.JSON201)
 }
 
-func (c *Client) UpdateProject(ctx context.Context, ref string, state api.ProjectState) (api.ProjectResult, error) {
-	r, err := c.api.UpdateProjectWithResponse(ctx, ref, api.UpdateProject{State: state})
+// UpdateProject opens or closes a project; closing one with live terminals
+// stops them when stopRunning, and is refused otherwise.
+func (c *Client) UpdateProject(ctx context.Context, ref string, state api.ProjectState, stopRunning bool) (api.ProjectResult, error) {
+	body := api.UpdateProject{State: state}
+	if stopRunning {
+		body.StopRunning = &stopRunning
+	}
+	r, err := c.api.UpdateProjectWithResponse(ctx, ref, body)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-func (c *Client) DeleteProject(ctx context.Context, ref string) (api.ProjectResult, error) {
-	r, err := c.api.DeleteProjectWithResponse(ctx, ref, nil)
+// DeleteProject removes a project; one with live terminals stops them when
+// stopRunning, and is refused otherwise.
+func (c *Client) DeleteProject(ctx context.Context, ref string, stopRunning bool) (api.ProjectResult, error) {
+	var params api.DeleteProjectParams
+	if stopRunning {
+		params.StopRunning = &stopRunning
+	}
+	r, err := c.api.DeleteProjectWithResponse(ctx, ref, &params)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
@@ -185,4 +197,54 @@ func (c *Client) RecloneProject(ctx context.Context, ref string) (api.ProjectRes
 		return api.ProjectResult{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// ListTerminals lists the terminals of the project named by project, or of
+// the one holding dir, or of every project when both are empty.
+func (c *Client) ListTerminals(ctx context.Context, project, dir string) (api.TerminalList, error) {
+	r, err := c.api.ListTerminalsWithResponse(ctx, &api.ListTerminalsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.TerminalList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *Client) CreateTerminal(ctx context.Context, body api.CreateTerminal) (api.TerminalResult, error) {
+	r, err := c.api.CreateTerminalWithResponse(ctx, body)
+	if err != nil {
+		return api.TerminalResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// StartTerminal starts the terminal ref names: "id:" and its id, or its
+// name in the project named by project or holding dir.
+func (c *Client) StartTerminal(ctx context.Context, ref, project, dir string) (api.TerminalResult, error) {
+	r, err := c.api.StartTerminalWithResponse(ctx, ref, &api.StartTerminalParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.TerminalResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// DeleteTerminal removes the terminal ref names, as StartTerminal does; a
+// live one is stopped when stopRunning, and refused otherwise.
+func (c *Client) DeleteTerminal(ctx context.Context, ref, project, dir string, stopRunning bool) (api.TerminalResult, error) {
+	params := api.DeleteTerminalParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if stopRunning {
+		params.StopRunning = &stopRunning
+	}
+	r, err := c.api.DeleteTerminalWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.TerminalResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// nonEmpty is nil for "", a pointer to s otherwise.
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

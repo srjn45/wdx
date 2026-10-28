@@ -63,6 +63,9 @@ type Env struct {
 	// Terminal holds the variables terminals take from the daemon's
 	// environment, as KEY=value: TerminalEnv of it. Never logged.
 	Terminal []string
+	// WorkDir is the working directory, which names the project of the
+	// terminal commands when no project flag does.
+	WorkDir string
 }
 
 // terminalVars are the variables of the daemon's environment that terminals
@@ -350,7 +353,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	root.RegisterFlagCompletionFunc("color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd(), newUpdateCmd(cfg), newCompletionCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)

@@ -47,6 +47,80 @@ func (r projectResult) text(w io.Writer, st style.Style) {
 			fmt.Fprintf(w, "  %s %s\n", st.Warning("dropped missing checkout"), wt.Path)
 		}
 	}
+	if r.Stopped != nil {
+		for _, t := range *r.Stopped {
+			fmt.Fprintf(w, "  %s %s %s\n", st.Warning("stopped terminal"), st.Name(t.Name), st.Muted("("+t.Id+")"))
+		}
+	}
+	if r.Started != nil {
+		for _, t := range *r.Started {
+			if t.State == api.TerminalStateRunning {
+				fmt.Fprintf(w, "  %s %s %s\n", st.Success("started terminal"), st.Name(t.Name), st.Muted("("+t.Id+")"))
+			} else {
+				fmt.Fprintf(w, "  %s %s %s: %s\n", st.Failure("terminal did not start"), st.Name(t.Name), st.Muted("("+t.Id+")"), deref(t.Error))
+			}
+		}
+	}
+}
+
+// terminalResult is a terminal a command changed.
+type terminalResult api.TerminalResult
+
+func (r terminalResult) text(w io.Writer, st style.Style) {
+	t := r.Terminal
+	in := "in"
+	if r.Result == api.ResultRemoved {
+		in = "from"
+	}
+	fmt.Fprintf(w, "%s terminal %s %s %s\n", st.Success(string(r.Result)), st.Name(t.Name), in, st.Name(t.ProjectName))
+	field := func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-6s", name)), value)
+	}
+	field("dir", t.Dir)
+	field("shell", t.Shell)
+	field("id", t.Id)
+}
+
+// terminalList is a list of terminals; all says they may belong to several
+// projects.
+type terminalList struct {
+	api.TerminalList
+	all bool
+}
+
+func (l terminalList) text(w io.Writer, st style.Style) {
+	if len(l.Terminals) == 0 {
+		fmt.Fprintln(w, "no terminals")
+		return
+	}
+	var table style.Table
+	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("DIR"), st.Heading("ID")}
+	if l.all {
+		heading = append([]string{st.Heading("PROJECT")}, heading...)
+	}
+	table.Row(heading...)
+	for _, t := range l.Terminals {
+		row := []string{st.Name(t.Name), terminalStateText(st, t), t.Dir, st.Muted(t.Id)}
+		if l.all {
+			row = append([]string{st.Name(t.ProjectName)}, row...)
+		}
+		table.Row(row...)
+	}
+	table.Write(w)
+}
+
+func terminalStateText(st style.Style, t api.Terminal) string {
+	switch t.State {
+	case api.TerminalStateRunning, api.TerminalStateStarting:
+		return st.Success(string(t.State))
+	case api.TerminalStateExited:
+		if t.ExitCode != nil {
+			return fmt.Sprintf("exited (%d)", *t.ExitCode)
+		}
+	case api.TerminalStateFailed, api.TerminalStateLost:
+		return st.Failure(string(t.State))
+	}
+	return st.Muted(string(t.State))
 }
 
 // projectDetail is a project with which of its checkouts are on disk.
@@ -135,6 +209,13 @@ func originText(st style.Style, origin *string) string {
 		return st.Muted("(none)")
 	}
 	return *origin
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // label is name on the first line of a list and blank on the others.
@@ -234,6 +315,19 @@ func problemCode(err error) api.ErrorCode {
 		return e.Problem.Code
 	}
 	return ""
+}
+
+// decodeDetail decodes the value under key in the details of p into v.
+func decodeDetail(p api.Problem, key string, v any) bool {
+	if p.Details == nil {
+		return false
+	}
+	raw, ok := (*p.Details)[key]
+	if !ok {
+		return false
+	}
+	b, err := json.Marshal(raw)
+	return err == nil && json.Unmarshal(b, v) == nil
 }
 
 // detailProject returns the project under key in the details of p.

@@ -31,15 +31,11 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 	for _, s := range config.Settings() {
 		settings = append(settings, slog.Group(s.Key, "value", env.Config.Value(s.Key), "from", env.Config.From[s.Key]))
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = err.Error()
-	}
 	log.Info("command received",
 		"args", args,
 		"version", identity.Version,
 		"commit", identity.Commit,
-		"cwd", cwd,
+		"cwd", env.WorkDir,
 		"stdin_terminal", isTerminal(env.Stdin),
 		"no_color", env.NoColor,
 		slog.Group("settings", settings...))

@@ -237,6 +237,8 @@ wdx project remove ... [--stop-running | --cancel]
 - `--id` needs no project; a project flag given with it must be the terminal's project, else `not_found`.
 - Removing a live terminal, and closing or removing a project with live terminals, warns with what will be stopped and asks; `--stop-running` and `--cancel` answer in advance, and with `--json` one of them is required. The daemon refuses with `terminal_running` / `project_in_use` without the answer, so nothing changes between the warning and the act.
 - Completions: terminal names and ids from the daemon, for the project already on the command line or the working directory's.
+- `main` reads the working directory into `Env.WorkDir`, which names the project when no flag does; tests set it instead of changing directory.
+- Requiring `--stop-running` or `--cancel` with `--json` on `project close` and `project remove` breaks scripts that ran them with `--json` alone.
 
 Text output:
 
@@ -264,7 +266,7 @@ swift-falcon  running       /home/me/dev/warden    term-1a2b3c4d
 
 ## Implementation plan
 
-Each step builds and passes `make test` on its own. Steps 1 to 4 are done.
+Each step builds and passes `make test` on its own. Steps 1 to 5 are done.
 
 1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.

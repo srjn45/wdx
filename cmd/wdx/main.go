@@ -25,6 +25,8 @@ func main() {
 	env.Config = cfg
 	// Without it only starting the daemon in the background fails.
 	env.Executable, _ = os.Executable()
+	// Without it only the terminal commands that rely on it fail.
+	env.WorkDir, _ = os.Getwd()
 	// The service runs the daemon for the default home only.
 	if userHome, err := os.UserHomeDir(); err == nil && cfg.Home == config.Default().Home {
 		env.Service = service.Installed(runtime.GOOS, userHome)

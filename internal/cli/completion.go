@@ -51,6 +51,38 @@ func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 	}
 }
 
+// completeTerminals completes --id or --name, as key says, with the
+// terminals of the project the command line names, else of the one the
+// working directory is in. It offers nothing when the daemon does not
+// answer.
+func completeTerminals(key string) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
+		var scope projectScope
+		scope.id, _ = cmd.Flags().GetString("project-id")
+		scope.name, _ = cmd.Flags().GetString("project-name")
+		var dir string
+		if !scope.given() {
+			dir = invocationOf(cmd).env.WorkDir
+		}
+		list, err := clientOf(cmd).ListTerminals(ctx, scope.ref(), dir)
+		if err != nil {
+			logging.FromContext(cmd.Context()).Info("no terminals to complete", "err", err)
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var completions []cobra.Completion
+		for _, t := range list.Terminals {
+			if key == "id" {
+				completions = append(completions, cobra.CompletionWithDesc(t.Id, fmt.Sprintf("%s in %s", t.Name, t.ProjectName)))
+			} else {
+				completions = append(completions, cobra.CompletionWithDesc(t.Name, fmt.Sprintf("%s, %s", t.State, t.Id)))
+			}
+		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
 // completeDirs completes a flag with directories.
 func completeDirs(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	return nil, cobra.ShellCompDirectiveFilterDirs
@@ -128,8 +160,9 @@ func newCompletionCmd() *cobra.Command {
 		Use:   "completion",
 		Short: "Print the script that completes " + identity.Name + " commands in a shell",
 		Long: "The script asks " + identity.Name + " for the candidates on every Tab, so it completes\n" +
-			"new commands and flags as soon as " + identity.Name + " is updated. Project names\n" +
-			"and ids come from the daemon; nothing is offered when it is not running.",
+			"new commands and flags as soon as " + identity.Name + " is updated. Project and\n" +
+			"terminal names and ids come from the daemon; nothing is offered when it is\n" +
+			"not running.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
