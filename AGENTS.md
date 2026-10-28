@@ -7,7 +7,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Never start coding until the human explicitly says so.
 - Brainstorm with the human first: work out the complete solution (structure, tables, commands, names, edge cases) and get it approved before writing any code.
 - Work on one feature at a time. Do not add scope the human did not ask for; suggest it instead.
-- Commit only when the human asks.
+- Commit only when the human asks. Before committing, run `make check` and `make test`: CI runs both on every push to `main` and every pull request.
 
 ## Releases
 
@@ -19,6 +19,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 ## Code style
 
 - Keep the code clean and readable by a human.
+- `make lint` (in `make check`) enforces part of this file: depguard the dependency directions, forbidigo the environment and test rules, sloglint the logging rules, paralleltest `t.Parallel()`. Fix a finding rather than silencing it; a `//nolint` names its linter and says why. Ask the human before turning a linter off in `.golangci.yml`.
 - Prefer self-explanatory code over comments. Comment only what the code cannot say: the why, a non-obvious constraint, a workaround.
 - Use good names. When a name for a variable, type, function or package is not obvious, discuss it with the human.
 
@@ -44,6 +45,8 @@ internal/observe/  runs Grafana with the logs and metrics in a container (wdx ob
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases and builds them; cliff.toml and docs/RELEASING.md explain the versions
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
+.github/workflows/ci.yml  runs make check and the tests on every push to main and every PR; docs/RELEASING.md
+.golangci.yml   the linters make lint runs
 internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```

@@ -9,7 +9,7 @@ make changelog     print what changed since the last stable release
 make notices       write THIRD-PARTY-NOTICES.md from the modules linked into wdx
 ```
 
-Both release targets need a clean working tree on `main` and a passing `make test`, and refuse when there is nothing to release. Nothing is pushed: until the repository has a remote, `dist/` is the release, and `make install` installs from it. The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
+Both release targets need a clean working tree on `main` and a passing `make test`, and refuse when there is nothing to release. Nothing is pushed or published: until releases are on GitHub, `dist/` is the release, and `make install` installs from it. The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
 
 ## Versions
 
@@ -68,3 +68,15 @@ wdx is licensed under Apache 2.0 (`LICENSE`, `NOTICE`). Every archive carries `L
 ## Tags and the changelog
 
 Tags are annotated, their message holding the release's notes, and are never moved or deleted: a broken release is fixed by the next one. `CHANGELOG.md` is generated: change a commit message's wording before releasing, never the file.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, weekly and on demand, on Linux. It checks and never releases:
+
+```
+make cover   the tests, as make test runs them, with coverage: bin/cover.html and a summary per package
+make check   golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified go.mod;
+             current notices; govulncheck; the four release targets building; the commit messages in RANGE
+```
+
+Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-shellcheck.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
