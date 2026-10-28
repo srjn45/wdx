@@ -26,6 +26,7 @@ import (
 type Config struct {
 	Home             string
 	NoInput          bool
+	Color            ColorMode
 	LogLevel         slog.Level
 	LogRetentionDays int
 	OtelEndpoint     string
@@ -34,6 +35,26 @@ type Config struct {
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
 	From map[string]string
+}
+
+// ColorMode is when text output is colored.
+type ColorMode string
+
+const (
+	ColorAuto   ColorMode = "auto" // when writing to a terminal
+	ColorAlways ColorMode = "always"
+	ColorNever  ColorMode = "never"
+)
+
+// ColorModes is every ColorMode.
+var ColorModes = []ColorMode{ColorAuto, ColorAlways, ColorNever}
+
+// ParseColorMode returns the mode named v.
+func ParseColorMode(v string) (ColorMode, error) {
+	if m := ColorMode(strings.ToLower(v)); slices.Contains(ColorModes, m) {
+		return m, nil
+	}
+	return "", fmt.Errorf("%q is not one of auto, always, never", v)
 }
 
 // Source supplies raw setting values.
@@ -98,6 +119,16 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return strconv.FormatBool(c.NoInput) },
+	},
+	{
+		key:         "color",
+		description: "color text output: auto (only on a terminal, unless NO_COLOR is set), always or never",
+		def:         "auto",
+		set: func(c *Config, v string) (err error) {
+			c.Color, err = ParseColorMode(v)
+			return err
+		},
+		get: func(c Config) string { return string(c.Color) },
 	},
 	{
 		key:         "log.level",

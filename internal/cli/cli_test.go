@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -206,6 +207,9 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 	if string(last.Response) == "null" || len(last.Response) == 0 {
 		t.Fatalf("%v: no response logged", args)
 	}
+	if strings.Contains(string(last.Response), `\u001b`) {
+		t.Fatalf("%v: want the response logged without color, got %s", args, last.Response)
+	}
 	var printed struct {
 		Code string `json:"code"`
 	}
@@ -223,10 +227,12 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 		if out.exit != api.ExitOK && !strings.Contains(out.stdout, `"debug_id": "`+id+`"`) {
 			t.Fatalf("%v: want debug_id %s in the error, got %s", args, id, out.stdout)
 		}
-	} else if out.exit != api.ExitOK && !strings.HasSuffix(out.stderr, " (debug_id "+id+")\n") {
-		t.Fatalf("%v: want debug_id %s on the error line, got %q", args, id, out.stderr)
+	} else if out.exit != api.ExitOK && !strings.HasSuffix(escapes.ReplaceAllString(out.stderr, ""), "\n  debug_id: "+id+"\n") {
+		t.Fatalf("%v: want debug_id %s on the last line of the error, got %q", args, id, out.stderr)
 	}
 }
+
+var escapes = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 type jsonProject struct {
 	ID        string  `json:"id"`
@@ -485,7 +491,7 @@ func TestUsageErrors(t *testing.T) {
 	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
 	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
 	out := wdx(t, t.TempDir(), "project", "bogus")
-	if out.exit != api.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "; see 'wdx project --help' (debug_id dbg-") {
+	if out.exit != api.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "\n  hint: see 'wdx project --help'\n") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
@@ -1075,7 +1081,7 @@ func TestConfigError(t *testing.T) {
 	stdout.Reset()
 	ConfigError([]string{"version"}, env, err)
 	want := "wdx: invalid settings: " + path + `:2: log.level: "loud" is not one of debug, info, warn, error; ` +
-		path + `:3: log.retention_days: "0" is not a whole number of at least 1; fix or remove them` + "\n"
+		path + `:3: log.retention_days: "0" is not a whole number of at least 1  [usage]` + "\n  hint: fix or remove them\n"
 	if stderr.String() != want || stdout.Len() != 0 {
 		t.Fatalf("got %q, want %q", stderr.String(), want)
 	}

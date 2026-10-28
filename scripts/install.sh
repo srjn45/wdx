@@ -148,6 +148,10 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 # Never prompt, as --no-input does: true or false.
 # no_input: false
 
+# Color text output: auto (only on a terminal, unless NO_COLOR is set),
+# always or never.
+# color: auto
+
 # log:
 #   # Lowest level logged: debug, info, warn, error.
 #   level: info

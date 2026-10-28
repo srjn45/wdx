@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,34 +16,35 @@ import (
 	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/observe"
+	"github.com/srjn45/warden/internal/style"
 )
 
 // result is what a command prints on success: the daemon's body as JSON, or
-// text.
+// text styled by st.
 type result interface {
-	text(w io.Writer)
+	text(w io.Writer, st style.Style)
 }
 
 // projectResult is a project a command changed.
 type projectResult api.ProjectResult
 
-func (r projectResult) text(w io.Writer) {
+func (r projectResult) text(w io.Writer, st style.Style) {
 	p := r.Project
 	switch {
 	case r.Conflict == nil:
-		fmt.Fprintf(w, "%s project %s (%s)\n", r.Result, p.Name, p.Id)
+		fmt.Fprintf(w, "%s project %s\n", st.Success(string(r.Result)), projectName(st, p))
 	case r.Result == api.ResultRegistered:
-		fmt.Fprintf(w, "registered existing repository as project %s (%s); nothing was created\n", p.Name, p.Id)
+		fmt.Fprintf(w, "%s existing repository as project %s; %s\n", st.Success(string(r.Result)), projectName(st, p), st.Warning("nothing was created"))
 	default:
-		fmt.Fprintf(w, "%s existing project %s (%s); nothing was created\n", r.Result, p.Name, p.Id)
+		fmt.Fprintf(w, "%s existing project %s; %s\n", st.Success(string(r.Result)), projectName(st, p), st.Warning("nothing was created"))
 	}
-	fmt.Fprintf(w, "  origin:    %s\n", originText(p.Origin))
+	fmt.Fprintf(w, "  %s %s\n", st.Muted("origin:   "), originText(st, p.Origin))
 	for i, wt := range p.Worktrees {
-		fmt.Fprintf(w, "  %-10s %s\n", label(i, "worktrees:"), wt.Path)
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", label(i, "worktrees:"))), wt.Path)
 	}
 	if r.Dropped != nil {
 		for _, wt := range *r.Dropped {
-			fmt.Fprintf(w, "  dropped missing checkout %s\n", wt.Path)
+			fmt.Fprintf(w, "  %s %s\n", st.Warning("dropped missing checkout"), wt.Path)
 		}
 	}
 }
@@ -51,25 +52,28 @@ func (r projectResult) text(w io.Writer) {
 // projectDetail is a project with which of its checkouts are on disk.
 type projectDetail api.ProjectEnvelope
 
-func (d projectDetail) text(w io.Writer) {
+func (d projectDetail) text(w io.Writer, st style.Style) {
 	p := d.Project
-	fmt.Fprintf(w, "project %s (%s)\n", p.Name, p.Id)
-	fmt.Fprintf(w, "  state:     %s\n", p.State)
-	fmt.Fprintf(w, "  origin:    %s\n", originText(p.Origin))
-	fmt.Fprintf(w, "  created:   %s\n", p.CreatedAt.Local().Format(time.DateTime))
-	fmt.Fprintf(w, "  updated:   %s\n", p.UpdatedAt.Local().Format(time.DateTime))
+	field := func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", name)), value)
+	}
+	fmt.Fprintf(w, "project %s\n", projectName(st, p))
+	field("state:", stateText(st, p.State))
+	field("origin:", originText(st, p.Origin))
+	field("created:", p.CreatedAt.Local().Format(time.DateTime))
+	field("updated:", p.UpdatedAt.Local().Format(time.DateTime))
 	if len(p.Worktrees) == 0 {
-		fmt.Fprintf(w, "  worktrees: (none)\n")
+		field("worktrees:", st.Muted("(none)"))
 	}
 	for i, wt := range p.Worktrees {
 		missing := ""
 		if wt.Present != nil && !*wt.Present {
-			missing = " (missing)"
+			missing = " " + st.Warning("(missing)")
 		}
-		fmt.Fprintf(w, "  %-10s %s%s\n", label(i, "worktrees:"), wt.Path, missing)
+		field(label(i, "worktrees:"), wt.Path+missing)
 	}
 	if p.Orphaned != nil && *p.Orphaned {
-		fmt.Fprintf(w, "  orphaned:  no checkout on disk; %s\n", missingCheckoutHint(p))
+		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), hintText(st, missingCheckoutHint(p)))
 	}
 }
 
@@ -79,7 +83,7 @@ type projectList struct {
 	state api.ProjectState
 }
 
-func (l projectList) text(w io.Writer) {
+func (l projectList) text(w io.Writer, st style.Style) {
 	if len(l.Projects) == 0 {
 		if l.state == "" {
 			fmt.Fprintln(w, "no projects")
@@ -88,16 +92,16 @@ func (l projectList) text(w io.Writer) {
 		}
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tID\tSTATE\tORIGIN\tWORKTREES")
+	var table style.Table
+	table.Row(st.Heading("NAME"), st.Heading("ID"), st.Heading("STATE"), st.Heading("ORIGIN"), st.Heading("WORKTREES"))
 	for _, p := range l.Projects {
-		origin := "-"
+		origin := st.Muted("-")
 		if p.Origin != nil {
 			origin = *p.Origin
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\n", p.Name, p.Id, p.State, origin, p.WorktreeCount)
+		table.Row(st.Name(p.Name), st.Muted(p.Id), stateText(st, p.State), origin, strconv.Itoa(p.WorktreeCount))
 	}
-	tw.Flush()
+	table.Write(w)
 }
 
 type versionResponse struct {
@@ -105,18 +109,30 @@ type versionResponse struct {
 	Daemon *api.Version `json:"daemon"` // null when no daemon answers
 }
 
-func (r versionResponse) text(w io.Writer) {
-	fmt.Fprintf(w, "%s %s (%s)\n", r.CLI.Name, r.CLI.Version, r.CLI.Commit)
+func (r versionResponse) text(w io.Writer, st style.Style) {
+	fmt.Fprintf(w, "%s %s %s\n", r.CLI.Name, st.Name(r.CLI.Version), st.Muted("("+r.CLI.Commit+")"))
 	if r.Daemon == nil {
-		fmt.Fprintln(w, "daemon not running")
+		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
 		return
 	}
-	fmt.Fprintf(w, "daemon %s (%s)\n", r.Daemon.Version, r.Daemon.Commit)
+	fmt.Fprintf(w, "daemon %s %s\n", st.Name(r.Daemon.Version), st.Muted("("+r.Daemon.Commit+")"))
 }
 
-func originText(origin *string) string {
+// projectName is the name of p followed by its id.
+func projectName(st style.Style, p api.Project) string {
+	return st.Name(p.Name) + " " + st.Muted("("+p.Id+")")
+}
+
+func stateText(st style.Style, state api.ProjectState) string {
+	if state == api.ProjectStateOpen {
+		return st.Success(string(state))
+	}
+	return st.Muted(string(state))
+}
+
+func originText(st style.Style, origin *string) string {
 	if origin == nil {
-		return "(none)"
+		return st.Muted("(none)")
 	}
 	return *origin
 }
@@ -135,7 +151,7 @@ func printResult(cmd *cobra.Command, r result) error {
 	if jsonMode(cmd) {
 		return writeJSON(cmd.OutOrStdout(), r)
 	}
-	r.text(cmd.OutOrStdout())
+	r.text(cmd.OutOrStdout(), stdoutStyle(cmd))
 	return nil
 }
 

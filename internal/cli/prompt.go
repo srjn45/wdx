@@ -34,8 +34,9 @@ func noPromptReason(cmd *cobra.Command) string {
 	return ""
 }
 
-func isTerminal(r io.Reader) bool {
-	f, ok := r.(*os.File)
+// isTerminal reports whether stream, a reader or a writer, is a terminal.
+func isTerminal(stream any) bool {
+	f, ok := stream.(*os.File)
 	return ok && term.IsTerminal(int(f.Fd()))
 }
 

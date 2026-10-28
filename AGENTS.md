@@ -32,12 +32,13 @@ internal/git/   thin wrapper over the git CLI
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service
 internal/telemetry/  sends the daemon's metrics to an OpenTelemetry collector
+internal/style/  colors text output on a terminal with semantic styles
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 internal/<domain>/  one package per feature (e.g. project): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon` and `observe`, which manage the daemon and the observability stack themselves. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, and cli -> daemon -> domain -> db/git, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon` and `observe`, which manage the daemon and the observability stack themselves. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -76,13 +77,21 @@ Every command serves both humans and scripts or AIs.
 - The domain returns typed errors and knows nothing about output; the daemon maps them to codes, and `internal/api/codes.go` gives each code its exit code. The cli renders both formats from one response value. Hints are added by the cli, not written into domain messages.
 - Every command documents itself with annotations: `output` (what it prints), `results`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them after cobra's usage text, or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
 
+## Text output style
+
+- Text is styled only through `internal/style`, by what it is (`Success`, `Warning`, `Failure`, `Name`, `Muted`, `Command`, `Flag`, `Hint`...), never with raw escape codes or colors in commands.
+- Results take the stdout style in `text(w, st)`; what goes to stderr (errors, warnings, prompts) uses `stderrStyle(cmd)`. Tables use `style.Table`, since `text/tabwriter` counts escape codes as characters.
+- Color follows `--color`, then the `color` setting (`auto`, `always`, `never`); `auto` colors a stream only when it is a terminal and `NO_COLOR` / `TERM=dumb` are not set. Never with `--json`, and never in logs: the logged response is the plain value.
+- Text errors go to stderr as `wdx: <message>  [<code>]`, then `hint:` and `debug_id:` lines.
+- Styling never changes the words: with color off the text reads the same.
+
 ## Config
 
 - Every setting is a row in the table in `internal/config`: key, description, default (or required) and parser. The help's Settings section and the logs are built from it.
 - `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv` or reads the config file.
 - An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
 - `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.
-- Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
+- Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. The one other exception is `NO_COLOR` and `TERM=dumb`, conventions of terminals rather than wdx settings: `main` reads them into `Env.NoColor`. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
 - Sources are layered, later winning: defaults, then the config file, then the environment. Unknown keys, duplicates and values that are not a single value are errors, reported with the file and line.
 
 ## Logging

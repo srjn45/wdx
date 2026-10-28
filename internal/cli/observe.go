@@ -11,6 +11,7 @@ import (
 	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/observe"
+	"github.com/srjn45/warden/internal/style"
 )
 
 func newObserveCmd() *cobra.Command {
@@ -20,7 +21,7 @@ func newObserveCmd() *cobra.Command {
 		Long: "Run Grafana with " + identity.Name + "'s logs and the daemon's metrics in a container on\n" +
 			"this machine, under Docker or Podman. It reads the log files of the home,\n" +
 			"and the daemon sends its metrics to it at otel.endpoint.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newObserveStartCmd(), newObserveStopCmd(), newObserveStatusCmd())
@@ -50,11 +51,14 @@ func newStackView(s *observe.Stack, state observe.State) *stackView {
 	}
 }
 
-func (v *stackView) text(w io.Writer) {
-	fmt.Fprintf(w, "  grafana: %s\n", v.GrafanaURL)
-	fmt.Fprintf(w, "  metrics: %s\n", v.OTLPEndpoint)
-	fmt.Fprintf(w, "  logs:    %s\n", v.Logs)
-	fmt.Fprintf(w, "  runtime: %s, container %s (%s)\n", v.Runtime, v.Container, v.Image)
+func (v *stackView) text(w io.Writer, st style.Style) {
+	field := func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
+	}
+	field("grafana:", st.Hint(v.GrafanaURL))
+	field("metrics:", v.OTLPEndpoint)
+	field("logs:", v.Logs)
+	field("runtime:", fmt.Sprintf("%s, container %s %s", v.Runtime, v.Container, st.Muted("("+v.Image+")")))
 }
 
 // findStack returns the stack of the home, run by the runtime found.
@@ -87,23 +91,22 @@ type observeResult struct {
 	DataRemoved *bool      `json:"data_removed"` // whether stop --purge removed data; null without it
 }
 
-func (r observeResult) text(w io.Writer) {
+func (r observeResult) text(w io.Writer, st style.Style) {
 	switch r.Result {
-	case "started", "running":
-		verb := "started"
-		if r.Result == "running" {
-			verb = "already running"
-		}
-		fmt.Fprintf(w, "observability stack %s: open %s\n", verb, r.Stack.GrafanaURL)
-		r.Stack.text(w)
+	case "started":
+		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Success("started"), st.Hint(r.Stack.GrafanaURL))
+		r.Stack.text(w, st)
+	case "running":
+		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Warning("already running"), st.Hint(r.Stack.GrafanaURL))
+		r.Stack.text(w, st)
 	case "stopped":
-		fmt.Fprintln(w, "observability stack stopped")
+		fmt.Fprintf(w, "observability stack %s\n", st.Success("stopped"))
 	default:
-		fmt.Fprintln(w, "observability stack not running")
+		fmt.Fprintf(w, "observability stack %s\n", st.Warning("not running"))
 	}
 	switch {
 	case r.DataRemoved == nil && r.Result == "stopped":
-		fmt.Fprintf(w, "  its data stays for the next start; %s observe stop --purge removes it\n", identity.Name)
+		fmt.Fprintf(w, "  its data stays for the next start; %s removes it\n", st.Command(identity.Name+" observe stop --purge"))
 	case r.DataRemoved != nil && *r.DataRemoved:
 		fmt.Fprintln(w, "  its data was removed")
 	case r.DataRemoved != nil:
@@ -202,20 +205,20 @@ type observeStatus struct {
 	Stack   *stackView `json:"stack"`   // null when there is no container
 }
 
-func (s observeStatus) text(w io.Writer) {
+func (s observeStatus) text(w io.Writer, st style.Style) {
 	switch {
 	case s.Runtime == nil:
-		fmt.Fprintln(w, "observability stack not running: neither docker nor podman is installed")
+		fmt.Fprintf(w, "observability stack %s: neither docker nor podman is installed\n", st.Warning("not running"))
 		return
 	case s.Running:
-		fmt.Fprintf(w, "observability stack running: open %s\n", s.Stack.GrafanaURL)
+		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Success("running"), st.Hint(s.Stack.GrafanaURL))
 	case s.Stack != nil:
-		fmt.Fprintf(w, "observability stack not running (container %s)\n", s.Stack.Status)
+		fmt.Fprintf(w, "observability stack %s %s\n", st.Warning("not running"), st.Muted("(container "+s.Stack.Status+")"))
 	default:
-		fmt.Fprintln(w, "observability stack not running")
+		fmt.Fprintf(w, "observability stack %s\n", st.Warning("not running"))
 		return
 	}
-	s.Stack.text(w)
+	s.Stack.text(w, st)
 }
 
 func newObserveStatusCmd() *cobra.Command {

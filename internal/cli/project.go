@@ -17,7 +17,7 @@ func newProjectCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectRemoveCmd())
@@ -110,12 +110,12 @@ func runCreate(cmd *cobra.Command, opts createOptions) error {
 			logUnanswered(cmd, createConflictQuestion)
 			return &hinted{conflict, "pass --open or --cancel, or " + retry}
 		}
-		prompt := cmd.ErrOrStderr()
+		prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
 		fmt.Fprintln(prompt, conflict)
-		fmt.Fprintln(prompt, "[o] open it")
-		fmt.Fprintln(prompt, "[n] try a different name")
-		fmt.Fprintln(prompt, "[c] cancel")
-		choice, err := ask(prompt, answers, "choose [o/n/c]: ", "o", "n", "c")
+		fmt.Fprintln(prompt, st.Command("[o]"), "open it")
+		fmt.Fprintln(prompt, st.Command("[n]"), "try a different name")
+		fmt.Fprintln(prompt, st.Command("[c]"), "cancel")
+		choice, err := ask(prompt, answers, "choose "+st.Command("[o/n/c]")+": ", "o", "n", "c")
 		if err != nil {
 			return err
 		}
@@ -313,11 +313,11 @@ func askMissingCheckout(cmd *cobra.Command, err error, hint string) (*api.Create
 	if problem.Details != nil {
 		clonePath, _ = (*problem.Details)["clone_path"].(string)
 	}
-	prompt := cmd.ErrOrStderr()
+	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
 	fmt.Fprintf(prompt, "%s (was %s)\n", err, clonePath)
-	fmt.Fprintf(prompt, "[c] clone again to %s\n", clonePath)
-	fmt.Fprintf(prompt, "[r] remove from %s\n", identity.Name)
-	choice, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose [c/r]: ", "c", "r")
+	fmt.Fprintf(prompt, "%s clone again to %s\n", st.Command("[c]"), clonePath)
+	fmt.Fprintf(prompt, "%s remove from %s\n", st.Command("[r]"), identity.Name)
+	choice, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose "+st.Command("[c/r]")+": ", "c", "r")
 	if err != nil {
 		return nil, err
 	}

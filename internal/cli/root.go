@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/srjn45/warden/internal/logging"
 	"github.com/srjn45/warden/internal/observe"
 	"github.com/srjn45/warden/internal/service"
+	"github.com/srjn45/warden/internal/style"
 )
 
 // Command annotations. Lists are space-separated.
@@ -54,6 +56,9 @@ type Env struct {
 	// ObservePorts are the ports of the observability stack;
 	// observe.DefaultPorts when zero.
 	ObservePorts observe.Ports
+	// NoColor is true when the terminal asks for no color: NO_COLOR is set
+	// or TERM is dumb. It turns off color mode auto only.
+	NoColor bool
 }
 
 // Run executes the command line args and returns the process exit code.
@@ -88,7 +93,8 @@ func Run(ctx context.Context, args []string, env Env) int {
 		p.Hint = withHelpHint(p.Hint, cmd)
 	}
 	logReturned(log, cmd, start, exit, p.Code, p, err)
-	printError(env, wantsJSON(cmd, args), p, cmd.Annotations[failurePrefix])
+	asJSON := wantsJSON(cmd, args)
+	printError(env, asJSON, style.New(!asJSON && colorOn(cmd, env, env.Stderr)), p, cmd.Annotations[failurePrefix])
 	return exit
 }
 
@@ -101,12 +107,16 @@ func ConfigError(args []string, env Env, err error) int {
 	if e, ok := errors.AsType[*config.Error](err); ok {
 		p.Details = &map[string]any{"settings": e.Problems}
 	}
-	printError(env, slices.Contains(args, "--json"), p, "")
+	asJSON := slices.Contains(args, "--json")
+	// The color setting may be among those that failed.
+	st := style.New(!asJSON && !env.NoColor && isTerminal(env.Stderr))
+	printError(env, asJSON, st, p, "")
 	return api.Codes[api.ErrorCodeUsage].Exit
 }
 
-// printError writes p to stdout as JSON or to stderr as one line of text.
-func printError(env Env, asJSON bool, p api.Problem, prefix string) {
+// printError writes p to stdout as JSON, or to stderr as text: what failed on
+// the first line, then the hint and the debug id.
+func printError(env Env, asJSON bool, st style.Style, p api.Problem, prefix string) {
 	if asJSON {
 		writeJSON(env.Stdout, p)
 		return
@@ -115,13 +125,71 @@ func printError(env Env, asJSON bool, p api.Problem, prefix string) {
 	if prefix != "" {
 		msg = prefix + ": " + msg
 	}
+	fmt.Fprintf(env.Stderr, "%s %s  %s\n", st.Failure(identity.Name+":"), msg, st.Failure("["+string(p.Code)+"]"))
 	if p.Hint != nil {
-		msg += "; " + *p.Hint
+		fmt.Fprintf(env.Stderr, "  %s %s\n", st.Hint("hint:"), hintText(st, *p.Hint))
 	}
 	if p.DebugId != "" {
-		msg += " (debug_id " + p.DebugId + ")"
+		fmt.Fprintf(env.Stderr, "  %s\n", st.Muted("debug_id: "+p.DebugId))
 	}
-	fmt.Fprintf(env.Stderr, "%s: %s\n", identity.Name, msg)
+}
+
+var commandOrFlag = regexp.MustCompile(identity.Name + `( [a-z][a-z-]*)*|--[a-z][a-z-]*`)
+
+// hintText styles the command lines and flags in hint.
+func hintText(st style.Style, hint string) string {
+	return commandOrFlag.ReplaceAllStringFunc(hint, func(m string) string {
+		if strings.HasPrefix(m, "--") {
+			return st.Flag(m)
+		}
+		return st.Command(m)
+	})
+}
+
+// colorOn reports whether cmd colors the text it writes to w: never with
+// --json, else as --color or the color setting says.
+func colorOn(cmd *cobra.Command, env Env, w io.Writer) bool {
+	if jsonMode(cmd) {
+		return false
+	}
+	mode := env.Config.Color
+	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
+		mode = config.ColorMode(f.Value.String())
+	}
+	switch mode {
+	case config.ColorAlways:
+		return true
+	case config.ColorNever:
+		return false
+	}
+	return !env.NoColor && isTerminal(w)
+}
+
+// stdoutStyle styles what cmd prints to stdout.
+func stdoutStyle(cmd *cobra.Command) style.Style {
+	return style.New(colorOn(cmd, invocationOf(cmd).env, cmd.OutOrStdout()))
+}
+
+// stderrStyle styles what cmd prints to stderr.
+func stderrStyle(cmd *cobra.Command) style.Style {
+	return style.New(colorOn(cmd, invocationOf(cmd).env, cmd.ErrOrStderr()))
+}
+
+// colorFlag is the value of --color.
+type colorFlag struct {
+	mode *config.ColorMode
+}
+
+func (f colorFlag) String() string { return string(*f.mode) }
+func (f colorFlag) Type() string   { return "string" }
+
+func (f colorFlag) Set(v string) (err error) {
+	m, err := config.ParseColorMode(v)
+	if err != nil {
+		return err
+	}
+	*f.mode = m
+	return nil
 }
 
 // invocation is what Run learns from the command it executes, and what the
@@ -152,8 +220,9 @@ func clientOf(cmd *cobra.Command) *client.Client {
 			Socket:  identity.SocketPath(inv.env.Config.Home),
 			DebugID: inv.debugID,
 			VersionMismatch: func(daemonVersion string) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: the daemon is version %s but %s is %s; run %s daemon restart\n",
-					identity.Name, daemonVersion, identity.Name, identity.Version, identity.Name)
+				st := stderrStyle(cmd)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but %s is %s; run %s\n",
+					identity.Name, st.Warning("warning:"), daemonVersion, identity.Name, identity.Version, st.Command(identity.Name+" daemon restart"))
 			},
 		})
 	}
@@ -232,12 +301,16 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root := &cobra.Command{
 		Use:           identity.Name,
 		Short:         "Manage AI coding agents across CLIs",
+		Args:          noArgs,
+		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
 	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set no_input: true in "+identity.ConfigPath(cfg.Home)+")")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
+	color := cfg.Color
+	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output: auto, always or never (or set color in "+identity.ConfigPath(cfg.Home)+")")
 	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd())
 	root.InitDefaultHelpCmd()
 	for _, cmd := range root.Commands() {
@@ -249,6 +322,22 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root.SetUsageTemplate(strings.ReplaceAll(root.UsageTemplate(), `(or .IsAvailableCommand (eq .Name "help"))`, `.IsAvailableCommand`))
 	setHelp(root)
 	return root
+}
+
+// noArgs rejects arguments: a command with subcommands takes none, so an
+// argument is a mistyped subcommand, and the closest one is suggested.
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	err := &usageError{fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())}
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2
+	}
+	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+		return &hinted{err, "did you mean " + cmd.CommandPath() + " " + s[0]}
+	}
+	return err
 }
 
 func newVersionCmd() *cobra.Command {

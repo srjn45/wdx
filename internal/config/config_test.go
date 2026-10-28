@@ -53,7 +53,7 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("got %+v, want %+v", c, want)
 	}
 	d := Default()
-	if !strings.HasSuffix(d.Home, "/.wdx") || d.NoInput || d.LogLevel != slog.LevelInfo || d.LogRetentionDays != 7 {
+	if !strings.HasSuffix(d.Home, "/.wdx") || d.NoInput || d.Color != ColorAuto || d.LogLevel != slog.LevelInfo || d.LogRetentionDays != 7 {
 		t.Fatalf("unexpected defaults %+v", d)
 	}
 	for _, s := range Settings() {
@@ -65,18 +65,19 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(home, "config.yaml")
 	want := Config{
-		Home: home, NoInput: true, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
+		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second,
 		From: map[string]string{
 			"home":                  "WDX_HOME",
 			"no_input":              path + ":5",
+			"color":                 path + ":9",
 			"log.level":             path + ":3",
 			"log.retention_days":    path + ":4",
 			"otel.endpoint":         path + ":7",
@@ -126,6 +127,7 @@ func TestEveryProblemReported(t *testing.T) {
 		"otel:",
 		"  endpoint: localhost:4318",
 		"  interval_seconds: 0.5",
+		"color: purple",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -137,6 +139,7 @@ func TestEveryProblemReported(t *testing.T) {
 		path + ":8: no_input2: unknown setting",
 		path + `:11: otel.endpoint: "localhost:4318" is not an http or https URL`,
 		path + `:12: otel.interval_seconds: "0.5" is not a whole number of at least 1`,
+		path + `:13: color: "purple" is not one of auto, always, never`,
 	}
 	slices.Sort(want)
 	var got []string

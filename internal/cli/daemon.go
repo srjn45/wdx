@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/warden/internal/daemon"
 	"github.com/srjn45/warden/internal/identity"
 	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/warden/internal/style"
 	"github.com/srjn45/warden/internal/telemetry"
 )
 
@@ -38,7 +39,7 @@ func newDaemonCmd(home string) *cobra.Command {
 		Long: "The daemon serves the project commands on " + identity.SocketPath(home) + ".\n" +
 			"It reads the settings when it starts; restart it after changing them or\n" +
 			"updating " + identity.Name + ".",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newDaemonStartCmd(), newDaemonStopCmd(), newDaemonRestartCmd(), newDaemonStatusCmd())
@@ -51,19 +52,19 @@ type daemonResult struct {
 	Daemon *api.Daemon `json:"daemon"` // the daemon started or stopped; null when unknown
 }
 
-func (r daemonResult) text(w io.Writer) {
+func (r daemonResult) text(w io.Writer, st style.Style) {
 	if r.Daemon == nil {
-		fmt.Fprintf(w, "daemon %s\n", strings.ReplaceAll(r.Result, "_", " "))
+		fmt.Fprintf(w, "daemon %s\n", st.Warning(strings.ReplaceAll(r.Result, "_", " ")))
 		return
 	}
 	d := r.Daemon
 	switch r.Result {
 	case "stopped":
-		fmt.Fprintf(w, "daemon stopped (pid %d)\n", d.Pid)
+		fmt.Fprintf(w, "daemon %s %s\n", st.Success("stopped"), st.Muted(fmt.Sprintf("(pid %d)", d.Pid)))
 	case "running":
-		fmt.Fprintf(w, "daemon already running (pid %d, version %s) on %s\n", d.Pid, d.Version, d.Socket)
+		fmt.Fprintf(w, "daemon %s %s on %s\n", st.Warning("already running"), st.Muted(fmt.Sprintf("(pid %d, version %s)", d.Pid, d.Version)), d.Socket)
 	default:
-		fmt.Fprintf(w, "daemon %s (pid %d, version %s) on %s\n", r.Result, d.Pid, d.Version, d.Socket)
+		fmt.Fprintf(w, "daemon %s %s on %s\n", st.Success(r.Result), st.Muted(fmt.Sprintf("(pid %d, version %s)", d.Pid, d.Version)), d.Socket)
 	}
 }
 
@@ -122,7 +123,9 @@ func runForeground(cmd *cobra.Command) error {
 	info := d.Info()
 	logging.FromContext(ctx).Info("daemon serving", "socket", info.Socket)
 	if !jsonMode(cmd) {
-		fmt.Fprintf(cmd.ErrOrStderr(), "daemon running on %s (pid %d); stop it with Ctrl-C or %s daemon stop\n", info.Socket, info.Pid, identity.Name)
+		st := stderrStyle(cmd)
+		fmt.Fprintf(cmd.ErrOrStderr(), "daemon %s on %s %s; stop it with Ctrl-C or %s\n",
+			st.Success("running"), info.Socket, st.Muted(fmt.Sprintf("(pid %d)", info.Pid)), st.Command(identity.Name+" daemon stop"))
 	}
 	if err := d.Serve(ctx); err != nil {
 		return err
@@ -311,22 +314,25 @@ type daemonStatus struct {
 	socket  string
 }
 
-func (s daemonStatus) text(w io.Writer) {
+func (s daemonStatus) text(w io.Writer, st style.Style) {
+	field := func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
+	}
 	switch {
 	case !s.Running:
-		fmt.Fprintln(w, "daemon not running")
+		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
 	case s.Daemon == nil:
-		fmt.Fprintf(w, "daemon running (pid %d) but not answering on %s\n", *s.Pid, s.socket)
+		fmt.Fprintf(w, "daemon running %s %s on %s\n", st.Muted(fmt.Sprintf("(pid %d)", *s.Pid)), st.Warning("but not answering"), s.socket)
 	default:
 		d := s.Daemon
-		fmt.Fprintf(w, "daemon running (pid %d)\n", d.Pid)
-		fmt.Fprintf(w, "  version: %s (%s)\n", d.Version, d.Commit)
-		fmt.Fprintf(w, "  started: %s (up %s)\n", d.StartedAt.Local().Format(time.DateTime), time.Since(d.StartedAt).Round(time.Second))
-		fmt.Fprintf(w, "  home:    %s\n", d.Home)
-		fmt.Fprintf(w, "  socket:  %s\n", d.Socket)
+		fmt.Fprintf(w, "daemon %s %s\n", st.Success("running"), st.Muted(fmt.Sprintf("(pid %d)", d.Pid)))
+		field("version:", d.Version+" "+st.Muted("("+d.Commit+")"))
+		field("started:", d.StartedAt.Local().Format(time.DateTime)+" "+st.Muted(fmt.Sprintf("(up %s)", time.Since(d.StartedAt).Round(time.Second))))
+		field("home:", d.Home)
+		field("socket:", d.Socket)
 	}
 	if s.Manager != nil {
-		fmt.Fprintf(w, "  service: %s\n", *s.Manager)
+		field("service:", *s.Manager)
 	}
 }
 

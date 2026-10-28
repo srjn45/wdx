@@ -41,6 +41,7 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 		"commit", identity.Commit,
 		"cwd", cwd,
 		"stdin_terminal", isTerminal(env.Stdin),
+		"no_color", env.NoColor,
 		slog.Group("settings", settings...))
 }
 
@@ -59,7 +60,9 @@ func logStarted(cmd *cobra.Command, args []string) {
 		"command", cmd.CommandPath(),
 		"args", args,
 		"flags", flags,
-		"flags_set", set)
+		"flags_set", set,
+		"color_stdout", stdoutStyle(cmd).On(),
+		"color_stderr", stderrStyle(cmd).On())
 }
 
 var outcomes = map[int]string{api.ExitOK: "ok", api.ExitRejected: "rejected", api.ExitUsage: "usage", api.ExitSystem: "system"}
