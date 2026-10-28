@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -73,6 +74,41 @@ func (p Project) ClonePath() string {
 		return p.Worktrees[0].Path
 	}
 	return ""
+}
+
+// Holds reports whether path is in one of the project's worktrees.
+func (p Project) Holds(path string) bool {
+	forms := pathForms(path)
+	return slices.ContainsFunc(p.Worktrees, func(w Worktree) bool { return within(w.Path, forms) })
+}
+
+// within reports whether one of the forms of a path is root or below it.
+func within(root string, forms []string) bool {
+	return slices.ContainsFunc(forms, func(path string) bool {
+		rel, err := filepath.Rel(root, path)
+		return err == nil && filepath.IsLocal(rel)
+	})
+}
+
+// pathForms returns path cleaned and, when it differs, with the symlinks in
+// its deepest existing ancestor resolved, as git resolves them in the
+// worktree paths it reports; the rest of path may not exist yet.
+func pathForms(path string) []string {
+	path = filepath.Clean(path)
+	forms := []string{path}
+	ancestor, err := existingAncestor(path)
+	if err != nil {
+		return forms
+	}
+	resolved, err := filepath.EvalSymlinks(ancestor)
+	if err != nil {
+		return forms
+	}
+	rest, _ := filepath.Rel(ancestor, path)
+	if resolved = filepath.Join(resolved, rest); resolved != path {
+		forms = append(forms, resolved)
+	}
+	return forms
 }
 
 // Opened is the result of opening a project.
@@ -556,6 +592,35 @@ func (s *Store) GetByID(ctx context.Context, id string) (Project, error) {
 // GetByName returns the project named name, ignoring case, whatever its state.
 func (s *Store) GetByName(ctx context.Context, name string) (Project, error) {
 	return s.get(ctx, "name", name)
+}
+
+// GetByPath returns the project one of whose worktrees holds path, whatever
+// its state. Worktrees can nest, so the deepest one wins.
+func (s *Store) GetByPath(ctx context.Context, path string) (Project, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT project_id, path FROM project_worktrees")
+	if err != nil {
+		return Project{}, err
+	}
+	defer rows.Close()
+	forms := pathForms(path)
+	var id, deepest string
+	for rows.Next() {
+		var projectID, root string
+		if err := rows.Scan(&projectID, &root); err != nil {
+			return Project{}, err
+		}
+		if len(root) > len(deepest) && within(root, forms) {
+			id, deepest = projectID, root
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return Project{}, err
+	}
+	logging.FromContext(ctx).Info("project looked up by path", "path", path, "worktree", deepest, "project_id", id)
+	if id == "" {
+		return Project{}, fmt.Errorf("%w: no project holds %s", ErrNotFound, path)
+	}
+	return s.GetByID(ctx, id)
 }
 
 // get returns the project whose column equals value; column is a constant.

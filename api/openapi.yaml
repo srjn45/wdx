@@ -70,14 +70,16 @@ paths:
         - git: open the project with that origin, or clone it into
           <home>/projects/<name> if it is unknown.
 
-        Opening a known project marks it open and drops its checkouts no
-        longer on disk. When none is left, on_missing_checkout "reclone"
-        clones it again and "remove" removes it; without it checkout_missing
+        Opening a known project marks it open, drops its checkouts no longer
+        on disk and relaunches the terminals closing it stopped, listing them
+        under "started". When no checkout is left, on_missing_checkout
+        "reclone" clones it again and "remove" removes it, which terminals
+        still running refuse with project_in_use; without it checkout_missing
         is returned.
 
         Errors: checkout_missing, clone_failed, invalid_argument,
         invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-        project_mismatch, repo_exists.
+        project_in_use, project_mismatch, repo_exists.
       requestBody:
         required: true
         content:
@@ -114,10 +116,15 @@ paths:
       operationId: updateProject
       summary: Close a project, or open it again from one of its checkouts
       description: |
-        Closing touches nothing on disk. Opening drops the checkouts no longer
-        on disk; when none is left, checkout_missing is returned.
+        Closing touches nothing on disk. It stops the project's terminals that
+        are starting or running, which it refuses with project_in_use unless
+        stop_running is true, and lists them under "stopped".
 
-        Errors: checkout_missing, not_found.
+        Opening drops the checkouts no longer on disk; when none is left,
+        checkout_missing is returned. It relaunches the terminals closing
+        stopped and lists them under "started", each in the state it reached.
+
+        Errors: checkout_missing, not_found, project_in_use.
       requestBody:
         required: true
         content:
@@ -134,9 +141,13 @@ paths:
       operationId: deleteProject
       summary: Delete a project and everything that belongs to it
       description: |
-        Files on disk are not touched.
+        Files on disk are not touched. Terminals starting or running refuse
+        it with project_in_use unless stop_running is true, which stops them
+        first and lists them under "stopped".
 
-        Errors: not_found.
+        Errors: not_found, project_in_use.
+      parameters:
+        - $ref: "#/components/parameters/StopRunning"
       responses:
         "200":
           description: The removed project, with result removed.
@@ -151,13 +162,110 @@ paths:
     post:
       operationId: recloneProject
       summary: Clone a project with no checkout left back into its clone path
-      description: "Errors: clone_failed, invalid_argument, not_found, path_exists."
+      description: |
+        Relaunches the terminals closing the project stopped, as opening it
+        does.
+
+        Errors: clone_failed, invalid_argument, not_found, path_exists.
       responses:
         "201":
           description: The project, with result cloned.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/terminals:
+    get:
+      operationId: listTerminals
+      summary: List terminals by project name, then name
+      description: |
+        The terminals of the project named by project, or of the project whose
+        worktree holds dir; of every project when neither is given.
+
+        Errors: not_found.
+      parameters:
+        - $ref: "#/components/parameters/TerminalProject"
+        - $ref: "#/components/parameters/TerminalDir"
+      responses:
+        "200":
+          description: The terminals.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createTerminal
+      summary: Create a terminal and start its shell
+      description: |
+        Without project, the terminal belongs to the project whose worktree
+        holds dir, the longest path winning, and its shell starts in dir.
+        With project, it starts in dir when dir is in one of the project's
+        worktrees, else in the project's clone path.
+
+        A shell that does not start leaves the terminal failed and returns
+        start_failed with the terminal under details.terminal.
+
+        Errors: invalid_name, invalid_path, name_taken, not_found,
+        project_closed, start_failed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTerminal" }
+      responses:
+        "201":
+          description: The terminal, with result created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/terminals/{terminal}:
+    parameters:
+      - $ref: "#/components/parameters/TerminalRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    delete:
+      operationId: deleteTerminal
+      summary: Delete a terminal
+      description: |
+        A terminal starting or running refuses it with terminal_running
+        unless stop_running is true, which stops its shell first.
+
+        Errors: not_found, terminal_running.
+      parameters:
+        - $ref: "#/components/parameters/StopRunning"
+      responses:
+        "200":
+          description: The removed terminal, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/terminals/{terminal}/start:
+    parameters:
+      - $ref: "#/components/parameters/TerminalRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: startTerminal
+      summary: Start a fresh shell for a terminal whose last one ended
+      description: |
+        For a terminal that exited, failed or was lost; never for one stopped
+        by closing its project, which opening it relaunches.
+
+        A shell that does not start leaves the terminal failed and returns
+        start_failed with the terminal under details.terminal.
+
+        Errors: not_found, project_closed, start_failed, terminal_running.
+      responses:
+        "200":
+          description: The terminal, with result started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalResult" }
         default: { $ref: "#/components/responses/Problem" }
 
 components:
@@ -168,6 +276,30 @@ components:
       required: true
       description: The project's name (case-insensitive), or "id:" and its id, as in id:proj-1a2b3c4d.
       schema: { type: string, minLength: 1 }
+    TerminalRef:
+      name: terminal
+      in: path
+      required: true
+      description: |
+        "id:" and the terminal's id, as in id:term-1a2b3c4d, or its name
+        (case-insensitive) together with project or dir, since names are
+        unique only within a project.
+      schema: { type: string, minLength: 1 }
+    TerminalProject:
+      name: project
+      in: query
+      description: The project's name, or "id:" and its id; excludes dir.
+      schema: { type: string, minLength: 1 }
+    TerminalDir:
+      name: dir
+      in: query
+      description: An absolute path in one of the project's worktrees; excludes project.
+      schema: { type: string, minLength: 1 }
+    StopRunning:
+      name: stop_running
+      in: query
+      description: Stop the terminals that are starting or running instead of refusing.
+      schema: { type: boolean, default: false }
 
   responses:
     Problem:
@@ -204,7 +336,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed]
+      enum: [created, registered, cloned, opened, closed, removed, started]
 
     Worktree:
       type: object
@@ -272,6 +404,14 @@ components:
           items: { $ref: "#/components/schemas/Worktree" }
         conflict:
           $ref: "#/components/schemas/Problem"
+        started:
+          type: array
+          description: The terminals opening the project relaunched, in the state each reached.
+          items: { $ref: "#/components/schemas/Terminal" }
+        stopped:
+          type: array
+          description: The terminals closing or removing the project stopped.
+          items: { $ref: "#/components/schemas/Terminal" }
 
     CreateProject:
       type: object
@@ -335,6 +475,71 @@ components:
       additionalProperties: false
       properties:
         state: { $ref: "#/components/schemas/ProjectState" }
+        stop_running:
+          type: boolean
+          description: With state closed, stop the terminals that are starting or running instead of refusing.
+
+    TerminalState:
+      type: string
+      description: |
+        starting: its holder is being started; running: its shell is alive;
+        exited: its shell ended by itself; stopped: closing its project
+        stopped it; failed: its holder or shell did not start; lost: its
+        holder is gone and nobody stopped it.
+      enum: [starting, running, exited, stopped, failed, lost]
+
+    Terminal:
+      type: object
+      required: [id, name, project_id, project_name, dir, shell, state, pid, exit_code, error, created_at, started_at, ended_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        project_id: { type: string }
+        project_name: { type: string }
+        dir: { type: string, description: "Where the shell starts, now and on every relaunch." }
+        shell: { type: string, description: Absolute path of the shell. }
+        state: { $ref: "#/components/schemas/TerminalState" }
+        pid: { type: integer, nullable: true, description: "The shell's, while it has one." }
+        exit_code:
+          type: integer
+          nullable: true
+          description: Only when exited; 128 and the signal for a shell killed by one.
+        error: { type: string, nullable: true, description: Only when failed; why it did not start. }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        ended_at: { type: string, format: date-time, nullable: true }
+
+    TerminalList:
+      type: object
+      required: [terminals]
+      properties:
+        terminals:
+          type: array
+          items: { $ref: "#/components/schemas/Terminal" }
+
+    TerminalResult:
+      type: object
+      required: [result, terminal]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        terminal: { $ref: "#/components/schemas/Terminal" }
+
+    CreateTerminal:
+      type: object
+      required: [dir]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          nullable: true
+          description: The project's name, or "id:" and its id; by default the one whose worktree holds dir.
+        dir:
+          type: string
+          description: Absolute path the shell starts in; see createTerminal.
+        name:
+          type: string
+          nullable: true
+          description: A generated adjective-noun codename by default.
 
     ErrorCode:
       type: string
@@ -357,6 +562,10 @@ components:
         - path_exists
         - project_mismatch
         - clone_failed
+        - project_closed
+        - project_in_use
+        - terminal_running
+        - start_failed
         - daemon_unavailable
         - already_running
         - runtime_missing

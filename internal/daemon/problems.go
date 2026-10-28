@@ -9,6 +9,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/terminal"
 )
 
 // requestError is a request that cannot be served as sent.
@@ -73,8 +74,26 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*git.CloneError](err); ok {
 		return api.ErrorCodeCloneFailed, map[string]any{"url": e.URL, "output": e.Output}
 	}
+	if e, ok := errors.AsType[*terminal.NameTakenError](err); ok {
+		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "terminal": terminalView(e.Terminal)}
+	}
+	if e, ok := errors.AsType[*terminal.InvalidNameError](err); ok {
+		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
+	}
+	if e, ok := errors.AsType[*terminal.RunningError](err); ok {
+		return api.ErrorCodeTerminalRunning, map[string]any{"terminal": terminalView(e.Terminal)}
+	}
+	if e, ok := errors.AsType[*terminal.StartError](err); ok {
+		return api.ErrorCodeStartFailed, map[string]any{"terminal": terminalView(e.Terminal)}
+	}
+	if e, ok := errors.AsType[*projectClosedError](err); ok {
+		return api.ErrorCodeProjectClosed, map[string]any{"project": projectView(e.project)}
+	}
+	if e, ok := errors.AsType[*projectInUseError](err); ok {
+		return api.ErrorCodeProjectInUse, map[string]any{"project": projectView(e.project), "terminals": terminalViews(e.terminals)}
+	}
 	switch {
-	case errors.Is(err, project.ErrNotFound):
+	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound):
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil

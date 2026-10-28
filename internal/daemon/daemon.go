@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/terminal"
 )
 
 // shutdownTimeout is how long requests in flight get to finish once the
@@ -38,18 +39,27 @@ type Options struct {
 	Socket  string       // identity.SocketPath(Home) when empty
 	Log     *slog.Logger // without a debug_id; each request adds its own
 	Metrics telemetry.Options
+
+	// Executable is the wdx binary terminals' holders run; this process's
+	// own when empty.
+	Executable string
+	// TerminalEnv holds the variables shells inherit, as KEY=value.
+	TerminalEnv []string
+	// TerminalShell is the shell terminals run; "" for the login shell.
+	TerminalShell string
 }
 
 // Daemon is a daemon listening on its socket.
 type Daemon struct {
-	opts     Options
-	log      *slog.Logger // the daemon's own lines: start and stop
-	lock     *os.File
-	listener net.Listener
-	db       *sql.DB
-	store    *project.Store
-	changes  sync.Mutex // one request changing state at a time
-	started  time.Time
+	opts      Options
+	log       *slog.Logger // the daemon's own lines: start and stop
+	lock      *os.File
+	listener  net.Listener
+	db        *sql.DB
+	store     *project.Store
+	terminals *terminal.Supervisor
+	changes   sync.Mutex // one request changing state at a time
+	started   time.Time
 
 	stopMetrics     func(context.Context) error
 	requestDuration metric.Float64Histogram
@@ -107,6 +117,21 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		return nil, err
 	}
 	d.store = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
+	if opts.Executable == "" {
+		if opts.Executable, err = os.Executable(); err != nil {
+			return nil, err
+		}
+	}
+	logged := logging.NewContext(ctx, d.log)
+	d.terminals = terminal.NewSupervisor(logged, terminal.NewStore(d.db), terminal.Options{
+		Executable: opts.Executable,
+		Home:       opts.Home,
+		Env:        opts.TerminalEnv,
+		Shell:      opts.TerminalShell,
+	})
+	if err := d.terminals.Reconcile(logged); err != nil {
+		return nil, err
+	}
 	d.log.Info("daemon started",
 		"home", opts.Home,
 		"socket", opts.Socket,
@@ -231,6 +256,10 @@ func (d *Daemon) Serve(ctx context.Context) error {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.terminals != nil {
+		// The holders and their shells run on; the next daemon adopts them.
+		d.terminals.Close()
 	}
 	if d.db != nil {
 		d.db.Close()

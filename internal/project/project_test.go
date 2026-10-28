@@ -858,3 +858,48 @@ func idOf(t *testing.T, p Project, path string) string {
 	t.Fatalf("no worktree at %s in %+v", path, p.Worktrees)
 	return ""
 }
+
+func TestGetByPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	outer := gitRepo(t, "outer", "")
+	inner := filepath.Join(outer, "vendor", "inner")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, inner, "init", "-q")
+	o, err := s.OpenLocal(ctx, outer, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := s.OpenLocal(ctx, inner, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(outer, link); err != nil {
+		t.Fatal(err)
+	}
+
+	for path, want := range map[string]string{
+		outer:                             o.Project.ID,
+		filepath.Join(outer, "src", ".."): o.Project.ID,
+		filepath.Join(outer, "vendor"):    o.Project.ID,
+		filepath.Join(inner, "src"):       i.Project.ID,
+		filepath.Join(link, "src"):        o.Project.ID,
+	} {
+		p, err := s.GetByPath(ctx, path)
+		if err != nil || p.ID != want {
+			t.Errorf("%s: want %s, got %s, %v", path, want, p.ID, err)
+		}
+	}
+	for _, path := range []string{outer + "-sibling", filepath.Dir(outer)} {
+		if _, err := s.GetByPath(ctx, path); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: want not found, got %v", path, err)
+		}
+	}
+	if !o.Project.Holds(filepath.Join(inner, "src")) || o.Project.Holds(outer+"-sibling") {
+		t.Error("want outer to hold what is below it, and only that")
+	}
+}

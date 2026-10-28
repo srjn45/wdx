@@ -11,15 +11,18 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/terminal"
 )
 
 // idPrefix marks a project reference in a path as an id rather than a name.
 const idPrefix = "id:"
 
-// server implements the API on the project store.
+// server implements the API on the project store and the terminals'
+// supervisor.
 type server struct {
-	store *project.Store
-	self  api.Daemon
+	store     *project.Store
+	terminals *terminal.Supervisor
+	self      api.Daemon
 }
 
 var _ api.StrictServerInterface = (*server)(nil)
@@ -80,16 +83,26 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		return nil, err
 	}
 	if req.Body.State == api.ProjectStateClosed {
+		stopped, err := s.stopTerminals(ctx, p, derefBool(req.Body.StopRunning))
+		if err != nil {
+			return nil, err
+		}
 		if p, err = s.store.Close(ctx, p.ID); err != nil {
 			return nil, err
 		}
-		return api.UpdateProject200JSONResponse(result(api.ResultClosed, p)), nil
+		r := result(api.ResultClosed, p)
+		r.Stopped = optionalTerminals(stopped)
+		return api.UpdateProject200JSONResponse(r), nil
 	}
 	o, err := s.store.Open(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	return api.UpdateProject200JSONResponse(openedResult(o)), nil
+	r, err := s.opened(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateProject200JSONResponse(r), nil
 }
 
 func (s *server) DeleteProject(ctx context.Context, req api.DeleteProjectRequestObject) (api.DeleteProjectResponseObject, error) {
@@ -97,10 +110,26 @@ func (s *server) DeleteProject(ctx context.Context, req api.DeleteProjectRequest
 	if err != nil {
 		return nil, err
 	}
-	if p, err = s.store.Remove(ctx, p.ID); err != nil {
+	r, err := s.remove(ctx, p, derefBool(req.Params.StopRunning))
+	if err != nil {
 		return nil, err
 	}
-	return api.DeleteProject200JSONResponse(result(api.ResultRemoved, p)), nil
+	return api.DeleteProject200JSONResponse(r), nil
+}
+
+// remove stops the project's live terminals, refusing without stopRunning,
+// then deletes it.
+func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool) (api.ProjectResult, error) {
+	stopped, err := s.stopTerminals(ctx, p, stopRunning)
+	if err != nil {
+		return api.ProjectResult{}, err
+	}
+	if p, err = s.store.Remove(ctx, p.ID); err != nil {
+		return api.ProjectResult{}, err
+	}
+	r := result(api.ResultRemoved, p)
+	r.Stopped = optionalTerminals(stopped)
+	return r, nil
 }
 
 func (s *server) RecloneProject(ctx context.Context, req api.RecloneProjectRequestObject) (api.RecloneProjectResponseObject, error) {
@@ -112,7 +141,11 @@ func (s *server) RecloneProject(ctx context.Context, req api.RecloneProjectReque
 	if err != nil {
 		return nil, err
 	}
-	return api.RecloneProject201JSONResponse(openedResult(o)), nil
+	r, err := s.opened(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	return api.RecloneProject201JSONResponse(r), nil
 }
 
 func (s *server) CreateProject(ctx context.Context, req api.CreateProjectRequestObject) (api.CreateProjectResponseObject, error) {
@@ -193,15 +226,14 @@ func (s *server) settleMissing(ctx context.Context, o project.Opened, err error,
 	if ok && choice != nil {
 		logging.FromContext(ctx).Info("missing checkout answered", "answer", *choice, "project_id", missing.Project.ID)
 		if *choice == api.CreateProjectOnMissingCheckoutRemove {
-			p, err := s.store.Remove(ctx, missing.Project.ID)
-			return result(api.ResultRemoved, p), err
+			return s.remove(ctx, missing.Project, false)
 		}
 		o, err = s.store.Reclone(ctx, missing.Project.ID, io.Discard)
 	}
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
-	return openedResult(o), nil
+	return s.opened(ctx, o)
 }
 
 // find returns the project ref names: "id:" and its id, or its name.
@@ -223,6 +255,18 @@ func absolute(path string) error {
 
 func result(r api.Result, p project.Project) api.ProjectResult {
 	return api.ProjectResult{Result: r, Project: projectView(p)}
+}
+
+// opened relaunches the terminals closing the project stopped and returns
+// what opening it led to.
+func (s *server) opened(ctx context.Context, o project.Opened) (api.ProjectResult, error) {
+	started, err := s.terminals.StartProject(ctx, o.Project.ID)
+	if err != nil {
+		return api.ProjectResult{}, err
+	}
+	r := openedResult(o)
+	r.Started = optionalTerminals(started)
+	return r, nil
 }
 
 func openedResult(o project.Opened) api.ProjectResult {

@@ -20,12 +20,14 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 func TestMain(m *testing.M) {
+	holdertest.RunIfHolder()
 	gittest.Isolate()
 	m.Run()
 }
@@ -47,11 +49,29 @@ func start(t *testing.T) *testDaemon {
 // startMeasured is start, with the daemon's metrics going where metrics says.
 func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 	t.Helper()
-	home := t.TempDir()
+	return startOn(t, shortDir(t), metrics)
+}
+
+// startOn is startMeasured on an existing home. Its terminals run
+// testShell from this test binary, and are removed when the test ends
+// unless the daemon was stopped before.
+func startOn(t *testing.T, home string, metrics telemetry.Options) *testDaemon {
+	t.Helper()
 	td := &testDaemon{home: home, socket: socketPath(t)}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
 	ctx, cancel := context.WithCancel(context.Background())
-	d, err := Listen(ctx, Options{Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics})
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := filepath.Join(t.TempDir(), "shell")
+	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Listen(ctx, Options{
+		Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics,
+		Executable: exe, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +84,7 @@ func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 		}
 	})
 	t.Cleanup(func() {
+		td.removeTerminals()
 		td.stop()
 		logs.Close()
 		wantRequestsLogged(t, home)
@@ -84,12 +105,19 @@ func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 // allows, which a path under t.TempDir() may exceed.
 func socketPath(t *testing.T) string {
 	t.Helper()
+	return filepath.Join(shortDir(t), "wdx.sock")
+}
+
+// shortDir returns a new directory short enough to hold sockets: homes
+// hold those of terminals' holders.
+func shortDir(t *testing.T) string {
+	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "wdx")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	return filepath.Join(dir, "wdx.sock")
+	return dir
 }
 
 // wantRequestsLogged checks every request was logged as received and
@@ -498,14 +526,14 @@ func TestDelete(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	p := td.create(t, "app")
-	r, err := td.client.DeleteProjectWithResponse(ctx, "app")
+	r, err := td.client.DeleteProjectWithResponse(ctx, "app", nil)
 	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultRemoved || r.JSON200.Project.Id != p.Id {
 		t.Fatalf("want removed, got %v %s", err, r.Body)
 	}
 	if _, err := os.Stat(p.Worktrees[0].Path); err != nil {
 		t.Fatalf("files on disk must stay: %v", err)
 	}
-	r, err = td.client.DeleteProjectWithResponse(ctx, "app")
+	r, err = td.client.DeleteProjectWithResponse(ctx, "app", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

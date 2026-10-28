@@ -117,9 +117,11 @@ func runForeground(cmd *cobra.Command) error {
 	log := logging.New(logs, cfg.LogLevel).With("pid", os.Getpid(), "process", "daemon")
 
 	d, err := daemon.Listen(ctx, daemon.Options{
-		Home:    cfg.Home,
-		Log:     log,
-		Metrics: telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+		Home:          cfg.Home,
+		Log:           log,
+		Metrics:       telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+		TerminalEnv:   invocationOf(cmd).env.Terminal,
+		TerminalShell: cfg.TerminalShell,
 	})
 	if err != nil {
 		return err

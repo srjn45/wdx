@@ -172,7 +172,7 @@ func (c *Client) UpdateProject(ctx context.Context, ref string, state api.Projec
 }
 
 func (c *Client) DeleteProject(ctx context.Context, ref string) (api.ProjectResult, error) {
-	r, err := c.api.DeleteProjectWithResponse(ctx, ref)
+	r, err := c.api.DeleteProjectWithResponse(ctx, ref, nil)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}

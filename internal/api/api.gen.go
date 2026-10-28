@@ -79,11 +79,15 @@ const (
 	ErrorCodeOlderVersion      ErrorCode = "older_version"
 	ErrorCodePathExists        ErrorCode = "path_exists"
 	ErrorCodePortInUse         ErrorCode = "port_in_use"
+	ErrorCodeProjectClosed     ErrorCode = "project_closed"
+	ErrorCodeProjectInUse      ErrorCode = "project_in_use"
 	ErrorCodeProjectMismatch   ErrorCode = "project_mismatch"
 	ErrorCodeRepoExists        ErrorCode = "repo_exists"
 	ErrorCodeRestoreRequired   ErrorCode = "restore_required"
 	ErrorCodeRuntimeFailed     ErrorCode = "runtime_failed"
 	ErrorCodeRuntimeMissing    ErrorCode = "runtime_missing"
+	ErrorCodeStartFailed       ErrorCode = "start_failed"
+	ErrorCodeTerminalRunning   ErrorCode = "terminal_running"
 	ErrorCodeUpdateFailed      ErrorCode = "update_failed"
 	ErrorCodeUpdateRunning     ErrorCode = "update_running"
 	ErrorCodeUsage             ErrorCode = "usage"
@@ -126,6 +130,10 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodePortInUse:
 		return true
+	case ErrorCodeProjectClosed:
+		return true
+	case ErrorCodeProjectInUse:
+		return true
 	case ErrorCodeProjectMismatch:
 		return true
 	case ErrorCodeRepoExists:
@@ -135,6 +143,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeRuntimeFailed:
 		return true
 	case ErrorCodeRuntimeMissing:
+		return true
+	case ErrorCodeStartFailed:
+		return true
+	case ErrorCodeTerminalRunning:
 		return true
 	case ErrorCodeUpdateFailed:
 		return true
@@ -218,6 +230,7 @@ const (
 	ResultOpened     Result = "opened"
 	ResultRegistered Result = "registered"
 	ResultRemoved    Result = "removed"
+	ResultStarted    Result = "started"
 )
 
 // Valid indicates whether the value is a known member of the Result enum.
@@ -234,6 +247,38 @@ func (e Result) Valid() bool {
 	case ResultRegistered:
 		return true
 	case ResultRemoved:
+		return true
+	case ResultStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TerminalState.
+const (
+	TerminalStateExited   TerminalState = "exited"
+	TerminalStateFailed   TerminalState = "failed"
+	TerminalStateLost     TerminalState = "lost"
+	TerminalStateRunning  TerminalState = "running"
+	TerminalStateStarting TerminalState = "starting"
+	TerminalStateStopped  TerminalState = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the TerminalState enum.
+func (e TerminalState) Valid() bool {
+	switch e {
+	case TerminalStateExited:
+		return true
+	case TerminalStateFailed:
+		return true
+	case TerminalStateLost:
+		return true
+	case TerminalStateRunning:
+		return true
+	case TerminalStateStarting:
+		return true
+	case TerminalStateStopped:
 		return true
 	default:
 		return false
@@ -254,6 +299,18 @@ type CreateProjectOnConflict string
 
 // CreateProjectOnMissingCheckout defines model for CreateProject.OnMissingCheckout.
 type CreateProjectOnMissingCheckout string
+
+// CreateTerminal defines model for CreateTerminal.
+type CreateTerminal struct {
+	// Dir Absolute path the shell starts in; see createTerminal.
+	Dir string `json:"dir"`
+
+	// Name A generated adjective-noun codename by default.
+	Name *string `json:"name,omitempty"`
+
+	// Project The project's name, or "id:" and its id; by default the one whose worktree holds dir.
+	Project *string `json:"project,omitempty"`
+}
 
 // Daemon defines model for Daemon.
 type Daemon struct {
@@ -366,6 +423,12 @@ type ProjectResult struct {
 
 	// Result The most significant thing that happened.
 	Result Result `json:"result"`
+
+	// Started The terminals opening the project relaunched, in the state each reached.
+	Started *[]Terminal `json:"started,omitempty"`
+
+	// Stopped The terminals closing or removing the project stopped.
+	Stopped *[]Terminal `json:"stopped,omitempty"`
 }
 
 // ProjectState defines model for ProjectState.
@@ -390,9 +453,62 @@ type Source struct {
 	union json.RawMessage
 }
 
+// Terminal defines model for Terminal.
+type Terminal struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Dir Where the shell starts, now and on every relaunch.
+	Dir     string     `json:"dir"`
+	EndedAt *time.Time `json:"ended_at"`
+
+	// Error Only when failed; why it did not start.
+	Error *string `json:"error"`
+
+	// ExitCode Only when exited; 128 and the signal for a shell killed by one.
+	ExitCode *int   `json:"exit_code"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+
+	// Pid The shell's, while it has one.
+	Pid         *int   `json:"pid"`
+	ProjectId   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+
+	// Shell Absolute path of the shell.
+	Shell     string     `json:"shell"`
+	StartedAt *time.Time `json:"started_at"`
+
+	// State starting: its holder is being started; running: its shell is alive;
+	// exited: its shell ended by itself; stopped: closing its project
+	// stopped it; failed: its holder or shell did not start; lost: its
+	// holder is gone and nobody stopped it.
+	State TerminalState `json:"state"`
+}
+
+// TerminalList defines model for TerminalList.
+type TerminalList struct {
+	Terminals []Terminal `json:"terminals"`
+}
+
+// TerminalResult defines model for TerminalResult.
+type TerminalResult struct {
+	// Result The most significant thing that happened.
+	Result   Result   `json:"result"`
+	Terminal Terminal `json:"terminal"`
+}
+
+// TerminalState starting: its holder is being started; running: its shell is alive;
+// exited: its shell ended by itself; stopped: closing its project
+// stopped it; failed: its holder or shell did not start; lost: its
+// holder is gone and nobody stopped it.
+type TerminalState string
+
 // UpdateProject defines model for UpdateProject.
 type UpdateProject struct {
 	State ProjectState `json:"state"`
+
+	// StopRunning With state closed, stop the terminals that are starting or running instead of refusing.
+	StopRunning *bool `json:"stop_running,omitempty"`
 }
 
 // Version defines model for Version.
@@ -415,10 +531,58 @@ type Worktree struct {
 // ProjectRef defines model for ProjectRef.
 type ProjectRef = string
 
+// StopRunning defines model for StopRunning.
+type StopRunning = bool
+
+// TerminalDir defines model for TerminalDir.
+type TerminalDir = string
+
+// TerminalProject defines model for TerminalProject.
+type TerminalProject = string
+
+// TerminalRef defines model for TerminalRef.
+type TerminalRef = string
+
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
 	// State Only projects in this state; every project when absent.
 	State *ProjectState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// DeleteProjectParams defines parameters for DeleteProject.
+type DeleteProjectParams struct {
+	// StopRunning Stop the terminals that are starting or running instead of refusing.
+	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
+}
+
+// ListTerminalsParams defines parameters for ListTerminals.
+type ListTerminalsParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// DeleteTerminalParams defines parameters for DeleteTerminal.
+type DeleteTerminalParams struct {
+	// StopRunning Stop the terminals that are starting or running instead of refusing.
+	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// StartTerminalParams defines parameters for StartTerminal.
+type StartTerminalParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
@@ -426,6 +590,9 @@ type CreateProjectJSONRequestBody = CreateProject
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProject
+
+// CreateTerminalJSONRequestBody defines body for CreateTerminal for application/json ContentType.
+type CreateTerminalJSONRequestBody = CreateTerminal
 
 // AsNewSource returns the union data inside the Source as a NewSource
 func (t Source) AsNewSource() (NewSource, error) {
@@ -662,14 +829,16 @@ type ClientInterface interface {
 	// - git: open the project with that origin, or clone it into
 	//   <home>/projects/<name> if it is unknown.
 	//
-	// Opening a known project marks it open and drops its checkouts no
-	// longer on disk. When none is left, on_missing_checkout "reclone"
-	// clones it again and "remove" removes it; without it checkout_missing
+	// Opening a known project marks it open, drops its checkouts no longer
+	// on disk and relaunches the terminals closing it stopped, listing them
+	// under "started". When no checkout is left, on_missing_checkout
+	// "reclone" clones it again and "remove" removes it, which terminals
+	// still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
 	// invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-	// project_mismatch, repo_exists.
+	// project_in_use, project_mismatch, repo_exists.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -690,14 +859,16 @@ type ClientInterface interface {
 	// - git: open the project with that origin, or clone it into
 	//   <home>/projects/<name> if it is unknown.
 	//
-	// Opening a known project marks it open and drops its checkouts no
-	// longer on disk. When none is left, on_missing_checkout "reclone"
-	// clones it again and "remove" removes it; without it checkout_missing
+	// Opening a known project marks it open, drops its checkouts no longer
+	// on disk and relaunches the terminals closing it stopped, listing them
+	// under "started". When no checkout is left, on_missing_checkout
+	// "reclone" clones it again and "remove" removes it, which terminals
+	// still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
 	// invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-	// project_mismatch, repo_exists.
+	// project_in_use, project_mismatch, repo_exists.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -706,12 +877,14 @@ type ClientInterface interface {
 
 	// DeleteProject Delete a project and everything that belongs to it
 	//
-	// Files on disk are not touched.
+	// Files on disk are not touched. Terminals starting or running refuse
+	// it with project_in_use unless stop_running is true, which stops them
+	// first and lists them under "stopped".
 	//
-	// Errors: not_found.
+	// Errors: not_found, project_in_use.
 	//
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
-	DeleteProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+	DeleteProject(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProject A project, open or closed, with which of its checkouts are on disk
 	//
@@ -722,10 +895,15 @@ type ClientInterface interface {
 
 	// UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. Opening drops the checkouts no longer
-	// on disk; when none is left, checkout_missing is returned.
+	// Closing touches nothing on disk. It stops the project's terminals that
+	// are starting or running, which it refuses with project_in_use unless
+	// stop_running is true, and lists them under "stopped".
 	//
-	// Errors: checkout_missing, not_found.
+	// Opening drops the checkouts no longer on disk; when none is left,
+	// checkout_missing is returned. It relaunches the terminals closing
+	// stopped and lists them under "started", each in the state it reached.
+	//
+	// Errors: checkout_missing, not_found, project_in_use.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -734,10 +912,15 @@ type ClientInterface interface {
 
 	// UpdateProject Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. Opening drops the checkouts no longer
-	// on disk; when none is left, checkout_missing is returned.
+	// Closing touches nothing on disk. It stops the project's terminals that
+	// are starting or running, which it refuses with project_in_use unless
+	// stop_running is true, and lists them under "stopped".
 	//
-	// Errors: checkout_missing, not_found.
+	// Opening drops the checkouts no longer on disk; when none is left,
+	// checkout_missing is returned. It relaunches the terminals closing
+	// stopped and lists them under "started", each in the state it reached.
+	//
+	// Errors: checkout_missing, not_found, project_in_use.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -746,10 +929,82 @@ type ClientInterface interface {
 
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	//
+	// Relaunches the terminals closing the project stopped, as opening it
+	// does.
+	//
 	// Errors: clone_failed, invalid_argument, not_found, path_exists.
 	//
 	// Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 	RecloneProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTerminals List terminals by project name, then name
+	//
+	// The terminals of the project named by project, or of the project whose
+	// worktree holds dir; of every project when neither is given.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
+	ListTerminals(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTerminalWithBody Create a terminal and start its shell
+	//
+	// Without project, the terminal belongs to the project whose worktree
+	// holds dir, the longest path winning, and its shell starts in dir.
+	// With project, it starts in dir when dir is in one of the project's
+	// worktrees, else in the project's clone path.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+	CreateTerminalWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTerminal Create a terminal and start its shell
+	//
+	// Without project, the terminal belongs to the project whose worktree
+	// holds dir, the longest path winning, and its shell starts in dir.
+	// With project, it starts in dir when dir is in one of the project's
+	// worktrees, else in the project's clone path.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+	CreateTerminal(ctx context.Context, body CreateTerminalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteTerminal Delete a terminal
+	//
+	// A terminal starting or running refuses it with terminal_running
+	// unless stop_running is true, which stops its shell first.
+	//
+	// Errors: not_found, terminal_running.
+	//
+	// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
+	DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartTerminal Start a fresh shell for a terminal whose last one ended
+	//
+	// For a terminal that exited, failed or was lost; never for one stopped
+	// by closing its project, which opening it relaunches.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: not_found, project_closed, start_failed, terminal_running.
+	//
+	// Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
+	StartTerminal(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetVersion Version of the daemon
 	//
@@ -801,14 +1056,16 @@ func (c *Client) ListProjects(ctx context.Context, params *ListProjectsParams, r
 //   - git: open the project with that origin, or clone it into
 //     <home>/projects/<name> if it is unknown.
 //
-// Opening a known project marks it open and drops its checkouts no
-// longer on disk. When none is left, on_missing_checkout "reclone"
-// clones it again and "remove" removes it; without it checkout_missing
+// Opening a known project marks it open, drops its checkouts no longer
+// on disk and relaunches the terminals closing it stopped, listing them
+// under "started". When no checkout is left, on_missing_checkout
+// "reclone" clones it again and "remove" removes it, which terminals
+// still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
 // invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-// project_mismatch, repo_exists.
+// project_in_use, project_mismatch, repo_exists.
 //
 // Takes any type of body and a specified content type.
 //
@@ -839,14 +1096,16 @@ func (c *Client) CreateProjectWithBody(ctx context.Context, contentType string, 
 //   - git: open the project with that origin, or clone it into
 //     <home>/projects/<name> if it is unknown.
 //
-// Opening a known project marks it open and drops its checkouts no
-// longer on disk. When none is left, on_missing_checkout "reclone"
-// clones it again and "remove" removes it; without it checkout_missing
+// Opening a known project marks it open, drops its checkouts no longer
+// on disk and relaunches the terminals closing it stopped, listing them
+// under "started". When no checkout is left, on_missing_checkout
+// "reclone" clones it again and "remove" removes it, which terminals
+// still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
 // invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-// project_mismatch, repo_exists.
+// project_in_use, project_mismatch, repo_exists.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -865,13 +1124,15 @@ func (c *Client) CreateProject(ctx context.Context, body CreateProjectJSONReques
 
 // DeleteProject Delete a project and everything that belongs to it
 //
-// Files on disk are not touched.
+// Files on disk are not touched. Terminals starting or running refuse
+// it with project_in_use unless stop_running is true, which stops them
+// first and lists them under "stopped".
 //
-// Errors: not_found.
+// Errors: not_found, project_in_use.
 //
 // Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
-func (c *Client) DeleteProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteProjectRequest(c.Server, project)
+func (c *Client) DeleteProject(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProjectRequest(c.Server, project, params)
 	if err != nil {
 		return nil, err
 	}
@@ -901,10 +1162,15 @@ func (c *Client) GetProject(ctx context.Context, project ProjectRef, reqEditors 
 
 // UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. Opening drops the checkouts no longer
-// on disk; when none is left, checkout_missing is returned.
+// Closing touches nothing on disk. It stops the project's terminals that
+// are starting or running, which it refuses with project_in_use unless
+// stop_running is true, and lists them under "stopped".
 //
-// Errors: checkout_missing, not_found.
+// Opening drops the checkouts no longer on disk; when none is left,
+// checkout_missing is returned. It relaunches the terminals closing
+// stopped and lists them under "started", each in the state it reached.
+//
+// Errors: checkout_missing, not_found, project_in_use.
 //
 // Takes any type of body and a specified content type.
 //
@@ -923,10 +1189,15 @@ func (c *Client) UpdateProjectWithBody(ctx context.Context, project ProjectRef, 
 
 // UpdateProject Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. Opening drops the checkouts no longer
-// on disk; when none is left, checkout_missing is returned.
+// Closing touches nothing on disk. It stops the project's terminals that
+// are starting or running, which it refuses with project_in_use unless
+// stop_running is true, and lists them under "stopped".
 //
-// Errors: checkout_missing, not_found.
+// Opening drops the checkouts no longer on disk; when none is left,
+// checkout_missing is returned. It relaunches the terminals closing
+// stopped and lists them under "started", each in the state it reached.
+//
+// Errors: checkout_missing, not_found, project_in_use.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -945,11 +1216,133 @@ func (c *Client) UpdateProject(ctx context.Context, project ProjectRef, body Upd
 
 // RecloneProject Clone a project with no checkout left back into its clone path
 //
+// Relaunches the terminals closing the project stopped, as opening it
+// does.
+//
 // Errors: clone_failed, invalid_argument, not_found, path_exists.
 //
 // Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 func (c *Client) RecloneProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRecloneProjectRequest(c.Server, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTerminals List terminals by project name, then name
+//
+// The terminals of the project named by project, or of the project whose
+// worktree holds dir; of every project when neither is given.
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
+func (c *Client) ListTerminals(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTerminalsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTerminalWithBody Create a terminal and start its shell
+//
+// Without project, the terminal belongs to the project whose worktree
+// holds dir, the longest path winning, and its shell starts in dir.
+// With project, it starts in dir when dir is in one of the project's
+// worktrees, else in the project's clone path.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+func (c *Client) CreateTerminalWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTerminalRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTerminal Create a terminal and start its shell
+//
+// Without project, the terminal belongs to the project whose worktree
+// holds dir, the longest path winning, and its shell starts in dir.
+// With project, it starts in dir when dir is in one of the project's
+// worktrees, else in the project's clone path.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+func (c *Client) CreateTerminal(ctx context.Context, body CreateTerminalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTerminalRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteTerminal Delete a terminal
+//
+// A terminal starting or running refuses it with terminal_running
+// unless stop_running is true, which stops its shell first.
+//
+// Errors: not_found, terminal_running.
+//
+// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
+func (c *Client) DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTerminalRequest(c.Server, terminal, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartTerminal Start a fresh shell for a terminal whose last one ended
+//
+// For a terminal that exited, failed or was lost; never for one stopped
+// by closing its project, which opening it relaunches.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: not_found, project_closed, start_failed, terminal_running.
+//
+// Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
+func (c *Client) StartTerminal(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartTerminalRequest(c.Server, terminal, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1097,7 +1490,7 @@ func NewCreateProjectRequestWithBody(server string, contentType string, body io.
 }
 
 // NewDeleteProjectRequest constructs an http.Request for the DeleteProject method
-func NewDeleteProjectRequest(server string, project ProjectRef) (*http.Request, error) {
+func NewDeleteProjectRequest(server string, project ProjectRef, params *DeleteProjectParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1120,6 +1513,33 @@ func NewDeleteProjectRequest(server string, project ProjectRef) (*http.Request, 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.StopRunning != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "stop_running", *params.StopRunning, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
@@ -1245,6 +1665,270 @@ func NewRecloneProjectRequest(server string, project ProjectRef) (*http.Request,
 	return req, nil
 }
 
+// NewListTerminalsRequest constructs an http.Request for the ListTerminals method
+func NewListTerminalsRequest(server string, params *ListTerminalsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateTerminalRequest calls the generic CreateTerminal builder with application/json body
+func NewCreateTerminalRequest(server string, body CreateTerminalJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTerminalRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateTerminalRequestWithBody constructs an http.Request for the CreateTerminal method, with any body, and a specified content type
+func NewCreateTerminalRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteTerminalRequest constructs an http.Request for the DeleteTerminal method
+func NewDeleteTerminalRequest(server string, terminal TerminalRef, params *DeleteTerminalParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "terminal", terminal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.StopRunning != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "stop_running", *params.StopRunning, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStartTerminalRequest constructs an http.Request for the StartTerminal method
+func NewStartTerminalRequest(server string, terminal TerminalRef, params *StartTerminalParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "terminal", terminal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals/%s/start", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetVersionRequest constructs an http.Request for the GetVersion method
 func NewGetVersionRequest(server string) (*http.Request, error) {
 	var err error
@@ -1344,14 +2028,16 @@ type ClientWithResponsesInterface interface {
 	// - git: open the project with that origin, or clone it into
 	//   <home>/projects/<name> if it is unknown.
 	//
-	// Opening a known project marks it open and drops its checkouts no
-	// longer on disk. When none is left, on_missing_checkout "reclone"
-	// clones it again and "remove" removes it; without it checkout_missing
+	// Opening a known project marks it open, drops its checkouts no longer
+	// on disk and relaunches the terminals closing it stopped, listing them
+	// under "started". When no checkout is left, on_missing_checkout
+	// "reclone" clones it again and "remove" removes it, which terminals
+	// still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
 	// invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-	// project_mismatch, repo_exists.
+	// project_in_use, project_mismatch, repo_exists.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1372,14 +2058,16 @@ type ClientWithResponsesInterface interface {
 	// - git: open the project with that origin, or clone it into
 	//   <home>/projects/<name> if it is unknown.
 	//
-	// Opening a known project marks it open and drops its checkouts no
-	// longer on disk. When none is left, on_missing_checkout "reclone"
-	// clones it again and "remove" removes it; without it checkout_missing
+	// Opening a known project marks it open, drops its checkouts no longer
+	// on disk and relaunches the terminals closing it stopped, listing them
+	// under "started". When no checkout is left, on_missing_checkout
+	// "reclone" clones it again and "remove" removes it, which terminals
+	// still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
 	// invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-	// project_mismatch, repo_exists.
+	// project_in_use, project_mismatch, repo_exists.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1388,14 +2076,16 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteProjectWithResponse Delete a project and everything that belongs to it
 	//
-	// Files on disk are not touched.
+	// Files on disk are not touched. Terminals starting or running refuse
+	// it with project_in_use unless stop_running is true, which stops them
+	// first and lists them under "stopped".
 	//
-	// Errors: not_found.
+	// Errors: not_found, project_in_use.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
-	DeleteProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error)
+	DeleteProjectWithResponse(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error)
 
 	// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk
 	//
@@ -1408,10 +2098,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. Opening drops the checkouts no longer
-	// on disk; when none is left, checkout_missing is returned.
+	// Closing touches nothing on disk. It stops the project's terminals that
+	// are starting or running, which it refuses with project_in_use unless
+	// stop_running is true, and lists them under "stopped".
 	//
-	// Errors: checkout_missing, not_found.
+	// Opening drops the checkouts no longer on disk; when none is left,
+	// checkout_missing is returned. It relaunches the terminals closing
+	// stopped and lists them under "started", each in the state it reached.
+	//
+	// Errors: checkout_missing, not_found, project_in_use.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1420,10 +2115,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. Opening drops the checkouts no longer
-	// on disk; when none is left, checkout_missing is returned.
+	// Closing touches nothing on disk. It stops the project's terminals that
+	// are starting or running, which it refuses with project_in_use unless
+	// stop_running is true, and lists them under "stopped".
 	//
-	// Errors: checkout_missing, not_found.
+	// Opening drops the checkouts no longer on disk; when none is left,
+	// checkout_missing is returned. It relaunches the terminals closing
+	// stopped and lists them under "started", each in the state it reached.
+	//
+	// Errors: checkout_missing, not_found, project_in_use.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1432,12 +2132,90 @@ type ClientWithResponsesInterface interface {
 
 	// RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 	//
+	// Relaunches the terminals closing the project stopped, as opening it
+	// does.
+	//
 	// Errors: clone_failed, invalid_argument, not_found, path_exists.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 	RecloneProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*RecloneProjectResponse, error)
+
+	// ListTerminalsWithResponse List terminals by project name, then name
+	//
+	// The terminals of the project named by project, or of the project whose
+	// worktree holds dir; of every project when neither is given.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
+	ListTerminalsWithResponse(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*ListTerminalsResponse, error)
+
+	// CreateTerminalWithBodyWithResponse Create a terminal and start its shell
+	//
+	// Without project, the terminal belongs to the project whose worktree
+	// holds dir, the longest path winning, and its shell starts in dir.
+	// With project, it starts in dir when dir is in one of the project's
+	// worktrees, else in the project's clone path.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+	CreateTerminalWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTerminalResponse, error)
+
+	// CreateTerminalWithResponse Create a terminal and start its shell
+	//
+	// Without project, the terminal belongs to the project whose worktree
+	// holds dir, the longest path winning, and its shell starts in dir.
+	// With project, it starts in dir when dir is in one of the project's
+	// worktrees, else in the project's clone path.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+	CreateTerminalWithResponse(ctx context.Context, body CreateTerminalJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTerminalResponse, error)
+
+	// DeleteTerminalWithResponse Delete a terminal
+	//
+	// A terminal starting or running refuses it with terminal_running
+	// unless stop_running is true, which stops its shell first.
+	//
+	// Errors: not_found, terminal_running.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
+	DeleteTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*DeleteTerminalResponse, error)
+
+	// StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
+	//
+	// For a terminal that exited, failed or was lost; never for one stopped
+	// by closing its project, which opening it relaunches.
+	//
+	// A shell that does not start leaves the terminal failed and returns
+	// start_failed with the terminal under details.terminal.
+	//
+	// Errors: not_found, project_closed, start_failed, terminal_running.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
+	StartTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*StartTerminalResponse, error)
 
 	// GetVersionWithResponse Version of the daemon
 	//
@@ -1790,6 +2568,198 @@ func (r RecloneProjectResponse) ContentType() string {
 	return ""
 }
 
+type ListTerminalsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTerminalsResponse) GetJSON200() *TerminalList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTerminalsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTerminalsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTerminalsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTerminalsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTerminalsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateTerminalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *TerminalResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateTerminalResponse) GetJSON201() *TerminalResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateTerminalResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateTerminalResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTerminalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTerminalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTerminalResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteTerminalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteTerminalResponse) GetJSON200() *TerminalResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteTerminalResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteTerminalResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTerminalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTerminalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteTerminalResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StartTerminalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r StartTerminalResponse) GetJSON200() *TerminalResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StartTerminalResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StartTerminalResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartTerminalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartTerminalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartTerminalResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1878,14 +2848,16 @@ func (c *ClientWithResponses) ListProjectsWithResponse(ctx context.Context, para
 //   - git: open the project with that origin, or clone it into
 //     <home>/projects/<name> if it is unknown.
 //
-// Opening a known project marks it open and drops its checkouts no
-// longer on disk. When none is left, on_missing_checkout "reclone"
-// clones it again and "remove" removes it; without it checkout_missing
+// Opening a known project marks it open, drops its checkouts no longer
+// on disk and relaunches the terminals closing it stopped, listing them
+// under "started". When no checkout is left, on_missing_checkout
+// "reclone" clones it again and "remove" removes it, which terminals
+// still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
 // invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-// project_mismatch, repo_exists.
+// project_in_use, project_mismatch, repo_exists.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1912,14 +2884,16 @@ func (c *ClientWithResponses) CreateProjectWithBodyWithResponse(ctx context.Cont
 //   - git: open the project with that origin, or clone it into
 //     <home>/projects/<name> if it is unknown.
 //
-// Opening a known project marks it open and drops its checkouts no
-// longer on disk. When none is left, on_missing_checkout "reclone"
-// clones it again and "remove" removes it; without it checkout_missing
+// Opening a known project marks it open, drops its checkouts no longer
+// on disk and relaunches the terminals closing it stopped, listing them
+// under "started". When no checkout is left, on_missing_checkout
+// "reclone" clones it again and "remove" removes it, which terminals
+// still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
 // invalid_name, invalid_path, name_taken, not_git_repo, path_exists,
-// project_mismatch, repo_exists.
+// project_in_use, project_mismatch, repo_exists.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1934,15 +2908,17 @@ func (c *ClientWithResponses) CreateProjectWithResponse(ctx context.Context, bod
 
 // DeleteProjectWithResponse Delete a project and everything that belongs to it
 //
-// Files on disk are not touched.
+// Files on disk are not touched. Terminals starting or running refuse
+// it with project_in_use unless stop_running is true, which stops them
+// first and lists them under "stopped".
 //
-// Errors: not_found.
+// Errors: not_found, project_in_use.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
-func (c *ClientWithResponses) DeleteProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error) {
-	rsp, err := c.DeleteProject(ctx, project, reqEditors...)
+func (c *ClientWithResponses) DeleteProjectWithResponse(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error) {
+	rsp, err := c.DeleteProject(ctx, project, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1966,10 +2942,15 @@ func (c *ClientWithResponses) GetProjectWithResponse(ctx context.Context, projec
 
 // UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. Opening drops the checkouts no longer
-// on disk; when none is left, checkout_missing is returned.
+// Closing touches nothing on disk. It stops the project's terminals that
+// are starting or running, which it refuses with project_in_use unless
+// stop_running is true, and lists them under "stopped".
 //
-// Errors: checkout_missing, not_found.
+// Opening drops the checkouts no longer on disk; when none is left,
+// checkout_missing is returned. It relaunches the terminals closing
+// stopped and lists them under "started", each in the state it reached.
+//
+// Errors: checkout_missing, not_found, project_in_use.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1984,10 +2965,15 @@ func (c *ClientWithResponses) UpdateProjectWithBodyWithResponse(ctx context.Cont
 
 // UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. Opening drops the checkouts no longer
-// on disk; when none is left, checkout_missing is returned.
+// Closing touches nothing on disk. It stops the project's terminals that
+// are starting or running, which it refuses with project_in_use unless
+// stop_running is true, and lists them under "stopped".
 //
-// Errors: checkout_missing, not_found.
+// Opening drops the checkouts no longer on disk; when none is left,
+// checkout_missing is returned. It relaunches the terminals closing
+// stopped and lists them under "started", each in the state it reached.
+//
+// Errors: checkout_missing, not_found, project_in_use.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2002,6 +2988,9 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 
 // RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 //
+// Relaunches the terminals closing the project stopped, as opening it
+// does.
+//
 // Errors: clone_failed, invalid_argument, not_found, path_exists.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2013,6 +3002,111 @@ func (c *ClientWithResponses) RecloneProjectWithResponse(ctx context.Context, pr
 		return nil, err
 	}
 	return ParseRecloneProjectResponse(rsp)
+}
+
+// ListTerminalsWithResponse List terminals by project name, then name
+//
+// The terminals of the project named by project, or of the project whose
+// worktree holds dir; of every project when neither is given.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
+func (c *ClientWithResponses) ListTerminalsWithResponse(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*ListTerminalsResponse, error) {
+	rsp, err := c.ListTerminals(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTerminalsResponse(rsp)
+}
+
+// CreateTerminalWithBodyWithResponse Create a terminal and start its shell
+//
+// Without project, the terminal belongs to the project whose worktree
+// holds dir, the longest path winning, and its shell starts in dir.
+// With project, it starts in dir when dir is in one of the project's
+// worktrees, else in the project's clone path.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+func (c *ClientWithResponses) CreateTerminalWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTerminalResponse, error) {
+	rsp, err := c.CreateTerminalWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTerminalResponse(rsp)
+}
+
+// CreateTerminalWithResponse Create a terminal and start its shell
+//
+// Without project, the terminal belongs to the project whose worktree
+// holds dir, the longest path winning, and its shell starts in dir.
+// With project, it starts in dir when dir is in one of the project's
+// worktrees, else in the project's clone path.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/terminals (the `CreateTerminal` operationId).
+func (c *ClientWithResponses) CreateTerminalWithResponse(ctx context.Context, body CreateTerminalJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTerminalResponse, error) {
+	rsp, err := c.CreateTerminal(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTerminalResponse(rsp)
+}
+
+// DeleteTerminalWithResponse Delete a terminal
+//
+// A terminal starting or running refuses it with terminal_running
+// unless stop_running is true, which stops its shell first.
+//
+// Errors: not_found, terminal_running.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
+func (c *ClientWithResponses) DeleteTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*DeleteTerminalResponse, error) {
+	rsp, err := c.DeleteTerminal(ctx, terminal, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTerminalResponse(rsp)
+}
+
+// StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
+//
+// For a terminal that exited, failed or was lost; never for one stopped
+// by closing its project, which opening it relaunches.
+//
+// A shell that does not start leaves the terminal failed and returns
+// start_failed with the terminal under details.terminal.
+//
+// Errors: not_found, project_closed, start_failed, terminal_running.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
+func (c *ClientWithResponses) StartTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*StartTerminalResponse, error) {
+	rsp, err := c.StartTerminal(ctx, terminal, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartTerminalResponse(rsp)
 }
 
 // GetVersionWithResponse Version of the daemon
@@ -2266,6 +3360,138 @@ func ParseRecloneProjectResponse(rsp *http.Response) (*RecloneProjectResponse, e
 	return response, nil
 }
 
+// ParseListTerminalsResponse parses an HTTP response from a ListTerminalsWithResponse call
+func ParseListTerminalsResponse(rsp *http.Response) (*ListTerminalsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTerminalsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateTerminalResponse parses an HTTP response from a CreateTerminalWithResponse call
+func ParseCreateTerminalResponse(rsp *http.Response) (*CreateTerminalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTerminalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TerminalResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteTerminalResponse parses an HTTP response from a DeleteTerminalWithResponse call
+func ParseDeleteTerminalResponse(rsp *http.Response) (*DeleteTerminalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTerminalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartTerminalResponse parses an HTTP response from a StartTerminalWithResponse call
+func ParseStartTerminalResponse(rsp *http.Response) (*StartTerminalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartTerminalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetVersionResponse parses an HTTP response from a GetVersionWithResponse call
 func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2312,7 +3538,7 @@ type ServerInterface interface {
 	CreateProject(w http.ResponseWriter, r *http.Request)
 	// DeleteProject Delete a project and everything that belongs to it
 	// (DELETE /v1/projects/{project})
-	DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params DeleteProjectParams)
 	// GetProject A project, open or closed, with which of its checkouts are on disk
 	// (GET /v1/projects/{project})
 	GetProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
@@ -2322,6 +3548,18 @@ type ServerInterface interface {
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	// ListTerminals List terminals by project name, then name
+	// (GET /v1/terminals)
+	ListTerminals(w http.ResponseWriter, r *http.Request, params ListTerminalsParams)
+	// CreateTerminal Create a terminal and start its shell
+	// (POST /v1/terminals)
+	CreateTerminal(w http.ResponseWriter, r *http.Request)
+	// DeleteTerminal Delete a terminal
+	// (DELETE /v1/terminals/{terminal})
+	DeleteTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params DeleteTerminalParams)
+	// StartTerminal Start a fresh shell for a terminal whose last one ended
+	// (POST /v1/terminals/{terminal}/start)
+	StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams)
 	// GetVersion Version of the daemon
 	// (GET /v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -2412,8 +3650,24 @@ func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteProjectParams
+
+	// ------------- Optional query parameter "stop_running" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "stop_running", r.URL.Query(), &params.StopRunning, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "stop_running"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stop_running", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteProject(w, r, project)
+		siw.Handler.DeleteProject(w, r, project, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2492,6 +3746,189 @@ func (siw *ServerInterfaceWrapper) RecloneProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RecloneProject(w, r, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTerminals operation middleware
+func (siw *ServerInterfaceWrapper) ListTerminals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTerminalsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTerminals(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTerminal operation middleware
+func (siw *ServerInterfaceWrapper) CreateTerminal(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTerminal(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTerminal operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTerminal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "terminal" -------------
+	var terminal TerminalRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "terminal", r.PathValue("terminal"), &terminal, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "terminal", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteTerminalParams
+
+	// ------------- Optional query parameter "stop_running" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "stop_running", r.URL.Query(), &params.StopRunning, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "stop_running"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stop_running", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTerminal(w, r, terminal, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartTerminal operation middleware
+func (siw *ServerInterfaceWrapper) StartTerminal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "terminal" -------------
+	var terminal TerminalRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "terminal", r.PathValue("terminal"), &terminal, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "terminal", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StartTerminalParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartTerminal(w, r, terminal, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2643,6 +4080,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/projects/{project}", wrapper.UpdateProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees", wrapper.RecloneProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals", wrapper.ListTerminals)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals", wrapper.CreateTerminal)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.DeleteTerminal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals/{terminal}/start", wrapper.StartTerminal)
 
 	return m
 }
@@ -2781,6 +4222,7 @@ func (response CreateProjectdefaultApplicationProblemPlusJSONResponse) VisitCrea
 
 type DeleteProjectRequestObject struct {
 	Project ProjectRef `json:"project"`
+	Params  DeleteProjectParams
 }
 
 type DeleteProjectResponseObject interface {
@@ -2936,6 +4378,164 @@ func (response RecloneProjectdefaultApplicationProblemPlusJSONResponse) VisitRec
 	return err
 }
 
+type ListTerminalsRequestObject struct {
+	Params ListTerminalsParams
+}
+
+type ListTerminalsResponseObject interface {
+	VisitListTerminalsResponse(w http.ResponseWriter) error
+}
+
+type ListTerminals200JSONResponse TerminalList
+
+func (response ListTerminals200JSONResponse) VisitListTerminalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTerminalsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListTerminalsdefaultApplicationProblemPlusJSONResponse) VisitListTerminalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTerminalRequestObject struct {
+	Body *CreateTerminalJSONRequestBody
+}
+
+type CreateTerminalResponseObject interface {
+	VisitCreateTerminalResponse(w http.ResponseWriter) error
+}
+
+type CreateTerminal201JSONResponse TerminalResult
+
+func (response CreateTerminal201JSONResponse) VisitCreateTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTerminaldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateTerminaldefaultApplicationProblemPlusJSONResponse) VisitCreateTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTerminalRequestObject struct {
+	Terminal TerminalRef `json:"terminal"`
+	Params   DeleteTerminalParams
+}
+
+type DeleteTerminalResponseObject interface {
+	VisitDeleteTerminalResponse(w http.ResponseWriter) error
+}
+
+type DeleteTerminal200JSONResponse TerminalResult
+
+func (response DeleteTerminal200JSONResponse) VisitDeleteTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTerminaldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteTerminaldefaultApplicationProblemPlusJSONResponse) VisitDeleteTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTerminalRequestObject struct {
+	Terminal TerminalRef `json:"terminal"`
+	Params   StartTerminalParams
+}
+
+type StartTerminalResponseObject interface {
+	VisitStartTerminalResponse(w http.ResponseWriter) error
+}
+
+type StartTerminal200JSONResponse TerminalResult
+
+func (response StartTerminal200JSONResponse) VisitStartTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTerminaldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StartTerminaldefaultApplicationProblemPlusJSONResponse) VisitStartTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -2997,6 +4597,18 @@ type StrictServerInterface interface {
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(ctx context.Context, request RecloneProjectRequestObject) (RecloneProjectResponseObject, error)
+	// ListTerminals List terminals by project name, then name
+	// (GET /v1/terminals)
+	ListTerminals(ctx context.Context, request ListTerminalsRequestObject) (ListTerminalsResponseObject, error)
+	// CreateTerminal Create a terminal and start its shell
+	// (POST /v1/terminals)
+	CreateTerminal(ctx context.Context, request CreateTerminalRequestObject) (CreateTerminalResponseObject, error)
+	// DeleteTerminal Delete a terminal
+	// (DELETE /v1/terminals/{terminal})
+	DeleteTerminal(ctx context.Context, request DeleteTerminalRequestObject) (DeleteTerminalResponseObject, error)
+	// StartTerminal Start a fresh shell for a terminal whose last one ended
+	// (POST /v1/terminals/{terminal}/start)
+	StartTerminal(ctx context.Context, request StartTerminalRequestObject) (StartTerminalResponseObject, error)
 	// GetVersion Version of the daemon
 	// (GET /v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -3123,10 +4735,11 @@ func (sh *strictHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteProject operation middleware
-func (sh *strictHandler) DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef) {
+func (sh *strictHandler) DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params DeleteProjectParams) {
 	var request DeleteProjectRequestObject
 
 	request.Project = project
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteProject(ctx, request.(DeleteProjectRequestObject))
@@ -3233,6 +4846,117 @@ func (sh *strictHandler) RecloneProject(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListTerminals operation middleware
+func (sh *strictHandler) ListTerminals(w http.ResponseWriter, r *http.Request, params ListTerminalsParams) {
+	var request ListTerminalsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTerminals(ctx, request.(ListTerminalsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTerminals")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTerminalsResponseObject); ok {
+		if err := validResponse.VisitListTerminalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTerminal operation middleware
+func (sh *strictHandler) CreateTerminal(w http.ResponseWriter, r *http.Request) {
+	var request CreateTerminalRequestObject
+
+	var body CreateTerminalJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTerminal(ctx, request.(CreateTerminalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTerminal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTerminalResponseObject); ok {
+		if err := validResponse.VisitCreateTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTerminal operation middleware
+func (sh *strictHandler) DeleteTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params DeleteTerminalParams) {
+	var request DeleteTerminalRequestObject
+
+	request.Terminal = terminal
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTerminal(ctx, request.(DeleteTerminalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTerminal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTerminalResponseObject); ok {
+		if err := validResponse.VisitDeleteTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartTerminal operation middleware
+func (sh *strictHandler) StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams) {
+	var request StartTerminalRequestObject
+
+	request.Terminal = terminal
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartTerminal(ctx, request.(StartTerminalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartTerminal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartTerminalResponseObject); ok {
+		if err := validResponse.VisitStartTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetVersion operation middleware
 func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	var request GetVersionRequestObject
@@ -3262,56 +4986,78 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"+98AAAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -207,8 +207,9 @@ A terminal in JSON:
 Projects:
 
 - `PATCH /v1/projects/{project}` takes `stop_running` with `state: closed`; `DELETE` takes `?stop_running=true`. With a terminal `starting` or `running` and without it: 409 `project_in_use`, the live terminals under `details.terminals` (agents later under `details.agents`).
-- Close marks those terminals `stopped` and stops them; the result lists them under `stopped`. Remove stops them, then the cascade deletes every row.
-- Opening a project (`PATCH` to open, or `POST /v1/projects` reopening a known one) relaunches its `stopped` terminals and lists them under `started`, each with the state it reached: one whose dir is gone ends `failed`.
+- Close marks those terminals `stopped` and stops them, then closes the project; the result lists them under `stopped`. Remove stops them, lists them under `stopped` too, then the cascade deletes every row. `on_missing_checkout: remove` on `POST /v1/projects` removes the same way, without `stop_running`: live terminals refuse it with `project_in_use`.
+- Opening a project (`PATCH` to open, `POST /v1/projects` reopening a known one, or recloning it) relaunches its `stopped` terminals and lists them under `started`, each with the state it reached: one whose dir is gone ends `failed`.
+- `started` and `stopped` are left out when empty, as `dropped` is.
 
 New codes in `internal/api/codes.go`:
 
@@ -219,7 +220,7 @@ New codes in `internal/api/codes.go`:
 | `terminal_running` | 409 | 1 | the terminal is already starting or running |
 | `start_failed` | 500 | 3 | the holder or the shell did not start |
 
-`not_found` becomes "nothing has this name or id", since it now covers terminals too.
+`not_found`, `name_taken` and `invalid_name` now cover terminals too, so their descriptions no longer say "project": "nothing has this name or id", "something else has this name", "the name is not allowed".
 
 ## CLI
 
@@ -263,12 +264,11 @@ swift-falcon  running       /home/me/dev/warden    term-1a2b3c4d
 
 ## Implementation plan
 
-Each step builds and passes `make test` on its own.
+Each step builds and passes `make test` on its own. Steps 1 to 4 are done.
 
 1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.
 3. **`internal/terminal`**: the Store (rows, transitions, names with codenames, lookup by id or by name in a project) and the supervisor that starts, watches, stops and reconciles holders. It does not import `project`: the daemon passes the project's id and the dir. `holder/holdertest` makes a test binary its own holder. Tests with a temp DB and real holders.
-4. **API**: the terminal paths and schemas, `stop_running`, `started` / `stopped` on project results, the new codes; `make generate`.
-5. **Daemon**: the project whose worktree contains a dir, in the project Store; the terminal handlers; reconciliation before serving; project close, open and remove going through the supervisor; shutdown leaving holders alone.
-6. **CLI**: `wdx terminal create / list / start / remove`, the hidden `wdx holder`, `--stop-running` / `--cancel` and their prompt on project close and remove, completions, help, examples; integration tests per outcome.
-7. **Install and docs**: `KillMode=process` and `AbandonProcessGroup` in `scripts/install.sh`; DAEMON.md; AGENTS.md's layout and dependency lines (`cli -> holder` for the hidden command, `daemon -> terminal -> holder`); V1_FEATURES.md checkboxes.
+4. **API and daemon**, one step since the daemon must implement every operation of the spec to build: the terminal paths and schemas, `stop_running`, `started` / `stopped` on project results, the new codes, `make generate`; `GetByPath` (the project whose worktree holds a dir, the deepest winning) in the project Store; the terminal handlers; reconciliation before serving; project close, open and remove going through the supervisor; shutdown leaving holders alone. The daemon takes the binary holders run, the shells' variables and `terminal.shell` as options.
+5. **CLI**: `wdx terminal create / list / start / remove`, the hidden `wdx holder`, `--stop-running` / `--cancel` and their prompt on project close and remove, completions, help, examples; integration tests per outcome.
+6. **Install and docs**: `KillMode=process` and `AbandonProcessGroup` in `scripts/install.sh`; DAEMON.md; AGENTS.md's layout and dependency lines (`cli -> holder` for the hidden command, `daemon -> terminal -> holder`); V1_FEATURES.md checkboxes.
