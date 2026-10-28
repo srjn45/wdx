@@ -55,12 +55,13 @@ func LogsDir(home string) string {
 	return filepath.Join(home, "logs")
 }
 
-// Where releases are published; vars so a fork can build its own.
+// Where releases are published, apart from the old warden's in srjn45/warden;
+// vars so a fork can build its own.
 var (
 	// ReleasesURL holds the releases, as <ReleasesURL>/v<version>/<archive>.
-	ReleasesURL = "https://github.com/srjn45/warden/releases/download"
+	ReleasesURL = "https://github.com/srjn45/wdx/releases/download"
 	// ReleasesAPI lists the releases, newest first.
-	ReleasesAPI = "https://api.github.com/repos/srjn45/warden/releases"
+	ReleasesAPI = "https://api.github.com/repos/srjn45/wdx/releases"
 )
 
 // PreviousDir holds the version an update replaced, and the database as it

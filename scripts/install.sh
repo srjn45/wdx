@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install wdx from a release.
 #
-#   curl -fsSL https://github.com/srjn45/warden/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | sh
 #
 # Downloads the archive for this OS/arch, verifies its checksum, installs the
 # binary into ~/.local/bin, the completion of every shell found among bash,
@@ -24,7 +24,7 @@
 set -eu
 
 NAME=wdx
-REPO=srjn45/warden
+REPO=srjn45/wdx
 GITHUB_BASE="https://github.com/$REPO/releases/download"
 BASE="${WDX_DOWNLOAD_BASE:-$GITHUB_BASE}"
 BIN_DIR="${WDX_BIN_DIR:-$HOME/.local/bin}"
@@ -261,7 +261,7 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 #   channel: stable
 #   # Where wdx update downloads releases, laid out as GitHub Releases;
 #   # file://<repo>/dist for local builds.
-#   base_url: https://github.com/srjn45/warden/releases/download
+#   base_url: https://github.com/srjn45/wdx/releases/download
 EOF
 	chmod 0600 "$HOME_DIR/config.yaml"
 	info "wrote the settings template $HOME_DIR/config.yaml"

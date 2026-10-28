@@ -35,8 +35,8 @@ A dev release is tagged with the stable version it leads to and `N`, the number 
 The dev channel installs the newest release of either kind, so dev users get each stable release too. `dist.sh` writes `dist/LATEST-dev` for every release and `dist/LATEST` for stable ones only; on GitHub, the latest release is never a pre-release.
 
 ```sh
-curl -fsSL https://github.com/srjn45/warden/releases/latest/download/install.sh | sh                   # stable
-curl -fsSL https://github.com/srjn45/warden/releases/latest/download/install.sh | WDX_CHANNEL=dev sh   # dev
+curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | sh                   # stable
+curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | WDX_CHANNEL=dev sh   # dev
 ```
 
 `WDX_VERSION` installs one release, whatever the channel.

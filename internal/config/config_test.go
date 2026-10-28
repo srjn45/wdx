@@ -74,7 +74,7 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second,
-		UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/warden/releases/download",
+		UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		From: map[string]string{
 			"update.channel":        "default",
 			"update.base_url":       "default",
