@@ -48,6 +48,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeUpdateFailed:      {http.StatusInternalServerError, ExitSystem, "the update or rollback failed and was undone"},
 	ErrorCodeNoPreviousVersion: {http.StatusConflict, ExitRejected, "no previous version is kept to roll back to"},
 	ErrorCodeRestoreRequired:   {http.StatusConflict, ExitRejected, "rolling back needs the database backup, losing the changes since the update"},
+	ErrorCodeSettingsInvalid:   {http.StatusUnprocessableEntity, ExitRejected, "the release does not accept a value the config file sets"},
 }
 
 // NewProblem returns the problem of code, with the status and title the code

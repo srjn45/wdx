@@ -336,7 +336,17 @@ type jsonOutput struct {
 		SchemaFrom   int     `json:"schema_from"`
 		SchemaTo     int     `json:"schema_to"`
 		DataRestored *bool   `json:"data_restored"`
+		Settings     *struct {
+			Added   []string `json:"added"`
+			Dropped []string `json:"dropped"`
+		} `json:"settings"`
 	} `json:"update"`
+
+	Settings *struct {
+		Path    string   `json:"path"`
+		Added   []string `json:"added"`
+		Dropped []string `json:"dropped"`
+	} `json:"settings"`
 
 	Runtime     *string    `json:"runtime"`
 	Stack       *jsonStack `json:"stack"`

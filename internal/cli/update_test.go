@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -25,11 +26,23 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 )
 
-// brokenRelease says it is version 0.3.0 but cannot run the daemon.
+// brokenRelease says it is version 0.3.0 and writes the settings, adding a
+// line, but cannot run the daemon.
 const brokenRelease = `#!/bin/sh
 case "$1" in
 version) echo '{"cli": {"name": "wdx", "version": "0.3.0", "commit": "none"}, "daemon": null}' ;;
+settings) { cat "$WDX_HOME/config.yaml"; echo "# written by 0.3.0"; } >"$5"
+	echo '{"result": "written", "settings": {"path": "'"$5"'", "added": ["new.setting"], "dropped": []}}' ;;
 *) echo "broken release" >&2; exit 1 ;;
+esac
+`
+
+// pickyRelease does not accept the settings.
+const pickyRelease = `#!/bin/sh
+case "$1" in
+settings) echo '{"code": "usage", "detail": "invalid settings: color: not here", "details": {"settings": [{"key": "color", "from": "config.yaml:1", "value": "auto", "reason": "not here"}]}}'
+	exit 2 ;;
+*) echo "picky release" >&2; exit 1 ;;
 esac
 `
 
@@ -64,6 +77,15 @@ func publish(t *testing.T, latest, latestDev string, binaries map[string]string)
 	writeFile(t, filepath.Join(dir, "LATEST"), "v"+latest+"\n")
 	writeFile(t, filepath.Join(dir, "LATEST-dev"), "v"+latestDev+"\n")
 	return "file://" + dir, dir
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -219,11 +241,18 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		t.Fatal("the daemon did not start")
 	}
 	newProject(t, in.home, "before")
+	settings := readFile(t, identity.ConfigPath(in.home))
 
 	v, exit := in.json(t, "update", "--apply")
 	if exit != api.ExitOK || v.Result != "updated" || v.Update.From != identity.Version || v.Update.To != releaseVersion ||
 		*v.Update.Channel != "stable" || v.Update.SchemaFrom != db.Known() || v.Update.SchemaTo != db.Known() || v.Update.DataRestored != nil {
 		t.Fatalf("want updated to %s, got exit %d, %+v", releaseVersion, exit, v.Update)
+	}
+	if s := v.Update.Settings; s == nil || !slices.Contains(s.Added, "update.channel") || slices.Contains(s.Added, "update.base_url") || len(s.Dropped) != 0 {
+		t.Fatalf("want the settings not set added, got %+v", v.Update.Settings)
+	}
+	if got := readFile(t, identity.ConfigPath(in.home)); !strings.Contains(got, "  base_url: "+in.base+"\n") || !strings.Contains(got, "  # channel: stable\n") {
+		t.Fatalf("want the settings written anew, keeping base_url, got\n%s", got)
 	}
 	in.wantInstalled(t, releaseBinary)
 	in.wantDaemon(t, releaseVersion)
@@ -247,6 +276,9 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	in.wantInstalled(t, wdxBinary)
 	in.wantDaemon(t, identity.Version)
 	in.wantProjects(t, "after", "before")
+	if got := readFile(t, identity.ConfigPath(in.home)); got != settings {
+		t.Fatalf("want the settings from before the update, got\n%s", got)
+	}
 	if _, err := os.Stat(identity.PreviousDir(in.home)); !os.IsNotExist(err) {
 		t.Fatalf("want nothing kept after the rollback, got %v", err)
 	}
@@ -314,6 +346,7 @@ func TestUpdateUndone(t *testing.T) {
 		t.Fatal("the daemon did not start")
 	}
 	newProject(t, in.home, "before")
+	settings := readFile(t, identity.ConfigPath(in.home))
 
 	v, exit := in.json(t, "update", "--apply")
 	wantError(t, v, exit, api.ErrorCodeUpdateFailed, api.ExitSystem)
@@ -323,8 +356,30 @@ func TestUpdateUndone(t *testing.T) {
 	in.wantInstalled(t, wdxBinary)
 	in.wantDaemon(t, identity.Version)
 	in.wantProjects(t, "before")
+	if got := readFile(t, identity.ConfigPath(in.home)); got != settings {
+		t.Fatalf("want the settings put back, got\n%s", got)
+	}
 	if _, err := os.Stat(identity.PreviousDir(in.home)); !os.IsNotExist(err) {
 		t.Fatalf("want nothing kept after a failed update, got %v", err)
+	}
+}
+
+func TestUpdateSettingsInvalid(t *testing.T) {
+	t.Parallel()
+	picky := filepath.Join(t.TempDir(), identity.Name)
+	writeFile(t, picky, pickyRelease)
+	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": picky})
+	in := install(t, base)
+	settings := readFile(t, identity.ConfigPath(in.home))
+
+	v, exit := in.json(t, "update", "--apply")
+	wantError(t, v, exit, api.ErrorCodeSettingsInvalid, api.ExitRejected)
+	if v.Details["version"] != "0.3.0" || v.Details["settings"] == nil {
+		t.Fatalf("want the release and its problems, got %+v", v.Details)
+	}
+	in.wantInstalled(t, wdxBinary)
+	if got := readFile(t, identity.ConfigPath(in.home)); got != settings {
+		t.Fatalf("want the settings left alone, got\n%s", got)
 	}
 }
 

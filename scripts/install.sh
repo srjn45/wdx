@@ -229,48 +229,14 @@ esac
 install_completions
 
 # --- settings -------------------------------------------------------------
+# The installed wdx writes the config file: every setting it has, keeping
+# the values an earlier file sets.
 mkdir -p "$HOME_DIR"
 chmod 0700 "$HOME_DIR"
-if [ ! -e "$HOME_DIR/config.yaml" ]; then
-	cat >"$HOME_DIR/config.yaml" <<'EOF'
-# wdx settings, read when wdx and its daemon start; after changing them run:
-#   wdx daemon restart
-# Every setting is optional; uncomment one to change it. See wdx help settings.
-
-# Never prompt, as --no-input does: true or false.
-# no_input: false
-
-# Color text output: auto (only on a terminal, unless NO_COLOR is set),
-# always or never.
-# color: auto
-
-# log:
-#   # Lowest level logged: debug, info, warn, error.
-#   level: info
-#   # Days of log files kept besides today's.
-#   retention_days: 7
-
-# otel:
-#   # OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP,
-#   # such as the one wdx observe starts; empty sends none.
-#   endpoint: http://localhost:4318
-#   # Seconds between two sends of the metrics.
-#   interval_seconds: 15
-
-# update:
-#   # Releases wdx update installs: stable, or dev for the newest release of
-#   # either kind.
-#   channel: stable
-#   # Where wdx update downloads releases, laid out as GitHub Releases;
-#   # file://<repo>/dist for local builds.
-#   base_url: https://github.com/srjn45/wdx/releases/download
-
-# terminal:
-#   # Absolute path of the shell terminals run; empty runs your login shell.
-#   shell: ""
-EOF
-	chmod 0600 "$HOME_DIR/config.yaml"
-	info "wrote the settings template $HOME_DIR/config.yaml"
+if wdx settings write --color never >/dev/null; then
+	info "the settings in $HOME_DIR/config.yaml list every setting of this version"
+else
+	warn "could not write the settings in $HOME_DIR/config.yaml; fix the problems above, then run: $NAME settings write"
 fi
 
 # --- daemon service -------------------------------------------------------

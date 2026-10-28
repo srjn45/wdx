@@ -88,6 +88,11 @@ func completeDirs(*cobra.Command, []string, string) ([]cobra.Completion, cobra.S
 	return nil, cobra.ShellCompDirectiveFilterDirs
 }
 
+// completeFiles completes a flag with the shell's own file completion.
+func completeFiles(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	return nil, cobra.ShellCompDirectiveDefault
+}
+
 // completeColor completes --color with its modes.
 func completeColor(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	var modes []cobra.Completion
@@ -98,7 +103,8 @@ func completeColor(*cobra.Command, []string, string) ([]cobra.Completion, cobra.
 }
 
 // completeHelp completes wdx help with the subcommands of the command named
-// so far, and at the root with the topics too.
+// so far, and at the root with the topics too, in place of a command of the
+// same name.
 func completeHelp(cmd *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	found, rest, err := cmd.Root().Find(args)
 	if err != nil || len(rest) > 0 {
@@ -106,6 +112,10 @@ func completeHelp(cmd *cobra.Command, args []string, _ string) ([]cobra.Completi
 	}
 	var completions []cobra.Completion
 	for _, sub := range found.Commands() {
+		// wdx help settings shows the topic, which names the command.
+		if _, topic := findTopic(sub.Name()); topic && !found.HasParent() {
+			continue
+		}
 		if sub.IsAvailableCommand() {
 			completions = append(completions, cobra.CompletionWithDesc(sub.Name(), sub.Short))
 		}

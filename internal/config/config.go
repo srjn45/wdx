@@ -320,6 +320,9 @@ func (f fileSource) Lookup(key string) (string, string, bool) {
 	return v.value, v.from, ok
 }
 
+// unknownSetting is the reason of a problem with a key no setting has.
+const unknownSetting = "unknown setting"
+
 // readFile reads the config file at path, a YAML mapping whose nested keys
 // make the dotted keys of table: "log: {level: debug}" sets log.level.
 func readFile(path string, table []setting) (fileSource, []Problem) {
@@ -333,20 +336,26 @@ func readFile(path string, table []setting) (fileSource, []Problem) {
 		}
 		return nil, []Problem{{From: path, Reason: "cannot be read: " + err.Error()}}
 	}
+	r, problems := parseFile(path, data, table)
+	return r.values, problems
+}
+
+// parseFile reads data, the config file at path.
+func parseFile(path string, data []byte, table []setting) (*fileReader, []Problem) {
+	r := &fileReader{path: path, table: table, values: fileSource{}, nodes: map[string]*yaml.Node{}, lines: map[string]int{}}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, yamlProblems(path, err)
+		return r, yamlProblems(path, err)
 	}
 	if len(doc.Content) == 0 {
-		return nil, nil
+		return r, nil
 	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
-		return nil, []Problem{{From: at(path, root), Reason: "not a mapping of settings"}}
+		return r, []Problem{{From: at(path, root), Reason: "not a mapping of settings"}}
 	}
-	r := fileReader{path: path, table: table, values: fileSource{}, lines: map[string]int{}}
 	r.walk("", root)
-	return r.values, r.problems
+	return r, r.problems
 }
 
 // fileReader collects the values of a config file and its problems.
@@ -354,8 +363,27 @@ type fileReader struct {
 	path     string
 	table    []setting
 	values   fileSource
-	lines    map[string]int // where each key was first seen
+	nodes    map[string]*yaml.Node // the node of each value, as written
+	unknown  []unknownKey          // the keys no setting has, nested ones flattened
+	lines    map[string]int        // where each key was first seen
 	problems []Problem
+}
+
+// unknownKey is a key of a config file that no setting has, with its value
+// written as YAML on one line.
+type unknownKey struct {
+	key, value string
+}
+
+// addUnknown records key and the keys under it.
+func (r *fileReader) addUnknown(key string, v *yaml.Node) {
+	if v.Kind != yaml.MappingNode {
+		r.unknown = append(r.unknown, unknownKey{key, flow(v)})
+		return
+	}
+	for i := 0; i+1 < len(v.Content); i += 2 {
+		r.addUnknown(key+"."+v.Content[i].Value, v.Content[i+1])
+	}
 }
 
 func (r *fileReader) walk(prefix string, m *yaml.Node) {
@@ -375,13 +403,15 @@ func (r *fileReader) walk(prefix string, m *yaml.Node) {
 		case j >= 0 && v.Kind == yaml.ScalarNode:
 			if v.Tag != "!!null" {
 				r.values[key] = fileValue{v.Value, from}
+				r.nodes[key] = v
 			}
 		case j >= 0:
 			r.problem(key, from, "not a single value")
 		case v.Kind == yaml.MappingNode && slices.ContainsFunc(r.table, func(s setting) bool { return strings.HasPrefix(s.key, key+".") }):
 			r.walk(key+".", v)
 		default:
-			r.problem(key, from, "unknown setting")
+			r.problem(key, from, unknownSetting)
+			r.addUnknown(key, v)
 		}
 	}
 }
@@ -434,6 +464,12 @@ func (p Problem) String() string {
 		parts[1] = "" // the variable names the key
 	}
 	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), ": ")
+}
+
+// OnlyUnknown is true when every problem is a key no setting has, which
+// Rewrite moves out of the way.
+func (e *Error) OnlyUnknown() bool {
+	return !slices.ContainsFunc(e.Problems, func(p Problem) bool { return p.Reason != unknownSetting })
 }
 
 func (e *Error) Error() string {

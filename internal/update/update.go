@@ -1,7 +1,9 @@
 // Package update replaces the installed wdx with another release and rolls
-// it back. Every switch stops the daemon, keeps the binary and a backup of
-// the database it replaces, and starts the daemon on the new binary; when a
-// step fails, it puts both back and starts the daemon on the old one.
+// it back. Every switch stops the daemon, keeps the binary, a backup of the
+// database and the config file it replaces, and starts the daemon on the
+// new binary; when a step fails, it puts them back and starts the daemon on
+// the old one. An update writes the config file anew with the settings of
+// the release, as its settings write does.
 package update
 
 import (
@@ -23,7 +25,8 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// preflightTimeout is how long the new binary gets to say its version.
+// preflightTimeout is how long the new binary gets to write the settings
+// and to say its version.
 const preflightTimeout = 30 * time.Second
 
 // Options are what an update works on.
@@ -58,6 +61,27 @@ type Result struct {
 	SchemaFrom, SchemaTo int
 	UpToDate             bool // nothing was newer, so nothing changed
 	DataRestored         bool // the rollback restored the database backup
+	// Settings is how the update changed the config file; nil for a
+	// rollback, which puts back the file the update replaced.
+	Settings *Settings
+}
+
+// Settings is how the new release wrote the config file anew.
+type Settings struct {
+	Added   []string // the settings it lists that the file did not
+	Dropped []string // the keys no setting of it has, commented at the end
+}
+
+// SettingsError is a value the config file sets that the release does not
+// accept.
+type SettingsError struct {
+	Version string
+	Detail  string          // the release's own message
+	Details json.RawMessage // the release's problems with the settings
+}
+
+func (e *SettingsError) Error() string {
+	return fmt.Sprintf("%s %s does not accept the settings: %s", identity.Name, e.Version, e.Detail)
 }
 
 // OlderError is a release asked for that is older than the installed one.
@@ -174,12 +198,13 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	o.progress("checking that it runs")
-	if err := preflight(ctx, o.Home, binary, target); err != nil {
+	o.progress("checking that it runs on the settings")
+	staged, settings, err := preflight(ctx, o.Home, binary, target, dir)
+	if err != nil {
 		return Result{}, err
 	}
 
-	replaced, err := o.switchTo(ctx, binary, "", target)
+	replaced, err := o.switchTo(ctx, binary, "", staged, target)
 	if err != nil {
 		return Result{}, err
 	}
@@ -191,8 +216,8 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	log.Info("updated", "from", o.Current, "to", target, "schema_from", from.Version, "schema_to", to.Version)
-	return Result{From: o.Current, To: target, SchemaFrom: from.Version, SchemaTo: to.Version}, nil
+	log.Info("updated", "from", o.Current, "to", target, "schema_from", from.Version, "schema_to", to.Version, "settings_added", settings.Added, "settings_dropped", settings.Dropped)
+	return Result{From: o.Current, To: target, SchemaFrom: from.Version, SchemaTo: to.Version, Settings: &settings}, nil
 }
 
 // keep makes the replaced binary and database the previous version, in
@@ -254,8 +279,12 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 	if restore {
 		backup = filepath.Join(dir, identity.Name+".db")
 	}
+	settings := filepath.Join(dir, "config.yaml")
+	if _, err := os.Stat(settings); err != nil {
+		settings = "" // kept by an update before config files were
+	}
 
-	replaced, err := o.switchTo(ctx, filepath.Join(dir, identity.Name), backup, p.Version)
+	replaced, err := o.switchTo(ctx, filepath.Join(dir, identity.Name), backup, settings, p.Version)
 	if err != nil {
 		return Result{}, err
 	}
@@ -271,46 +300,56 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 	return Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, SchemaTo: to.Version, DataRestored: restore}, nil
 }
 
-// switchTo stops the daemon, installs binary in place of the installed one
-// and the database backup when it is not empty, and starts the daemon on
-// them, which must answer as want. It returns a directory under the home
-// holding the binary and database it replaced. When a step fails it puts
-// them back and starts the daemon on them.
-func (o Options) switchTo(ctx context.Context, binary, backup, want string) (string, error) {
+// switchTo stops the daemon, installs binary in place of the installed one,
+// the database backup and the config file settings when they are not
+// empty, and starts the daemon on them, which must answer as want. It
+// returns a directory under the home holding the binary, database and
+// config file it replaced. When a step fails it puts them back and starts
+// the daemon on them.
+func (o Options) switchTo(ctx context.Context, binary, backup, settings, want string) (string, error) {
 	log := logging.FromContext(ctx)
-	dbPath := identity.DBPath(o.Home)
+	dbPath, configPath := identity.DBPath(o.Home), identity.ConfigPath(o.Home)
 	o.progress("stopping the daemon")
 	if err := o.Daemon.Stop(ctx); err != nil {
 		return "", &FailedError{Step: "stop", Err: err, Version: o.Current}
 	}
 
-	replaced, err := os.MkdirTemp(o.Home, "replaced-")
+	dir, err := os.MkdirTemp(o.Home, "replaced-")
 	if err != nil {
-		return "", o.undo(ctx, "back up", err, "", false)
+		return "", o.undo(ctx, "back up", err, replaced{})
 	}
-	kept := filepath.Join(replaced, identity.Name+".db")
-	_, err = os.Stat(dbPath)
-	hadDB := err == nil
-	o.progress("backing up %s %s and the database", identity.Name, o.Current)
-	if err := copyBinary(filepath.Join(replaced, identity.Name), o.Binary); err != nil {
-		return "", o.undo(ctx, "back up", err, replaced, false)
+	r := replaced{dir: dir, db: exists(dbPath), config: exists(configPath), settings: settings != ""}
+	o.progress("backing up %s %s, the database and the settings", identity.Name, o.Current)
+	if err := copyFile(filepath.Join(dir, identity.Name), o.Binary, 0o755); err != nil {
+		return "", o.undo(ctx, "back up", err, r)
 	}
-	if hadDB {
-		if err := db.Backup(ctx, dbPath, kept); err != nil {
-			return "", o.undo(ctx, "back up", err, replaced, false)
+	if r.db {
+		if err := db.Backup(ctx, dbPath, filepath.Join(dir, identity.Name+".db")); err != nil {
+			return "", o.undo(ctx, "back up", err, r)
+		}
+	}
+	if r.config {
+		if err := copyFile(filepath.Join(dir, "config.yaml"), configPath, 0o600); err != nil {
+			return "", o.undo(ctx, "back up", err, r)
 		}
 	}
 
 	o.progress("installing %s %s", identity.Name, want)
-	if err := install(binary, o.Binary); err != nil {
-		return "", o.undo(ctx, "install", err, replaced, hadDB)
+	if err := install(binary, o.Binary, 0o755); err != nil {
+		return "", o.undo(ctx, "install", err, r)
 	}
 	log.Info("binary installed", "path", o.Binary, "version", want)
 	if backup != "" {
 		o.progress("restoring the database backup")
 		if err := db.Restore(ctx, backup, dbPath); err != nil {
-			return "", o.undo(ctx, "install", err, replaced, hadDB)
+			return "", o.undo(ctx, "install", err, r)
 		}
+	}
+	if settings != "" {
+		if err := install(settings, configPath, 0o600); err != nil {
+			return "", o.undo(ctx, "install", err, r)
+		}
+		log.Info("settings installed", "path", configPath, "from", settings)
 	}
 
 	o.progress("starting the daemon")
@@ -319,30 +358,52 @@ func (o Options) switchTo(ctx context.Context, binary, backup, want string) (str
 		err = fmt.Errorf("the daemon answers as version %s, not %s", got, want)
 	}
 	if err != nil {
-		return "", o.undo(ctx, "start", err, replaced, hadDB)
+		return "", o.undo(ctx, "start", err, r)
 	}
-	return replaced, nil
+	return dir, nil
 }
 
-// undo puts back what switchTo replaced, kept in the directory replaced,
-// and starts the daemon on it, after step failed with err.
-func (o Options) undo(ctx context.Context, step string, err error, replaced string, hadDB bool) error {
+// replaced is the directory a switch keeps what it replaces in, whether
+// there was a database and a config file to keep, and whether it installs
+// a config file.
+type replaced struct {
+	dir                  string // "" before it is made
+	db, config, settings bool
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// undo puts back what switchTo replaced, kept in r, and starts the daemon
+// on it, after step failed with err.
+func (o Options) undo(ctx context.Context, step string, err error, r replaced) error {
 	log := logging.FromContext(ctx)
 	log.Error("switch failed, undoing it", "step", step, "err", err.Error())
 	o.progress("%s failed; putting %s %s back", step, identity.Name, o.Current)
 	failed := &FailedError{Step: step, Err: err, Version: o.Current}
 	undo := func() error {
-		if replaced == "" {
+		if r.dir == "" {
 			return nil
 		}
-		defer os.RemoveAll(replaced)
+		defer os.RemoveAll(r.dir)
 		if step != "back up" {
-			if err := install(filepath.Join(replaced, identity.Name), o.Binary); err != nil {
+			if err := install(filepath.Join(r.dir, identity.Name), o.Binary, 0o755); err != nil {
 				return err
 			}
+			if r.config {
+				if err := install(filepath.Join(r.dir, "config.yaml"), identity.ConfigPath(o.Home), 0o600); err != nil {
+					return err
+				}
+			} else if r.settings {
+				if err := os.Remove(identity.ConfigPath(o.Home)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
+			}
 			dbPath := identity.DBPath(o.Home)
-			if hadDB {
-				return db.Restore(ctx, filepath.Join(replaced, identity.Name+".db"), dbPath)
+			if r.db {
+				return db.Restore(ctx, filepath.Join(r.dir, identity.Name+".db"), dbPath)
 			}
 			// The new binary created the database; the old one creates its own.
 			for _, suffix := range []string{"", "-wal", "-shm"} {
@@ -372,13 +433,55 @@ func (o Options) progress(format string, args ...any) {
 	}
 }
 
-// preflight runs binary's version command, which must say it is version.
-func preflight(ctx context.Context, home, binary, version string) error {
+// preflight checks that binary, release version, runs on the settings of
+// home: its settings write writes the config file anew into dir, then its
+// version command, run on that file, must say it is version. staged is the
+// file written, "" when the home has none or it is already as written.
+func preflight(ctx context.Context, home, binary, version, dir string) (staged string, s Settings, err error) {
 	ctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
-	c := exec.CommandContext(ctx, binary, "version", "--json")
-	c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
-	out, err := c.Output()
+	log := logging.FromContext(ctx)
+	fail := func(err error) (string, Settings, error) {
+		return "", Settings{}, fmt.Errorf("the downloaded %s %s does not run: %w", identity.Name, version, err)
+	}
+	s = Settings{Added: []string{}, Dropped: []string{}}
+	checkHome := filepath.Join(dir, "home")
+	if err := os.MkdirAll(checkHome, 0o700); err != nil {
+		return "", Settings{}, err
+	}
+	current := identity.ConfigPath(home)
+	if exists(current) {
+		staged = identity.ConfigPath(checkHome)
+		out, err := run(ctx, binary, home, "settings", "write", "--json", "--to", staged)
+		log.Info("new binary wrote the settings", "path", staged, "output", string(out), "ok", err == nil)
+		if err != nil {
+			var p struct {
+				Code    string `json:"code"`
+				Detail  string `json:"detail"`
+				Details struct {
+					Settings json.RawMessage `json:"settings"`
+				} `json:"details"`
+			}
+			if json.Unmarshal(out, &p) == nil && p.Code == "usage" && p.Details.Settings != nil {
+				return "", Settings{}, &SettingsError{Version: version, Detail: p.Detail, Details: p.Details.Settings}
+			}
+			return fail(err)
+		}
+		var w struct {
+			Settings Settings `json:"settings"`
+		}
+		if err := json.Unmarshal(out, &w); err != nil {
+			return fail(err)
+		}
+		s.Added, s.Dropped = append(s.Added, w.Settings.Added...), append(s.Dropped, w.Settings.Dropped...)
+		if same, err := sameContent(staged, current); err != nil {
+			return fail(err)
+		} else if same {
+			staged = ""
+		}
+	}
+
+	out, err := run(ctx, binary, checkHome, "version", "--json")
 	var v struct {
 		CLI struct {
 			Version string `json:"version"`
@@ -390,30 +493,60 @@ func preflight(ctx context.Context, home, binary, version string) error {
 	if err == nil && v.CLI.Version != version {
 		err = fmt.Errorf("it says it is version %q", v.CLI.Version)
 	}
-	logging.FromContext(ctx).Info("new binary checked", "path", binary, "output", string(out), "ok", err == nil)
+	log.Info("new binary checked", "path", binary, "output", string(out), "ok", err == nil)
 	if err != nil {
-		return fmt.Errorf("the downloaded %s %s does not run: %w", identity.Name, version, err)
+		return fail(err)
 	}
-	return nil
+	return staged, s, nil
 }
 
-// install puts a copy of binary at path, renamed into place so a running
-// wdx never sees a half-written file.
-func install(binary, path string) error {
+// run runs binary on home and returns its stdout.
+func run(ctx context.Context, binary, home string, args ...string) ([]byte, error) {
+	for attempt := 1; ; attempt++ {
+		c := exec.CommandContext(ctx, binary, args...)
+		c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
+		out, err := c.Output()
+		// A process forked while binary was being written holds it open for
+		// writing until it execs: golang.org/issue/22315.
+		if !errors.Is(err, syscall.ETXTBSY) || attempt == 5 {
+			return out, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
+}
+
+func sameContent(a, b string) (bool, error) {
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false, err
+	}
+	y, err := os.ReadFile(b)
+	if err != nil {
+		return false, err
+	}
+	return string(x) == string(y), nil
+}
+
+// install puts a copy of src at path, renamed into place so a running wdx
+// never sees a half-written file.
+func install(src, path string, mode os.FileMode) error {
 	tmp := fmt.Sprintf("%s.tmp.%d", path, os.Getpid())
-	if err := copyBinary(tmp, binary); err != nil {
+	if err := copyFile(tmp, src, mode); err != nil {
 		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, path)
 }
 
-func copyBinary(dest, src string) error {
+func copyFile(dest, src string, mode os.FileMode) error {
 	b, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dest, b, 0o755)
+	if err := os.WriteFile(dest, b, mode); err != nil {
+		return err
+	}
+	return os.Chmod(dest, mode)
 }
 
 // lock takes the update lock of home, failing with a *RunningError when

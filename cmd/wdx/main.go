@@ -19,7 +19,7 @@ func main() {
 		Terminal: cli.TerminalEnv(os.Environ()),
 	}
 	cfg, err := config.Load(os.Getenv)
-	if err != nil {
+	if err != nil && !cli.RewritesSettings(os.Args[1:], err) {
 		os.Exit(cli.ConfigError(os.Args[1:], env, err))
 	}
 	env.Config = cfg

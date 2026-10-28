@@ -238,20 +238,15 @@ func TestSettingsDescribed(t *testing.T) {
 	}
 }
 
-// TestInstallerTemplate checks the settings template scripts/install.sh
-// writes: uncommented, it sets every setting the file can hold to its
-// default.
-func TestInstallerTemplate(t *testing.T) {
+// TestTemplate checks the config file Rewrite writes when there is none:
+// uncommented, it sets every setting the file can hold to its default.
+func TestTemplate(t *testing.T) {
 	t.Parallel()
-	script, err := os.ReadFile("../../scripts/install.sh")
+	r, err := Rewrite(filepath.Join(t.TempDir(), "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, template, found := strings.Cut(string(script), "/config.yaml\" <<'EOF'\n")
-	template, _, ended := strings.Cut(template, "\nEOF\n")
-	if !found || !ended {
-		t.Fatal("no settings template in install.sh")
-	}
+	template := string(r.Content)
 	uncommented := regexp.MustCompile(`(?m)^# ( *[a-z_]+:.*)$`).ReplaceAllString(template, "$1")
 	_, e := homeWith(t, uncommented)
 	c, err := Load(e.getenv)

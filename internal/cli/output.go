@@ -13,6 +13,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/observe"
@@ -342,6 +343,8 @@ func problem(err error) (api.Problem, int) {
 			hint = "add your user to the docker group (sudo usermod -aG docker $USER) and log in again"
 		}
 		p.Hint = &hint
+	} else if e, ok := errors.AsType[*config.Error](err); ok {
+		p = settingsProblem(e)
 	} else if up, found := updateProblem(err); found {
 		p = up
 	} else if _, ok := errors.AsType[*client.UnavailableError](err); ok {

@@ -677,7 +677,8 @@ func settingsTopic(st style.Style) string {
 	b.WriteString(`Read when ` + identity.Name + ` starts; an invalid one fails every command. The home is
 read from the environment, the rest from <home>/config.yaml, where
 log.level is written as "log: {level: debug}". The daemon reads them when
-it starts: run ` + st.Command(identity.Name+" daemon restart") + ` after changing them.
+it starts: run ` + st.Command(identity.Name+" daemon restart") + ` after changing them. ` + st.Command(identity.Name+" settings write") + `
+lists every setting in the file, as ` + st.Command(identity.Name+" update") + ` does with a new release's.
 
 `)
 	var table style.Table

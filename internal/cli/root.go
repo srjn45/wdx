@@ -140,7 +140,7 @@ func ConfigError(args []string, env Env, err error) int {
 	hint := "fix or remove them"
 	p.Hint = &hint
 	if e, ok := errors.AsType[*config.Error](err); ok {
-		p.Details = &map[string]any{"settings": e.Problems}
+		p = settingsProblem(e)
 	}
 	asJSON := slices.Contains(args, "--json")
 	// The color setting may be among those that failed.
@@ -341,7 +341,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root := &cobra.Command{
 		Use:           identity.Name,
 		Short:         "Manage AI coding agents across CLIs",
-		Long:          "Every command but daemon, observe and update is served by the daemon; " + identity.Name + " daemon start runs it.",
+		Long:          "Every command but daemon, observe, settings and update is served by the daemon; " + identity.Name + " daemon start runs it.",
 		Args:          noArgs,
 		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 		SilenceUsage:  true,
@@ -353,7 +353,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	root.RegisterFlagCompletionFunc("color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingsCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)

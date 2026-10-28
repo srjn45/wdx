@@ -29,13 +29,17 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 		Short: "Show whether a newer " + identity.Name + " is released, install it or roll it back",
 		Long: "Without a flag nothing changes. --apply installs the newest release on the\n" +
 			"channel (the update.channel setting, or --channel); the daemon is stopped,\n" +
-			"the installed binary and a backup of the database are kept, and the daemon\n" +
-			"starts on the new binary. If any step fails, both are put back and the\n" +
-			"daemon starts on the old binary.\n\n" +
-			"--rollback installs the kept version again. The database stays when that\n" +
-			"version can use it; when a migration since the update breaks it, the backup\n" +
-			"is restored, losing every change since the update, which --discard-changes\n" +
-			"or the prompt agrees to. Only one previous version is kept.",
+			"the installed binary, a backup of the database and the config file are\n" +
+			"kept, and the daemon starts on the new binary. If any step fails, they are\n" +
+			"put back and the daemon starts on the old binary.\n\n" +
+			"The release writes the config file anew, as its settings write does: the\n" +
+			"values set stay, its new settings are listed, and keys it no longer has are\n" +
+			"commented out at the end.\n\n" +
+			"--rollback installs the kept version again, with the config file as it was\n" +
+			"before the update. The database stays when that version can use it; when a\n" +
+			"migration since the update breaks it, the backup is restored, losing every\n" +
+			"change since the update, which --discard-changes or the prompt agrees to.\n" +
+			"Only one previous version is kept.",
 		Example: examples(
 			"Show whether a newer release is available", identity.Name+" update",
 			"Install it", identity.Name+" update --apply",
@@ -49,10 +53,10 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			outputNote: "Without a flag, the installed version, the newest on the channel and whether it is newer;\n" +
 				"with --apply or --rollback, the versions and schema versions before and after.\n" +
 				`With --json: {"update": {"current": ..., "latest": ..., "channel": ..., "available": ...}}, or` + "\n" +
-				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ...}}`,
+				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}}`,
 			resultList: annotation("rolled_back", "up_to_date", "updated"),
 			errorList: codeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
-				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
+				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeSettingsInvalid, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !slices.Contains(config.UpdateChannels, channel) {
@@ -192,12 +196,23 @@ type updateChange struct {
 	SchemaFrom   int     `json:"schema_from"`
 	SchemaTo     int     `json:"schema_to"`
 	DataRestored *bool   `json:"data_restored"` // null for an update
+	// Settings is how an update wrote the config file anew; null for a
+	// rollback or when nothing was newer.
+	Settings *updateSettings `json:"settings"`
+}
+
+type updateSettings struct {
+	Added   []string `json:"added"`
+	Dropped []string `json:"dropped"`
 }
 
 func newUpdateResult(result string, r update.Result, channel *string) updateResult {
 	u := updateChange{From: r.From, To: r.To, Channel: channel, SchemaFrom: r.SchemaFrom, SchemaTo: r.SchemaTo}
 	if result == "rolled_back" {
 		u.DataRestored = &r.DataRestored
+	}
+	if r.Settings != nil {
+		u.Settings = &updateSettings{Added: r.Settings.Added, Dropped: r.Settings.Dropped}
 	}
 	return updateResult{Result: result, Update: u}
 }
@@ -217,6 +232,12 @@ func (r updateResult) text(w io.Writer, st style.Style) {
 	case "updated":
 		fmt.Fprintf(w, "%s %s %s -> %s\n", st.Success("updated"), identity.Name, u.From, st.Name(u.To))
 		field("schema:", schema)
+		if s := u.Settings; s != nil && len(s.Added) > 0 {
+			field("settings:", "added "+strings.Join(s.Added, ", "))
+		}
+		if s := u.Settings; s != nil && len(s.Dropped) > 0 {
+			field("settings:", "dropped "+strings.Join(s.Dropped, ", ")+" "+st.Muted("(commented at the end of the config file)"))
+		}
 		field("rollback:", st.Command(identity.Name+" update --rollback")+" goes back to "+u.From)
 	default:
 		fmt.Fprintf(w, "%s %s %s -> %s\n", st.Success("rolled back"), identity.Name, u.From, st.Name(u.To))
@@ -254,6 +275,10 @@ func updateProblem(err error) (p api.Problem, ok bool) {
 		if e.UndoErr != nil {
 			hint("reinstall with scripts/install.sh; the debug_id finds what failed in the logs")
 		}
+	} else if e, found := errors.AsType[*update.SettingsError](err); found {
+		p = api.NewProblem(api.ErrorCodeSettingsInvalid, err.Error())
+		p.Details = &map[string]any{"version": e.Version, "settings": e.Details}
+		hint("change them in the config file, then update again; nothing was installed")
 	} else if _, found := errors.AsType[*update.NoPreviousError](err); found {
 		p = api.NewProblem(api.ErrorCodeNoPreviousVersion, err.Error())
 		hint("only the version " + identity.Name + " update --apply replaced is kept, until a rollback")

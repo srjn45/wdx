@@ -34,7 +34,7 @@ internal/api/   generated types, server interface and client, plus the error cod
 internal/cli/   cobra commands: parse args, call the daemon, print; no business logic
 internal/client/   calls the daemon's API over its socket
 internal/daemon/   serves the API over the Unix socket on top of the domain
-internal/config/   the settings, loaded once at startup from their sources
+internal/config/   the settings, loaded once at startup from their sources, and the config file written from them
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
 internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its protocol and client; docs/TERMINALS.md
@@ -53,7 +53,7 @@ internal/update/  replaces the installed wdx with a release and rolls it back (w
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, and cli -> daemon -> domain -> db/git/holder, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe` and `update`, which manage the daemon, the observability stack and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, and cli -> daemon -> domain -> db/git/holder, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
@@ -113,6 +113,7 @@ Every command serves both humans and scripts or AIs.
 - An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
 - `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.
 - Only the home comes from the environment (`WDX_HOME`, default `~/.wdx`), since the config file lives in it. One exception is `NO_COLOR` and `TERM=dumb`, conventions of terminals rather than wdx settings: `main` reads them into `Env.NoColor`. The other is the fixed list of variables terminals inherit from the daemon (`PATH`, the locale, the ssh agent, the desktop session; docs/TERMINALS.md): `main` reads them into `Env.Terminal`, and they are never logged. Every other setting is read from `<home>/config.yaml`, nested keys making the dotted key (`log: {level: debug}` is `log.level`); a missing file means all defaults.
+- The config file is written from the table, never by hand or from a template: `wdx settings write` lists every setting with its description as the comment, keeping the values set, and `wdx update` runs the new release's to write it anew. So a description reads as a sentence once capitalized, and a removed or renamed setting needs nothing more: its key is commented out at the end of the file.
 - Sources are layered, later winning: defaults, then the config file, then the environment. Unknown keys, duplicates and values that are not a single value are errors, reported with the file and line.
 
 ## Logging
