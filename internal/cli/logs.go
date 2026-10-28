@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // newLogger returns the log file under the configured home and a logger

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // Image is the stack. The registry is spelled out: Podman may ask which

@@ -17,7 +17,7 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/srjn45/warden/internal/telemetry"
+	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 // collector receives metrics over OTLP/HTTP as an OpenTelemetry collector

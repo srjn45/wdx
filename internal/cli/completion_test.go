@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 func TestCompletionScripts(t *testing.T) {

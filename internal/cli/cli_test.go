@@ -19,13 +19,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/daemon"
-	"github.com/srjn45/warden/internal/gittest"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
-	"github.com/srjn45/warden/internal/service"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/service"
 )
 
 // wdxBinary is wdx built from this tree, which starting the daemon in the
@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("build wdx: %v\n%s", err, out))
 	}
 	releaseBinary = filepath.Join(dir, "release", identity.Name)
-	ldflags := "-X github.com/srjn45/warden/internal/identity.Version=" + releaseVersion
+	ldflags := "-X github.com/srjn45/wdx/internal/identity.Version=" + releaseVersion
 	if out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", releaseBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
 		panic(fmt.Sprintf("build wdx %s: %v\n%s", releaseVersion, err, out))
 	}

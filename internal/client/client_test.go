@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // serve answers on a new socket with handler until the test ends, and

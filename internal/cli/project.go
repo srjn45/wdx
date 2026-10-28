@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/client"
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 func newProjectCmd(home string) *cobra.Command {

@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 type syncBuffer struct {

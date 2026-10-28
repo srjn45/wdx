@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/client"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/style"
-	"github.com/srjn45/warden/internal/update"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/update"
 )
 
 const discardChangesQuestion = "discard changes"

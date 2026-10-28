@@ -20,12 +20,12 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/db"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
-	"github.com/srjn45/warden/internal/project"
-	"github.com/srjn45/warden/internal/telemetry"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 // shutdownTimeout is how long requests in flight get to finish once the
@@ -122,7 +122,7 @@ func (d *Daemon) meter(ctx context.Context) error {
 		return err
 	}
 	d.stopMetrics = stop
-	d.requestDuration, err = provider.Meter("github.com/srjn45/warden/internal/daemon").Float64Histogram("wdx.request.duration",
+	d.requestDuration, err = provider.Meter("github.com/srjn45/wdx/internal/daemon").Float64Histogram("wdx.request.duration",
 		metric.WithDescription("how long requests took, by operation, status and error code"),
 		metric.WithUnit("s"),
 		// A clone can take minutes.

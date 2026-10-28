@@ -19,10 +19,10 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/daemon"
-	"github.com/srjn45/warden/internal/db"
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // brokenRelease says it is version 0.3.0 but cannot run the daemon.

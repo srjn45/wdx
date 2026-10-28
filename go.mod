@@ -1,4 +1,4 @@
-module github.com/srjn45/warden
+module github.com/srjn45/wdx
 
 go 1.26.4
 

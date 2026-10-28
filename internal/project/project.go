@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srjn45/warden/internal/git"
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // State is a project's lifecycle state.

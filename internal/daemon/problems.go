@@ -6,9 +6,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/git"
-	"github.com/srjn45/warden/internal/project"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/project"
 )
 
 // requestError is a request that cannot be served as sent.

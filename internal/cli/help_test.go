@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/style"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // TestExamples checks every example is a command line its command accepts:

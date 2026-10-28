@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
 )
 
 const esc = "\x1b["

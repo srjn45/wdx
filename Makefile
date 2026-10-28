@@ -7,7 +7,7 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 GIT_CLIFF_VERSION := 2.14.2
 GIT_CLIFF         := bin/git-cliff-$(GIT_CLIFF_VERSION)
 
-PKG     := github.com/srjn45/warden/internal/identity
+PKG     := github.com/srjn45/wdx/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
 .PHONY: build generate test notices dist install uninstall release release-dev changelog clean

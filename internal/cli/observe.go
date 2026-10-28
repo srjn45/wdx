@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/observe"
-	"github.com/srjn45/warden/internal/style"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/observe"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 func newObserveCmd() *cobra.Command {

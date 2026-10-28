@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/client"
-	"github.com/srjn45/warden/internal/daemon"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/observe"
-	"github.com/srjn45/warden/internal/style"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/observe"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // result is what a command prints on success: the daemon's body as JSON, or

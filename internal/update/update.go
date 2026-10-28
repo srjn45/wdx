@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srjn45/warden/internal/db"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // preflightTimeout is how long the new binary gets to say its version.

@@ -14,10 +14,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/style"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // setHelp makes --help print the command's help as text, or as JSON with

@@ -19,7 +19,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // Config is every setting.

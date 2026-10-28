@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/gittest"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
-	"github.com/srjn45/warden/internal/telemetry"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 func TestMain(m *testing.M) {

@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/logging"
-	"github.com/srjn45/warden/internal/project"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/project"
 )
 
 // idPrefix marks a project reference in a path as an id rather than a name.

@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 //go:embed migrations/*.sql

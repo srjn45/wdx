@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/srjn45/warden/internal/identity"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 var filePrefix = identity.Name + "-"

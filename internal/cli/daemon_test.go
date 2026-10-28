@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/srjn45/warden/internal/api"
-	"github.com/srjn45/warden/internal/daemon"
-	"github.com/srjn45/warden/internal/identity"
-	"github.com/srjn45/warden/internal/service"
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/service"
 )
 
 // TestDaemonLifecycle starts, restarts and stops a daemon running the wdx

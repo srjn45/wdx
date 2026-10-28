@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/warden/internal/logging"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // ErrNotRepo is returned when a directory is not inside a git work tree.

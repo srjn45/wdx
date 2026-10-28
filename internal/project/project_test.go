@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/srjn45/warden/internal/db"
-	"github.com/srjn45/warden/internal/git"
-	"github.com/srjn45/warden/internal/gittest"
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/gittest"
 )
 
 func TestMain(m *testing.M) {

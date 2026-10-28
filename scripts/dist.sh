@@ -19,7 +19,7 @@ VERSION="${VERSION#v}"
 COMMIT="${2:-none}"
 PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
 
-PKG=github.com/srjn45/warden/internal/identity
+PKG=github.com/srjn45/wdx/internal/identity
 LDFLAGS="-s -w -X $PKG.Version=$VERSION -X $PKG.Commit=$COMMIT"
 
 cd "$(dirname "$0")/.."

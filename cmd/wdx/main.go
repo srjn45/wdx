@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/srjn45/warden/internal/cli"
-	"github.com/srjn45/warden/internal/config"
-	"github.com/srjn45/warden/internal/service"
+	"github.com/srjn45/wdx/internal/cli"
+	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/service"
 )
 
 func main() {
