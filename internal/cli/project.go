@@ -78,7 +78,7 @@ func runCreate(cmd *cobra.Command, opts createOptions) error {
 		return err
 	}
 	var source api.Source
-	source.FromNewSource(api.NewSource{Type: api.NewSourceTypeNew, Path: optional(parent)})
+	_ = source.FromNewSource(api.NewSource{Type: api.NewSourceTypeNew, Path: optional(parent)})
 	req := api.CreateProject{Source: source, Name: &opts.name}
 	if opts.openOnConflict {
 		req.OnConflict = ptr(api.CreateProjectOnConflictOpen)
@@ -275,9 +275,9 @@ func newProjectOpenCmd(home string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
+				_ = source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
 			} else {
-				source.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: gitURL})
+				_ = source.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: gitURL})
 			}
 			req := api.CreateProject{Source: source, Name: optional(name)}
 			if reclone {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -222,14 +223,16 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 	var printed struct {
 		Code string `json:"code"`
 	}
-	json.Unmarshal(last.Response, &printed)
+	_ = json.Unmarshal(last.Response, &printed) // a completion logs text, without a code
 	if last.Code != printed.Code {
 		t.Fatalf("%v: logged code %q, want the response's %q", args, last.Code, printed.Code)
 	}
 	if slices.Contains(args, "--json") {
 		var logged, printed any
-		json.Unmarshal(last.Response, &logged)
-		json.Unmarshal([]byte(out.stdout), &printed)
+		if err := json.Unmarshal([]byte(out.stdout), &printed); err != nil {
+			t.Fatalf("%v: stdout is not one JSON object: %s", args, out.stdout)
+		}
+		_ = json.Unmarshal(last.Response, &logged) // compared to stdout, checked to be JSON
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
 		}
@@ -1121,8 +1124,8 @@ func TestPanicIsInternalError(t *testing.T) {
 	cmd.SetContext(context.Background())
 	wrapRun(cmd)
 	err := cmd.RunE(cmd, nil)
-	p, ok := err.(*panicError)
-	if !ok || p.Error() != "panic: kaboom" || !strings.Contains(string(p.stack), "TestPanicIsInternalError") {
+	var p *panicError
+	if !errors.As(err, &p) || p.Error() != "panic: kaboom" || !strings.Contains(string(p.stack), "TestPanicIsInternalError") {
 		t.Fatalf("want a panicError with its stack, got %v", err)
 	}
 	if p, exit := problem(err); p.Code != api.ErrorCodeInternal || exit != api.ExitSystem {

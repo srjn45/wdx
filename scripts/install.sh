@@ -103,6 +103,7 @@ install_completions() {
 			! zsh -c 'print -rl -- $fpath' 2>/dev/null | grep -qxF "$dir" &&
 			! grep -qsF ".zsh/completions" "${ZDOTDIR:-$HOME}/.zshrc"; then
 			warn "zsh does not search $dir yet; add this to ~/.zshrc, before compinit:"
+			# shellcheck disable=SC2016 # a line for the user's ~/.zshrc
 			printf '    fpath=(%s $fpath)\n' "$dir" >&2
 		fi
 	fi
@@ -220,6 +221,7 @@ case ":$PATH:" in
 	*":$BIN_DIR:"*) ;;
 	*)
 		warn "$BIN_DIR is not on your PATH; add this to your shell profile:"
+		# shellcheck disable=SC2016 # a line for the user's profile
 		printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" >&2
 		;;
 esac

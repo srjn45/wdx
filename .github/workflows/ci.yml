@@ -1,0 +1,63 @@
+# The tests and every other check, as make runs them locally. Two jobs, so
+# the checks run beside the tests, the slowest part, and each job is set up
+# once. docs/RELEASING.md: CI checks, it does not release.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, for vulnerabilities published since the last push.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make cover
+      - name: Coverage summary
+        run: scripts/cover.sh bin/cover.out >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: |
+            bin/cover.out
+            bin/cover.html
+
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the commits to check
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile', 'scripts/fetch-*.sh') }}
+      - run: make check
+        env:
+          # The commits of the PR or of the push; none on other runs.
+          RANGE: >-
+            ${{ github.event_name == 'pull_request'
+              && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha)
+              || github.event_name == 'push'
+              && format('{0}..{1}', github.event.before, github.sha)
+              || 'HEAD..HEAD' }}

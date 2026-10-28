@@ -25,7 +25,7 @@ func TestDaemonLifecycle(t *testing.T) {
 	home := shortHome(t)
 	t.Cleanup(func() {
 		if pid, _ := daemon.Running(home); pid != 0 {
-			syscall.Kill(pid, syscall.SIGKILL)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
 
@@ -148,7 +148,7 @@ func TestDaemonAsService(t *testing.T) {
 	home := shortHome(t)
 	t.Cleanup(func() {
 		if pid, _ := daemon.Running(home); pid != 0 {
-			syscall.Kill(pid, syscall.SIGKILL)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
 	ran := filepath.Join(t.TempDir(), "ran")

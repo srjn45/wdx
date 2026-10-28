@@ -118,7 +118,9 @@ func TestInstallCompletionsShellsMissing(t *testing.T) {
 	tools := t.TempDir()
 	for _, tool := range []string{"sh", "uname", "tr", "dirname", "mkdir", "mv", "rm", "env", "grep", "printf", "id"} {
 		if path, err := exec.LookPath(tool); err == nil {
-			os.Symlink(path, filepath.Join(tools, tool))
+			if err := os.Symlink(path, filepath.Join(tools, tool)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	cmd := exec.Command("sh", "../../scripts/install.sh", "--completions")

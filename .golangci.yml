@@ -1,0 +1,94 @@
+# golangci-lint: `make lint` and CI run it at the version pinned in the
+# Makefile. Besides the usual correctness linters, depguard, forbidigo,
+# sloglint and paralleltest enforce the rules of AGENTS.md.
+version: "2"
+
+linters:
+  enable:
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - errorlint
+    - forbidigo
+    - misspell
+    - nolintlint
+    - paralleltest
+    - sloglint
+  settings:
+    depguard:
+      rules:
+        # The cli reaches the domain only through the API; add each new
+        # domain package here.
+        cli-through-api:
+          files: ["**/internal/cli/**"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/project
+              desc: the cli calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/git$
+              desc: the cli calls the daemon's API, never the domain
+        config-in-cli-only:
+          files:
+            - "$all"
+            - "!**/cmd/wdx/**"
+            - "!**/internal/cli/**"
+            - "!**/internal/config/**"
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/config
+              desc: only cmd and cli hold the Config; pass packages the values they need
+            - pkg: github.com/srjn45/wdx/internal/cli
+              desc: only cmd/wdx runs the cli
+    errcheck:
+      # Errors these return have nothing left to handle: a rollback after
+      # the commit, a response the client stopped reading, a completion or
+      # required flag that TestCommandDocs checks.
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (*encoding/json.Encoder).Encode
+        - (*github.com/spf13/cobra.Command).RegisterFlagCompletionFunc
+        - (*github.com/spf13/cobra.Command).MarkFlagRequired
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^os\.(Getenv|LookupEnv)$
+          msg: only main reads the environment; take the value from the Config
+        - pattern: ^os\.Chdir$
+          msg: paths are absolute; never change the working directory
+        - pattern: ^testing\.(T|B|TB)\.Setenv$
+          msg: tests run in parallel; pass settings in through cli.Env
+        - pattern: ^log\.
+          msg: log with logging.FromContext(ctx)
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    sloglint:
+      no-global: all
+      # logging.Duration is an attribute among key-value pairs.
+      no-mixed-args: false
+      key-naming-case: snake
+      msg-style: lowercased
+  exclusions:
+    generated: strict
+    presets:
+      - std-error-handling
+    rules:
+      - path: ^cmd/wdx/main\.go$
+        linters: [forbidigo]
+        text: only main reads the environment
+      # The tests' request helpers read and close the body themselves.
+      - path: _test\.go$
+        linters: [bodyclose]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/srjn45/wdx
+  exclusions:
+    generated: strict
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

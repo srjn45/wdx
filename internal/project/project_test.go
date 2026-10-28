@@ -223,10 +223,11 @@ func TestOriginAddedLater(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
 	repo := gitRepo(t, "myrepo", "")
-	p := open(t, s, repo, "")
+	open(t, s, repo, "")
 
 	gitCmd(t, repo, "remote", "add", "origin", "https://example.com/r.git")
-	if p = open(t, s, repo, ""); p.OriginURL != "https://example.com/r.git" {
+	p := open(t, s, repo, "")
+	if p.OriginURL != "https://example.com/r.git" {
 		t.Fatalf("origin not picked up: %+v", p)
 	}
 	// A clone of that origin now joins the project.

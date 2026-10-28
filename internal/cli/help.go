@@ -27,7 +27,7 @@ func setHelp(root *cobra.Command) {
 		r := helpResponse{Command: newCommandView(cmd)}
 		invocationOf(cmd).response = r
 		if jsonMode(cmd) {
-			writeJSON(cmd.OutOrStdout(), r)
+			_ = writeJSON(cmd.OutOrStdout(), r)
 			return
 		}
 		r.text(cmd.OutOrStdout(), stdoutStyle(cmd))

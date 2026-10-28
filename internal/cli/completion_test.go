@@ -114,7 +114,9 @@ func TestCompletionLoggedAtDebug(t *testing.T) {
 				Level, Msg, Process string
 				DebugID             string `json:"debug_id"`
 			}
-			json.Unmarshal([]byte(line), &l)
+			if err := json.Unmarshal([]byte(line), &l); err != nil {
+				t.Fatalf("%s: a line that is not JSON: %q", f, line)
+			}
 			if l.Msg == "command received" {
 				id = l.DebugID
 			}

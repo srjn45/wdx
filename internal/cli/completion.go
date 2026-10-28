@@ -161,7 +161,7 @@ type completionScript struct {
 }
 
 func (s completionScript) text(w io.Writer, _ style.Style) {
-	io.WriteString(w, s.Script)
+	fmt.Fprint(w, s.Script)
 }
 
 // completionResponse is what a shell asking for completions was given: the

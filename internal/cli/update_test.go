@@ -48,8 +48,12 @@ func publish(t *testing.T, latest, latestDev string, binaries map[string]string)
 		// Compressing the binary under the race detector takes seconds.
 		gz, _ := gzip.NewWriterLevel(&archive, gzip.NoCompression)
 		tw := tar.NewWriter(gz)
-		tw.WriteHeader(&tar.Header{Name: identity.Name, Mode: 0o755, Size: int64(len(b))})
-		tw.Write(b)
+		if err := tw.WriteHeader(&tar.Header{Name: identity.Name, Mode: 0o755, Size: int64(len(b))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(b); err != nil {
+			t.Fatal(err)
+		}
 		tw.Close()
 		gz.Close()
 		name := fmt.Sprintf("%s_%s_%s_%s.tar.gz", identity.Name, version, runtime.GOOS, runtime.GOARCH)
@@ -84,7 +88,7 @@ func install(t *testing.T, base string) installation {
 	home := shortHome(t)
 	t.Cleanup(func() {
 		if pid, _ := daemon.Running(home); pid != 0 {
-			syscall.Kill(pid, syscall.SIGKILL)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
 	// The installed binaries read it when run on their own.

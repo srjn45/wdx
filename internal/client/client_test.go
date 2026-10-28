@@ -30,7 +30,7 @@ func serve(t *testing.T, handler http.HandlerFunc) string {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: handler}
-	go srv.Serve(l)
+	go func() { _ = srv.Serve(l) }()
 	t.Cleanup(func() { srv.Close() })
 	return socket
 }

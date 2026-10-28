@@ -28,7 +28,9 @@ license() {
 
 # files lists the license and notice files at the top of module directory $1.
 files() {
-	ls "$1" | grep -i -E '^(licen[cs]e|copying|notice|patents)' | LC_ALL=C sort
+	for f in "$1"/*; do
+		basename "$f"
+	done | grep -i -E '^(licen[cs]e|copying|notice|patents)' | LC_ALL=C sort
 }
 
 # section writes the heading, the license and the files of a module.
@@ -38,6 +40,7 @@ section() {
 	[ -n "$main" ] || die "$name has no LICENSE file in $dir"
 	id="$(license "$dir/$main")"
 	[ -n "$id" ] || die "$name: $dir/$main is none of the licenses scripts/notices.sh knows; check it and add it there"
+	# shellcheck disable=SC2016 # Markdown code, not a command substitution
 	printf '| `%s` | %s |\n' "$name" "$id" >>"$table"
 	{
 		printf '\n## %s\n' "$name"

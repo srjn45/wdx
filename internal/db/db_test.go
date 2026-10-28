@@ -143,7 +143,9 @@ func TestBackupAndRestore(t *testing.T) {
 	}
 	for rows.Next() {
 		var n string
-		rows.Scan(&n)
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
 		names = append(names, n)
 	}
 	if strings.Join(names, ",") != "kept" {

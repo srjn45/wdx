@@ -173,7 +173,7 @@ func (r *recorder) code() api.ErrorCode {
 	var p struct {
 		Code api.ErrorCode `json:"code"`
 	}
-	json.Unmarshal(r.body.Bytes(), &p)
+	_ = json.Unmarshal(r.body.Bytes(), &p) // no code unless it is a problem
 	return p.Code
 }
 

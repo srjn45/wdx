@@ -155,7 +155,7 @@ func Running(home string) (int, error) {
 	defer f.Close()
 	err = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
 	if err == nil {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		return 0, nil
 	}
 	if !errors.Is(err, syscall.EWOULDBLOCK) {
@@ -218,7 +218,9 @@ func (d *Daemon) Serve(ctx context.Context) error {
 			d.log.Error("requests cut short", "err", err)
 			srv.Close()
 		}
-		<-served
+		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
+			d.log.Error("daemon stopped serving", "err", err)
+		}
 	}
 	d.close()
 	d.log.Info("daemon stopped", "uptime_ms", time.Since(d.started).Milliseconds())
@@ -242,7 +244,7 @@ func (d *Daemon) close() {
 	if d.lock != nil {
 		// Unlock before closing: a child process forked meanwhile shares the
 		// file until it execs, and closing alone would leave the lock held.
-		syscall.Flock(int(d.lock.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(d.lock.Fd()), syscall.LOCK_UN)
 		d.lock.Close()
 	}
 }

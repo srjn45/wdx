@@ -207,7 +207,7 @@ func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) 
 		}
 		select {
 		case err := <-exited:
-			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("the daemon exited: %v", err)}
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("the daemon exited: %w", err)}
 		case <-deadline:
 			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("no answer within %s", startTimeout)}
 		case <-tick.C:

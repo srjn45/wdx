@@ -7,10 +7,22 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 GIT_CLIFF_VERSION := 2.14.2
 GIT_CLIFF         := bin/git-cliff-$(GIT_CLIFF_VERSION)
 
+GOLANGCI_LINT_VERSION := 2.15.0
+GOLANGCI_LINT         := bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
+ACTIONLINT_VERSION    := 1.7.12
+ACTIONLINT            := bin/actionlint-$(ACTIONLINT_VERSION)
+GOVULNCHECK_VERSION   := 1.9.0
+GOVULNCHECK           := bin/govulncheck-$(GOVULNCHECK_VERSION)
+SHELLCHECK_VERSION    := 0.11.0
+SHELLCHECK            := bin/shellcheck-$(SHELLCHECK_VERSION)
+
+# The commits make check reads; CI sets it to those of the push or PR.
+RANGE ?= origin/main..HEAD
+
 PKG     := github.com/srjn45/wdx/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build generate test notices dist install uninstall release release-dev changelog clean
+.PHONY: build generate test cover lint check tools notices dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -23,6 +35,37 @@ generate:
 # Run every test in parallel, with the race detector and in shuffled order.
 test:
 	go test -race -shuffle=on ./...
+
+# Run the tests once with coverage: bin/cover.out, bin/cover.html and the
+# per-package summary.
+cover:
+	mkdir -p bin
+	go test -race -shuffle=on -covermode=atomic -coverpkg=./... -coverprofile=bin/cover.out ./...
+	go tool cover -html=bin/cover.out -o bin/cover.html
+	scripts/cover.sh bin/cover.out
+
+# Lint the Go code, the shell scripts and the CI workflows.
+lint: $(GOLANGCI_LINT) $(SHELLCHECK) $(ACTIONLINT)
+	$(GOLANGCI_LINT) run
+	$(SHELLCHECK) scripts/*.sh
+	$(ACTIONLINT) -shellcheck $(SHELLCHECK)
+
+# Everything CI checks besides the tests: lint, a tidy go.mod, unchanged
+# modules, current notices, known vulnerabilities, the release targets
+# building, and the commit messages in RANGE.
+check: lint $(GOVULNCHECK)
+	go mod tidy -diff
+	go mod verify
+	scripts/notices.sh
+	@git diff --quiet -- THIRD-PARTY-NOTICES.md || { echo "error: THIRD-PARTY-NOTICES.md is out of date; commit it as make notices wrote it" >&2; exit 1; }
+	$(GOVULNCHECK) ./...
+	for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		CGO_ENABLED=0 GOOS=$${target%/*} GOARCH=$${target#*/} go build -o /dev/null ./cmd/wdx || exit 1; \
+	done
+	scripts/commits.sh $(RANGE)
+
+# Fetch the pinned linters into bin/.
+tools: $(GOLANGCI_LINT) $(SHELLCHECK) $(ACTIONLINT) $(GOVULNCHECK)
 
 # Write THIRD-PARTY-NOTICES.md from the modules linked into wdx.
 notices:
@@ -53,6 +96,18 @@ changelog: $(GIT_CLIFF)
 
 $(GIT_CLIFF):
 	scripts/fetch-git-cliff.sh $(GIT_CLIFF_VERSION) $@
+
+$(GOLANGCI_LINT):
+	scripts/fetch-go-tool.sh github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION) $@
+
+$(ACTIONLINT):
+	scripts/fetch-go-tool.sh github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION) $@
+
+$(GOVULNCHECK):
+	scripts/fetch-go-tool.sh golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION) $@
+
+$(SHELLCHECK):
+	scripts/fetch-shellcheck.sh $(SHELLCHECK_VERSION) $@
 
 clean:
 	rm -rf bin dist

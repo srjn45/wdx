@@ -182,19 +182,19 @@ func wantProblem(t *testing.T, p *api.Problem, status int, code api.ErrorCode) {
 
 func newSource(path string) api.Source {
 	var s api.Source
-	s.FromNewSource(api.NewSource{Type: api.NewSourceTypeNew, Path: optional(path)})
+	_ = s.FromNewSource(api.NewSource{Type: api.NewSourceTypeNew, Path: optional(path)})
 	return s
 }
 
 func localSource(path string) api.Source {
 	var s api.Source
-	s.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
+	_ = s.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
 	return s
 }
 
 func gitSource(url string) api.Source {
 	var s api.Source
-	s.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: url})
+	_ = s.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: url})
 	return s
 }
 

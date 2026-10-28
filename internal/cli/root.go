@@ -129,7 +129,7 @@ func ConfigError(args []string, env Env, err error) int {
 // the first line, then the hint and the debug id.
 func printError(env Env, asJSON bool, st style.Style, p api.Problem, prefix string) {
 	if asJSON {
-		writeJSON(env.Stdout, p)
+		_ = writeJSON(env.Stdout, p)
 		return
 	}
 	msg := p.Detail
