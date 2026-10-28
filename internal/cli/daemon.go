@@ -73,10 +73,14 @@ func newDaemonStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start [--foreground]",
 		Short: "Start the daemon",
-		Long: "Start the daemon and wait until it answers: through systemd or launchd when\n" +
+		Long: "Waits until the daemon answers. It starts through systemd or launchd when\n" +
 			"the installer set it up as a service, else in the background. With\n" +
 			"--foreground it runs in this process until interrupted, as a service\n" +
 			"manager runs it.",
+		Example: examples(
+			"Start the daemon", identity.Name+" daemon start",
+			"Run it in this terminal until Ctrl-C", identity.Name+" daemon start --foreground",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The daemon, already running or started; with --foreground, the daemon once stopped.\n" +
@@ -215,8 +219,11 @@ func newDaemonStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the daemon",
-		Long: "Stop the daemon, letting the requests in flight finish first: through\n" +
-			"systemd or launchd when it runs as a service, else by signalling it.",
+		Long: "The requests in flight finish first. It stops through systemd or launchd\n" +
+			"when it runs as a service, else by signalling it.",
+		Example: examples(
+			"Stop the daemon", identity.Name+" daemon stop",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
@@ -285,7 +292,10 @@ func newDaemonRestartCmd() *cobra.Command {
 		Use:   "restart",
 		Short: "Restart the daemon, or start it",
 		Long:  "Stop the daemon if it is running, then start it, as after updating " + identity.Name + " or its settings.",
-		Args:  cobra.NoArgs,
+		Example: examples(
+			"Restart the daemon after changing the settings", identity.Name+" daemon restart",
+		),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
 			resultList: "restarted",
@@ -340,7 +350,11 @@ func newDaemonStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show whether the daemon is running",
-		Args:  cobra.NoArgs,
+		Example: examples(
+			"Show whether the daemon is running", identity.Name+" daemon status",
+			"As JSON", identity.Name+" daemon status --json",
+		),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "Whether the daemon is running, its pid, what it says about itself when it answers, and the\n" +
 				"service manager that runs it, if it is installed as a service.\n" +

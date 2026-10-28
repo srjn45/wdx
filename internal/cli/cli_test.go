@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/srjn45/warden/internal/api"
 	"github.com/srjn45/warden/internal/config"
@@ -297,9 +298,17 @@ type jsonOutput struct {
 		Commands []struct {
 			Name string `json:"name"`
 		} `json:"commands"`
+		Examples []struct {
+			Description string `json:"description"`
+			Command     string `json:"command"`
+		} `json:"examples"`
 		Flags []struct {
-			Name string `json:"name"`
+			Name      string  `json:"name"`
+			ValueName *string `json:"value_name"`
 		} `json:"flags"`
+		Topics []struct {
+			Name string `json:"name"`
+		} `json:"topics"`
 		FlagRules []struct {
 			Rule  string   `json:"rule"`
 			Flags []string `json:"flags"`
@@ -311,6 +320,16 @@ type jsonOutput struct {
 			Exit int    `json:"exit"`
 		} `json:"errors"`
 	} `json:"command"`
+
+	Topic *struct {
+		Name     string `json:"name"`
+		Text     string `json:"text"`
+		Settings []struct {
+			Key     string  `json:"key"`
+			EnvVar  *string `json:"env_var"`
+			Default *string `json:"default"`
+		} `json:"settings"`
+	} `json:"topic"`
 }
 
 // wdxJSON runs args with --json and checks that stdout holds exactly one
@@ -950,6 +969,18 @@ func TestCommandDocs(t *testing.T) {
 				t.Errorf("%s: unexpected error code %q", path, code)
 			}
 		}
+		if !cmd.HasAvailableSubCommands() && len(parseExamples(cmd.Example)) == 0 {
+			t.Errorf("%s: no examples", path)
+		}
+		flags := cmd.LocalFlags()
+		if !cmd.HasParent() {
+			flags = cmd.PersistentFlags()
+		}
+		flags.VisitAll(func(f *pflag.Flag) {
+			if name, _ := pflag.UnquoteUsage(f); f.Value.Type() != "bool" && !strings.Contains(f.Usage, "`"+name+"`") {
+				t.Errorf("%s: --%s does not name its value with backticks in %q", path, f.Name, f.Usage)
+			}
+		})
 		if cmd.Runnable() && cmd.ValidateArgs([]string{"x"}) == nil {
 			t.Errorf("%s: takes a positional argument; every input must be a flag", path)
 		}
@@ -979,11 +1010,22 @@ func TestHelp(t *testing.T) {
 		args       []string
 		want, deny []string
 	}{
-		{[]string{"--help"}, []string{"daemon ", "observe ", "project ", "version ", "Exit codes:", "Daemon:"}, []string{"completion", "\n  help "}},
-		{[]string{"daemon", "-h"}, []string{"restart ", "start ", "status ", "stop "}, []string{"Errors:"}},
-		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove "}, []string{"Errors:"}},
-		{[]string{"project", "open", "--help"}, []string{"--local", "--git", "--reclone", "Flag rules:", "Output:", "result: cloned", "checkout_missing    1", "daemon_unavailable  3", "internal            3"}, nil},
-		{[]string{"help", "project", "get"}, []string{"wdx project get (--id <id> | --name <name>)", "not_found"}, nil},
+		{[]string{"--help"}, []string{"wdx: manage AI coding agents", "wdx <command> [flags]", "daemon ", "observe ", "project ", "version ", "--color <mode>", "Exit codes:", "Help topics:", "settings ", "wdx help <topic>"},
+			[]string{"completion", "\n  help ", "WDX_HOME", "Global flags:", "Errors:"}},
+		{[]string{"daemon", "-h"}, []string{"wdx daemon <command> [flags]", "restart ", "start ", "status ", "stop ", "Global flags: --color <mode>, --json, --no-input, -h/--help"}, []string{"Errors:", "[command]", "Examples:"}},
+		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove ", "Run wdx project <command> --help"}, []string{"Errors:", "\n  --json"}},
+		{[]string{"project", "open", "--help"}, []string{
+			"wdx project open: open a git repository as a project\n\nA path inside",
+			"Examples:\n  # Open the repository you are in\n  wdx project open --local .\n",
+			"--local <path>", "--git <url>", "--reclone ",
+			"Flag rules:\n  exactly one of --local, --git\n  --reclone: not with --local, --remove\n  --remove: not with --local, --reclone\n  with --json and --git: one of --reclone, --remove\n",
+			"Output:", "result: cloned", "checkout_missing    1", "daemon_unavailable  3", "internal            3", "Global flags:",
+		}, []string{"Commands:", "Help topics:", "\n  --json"}},
+		{[]string{"project", "create", "--help"}, []string{"Flag rules:\n  --name is required\n  at most one of --open, --cancel\n  with --json: one of --open, --cancel\n"}, nil},
+		{[]string{"help", "project", "get"}, []string{"wdx project get (--id <id> | --name <name>)", "exactly one of --id, --name", "not_found"}, nil},
+		{[]string{"help", "settings"}, []string{"wdx help settings: ", "WDX_HOME", "log.level", "color ", "NO_COLOR"}, []string{"Usage:"}},
+		{[]string{"help", "json"}, []string{"wdx help json: ", "Problem Details"}, nil},
+		{[]string{"help", "logs"}, []string{"wdx help logs: ", "debug_id"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
 		if out.exit != api.ExitOK || out.stderr != "" {
@@ -1021,7 +1063,23 @@ func TestHelpJSON(t *testing.T) {
 	}
 	walk(nil)
 
-	v, _ := wdxJSON(t, t.TempDir(), "help", "project", "open")
+	v, _ := wdxJSON(t, t.TempDir(), "--help")
+	if c := v.Command; len(c.Topics) != 3 || c.Topics[0].Name != "json" {
+		t.Fatalf("unexpected topics: %+v", c.Topics)
+	}
+	v, _ = wdxJSON(t, t.TempDir(), "help", "project", "open")
+	if c := v.Command; len(c.Examples) != 3 || c.Examples[0].Command != "wdx project open --local ." || c.Examples[0].Description != "Open the repository you are in" || c.Topics != nil {
+		t.Fatalf("unexpected examples or topics: %+v", c)
+	}
+	for _, f := range v.Command.Flags {
+		got := "null"
+		if f.ValueName != nil {
+			got = *f.ValueName
+		}
+		if want, ok := map[string]string{"local": "path", "git": "url", "reclone": "null"}[f.Name]; ok && got != want {
+			t.Fatalf("--%s: want value name %s, got %s", f.Name, want, got)
+		}
+	}
 	rule := v.Command.FlagRules[len(v.Command.FlagRules)-1]
 	if rule.Rule != "one_required_with_json" || *rule.When != "git" || !slices.Equal(rule.Flags, []string{"reclone", "remove"}) {
 		t.Fatalf("unexpected json rule: %+v", rule)

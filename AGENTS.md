@@ -75,7 +75,11 @@ Every command serves both humans and scripts or AIs.
 - Text mode prints results to stdout and errors to stderr; the first line says what happened.
 - Exit codes: 0 ok, 1 rejected (conflict, not found, cancelled), 2 usage, 3 system failure.
 - The domain returns typed errors and knows nothing about output; the daemon maps them to codes, and `internal/api/codes.go` gives each code its exit code. The cli renders both formats from one response value. Hints are added by the cli, not written into domain messages.
-- Every command documents itself with annotations: `output` (what it prints), `results`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them after cobra's usage text, or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
+- Every command documents itself with annotations: `output` (what it prints), `results`, `errors` (codes besides `usage` and `internal`) and `jsonRequires` (the flags that answer its prompts; the check is shared, not written per command). `--help` renders them in our own layout (never cobra's template), or as one JSON object with `--json`; subcommands are listed alphabetically. Every usage error hints at the command's `--help`.
+- Every leaf command has `Example`s built with `examples(description, command line, ...)`: the common use first, then the flag combinations that answer prompts or that `--json` needs. `TestExamples` runs each through the command's flag parsing and rules, so they cannot go stale; keep them free of shell quoting.
+- A flag that takes a value names it in backticks in its description (``"`path` to a local git repository"``); help shows it as `--local <path>`.
+- `Long` does not repeat `Short`: help prints the summary on its first line, after the command path.
+- Reference that is about no single command is a help topic (`wdx help json`, `settings`, `logs`), not a section of the root help.
 
 ## Text output style
 
@@ -87,7 +91,7 @@ Every command serves both humans and scripts or AIs.
 
 ## Config
 
-- Every setting is a row in the table in `internal/config`: key, description, default (or required) and parser. The help's Settings section and the logs are built from it.
+- Every setting is a row in the table in `internal/config`: key, description, default (or required) and parser. The `wdx help settings` topic and the logs are built from it.
 - `main` is the only place that reads the environment: it loads the `Config` once and passes it to `cli.Run`. Nothing else calls `os.Getenv` or reads the config file.
 - An invalid or missing required setting fails every command at startup with a `usage` error listing all of them.
 - `cli` holds the `Config`; domain packages get only the values they need as arguments and never import `config`.

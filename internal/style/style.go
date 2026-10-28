@@ -89,6 +89,9 @@ func (t *Table) Row(cells ...string) {
 	t.rows = append(t.rows, cells)
 }
 
+// Empty reports whether t has no rows.
+func (t *Table) Empty() bool { return len(t.rows) == 0 }
+
 // Write writes the rows to w, the last cell of each unpadded.
 func (t *Table) Write(w io.Writer) {
 	var widths []int

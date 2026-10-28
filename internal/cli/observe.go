@@ -18,9 +18,9 @@ func newObserveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "observe",
 		Short: "Run Grafana with the logs and metrics",
-		Long: "Run Grafana with " + identity.Name + "'s logs and the daemon's metrics in a container on\n" +
-			"this machine, under Docker or Podman. It reads the log files of the home,\n" +
-			"and the daemon sends its metrics to it at otel.endpoint.",
+		Long: "It runs in a container on this machine, under Docker or Podman, and reads\n" +
+			"the log files of the home; the daemon sends its metrics to it at\n" +
+			"otel.endpoint.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
@@ -118,11 +118,13 @@ func newObserveStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start Grafana with the logs and metrics",
-		Long: "Start the observability stack and wait until it is ready: the\n" +
-			"grafana/otel-lgtm image, with Grafana on 127.0.0.1:3000 and the collector\n" +
-			"the daemon sends its metrics to on 127.0.0.1:4318. The first start pulls\n" +
-			"the image, which can take minutes. It runs until stopped, and its data stays\n" +
-			"across starts.",
+		Long: "Waits until the stack is ready: the grafana/otel-lgtm image, with Grafana\n" +
+			"on 127.0.0.1:3000 and the collector the daemon sends its metrics to on\n" +
+			"127.0.0.1:4318. The first start pulls the image, which can take minutes.\n" +
+			"It runs until stopped, and its data stays across starts.",
+		Example: examples(
+			"Start Grafana, then open the URL it prints", identity.Name+" observe start",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The stack, already running or started, and where to open Grafana.\n" +
@@ -162,8 +164,12 @@ func newObserveStopCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop [--purge]",
 		Short: "Stop Grafana",
-		Long: "Stop the observability stack and remove its container. Its data, the logs and\n" +
-			"metrics it stored, stays for the next start unless --purge is given.",
+		Long: "The stack's container is removed. Its data, the logs and metrics it stored,\n" +
+			"stays for the next start unless --purge is given.",
+		Example: examples(
+			"Stop Grafana and keep its data", identity.Name+" observe stop",
+			"Stop it and remove its data", identity.Name+" observe stop --purge",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "Whether the stack was stopped and, with --purge, whether its data was removed.\n" +
@@ -225,7 +231,10 @@ func newObserveStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show whether Grafana is running",
-		Args:  cobra.NoArgs,
+		Example: examples(
+			"Show whether Grafana is running", identity.Name+" observe status",
+		),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "Whether the stack is running, under which runtime, and its container: where to open\n" +
 				"Grafana, where it takes metrics and which logs it reads.\n" +

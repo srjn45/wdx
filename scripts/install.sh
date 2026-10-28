@@ -143,7 +143,7 @@ if [ ! -e "$HOME_DIR/config.yaml" ]; then
 	cat >"$HOME_DIR/config.yaml" <<'EOF'
 # wdx settings, read when wdx and its daemon start; after changing them run:
 #   wdx daemon restart
-# Every setting is optional; uncomment one to change it. See wdx --help.
+# Every setting is optional; uncomment one to change it. See wdx help settings.
 
 # Never prompt, as --no-input does: true or false.
 # no_input: false

@@ -281,6 +281,9 @@ func checkJSONRequires(cmd *cobra.Command) error {
 }
 
 func withHelpHint(hint *string, cmd *cobra.Command) *string {
+	if cmd.Name() == "help" && cmd.HasParent() {
+		cmd = cmd.Parent()
+	}
 	h := fmt.Sprintf("see '%s --help'", cmd.CommandPath())
 	if hint != nil {
 		h = *hint + "; " + h
@@ -301,26 +304,20 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root := &cobra.Command{
 		Use:           identity.Name,
 		Short:         "Manage AI coding agents across CLIs",
+		Long:          "Every command but daemon and observe is served by the daemon; " + identity.Name + " daemon start runs it.",
 		Args:          noArgs,
 		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
-	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked (or set no_input: true in "+identity.ConfigPath(cfg.Home)+")")
+	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked")
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
 	color := cfg.Color
-	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output: auto, always or never (or set color in "+identity.ConfigPath(cfg.Home)+")")
+	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newDaemonCmd(cfg.Home), newObserveCmd())
-	root.InitDefaultHelpCmd()
-	for _, cmd := range root.Commands() {
-		if cmd.Name() == "help" {
-			cmd.Hidden = true
-		}
-	}
-	// cobra's template lists the help command even when it is hidden.
-	root.SetUsageTemplate(strings.ReplaceAll(root.UsageTemplate(), `(or .IsAvailableCommand (eq .Name "help"))`, `.IsAvailableCommand`))
 	setHelp(root)
+	root.InitDefaultHelpCmd()
 	return root
 }
 
@@ -331,20 +328,28 @@ func noArgs(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	err := &usageError{fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())}
-	if cmd.SuggestionsMinimumDistance <= 0 {
-		cmd.SuggestionsMinimumDistance = 2
-	}
-	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+	if s := suggestions(cmd, args[0]); len(s) > 0 {
 		return &hinted{err, "did you mean " + cmd.CommandPath() + " " + s[0]}
 	}
 	return err
+}
+
+// suggestions returns the subcommands of cmd that name may be a typo of.
+func suggestions(cmd *cobra.Command, name string) []string {
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2
+	}
+	return cmd.SuggestionsFor(name)
 }
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of " + identity.Name + " and of the daemon",
-		Args:  cobra.NoArgs,
+		Example: examples(
+			"Show the versions of "+identity.Name+" and of the daemon", identity.Name+" version",
+		),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The name, version and commit of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
 				`With --json: {"cli": {"name": ..., "version": ..., "commit": ...}, "daemon": {...}}`,

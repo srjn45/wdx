@@ -41,6 +41,11 @@ func newProjectCreateCmd(home string) *cobra.Command {
 			"asked to open that project, try another name or cancel; --open and\n" +
 			"--cancel answer in advance, and with --json one of them is required.\n" +
 			"Every failure starts with \"not created:\".",
+		Example: examples(
+			"Create a project in ~/.wdx/projects/app", identity.Name+" project create --name app",
+			"Create it in another directory", identity.Name+" project create --name app --path ~/src",
+			"From a script: open the existing project if the name is taken", identity.Name+" project create --name app --open --json",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not created",
@@ -54,8 +59,8 @@ func newProjectCreateCmd(home string) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error { return runCreate(cmd, opts) },
 	}
-	cmd.Flags().StringVar(&opts.name, "name", "", "project name, also the repository directory name")
-	cmd.Flags().StringVar(&opts.parent, "path", "", "directory to create the repository in (default "+identity.ProjectsDir(home)+")")
+	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of the project, also the repository directory name")
+	cmd.Flags().StringVar(&opts.parent, "path", "", "parent `dir` of the repository (default "+identity.ProjectsDir(home)+")")
 	cmd.Flags().BoolVar(&opts.openOnConflict, "open", false, "on a conflict, open the existing project without asking")
 	cmd.Flags().BoolVar(&opts.cancelOnConflict, "cancel", false, "on a conflict, create nothing without asking")
 	cmd.MarkFlagRequired("name")
@@ -144,8 +149,12 @@ func newProjectListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [--all | --open | --closed]",
 		Short: "List projects",
-		Long:  "List projects, without their worktrees. With no flag, every project is listed.",
-		Args:  cobra.NoArgs,
+		Long:  "Projects are listed without their worktrees. With no flag, every project is listed.",
+		Example: examples(
+			"Every project", identity.Name+" project list",
+			"Only the open ones, as JSON", identity.Name+" project list --open --json",
+		),
+		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The projects sorted by name, each with its number of worktrees; an empty list when none match.\n" +
 				`With --json: {"projects": [...]}`,
@@ -177,9 +186,13 @@ func newProjectGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get (--id <id> | --name <name>)",
 		Short: "Show a project and which of its checkouts are on disk",
-		Long: "Show a project, open or closed, with its worktrees and whether each is\n" +
-			"still on disk. A project with no checkout left on disk is orphaned.\n" +
-			"Nothing is changed.",
+		Long: "Open and closed projects alike, with each worktree and whether it is still\n" +
+			"on disk. A project with no checkout left on disk is orphaned. Nothing is\n" +
+			"changed.",
+		Example: examples(
+			"Show a project by name", identity.Name+" project get --name app",
+			"By id, as JSON", identity.Name+" project get --id proj-1a2b3c4d --json",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk and \"orphaned\"\n" +
@@ -206,8 +219,8 @@ type projectRef struct {
 }
 
 func (r *projectRef) addFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&r.id, "id", "", "project id")
-	cmd.Flags().StringVar(&r.name, "name", "", "project name (case-insensitive)")
+	cmd.Flags().StringVar(&r.id, "id", "", "`id` of the project")
+	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the project (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
 }
@@ -226,16 +239,20 @@ func newProjectOpenCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "open (--local <path> | --git <url>)",
 		Short: "Open a git repository as a project",
-		Long: "Open a git repository as a project. A path inside a repository opens the\n" +
-			"repository root. Worktrees and other clones of a known repository join\n" +
-			"its project. Opening a known project marks it open again and drops its\n" +
-			"checkouts that are no longer on disk.\n\n" +
+		Long: "A path inside a repository opens the repository root. Worktrees and other\n" +
+			"clones of a known repository join its project. Opening a known project\n" +
+			"marks it open again and drops its checkouts that are no longer on disk.\n\n" +
 			"--git opens the project with that origin, or clones it into\n" +
 			identity.ProjectsDir(home) + "/<name> if it is unknown. If none of a known\n" +
 			"project's checkouts are left, you are asked to clone it again or remove it;\n" +
 			"--reclone and --remove answer in advance; with --json one of them is required.\n\n" +
 			"Projects are named after their root directory or URL unless --name is\n" +
 			"given. Names are unique.",
+		Example: examples(
+			"Open the repository you are in", identity.Name+" project open --local .",
+			"Clone a repository and open it under another name", identity.Name+" project open --git https://github.com/acme/api.git --name acme-api",
+			"From a script: clone again if no checkout is left, never prompt", identity.Name+" project open --git https://github.com/acme/api.git --reclone --json",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\".\n" +
@@ -278,9 +295,9 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVar(&local, "local", "", "path to a local git repository")
-	cmd.Flags().StringVar(&gitURL, "git", "", "clone URL of a git repository")
-	cmd.Flags().StringVar(&name, "name", "", "project name (default: the repository directory or URL name)")
+	cmd.Flags().StringVar(&local, "local", "", "`path` to a local git repository")
+	cmd.Flags().StringVar(&gitURL, "git", "", "`url` of a git repository to clone")
+	cmd.Flags().StringVar(&name, "name", "", "`name` of the project (default: the repository directory or URL name)")
 	cmd.Flags().BoolVar(&reclone, "reclone", false, "with --git, if no checkout is left, clone it again without asking")
 	cmd.Flags().BoolVar(&remove, "remove", false, "with --git, if no checkout is left, remove the project without asking")
 	cmd.MarkFlagsOneRequired("local", "git")
@@ -352,8 +369,10 @@ func newProjectCloseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "close (--id <id> | --name <name>)",
 		Short: "Close a project",
-		Long: "Mark a project closed. Nothing on disk is touched; open it again with\n" +
-			identity.Name + " project open.",
+		Long:  "Nothing on disk is touched; open it again with " + identity.Name + " project open.",
+		Example: examples(
+			"Close a project", identity.Name+" project close --name app",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The closed project.\n" + `With --json: {"result": "closed", "project": {...}}`,
@@ -377,8 +396,11 @@ func newProjectRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove (--id <id> | --name <name>)",
 		Short: "Delete a project and everything that belongs to it",
-		Long: "Delete a project and everything that belongs to it from " + identity.Name + ".\n" +
-			"Files on disk are not touched.",
+		Long:  "It is removed from " + identity.Name + " only: files on disk are not touched.",
+		Example: examples(
+			"Remove a project", identity.Name+" project remove --name app",
+			"By id, as JSON", identity.Name+" project remove --id proj-1a2b3c4d --json",
+		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The removed project.\n" + `With --json: {"result": "removed", "project": {...}}`,
