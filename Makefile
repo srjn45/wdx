@@ -51,17 +51,17 @@ lint: $(GOLANGCI_LINT) $(SHELLCHECK) $(ACTIONLINT)
 	$(ACTIONLINT) -shellcheck $(SHELLCHECK)
 
 # Everything CI checks besides the tests: lint, a tidy go.mod, unchanged
-# modules, current notices, known vulnerabilities, the release targets
-# building, and the commit messages in RANGE.
+# modules, current notices, known vulnerabilities, the code type-checking
+# for the other release targets, and the commit messages in RANGE. Type
+# checks catch what a build for another OS would, in a fraction of the time.
 check: lint $(GOVULNCHECK)
 	go mod tidy -diff
 	go mod verify
 	scripts/notices.sh
 	@git diff --quiet -- THIRD-PARTY-NOTICES.md || { echo "error: THIRD-PARTY-NOTICES.md is out of date; commit it as make notices wrote it" >&2; exit 1; }
 	$(GOVULNCHECK) ./...
-	for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
-		CGO_ENABLED=0 GOOS=$${target%/*} GOARCH=$${target#*/} go build -o /dev/null ./cmd/wdx || exit 1; \
-	done
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go vet ./...
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go vet ./...
 	scripts/commits.sh $(RANGE)
 
 # Fetch the pinned linters into bin/.

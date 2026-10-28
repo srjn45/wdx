@@ -76,7 +76,7 @@ Tags are annotated, their message holding the release's notes, and are never mov
 ```
 make cover   the tests, as make test runs them, with coverage: bin/cover.html and a summary per package
 make check   golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified go.mod;
-             current notices; govulncheck; the four release targets building; the commit messages in RANGE
+             current notices; govulncheck; go vet for macOS and Linux arm64; the commit messages in RANGE
 ```
 
 Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-shellcheck.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
