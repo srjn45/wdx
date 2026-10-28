@@ -1,6 +1,6 @@
 # The tests and every other check, as make runs them locally. Two jobs, so
 # the checks run beside the tests, the slowest part, and each job is set up
-# once. docs/RELEASING.md: CI checks, it does not release.
+# once. docs/RELEASING.md: release.yml runs it on a tag before publishing.
 name: CI
 
 on:
@@ -8,6 +8,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
   schedule:
     # Weekly, for vulnerabilities published since the last push.
     - cron: "17 6 * * 1"
@@ -52,12 +53,16 @@ jobs:
         with:
           path: bin
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile', 'scripts/fetch-*.sh') }}
+          # The tools are named by version: an older cache lacks only those
+          # whose pin changed.
+          restore-keys: tools-${{ runner.os }}-
       - run: make check
         env:
-          # The commits of the PR or of the push; none on other runs.
+          # The commits of the PR or of the push to main; none on other runs,
+          # a tag's included: they were checked on main.
           RANGE: >-
             ${{ github.event_name == 'pull_request'
               && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha)
-              || github.event_name == 'push'
+              || github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
               && format('{0}..{1}', github.event.before, github.sha)
               || 'HEAD..HEAD' }}

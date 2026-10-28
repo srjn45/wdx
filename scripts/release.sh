@@ -1,6 +1,7 @@
 #!/bin/sh
-# Cut a release: tag it, then build its archives into dist/. Nothing is
-# pushed.
+# Cut a release: tag it, build its archives into dist/, then push main and
+# the tag. GitHub publishes the release from the tag, once CI passes on it
+# (.github/workflows/release.yml).
 #
 #   scripts/release.sh stable   vX.Y.Z: commits CHANGELOG.md, then tags that commit
 #   scripts/release.sh dev      vX.Y.Z-dev.N: tags HEAD, without a commit
@@ -33,6 +34,9 @@ cd "$(dirname "$0")/.."
 [ -z "$(git status --porcelain)" ] || die "the working tree has uncommitted changes"
 scripts/notices.sh >/dev/null
 [ -z "$(git status --porcelain)" ] || die "THIRD-PARTY-NOTICES.md is out of date with the modules; commit it as scripts/notices.sh wrote it"
+# Fail before tagging rather than leave a tag that cannot be pushed.
+git fetch -q origin "$BRANCH"
+git merge-base --is-ancestor "origin/$BRANCH" HEAD || die "$BRANCH is behind origin/$BRANCH; pull first"
 # A stable release usually promotes a commit already released as dev.
 if [ "$channel" = stable ]; then
 	released="$(git tag --points-at HEAD --list "$STABLE_TAGS" | grep -v -- - || true)"
@@ -45,8 +49,8 @@ last="$(git describe --tags --abbrev=0 --match "$STABLE_TAGS" --exclude '*-*' 2>
 next="$(cliff --bumped-version)"
 [ "$next" != "$last" ] || die "nothing to release since $last: no feat, fix, perf or breaking commit"
 
-info "testing"
-make test
+info "checking and testing"
+make check test
 
 if [ "$channel" = stable ]; then
 	tag="$next"
@@ -64,3 +68,6 @@ git tag -a --cleanup=verbatim "$tag" -m "wdx $tag" -m "$notes"
 info "tagged $tag"
 
 scripts/dist.sh "$tag" "$(git rev-parse --short HEAD)"
+
+git push -q --atomic origin "$BRANCH" "$tag"
+info "pushed $BRANCH and $tag; GitHub publishes the release once CI passes"

@@ -13,7 +13,7 @@ curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | s
 curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | WDX_CHANNEL=dev sh   # dev
 ```
 
-No release is published on GitHub yet. From a clone, `make install` builds and installs the current commit (needs Go).
+The repository is private for now, so these need a token to download its releases. From a clone, `make install` builds and installs the current commit (needs Go).
 
 ## Quick start
 

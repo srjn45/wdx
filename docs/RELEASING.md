@@ -3,13 +3,21 @@
 A version is a git tag; there is no version file. The build reads it with `git describe`, so a build between releases is named after the last tag and the commits since (`0.2.0-dev.4-3-gabc1234`).
 
 ```
-make release-dev   tag HEAD as the next dev release and build it into dist/
-make release       commit CHANGELOG.md, tag the next stable release and build it into dist/
+make release-dev   tag HEAD as the next dev release, build it into dist/ and push it
+make release       commit CHANGELOG.md, tag the next stable release, build it into dist/ and push it
 make changelog     print what changed since the last stable release
 make notices       write THIRD-PARTY-NOTICES.md from the modules linked into wdx
 ```
 
-Both release targets need a clean working tree on `main` and a passing `make test`, and refuse when there is nothing to release. Nothing is pushed or published: until releases are on GitHub, `dist/` is the release, and `make install` installs from it. The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
+Both release targets need a clean working tree on `main`, not behind `origin/main`, and a passing `make check` and `make test`, and refuse when there is nothing to release. They end by pushing `main` and the tag together.
+
+## Publishing
+
+`.github/workflows/release.yml` publishes the GitHub Release of each `v*` tag pushed: it runs the jobs of `ci.yml` on the tag, then `scripts/publish.sh`, which checks that the tag is annotated and on `main`, builds the archives with the tag's own `scripts/dist.sh`, and uploads them with `checksums.txt` and the tag's `install.sh`. The tag's notes are the release's. A dev tag is a pre-release, so GitHub's latest release is always the newest stable one. A failed run leaves a draft at most; running it again replaces it. A tag pushed before releases were published is published by running the workflow by hand with that tag (`gh workflow run release.yml -f tag=v0.2.0-dev.20`), without the checks.
+
+The repository is private, so its releases download only with a token: `install.sh` and `wdx update` cannot reach them yet. Meanwhile `dist/` holds every release built here, and `make install` and `update.base_url: file://<repo>/dist` read it.
+
+The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
 
 ## Versions
 
@@ -71,7 +79,7 @@ Tags are annotated, their message holding the release's notes, and are never mov
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to `main`, every pull request, weekly and on demand, on Linux. It checks and never releases:
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, every tag before it is published, weekly and on demand, on Linux:
 
 ```
 make cover   the tests, as make test runs them, with coverage: bin/cover.html and a summary per package
@@ -79,4 +87,4 @@ make check   golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy an
              current notices; govulncheck; go vet for macOS and Linux arm64; the commit messages in RANGE
 ```
 
-Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-shellcheck.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
+Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request, and none for a tag, whose commits were checked on `main`. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-shellcheck.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
