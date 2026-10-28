@@ -33,6 +33,7 @@ type Hello struct {
 	Version    int    `json:"version"`
 	TerminalID string `json:"terminal_id,omitempty"`
 	PID        int    `json:"pid,omitempty"` // the shell's
+	HolderPID  int    `json:"holder_pid,omitempty"`
 	Exited     *Exit  `json:"exited,omitempty"`
 }
 

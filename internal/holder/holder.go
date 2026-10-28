@@ -240,7 +240,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 		h.conn.Close()
 	}
 	h.conn = c
-	err := h.write(c, frameHello, Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, Exited: h.exit})
+	err := h.write(c, frameHello, Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit})
 	h.mu.Unlock()
 	if err != nil {
 		h.log.Info("hello not sent", "err", err.Error())

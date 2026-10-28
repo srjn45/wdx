@@ -168,7 +168,7 @@ Frames on the socket: one byte of type, a 4-byte big-endian length, the payload;
 
 | Frame | Direction | Payload |
 |---|---|---|
-| `hello` | both, first | `{"version": 1, "terminal_id": ..., "pid": ..., "exited": null or {"code": ...}}` from the holder |
+| `hello` | both, first | `{"version": 1, "terminal_id": ..., "pid": ..., "holder_pid": ..., "exited": null or {"code": ...}}` from the holder |
 | `exited` | holder → daemon | `{"code": ..., "at": ...}` |
 | `stop` | daemon → holder | `{"grace_ms": 5000}`; answered by `exited` |
 | `release` | daemon → holder | none; the holder exits |
@@ -267,8 +267,8 @@ Each step builds and passes `make test` on its own.
 
 1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.
-3. **`internal/terminal`**: the Store (rows, transitions, names with codenames, lookup by id or by name in a project, project by dir) and the supervisor that starts, watches, stops and reconciles holders. Tests with a temp DB and real holders.
+3. **`internal/terminal`**: the Store (rows, transitions, names with codenames, lookup by id or by name in a project) and the supervisor that starts, watches, stops and reconciles holders. It does not import `project`: the daemon passes the project's id and the dir. `holder/holdertest` makes a test binary its own holder. Tests with a temp DB and real holders.
 4. **API**: the terminal paths and schemas, `stop_running`, `started` / `stopped` on project results, the new codes; `make generate`.
-5. **Daemon**: the terminal handlers; reconciliation before serving; project close, open and remove going through the supervisor; shutdown leaving holders alone.
+5. **Daemon**: the project whose worktree contains a dir, in the project Store; the terminal handlers; reconciliation before serving; project close, open and remove going through the supervisor; shutdown leaving holders alone.
 6. **CLI**: `wdx terminal create / list / start / remove`, the hidden `wdx holder`, `--stop-running` / `--cancel` and their prompt on project close and remove, completions, help, examples; integration tests per outcome.
 7. **Install and docs**: `KillMode=process` and `AbandonProcessGroup` in `scripts/install.sh`; DAEMON.md; AGENTS.md's layout and dependency lines (`cli -> holder` for the hidden command, `daemon -> terminal -> holder`); V1_FEATURES.md checkboxes.

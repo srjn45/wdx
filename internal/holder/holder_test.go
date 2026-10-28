@@ -186,7 +186,7 @@ func TestStopHangsUp(t *testing.T) {
 	f := newFixture(t)
 	s := f.start(t, "term-00000002", f.script(t, "exec sleep 60"))
 	c := f.dial(t, "term-00000002")
-	if h := c.Hello(); h.PID != s.PID || h.Exited != nil || h.Version != Version {
+	if h := c.Hello(); h.PID != s.PID || h.HolderPID != s.HolderPID || h.Exited != nil || h.Version != Version {
 		t.Fatalf("want the running shell %d, got %+v", s.PID, h)
 	}
 	if err := c.Stop(5 * time.Second); err != nil {
@@ -200,8 +200,16 @@ func TestStopHangsUp(t *testing.T) {
 func TestStopKillsAfterGrace(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.start(t, "term-00000003", f.script(t, "trap '' HUP; while :; do sleep 1; done"))
+	f.start(t, "term-00000003", f.script(t, "trap '' HUP; touch trapped; while :; do sleep 1; done"))
 	c := f.dial(t, "term-00000003")
+	// A hangup that comes before the trap is set ends the shell.
+	deadline := time.Now().Add(waitLimit)
+	for _, err := os.Stat(filepath.Join(f.dir, "trapped")); err != nil; _, err = os.Stat(filepath.Join(f.dir, "trapped")) {
+		if time.Now().After(deadline) {
+			t.Fatal("the shell did not set its trap")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := c.Stop(100 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
