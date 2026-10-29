@@ -6,7 +6,6 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260303162955-0b88c25f3fff
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/vt v0.1.1-0.20261028143050-ac49f62f807e
-	github.com/creack/pty v1.1.24
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/oapi-codegen/nethttp-middleware v1.3.1
 	github.com/oapi-codegen/runtime v1.8.0

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
+	"github.com/srjn45/wdx/internal/pty"
 )
 
 const (
@@ -303,7 +303,7 @@ func (h *holder) resizeLocked(size Size) {
 	if size == h.size {
 		return
 	}
-	if err := pty.Setsize(h.master, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
+	if err := pty.Setsize(h.master, size.Cols, size.Rows); err != nil {
 		h.log.Warn("terminal not resized", "err", err.Error())
 		return
 	}

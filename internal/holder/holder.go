@@ -23,11 +23,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/pty"
 )
 
 // writeTimeout bounds a write to the daemon, so one that stopped reading
@@ -164,7 +164,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		listener.Close()
 		return nil, err
 	}
-	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(startSize.Rows), Cols: uint16(startSize.Cols)})
+	master, err := pty.Start(cmd, startSize.Cols, startSize.Rows)
 	if err != nil {
 		listener.Close()
 		h.spool.close()
