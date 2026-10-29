@@ -161,28 +161,32 @@ func (v *attachView) View() tea.View {
 }
 
 // statusLine names the terminal on the left and says what the keys do now
-// on the right.
+// on the right, in a bar whose color tells the state.
 func (v *attachView) statusLine() string {
 	st := v.st
-	left := " " + st.Name(v.terminal.Name) + " · " + v.terminal.ProjectName
+	left := " " + st.BarName(v.terminal.Name) + " · " + v.terminal.ProjectName
 	var right string
+	state := style.StatusLive
 	switch {
 	case v.pending:
-		right = st.Hint(v.prefix.label+" …") + "  d detach  [ ] scroll  ? keys  s status  " + v.prefix.label + " send it"
+		state = style.StatusPrefix
+		right = v.prefix.label + " …  d detach  [ ] scroll  ? keys  s status  " + v.prefix.label + " send it"
 	case v.pane.FetchErr() != nil:
-		right = st.Warning("history unavailable: " + v.pane.FetchErr().Error())
+		state = style.StatusFailed
+		right = "history unavailable: " + v.pane.FetchErr().Error()
 	case v.pane.Scrolled():
+		state = style.StatusScrolled
 		top, lines := v.pane.Position()
 		right = fmt.Sprintf("history %d of %d · PgDn or %s ] down · any key: back", top+1, lines, v.prefix.label)
 	default:
-		right = st.Muted(v.prefix.label + " ? for keys")
+		right = st.BarMuted(v.prefix.label + " ? for keys")
 	}
 	right += " "
-	gap := v.width - ansi.StringWidth(left) - ansi.StringWidth(right)
-	if gap < 1 {
-		return ansi.Truncate(left+" "+right, v.width, "")
+	line := left + " " + right
+	if gap := v.width - ansi.StringWidth(left) - ansi.StringWidth(right); gap >= 1 {
+		line = left + strings.Repeat(" ", gap) + right
 	}
-	return left + strings.Repeat(" ", gap) + right
+	return st.Bar(ansi.Truncate(line, v.width, ""), state)
 }
 
 // helpContent lists the keys over the pane.

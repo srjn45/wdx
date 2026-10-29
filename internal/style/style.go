@@ -64,6 +64,49 @@ func (s Style) Name(text string) string { return s.apply(text, bold) }
 // Muted styles details that matter less: ids, timestamps, labels.
 func (s Style) Muted(text string) string { return s.apply(text, dim) }
 
+// StatusBar is the state a status line shows, which picks its colors.
+type StatusBar int
+
+const (
+	StatusLive     StatusBar = iota // nothing going on: black on green
+	StatusPrefix                    // a prefix key was pressed: black on yellow
+	StatusScrolled                  // scrolled back through history: black on cyan
+	StatusFailed                    // something failed: white on red
+)
+
+var statusColors = map[StatusBar]string{
+	StatusLive:     "30;42",
+	StatusPrefix:   "30;43",
+	StatusScrolled: "30;46",
+	StatusFailed:   "97;41",
+}
+
+// Bar paints text as a status line in the colors of state; in reverse
+// video when off, so that it still stands apart from what is above it.
+// Inside it, use BarName and BarMuted: other styles end in a reset, which
+// would end the bar too.
+func (s Style) Bar(text string, state StatusBar) string {
+	codes := "7"
+	if s.on {
+		codes = statusColors[state]
+	}
+	return "\x1b[" + codes + "m" + text + "\x1b[0m"
+}
+
+// BarName styles the name of an entity inside a Bar.
+func (s Style) BarName(text string) string { return s.within(text, bold, "22") }
+
+// BarMuted styles details that matter less inside a Bar.
+func (s Style) BarMuted(text string) string { return s.within(text, dim, "22") }
+
+// within styles text with on, ending with off rather than a reset.
+func (s Style) within(text, on, off string) string {
+	if !s.on || text == "" {
+		return text
+	}
+	return "\x1b[" + on + "m" + text + "\x1b[" + off + "m"
+}
+
 func (s Style) apply(text string, codes ...string) string {
 	if !s.on || text == "" {
 		return text

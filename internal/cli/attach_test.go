@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image/color"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
@@ -142,6 +144,23 @@ func (a *attachRun) wait() (jsonOutput, int) {
 	return v, out.exit
 }
 
+// wantBar waits for the status line, on the bottom row, to be painted in
+// bg, or in reverse video when bg is nil.
+func (a *attachRun) wantBar(bg color.Color) {
+	a.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		cell := a.screen.CellAt(0, a.screen.Height()-1)
+		if cell != nil && (bg == nil && cell.Style.Attrs&uv.AttrReverse != 0 || bg != nil && cell.Style.Bg == bg) {
+			return
+		}
+		if time.Now().After(deadline) {
+			a.t.Fatalf("want the status line painted in %v, got %+v", bg, cell)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // wantGivenBack checks the calling terminal shows what it did before
 // attaching, and nothing of the session.
 func (a *attachRun) wantGivenBack(session string) {
@@ -160,6 +179,7 @@ func TestTerminalAttach(t *testing.T) {
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
 	a.waitScreen("C-\\ ? for keys")
+	a.wantBar(ansi.Green)
 	if !a.screen.IsAltScreen() || !strings.Contains(a.text(), "api · app") {
 		t.Fatalf("want the view full-window with its status line, got:\n%s", a.text())
 	}
@@ -167,6 +187,7 @@ func TestTerminalAttach(t *testing.T) {
 	a.waitScreen("hello")
 	a.input("\x1c")
 	a.waitScreen("d detach")
+	a.wantBar(ansi.Yellow)
 	a.input("d")
 	v, exit := a.wait()
 	if exit != api.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
@@ -191,7 +212,8 @@ func TestTerminalAttach(t *testing.T) {
 }
 
 // TestTerminalAttachKeys: the prefix twice sends it once, ? lists the
-// keys, s hides the status line, and --prefix-key changes the prefix.
+// keys, s hides the status line, and --prefix-key changes the prefix;
+// without color the status line is in reverse video.
 func TestTerminalAttachKeys(t *testing.T) {
 	t.Parallel()
 	home := newHomeWithShell(t, interactiveShell)
@@ -220,8 +242,9 @@ func TestTerminalAttachKeys(t *testing.T) {
 		t.Fatalf("want detached, got exit %d, %+v", exit, v)
 	}
 
-	b := startAttach(t, home, app, "--name", "api", "--prefix-key", "ctrl-]")
+	b := startAttach(t, home, app, "--name", "api", "--prefix-key", "ctrl-]", "--color", "never")
 	b.waitScreen("C-] ? for keys")
+	b.wantBar(nil)
 	b.input("\x1c") // no longer the prefix: the shell gets it
 	b.input("\x1d")
 	b.input("d")
@@ -244,6 +267,7 @@ func TestTerminalAttachScroll(t *testing.T) {
 	a.waitScreen("100")
 	a.input("\x1b[5~") // PageUp
 	a.waitScreen("history ")
+	a.wantBar(ansi.Cyan)
 	a.input("\x1c")
 	a.input("[")
 	a.input("\x1b[<64;5;5M") // the wheel, up
