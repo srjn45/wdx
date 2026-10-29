@@ -47,13 +47,14 @@ func (e *ChecksumError) Error() string {
 // Releases: <base>/v<version>/<archive> and checksums.txt.
 type releases struct {
 	base string
+	api  string // GitHub's list of them, when base is GitHub's
 	http *http.Client
 }
 
 func newReleases(base string) releases {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
-	return releases{base: base, http: &http.Client{Transport: transport, Timeout: downloadTimeout}}
+	return releases{base: base, api: identity.ReleasesAPI, http: &http.Client{Transport: transport, Timeout: downloadTimeout}}
 }
 
 // latest returns the newest release on channel: the newest stable one, or
@@ -63,9 +64,9 @@ func newReleases(base string) releases {
 func (r releases) latest(ctx context.Context, channel string) (string, error) {
 	var tag string
 	if r.base == identity.ReleasesURL {
-		url := identity.ReleasesAPI + "/latest"
+		url := r.api + "/latest"
 		if channel == "dev" {
-			url = identity.ReleasesAPI + "?per_page=1"
+			url = r.api + "?per_page=1"
 		}
 		body, err := r.get(ctx, url)
 		if err != nil {
