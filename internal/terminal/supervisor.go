@@ -281,17 +281,27 @@ func (s *Supervisor) Live(ctx context.Context, projectID string) ([]Terminal, er
 // StopProject stops the project's live terminals, as closing or removing
 // it does, and returns them stopped. Each is marked stopped before its
 // shell is signalled, so a daemon that dies meanwhile finishes the stop
-// when it starts.
+// when it starts. All are hung up on, then waited for together: closing a
+// project takes one stop however many terminals it has.
 func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Terminal, error) {
 	live, err := s.Live(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	stopped := []Terminal{}
-	for _, t := range live {
-		if err := s.stopOne(ctx, t); err != nil {
+	watches := make([]*watch, len(live))
+	for i, t := range live {
+		if watches[i], err = s.hangUp(ctx, t); err != nil {
 			return nil, err
 		}
+	}
+	deadline := time.Now().Add(s.StopWait())
+	for i, t := range live {
+		if err := s.waitStopped(ctx, t, watches[i], deadline); err != nil {
+			return nil, err
+		}
+	}
+	stopped := []Terminal{}
+	for _, t := range live {
 		if t, err = s.store.Get(ctx, t.ID); err != nil {
 			return nil, err
 		}
@@ -331,9 +341,20 @@ func (s *Supervisor) StartProject(ctx context.Context, projectID string) ([]Term
 // stopOne marks t stopped, hangs up on its shell and waits until the
 // holder reports it gone.
 func (s *Supervisor) stopOne(ctx context.Context, t Terminal) error {
+	w, err := s.hangUp(ctx, t)
+	if err != nil {
+		return err
+	}
+	return s.waitStopped(ctx, t, w, time.Now().Add(s.StopWait()))
+}
+
+// hangUp marks t stopped and hangs up on its shell, and returns the watch
+// that tells when the holder reports it gone; nil when it has no holder,
+// and is marked ended.
+func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 	log := logging.FromContext(ctx)
 	if _, err := s.store.stopped(ctx, t.ID); err != nil {
-		return err
+		return nil, err
 	}
 	s.mu.Lock()
 	w := s.watches[t.ID]
@@ -341,16 +362,26 @@ func (s *Supervisor) stopOne(ctx context.Context, t Terminal) error {
 	if w == nil {
 		log.Info("terminal has no holder to stop", "terminal_id", t.ID)
 		_, err := s.store.ended(ctx, t.ID, time.Now())
-		return err
+		return nil, err
 	}
 	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", s.opts.StopGrace.Milliseconds())
 	if err := w.current().Stop(s.opts.StopGrace); err != nil {
 		log.Info("stop not sent", "terminal_id", t.ID, "err", err.Error())
 	}
+	return w, nil
+}
+
+// waitStopped waits until the holder reports t's shell gone, and kills
+// both when it has not by deadline.
+func (s *Supervisor) waitStopped(ctx context.Context, t Terminal, w *watch, deadline time.Time) error {
+	if w == nil {
+		return nil
+	}
+	log := logging.FromContext(ctx)
 	select {
 	case <-w.done:
 		return nil
-	case <-time.After(s.StopWait()):
+	case <-time.After(time.Until(deadline)):
 	}
 	log.Error("holder did not report the shell gone, killing both", "terminal_id", t.ID, "holder_pid", t.HolderPID, "pid", t.PID)
 	kill(t.HolderPID, t.PID)

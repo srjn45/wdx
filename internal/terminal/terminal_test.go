@@ -345,6 +345,46 @@ func TestStopAndStartProject(t *testing.T) {
 	}
 }
 
+// TestStopProjectTogether stops a project whose shells ignore the hangup:
+// they are killed after one grace, not one after another.
+func TestStopProjectTogether(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	const grace = time.Second
+	f.opts.StopGrace = grace
+	s := f.supervisor(t)
+	p := f.project(t, "warden")
+	var dirs []string
+	for _, name := range []string{"a", "b", "c"} {
+		d := dir(t, "trap '' HUP; touch trapped")
+		create(t, s, p, name, d)
+		dirs = append(dirs, d)
+	}
+	for _, d := range dirs {
+		waitFile(t, filepath.Join(d, "trapped")) // a hangup before the trap ends the shell at once
+	}
+	start := time.Now()
+	stopped, err := s.StopProject(context.Background(), p)
+	if err != nil || len(stopped) != 3 {
+		t.Fatalf("want 3 stopped, got %+v, %v", stopped, err)
+	}
+	if took := time.Since(start); took > 2*grace {
+		t.Fatalf("stopping took %v, more than one grace of %v each", took, grace)
+	}
+}
+
+// waitFile waits for path to exist.
+func waitFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestStartProjectDirGone(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
