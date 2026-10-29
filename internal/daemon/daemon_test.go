@@ -555,8 +555,8 @@ func TestInvalidRequests(t *testing.T) {
 		method, path, body string
 		status             int
 	}{
-		{http.MethodGet, "/v1/nothing", "", http.StatusNotFound},
-		{http.MethodPut, "/v1/version", "", http.StatusNotFound},
+		{http.MethodGet, "/v1/nothing", "", http.StatusBadRequest},
+		{http.MethodPut, "/v1/version", "", http.StatusBadRequest},
 		{http.MethodGet, "/v1/projects?state=lost", "", http.StatusBadRequest},
 		{http.MethodPost, "/v1/projects", "{", http.StatusBadRequest},
 		{http.MethodPost, "/v1/projects", `{}`, http.StatusBadRequest},

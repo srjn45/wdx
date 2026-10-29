@@ -59,7 +59,7 @@ func (d *Daemon) handler() http.Handler {
 func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
 	switch {
 	case opts.MatchedRoute == nil:
-		err = &requestError{err: fmt.Errorf("no such endpoint: %s %s", r.Method, r.URL.Path), status: http.StatusNotFound}
+		err = &requestError{fmt.Errorf("no such endpoint: %s %s", r.Method, r.URL.Path)}
 	case opts.StatusCode < http.StatusInternalServerError:
 		// The validator's messages run over many lines; the first says it.
 		msg, _, _ := strings.Cut(err.Error(), "\n")

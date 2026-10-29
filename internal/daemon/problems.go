@@ -14,8 +14,7 @@ import (
 
 // requestError is a request that cannot be served as sent.
 type requestError struct {
-	err    error
-	status int // the status when not that of usage
+	err error
 }
 
 func (e *requestError) Error() string { return e.err.Error() }
@@ -27,9 +26,6 @@ func problemOf(ctx context.Context, err error) api.Problem {
 	p := api.NewProblem(code, err.Error())
 	if details != nil {
 		p.Details = &details
-	}
-	if e, ok := errors.AsType[*requestError](err); ok && e.status != 0 {
-		p.Status = e.status
 	}
 	p.DebugId = debugID(ctx)
 	return p

@@ -110,7 +110,7 @@ func TestRequestsMeasured(t *testing.T) {
 		"code=not_found operation=getProject status=404": 1,
 		// A request the spec does not allow is still its operation's.
 		"code=usage operation=listProjects status=400": 1,
-		"code=usage status=404":                        1,
+		"code=usage status=400":                        1,
 	}
 	if got := c.requestCounts(t); !maps.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
