@@ -101,6 +101,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		}
 		m.back.fetched(msg)
 		m.back.scroll(0)
+		if msg.err != nil {
+			return nil // the next scroll tries again
+		}
 		return m.fetchNeeded()
 	case tea.KeyPressMsg:
 		return m.key(msg)

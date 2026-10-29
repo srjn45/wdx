@@ -2,10 +2,12 @@ package termview
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -101,6 +103,12 @@ func (sh shell) waitHistory(lines int64) {
 }
 
 func (sh shell) attach() *driver {
+	sh.t.Helper()
+	return sh.attachFetching(sh.fetch)
+}
+
+// attachFetching attaches a pane that fetches history with fetch.
+func (sh shell) attachFetching(fetch FetchFunc) *driver {
 	t := sh.t
 	t.Helper()
 	s, err := holder.Attach(context.Background(), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 80, Rows: 24}, 0)
@@ -108,7 +116,7 @@ func (sh shell) attach() *driver {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	d := &driver{t: t, m: New(s, sh.fetch), msgs: make(chan tea.Msg, 16)}
+	d := &driver{t: t, m: New(s, fetch), msgs: make(chan tea.Msg, 16)}
 	t.Cleanup(d.m.Close)
 	d.run(d.m.Init())
 	return d
@@ -375,6 +383,29 @@ func TestPaneScrollsFetchedHistory(t *testing.T) {
 	if len(d.m.back.pages) > cachedPages {
 		t.Fatalf("%d pages cached", len(d.m.back.pages))
 	}
+}
+
+// TestPaneFetchFails scrolls back into history it cannot fetch: the pane
+// says so and tries again on the next scroll, not at once.
+func TestPaneFetchFails(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, "seq 1 3000; exec sleep 60")
+	sh.waitHistory(2977)
+	var fetches atomic.Int64
+	d := sh.attachFetching(func(int64, int) (History, error) {
+		fetches.Add(1)
+		return History{}, errors.New("no history")
+	})
+	d.waitText("3000")
+	d.run(d.m.ScrollUp(500))
+	d.waitFor("the fetch failing", func() bool { return d.m.FetchErr() != nil })
+	quiet := time.Now().Add(200 * time.Millisecond)
+	d.waitFor("200 ms", func() bool { return time.Now().After(quiet) })
+	if n := fetches.Load(); n != 1 {
+		t.Fatalf("one scroll fetched %d times", n)
+	}
+	d.run(d.m.ScrollUp(1))
+	d.waitFor("a second fetch", func() bool { return fetches.Load() == 2 })
 }
 
 // TestPaneScrollStays prints while the view is scrolled back: it stays on
