@@ -544,7 +544,7 @@ components:
 
     Terminal:
       type: object
-      required: [id, name, project_id, project_name, dir, shell, state, pid, exit_code, error, created_at, started_at, ended_at]
+      required: [id, name, project_id, project_name, dir, shell, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -560,6 +560,7 @@ components:
           description: Only when exited; 128 and the signal for a shell killed by one.
         error: { type: string, nullable: true, description: Only when failed; why it did not start. }
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: When its state last changed. }
         started_at: { type: string, format: date-time, nullable: true }
         ended_at: { type: string, format: date-time, nullable: true }
 

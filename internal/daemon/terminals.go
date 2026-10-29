@@ -204,6 +204,7 @@ func terminalView(t terminal.Terminal) api.Terminal {
 		State:       api.TerminalState(t.State),
 		ExitCode:    t.ExitCode,
 		CreatedAt:   t.CreatedAt.UTC(),
+		UpdatedAt:   t.UpdatedAt.UTC(),
 		StartedAt:   optionalTime(t.StartedAt),
 		EndedAt:     optionalTime(t.EndedAt),
 	}

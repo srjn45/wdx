@@ -343,6 +343,8 @@ func TestRemoveTerminal(t *testing.T) {
 	}
 	if got := r.JSON200.Terminal; got.State != api.TerminalStateStopped || got.Pid != nil || got.EndedAt == nil {
 		t.Fatalf("want build reported as stopped, got %+v", got)
+	} else if term.UpdatedAt.IsZero() || got.UpdatedAt.Before(term.UpdatedAt) || got.UpdatedAt.Before(*got.EndedAt) {
+		t.Fatalf("want updated_at set, then moved on to the stop, got %v then %+v", term.UpdatedAt, got)
 	}
 	if list := td.terminals(t, nil); len(list) != 0 {
 		t.Fatalf("want no terminal left, got %+v", list)

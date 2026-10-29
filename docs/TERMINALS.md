@@ -63,6 +63,7 @@ CREATE INDEX terminals_project_id ON terminals (project_id);
 | `exit_code` | only `exited`; a shell killed by a signal gets 128 + the signal, as shells report it |
 | `error` | only `failed`: why it did not start |
 | `started_at` | set on every (re)launch; `ended_at` when it last stopped running |
+| `updated_at` | when its state last changed |
 
 A name stays taken while its row exists, whatever the state.
 
@@ -203,7 +204,7 @@ A terminal in JSON:
 ```json
 {"id": "term-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "warden",
  "dir": "/home/me/dev/warden", "shell": "/usr/bin/zsh", "state": "running", "pid": 4242,
- "exit_code": null, "error": null, "created_at": "…", "started_at": "…", "ended_at": null}
+ "exit_code": null, "error": null, "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null}
 ```
 
 Projects:
