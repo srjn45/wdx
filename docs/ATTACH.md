@@ -108,7 +108,7 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 | `input` | client → holder | raw bytes, written to the PTY |
 | `resize` | client → holder | `{"cols": ..., "rows": ...}` |
 | `resized` | holder → client | `{"cols": ..., "rows": ...}`: the terminal's new size, queued in order with the output to every client attached; also the answer to a `resize` that leaves the size as it was. Older clients ignore it, as they do any frame they do not know |
-| `exited` | holder → daemon and clients | as in version 1; the holder then closes the clients' connections |
+| `exited` | holder → daemon and clients | as in version 1; the holder then closes the clients' connections. Released by the daemon, it waits up to 2 s for every attached client to be sent it first |
 | `stop`, `release` | daemon → holder | as in version 1 |
 
 **Attaching is consistent without waiting.** The holder locks the vt, takes its position `S` (what it has consumed), its history count `H` and the snapshot, and sends history lines up to `H`, the snapshot, then the output from `S` on: from the spool up to the live position, then live. No byte is shown twice or missed, however far the vt is behind. A client that later fetches older history asks for lines before `H`.

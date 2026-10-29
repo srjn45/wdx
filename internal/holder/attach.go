@@ -186,6 +186,8 @@ func (h *holder) detach(c *client) {
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
 	delete(h.clients, c)
+	close(h.left)
+	h.left = make(chan struct{})
 }
 
 // writeClient sends the history and the screen, the spool from the
@@ -356,6 +358,28 @@ func (h *holder) exitClients() {
 	h.clientExit = exit
 	for c := range h.clients {
 		c.send(frameExited, exit)
+	}
+}
+
+// waitClients waits for the attached clients to be sent the exit and
+// leave, as each does once it has it: the daemon releases the holder as
+// soon as it hears of the exit, which reaches clients up to exitDrain
+// later. A client that does not read is not waited for long.
+func (h *holder) waitClients() {
+	deadline := time.After(2 * exitDrain)
+	for {
+		h.clientsMu.Lock()
+		attached, left := len(h.clients), h.left
+		h.clientsMu.Unlock()
+		if attached == 0 {
+			return
+		}
+		select {
+		case <-left:
+		case <-deadline:
+			h.log.Warn("clients still attached on release", "clients", attached)
+			return
+		}
 	}
 }
 

@@ -307,6 +307,35 @@ func TestQueriesNobodyReads(t *testing.T) {
 	c.waitOutput("flooded")
 }
 
+// TestAttachExitedOnRelease ends the shell while a client is attached and
+// the daemon releases the holder as soon as it hears: the client still
+// gets the exit, though a child holds the PTY open past the shell.
+func TestAttachExitedOnRelease(t *testing.T) {
+	t.Parallel()
+	for i := range 15 {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			id := fmt.Sprintf("term-000002%02d", i)
+			f.startShell(t, id, "echo ready; read x; sleep 30 & exit 4")
+			c := f.attach(t, id, Size{Cols: 80, Rows: 24}, 0)
+			c.waitOutput("ready")
+			d := f.dial(t, id)
+			c.input("\n")
+			waitExit(t, d)
+			if err := d.Release(); err != nil {
+				t.Fatal(err)
+			}
+			c.waitDone()
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.exit == nil || c.exit.Code != 4 {
+				t.Fatalf("the client got exit %+v, want code 4", c.exit)
+			}
+		})
+	}
+}
+
 func TestAttachExited(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

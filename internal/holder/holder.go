@@ -121,8 +121,9 @@ type holder struct {
 	// The clients' side: the PTY's reader queues output to them.
 	clientsMu  sync.Mutex
 	clients    map[*client]bool
-	clientExit []byte // the exited frame's payload, once the shell ended
-	spoolErr   bool   // a failed append is logged once
+	left       chan struct{} // closed and replaced when a client detaches
+	clientExit []byte        // the exited frame's payload, once the shell ended
+	spoolErr   bool          // a failed append is logged once
 }
 
 // answerQueue bounds the vt's answers waiting for a program to read its
@@ -177,6 +178,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		size:     startSize,
 		answers:  make(chan []byte, answerQueue),
 		clients:  map[*client]bool{},
+		left:     make(chan struct{}),
 	}
 	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
 		listener.Close()
@@ -267,6 +269,7 @@ func (h *holder) serve(ctx context.Context) error {
 	select {
 	case <-h.released:
 		h.log.Info("holder released")
+		h.waitClients()
 	case <-ctx.Done():
 		h.signal(syscall.SIGKILL)
 		<-h.ended
