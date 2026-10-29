@@ -263,7 +263,9 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 	if err != nil {
 		return false, err
 	}
-	logging.FromContext(ctx).Info("terminal state changed", "terminal_id", id, "state", to, "from", from, "changed", n > 0)
+	if n > 0 {
+		logging.FromContext(ctx).Info("terminal state changed", "terminal_id", id, "state", to)
+	}
 	return n > 0, err
 }
 

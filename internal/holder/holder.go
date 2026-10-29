@@ -74,7 +74,7 @@ func Run(ctx context.Context, o Options) error {
 		ready.PID = h.cmd.Process.Pid
 	}
 	if werr := json.NewEncoder(o.Ready).Encode(ready); werr != nil {
-		logging.FromContext(ctx).Error("ready not reported", "err", werr.Error())
+		logging.FromContext(ctx).Error("ready not reported", "err", werr)
 	}
 	o.Ready.Close()
 	if err != nil {
@@ -322,7 +322,7 @@ func (h *holder) output(p []byte) {
 	defer h.clientsMu.Unlock()
 	if err := h.spool.append(chunk); err != nil && !h.spoolErr {
 		h.spoolErr = true
-		h.log.Error("output not spooled: the screen and history miss it", "err", err.Error())
+		h.log.Error("output not spooled: the screen and history miss it", "err", err)
 	}
 	for c := range h.clients {
 		c.send(frameOutput, chunk)
@@ -377,7 +377,7 @@ func (h *holder) writeHistory(lines ...string) {
 	if err := h.history.append(lines...); err != nil {
 		if !h.historyErr {
 			h.historyErr = true
-			h.log.Error("history not written", "err", err.Error())
+			h.log.Error("history not written", "err", err)
 		}
 		return
 	}
@@ -444,7 +444,7 @@ func (h *holder) sendExit() {
 		return
 	}
 	if err := h.write(h.conn, frameExited, h.exit); err != nil {
-		h.log.Info("exit not sent", "err", err.Error())
+		h.log.Info("exit not sent", "err", err)
 	}
 }
 
@@ -498,7 +498,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 	err = h.write(c, frameHello, h.hello())
 	h.mu.Unlock()
 	if err != nil {
-		h.log.Info("hello not sent", "err", err.Error())
+		h.log.Info("hello not sent", "err", err)
 		return
 	}
 	h.log.Info("daemon connected")
@@ -513,14 +513,14 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 	for {
 		t, body, err := readFrame(c)
 		if err != nil {
-			h.log.Info("daemon disconnected", "err", err.Error())
+			h.log.Info("daemon disconnected", "err", err)
 			return
 		}
 		switch t {
 		case frameStop:
 			var req stopRequest
 			if err := json.Unmarshal(body, &req); err != nil {
-				h.log.Warn("bad stop request", "err", err.Error())
+				h.log.Warn("bad stop request", "err", err)
 				continue
 			}
 			go h.stop(time.Duration(req.GraceMS) * time.Millisecond)
@@ -533,7 +533,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 				h.log.Warn("release ignored: the shell is running")
 			}
 		default:
-			h.log.Warn("unknown frame ignored", "type", int(t))
+			h.log.Warn("unknown frame ignored", "frame", int(t))
 		}
 	}
 }

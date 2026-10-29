@@ -293,10 +293,10 @@ func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error)
 	o, err := s.initAndOpen(ctx, dest, name)
 	if err != nil {
 		if rmErr := os.RemoveAll(created); rmErr != nil {
-			log.Error("undo failed", "path", created, "err", rmErr.Error())
+			log.Error("undo failed", "path", created, "err", rmErr)
 			return Opened{}, errors.Join(err, rmErr)
 		}
-		log.Info("creation undone", "removed", created, "err", err.Error())
+		log.Info("creation undone", "removed", created, "err", err)
 		return Opened{}, err
 	}
 	return o, nil
@@ -403,7 +403,7 @@ func removeCloneLeftovers(ctx context.Context, parent string) {
 func removeClone(ctx context.Context, dir string) {
 	log := logging.FromContext(ctx)
 	if err := os.RemoveAll(dir); err != nil {
-		log.Error("unfinished clone not removed", "path", dir, "err", err.Error())
+		log.Error("unfinished clone not removed", "path", dir, "err", err)
 		return
 	}
 	log.Info("unfinished clone removed", "path", dir)

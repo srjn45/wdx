@@ -117,7 +117,7 @@ func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool
 	}
 	// Its terminals went with it.
 	if err := s.terminals.Sweep(ctx); err != nil {
-		logging.FromContext(ctx).Error("terminal directories not swept", "err", err.Error())
+		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
 	}
 	r := result(api.ResultRemoved, p)
 	r.Stopped = optionalTerminals(stopped)

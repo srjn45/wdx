@@ -175,7 +175,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	var conn *holder.Conn
 	if err == nil {
 		if conn, err = holder.Dial(ctx, s.socket(t.ID), t.ID); err != nil {
-			log.Error("holder started but does not answer, killing it", "terminal_id", t.ID, "holder_pid", started.HolderPID, "err", err.Error())
+			log.Error("holder started but does not answer, killing it", "terminal_id", t.ID, "holder_pid", started.HolderPID, "err", err)
 			kill(started.HolderPID, started.PID)
 			err = fmt.Errorf("the holder did not answer: %w", err)
 		}
@@ -221,7 +221,7 @@ func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (T
 		return Terminal{}, err
 	}
 	if err := s.Sweep(ctx); err != nil {
-		logging.FromContext(ctx).Error("terminal directories not swept", "err", err.Error())
+		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
 	}
 	return t, nil
 }
@@ -268,7 +268,7 @@ func (s *Supervisor) Sweep(ctx context.Context) error {
 		}
 		dir := filepath.Join(parent, e.Name())
 		if err := os.RemoveAll(dir); err != nil {
-			log.Error("terminal directory not deleted", "path", dir, "err", err.Error())
+			log.Error("terminal directory not deleted", "path", dir, "err", err)
 			continue
 		}
 		log.Info("terminal directory deleted", "terminal_id", e.Name(), "path", dir)
@@ -300,7 +300,7 @@ func (s *Supervisor) sweepSockets(ctx context.Context) error {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Error("holder socket not deleted", "path", path, "err", err.Error())
+			log.Error("holder socket not deleted", "path", path, "err", err)
 			continue
 		}
 		log.Info("holder socket deleted", "terminal_id", id, "path", path)
@@ -401,7 +401,7 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 		// gone; its pids are never killed, as they may be another's now.
 		conn, err := holder.Dial(ctx, s.socket(t.ID), t.ID)
 		if err != nil {
-			log.Info("terminal has no holder to stop", "terminal_id", t.ID, "err", err.Error())
+			log.Info("terminal has no holder to stop", "terminal_id", t.ID, "err", err)
 			_, err := s.store.ended(ctx, t.ID, time.Now())
 			return nil, err
 		}
@@ -412,7 +412,7 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 	}
 	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", s.opts.StopGrace.Milliseconds())
 	if err := w.current().Stop(s.opts.StopGrace); err != nil {
-		log.Info("stop not sent", "terminal_id", t.ID, "err", err.Error())
+		log.Info("stop not sent", "terminal_id", t.ID, "err", err)
 	}
 	return w, nil
 }
@@ -451,7 +451,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	for _, t := range list {
 		conn, err := holder.Dial(ctx, s.socket(t.ID), t.ID)
 		if err != nil {
-			log.Info("holder does not answer", "terminal_id", t.ID, "state", t.State, "err", err.Error())
+			log.Info("holder does not answer", "terminal_id", t.ID, "state", t.State, "err", err)
 			switch t.State {
 			case StateStarting:
 				_, err = s.store.failed(ctx, t.ID, "interrupted while starting")
@@ -478,7 +478,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		if t.State == StateStopped && hello.Exited == nil {
 			log.Info("finishing the stop", "terminal_id", t.ID)
 			if err := conn.Stop(s.opts.StopGrace); err != nil {
-				log.Info("stop not sent", "terminal_id", t.ID, "err", err.Error())
+				log.Info("stop not sent", "terminal_id", t.ID, "err", err)
 			}
 		}
 	}
@@ -517,7 +517,7 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 			case exit := <-c.Exited():
 				s.recordExit(ctx, id, exit)
 				if err := c.Release(); err != nil {
-					log.Info("release not sent", "err", err.Error())
+					log.Info("release not sent", "err", err)
 				}
 				return
 			case <-c.Done():
@@ -530,7 +530,7 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 					return // the daemon stopped meanwhile; the next one dials it
 				}
 				if err != nil {
-					log.Info("holder gone", "err", err.Error())
+					log.Info("holder gone", "err", err)
 					s.recordGone(ctx, id)
 					return
 				}
@@ -557,7 +557,7 @@ func (s *Supervisor) recordExit(ctx context.Context, id string, exit holder.Exit
 		_, err = s.store.ended(ctx, id, exit.At)
 	}
 	if err != nil {
-		logging.FromContext(ctx).Error("exit not recorded", "terminal_id", id, "exit_code", exit.Code, "err", err.Error())
+		logging.FromContext(ctx).Error("exit not recorded", "terminal_id", id, "exit_code", exit.Code, "err", err)
 	}
 }
 
@@ -567,7 +567,7 @@ func (s *Supervisor) recordGone(ctx context.Context, id string) {
 		_, err = s.store.ended(ctx, id, time.Now())
 	}
 	if err != nil {
-		logging.FromContext(ctx).Error("lost holder not recorded", "terminal_id", id, "err", err.Error())
+		logging.FromContext(ctx).Error("lost holder not recorded", "terminal_id", id, "err", err)
 	}
 }
 

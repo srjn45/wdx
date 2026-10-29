@@ -214,7 +214,7 @@ func (s *Stack) pull(ctx context.Context, progress io.Writer) error {
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(progress, &output), io.MultiWriter(progress, &output)
 	if err := cmd.Run(); err != nil {
 		e := &RuntimeError{Runtime: s.Runtime, Args: []string{"pull", Image}, Output: lastLines(output.String(), 5), Err: err}
-		log.Error("pull failed", "err", err.Error(), "output", e.Output, logging.Duration(start))
+		log.Error("pull failed", "err", err, "output", e.Output, logging.Duration(start))
 		return e
 	}
 	log.Info("image pulled", "image", Image, logging.Duration(start))

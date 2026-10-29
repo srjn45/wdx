@@ -99,7 +99,7 @@ func (h *holder) serveClient(conn *net.UnixConn) {
 	err := h.write(conn, frameHello, h.hello())
 	h.mu.Unlock()
 	if err != nil {
-		log.Info("hello not sent to client", "err", err.Error())
+		log.Info("hello not sent to client", "err", err)
 		return
 	}
 	// The hello's deadline would fail every write after it: a client may
@@ -309,7 +309,7 @@ func (h *holder) readClient(c *client) string {
 			}
 			h.screenMu.Unlock()
 		default:
-			h.log.Warn("unknown frame from client ignored", "client_pid", c.pid, "type", int(t))
+			h.log.Warn("unknown frame from client ignored", "client_pid", c.pid, "frame", int(t))
 		}
 	}
 }
@@ -323,7 +323,7 @@ func (h *holder) resizeLocked(size Size) bool {
 		return false
 	}
 	if err := pty.Setsize(h.master, size.Cols, size.Rows); err != nil {
-		h.log.Warn("terminal not resized", "err", err.Error())
+		h.log.Warn("terminal not resized", "err", err)
 		return false
 	}
 	if !h.screen.Resize(size.Cols, size.Rows) {

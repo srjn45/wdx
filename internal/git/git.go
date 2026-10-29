@@ -74,7 +74,7 @@ func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
 	cmd.Stdout, cmd.Stderr = progress, io.MultiWriter(progress, &stderr)
 	if err := cmd.Run(); err != nil {
 		e := &CloneError{URL: url, Output: strings.TrimSpace(stderr.String()), Err: err}
-		log.Error("clone failed", "err", err.Error(), "output", e.Output, logging.Duration(start))
+		log.Error("clone failed", "err", err, "output", e.Output, logging.Duration(start))
 		return e
 	}
 	log.Info("cloned", logging.Duration(start))
@@ -128,7 +128,7 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 		return "", err
 	}
 	if err != nil {
-		log.Error("git could not run", "err", err.Error(), logging.Duration(start))
+		log.Error("git could not run", "err", err, logging.Duration(start))
 		return "", fmt.Errorf("run git: %w", err)
 	}
 	out := strings.TrimSpace(stdout.String())

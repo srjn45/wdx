@@ -230,7 +230,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	// The new version runs: what fails from here on is a warning.
 	r := Result{From: o.Current, To: target, SchemaFrom: from.Version, Settings: &settings, Warnings: warnings}
 	if warning, err := keep(ctx, o, replaced, target); err != nil {
-		log.Error("replaced version not kept", "dir", replaced, "err", err.Error())
+		log.Error("replaced version not kept", "dir", replaced, "err", err)
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%s %s is not kept for a rollback: %v; its binary, database and config file are in %s", identity.Name, o.Current, err, replaced))
 	} else if warning != "" {
 		r.Warnings = append(r.Warnings, warning)
@@ -245,7 +245,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 func (r *Result) schemaTo(ctx context.Context, dbPath string) int {
 	to, err := db.ReadSchema(ctx, dbPath)
 	if err != nil {
-		logging.FromContext(ctx).Error("schema version not read", "err", err.Error())
+		logging.FromContext(ctx).Error("schema version not read", "err", err)
 		r.Warnings = append(r.Warnings, "the database's schema version could not be read: "+err.Error())
 		return 0
 	}
@@ -278,14 +278,14 @@ func keep(ctx context.Context, o Options, replaced, updatedTo string) (warning s
 	if err := os.Rename(replaced, dir); err != nil {
 		if exists(old) {
 			if err := os.Rename(old, dir); err != nil {
-				log.Error("previous version not put back", "dir", old, "err", err.Error())
+				log.Error("previous version not put back", "dir", old, "err", err)
 			}
 		}
 		return "", err
 	}
 	log.Info("previous version kept", "version", o.Current, "schema", db.Known(), "dir", dir)
 	if err := os.RemoveAll(old); err != nil {
-		log.Error("version kept before not deleted", "dir", old, "err", err.Error())
+		log.Error("version kept before not deleted", "dir", old, "err", err)
 		return fmt.Sprintf("the version kept before is left in %s: %v", old, err), nil
 	}
 	return "", nil
@@ -347,7 +347,7 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 	r := Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, DataRestored: restore, Warnings: warnings}
 	for _, left := range []string{replaced, dir} {
 		if err := os.RemoveAll(left); err != nil {
-			log.Error("not deleted after the rollback", "dir", left, "err", err.Error())
+			log.Error("not deleted after the rollback", "dir", left, "err", err)
 			r.Warnings = append(r.Warnings, fmt.Sprintf("%s is left behind: %v", left, err))
 		}
 	}
@@ -440,7 +440,7 @@ func exists(path string) bool {
 func (o Options) undo(ctx context.Context, step string, err error, r replaced) error {
 	ctx = context.WithoutCancel(ctx)
 	log := logging.FromContext(ctx)
-	log.Error("switch failed, undoing it", "step", step, "err", err.Error())
+	log.Error("switch failed, undoing it", "step", step, "err", err)
 	o.progress("%s failed; putting %s %s back", step, identity.Name, o.Current)
 	failed := &FailedError{Step: step, Err: err, Version: o.Current}
 	undo := func() error {
@@ -490,7 +490,7 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 		}
 	}
 	if failed.UndoErr != nil {
-		log.Error("undo failed", "err", failed.UndoErr.Error())
+		log.Error("undo failed", "err", failed.UndoErr)
 	} else {
 		log.Info("switch undone", "version", o.Current)
 	}
@@ -536,7 +536,7 @@ func sweep(ctx context.Context, o Options) []string {
 	downloads, _ := filepath.Glob(filepath.Join(o.Home, "update-*"))
 	for _, dir := range downloads {
 		if err := os.RemoveAll(dir); err != nil {
-			log.Error("stale download not deleted", "dir", dir, "err", err.Error())
+			log.Error("stale download not deleted", "dir", dir, "err", err)
 			continue
 		}
 		log.Info("stale download deleted", "dir", dir)

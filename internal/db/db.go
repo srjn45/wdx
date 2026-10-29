@@ -183,7 +183,7 @@ func migrate(ctx context.Context, db *sql.DB, list []migration) error {
 
 	for i := s.Version; i < len(list); i++ {
 		if err := apply(ctx, db, list[i], i+1); err != nil {
-			log.Error("migration failed", "migration", list[i].name, "err", err.Error())
+			log.Error("migration failed", "migration", list[i].name, "err", err)
 			return fmt.Errorf("migration %s: %w", list[i].name, err)
 		}
 		log.Info("schema migrated", "migration", list[i].name, "version", i+1, "breaks_older", list[i].breaksOlder)

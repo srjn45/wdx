@@ -221,7 +221,7 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 	defer stop()
 	ended, err := runAttachView(viewCtx, tty, env, view)
 	if err != nil {
-		log.Info("connection lost", "terminal_id", t.Id, "err", err.Error())
+		log.Info("connection lost", "terminal_id", t.Id, "err", err)
 		return &connectionLostError{t, err}
 	}
 	log.Info("attach ended", "terminal_id", t.Id, "result", ended, "vt_resets", view.pane.Resets())
