@@ -56,6 +56,13 @@ func HolderSocket(home, id string) string {
 	return filepath.Join(home, "run", id+".sock")
 }
 
+// TerminalDir holds what terminal id keeps on disk under home: its spool
+// and history (docs/ATTACH.md). Terminal output can hold secrets: only the
+// user may read it.
+func TerminalDir(home, id string) string {
+	return filepath.Join(home, "terminals", id)
+}
+
 // LogsDir is where the daily log files are written under home.
 func LogsDir(home string) string {
 	return filepath.Join(home, "logs")
