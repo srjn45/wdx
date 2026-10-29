@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  attach_history: 50\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -74,20 +74,20 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
-		TerminalHistoryLines: 500, TerminalAttachHistory: 50, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		TerminalHistoryLines: 500, TerminalHistoryTail: 50, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		From: map[string]string{
-			"update.channel":          "default",
-			"update.base_url":         "default",
-			"terminal.shell":          path + ":11",
-			"terminal.history_lines":  path + ":12",
-			"terminal.attach_history": path + ":13",
-			"home":                    "WDX_HOME",
-			"no_input":                path + ":5",
-			"color":                   path + ":9",
-			"log.level":               path + ":3",
-			"log.retention_days":      path + ":4",
-			"otel.endpoint":           path + ":7",
-			"otel.interval_seconds":   path + ":8",
+			"update.channel":         "default",
+			"update.base_url":        "default",
+			"terminal.shell":         path + ":11",
+			"terminal.history_lines": path + ":12",
+			"terminal.history_tail":  path + ":13",
+			"home":                   "WDX_HOME",
+			"no_input":               path + ":5",
+			"color":                  path + ":9",
+			"log.level":              path + ":3",
+			"log.retention_days":     path + ":4",
+			"otel.endpoint":          path + ":7",
+			"otel.interval_seconds":  path + ":8",
 		},
 	}
 	if !reflect.DeepEqual(c, want) {
@@ -140,7 +140,7 @@ func TestEveryProblemReported(t *testing.T) {
 		"terminal:",
 		"  shell: zsh",
 		"  history_lines: -1",
-		"  attach_history: 20000",
+		"  history_tail: 20000",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -157,7 +157,7 @@ func TestEveryProblemReported(t *testing.T) {
 		path + `:16: update.base_url: "ftp://example.com" is not an http, https or file URL`,
 		path + `:18: terminal.shell: "zsh" is not an absolute path`,
 		path + `:19: terminal.history_lines: "-1" is not a whole number of at least 0`,
-		path + `:20: terminal.attach_history: "20000" is not a whole number from 0 to 10000`,
+		path + `:20: terminal.history_tail: "20000" is not a whole number from 1 to 10000`,
 	}
 	slices.Sort(want)
 	var got []string

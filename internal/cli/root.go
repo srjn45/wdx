@@ -70,6 +70,24 @@ type Env struct {
 	// TTY opens the controlling terminal, which terminal attach shows a
 	// terminal in; nil when there is none.
 	TTY func() (*os.File, error)
+	// TermEnv holds the variables that say what that terminal is (TERM,
+	// COLORTERM, TERM_PROGRAM), as KEY=value, for the attach view to draw
+	// for it. Read by main, as Terminal is.
+	TermEnv []string
+}
+
+// termVars are the variables that describe the terminal wdx runs in.
+var termVars = []string{"TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"}
+
+// TermEnv returns the variables of environ that describe the terminal.
+func TermEnv(environ []string) []string {
+	var vars []string
+	for _, kv := range environ {
+		if name, _, _ := strings.Cut(kv, "="); slices.Contains(termVars, name) {
+			vars = append(vars, kv)
+		}
+	}
+	return vars
 }
 
 // terminalVars are the variables of the daemon's environment that terminals

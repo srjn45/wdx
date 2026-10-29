@@ -17,6 +17,7 @@ func main() {
 		// The conventions of terminals, not settings of wdx: https://no-color.org
 		NoColor:  os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 		Terminal: cli.TerminalEnv(os.Environ()),
+		TermEnv:  cli.TermEnv(os.Environ()),
 	}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil && !cli.RewritesSettings(os.Args[1:], err) {

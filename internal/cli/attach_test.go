@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/pty"
@@ -22,47 +24,60 @@ import (
 // interactiveShell is a shell to type into.
 const interactiveShell = "#!/bin/sh\nPS1='$ ' exec /bin/sh\n"
 
-// attachRun is wdx terminal attach running in a terminal of its own, a
-// PTY the test reads and types into.
+// attachRun is wdx terminal attach running in a terminal of its own: a PTY
+// whose other side a vt reads, as a terminal app would, answering what the
+// view asks it.
 type attachRun struct {
 	t      *testing.T
 	home   string
 	args   []string
 	master *os.File
+	screen *vt.SafeEmulator // the calling terminal
 	done   chan output
-
-	mu     sync.Mutex
-	screen bytes.Buffer // everything written to the terminal
 }
 
+// callingText is on the calling terminal's screen before attaching.
+const callingText = "calling terminal"
+
 func startAttach(t *testing.T, home, dir string, args ...string) *attachRun {
+	t.Helper()
+	return startAttachSized(t, home, dir, 80, 24, args...)
+}
+
+func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...string) *attachRun {
 	t.Helper()
 	master, tty, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { master.Close() })
-	if err := pty.Setsize(master, 80, 24); err != nil {
+	if err := pty.Setsize(master, cols, rows); err != nil {
 		t.Fatal(err)
 	}
-	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, done: make(chan output, 1)}
+	screen := vt.NewSafeEmulator(cols, rows)
+	_, _ = screen.Write([]byte(callingText + "\r\n$ "))
+	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, screen: screen, done: make(chan output, 1)}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := master.Read(buf)
-			a.mu.Lock()
-			a.screen.Write(buf[:n])
-			a.mu.Unlock()
+			_, _ = screen.Write(buf[:n])
 			if err != nil {
 				return
 			}
 		}
 	}()
+	go func() { _, _ = io.Copy(master, screen) }() // the terminal's answers
+	t.Cleanup(func() {
+		if w, ok := screen.InputPipe().(io.Closer); ok {
+			w.Close()
+		}
+	})
 	go func() {
 		var stdout, stderr bytes.Buffer
 		env := Env{
 			Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary,
-			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil },
+			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, TermEnv: []string{"TERM=xterm-256color"},
 		}
 		exit := Run(context.Background(), a.args, env)
 		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
@@ -75,20 +90,29 @@ func (a *attachRun) input(s string) {
 	if _, err := a.master.WriteString(s); err != nil {
 		a.t.Fatal(err)
 	}
+	time.Sleep(20 * time.Millisecond) // keys typed one after another, not as one paste
+}
+
+// text is what the calling terminal shows, without trailing spaces.
+func (a *attachRun) text() string {
+	lines := strings.Split(ansi.Strip(a.screen.Render()), "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (a *attachRun) waitScreen(s string) {
 	a.t.Helper()
+	a.waitFor(strconv.Quote(s), func(text string) bool { return strings.Contains(text, s) })
+}
+
+func (a *attachRun) waitFor(what string, ok func(text string) bool) {
+	a.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for {
-		a.mu.Lock()
-		got := a.screen.String()
-		a.mu.Unlock()
-		if strings.Contains(got, s) {
-			return
-		}
+	for !ok(a.text()) {
 		if time.Now().After(deadline) {
-			a.t.Fatalf("no %q on the terminal: %q", s, got)
+			a.t.Fatalf("no %s on the terminal:\n%s", what, a.text())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -101,7 +125,7 @@ func (a *attachRun) waitText() output {
 	select {
 	case out = <-a.done:
 	case <-time.After(10 * time.Second):
-		a.t.Fatalf("%v did not end", a.args)
+		a.t.Fatalf("%v did not end:\n%s", a.args, a.text())
 	}
 	wantLogged(a.t, a.home, a.args, out)
 	return out
@@ -118,6 +142,16 @@ func (a *attachRun) wait() (jsonOutput, int) {
 	return v, out.exit
 }
 
+// wantGivenBack checks the calling terminal shows what it did before
+// attaching, and nothing of the session.
+func (a *attachRun) wantGivenBack(session string) {
+	a.t.Helper()
+	a.waitFor("the calling terminal back", func(string) bool { return !a.screen.IsAltScreen() })
+	if text := a.text(); !strings.Contains(text, callingText) || strings.Contains(text, session) {
+		a.t.Fatalf("want the calling terminal as it was, got:\n%s", text)
+	}
+}
+
 func TestTerminalAttach(t *testing.T) {
 	t.Parallel()
 	home := newHomeWithShell(t, interactiveShell)
@@ -125,23 +159,30 @@ func TestTerminalAttach(t *testing.T) {
 	term := newTerminal(t, home, app, "api")
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
-	a.input("echo hel''lo\n")
-	a.waitScreen("hello\r\n")
+	a.waitScreen("C-\\ ? for keys")
+	if !a.screen.IsAltScreen() || !strings.Contains(a.text(), "api · app") {
+		t.Fatalf("want the view full-window with its status line, got:\n%s", a.text())
+	}
+	a.input("echo hel''lo\r")
+	a.waitScreen("hello")
 	a.input("\x1c")
+	a.waitScreen("d detach")
+	a.input("d")
 	v, exit := a.wait()
 	if exit != api.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
 		t.Fatalf("want detached with the terminal running, got exit %d, %+v", exit, v)
 	}
-	a.waitScreen("\x1b[?1049l\x1b[?25h") // the terminal is given back as it was
+	a.wantGivenBack("hello")
 
 	// Attaching again shows the screen it left.
 	b := startAttach(t, home, app, "--id", term.Id, "--json")
 	b.waitScreen("hello")
-	b.input("exit 3\n")
+	b.input("exit 3\r")
 	v, exit = b.wait()
 	if exit != api.ExitOK || v.Result != "exited" || v.Terminal.State != api.TerminalStateExited || v.Terminal.ExitCode == nil || *v.Terminal.ExitCode != 3 {
 		t.Fatalf("want exited with code 3, got exit %d, %+v", exit, v)
 	}
+	b.wantGivenBack("hello")
 
 	c := startAttach(t, home, app, "--name", "api", "--json")
 	v, exit = c.wait()
@@ -149,53 +190,76 @@ func TestTerminalAttach(t *testing.T) {
 	wantHint(t, v, "terminal start")
 }
 
-// TestTerminalAttachDetachKey sends the detach key to the shell by pressing
-// it twice, then detaches with another key.
-func TestTerminalAttachDetachKey(t *testing.T) {
+// TestTerminalAttachKeys: the prefix twice sends it once, ? lists the
+// keys, s hides the status line, and --prefix-key changes the prefix.
+func TestTerminalAttachKeys(t *testing.T) {
 	t.Parallel()
 	home := newHomeWithShell(t, interactiveShell)
 	app := newProjectDir(t, home, "app")
 	newTerminal(t, home, app, "api")
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
-	a.input("stty raw -echo; echo rea''dy; dd bs=1 count=2 2>/dev/null | od -An -c; stty sane\n")
+	a.waitScreen("for keys") // attached: the view is up
+	a.input("stty raw -echo; echo rea''dy; dd bs=1 count=2 2>/dev/null | od -An -c; stty sane\r")
 	a.waitScreen("ready")
-	a.input("\x1c\x1cx")
+	a.input("\x1c")
+	a.input("\x1c")
+	a.input("x")
 	a.waitScreen("034   x")
 	a.input("\x1c")
+	a.input("?")
+	a.waitScreen("detach, leaving the terminal running")
+	a.input("q") // closes the list, and goes nowhere else
+	a.waitFor("the list closed", func(text string) bool { return !strings.Contains(text, "leaving the terminal running") })
+	a.input("\x1c")
+	a.input("s")
+	a.waitFor("the status line hidden", func(text string) bool { return !strings.Contains(text, "for keys") })
+	a.input("\x1c")
+	a.input("d")
 	if v, exit := a.wait(); exit != api.ExitOK || v.Result != "detached" {
 		t.Fatalf("want detached, got exit %d, %+v", exit, v)
 	}
 
-	b := startAttach(t, home, app, "--name", "api", "--detach-key", "ctrl-]")
-	b.waitScreen("$")
+	b := startAttach(t, home, app, "--name", "api", "--prefix-key", "ctrl-]")
+	b.waitScreen("C-] ? for keys")
+	b.input("\x1c") // no longer the prefix: the shell gets it
 	b.input("\x1d")
+	b.input("d")
 	if out := b.waitText(); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "detached from terminal api in app\n") {
-		t.Fatalf("want detached by ctrl-], got exit %d, %q", out.exit, out.stdout)
+		t.Fatalf("want detached by ctrl-] d, got exit %d, %q", out.exit, out.stdout)
 	}
 }
 
-// TestTerminalAttachHistory attaches with history: the lines before the
-// screen are written first, for the terminal to scroll back to.
-func TestTerminalAttachHistory(t *testing.T) {
+// TestTerminalAttachScroll scrolls back through history from before
+// attaching, with PageUp, the prefix and the wheel; a key returns.
+func TestTerminalAttachScroll(t *testing.T) {
 	t.Parallel()
 	home := newHomeWithShell(t, "#!/bin/sh\nseq 1 100\nPS1='$ ' exec /bin/sh\n")
 	app := newProjectDir(t, home, "app")
 	newTerminal(t, home, app, "api")
-	waitHistory(t, home, app, "api", 77)
+	waitHistory(t, home, app, "api", 77) // 100 lines and the prompt, on 24 rows
 
-	a := startAttach(t, home, app, "--name", "api", "--history", "3", "--json")
-	a.waitScreen("$")
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	a.waitScreen("for keys") // attached: the view is up
+	a.waitScreen("100")
+	a.input("\x1b[5~") // PageUp
+	a.waitScreen("history ")
 	a.input("\x1c")
+	a.input("[")
+	a.input("\x1b[<64;5;5M") // the wheel, up
+	for range 3 {
+		a.input("\x1b[5~")
+	}
+	a.waitFor("line 1 at the top", func(text string) bool { return strings.HasPrefix(text, "1\n") })
+	a.input("\x1b[6~") // PageDown
+	a.input("e")       // back to the live screen, and to the shell
+	a.waitFor("the live screen", func(text string) bool { return strings.Contains(text, "C-\\ ? for keys") })
+	a.input("cho li''ve\r")
+	a.waitScreen("live")
+	a.input("\x1c")
+	a.input("d")
 	if _, exit := a.wait(); exit != api.ExitOK {
 		t.Fatalf("got exit %d", exit)
-	}
-	a.mu.Lock()
-	screen := a.screen.String()
-	a.mu.Unlock()
-	m := regexp.MustCompile("\x1b\\[22;0t(\\d+)\r\n(\\d+)\r\n(\\d+)\r\n").FindStringSubmatch(screen)
-	if m == nil || m[1] != "75" || m[2] != "76" || m[3] != "77" {
-		t.Fatalf("want lines 75 to 77 first, got %q", screen[:min(len(screen), 200)])
 	}
 }
 
@@ -222,7 +286,7 @@ func TestTerminalAttachConnectionLost(t *testing.T) {
 	term := newTerminal(t, home, app, "api")
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
-	a.waitScreen("$")
+	a.waitScreen("for keys") // attached: the view is up
 	ppid, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(*term.Pid)).Output()
 	if err != nil {
 		t.Fatal(err)
@@ -237,6 +301,7 @@ func TestTerminalAttachConnectionLost(t *testing.T) {
 	v, exit := a.wait()
 	wantError(t, v, exit, api.ErrorCodeConnectionLost, api.ExitSystem)
 	wantHint(t, v, "attach again")
+	a.wantGivenBack("$ $")
 	_ = syscall.Kill(*term.Pid, syscall.SIGKILL)
 }
 
@@ -251,9 +316,11 @@ func TestTerminalAttachRefused(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "web")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
-	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--detach-key", "ctrl-1")
+	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", "ctrl-1")
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
-	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--history", "some")
+
+	small := startAttachSized(t, home, app, 8, 2, "--name", "api", "--json")
+	v, exit = small.wait()
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 }
 

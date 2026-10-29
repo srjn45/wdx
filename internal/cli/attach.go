@@ -7,10 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -18,35 +16,38 @@ import (
 	"golang.org/x/term"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/termview"
 )
-
-// doubleKeyWait is how long a detach key waits for a second press, which
-// sends it to the shell instead.
-const doubleKeyWait = 500 * time.Millisecond
 
 // attachExitWait bounds how long attach waits for the daemon to record the
 // exit it saw, for the terminal it prints.
 const attachExitWait = 2 * time.Second
 
+// The smallest terminal attach runs in: a pane and the status line.
+const minCols, minRows = 10, 3
+
 func newTerminalAttachCmd() *cobra.Command {
 	var ref terminalRef
-	var history, detachKey string
+	var prefixKey string
 	cmd := &cobra.Command{
-		Use:   "attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--history <lines> | --history all] [--detach-key <key>]",
-		Short: "Show a terminal's shell here and type into it",
-		Long: "This terminal shows the terminal's screen, with its history above it to scroll\n" +
-			"back through, and what you type goes to its shell. Press the detach key\n" +
-			"(ctrl-\\ by default) to leave it running; press it twice to send it to the\n" +
-			"shell. Several terminals can attach to one; the last to attach or resize\n" +
-			"sets its size. It talks to the terminal it runs in, not to stdin and stdout,\n" +
-			"which print the result when it ends.",
+		Use:   "attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--prefix-key <key>]",
+		Short: "Show a terminal full-window and type into it, as tmux does",
+		Long: "The terminal takes the whole window, above a status line, and what you type\n" +
+			"goes to its shell. C-\\ is the prefix for attach's own keys: C-\\ d detaches,\n" +
+			"leaving the terminal running, and gives the window back as it was; C-\\ [\n" +
+			"and ] scroll through its history, as PageUp, PageDown and the mouse wheel\n" +
+			"do at the shell; C-\\ ? lists them all. Several clients can attach to one\n" +
+			"terminal; the last to attach or resize sets its size. It runs in the\n" +
+			"terminal it was started from, not on stdin and stdout, which print the\n" +
+			"result when it ends.",
 		Example: examples(
 			"Attach to a terminal of the project you are in", identity.Name+" terminal attach --name server",
-			"With all of its history, detaching with ctrl-]", identity.Name+" terminal attach --id term-1a2b3c4d --history all --detach-key ctrl-]",
+			"With ctrl-] as the prefix", identity.Name+" terminal attach --id term-1a2b3c4d --prefix-key ctrl-]",
 			"As JSON once it ends", identity.Name+" terminal attach --name server --json",
 		),
 		Args: cobra.NoArgs,
@@ -59,59 +60,31 @@ func newTerminalAttachCmd() *cobra.Command {
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			key, err := parseDetachKey(detachKey)
+			prefix, err := parsePrefixKey(prefixKey)
 			if err != nil {
 				return &usageError{err}
 			}
-			lines, err := parseHistory(history, invocationOf(cmd).env.Config.TerminalAttachHistory)
-			if err != nil {
-				return &usageError{err}
-			}
-			return attach(cmd, ref, lines, key)
+			return attach(cmd, ref, prefix)
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().StringVar(&history, "history", "", "`lines` of history to show before the screen, or all (default: terminal.attach_history)")
-	cmd.Flags().StringVar(&detachKey, "detach-key", "ctrl-\\", "`key` that detaches: ctrl-<letter>, ctrl-\\, ctrl-], ctrl-^, ctrl-_ or none")
-	cmd.RegisterFlagCompletionFunc("history", cobra.FixedCompletions([]string{"all"}, cobra.ShellCompDirectiveNoFileComp))
-	cmd.RegisterFlagCompletionFunc("detach-key", cobra.FixedCompletions([]string{"ctrl-\\", "ctrl-]", "ctrl-^", "ctrl-_", "none"}, cobra.ShellCompDirectiveNoFileComp))
+	cmd.Flags().StringVar(&prefixKey, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter>, ctrl-\\ or ctrl-]")
+	cmd.RegisterFlagCompletionFunc("prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
-// parseDetachKey returns the byte the key sends, or -1 for none.
-func parseDetachKey(key string) (int, error) {
-	switch key {
-	case "none":
-		return -1, nil
-	case `ctrl-\`:
-		return 0x1c, nil
-	case "ctrl-]":
-		return 0x1d, nil
-	case "ctrl-^":
-		return 0x1e, nil
-	case "ctrl-_":
-		return 0x1f, nil
-	}
-	if letter, ok := strings.CutPrefix(key, "ctrl-"); ok && len(letter) == 1 && letter[0] >= 'a' && letter[0] <= 'z' {
-		return int(letter[0] - 'a' + 1), nil
-	}
-	return 0, fmt.Errorf("--detach-key %q is not ctrl-<letter>, ctrl-\\, ctrl-], ctrl-^, ctrl-_ or none", key)
+// prefixKey is the key before attach's own keys.
+type prefixKey struct {
+	name  string // as Bubble Tea names the key pressed, ctrl+\
+	label string // as the status line shows it, C-\
 }
 
-// parseHistory returns the history lines --history asks for: def when not
-// given, -1 for all.
-func parseHistory(value string, def int) (int, error) {
-	switch value {
-	case "":
-		return def, nil
-	case "all":
-		return -1, nil
+func parsePrefixKey(key string) (prefixKey, error) {
+	rest, ok := strings.CutPrefix(key, "ctrl-")
+	if ok && (rest == `\` || rest == "]" || len(rest) == 1 && rest[0] >= 'a' && rest[0] <= 'z') {
+		return prefixKey{name: "ctrl+" + rest, label: "C-" + rest}, nil
 	}
-	n, err := strconv.Atoi(value)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("--history %q is not a number of lines or all", value)
-	}
-	return n, nil
+	return prefixKey{}, fmt.Errorf("--prefix-key %q is not ctrl-<letter>, ctrl-\\ or ctrl-]", key)
 }
 
 // terminalNotRunningError is a terminal whose shell is not running.
@@ -183,7 +156,7 @@ func (r attachResult) text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "  %s %s\n", st.Muted("id    "), t.Id)
 }
 
-func attach(cmd *cobra.Command, ref terminalRef, history, key int) error {
+func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 	ctx := cmd.Context()
 	log := logging.FromContext(ctx)
 	path, project, dir, err := ref.resolve(cmd)
@@ -216,8 +189,12 @@ func attach(cmd *cobra.Command, ref terminalRef, history, key int) error {
 	if err != nil {
 		return &usageError{fmt.Errorf("%s is not a terminal: %w", tty.Name(), err)}
 	}
+	if size.Cols < minCols || size.Rows < minRows {
+		return &usageError{fmt.Errorf("the terminal is %d×%d; attach needs at least %d×%d", size.Cols, size.Rows, minCols, minRows)}
+	}
+	size.Rows-- // the status line's
 
-	session, err := holder.Attach(ctx, identity.HolderSocket(env.Config.Home, t.Id), t.Id, size, history)
+	session, err := holder.Attach(ctx, identity.HolderSocket(env.Config.Home, t.Id), t.Id, size, 0)
 	if errors.Is(err, holder.ErrAttachUnsupported) {
 		return &attachUnsupportedError{t}
 	}
@@ -226,20 +203,37 @@ func attach(cmd *cobra.Command, ref terminalRef, history, key int) error {
 	}
 	defer session.Close()
 	log.Info("attached", "terminal_id", t.Id, "cols", size.Cols, "rows", size.Rows,
-		"history_lines", len(session.History.Lines), "pos", session.Snapshot.Pos)
+		"history_lines", session.Snapshot.HistoryLines, "pos", session.Snapshot.Pos)
 
-	ended, err := attached(ctx, tty, fd, session, key)
+	fetch := func(from int64, count int) (termview.History, error) {
+		h, err := c.GetTerminalHistory(ctx, "id:"+t.Id, "", "", &from, count)
+		return termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err
+	}
+	view := newAttachView(termview.New(session, fetch), t, prefix, viewStyle(cmd))
+	defer view.pane.Close()
+	ended, err := runAttachView(ctx, tty, env, view)
 	if err != nil {
 		log.Info("connection lost", "terminal_id", t.Id, "err", err.Error())
 		return &connectionLostError{t, err}
 	}
-	log.Info("attach ended", "terminal_id", t.Id, "result", ended)
+	log.Info("attach ended", "terminal_id", t.Id, "result", ended, "vt_resets", view.pane.Resets())
 	if ended == api.ResultExited {
 		t = waitRecorded(ctx, cmd, t, session.Exit())
 	} else if got, err := c.GetTerminal(ctx, "id:"+t.Id, "", ""); err == nil {
 		t = got.Terminal
 	}
 	return printResult(cmd, attachResult{Result: ended, Terminal: t})
+}
+
+// viewStyle styles the attach view, which is on a terminal whatever stdout
+// is: off only when color is turned off.
+func viewStyle(cmd *cobra.Command) style.Style {
+	env := invocationOf(cmd).env
+	mode := env.Config.Color
+	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
+		mode = config.ColorMode(f.Value.String())
+	}
+	return style.New(mode == config.ColorAlways || mode == config.ColorAuto && !env.NoColor)
 }
 
 // waitRecorded returns the terminal once the daemon has recorded the exit
@@ -262,7 +256,7 @@ func waitRecorded(ctx context.Context, cmd *cobra.Command, t api.Terminal, exit 
 }
 
 // ttyFD returns the descriptor of tty without making it blocking, as Fd
-// does: its reads must stay interruptible.
+// does.
 func ttyFD(tty *os.File) (int, error) {
 	raw, err := tty.SyscallConn()
 	if err != nil {
@@ -278,143 +272,6 @@ func ttyFD(tty *os.File) (int, error) {
 func ttySize(fd int) (holder.Size, error) {
 	cols, rows, err := term.GetSize(fd)
 	return holder.Size{Cols: cols, Rows: rows}, err
-}
-
-// Sequences written around an attached terminal: its title is kept and
-// given back, and on leaving whatever the program inside set is undone:
-// the alternate screen, hidden cursor, mouse and paste modes, keypad and
-// cursor keys, margins and style.
-const (
-	ttyEnter = "\x1b[22;0t"
-	ttyLeave = "\x1b[?1049l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?1004l" +
-		"\x1b[?1l\x1b>\x1b7\x1b[r\x1b8\x1b[m\x1b[23;0t"
-)
-
-// attached shows the session on tty in raw mode, and sends what is typed,
-// until the detach key, the shell's exit or the connection's end.
-func attached(ctx context.Context, tty *os.File, fd int, s *holder.Session, key int) (api.Result, error) {
-	state, err := term.MakeRaw(fd)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		// The prompt after it starts on a line of its own, at the bottom.
-		_, _ = io.WriteString(tty, ttyLeave+"\x1b[9999;1H\r\n")
-		_ = term.Restore(fd, state)
-	}()
-	var b strings.Builder
-	b.WriteString(ttyEnter)
-	for _, line := range s.History.Lines {
-		b.WriteString(line + "\r\n")
-	}
-	// What is on the screen scrolls up, into the terminal's scrollback,
-	// rather than being cleared by the screen painted over it.
-	b.WriteString(strings.Repeat("\r\n", s.Snapshot.Rows))
-	if _, err := io.WriteString(tty, b.String()); err != nil {
-		return "", err
-	}
-
-	output := make(chan error, 1)
-	go func() {
-		_, err := io.Copy(tty, s)
-		output <- err
-	}()
-	input := make(chan error, 1)
-	stop := make(chan struct{})
-	go func() { input <- forwardInput(tty, s, key, stop) }()
-	winch := make(chan os.Signal, 1)
-	signal.Notify(winch, syscall.SIGWINCH)
-	defer signal.Stop(winch)
-
-	inputDone := false
-	defer func() {
-		close(stop)
-		if !inputDone {
-			_ = tty.SetReadDeadline(time.Now()) // ends the read in forwardInput
-			if err := <-input; err != nil {
-				logging.FromContext(ctx).Debug("input ended", "err", err.Error())
-			}
-		}
-	}()
-	for {
-		select {
-		case err := <-output:
-			if err == nil || errors.Is(err, io.EOF) {
-				return api.ResultExited, nil
-			}
-			return "", err
-		case err := <-input:
-			inputDone = true
-			if errors.Is(err, errDetached) {
-				return api.ResultDetached, nil
-			}
-			return "", err
-		case <-winch:
-			if size, err := ttySize(fd); err == nil {
-				if err := s.Resize(size); err != nil {
-					return "", err
-				}
-			}
-		case <-ctx.Done():
-			return api.ResultDetached, nil
-		}
-	}
-}
-
-var errDetached = errors.New("detached")
-
-// forwardInput sends what is typed on tty to the session until the detach
-// key, or until stop. The key detaches unless pressed again within
-// doubleKeyWait, which sends it once.
-func forwardInput(tty *os.File, s *holder.Session, key int, stop <-chan struct{}) error {
-	buf := make([]byte, 4096)
-	pending := false
-	for {
-		n, err := tty.Read(buf)
-		if pending && errors.Is(err, os.ErrDeadlineExceeded) {
-			select {
-			case <-stop:
-				return nil
-			default:
-				return errDetached
-			}
-		}
-		if err != nil {
-			select {
-			case <-stop:
-				return nil
-			default:
-				return err
-			}
-		}
-		var send []byte
-		for _, c := range buf[:n] {
-			switch {
-			case int(c) != key:
-				if pending {
-					return errDetached
-				}
-				send = append(send, c)
-			case pending:
-				send = append(send, c)
-				pending = false
-			default:
-				pending = true
-			}
-		}
-		if len(send) > 0 {
-			if _, err := s.Write(send); err != nil {
-				return err
-			}
-		}
-		var deadline time.Time
-		if pending {
-			deadline = time.Now().Add(doubleKeyWait)
-		}
-		if err := tty.SetReadDeadline(deadline); err != nil && pending {
-			return errDetached // a terminal without deadlines detaches at once
-		}
-	}
 }
 
 func newTerminalHistoryCmd() *cobra.Command {
@@ -444,7 +301,7 @@ func newTerminalHistoryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			n := invocationOf(cmd).env.Config.TerminalAttachHistory
+			n := invocationOf(cmd).env.Config.TerminalHistoryTail
 			var start *int64
 			switch {
 			case cmd.Flags().Changed("from"):
@@ -454,8 +311,6 @@ func newTerminalHistoryCmd() *cobra.Command {
 				}
 			case cmd.Flags().Changed("tail"):
 				n = tail
-			case n == 0:
-				n = 1000 // attach shows none by default, but history prints some
 			}
 			if n < 1 || n > 10_000 {
 				return &usageError{fmt.Errorf("%d lines is not between 1 and 10000", n)}
@@ -468,7 +323,7 @@ func newTerminalHistoryCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().IntVar(&tail, "tail", 0, "the last `lines` (default: terminal.attach_history)")
+	cmd.Flags().IntVar(&tail, "tail", 0, "the last `lines` (default: terminal.history_tail)")
 	cmd.Flags().Int64Var(&from, "from", 0, "number of the first `line`")
 	cmd.Flags().IntVar(&count, "count", 1000, "`lines` from --from on")
 	cmd.Flags().BoolVar(&plain, "plain", false, "strip colors and other escape codes")
