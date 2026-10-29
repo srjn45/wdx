@@ -95,7 +95,7 @@ changelog: $(GIT_CLIFF)
 	@RUST_LOG=error $(GIT_CLIFF) --unreleased --strip all
 
 $(GIT_CLIFF):
-	scripts/fetch-git-cliff.sh $(GIT_CLIFF_VERSION) $@
+	scripts/fetch-release.sh git-cliff $(GIT_CLIFF_VERSION) $@
 
 $(GOLANGCI_LINT):
 	scripts/fetch-go-tool.sh github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION) $@
@@ -107,7 +107,7 @@ $(GOVULNCHECK):
 	scripts/fetch-go-tool.sh golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION) $@
 
 $(SHELLCHECK):
-	scripts/fetch-shellcheck.sh $(SHELLCHECK_VERSION) $@
+	scripts/fetch-release.sh shellcheck $(SHELLCHECK_VERSION) $@
 
 clean:
 	rm -rf bin dist

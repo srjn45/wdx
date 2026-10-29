@@ -17,7 +17,7 @@ Both release targets need a clean working tree on `main`, not behind `origin/mai
 
 `dist/` keeps every release built here: `make install` installs from it, and `update.base_url: file://<repo>/dist` makes `wdx update` read it instead of GitHub.
 
-The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-git-cliff.sh`.
+The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-release.sh`.
 
 ## Versions
 
@@ -89,4 +89,4 @@ make check   golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy an
              current notices; govulncheck; go vet for macOS and Linux arm64; the commit messages in RANGE
 ```
 
-Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request, and none for a tag, whose commits were checked on `main`. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-shellcheck.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
+Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request, and none for a tag, whose commits were checked on `main`. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-release.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
