@@ -51,7 +51,7 @@ Three fixed panes. No general split tree.
 ### Status line
 
 - One line at the very bottom, outside the ratios.
-- Shows the current project's name, the focused pane, the zoom indicator, a key hint and, later, fleet status. The open projects are listed in the project strip and the `C-q` menu instead.
+- Shows the current project's name, the focused pane, the zoom indicator, a key hint and, later, fleet status. The open projects are listed in the project strip instead.
 
 ## Pane modes
 
@@ -102,8 +102,10 @@ type screen interface {
 
 ### Starting tide
 
-- A returning user lands on the project used last: the open project with the latest `last_used_at`, a nullable column on projects that tide sets through the API whenever it shows a project. The daemon keeps it, so every client agrees on it.
-- With no open project (the first run, or the last one was closed since), the left pane opens `[Open Project]` with the focus. The terminal pane is hidden and the agent pane says "no project open".
+- tide is meant to stay open, so it does not remember a project across runs: the user picks one.
+- With no open project (the first run, or every one closed since), the left pane opens `[Open Project]` with the focus.
+- With open projects, even one, tide starts with the switcher (`C-q p`) open over the window. `Esc` closes it, leaving `[Open Project]` in the left pane.
+- While no project is shown, the terminal pane is hidden and the agent pane says "no project open". `C-q p` and `C-q o` work there as anywhere.
 - With no daemon, the left pane says so with the hint `wdx daemon start` and a key to try again. tide never starts the daemon itself, as no command does.
 
 ### `[Open Project]`
@@ -132,7 +134,7 @@ Built to be obvious without help:
 ### Clone
 
 - Only the URL is asked: the project is named after it, as with the CLI, and cloned into `~/.wdx/projects/<name>`.
-- Only when that name is taken does a name field ask for another.
+- Only when that name is taken does a name field ask for another; the same goes for a local repository whose name is taken.
 - While it clones the screen says "cloning…". `Esc` cannot cancel it: the daemon finishes a change even when its client leaves.
 
 ### Questions and errors
@@ -147,7 +149,14 @@ A failure (not a git repository, a clone that failed) shows in the screen, which
 ### After opening
 
 - The left pane's root becomes `[Project: <name>]`, showing the name for now; the project detail screen comes later.
-- The project becomes the current one: the terminal pane shows its terminals, and its `last_used_at` is set.
+- The project becomes the current one: the terminal pane shows its terminals.
+
+## Data from the daemon
+
+- tide changes things only through the API's create, update and delete requests.
+- tide reads with get and list requests where they fit: the projects at start, the closed ones for `[Open Project]`, the open ones for the strip and `C-q p`.
+- The current project's detail comes from an event stream the daemon pushes: every change under the project (a terminal started or exited, an agent going idle or waiting for input) reaches tide at once. The stream is designed later, with the project detail screen and the agents; until then tide fetches the project when it needs it.
+- So that switching never waits on the daemon, the strip and `C-q p` use the open projects tide fetched at start and after each change it made, refreshed in the background whenever they show.
 
 ## Focus
 
@@ -172,7 +181,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 
 ### Shortcut menu (`C-q`)
 
-- A menu of actions with one-letter keys, e.g. `n` new terminal tab, `x` close tab, `a` new agent, `o` open project (`[Open Project]`), `p` switch project, `1`…`9` the project with that number, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
+- A menu of actions with one-letter keys, e.g. `n` new terminal tab, `x` close tab, `a` new agent, `o` open project (`[Open Project]`), `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
@@ -195,18 +204,17 @@ Switching focus is the most frequent action, so it is one chord, never a prefix 
 
 Switching projects is frequent too, so it is one chord.
 
-- `Alt+Shift+←` / `Alt+Shift+→`: the previous or next open project, going round. Projects are in the order they were opened, so a project's number stays put while it is open.
+- `Alt+Shift+←` / `Alt+Shift+→`: the previous or next open project, going round. Projects are in the order of their names, as the daemon lists them, so each keeps its place: only a project opened with an earlier name moves it.
 - Each tap switches at once, so holding Alt+Shift and tapping an arrow feels like Alt+Tab, though terminals send nothing when keys are released (only the kitty keyboard protocol does). The name and titles change at once; the project's terminals attach once the selection has rested for about 200 ms, so tapping past projects stays cheap.
 - The first tap shows the project strip, one row just above the status line, over the bottom of the panes:
 
   ```
-  │  1 api   2 web  ▸ 3 docs ◂  4 infra   5 dotfiles     │
+  │  api   web  ▸ docs ◂  infra   dotfiles               │
    docs · agent                      Alt+arrows move  C-q menu
   ```
 
-  It lists the open projects, numbered, the current one marked, and scrolls sideways to keep the current one in view when they overflow the width. It hides about a second after the last tap, or at once on any other key.
-- `C-q 1`…`8`: the project with that number, as the strip and the `C-q` menu number them; `C-q 9`: the last one, whatever its number, as in a browser. Two keys, since no single chord for digits gets through (below). Projects past the ninth are reached by cycling or the switcher.
-- `C-q p`: the switcher, a box over the middle of the window, for a project far down the numbers or known by name:
+  It lists the open projects, the current one marked, and scrolls sideways to keep the current one in view when they overflow the width. It hides about a second after the last tap, or at once on any other key.
+- `C-q p`: the switcher, a box over the middle of the window, to find a project by name, with ↑ / ↓ or by typing:
 
   ```
   ┌ Switch project ──────────────┐
@@ -217,8 +225,8 @@ Switching projects is frequent too, so it is one chord.
   └──────────────────────────────┘
   ```
 
-  It lists every project, open ones first by last use, then closed ones. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches, reopening a closed project first; `Esc` closes it. The project used before the current one is selected at first, so `C-q p enter` flips back to it.
-- The `C-q` menu lists the open projects with their numbers beside its actions, so the digit is in view before it is pressed.
+  It lists every project, open ones first, then closed ones, each by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches, reopening a closed project first; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p enter` flips back to it; at start, the first one.
+- The `C-q` menu lists no projects: it opens at once, never waiting on the daemon. `C-q p` is the way to search and switch.
 - Key probe (2026-10-29): `Alt+Shift+arrows` arrive as `CSI 1;4 A`–`D` on Linux and macOS. `Alt+1`…`9` never reach the terminal on GNOME, which switches its own tabs with them, and type characters on macOS (`¡`, `™`), as Option+letters do. `Ctrl+Tab` arrives as a plain Tab on Linux and not at all on macOS; `Alt+PageUp` / `PageDown` do not reach the terminal on macOS.
 - `Alt+Shift+↑` / `↓` are free for later.
 
@@ -241,11 +249,13 @@ Supported, though most users will mostly use the keyboard.
 ## Phases
 
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
-- **Phase B, the user journey** above: the screen stack, `[Open Project]` and its screens, the directory browser, `[Project: <name>]`, `last_used_at` and switching projects. Its first slice is still to be decided.
+- **Phase B1, projects:** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders.
+- A tide run logs every request it sends under its one debug id, so a whole session traces as one.
 - **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane, the project detail screen.
 
 ## Open questions
 
+- The daemon's event stream for a project's detail: its endpoint, events and how a client resumes after missing some.
 - Resizing: whether dividers can move away from 2:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
 - The shortcut menu's actions and letters, and how screens are opened.
 - Rendering performance with several live PTY panes, and color, wide-character and cursor fidelity. To measure in a spike.
