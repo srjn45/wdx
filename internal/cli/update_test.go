@@ -238,6 +238,9 @@ func TestUpdateUsage(t *testing.T) {
 		{"update", "--discard-changes"},
 		{"update", "--apply", "--rollback"},
 		{"update", "--rollback", "--version", "0.2.0"},
+		{"update", "--cancel"},
+		{"update", "--rollback"},
+		{"update", "--rollback", "--discard-changes", "--cancel"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
 		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
@@ -285,7 +288,7 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	}
 	in.newProject(t, "after")
 
-	v, exit = in.run(t, "update", "--rollback")
+	v, exit = in.run(t, "update", "--rollback", "--cancel")
 	if exit != api.ExitOK || v.Result != "rolled_back" || v.Update.To != identity.Version || v.Update.Channel != nil || *v.Update.DataRestored {
 		t.Fatalf("want rolled back keeping the database, got exit %d, %+v", exit, v.Update)
 	}
@@ -302,7 +305,7 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		t.Fatalf("want nothing kept after the rollback, got %v", err)
 	}
 
-	v, exit = in.run(t, "update", "--rollback")
+	v, exit = in.run(t, "update", "--rollback", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
 }
 
@@ -331,7 +334,7 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	}
 	conn.Close()
 
-	v, exit := in.run(t, "update", "--rollback")
+	v, exit := in.run(t, "update", "--rollback", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeRestoreRequired, api.ExitRejected)
 	wantHint(t, v, "--discard-changes")
 	if known, _ := v.Details["known"].(float64); int(known) != db.Known() {
@@ -412,7 +415,7 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 	if got := readFile(t, filepath.Join(prev, "previous.json")); !strings.Contains(got, `"version":"`+identity.Version+`"`) {
 		t.Fatalf("want the replaced version kept, got %s", got)
 	}
-	if v, exit := in.run(t, "update", "--rollback"); exit != api.ExitOK || v.Result != "rolled_back" {
+	if v, exit := in.run(t, "update", "--rollback", "--cancel"); exit != api.ExitOK || v.Result != "rolled_back" {
 		t.Fatalf("want a rollback, got exit %d, %+v", exit, v)
 	}
 	in.wantDaemon(t, identity.Version)
@@ -485,7 +488,7 @@ func TestUpdateRollbackAfterReinstall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v, exit := in.json(t, "update", "--rollback")
+	v, exit := in.json(t, "update", "--rollback", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
 	wantHint(t, v, "another install")
 	in.wantInstalled(t, wdxBinary)
@@ -588,8 +591,8 @@ func TestUpdateRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, flag := range []string{"--apply", "--rollback"} {
-		v, exit := in.json(t, "update", flag)
+	for _, args := range [][]string{{"--apply"}, {"--rollback", "--cancel"}} {
+		v, exit := in.json(t, append([]string{"update"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeUpdateRunning, api.ExitRejected)
 	}
 	in.wantInstalled(t, wdxBinary)

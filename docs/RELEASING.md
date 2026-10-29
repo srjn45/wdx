@@ -67,7 +67,7 @@ The channel is the `update.channel` setting (`stable` by default), or `--channel
 
 The config file written anew lists every setting of the new version with its description: the values set stay as written, new settings appear commented with their defaults, and keys the version no longer has are moved, commented, to the end, so it still starts. Comments of the user's own are not kept. A rollback puts back the config file as it was before the update.
 
-Only one previous version is kept, replaced by each update and removed by a rollback. A rollback keeps the database when the previous version can use it: migrations that only add things leave it usable. A migration marked `-- breaks-older: true` records itself in the database as the oldest schema a binary must know; rolling back across it can only restore the backup taken at the update, losing every change since, so it asks first (`--discard-changes` answers, and is needed with `--json`; without it the rollback fails with `restore_required`).
+Only one previous version is kept, replaced by each update and removed by a rollback. A rollback keeps the database when the previous version can use it: migrations that only add things leave it usable. A migration marked `-- breaks-older: true` records itself in the database as the oldest schema a binary must know; rolling back across it can only restore the backup taken at the update, losing every change since, so it asks first: `--discard-changes` answers yes and `--cancel` no, and `--json` needs one of them; no fails with `restore_required`.
 
 `make install` and `scripts/install.sh` install without keeping a previous version.
 

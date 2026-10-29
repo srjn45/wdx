@@ -22,7 +22,7 @@ import (
 const discardChangesQuestion = "discard changes"
 
 func newUpdateCmd(cfg config.Config) *cobra.Command {
-	var apply, rollback, discardChanges bool
+	var apply, rollback, discardChanges, cancel bool
 	var channel, version string
 	cmd := &cobra.Command{
 		Use:   "update [--apply | --rollback]",
@@ -38,7 +38,8 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			"--rollback installs the kept version again, with the config file as it was\n" +
 			"before the update. The database stays when that version can use it; when a\n" +
 			"migration since the update breaks it, the backup is restored, losing every\n" +
-			"change since the update, which --discard-changes or the prompt agrees to.\n" +
+			"change since the update, which --discard-changes or the prompt agrees to,\n" +
+			"and --cancel refuses.\n" +
 			"Only one previous version is kept.",
 		Example: examples(
 			"Show whether a newer release is available", identity.Name+" update",
@@ -47,6 +48,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			"Install one release", identity.Name+" update --apply --version 0.2.0",
 			"Go back to the version the last update replaced", identity.Name+" update --rollback",
 			"From a script, restoring the database backup if the previous version needs it", identity.Name+" update --rollback --discard-changes --json",
+			"From a script, rolling back only if the database can stay", identity.Name+" update --rollback --cancel --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -54,7 +56,8 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 				"with --apply or --rollback, the versions and schema versions before and after.\n" +
 				`With --json: {"update": {"current": ..., "latest": ..., "channel": ..., "available": ...}}, or` + "\n" +
 				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}, "warnings": [...]}`,
-			resultList: annotation("rolled_back", "up_to_date", "updated"),
+			resultList:   annotation("rolled_back", "up_to_date", "updated"),
+			jsonRequires: "rollback:" + annotation("discard-changes", "cancel"),
 			errorList: codeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
 				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeSettingsInvalid, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
 		},
@@ -64,6 +67,9 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			}
 			if discardChanges && !rollback {
 				return &usageError{errors.New("--discard-changes goes with --rollback")}
+			}
+			if cancel && !rollback {
+				return &usageError{errors.New("--cancel goes with --rollback")}
 			}
 			o := updateOptions(cmd)
 			switch {
@@ -78,7 +84,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 				}
 				return printUpdateResult(cmd, newUpdateResult(result, r, &channel))
 			case rollback:
-				r, err := rollBack(cmd, o, discardChanges)
+				r, err := rollBack(cmd, o, discardChanges, cancel)
 				if err != nil {
 					return err
 				}
@@ -96,6 +102,8 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 	cmd.Flags().StringVar(&channel, "channel", cfg.UpdateChannel, "follow this `channel`: stable or dev; the update.channel setting by default")
 	cmd.Flags().StringVar(&version, "version", "", "this release `version` instead of the newest, such as 0.2.0")
 	cmd.Flags().BoolVar(&discardChanges, "discard-changes", false, "with --rollback, restore the database backup without asking when the previous version needs it")
+	cmd.Flags().BoolVar(&cancel, "cancel", false, "with --rollback, change nothing without asking when the previous version needs the database backup restored")
+	cmd.MarkFlagsMutuallyExclusive("discard-changes", "cancel")
 	cmd.RegisterFlagCompletionFunc("channel", cobra.FixedCompletions(config.UpdateChannels, cobra.ShellCompDirectiveNoFileComp))
 	cmd.RegisterFlagCompletionFunc("version", cobra.NoFileCompletions)
 	cmd.MarkFlagsMutuallyExclusive("apply", "rollback")
@@ -134,13 +142,17 @@ func updateOptions(cmd *cobra.Command) update.Options {
 }
 
 // rollBack rolls back, asking before restoring the database backup unless
-// discardChanges agreed to it.
-func rollBack(cmd *cobra.Command, o update.Options, discardChanges bool) (update.Result, error) {
+// discardChanges agreed to it or cancel refused it.
+func rollBack(cmd *cobra.Command, o update.Options, discardChanges, cancel bool) (update.Result, error) {
 	r, err := update.Rollback(cmd.Context(), o, discardChanges)
 	if discardChanges && r.DataRestored {
 		logAnswer(cmd, discardChangesQuestion, "yes", "--discard-changes")
 	}
 	if _, needed := errors.AsType[*update.RestoreRequiredError](err); !needed {
+		return r, err
+	}
+	if cancel {
+		logAnswer(cmd, discardChangesQuestion, "no", "--cancel")
 		return r, err
 	}
 	if !canPrompt(cmd) {
