@@ -115,6 +115,21 @@ func TestSession(t *testing.T) {
 	}
 }
 
+// TestSessionOutlivesWriteTimeout types into a session attached for longer
+// than the holder's write timeout: its output keeps coming.
+func TestSessionOutlivesWriteTimeout(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000207", interactiveShell)
+	s := f.session(t, "term-00000207", Size{Cols: 80, Rows: 24}, 0)
+	out := readSession(s)
+	time.Sleep(writeTimeout + time.Second)
+	if _, err := s.Write([]byte("echo la''ter\n")); err != nil {
+		t.Fatal(err)
+	}
+	out.waitFor(t, "later\r\n")
+}
+
 // TestSessionDetached closes a session: the shell runs on, and another
 // attaches to it.
 func TestSessionDetached(t *testing.T) {

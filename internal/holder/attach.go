@@ -102,6 +102,10 @@ func (h *holder) serveClient(conn *net.UnixConn) {
 		log.Info("hello not sent to client", "err", err.Error())
 		return
 	}
+	// The hello's deadline would fail every write after it: a client may
+	// stay attached for days, and one that stops reading is dropped by
+	// its queue instead.
+	_ = conn.SetWriteDeadline(time.Time{})
 	_ = conn.SetReadDeadline(time.Now().Add(writeTimeout))
 	t, body, err := readFrame(conn)
 	var req attachRequest
@@ -117,7 +121,16 @@ func (h *holder) serveClient(conn *net.UnixConn) {
 	start := h.attach(c, req.Size)
 	log.Info("client attached", "cols", req.Cols, "rows", req.Rows, "history", req.History, "pos", start.Pos)
 	written := make(chan error, 1)
-	go func() { written <- h.writeClient(c, start, req.History) }()
+	go func() {
+		err := h.writeClient(c, start, req.History)
+		if err != nil {
+			// The client must not stay attached without its output.
+			c.mu.Lock()
+			c.disconnect("output not sent: " + err.Error())
+			c.mu.Unlock()
+		}
+		written <- err
+	}()
 
 	reason := h.readClient(c)
 	h.detach(c)
