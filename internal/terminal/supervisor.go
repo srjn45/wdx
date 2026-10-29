@@ -197,8 +197,9 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	return s.store.Get(ctx, t.ID)
 }
 
-// Remove deletes a terminal. A live one fails with a *RunningError unless
-// stopRunning, which stops its shell first.
+// Remove deletes a terminal and returns it as it was last, stopped when
+// it was live. A live one fails with a *RunningError unless stopRunning,
+// which stops its shell first.
 func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (Terminal, error) {
 	t, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -209,6 +210,9 @@ func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (T
 	}
 	if t.State.Live() || s.watching(id) {
 		if err := s.stopOne(ctx, t); err != nil {
+			return Terminal{}, err
+		}
+		if t, err = s.store.Get(ctx, id); err != nil {
 			return Terminal{}, err
 		}
 	}
