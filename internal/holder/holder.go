@@ -113,12 +113,21 @@ type holder struct {
 	historyDir string
 	historyErr bool // a failed write is logged once
 
+	// The vt's answers to programs' queries, for the PTY while no client
+	// is attached; full drops them, logged once.
+	answers        chan []byte
+	answersDropped atomic.Bool
+
 	// The clients' side: the PTY's reader queues output to them.
 	clientsMu  sync.Mutex
 	clients    map[*client]bool
 	clientExit []byte // the exited frame's payload, once the shell ended
 	spoolErr   bool   // a failed append is logged once
 }
+
+// answerQueue bounds the vt's answers waiting for a program to read its
+// input; a program that never reads them must not stop the vt.
+const answerQueue = 64
 
 // startSize is a terminal's size until a client attaches.
 var startSize = Size{Cols: 80, Rows: 24}
@@ -166,6 +175,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		followed: make(chan struct{}),
 		released: make(chan struct{}),
 		size:     startSize,
+		answers:  make(chan []byte, answerQueue),
 		clients:  map[*client]bool{},
 	}
 	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
@@ -248,6 +258,7 @@ func listen(socket string) (*net.UnixListener, error) {
 func (h *holder) serve(ctx context.Context) error {
 	defer h.master.Close()
 	go h.read()
+	go h.writeAnswers()
 	go h.follow()
 	go h.wait()
 	go h.exitClients()
@@ -378,9 +389,28 @@ func (h *holder) answer(p []byte) {
 	h.clientsMu.Lock()
 	attached := len(h.clients) > 0
 	h.clientsMu.Unlock()
-	if !attached {
-		// A closed PTY wants no answers.
-		_, _ = h.master.Write(p)
+	if attached {
+		return
+	}
+	select {
+	case h.answers <- p:
+	default:
+		if !h.answersDropped.Swap(true) {
+			h.log.Warn("answers dropped: the program does not read its input")
+		}
+	}
+}
+
+// writeAnswers writes the vt's answers to the PTY, until its output ends.
+func (h *holder) writeAnswers() {
+	for {
+		select {
+		case p := <-h.answers:
+			// A closed PTY wants no answers.
+			_, _ = h.master.Write(p)
+		case <-h.drained:
+			return
+		}
 	}
 }
 

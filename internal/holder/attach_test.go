@@ -289,6 +289,24 @@ func TestHelloDuringFlood(t *testing.T) {
 	}
 }
 
+// TestQueriesNobodyReads floods queries from a program that never reads
+// its input, with no client attached: the vt's answers fill the PTY, and
+// the holder still attaches a client.
+func TestQueriesNobodyReads(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000111", `stty raw -echo; i=0; while [ $i -lt 5000 ]; do printf '\033[6n'; i=$((i+1)); done; touch flooded; echo flooded; exec sleep 60`)
+	deadline := time.Now().Add(waitLimit)
+	for _, err := os.Stat(filepath.Join(f.dir, "flooded")); err != nil; _, err = os.Stat(filepath.Join(f.dir, "flooded")) {
+		if time.Now().After(deadline) {
+			t.Fatal("the shell did not finish its queries")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c := f.attach(t, "term-00000111", Size{Cols: 80, Rows: 24}, 0)
+	c.waitOutput("flooded")
+}
+
 func TestAttachExited(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
