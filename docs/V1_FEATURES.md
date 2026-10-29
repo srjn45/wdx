@@ -20,9 +20,9 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 - [x] P0 Daemon running as a local service (systemd user unit / launchd): see docs/DAEMON.md
 - [x] P0 Local API over a Unix socket, with client/daemon version handshake (the CLI warns when the versions differ)
 - [x] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption (terminals for now; docs/TERMINALS.md)
-- [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, with their history (docs/ATTACH.md); agents later
+- [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, full-window as tmux's, with their whole history to scroll through (docs/ATTACH.md, docs/ATTACH_VIEW.md); agents later
 - [x] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`, `wdx terminal attach` and `history`
-- [ ] P0 Session output tail / recent output
+- [~] P0 Session output tail / recent output: `wdx terminal history` prints what scrolled off a terminal's screen; still to do, the screen of a running terminal after it, so that the latest output is in it too (history gets the screen only when the shell exits)
 - [ ] P0 Send text into a session
 - [ ] P1 PTY observability: runtime status, `warden_pty_*` metrics, decision trace
 - [~] P1 Bounded child cleanup (TERM → KILL grace, process-group kill, reap timeouts): terminals are hung up on, then killed with their process groups after 5 s
