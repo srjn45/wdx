@@ -29,6 +29,7 @@ type Model struct {
 	modes   map[ansi.Mode]bool // the vt has no getter for them
 	title   string
 	resets  int // times the vt failed and started again
+	back    scrollback
 }
 
 // OutputMsg carries output from the session to the pane that reads it.
@@ -47,21 +48,31 @@ type EndedMsg struct {
 
 // New returns a pane for s, at the size of its snapshot. The vt's input,
 // what is typed encoded for the program and its answers to the program's
-// queries, goes to s.
-func New(s *holder.Session) *Model {
-	m := &Model{session: s}
+// queries, goes to s. fetch fetches the history the pane scrolls back to
+// beyond what it saw; nil scrolls through only that.
+func New(s *holder.Session, fetch FetchFunc) *Model {
+	m := &Model{session: s, back: newScrollback(s.Snapshot.HistoryLines, fetch)}
 	m.start(s.Snapshot.Cols, s.Snapshot.Rows)
 	return m
 }
 
 func (m *Model) start(cols, rows int) {
 	e := vt.NewEmulator(cols, rows)
+	e.SetScrollbackSize(scrollbackLines)
 	m.vt = e
 	m.modes = map[ansi.Mode]bool{}
 	e.SetCallbacks(vt.Callbacks{
 		EnableMode:  func(mode ansi.Mode) { m.modes[mode] = true },
 		DisableMode: func(mode ansi.Mode) { m.modes[mode] = false },
 		Title:       func(t string) { m.title = t },
+	})
+	// ED 3 clears the vt's scrollback: harvest it first. Handlers
+	// registered last run first; false hands it on to the vt's own.
+	e.RegisterCsiHandler('J', func(params ansi.Params) bool {
+		if n, _, _ := params.Param(0, 0); n == 3 {
+			m.harvest()
+		}
+		return false
 	})
 	// The vt writes input to a pipe and blocks until it is read; a failed
 	// write means the session is gone, which reading it tells.
@@ -95,18 +106,45 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		}
 		m.write(msg.data)
 		return m.read
+	case pageMsg:
+		if msg.pane != m {
+			return nil
+		}
+		if len(msg.h.Lines) == 0 && msg.err == nil {
+			// Nothing kept there: history starts after it, if anywhere.
+			m.back.first = max(m.back.first, min(msg.start+pageLines, m.back.next-int64(len(m.back.kept))))
+		}
+		m.back.fetched(msg)
+		m.back.scroll(0)
+		return m.fetchNeeded()
 	case tea.KeyPressMsg:
-		m.vt.SendKey(uv.KeyPressEvent{Text: msg.Text, Mod: msg.Mod, Code: msg.Code, ShiftedCode: msg.ShiftedCode, BaseCode: msg.BaseCode})
+		return m.key(msg)
 	case tea.PasteMsg:
+		m.Live()
 		m.vt.Paste(msg.Content)
 	case tea.MouseMsg:
-		m.mouse(msg)
+		return m.mouse(msg)
 	}
 	return nil
 }
 
-// write feeds output to the vt; one that fails on it starts again empty,
-// and the program's next drawing fills it.
+// key scrolls with PageUp and PageDown when the program is on its main
+// screen, or while scrolled back; any other key returns to the live
+// screen and goes to the program.
+func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
+	if msg.Mod == 0 && (msg.Code == tea.KeyPgUp || msg.Code == tea.KeyPgDown) && (m.Scrolled() || !m.vt.IsAltScreen()) {
+		if msg.Code == tea.KeyPgUp {
+			return m.ScrollPage(1)
+		}
+		return m.ScrollPage(-1)
+	}
+	m.Live()
+	m.vt.SendKey(uv.KeyPressEvent{Text: msg.Text, Mod: msg.Mod, Code: msg.Code, ShiftedCode: msg.ShiftedCode, BaseCode: msg.BaseCode})
+	return nil
+}
+
+// write feeds output to the vt and keeps what scrolls off it; a vt that
+// fails on it starts again empty, and the program's next drawing fills it.
 func (m *Model) write(p []byte) {
 	defer func() {
 		if recover() != nil {
@@ -114,19 +152,43 @@ func (m *Model) write(p []byte) {
 			m.restart()
 		}
 	}()
-	_, _ = m.vt.Write(p)
+	for len(p) > 0 {
+		n := min(len(p), writePiece)
+		_, _ = m.vt.Write(p[:n])
+		m.harvest()
+		p = p[n:]
+	}
+}
+
+// harvest moves the lines the vt scrolled off its main screen to the
+// scrollback.
+func (m *Model) harvest() {
+	sb := m.vt.Scrollback()
+	lines := sb.Lines()
+	if len(lines) == 0 {
+		return
+	}
+	rendered := make([]string, len(lines))
+	for i, line := range lines {
+		rendered[i] = line.Render()
+		lines[i] = nil // Clear keeps the array, which would keep the cells
+	}
+	sb.Clear()
+	m.back.add(rendered)
 }
 
 func (m *Model) restart() {
 	cols, rows := m.vt.Width(), m.vt.Height()
 	m.close()
 	m.start(cols, rows)
+	m.back.restart()
 }
 
-// mouse passes a mouse event to a program that asked for the mouse; on the
-// alternate screen the wheel is sent as arrow keys otherwise, as terminals
-// do, so that less and man scroll with it.
-func (m *Model) mouse(msg tea.MouseMsg) {
+// mouse passes a mouse event to a program that asked for the mouse.
+// Otherwise the wheel scrolls the history over the main screen, and is
+// sent as arrow keys over the alternate screen, as terminals do, so that
+// less and man scroll with it.
+func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	mouse := msg.Mouse()
 	ev := uv.Mouse{X: mouse.X, Y: mouse.Y, Button: mouse.Button, Mod: mouse.Mod}
 	if m.mouseWanted() {
@@ -140,11 +202,17 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 		case tea.MouseMotionMsg:
 			m.vt.SendMouse(uv.MouseMotionEvent(ev))
 		}
-		return
+		return nil
 	}
 	wheel, ok := msg.(tea.MouseWheelMsg)
-	if !ok || !m.vt.IsAltScreen() {
-		return
+	if !ok {
+		return nil
+	}
+	if m.Scrolled() || !m.vt.IsAltScreen() {
+		if wheel.Button == tea.MouseWheelDown {
+			return m.ScrollUp(-wheelLines)
+		}
+		return m.ScrollUp(wheelLines)
 	}
 	key := uv.KeyUp
 	if wheel.Button == tea.MouseWheelDown {
@@ -153,6 +221,7 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 	for range wheelLines {
 		m.vt.SendKey(uv.KeyPressEvent{Code: key})
 	}
+	return nil
 }
 
 // wheelLines is how far a turn of the wheel scrolls.
@@ -192,14 +261,18 @@ func (m *Model) Size() (cols, rows int) {
 	return m.vt.Width(), m.vt.Height()
 }
 
-// Content is the pane's screen as styled lines.
+// Content is what the pane shows, as styled lines: the screen, or the
+// history when scrolled back.
 func (m *Model) Content() string {
+	if m.Scrolled() {
+		return m.scrolledContent()
+	}
 	return m.vt.Render()
 }
 
-// Text is the pane's screen as plain lines, without trailing spaces.
+// Text is what the pane shows as plain lines, without trailing spaces.
 func (m *Model) Text() string {
-	lines := strings.Split(m.vt.String(), "\n")
+	lines := strings.Split(ansi.Strip(m.Content()), "\n")
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " ")
 	}
@@ -209,7 +282,7 @@ func (m *Model) Text() string {
 // Cursor is where the program's cursor is in the pane, and its shape; nil
 // when the program hid it.
 func (m *Model) Cursor() *tea.Cursor {
-	if m.vt.CursorHidden() {
+	if m.vt.CursorHidden() || m.Scrolled() {
 		return nil
 	}
 	p := m.vt.CursorPosition()

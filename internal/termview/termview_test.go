@@ -37,24 +37,35 @@ type driver struct {
 // 80×24 and returns the pane on it, driven.
 func attach(t *testing.T, script string) *driver {
 	t.Helper()
+	return startShell(t, script).attach()
+}
+
+// shell is a terminal's holder, history on, for a test to attach to.
+type shell struct {
+	t        *testing.T
+	home, id string
+}
+
+func startShell(t *testing.T, script string) shell {
+	t.Helper()
 	// Sockets live under home: a path in t.TempDir can be too long for one.
 	home, err := os.MkdirTemp("/tmp", "wdx")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(home) })
-	shell := filepath.Join(home, "shell")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+	path := filepath.Join(home, "shell")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	const id = "term-0000a001"
+	sh := shell{t: t, home: home, id: "term-0000a001"}
 	started, err := holder.Start(context.Background(), holder.StartOptions{
-		Executable: exe, Home: home, ID: id, Project: "wdx", Dir: t.TempDir(), Shell: shell,
-		Env: []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"},
+		Executable: exe, Home: home, ID: sh.id, Project: "wdx", Dir: t.TempDir(), Shell: path,
+		Env: []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}, HistoryLines: 100_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -63,12 +74,40 @@ func attach(t *testing.T, script string) *driver {
 		_ = syscall.Kill(-started.PID, syscall.SIGKILL)
 		_ = syscall.Kill(started.HolderPID, syscall.SIGKILL)
 	})
-	s, err := holder.Attach(context.Background(), identity.HolderSocket(home, id), id, holder.Size{Cols: 80, Rows: 24}, 0)
+	return sh
+}
+
+// fetch reads the terminal's history from its files, as the daemon does.
+func (sh shell) fetch(from int64, count int) (History, error) {
+	h, err := holder.ReadHistory(holder.HistoryDir(sh.home, sh.id), from, count)
+	return History{From: h.From, First: h.First, Lines: h.Lines}, err
+}
+
+// waitHistory waits until the terminal's history holds lines lines.
+func (sh shell) waitHistory(lines int64) {
+	sh.t.Helper()
+	deadline := time.Now().Add(waitLimit)
+	for {
+		h, err := holder.TailHistory(holder.HistoryDir(sh.home, sh.id), 1)
+		if err == nil && h.Next >= lines {
+			return
+		}
+		if time.Now().After(deadline) {
+			sh.t.Fatalf("history stays at %d lines", h.Next)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func (sh shell) attach() *driver {
+	t := sh.t
+	t.Helper()
+	s, err := holder.Attach(context.Background(), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 80, Rows: 24}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	d := &driver{t: t, m: New(s), msgs: make(chan tea.Msg, 16)}
+	d := &driver{t: t, m: New(s, sh.fetch), msgs: make(chan tea.Msg, 16)}
 	t.Cleanup(d.m.Close)
 	d.run(d.m.Init())
 	return d
@@ -213,5 +252,89 @@ func TestPaneEnded(t *testing.T) {
 	d.waitFor("end", func() bool { return d.ended != nil })
 	if d.ended.Pane != d.m || d.ended.Exit == nil || d.ended.Exit.Code != 5 || d.ended.Err != nil {
 		t.Fatalf("got %+v, want the exit code 5", d.ended)
+	}
+}
+
+// firstLine is the first line the pane shows.
+func (d *driver) firstLine() string {
+	line, _, _ := strings.Cut(d.m.Text(), "\n")
+	return line
+}
+
+// TestPaneScrollsWhatItSaw scrolls through lines printed while attached,
+// which the pane keeps, and back to the live screen with a key.
+func TestPaneScrollsWhatItSaw(t *testing.T) {
+	t.Parallel()
+	d := attach(t, "echo ready; read x; seq 1 100; "+interactive)
+	d.waitText("ready")
+	d.typeText("\n")
+	d.waitText("100")
+	d.send(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if !d.m.Scrolled() || d.m.Cursor() != nil {
+		t.Fatal("want PageUp at the shell to scroll back, without the cursor")
+	}
+	d.send(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	d.run(d.m.ScrollUp(1000))
+	if top, _ := d.m.Position(); top != 0 || d.firstLine() != "ready" {
+		t.Fatalf("want the top at line 0, ready, got %d %q", top, d.firstLine())
+	}
+	d.send(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if !d.m.Scrolled() {
+		t.Fatal("want PageDown to scroll down a page, still back")
+	}
+	d.typeText("echo li''ve\n")
+	if d.m.Scrolled() {
+		t.Fatal("want a key to return to the live screen")
+	}
+	d.waitText("live")
+}
+
+// TestPaneScrollsFetchedHistory attaches after the output scrolled into
+// history: scrolling back fetches it a page at a time.
+func TestPaneScrollsFetchedHistory(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, "seq 1 3000; exec sleep 60")
+	sh.waitHistory(2977) // 3,000 lines and the cursor's, on 24 rows
+	d := sh.attach()
+	d.waitText("3000")
+	d.run(d.m.ScrollUp(500))
+	d.waitFor("line 2478 at the top", func() bool { return d.firstLine() == "2478" }) // line 2477, from 0
+	d.run(d.m.ScrollUp(5000))
+	d.waitFor("line 1 at the top", func() bool { return d.firstLine() == "1" })
+	if len(d.m.back.pages) > cachedPages {
+		t.Fatalf("%d pages cached", len(d.m.back.pages))
+	}
+}
+
+// TestPaneScrollStays prints while the view is scrolled back: it stays on
+// the lines it shows.
+func TestPaneScrollStays(t *testing.T) {
+	t.Parallel()
+	d := attach(t, "echo ready; read x; seq 1 100; read x; seq 101 150; "+interactive)
+	d.waitText("ready")
+	d.typeText("\n")
+	d.waitText("100")
+	d.run(d.m.ScrollUp(30))
+	before := d.m.Text()
+	_, lines := d.m.Position()
+	if _, err := d.m.session.Write([]byte("\n")); err != nil { // typed elsewhere
+		t.Fatal(err)
+	}
+	d.waitFor("the output", func() bool { _, now := d.m.Position(); return now >= lines+50 })
+	if d.m.Text() != before {
+		t.Fatalf("the view moved:\n%s\nthen\n%s", before, d.m.Text())
+	}
+}
+
+// TestPanePageKeysOnAlternateScreen: PageUp goes to a program on the
+// alternate screen, as the wheel does as arrows.
+func TestPanePageKeysOnAlternateScreen(t *testing.T) {
+	t.Parallel()
+	d := attach(t, `printf '\033[?1049hready\n'; stty raw -echo; exec cat -v`)
+	d.waitText("ready")
+	d.send(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	d.waitText("^[[5~")
+	if d.m.Scrolled() {
+		t.Fatal("want no scrolling on the alternate screen")
 	}
 }
