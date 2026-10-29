@@ -1,6 +1,6 @@
 # The vt and its fork
 
-The holder keeps each terminal's screen in `github.com/charmbracelet/x/vt` (MIT), wrapped by `screen` in `internal/holder/screen.go`, the only file that uses it (docs/ATTACH.md). This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is to be fixed in our fork and offered upstream.
+The holder keeps each terminal's screen in `github.com/charmbracelet/x/vt` (MIT), wrapped by `screen` in `internal/holder/screen.go` for the holder (docs/ATTACH.md), and used by `internal/termview` to draw an attached terminal (docs/ATTACH_VIEW.md); no other package uses it. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is to be fixed in our fork and offered upstream.
 
 - Fork: `github.com/srjn45/x`, branch `wdx`, cloned at `~/dev/x`; `upstream` is `charmbracelet/x`.
 - wdx uses upstream for now: `x/vt` at `v0.1.1-0.20261028143050-ac49f62f807e` and `ultraviolet` at `v0.0.0-20260303162955-0b88c25f3fff`. Once the fork has fixes worth having, `go.mod` gets `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, and `make notices`. Each fix also goes upstream as a pull request; the `replace` goes when upstream has them all.

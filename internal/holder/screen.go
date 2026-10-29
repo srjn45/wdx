@@ -192,12 +192,22 @@ func (s *screen) lines() []string {
 				line[x] = *c
 			}
 		}
-		lines = append(lines, line.Render())
+		lines = append(lines, trimmed(line).Render())
 	}
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+// trimmed is line without its trailing blank cells, as the vt keeps lines
+// in its scrollback.
+func trimmed(line uv.Line) uv.Line {
+	end := len(line)
+	for end > 0 && (line[end-1].IsZero() || line[end-1].Equal(&uv.EmptyCell)) {
+		end--
+	}
+	return line[:end]
 }
 
 // resize changes the screen's size; false means the vt panicked and was

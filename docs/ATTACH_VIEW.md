@@ -72,7 +72,7 @@ A Bubble Tea v2 model, `termview.Model`, around a `holder.Session` and a vt (`ch
 
 The CLI runs it full-window with the status line and the prefix keys; tide runs several in its layout, with keys of its own. The model knows nothing of either.
 
-The vt's known issues (docs/VT.md) now show on the client too: its speed bounds how fast a flood is drawn, and a panic resets the pane's vt, which the next snapshot repairs: the pane attaches again on its own.
+The vt's known issues (docs/VT.md) now show on the client too: its speed bounds how fast a flood is drawn, and a panic resets the pane's vt to an empty screen, which the program's next drawing fills (a shell's next prompt, a full-screen program's next redraw); attaching again would repaint it at once.
 
 ## Changes to `wdx terminal attach`
 
