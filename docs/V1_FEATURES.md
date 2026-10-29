@@ -20,8 +20,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 - [x] P0 Daemon running as a local service (systemd user unit / launchd): see docs/DAEMON.md
 - [x] P0 Local API over a Unix socket, with client/daemon version handshake (the CLI warns when the versions differ)
 - [x] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption (terminals for now; docs/TERMINALS.md)
-- [ ] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach)
-- [~] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`; attaching to them comes next
+- [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, with their history (docs/ATTACH.md); agents later
+- [x] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`, `wdx terminal attach` and `history`
 - [ ] P0 Session output tail / recent output
 - [ ] P0 Send text into a session
 - [ ] P1 PTY observability: runtime status, `warden_pty_*` metrics, decision trace

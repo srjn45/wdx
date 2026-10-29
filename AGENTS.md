@@ -37,7 +37,7 @@ internal/daemon/   serves the API over the Unix socket on top of the domain
 internal/config/   the settings, loaded once at startup from their sources, and the config file written from them
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
-internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its protocol and client; docs/TERMINALS.md
+internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its screen, spool and history, its protocol and clients; docs/TERMINALS.md, docs/ATTACH.md
 internal/pty/   opens pseudo-terminals and starts commands in them
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service

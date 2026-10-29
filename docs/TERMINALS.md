@@ -1,6 +1,6 @@
 # Terminals
 
-Status: implemented, without attach (next slice).
+Status: implemented. Attaching to a terminal and its history are in docs/ATTACH.md.
 
 A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents will later run in the same kind of PTY; terminals come first because they need no AI CLI.
 
@@ -8,10 +8,10 @@ A terminal is a shell running in a PTY that belongs to a project. It keeps runni
 
 ```
  wdx terminal create ──HTTP/unix──► daemon ──starts──► holder (wdx holder, own session)
-                                      │                  ├─ PTY master (creack/pty)
+                                      │                  ├─ PTY master (internal/pty)
                                       │◄─control conn────┤─ $SHELL -l, the PTY slave as its tty
-                                      │                  ├─ output ring (screen later, for attach)
-                                  SQLite: terminals      └─ socket <home>/run/<terminal id>.sock
+                                      │                  ├─ spool, vt screen, history (docs/ATTACH.md)
+                                  SQLite: terminals      └─ socket <home>/run/<terminal id>.sock ◄── attached clients
 ```
 
 - **The holder** is one process per terminal: the `wdx` binary run as the hidden command `wdx holder`. It opens the PTY, starts the shell as its child, always reads the PTY master (a shell whose output nobody drains blocks once the kernel buffer fills), reaps the shell and keeps its exit code, and serves a Unix socket.
@@ -23,7 +23,7 @@ A terminal is a shell running in a PTY that belongs to a project. It keeps runni
 
 - systemd kills every process in a service's cgroup when the service stops, `setsid` or not. The unit gets `KillMode=process`, so stopping or restarting the daemon stops only the daemon.
 - launchd: the holder's `setsid` takes it out of the job's process group; the plist also gets `AbandonProcessGroup` to be safe.
-- A holder keeps running the binary it was started from, also after an upgrade. The holder protocol carries a version; a daemon speaks its own and the previous one. Today the daemon speaks version 1 and also drives holders of version 2, which attach brings (docs/ATTACH.md), so rolling back from that release keeps its terminals.
+- A holder keeps running the binary it was started from, also after an upgrade. The holder protocol carries a version; a daemon speaks its own and the previous one. The daemon speaks version 2, which brought attach (docs/ATTACH.md), and drives holders of version 1, started before it; the release before it already drove version 2, so rolling back keeps the terminals. Attaching needs version 2: a terminal whose holder is older answers `attach_unsupported` until its shell is started again.
 
 ## The table
 
@@ -110,7 +110,7 @@ A name stays taken while its row exists, whatever the state.
 | any → deleted | `terminal remove`, `project remove` with `--stop-running`; a live shell is stopped first | user |
 
 - Stopping writes `stopped` first, so a daemon that dies before the shell is gone finishes the stop at startup instead of recording `exited`.
-- A relaunch keeps id, name and dir, starts a fresh shell, and clears `pid`, `exit_code` and `error`. Its scrollback and running programs are gone; the shell's own history file is not.
+- A relaunch keeps id, name and dir, starts a fresh shell, and clears `pid`, `exit_code` and `error`. Its screen and running programs are gone; its history (docs/ATTACH.md) goes on after a marker line, and the shell's own history file is kept.
 - `start` or `create` in a closed project fails with `project_closed`; `start` on a `starting` or `running` terminal fails with `terminal_running`.
 - `stopped` is reached only by closing the project and left only by opening it again (or by removal): `start` on a closed project fails with `project_closed`.
 - After a reboot every terminal of an open project is `lost` and stays so until started: nothing is relaunched automatically. A closed project's terminals stay `stopped`, and opening it relaunches them.
@@ -134,14 +134,14 @@ Before serving, the daemon dials the socket of every terminal in `starting`, `ru
 Started by the daemon as
 
 ```
-wdx holder --id <terminal id> --dir <dir> --shell <path>
+wdx holder --id <terminal id> --project <name> --dir <dir> --shell <path> --history-lines <lines>
 ```
 
 in its own session (`setsid`), stdin/stdout/stderr on `/dev/null`, with a pipe as fd 3. It:
 
 1. creates `<home>/run/` (0700) and listens on `<home>/run/<id>.sock`, accepting only peers of its own uid;
 2. opens the PTY at 80×24, starts the shell as a login shell (`argv[0]` `-zsh`) in `dir` with the clean environment below, and writes `ready` with the shell's pid to fd 3, or the error, then closes it;
-3. reads the PTY master into a 1 MiB output ring until the shell ends;
+3. reads the PTY master into its spool and to attached clients until the shell ends, while a vt follows the spool to keep the screen and the history (docs/ATTACH.md);
 4. reaps the shell, sends `exited` to the daemon if connected, and waits until the daemon `release`s it; then removes its socket and exits.
 
 Stopping: on `stop` the holder sends SIGHUP to the shell and to the PTY's foreground process group, waits up to 5 s, then SIGKILLs both groups, reaps the shell and answers `exited`. Programs started with `nohup` or `setsid` in the shell are not touched.
@@ -160,7 +160,7 @@ Built, never inherited whole, and never taken from the CLI that asked: the termi
 - `main` reads the allowlist once into `cli.Env.Terminal`, keeping it the only place that reads the environment. The daemon starts each holder with exactly those variables, plus `WDX_HOME`; the holder's `main` reads them the same way and hands them to the shell. Never in arguments, where `ps` shows them, and never logged.
 - The values are the daemon's from when it started: after logging in again with a new ssh agent, `wdx daemon restart` picks up the new socket. Shells already running keep the old one, as in tmux.
 
-Logs: the holder logs to the same daily files, with `terminal_id` on every line: started, shell started, exited, stopped, released. Never PTY bytes.
+Logs: the holder logs to the same daily files, with `terminal_id` on every line: started, shell started, exited, stopped, released, and what docs/ATTACH.md lists for attach. Never PTY bytes.
 
 ### Protocol
 
@@ -168,12 +168,12 @@ Frames on the socket: one byte of type, a 4-byte big-endian length, the payload;
 
 | Frame | Direction | Payload |
 |---|---|---|
-| `hello` | both, first | `{"version": 1, "terminal_id": ..., "pid": ..., "holder_pid": ..., "exited": null or {"code": ...}}` from the holder |
+| `hello` | both, first | `{"version": 2, "role": "daemon"}` from the daemon; `{"version": 2, "terminal_id": ..., "pid": ..., "holder_pid": ..., "exited": null or {"code": ...}, "history_lines": ...}` from the holder |
 | `exited` | holder → daemon | `{"code": ..., "at": ...}` |
 | `stop` | daemon → holder | `{"grace_ms": 5000}`; answered by `exited` |
 | `release` | daemon → holder | none; the holder exits |
 
-Attach adds `attach`, `history`, `snapshot`, `output`, `input` and `resize` in version 2, and the vt screen in the holder that the snapshot is drawn from; docs/ATTACH.md.
+Version 2 adds clients beside the daemon, with `attach`, `history`, `snapshot`, `output`, `input` and `resize`: docs/ATTACH.md.
 
 ## Settings
 
@@ -192,6 +192,7 @@ The login shell is looked up when a terminal starts, not when wdx loads its sett
 | `GET /v1/terminals/{terminal}` | 200 `{"terminal": {...}}` | `not_found` |
 | `POST /v1/terminals/{terminal}/start` | 200 `{"result": "started", "terminal": {...}}` | `not_found`, `project_closed`, `terminal_running`, `start_failed` |
 | `DELETE /v1/terminals/{terminal}?stop_running=true` | 200 `{"result": "removed", "terminal": {...}}` | `not_found`, `terminal_running` |
+| `GET /v1/terminals/{terminal}/history?tail=` or `?from=&count=` | 200 `{"history": {...}}`: docs/ATTACH.md | `not_found` |
 
 - `{terminal}` is `id:` and its id, or a name together with `?project=<ref>` or `?dir=/abs`, since names are unique only within a project.
 - `project` is resolved like everywhere (name, or `id:`); `dir` finds the project whose registered worktree contains it, the longest path winning. Without `project`, `create` starts the shell in `dir`. With it, in `dir` when `dir` is inside the project, else in the project's clone path.
@@ -221,6 +222,7 @@ New codes in `internal/api/codes.go`:
 | `project_in_use` | 409 | 1 | terminals are running in the project |
 | `terminal_running` | 409 | 1 | the terminal is already starting or running |
 | `start_failed` | 500 | 3 | the holder or the shell did not start |
+| `terminal_not_running`, `attach_unsupported`, `connection_lost` | | | attach's, reported by the CLI: docs/ATTACH.md |
 
 `not_found`, `name_taken` and `invalid_name` now cover terminals too, so their descriptions no longer say "project": "nothing has this name or id", "something else has this name", "the name is not allowed".
 
@@ -232,6 +234,7 @@ wdx terminal get    (--id <id> | --name <name>) [--project-id <id> | --project-n
 wdx terminal list   [--project-id <id> | --project-name <name> | --all]
 wdx terminal start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx terminal remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]
+wdx terminal attach / history: docs/ATTACH.md
 wdx project close  ... [--stop-running | --cancel]
 wdx project remove ... [--stop-running | --cancel]
 ```

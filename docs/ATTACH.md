@@ -1,6 +1,6 @@
 # Attach and history
 
-Status: proposed. Extends docs/TERMINALS.md, which this document assumes.
+Status: implemented. Extends docs/TERMINALS.md, which this document assumes.
 
 Attach connects a client to a running terminal: it shows the terminal's current screen and its history, streams the output live and sends keystrokes to the shell. History is every line that scrolled off the terminal's screen, kept on disk while the terminal exists, whether or not anyone was attached.
 
@@ -201,7 +201,7 @@ tide, the web relay, a history mode inside `wdx terminal attach` (scrolling all 
 
 ## Implementation plan
 
-Each step builds and passes `make check` and `make test` on its own.
+Each step builds and passes `make check` and `make test` on its own. All of them are done.
 
 1. **Daemon accepts holder versions 1 and 2**, so that rolling back from the release that brings version 2 keeps its terminals. It needs no release of its own, but a release carrying it must be out and installed before step 4 is released, since a rollback returns to the binary installed before.
 2. **`screen`** in `internal/holder`: the `x/vt` wrapper with mode tracking, snapshot, history harvest, recovery; `make notices`. Tests from recorded output.
@@ -212,12 +212,17 @@ Each step builds and passes `make check` and `make test` on its own.
 7. **CLI**: `wdx terminal attach` and `wdx terminal history`, help, examples, completions; `cli.Env` gains the controlling terminal; tests per outcome.
 8. **Docs**: TERMINALS.md's holder, protocol and API sections point here, AGENTS.md's layout line for `internal/holder`, V1_FEATURES.md.
 
-## Decisions for the human
+## Decisions
 
-1. `/dev/tty` for attach, keeping stdout for the result so `--json` works.
-2. History on by default (0600, `terminal.history_lines: 0` turns it off).
-3. Defaults: `terminal.history_lines` 100,000, `terminal.attach_history` 1,000, spool 2 × 8 MiB kept and 256 MiB before a gap, client queue 4 MiB.
-4. A slow client is disconnected for now; resync comes with the web.
-5. `ESC[3J` (clear scrollback, sent by `clear` in some setups) does not delete history.
-6. The new codes `terminal_not_running`, `attach_unsupported`, `connection_lost`.
-7. Step 1 in any release before step 4's, not necessarily its own.
+Taken while designing and building it:
+
+1. Clients dial the holder directly; the daemon will relay only for the web.
+2. A headless vt in the holder keeps the screen; `charmbracelet/x/vt` upstream as is first, its fixes in the fork later (docs/VT.md).
+3. `/dev/tty` for attach, keeping stdout for the result so `--json` works.
+4. History on by default (0600, `terminal.history_lines: 0` turns it off).
+5. Defaults: `terminal.history_lines` 100,000, `terminal.attach_history` 1,000, spool 2 × 8 MiB kept and 256 MiB before a gap, client queue 4 MiB.
+6. A slow client is disconnected for now; resync comes with the web.
+7. `ESC[3J` (clear scrollback, sent by `clear` in some setups) does not delete history.
+8. The detach key is `ctrl-\`; the latest client to attach or resize sets the size.
+9. The new codes `terminal_not_running`, `attach_unsupported`, `connection_lost`.
+10. Step 1 in any release before step 4's, not necessarily its own.

@@ -1,6 +1,6 @@
 # wdx
 
-wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts); terminals and agents in PTYs come next.
+wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts) and terminals: shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents in PTYs come next.
 
 **Status: early development.** wdx is the successor of [warden](https://github.com/srjn45/warden) and runs side by side with it (its own `wdx` binary and `~/.wdx` home), but it does not replace warden yet.
 
@@ -43,8 +43,10 @@ The channel is `stable` or `dev` (the `update.channel` setting). See [docs/RELEA
 - [docs/DAEMON.md](docs/DAEMON.md): the daemon, the service and the shell completions
 - [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md): logs and metrics in Grafana (`wdx observe`)
 - [docs/RELEASING.md](docs/RELEASING.md): versions, channels, releasing and updating
+- [docs/TERMINALS.md](docs/TERMINALS.md): terminals and the holder process that keeps each shell running
+- [docs/ATTACH.md](docs/ATTACH.md): attaching to a terminal (`wdx terminal attach`) and its history; [docs/VT.md](docs/VT.md): the terminal emulator it uses and what to fix in it
 - [AGENTS.md](AGENTS.md): how the code is organized, for people and AI agents working on it
-- Designs of what comes next: [docs/TERMINALS.md](docs/TERMINALS.md), [docs/TIDE.md](docs/TIDE.md), and the backlog in [docs/V1_FEATURES.md](docs/V1_FEATURES.md)
+- Designs of what comes next: [docs/TIDE.md](docs/TIDE.md), and the backlog in [docs/V1_FEATURES.md](docs/V1_FEATURES.md)
 
 ## License
 
