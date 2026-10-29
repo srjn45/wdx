@@ -150,8 +150,8 @@ func TestSessionConnectionLost(t *testing.T) {
 	if err := syscall.Kill(started.HolderPID, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
 	}
-	if err := out.wait(t); !errors.Is(err, ErrConnectionLost) {
-		t.Fatalf("got %v, want the connection lost", err)
+	if err := out.wait(t); !errors.Is(err, ErrConnectionLost) || errors.Is(err, io.EOF) {
+		t.Fatalf("got %v, want the connection lost, which is no exit", err)
 	}
 }
 

@@ -92,9 +92,15 @@ const testShell = "#!/bin/sh\nexec sleep 60\n"
 // are removed when the test ends.
 func newHome(t *testing.T) string {
 	t.Helper()
+	return newHomeWithShell(t, testShell)
+}
+
+// newHomeWithShell is newHome with script as its terminals' shell.
+func newHomeWithShell(t *testing.T, script string) string {
+	t.Helper()
 	home := shortHome(t)
 	shell := filepath.Join(t.TempDir(), "shell")
-	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+	if err := os.WriteFile(shell, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
@@ -103,6 +109,7 @@ func newHome(t *testing.T) string {
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: home, Log: log,
 		Executable: wdxBinary, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+		TerminalHistoryLines: 100_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -261,6 +268,11 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			t.Fatalf("%v: stdout is not one JSON object: %s", args, out.stdout)
 		}
 		_ = json.Unmarshal(last.Response, &logged) // compared to stdout, checked to be JSON
+		if obj, ok := printed.(map[string]any); ok {
+			if h, ok := obj["history"].(map[string]any); ok {
+				h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged
+			}
+		}
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
 		}
@@ -316,10 +328,11 @@ type jsonOutput struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
 
-	Terminal  *api.Terminal  `json:"terminal"`
-	Terminals []api.Terminal `json:"terminals"`
-	Started   []api.Terminal `json:"started"`
-	Stopped   []api.Terminal `json:"stopped"`
+	Terminal  *api.Terminal        `json:"terminal"`
+	Terminals []api.Terminal       `json:"terminals"`
+	History   *api.TerminalHistory `json:"history"`
+	Started   []api.Terminal       `json:"started"`
+	Stopped   []api.Terminal       `json:"stopped"`
 
 	CLI     *api.Version `json:"cli"`
 	Daemon  *api.Daemon  `json:"daemon"`

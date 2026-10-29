@@ -27,6 +27,7 @@ func main() {
 	env.Executable, _ = os.Executable()
 	// Without it only the terminal commands that rely on it fail.
 	env.WorkDir, _ = os.Getwd()
+	env.TTY = func() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDWR, 0) }
 	// The service runs the daemon for the default home only.
 	if userHome, err := os.UserHomeDir(); err == nil && cfg.Home == config.Default().Home {
 		env.Service = service.Installed(runtime.GOOS, userHome)

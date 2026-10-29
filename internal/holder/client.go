@@ -114,7 +114,8 @@ func (s *Session) Read(p []byte) (int, error) {
 		}
 		t, body, err := readFrame(s.conn)
 		if err != nil {
-			return 0, fmt.Errorf("%w: %w", ErrConnectionLost, err)
+			// Not wrapped: an io.EOF of the connection is no exit.
+			return 0, fmt.Errorf("%w: %s", ErrConnectionLost, err.Error())
 		}
 		switch t {
 		case frameOutput:

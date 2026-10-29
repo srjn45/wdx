@@ -384,7 +384,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited]
 
     Worktree:
       type: object

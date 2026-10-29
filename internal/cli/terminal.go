@@ -26,7 +26,8 @@ func newTerminalCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newTerminalCreateCmd(), newTerminalGetCmd(), newTerminalListCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
+	cmd.AddCommand(newTerminalAttachCmd(), newTerminalCreateCmd(), newTerminalGetCmd(), newTerminalHistoryCmd(),
+		newTerminalListCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
 	return cmd
 }
 

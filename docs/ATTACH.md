@@ -147,22 +147,22 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 - Resolves the terminal through the daemon (`terminalRef`, as `get`), which must be `running`, else `terminal_not_running`; then dials the holder.
 - Talks to the controlling terminal, `/dev/tty`, not stdin and stdout: it puts it in raw mode, sends its size, forwards SIGWINCH as `resize`, writes the history, the snapshot and the output to it, and sends what is typed as `input`. Without a controlling terminal: `usage`. stdout stays free for the result, so `--json` works as for every command.
-- `--history`: how many history lines to write before the snapshot, into the terminal app's own scrollback; default `terminal.attach_history`. `all` writes everything kept.
-- `--detach-key`: default `ctrl-\`; `ctrl-<letter>`, `ctrl-\`, `ctrl-]`, `ctrl-^`, `ctrl-_` or `none`. Pressed twice in a row, it is sent to the shell once.
+- `--history`: how many history lines to write before the snapshot, into the terminal app's own scrollback; default `terminal.attach_history`. `all` writes everything kept. A screenful of newlines follows them, so what the terminal showed scrolls up into its scrollback rather than being cleared by the screen painted over it.
+- `--detach-key`: default `ctrl-\`; `ctrl-<letter>`, `ctrl-\`, `ctrl-]`, `ctrl-^`, `ctrl-_` or `none`. It detaches unless pressed again within half a second, which sends it to the shell once; anything else typed in that half second detaches too.
 - Ends with:
 
 | How | Text (after restoring the terminal) | `--json` | Exit |
 |---|---|---|---|
-| detach key | `detached from api` | `{"result": "detached", "terminal": {...}}` | 0 |
-| the shell exited | `api exited with code 0` | `{"result": "exited", "terminal": {...}}` | 0 |
+| detach key | `detached from terminal api in app` | `{"result": "detached", "terminal": {...}}` | 0 |
+| the shell exited | `terminal api in app exited with code 0` | `{"result": "exited", "terminal": {...}}` | 0 |
 | the holder vanished | `connection_lost` | Problem Details | 3 |
 | too slow | `connection_lost`, hint to attach again | Problem Details | 3 |
 
-- Detaching, exiting or losing the connection restores the terminal's mode, leaves the alternate screen and shows the cursor, whatever the program inside had set.
+- Detaching, exiting or losing the connection restores the terminal's mode, leaves the alternate screen and shows the cursor, whatever the program inside had set, gives the window its title back, and puts the cursor on a new line at the bottom.
 
 ### `wdx terminal history`
 
-- Prints history lines through the API; by default the last `terminal.attach_history`.
+- Prints history lines through the API; by default the last `terminal.attach_history`, or 1,000 when that is 0.
 - Escape codes are kept when stdout gets color (`--color`, the `color` setting, as for our own output) and stripped otherwise; `--plain` always strips them. Agents and scripts get plain text.
 - `--json`: the API's body.
 - Works in any state, also after the shell exited.

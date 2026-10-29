@@ -147,10 +147,25 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 			if stack != nil {
 				attrs = append(attrs, "stack", string(stack))
 			}
-			log.Log(context.Background(), level, "request returned", append(attrs, "response", jsonValue(rec.body.Bytes()))...)
+			response := jsonValue(rec.body.Bytes())
+			if operation == "getTerminalHistory" && rec.status == http.StatusOK {
+				response = historyLogged(rec.body.Bytes())
+			}
+			log.Log(context.Background(), level, "request returned", append(attrs, "response", response)...)
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// historyLogged is a history response as logged: terminal output can hold
+// secrets, so its lines are counted, never logged.
+func historyLogged(b []byte) any {
+	var r api.TerminalHistoryEnvelope
+	if json.Unmarshal(b, &r) != nil {
+		return "unreadable history"
+	}
+	h := r.History
+	return map[string]any{"history": map[string]any{"from": h.From, "next": h.Next, "first": h.First, "lines": len(h.Lines)}}
 }
 
 // jsonValue logs b as nested JSON when it is JSON, else as a string.

@@ -226,6 +226,23 @@ func (c *Client) GetTerminal(ctx context.Context, ref, project, dir string) (api
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// GetTerminalHistory reads the history of the terminal ref names, as
+// GetTerminal does: count lines from line from on, or the last count lines
+// when from is nil.
+func (c *Client) GetTerminalHistory(ctx context.Context, ref, project, dir string, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+	params := api.GetTerminalHistoryParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if from != nil {
+		params.From, params.Count = from, &count
+	} else {
+		params.Tail = &count
+	}
+	r, err := c.api.GetTerminalHistoryWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.TerminalHistoryEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // StartTerminal starts the terminal ref names: "id:" and its id, or its
 // name in the project named by project or holding dir.
 func (c *Client) StartTerminal(ctx context.Context, ref, project, dir string) (api.TerminalResult, error) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime/debug"
 	"slices"
@@ -66,6 +67,9 @@ type Env struct {
 	// WorkDir is the working directory, which names the project of the
 	// terminal commands when no project flag does.
 	WorkDir string
+	// TTY opens the controlling terminal, which terminal attach shows a
+	// terminal in; nil when there is none.
+	TTY func() (*os.File, error)
 }
 
 // terminalVars are the variables of the daemon's environment that terminals
