@@ -121,10 +121,20 @@ func (e *FailedError) Error() string {
 
 func (e *FailedError) Unwrap() error { return e.Err }
 
-// NoPreviousError is a rollback with no previous version kept.
-type NoPreviousError struct{}
+// NoPreviousError is a rollback with no previous version kept for the
+// installed one.
+type NoPreviousError struct {
+	// Kept is the version kept, when another install has since replaced
+	// UpdatedTo, the version the update that kept it installed.
+	Kept, UpdatedTo string
+}
 
-func (e *NoPreviousError) Error() string { return "no previous version is kept" }
+func (e *NoPreviousError) Error() string {
+	if e.Kept != "" {
+		return fmt.Sprintf("the version kept, %s, is the one the update to %s replaced, which another install has replaced since", e.Kept, e.UpdatedTo)
+	}
+	return "no previous version is kept"
+}
 
 // RestoreRequiredError is a rollback that can only restore the database
 // backup: a migration since the update breaks the previous version.
@@ -143,6 +153,9 @@ func (e *RestoreRequiredError) Error() string {
 type previous struct {
 	Version string `json:"version"`
 	Schema  int    `json:"schema"` // the schema version it knows
+	// UpdatedTo is the version the update installed in its place; "" when
+	// kept before it was recorded.
+	UpdatedTo string `json:"updated_to,omitempty"`
 }
 
 // Check returns the installed version and the newest on channel, or
@@ -215,7 +228,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	}
 	// The new version runs: what fails from here on is a warning.
 	r := Result{From: o.Current, To: target, SchemaFrom: from.Version, Settings: &settings, Warnings: warnings}
-	if warning, err := keep(ctx, o, replaced); err != nil {
+	if warning, err := keep(ctx, o, replaced, target); err != nil {
 		log.Error("replaced version not kept", "dir", replaced, "err", err.Error())
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%s %s is not kept for a rollback: %v; its binary, database and config file are in %s", identity.Name, o.Current, err, replaced))
 	} else if warning != "" {
@@ -241,9 +254,9 @@ func (r *Result) schemaTo(ctx context.Context, dbPath string) int {
 // keep makes the replaced binary and database the previous version, in
 // place of the one kept before, which is set aside until the new one is in
 // place: a failure leaves it kept. warning is a cleanup that failed after.
-func keep(ctx context.Context, o Options, replaced string) (warning string, err error) {
+func keep(ctx context.Context, o Options, replaced, updatedTo string) (warning string, err error) {
 	log := logging.FromContext(ctx)
-	b, err := json.Marshal(previous{Version: o.Current, Schema: db.Known()})
+	b, err := json.Marshal(previous{Version: o.Current, Schema: db.Known(), UpdatedTo: updatedTo})
 	if err != nil {
 		return "", err
 	}
@@ -301,6 +314,10 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 	var p previous
 	if err := json.Unmarshal(b, &p); err != nil {
 		return Result{}, fmt.Errorf("read %s: %w", filepath.Join(dir, "previous.json"), err)
+	}
+	if p.UpdatedTo != "" && p.UpdatedTo != o.Current {
+		log.Info("rollback refused: another install replaced the update", "kept", p.Version, "updated_to", p.UpdatedTo, "installed", o.Current)
+		return Result{}, &NoPreviousError{Kept: p.Version, UpdatedTo: p.UpdatedTo}
 	}
 	dbPath := identity.DBPath(o.Home)
 	from, err := db.ReadSchema(ctx, dbPath)

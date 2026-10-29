@@ -293,9 +293,13 @@ func updateProblem(err error) (p api.Problem, ok bool) {
 		p = api.NewProblem(api.ErrorCodeSettingsInvalid, err.Error())
 		p.Details = &map[string]any{"version": e.Version, "settings": e.Details}
 		hint("change them in the config file, then update again; nothing was installed")
-	} else if _, found := errors.AsType[*update.NoPreviousError](err); found {
+	} else if e, found := errors.AsType[*update.NoPreviousError](err); found {
 		p = api.NewProblem(api.ErrorCodeNoPreviousVersion, err.Error())
-		hint("only the version " + identity.Name + " update --apply replaced is kept, until a rollback")
+		if e.Kept != "" {
+			hint("another install replaced " + e.UpdatedTo + "; installing " + e.UpdatedTo + " again makes the rollback to " + e.Kept + " possible")
+		} else {
+			hint("only the version " + identity.Name + " update --apply replaced is kept, until a rollback")
+		}
 	} else if e, found := errors.AsType[*update.RestoreRequiredError](err); found {
 		p = api.NewProblem(api.ErrorCodeRestoreRequired, err.Error())
 		p.Details = &map[string]any{"to": e.To, "schema": e.Schema, "oldest": e.Oldest, "known": e.Known}

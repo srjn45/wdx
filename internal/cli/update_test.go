@@ -149,6 +149,17 @@ func (in installation) run(t *testing.T, args ...string) (jsonOutput, int) {
 	return v, c.ProcessState.ExitCode()
 }
 
+// runText runs the installed binary on its own, in text.
+func (in installation) runText(t *testing.T, args ...string) output {
+	t.Helper()
+	c := exec.Command(in.binary, args...)
+	c.Env = append(os.Environ(), identity.Env("HOME")+"="+in.home)
+	var stdout, stderr bytes.Buffer
+	c.Stdout, c.Stderr = &stdout, &stderr
+	_ = c.Run() // the exit code tells
+	return output{exit: c.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String()}
+}
+
 // wantInstalled checks that the installed binary is binary.
 func (in installation) wantInstalled(t *testing.T, binary string) {
 	t.Helper()
@@ -274,7 +285,7 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	}
 	in.newProject(t, "after")
 
-	v, exit = in.json(t, "update", "--rollback")
+	v, exit = in.run(t, "update", "--rollback")
 	if exit != api.ExitOK || v.Result != "rolled_back" || v.Update.To != identity.Version || v.Update.Channel != nil || *v.Update.DataRestored {
 		t.Fatalf("want rolled back keeping the database, got exit %d, %+v", exit, v.Update)
 	}
@@ -291,7 +302,7 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		t.Fatalf("want nothing kept after the rollback, got %v", err)
 	}
 
-	v, exit = in.json(t, "update", "--rollback")
+	v, exit = in.run(t, "update", "--rollback")
 	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
 }
 
@@ -320,7 +331,7 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	}
 	conn.Close()
 
-	v, exit := in.json(t, "update", "--rollback")
+	v, exit := in.run(t, "update", "--rollback")
 	wantError(t, v, exit, api.ErrorCodeRestoreRequired, api.ExitRejected)
 	wantHint(t, v, "--discard-changes")
 	if known, _ := v.Details["known"].(float64); int(known) != db.Known() {
@@ -328,12 +339,12 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	}
 	in.wantInstalled(t, releaseBinary)
 
-	out := wdxWith(t, in.home, in.env, "update", "--rollback")
+	out := in.runText(t, "update", "--rollback")
 	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "hint: pass --discard-changes") {
 		t.Fatalf("want the restore refused without a terminal, got %+v", out)
 	}
 
-	v, exit = in.json(t, "update", "--rollback", "--discard-changes")
+	v, exit = in.run(t, "update", "--rollback", "--discard-changes")
 	if exit != api.ExitOK || v.Result != "rolled_back" || !*v.Update.DataRestored || v.Update.SchemaFrom != breaking || v.Update.SchemaTo != db.Known() {
 		t.Fatalf("want rolled back restoring the database, got exit %d, %+v", exit, v.Update)
 	}
@@ -401,7 +412,7 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 	if got := readFile(t, filepath.Join(prev, "previous.json")); !strings.Contains(got, `"version":"`+identity.Version+`"`) {
 		t.Fatalf("want the replaced version kept, got %s", got)
 	}
-	if v, exit := in.json(t, "update", "--rollback"); exit != api.ExitOK || v.Result != "rolled_back" {
+	if v, exit := in.run(t, "update", "--rollback"); exit != api.ExitOK || v.Result != "rolled_back" {
 		t.Fatalf("want a rollback, got exit %d, %+v", exit, v)
 	}
 	in.wantDaemon(t, identity.Version)
@@ -455,6 +466,31 @@ func TestUpdateInterrupted(t *testing.T) {
 	}
 	if _, err := os.Stat(replaced); err != nil {
 		t.Fatalf("want the stale backup kept, got %v", err)
+	}
+}
+
+// TestUpdateRollbackAfterReinstall rolls back once another install
+// replaced what the update installed: refused, as the version kept is the
+// one that update replaced, not the installed one.
+func TestUpdateRollbackAfterReinstall(t *testing.T) {
+	t.Parallel()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	if v, exit := in.json(t, "update", "--apply"); exit != api.ExitOK || v.Result != "updated" {
+		t.Fatalf("want updated, got exit %d, %+v", exit, v)
+	}
+	// Renamed into place, as install.sh does: the daemon runs the other.
+	writeFile(t, in.binary+".new", readFile(t, wdxBinary))
+	if err := os.Rename(in.binary+".new", in.binary); err != nil {
+		t.Fatal(err)
+	}
+
+	v, exit := in.json(t, "update", "--rollback")
+	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
+	wantHint(t, v, "another install")
+	in.wantInstalled(t, wdxBinary)
+	if _, err := os.Stat(identity.PreviousDir(in.home)); err != nil {
+		t.Fatalf("want the kept version left as it is, got %v", err)
 	}
 }
 
@@ -568,7 +604,7 @@ func TestUpdateText(t *testing.T) {
 		!strings.Contains(out.stderr, "==> downloading wdx 0.2.0\n") || !strings.Contains(out.stderr, "==> starting the daemon\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
-	if out = wdxWith(t, in.home, in.env, "update", "--rollback"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "rolled back wdx dev -> dev\n") || !strings.Contains(out.stdout, "database: kept") {
+	if out = in.runText(t, "update", "--rollback"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "rolled back wdx 0.2.0 -> dev\n") || !strings.Contains(out.stdout, "database: kept") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
