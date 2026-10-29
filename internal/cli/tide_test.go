@@ -33,6 +33,8 @@ func TestTide(t *testing.T) {
 	run.input("\x1b[B\x1b[B\x1b[B\r") // ↓ ↓ ↓ enter: reopen app
 	run.waitScreen("┌ [Project: app]")
 	run.waitScreen(" [shell] [tests] [server] ")
+	run.input("\x1b[1;4C") // Alt+Shift+→: the next open project, app again, on the strip
+	run.waitScreen("▸ app ◂")
 	run.input("\x1b[1;3B") // Alt+↓: the terminal pane
 	run.waitScreen(" app · terminal · shell")
 	run.input("\x1b\x1b[A") // Alt+↑ as a Meta key sends it: back to the project

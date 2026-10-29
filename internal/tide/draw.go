@@ -43,8 +43,11 @@ func (m *Model) render() string {
 			uv.NewStyledString(l.styled).Draw(buf, l.area)
 		}
 	}
-	if m.switcher {
-		m.drawSwitcher(buf)
+	if m.stripShown {
+		m.drawStrip(buf)
+	}
+	if m.switcher != nil {
+		m.drawBox(buf, m.switcher.lines(m))
 	}
 	if m.menu {
 		m.drawMenu(buf)
@@ -192,15 +195,6 @@ func (m *Model) drawMenu(buf uv.Screen) {
 	})
 }
 
-// drawSwitcher draws the project switcher: for now, the open projects.
-func (m *Model) drawSwitcher(buf uv.Screen) {
-	lines := []string{m.st.Heading("switch project"), ""}
-	for _, name := range m.projects.open() {
-		lines = append(lines, m.st.Name(name))
-	}
-	m.drawBox(buf, append(lines, "", m.st.Command("Esc")+"  close"))
-}
-
 // drawBox draws lines in a box in the middle of the window.
 func (m *Model) drawBox(buf uv.Screen, lines []string) {
 	width := 0
@@ -242,9 +236,9 @@ func (m *Model) statusLine() string {
 	case m.menu:
 		state = style.StatusPrefix
 		right = "menu: o open  p switch  q quit  Esc close"
-	case m.switcher:
+	case m.switcher != nil:
 		state = style.StatusPrefix
-		right = "switcher: Esc close"
+		right = "switcher: type to find  ↑↓ select  enter switch  Esc close"
 	}
 	right += " "
 	line := left + " " + right

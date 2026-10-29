@@ -17,6 +17,7 @@ import (
 // the test moves and no daemon, showing the project demo.
 func newModel(width, height int) (*Model, *time.Time) {
 	m := New(context.Background(), Options{Style: style.New(false)})
+	m.tick = noTick
 	m.projects.loaded = true
 	m.show("demo") // its command, listing the projects again, never runs
 	now := time.UnixMilli(0)

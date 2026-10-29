@@ -40,6 +40,7 @@ type Model struct {
 	st     style.Style
 	client *client.Client
 	now    func() time.Time
+	tick   func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd // tea.Tick, which tests replace
 
 	workDir, userHome string // from Options
 
@@ -48,11 +49,14 @@ type Model struct {
 	projects      *projectList
 	stack         []screen       // the project pane's, the root first
 	shown         string         // the project shown, or "" before one is
+	previous      string         // the project shown before it, which the switcher selects first
 	agent         *placeholder   // the agent pane's
 	tabs          []*placeholder // the terminal pane's
 	tab           int            // the tab shown
 	menu          bool           // the menu is open
-	switcher      bool           // the project switcher is open
+	switcher      *switcherBox   // the project switcher, while it is open
+	strip         int            // how many times the project strip was shown
+	stripShown    bool           // the project strip is shown
 	lastClick     click
 }
 
@@ -88,6 +92,7 @@ func New(ctx context.Context, opts Options) *Model {
 		workDir:  opts.WorkDir,
 		userHome: opts.UserHome,
 		now:      time.Now,
+		tick:     tea.Tick,
 		layout:   newLayout(),
 		projects: projects,
 		stack:    []screen{&openProjectScreen{projects: projects}},
@@ -119,10 +124,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectReopened:
 		if msg.err != nil {
 			m.log.Info("project not reopened", "name", msg.name, "err", msg.err)
+			if m.switcher != nil && m.switcher.opening == msg.name {
+				return m, m.switcher.update(msg)
+			}
 			return m, m.top().update(msg)
 		}
 		m.log.Info("project reopened", "name", msg.name)
 		return m, m.show(msg.name)
+	case switchProject:
+		if msg.closed {
+			return m, m.reopen(msg.name)
+		}
+		return m, m.show(msg.name)
+	case closeSwitcher:
+		m.switcher = nil
+		m.log.Debug("switcher closed")
+	case hideStrip:
+		if msg.shown == m.strip {
+			m.stripShown = false
+		}
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
 	case tea.MouseClickMsg:
@@ -156,7 +176,10 @@ func (m *Model) show(name string) tea.Cmd {
 	if m.shown == "" {
 		m.layout.terminalOpen = true
 	}
-	m.shown, m.switcher = name, false
+	if name != m.shown && m.shown != "" {
+		m.previous = m.shown
+	}
+	m.shown, m.switcher = name, nil
 	m.stack = []screen{&projectScreen{name: name}}
 	m.log.Info("project shown", "name", name)
 	return m.listProjects()
@@ -189,10 +212,10 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		m.menu = false
 		switch name {
 		case "o":
-			m.switcher = false
+			m.switcher = nil
 			return m.openProject()
 		case "p":
-			m.switcher = true
+			m.switcher = newSwitcher(m.projects, m.previous)
 			return m.listProjects()
 		case "q":
 			m.log.Info("tide quit")
@@ -200,13 +223,13 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if m.switcher && name != menuKey {
-		if name == "esc" {
-			m.switcher = false
-			m.log.Debug("switcher closed")
-		}
-		return nil
+	if m.switcher != nil && name != menuKey {
+		return m.switcher.update(msg)
 	}
+	if by, ok := switchKeys[name]; ok {
+		return m.step(by)
+	}
+	m.stripShown = false
 	switch name {
 	case zoomKey:
 		m.layout.toggleZoom()

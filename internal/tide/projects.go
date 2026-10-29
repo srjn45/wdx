@@ -67,9 +67,9 @@ func (m *Model) listed(msg projectsListed) {
 	if !first {
 		return
 	}
-	m.switcher = len(l.open()) > 0
 	start := "open project"
-	if m.switcher {
+	if len(l.open()) > 0 {
+		m.switcher = newSwitcher(l, "")
 		start = "switcher"
 	}
 	m.log.Info("tide starts", "on", start, "projects", len(l.projects), "open", len(l.open()))
