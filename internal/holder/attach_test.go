@@ -253,6 +253,42 @@ func TestAttachLatestSizeWins(t *testing.T) {
 	}
 }
 
+// TestHelloDuringFlood greets the holder while its vt works through a
+// flood of output: hello answers without waiting for the vt.
+func TestHelloDuringFlood(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000110", "yes | head -c 40000000; exec sleep 60")
+	dir := HistoryDir(f.home, "term-00000110")
+	deadline := time.Now().Add(waitLimit)
+	for h, err := TailHistory(dir, 1); err != nil || h.Next == 0; h, err = TailHistory(dir, 1) {
+		if time.Now().After(deadline) {
+			t.Fatal("the vt writes no history")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var slowest time.Duration
+	for range 10 {
+		start := time.Now()
+		conn, err := net.Dial("unix", identity.HolderSocket(f.home, "term-00000110"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeFrame(conn, frameHello, Hello{Version: Version, Role: roleClient}); err != nil {
+			t.Fatal(err)
+		}
+		if typ, _, err := readFrame(conn); err != nil || typ != frameHello {
+			t.Fatalf("no hello: %d %v", typ, err)
+		}
+		conn.Close()
+		slowest = max(slowest, time.Since(start))
+	}
+	t.Logf("slowest hello: %v", slowest)
+	if slowest > 100*time.Millisecond {
+		t.Fatalf("a hello took %v: it waits for the vt", slowest)
+	}
+}
+
 func TestAttachExited(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

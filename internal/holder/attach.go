@@ -169,7 +169,7 @@ func (h *holder) attach(c *client, size Size) attachStart {
 	defer h.screenMu.Unlock()
 	h.resizeLocked(size)
 	start := attachStart{
-		Snapshot: Snapshot{Size: h.size, Pos: h.vtPos, HistoryLines: h.historyNext()},
+		Snapshot: Snapshot{Size: h.size, Pos: h.vtPos, HistoryLines: h.nextLine.Load()},
 		paint:    h.screen.Snapshot(),
 	}
 	h.clientsMu.Lock()

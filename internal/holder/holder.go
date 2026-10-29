@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -100,11 +101,15 @@ type holder struct {
 	conn net.Conn // the daemon's; nil when none is connected
 
 	// The vt's side: it follows the spool to vtPos and writes history.
-	screenMu   sync.Mutex
-	screen     *screen.Screen
-	size       Size
-	vtPos      int64
-	history    *historyWriter // nil when history is off
+	screenMu sync.Mutex
+	screen   *screen.Screen
+	size     Size
+	vtPos    int64
+	history  *historyWriter // nil when history is off
+	// nextLine is the number the next history line will take: written
+	// with h.screenMu held, read without by hello, which must not wait
+	// for the vt.
+	nextLine   atomic.Int64
 	historyDir string
 	historyErr bool // a failed write is logged once
 
@@ -215,6 +220,7 @@ func (h *holder) open(dir string, historyLines int64) error {
 		h.spool.close()
 		return err
 	}
+	h.nextLine.Store(h.history.next)
 	if h.history.next > 0 {
 		h.writeHistory(fmt.Sprintf(markRestarted, time.Now().Format(time.DateTime)))
 	}
@@ -353,6 +359,7 @@ func (h *holder) writeHistory(lines ...string) {
 		return
 	}
 	first := h.history.starts[0]
+	defer func() { h.nextLine.Store(h.history.next) }()
 	if err := h.history.append(lines...); err != nil {
 		if !h.historyErr {
 			h.historyErr = true
@@ -363,15 +370,6 @@ func (h *holder) writeHistory(lines ...string) {
 	if h.history.starts[0] != first {
 		h.log.Info("history trimmed", "first_line", h.history.starts[0])
 	}
-}
-
-// historyNext is the number the next history line will take; h.screenMu
-// is held.
-func (h *holder) historyNext() int64 {
-	if h.history == nil {
-		return 0
-	}
-	return h.history.next
 }
 
 // answer writes the vt's answers to programs' queries to the shell when no
@@ -509,10 +507,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 
 // hello is what the holder says to whoever connects; h.mu is held.
 func (h *holder) hello() Hello {
-	h.screenMu.Lock()
-	next := h.historyNext()
-	h.screenMu.Unlock()
-	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: next}
+	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load()}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills
