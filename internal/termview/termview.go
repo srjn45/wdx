@@ -23,17 +23,25 @@ const readSize = 32 << 10
 
 // Model is a pane showing a terminal through a session. Only the program's
 // goroutine uses it: the one running Update.
+//
+// The pane has an area, and the terminal a size, which the latest client
+// to attach or resize sets: the screen is drawn at the terminal's size,
+// cropped or padded to the area, until input to the program takes the
+// size back.
 type Model struct {
-	session *holder.Session
-	screen  *screen.Screen
-	resets  int // times the vt failed and started again
-	back    scrollback
+	session    *holder.Session
+	screen     *screen.Screen
+	cols, rows int          // the pane's area
+	asked      *holder.Size // the size sent, until the holder tells it back
+	resets     int          // times the vt failed and started again
+	back       scrollback
 }
 
 // OutputMsg carries output from the session to the pane that reads it.
 type OutputMsg struct {
 	pane *Model
 	data []byte
+	size holder.Size // the terminal's, which the output is drawn at
 }
 
 // EndedMsg tells that the session ended: Exit is how the shell ended, or
@@ -44,12 +52,12 @@ type EndedMsg struct {
 	Err  error
 }
 
-// New returns a pane for s, at the size of its snapshot. What is typed,
+// New returns a pane for s, its area the size of its snapshot. What is typed,
 // encoded for the program, and the answers to the program's queries go to
 // s. fetch fetches the history the pane scrolls back to beyond what it saw;
 // nil scrolls through only that.
 func New(s *holder.Session, fetch FetchFunc) *Model {
-	m := &Model{session: s, back: newScrollback(s.Snapshot.HistoryLines, fetch)}
+	m := &Model{session: s, cols: s.Snapshot.Cols, rows: s.Snapshot.Rows, back: newScrollback(s.Snapshot.HistoryLines, fetch)}
 	// A failed write means the session is gone, which reading it tells.
 	m.screen = screen.New(s.Snapshot.Cols, s.Snapshot.Rows, func(p []byte) { _, _ = s.Write(p) })
 	return m
@@ -64,7 +72,7 @@ func (m *Model) read() tea.Msg {
 	buf := make([]byte, readSize)
 	n, err := m.session.Read(buf)
 	if n > 0 {
-		return OutputMsg{pane: m, data: buf[:n]}
+		return OutputMsg{pane: m, data: buf[:n], size: m.session.Size()}
 	}
 	if errors.Is(err, io.EOF) {
 		return EndedMsg{Pane: m, Exit: m.session.Exit()}
@@ -80,6 +88,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.pane != m {
 			return nil
 		}
+		m.follow(msg.size)
 		m.write(msg.data)
 		return m.read
 	case pageMsg:
@@ -97,6 +106,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		return m.key(msg)
 	case tea.PasteMsg:
 		m.Live()
+		m.takeSize()
 		m.screen.Paste(msg.Content)
 	case tea.MouseMsg:
 		return m.mouse(msg)
@@ -115,6 +125,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return m.ScrollPage(-1)
 	}
 	m.Live()
+	m.takeSize()
 	m.screen.SendKey(uv.KeyPressEvent{Text: msg.Text, Mod: msg.Mod, Code: msg.Code, ShiftedCode: msg.ShiftedCode, BaseCode: msg.BaseCode})
 	return nil
 }
@@ -126,6 +137,46 @@ func (m *Model) write(p []byte) {
 	lines, reset := m.screen.Write(p)
 	m.back.add(lines)
 	if reset {
+		m.reset()
+	}
+}
+
+// follow resizes the screen to the terminal's size, as another client set
+// it; the sizes the holder tells before the one the pane asked for are
+// past.
+func (m *Model) follow(size holder.Size) {
+	if m.asked != nil {
+		if size != *m.asked {
+			return
+		}
+		m.asked = nil
+	}
+	m.resize(size)
+}
+
+// takeSize makes the pane's area the terminal's size again, as input to
+// the program does after another client resized it.
+func (m *Model) takeSize() {
+	// A size that cannot be sent means the session is gone, which reading
+	// it tells.
+	_ = m.askSize()
+}
+
+func (m *Model) askSize() error {
+	size := holder.Size{Cols: m.cols, Rows: m.rows}
+	if w, h := m.screen.Size(); w == size.Cols && h == size.Rows {
+		return nil
+	}
+	m.resize(size)
+	m.asked = &size
+	return m.session.Resize(size)
+}
+
+func (m *Model) resize(size holder.Size) {
+	if w, h := m.screen.Size(); w == size.Cols && h == size.Rows {
+		return
+	}
+	if !m.screen.Resize(size.Cols, size.Rows) {
 		m.reset()
 	}
 }
@@ -145,6 +196,7 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	mouse := msg.Mouse()
 	ev := uv.Mouse{X: mouse.X, Y: mouse.Y, Button: mouse.Button, Mod: mouse.Mod}
 	if m.mouseWanted() {
+		m.takeSize()
 		switch msg.(type) {
 		case tea.MouseClickMsg:
 			m.screen.SendMouse(uv.MouseClickEvent(ev))
@@ -171,6 +223,7 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	if wheel.Button == tea.MouseWheelDown {
 		key = uv.KeyDown
 	}
+	m.takeSize()
 	for range wheelLines {
 		m.screen.SendKey(uv.KeyPressEvent{Code: key})
 	}
@@ -190,20 +243,22 @@ func (m *Model) mouseWanted() bool {
 	return false
 }
 
-// SetSize resizes the pane and the terminal, which the latest client to
-// resize sizes.
+// SetSize sets the pane's area, and makes it the terminal's size.
 func (m *Model) SetSize(cols, rows int) error {
-	if w, h := m.Size(); cols < 1 || rows < 1 || cols == w && rows == h {
+	if cols < 1 || rows < 1 || cols == m.cols && rows == m.rows {
 		return nil
 	}
-	if !m.screen.Resize(cols, rows) {
-		m.reset()
-	}
-	return m.session.Resize(holder.Size{Cols: cols, Rows: rows})
+	m.cols, m.rows = cols, rows
+	return m.askSize()
 }
 
-// Size is the pane's size.
+// Size is the pane's area.
 func (m *Model) Size() (cols, rows int) {
+	return m.cols, m.rows
+}
+
+// TerminalSize is the terminal's size, which another client may have set.
+func (m *Model) TerminalSize() (cols, rows int) {
 	return m.screen.Size()
 }
 
@@ -213,7 +268,22 @@ func (m *Model) Content() string {
 	if m.Scrolled() {
 		return m.scrolledContent()
 	}
-	return m.screen.Render()
+	return m.fit(m.screen.Render())
+}
+
+// fit crops or pads a rendered screen to the pane's area.
+func (m *Model) fit(rendered string) string {
+	if w, h := m.screen.Size(); w == m.cols && h == m.rows {
+		return rendered
+	}
+	lines := strings.Split(rendered, "\n")
+	fitted := make([]string, m.rows)
+	for i := range fitted {
+		if i < len(lines) {
+			fitted[i] = ansi.Truncate(lines[i], m.cols, "")
+		}
+	}
+	return strings.Join(fitted, "\n")
 }
 
 // Text is what the pane shows as plain lines, without trailing spaces.
@@ -229,7 +299,7 @@ func (m *Model) Text() string {
 // when the program hid it.
 func (m *Model) Cursor() *tea.Cursor {
 	sc := m.screen.Cursor()
-	if sc.Hidden || m.Scrolled() {
+	if sc.Hidden || m.Scrolled() || sc.X >= m.cols || sc.Y >= m.rows {
 		return nil
 	}
 	c := tea.NewCursor(sc.X, sc.Y)

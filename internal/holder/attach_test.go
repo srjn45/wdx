@@ -34,6 +34,7 @@ type testClient struct {
 	history  []HistoryLines
 	snapshot *Snapshot
 	output   bytes.Buffer // after the snapshot: its paint, then the output
+	sizes    []Size       // the resized frames
 	exit     *Exit
 }
 
@@ -78,6 +79,10 @@ func (c *testClient) read() {
 			_ = json.Unmarshal(body, c.snapshot)
 		case frameOutput:
 			c.output.Write(body)
+		case frameResized:
+			var size Size
+			_ = json.Unmarshal(body, &size)
+			c.sizes = append(c.sizes, size)
 		case frameExited:
 			c.exit = &Exit{}
 			_ = json.Unmarshal(body, c.exit)
@@ -234,6 +239,18 @@ func TestAttachLatestSizeWins(t *testing.T) {
 	a.resize(Size{Cols: 120, Rows: 40})
 	a.input("stty size\n")
 	b.waitOutput("40 120\r\n")
+	a.waitOutput("40 120\r\n") // after the sizes, which come in order with the output
+	// Each client is told every size set after it attached, its own too.
+	a.mu.Lock()
+	b.mu.Lock()
+	defer a.mu.Unlock()
+	defer b.mu.Unlock()
+	if want := []Size{{90, 20}, {120, 40}}; !slices.Equal(a.sizes, want) {
+		t.Errorf("a got sizes %v, want %v", a.sizes, want)
+	}
+	if want := []Size{{120, 40}}; !slices.Equal(b.sizes, want) {
+		t.Errorf("b got sizes %v, want %v", b.sizes, want)
+	}
 }
 
 func TestAttachExited(t *testing.T) {

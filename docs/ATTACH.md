@@ -80,7 +80,7 @@ It never waits for the vt or for a client, so the shell never blocks on either. 
 
 ### Size
 
-The PTY and the vt have one size. The client that attached or resized last sets it, as tmux's `latest`; when it detaches the size stays. A program in the shell gets SIGWINCH and redraws for the new size. A holder starts at 80×24. The vt is resized at once: output it has yet to read from before the resize is drawn at the new size, which only matters while it lags.
+The PTY and the vt have one size. The client that attached or resized last sets it, as tmux's `latest`; when it detaches the size stays. Every attached client is told each new size (`resized`), so its vt draws the output at the terminal's size. A program in the shell gets SIGWINCH and redraws for the new size. A holder starts at 80×24. The vt is resized at once: output it has yet to read from before the resize is drawn at the new size, which only matters while it lags.
 
 ### History
 
@@ -107,6 +107,7 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 | `output` | holder → client | raw bytes, up to 32 KiB a frame |
 | `input` | client → holder | raw bytes, written to the PTY |
 | `resize` | client → holder | `{"cols": ..., "rows": ...}` |
+| `resized` | holder → client | `{"cols": ..., "rows": ...}`: the terminal's new size, queued in order with the output to every client attached; also the answer to a `resize` that leaves the size as it was. Older clients ignore it, as they do any frame they do not know |
 | `exited` | holder → daemon and clients | as in version 1; the holder then closes the clients' connections |
 | `stop`, `release` | daemon → holder | as in version 1 |
 

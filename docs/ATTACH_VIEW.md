@@ -22,7 +22,7 @@ Attach used to pass the holder's bytes straight to the calling terminal and writ
 └──────────────────────────────────────────────────────────┘
 ```
 
-- The pane fills the window but for the status line; the terminal takes the pane's size (the latest client to attach or resize sets it, as now).
+- The pane fills the window but for the status line; the terminal takes the pane's size (the latest client to attach or resize sets it, as now). When another client sets another size, the pane draws the terminal at it, cropped or padded to its area, until a key, paste or mouse event for the program takes the size back.
 - The status line shows the terminal and its project on the left, and on the right what the keys do now: `C-\ ? for keys`; `C-\ …` once the prefix is pressed; `history 1,234 of 56,789 · PgDn or C-\ ] down · any key: back` while scrolled. Its color tells the state, in the terminal's basic colors: black on green, yellow after the prefix, cyan while scrolled, white on red when history cannot be fetched; reverse video with color off, so it still stands apart. Later it can show more (state, size, other clients). `C-\ s` hides and shows it for the session.
 - The calling terminal's title becomes the terminal's, as programs inside set it, and is given back on detach.
 - Detaching leaves the alternate screen: the calling terminal shows what it showed before, and the result line (`detached from terminal api in warden-rebuild`, or `--json`) is printed after it, as now.
@@ -66,7 +66,7 @@ A Bubble Tea v2 model, `termview.Model`, around a `holder.Session` and a screen 
 
 - a goroutine reads the session and hands the output to the model in messages; the model feeds its vt and asks for a frame. Bubble Tea draws at most 60 frames a second from the vt's screen, so a flood is drawn as it stands, not byte by byte (the vt draws through `ultraviolet`, as Bubble Tea v2 does; step 1 settles how a frame takes it);
 - keys and mouse events are encoded by the vt for the program inside (`SendKey`, `SendMouse`, `Paste`), honouring its modes (application cursor keys, mouse reporting, bracketed paste), and the vt's input stream is written to the session; the vt also answers the program's queries (cursor position, colors) on that stream, which the holder leaves to an attached client;
-- a window size message resizes the vt and the session;
+- a window size message sets the pane's area and makes it the terminal's size; a `resized` frame from the holder, another client's size, resizes the vt only; a pane that sent a size ignores the sizes told before its own comes back, so stale ones do not undo it;
 - the cursor, its shape and the title come from the vt;
 - scrolling and fetching history as above; the model takes a function that fetches history lines, so it knows nothing of the API.
 

@@ -37,6 +37,7 @@ const (
 	frameOutput   frameType = 8  // holder to client: raw output
 	frameInput    frameType = 9  // client to holder: raw input for the shell
 	frameResize   frameType = 10 // client to holder: a Size
+	frameResized  frameType = 11 // holder to client: the terminal's new Size, in order with the output
 )
 
 // Roles a connecting side gives in its hello; a hello without one is a

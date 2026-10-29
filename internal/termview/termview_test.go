@@ -214,6 +214,36 @@ func TestPaneResize(t *testing.T) {
 	d.waitText("30 100")
 }
 
+// TestPaneFollowsTerminalSize attaches a second client at another size:
+// the pane draws the terminal at it, within its area, until a key takes
+// the size back.
+func TestPaneFollowsTerminalSize(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, interactive)
+	d := sh.attach()
+	d.waitText("$")
+	other, err := holder.Attach(context.Background(), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 100, Rows: 30}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if _, err := other.Write([]byte("stty size\n")); err != nil {
+		t.Fatal(err)
+	}
+	d.waitText("30 100")
+	if cols, rows := d.m.TerminalSize(); cols != 100 || rows != 30 {
+		t.Fatalf("the pane draws the terminal at %d×%d", cols, rows)
+	}
+	if lines := strings.Split(d.m.Content(), "\n"); len(lines) != 24 {
+		t.Fatalf("got %d lines in a pane of 24 rows", len(lines))
+	}
+	d.typeText("stty size\n")
+	d.waitText("24 80")
+	if cols, rows := d.m.TerminalSize(); cols != 80 || rows != 24 {
+		t.Fatalf("a key left the terminal at %d×%d", cols, rows)
+	}
+}
+
 // TestPaneAnswersQueries: an attached client answers the program's queries,
 // which the holder leaves to it; the pane's vt does.
 func TestPaneAnswersQueries(t *testing.T) {

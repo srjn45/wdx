@@ -301,7 +301,10 @@ func (h *holder) readClient(c *client) string {
 				continue
 			}
 			h.screenMu.Lock()
-			h.resizeLocked(size)
+			if !h.resizeLocked(size) {
+				// Told anyway: the client waits for the size it asked for.
+				c.send(frameResized, body)
+			}
 			h.screenMu.Unlock()
 		default:
 			h.log.Warn("unknown frame from client ignored", "client_pid", c.pid, "type", int(t))
@@ -310,15 +313,16 @@ func (h *holder) readClient(c *client) string {
 }
 
 // resizeLocked makes size the terminal's: the PTY's, which tells the
-// program in it, and the screen's. The latest client to attach or resize
-// sets it. h.screenMu is held.
-func (h *holder) resizeLocked(size Size) {
+// program in it, the screen's and the attached clients'. The latest client
+// to attach or resize sets it; false means the size stays. h.screenMu is
+// held.
+func (h *holder) resizeLocked(size Size) bool {
 	if size == h.size {
-		return
+		return false
 	}
 	if err := pty.Setsize(h.master, size.Cols, size.Rows); err != nil {
 		h.log.Warn("terminal not resized", "err", err.Error())
-		return
+		return false
 	}
 	if !h.screen.Resize(size.Cols, size.Rows) {
 		h.log.Warn("vt reset: it failed on the resize")
@@ -326,6 +330,14 @@ func (h *holder) resizeLocked(size Size) {
 	}
 	h.size = size
 	h.log.Info("terminal resized", "cols", size.Cols, "rows", size.Rows)
+	// Encoding a Size cannot fail.
+	body, _ := json.Marshal(size)
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	for c := range h.clients {
+		c.send(frameResized, body)
+	}
+	return true
 }
 
 // exitClients tells the clients how the shell ended, once its last output

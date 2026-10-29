@@ -32,6 +32,7 @@ type Session struct {
 	Snapshot Snapshot
 
 	payload []byte // the rest of the output frame being read
+	size    Size
 	exit    *Exit
 
 	wmu sync.Mutex
@@ -97,7 +98,11 @@ func (s *Session) attach(id string, size Size, history int) error {
 			}
 			s.History.Lines = append(s.History.Lines, h.Lines...)
 		case frameSnapshot:
-			return json.Unmarshal(body, &s.Snapshot)
+			if err := json.Unmarshal(body, &s.Snapshot); err != nil {
+				return err
+			}
+			s.size = s.Snapshot.Size
+			return nil
 		default:
 			return fmt.Errorf("the holder sent frame %d before the screen", t)
 		}
@@ -105,8 +110,9 @@ func (s *Session) attach(id string, size Size, history int) error {
 }
 
 // Read reads what to show: the bytes that paint the screen, then the
-// output. It returns io.EOF once the shell has exited, which Exit then
-// tells, and ErrConnectionLost when the connection ends before.
+// output, drawn at Size. It returns io.EOF once the shell has exited,
+// which Exit then tells, and ErrConnectionLost when the connection ends
+// before.
 func (s *Session) Read(p []byte) (int, error) {
 	for len(s.payload) == 0 {
 		if s.exit != nil {
@@ -120,6 +126,11 @@ func (s *Session) Read(p []byte) (int, error) {
 		switch t {
 		case frameOutput:
 			s.payload = body
+		case frameResized:
+			var size Size
+			if json.Unmarshal(body, &size) == nil && validSize(size) {
+				s.size = size
+			}
 		case frameExited:
 			var exit Exit
 			if err := json.Unmarshal(body, &exit); err != nil {
@@ -131,6 +142,12 @@ func (s *Session) Read(p []byte) (int, error) {
 	n := copy(p, s.payload)
 	s.payload = s.payload[n:]
 	return n, nil
+}
+
+// Size is the terminal's size for the output Read returned last: another
+// client sets it by attaching or resizing.
+func (s *Session) Size() Size {
+	return s.size
 }
 
 // Exit is how the shell ended, once Read returned io.EOF.
