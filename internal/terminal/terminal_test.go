@@ -408,7 +408,11 @@ func TestLost(t *testing.T) {
 	f := newFixture(t)
 	s := f.supervisor(t)
 	term := create(t, s, f.project(t, "warden"), "", dir(t, ""))
-	kill(term.HolderPID, term.PID)
+	// The holder goes first: given the time, it would report its shell's
+	// end, and the terminal would be exited.
+	_ = syscall.Kill(term.HolderPID, syscall.SIGKILL)
+	waitGone(t, term.HolderPID)
+	kill(0, term.PID)
 	lost := waitState(t, s, term.ID, StateLost)
 	if lost.PID != 0 || lost.HolderPID != 0 || lost.ExitCode != nil || lost.EndedAt.IsZero() {
 		t.Fatalf("want it lost without an exit code, got %+v", lost)
