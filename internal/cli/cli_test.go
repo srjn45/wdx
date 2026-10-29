@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -144,6 +145,7 @@ func removeTerminals(home string) {
 type output struct {
 	exit           int
 	stdout, stderr string
+	pid            int // the wdx binary's that ran it; 0 for this process
 }
 
 // wdx runs the command line args against home, which stands in for ~/.wdx.
@@ -213,9 +215,10 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 
 	// Runs of the same command line in one home are sequential, so the last
 	// one received is this one; a daemon started in the home runs others.
+	pid := cmp.Or(out.pid, os.Getpid())
 	var id string
 	for _, l := range lines {
-		if l.Msg != "command received" || l.Pid != os.Getpid() {
+		if l.Msg != "command received" || l.Pid != pid {
 			continue
 		}
 		var received []string

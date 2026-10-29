@@ -79,7 +79,7 @@ The pane numbers the lines it keeps as the holder numbers history, so scrolling 
 ## Changes to `wdx terminal attach`
 
 - `--history` goes: nothing is written to the calling terminal's scrollback. `terminal.attach_history` becomes `terminal.history_tail`, the lines `wdx terminal history` prints by default.
-- `--detach-key` becomes `--prefix-key`; detaching is `C-\ d`.
+- `--detach-key` becomes `--prefix-key`; detaching is `C-\ d`. SIGINT, SIGTERM and SIGHUP detach too, giving the window back (the result is `detached`): the keys the view reads raw never send them, but `kill` or a closed window does.
 - `--json`, the results (`detached`, `exited`) and the error codes stay. The terminal must be at least 10 columns and 3 rows, else `usage`.
 - Both changes break scripts that pass the flags or set the setting: `feat!:` with a `BREAKING CHANGE:` footer.
 

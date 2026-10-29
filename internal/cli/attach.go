@@ -7,8 +7,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -211,7 +213,11 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 	}
 	view := newAttachView(termview.New(session, fetch), t, prefix, viewStyle(cmd))
 	defer view.pane.Close()
-	ended, err := runAttachView(ctx, tty, env, view)
+	// A signal detaches, giving the window back as it was; the command ends
+	// as after C-\ d.
+	viewCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+	ended, err := runAttachView(viewCtx, tty, env, view)
 	if err != nil {
 		log.Info("connection lost", "terminal_id", t.Id, "err", err.Error())
 		return &connectionLostError{t, err}

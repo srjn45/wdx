@@ -58,6 +58,52 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 	if err := pty.Setsize(master, cols, rows); err != nil {
 		t.Fatal(err)
 	}
+	a := newAttachRun(t, home, master, cols, rows, args)
+	go func() {
+		var stdout, stderr bytes.Buffer
+		env := Env{
+			Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary,
+			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, TermEnv: []string{"TERM=xterm-256color"},
+		}
+		exit := Run(context.Background(), a.args, env)
+		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
+	}()
+	return a
+}
+
+// startAttachBinary runs attach in the wdx binary, in a terminal of its
+// own as a user does, so that a signal reaches it alone.
+func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachRun, *os.Process) {
+	t.Helper()
+	master, tty, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { master.Close() })
+	defer tty.Close() // the command has its own
+	if err := pty.Setsize(master, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	a := newAttachRun(t, home, master, 80, 24, args)
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(wdxBinary, a.args...)
+	cmd.Dir = dir
+	cmd.Env = []string{"WDX_HOME=" + home, "PATH=/usr/bin:/bin", "TERM=xterm-256color"}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, &stdout, &stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	go func() {
+		_ = cmd.Wait() // the exit code tells
+		a.done <- output{exit: cmd.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String(), pid: cmd.Process.Pid}
+	}()
+	return a, cmd.Process
+}
+
+// newAttachRun is the calling terminal on master's other side.
+func newAttachRun(t *testing.T, home string, master *os.File, cols, rows int, args []string) *attachRun {
 	// The terminal's answers go back to the view.
 	sc := screen.New(cols, rows, func(p []byte) { _, _ = master.Write(p) })
 	sc.Write([]byte(callingText + "\r\n$ "))
@@ -79,15 +125,6 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 		defer a.mu.Unlock()
 		sc.Close()
 	})
-	go func() {
-		var stdout, stderr bytes.Buffer
-		env := Env{
-			Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary,
-			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, TermEnv: []string{"TERM=xterm-256color"},
-		}
-		exit := Run(context.Background(), a.args, env)
-		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
-	}()
 	return a
 }
 
@@ -187,6 +224,32 @@ func (a *attachRun) wantGivenBack(session string) {
 	a.waitFor("the calling terminal back", func(string) bool { return !a.altScreen() })
 	if text := a.text(); !strings.Contains(text, callingText) || strings.Contains(text, session) {
 		a.t.Fatalf("want the calling terminal as it was, got:\n%s", text)
+	}
+}
+
+// TestTerminalAttachSignal ends attach with a signal: it gives the window
+// back and detaches, leaving the terminal running.
+func TestTerminalAttachSignal(t *testing.T) {
+	t.Parallel()
+	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
+		t.Run(sig.String(), func(t *testing.T) {
+			t.Parallel()
+			home := newHomeWithShell(t, interactiveShell)
+			app := newProjectDir(t, home, "app")
+			newTerminal(t, home, app, "api")
+			a, p := startAttachBinary(t, home, app, "--name", "api", "--json")
+			a.waitScreen("C-\\ ? for keys")
+			a.input("echo hel''lo\r")
+			a.waitScreen("hello")
+			if err := p.Signal(sig); err != nil {
+				t.Fatal(err)
+			}
+			v, exit := a.wait()
+			if exit != api.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.State != api.TerminalStateRunning {
+				t.Fatalf("want detached with the terminal running, got exit %d, %+v", exit, v)
+			}
+			a.wantGivenBack("hello")
+		})
 	}
 }
 
