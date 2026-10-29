@@ -60,7 +60,12 @@ func HolderSocket(home, id string) string {
 // and history (docs/ATTACH.md). Terminal output can hold secrets: only the
 // user may read it.
 func TerminalDir(home, id string) string {
-	return filepath.Join(home, "terminals", id)
+	return filepath.Join(TerminalsDir(home), id)
+}
+
+// TerminalsDir holds the directory of each terminal under home.
+func TerminalsDir(home string) string {
+	return filepath.Join(home, "terminals")
 }
 
 // LogsDir is where the daily log files are written under home.

@@ -135,6 +135,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
 	}
+	if err := d.terminals.Sweep(logged); err != nil {
+		return nil, err
+	}
 	d.log.Info("daemon started",
 		"home", opts.Home,
 		"socket", opts.Socket,

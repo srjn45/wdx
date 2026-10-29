@@ -279,6 +279,43 @@ paths:
               schema: { $ref: "#/components/schemas/TerminalResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/terminals/{terminal}/history:
+    parameters:
+      - $ref: "#/components/parameters/TerminalRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getTerminalHistory
+      summary: Lines of a terminal's history, in any state
+      description: |
+        History is the lines that scrolled off the terminal's screen,
+        numbered from 0 for the terminal's life, across relaunches of its
+        shell, and kept up to terminal.history_lines. With from, the count
+        lines from that number on; else the last tail lines. A from before
+        the oldest line kept starts at that one.
+
+        Errors: not_found; from with tail is a usage error.
+      parameters:
+        - name: from
+          in: query
+          description: The number of the first line; excludes tail.
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: count
+          in: query
+          description: Lines from from on; 1000 when not given.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+        - name: tail
+          in: query
+          description: The last lines; excludes from; 1000 when neither is given.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalHistoryEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     ProjectRef:
@@ -545,6 +582,24 @@ components:
         result: { $ref: "#/components/schemas/Result" }
         terminal: { $ref: "#/components/schemas/Terminal" }
 
+    TerminalHistory:
+      type: object
+      required: [from, next, first, lines]
+      properties:
+        from: { type: integer, format: int64, description: The number of the first line in lines. }
+        next: { type: integer, format: int64, description: The number the next line written will take. }
+        first: { type: integer, format: int64, description: The number of the oldest line kept. }
+        lines:
+          type: array
+          description: The lines as the terminal drew them, with their escape codes for styles and links.
+          items: { type: string }
+
+    TerminalHistoryEnvelope:
+      type: object
+      required: [history]
+      properties:
+        history: { $ref: "#/components/schemas/TerminalHistory" }
+
     CreateTerminal:
       type: object
       required: [dir]
@@ -566,7 +621,8 @@ components:
       type: string
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
-        already_running, runtime_missing, port_in_use, runtime_failed and the
+        already_running, runtime_missing, port_in_use, runtime_failed,
+        terminal_not_running, attach_unsupported, connection_lost and the
         codes of wdx update (download_failed to restore_required) are
         reported by the CLI, never by the daemon.
       enum:
@@ -587,6 +643,9 @@ components:
         - project_in_use
         - terminal_running
         - start_failed
+        - terminal_not_running
+        - attach_unsupported
+        - connection_lost
         - daemon_unavailable
         - already_running
         - runtime_missing

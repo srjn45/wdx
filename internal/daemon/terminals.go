@@ -118,6 +118,32 @@ func (s *server) DeleteTerminal(ctx context.Context, req api.DeleteTerminalReque
 	return api.DeleteTerminal200JSONResponse{Result: api.ResultRemoved, Terminal: terminalView(t)}, nil
 }
 
+func (s *server) GetTerminalHistory(ctx context.Context, req api.GetTerminalHistoryRequestObject) (api.GetTerminalHistoryResponseObject, error) {
+	if req.Params.From != nil && req.Params.Tail != nil {
+		return nil, &requestError{err: errors.New("give from or tail, not both")}
+	}
+	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	count := 1000
+	if req.Params.From != nil && req.Params.Count != nil {
+		count = *req.Params.Count
+	} else if req.Params.From == nil && req.Params.Tail != nil {
+		count = *req.Params.Tail
+	}
+	h, err := s.terminals.History(t.ID, req.Params.From, count)
+	if err != nil {
+		return nil, err
+	}
+	logging.FromContext(ctx).Info("history read", "terminal_id", t.ID, "from", h.From, "lines", len(h.Lines), "next", h.Next)
+	lines := h.Lines
+	if lines == nil {
+		lines = []string{}
+	}
+	return api.GetTerminalHistory200JSONResponse{History: api.TerminalHistory{From: h.From, Next: h.Next, First: h.First, Lines: lines}}, nil
+}
+
 // projectOf returns the project ref names, or else the one whose worktree
 // holds dir.
 func (s *server) projectOf(ctx context.Context, ref, dir *string) (project.Project, error) {

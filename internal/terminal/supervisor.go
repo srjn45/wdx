@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"syscall"
@@ -200,7 +202,57 @@ func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (T
 	if err := s.store.remove(ctx, id); err != nil {
 		return Terminal{}, err
 	}
+	if err := s.Sweep(ctx); err != nil {
+		logging.FromContext(ctx).Error("terminal directories not swept", "err", err.Error())
+	}
 	return t, nil
+}
+
+// History reads count lines of the terminal's history from line from on,
+// or its last count lines when from is nil.
+func (s *Supervisor) History(id string, from *int64, count int) (holder.History, error) {
+	dir := holder.HistoryDir(s.opts.Home, id)
+	if from == nil {
+		return holder.TailHistory(dir, count)
+	}
+	return holder.ReadHistory(dir, *from, count)
+}
+
+// Sweep deletes what terminals that no longer exist kept on disk: removing
+// one, or its project, leaves it behind, as does a daemon that died
+// meanwhile. Their holders are gone: a live terminal is stopped before it
+// is removed.
+func (s *Supervisor) Sweep(ctx context.Context) error {
+	log := logging.FromContext(ctx)
+	parent := identity.TerminalsDir(s.opts.Home)
+	// Listed before the terminals: a directory is made after its row.
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	list, err := s.store.List(ctx, "")
+	if err != nil {
+		return err
+	}
+	exist := map[string]bool{}
+	for _, t := range list {
+		exist[t.ID] = true
+	}
+	for _, e := range entries {
+		if exist[e.Name()] {
+			continue
+		}
+		dir := filepath.Join(parent, e.Name())
+		if err := os.RemoveAll(dir); err != nil {
+			log.Error("terminal directory not deleted", "path", dir, "err", err.Error())
+			continue
+		}
+		log.Info("terminal directory deleted", "terminal_id", e.Name(), "path", dir)
+	}
+	return nil
 }
 
 // Live returns the project's terminals that are starting or running.

@@ -178,6 +178,15 @@ func start(ctx context.Context, o Options) (*holder, error) {
 	return h, nil
 }
 
+// HistoryDir is where the history of terminal id is kept under home.
+func HistoryDir(home, id string) string {
+	return historyDir(identity.TerminalDir(home, id))
+}
+
+func historyDir(terminalDir string) string {
+	return filepath.Join(terminalDir, "history")
+}
+
 // open starts the spool, the screen and, unless historyLines is 0, the
 // history in dir, which only the user may enter.
 func (h *holder) open(dir string, historyLines int64) error {
@@ -195,7 +204,7 @@ func (h *holder) open(dir string, historyLines int64) error {
 		return err
 	}
 	h.screen = newScreen(startSize.Cols, startSize.Rows, h.answer)
-	h.historyDir = filepath.Join(dir, "history")
+	h.historyDir = historyDir(dir)
 	if historyLines == 0 {
 		return nil
 	}

@@ -62,36 +62,39 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeAlreadyRunning    ErrorCode = "already_running"
-	ErrorCodeCheckoutMissing   ErrorCode = "checkout_missing"
-	ErrorCodeChecksumMismatch  ErrorCode = "checksum_mismatch"
-	ErrorCodeCloneFailed       ErrorCode = "clone_failed"
-	ErrorCodeDaemonUnavailable ErrorCode = "daemon_unavailable"
-	ErrorCodeDownloadFailed    ErrorCode = "download_failed"
-	ErrorCodeInternal          ErrorCode = "internal"
-	ErrorCodeInvalidArgument   ErrorCode = "invalid_argument"
-	ErrorCodeInvalidName       ErrorCode = "invalid_name"
-	ErrorCodeInvalidPath       ErrorCode = "invalid_path"
-	ErrorCodeNameTaken         ErrorCode = "name_taken"
-	ErrorCodeNoPreviousVersion ErrorCode = "no_previous_version"
-	ErrorCodeNotFound          ErrorCode = "not_found"
-	ErrorCodeNotGitRepo        ErrorCode = "not_git_repo"
-	ErrorCodeOlderVersion      ErrorCode = "older_version"
-	ErrorCodePathExists        ErrorCode = "path_exists"
-	ErrorCodePortInUse         ErrorCode = "port_in_use"
-	ErrorCodeProjectClosed     ErrorCode = "project_closed"
-	ErrorCodeProjectInUse      ErrorCode = "project_in_use"
-	ErrorCodeProjectMismatch   ErrorCode = "project_mismatch"
-	ErrorCodeRepoExists        ErrorCode = "repo_exists"
-	ErrorCodeRestoreRequired   ErrorCode = "restore_required"
-	ErrorCodeRuntimeFailed     ErrorCode = "runtime_failed"
-	ErrorCodeRuntimeMissing    ErrorCode = "runtime_missing"
-	ErrorCodeSettingsInvalid   ErrorCode = "settings_invalid"
-	ErrorCodeStartFailed       ErrorCode = "start_failed"
-	ErrorCodeTerminalRunning   ErrorCode = "terminal_running"
-	ErrorCodeUpdateFailed      ErrorCode = "update_failed"
-	ErrorCodeUpdateRunning     ErrorCode = "update_running"
-	ErrorCodeUsage             ErrorCode = "usage"
+	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
+	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
+	ErrorCodeCheckoutMissing    ErrorCode = "checkout_missing"
+	ErrorCodeChecksumMismatch   ErrorCode = "checksum_mismatch"
+	ErrorCodeCloneFailed        ErrorCode = "clone_failed"
+	ErrorCodeConnectionLost     ErrorCode = "connection_lost"
+	ErrorCodeDaemonUnavailable  ErrorCode = "daemon_unavailable"
+	ErrorCodeDownloadFailed     ErrorCode = "download_failed"
+	ErrorCodeInternal           ErrorCode = "internal"
+	ErrorCodeInvalidArgument    ErrorCode = "invalid_argument"
+	ErrorCodeInvalidName        ErrorCode = "invalid_name"
+	ErrorCodeInvalidPath        ErrorCode = "invalid_path"
+	ErrorCodeNameTaken          ErrorCode = "name_taken"
+	ErrorCodeNoPreviousVersion  ErrorCode = "no_previous_version"
+	ErrorCodeNotFound           ErrorCode = "not_found"
+	ErrorCodeNotGitRepo         ErrorCode = "not_git_repo"
+	ErrorCodeOlderVersion       ErrorCode = "older_version"
+	ErrorCodePathExists         ErrorCode = "path_exists"
+	ErrorCodePortInUse          ErrorCode = "port_in_use"
+	ErrorCodeProjectClosed      ErrorCode = "project_closed"
+	ErrorCodeProjectInUse       ErrorCode = "project_in_use"
+	ErrorCodeProjectMismatch    ErrorCode = "project_mismatch"
+	ErrorCodeRepoExists         ErrorCode = "repo_exists"
+	ErrorCodeRestoreRequired    ErrorCode = "restore_required"
+	ErrorCodeRuntimeFailed      ErrorCode = "runtime_failed"
+	ErrorCodeRuntimeMissing     ErrorCode = "runtime_missing"
+	ErrorCodeSettingsInvalid    ErrorCode = "settings_invalid"
+	ErrorCodeStartFailed        ErrorCode = "start_failed"
+	ErrorCodeTerminalNotRunning ErrorCode = "terminal_not_running"
+	ErrorCodeTerminalRunning    ErrorCode = "terminal_running"
+	ErrorCodeUpdateFailed       ErrorCode = "update_failed"
+	ErrorCodeUpdateRunning      ErrorCode = "update_running"
+	ErrorCodeUsage              ErrorCode = "usage"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -99,11 +102,15 @@ func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCodeAlreadyRunning:
 		return true
+	case ErrorCodeAttachUnsupported:
+		return true
 	case ErrorCodeCheckoutMissing:
 		return true
 	case ErrorCodeChecksumMismatch:
 		return true
 	case ErrorCodeCloneFailed:
+		return true
+	case ErrorCodeConnectionLost:
 		return true
 	case ErrorCodeDaemonUnavailable:
 		return true
@@ -148,6 +155,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeSettingsInvalid:
 		return true
 	case ErrorCodeStartFailed:
+		return true
+	case ErrorCodeTerminalNotRunning:
 		return true
 	case ErrorCodeTerminalRunning:
 		return true
@@ -327,7 +336,8 @@ type Daemon struct {
 }
 
 // ErrorCode Stable error code; never changed or reused. daemon_unavailable,
-// already_running, runtime_missing, port_in_use, runtime_failed and the
+// already_running, runtime_missing, port_in_use, runtime_failed,
+// terminal_not_running, attach_unsupported, connection_lost and the
 // codes of wdx update (download_failed to restore_required) are
 // reported by the CLI, never by the daemon.
 type ErrorCode string
@@ -366,7 +376,8 @@ type NewSourceType string
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
 	// Code Stable error code; never changed or reused. daemon_unavailable,
-	// already_running, runtime_missing, port_in_use, runtime_failed and the
+	// already_running, runtime_missing, port_in_use, runtime_failed,
+	// terminal_not_running, attach_unsupported, connection_lost and the
 	// codes of wdx update (download_failed to restore_required) are
 	// reported by the CLI, never by the daemon.
 	Code ErrorCode `json:"code"`
@@ -496,6 +507,26 @@ type TerminalEnvelope struct {
 	Terminal Terminal `json:"terminal"`
 }
 
+// TerminalHistory defines model for TerminalHistory.
+type TerminalHistory struct {
+	// First The number of the oldest line kept.
+	First int64 `json:"first"`
+
+	// From The number of the first line in lines.
+	From int64 `json:"from"`
+
+	// Lines The lines as the terminal drew them, with their escape codes for styles and links.
+	Lines []string `json:"lines"`
+
+	// Next The number the next line written will take.
+	Next int64 `json:"next"`
+}
+
+// TerminalHistoryEnvelope defines model for TerminalHistoryEnvelope.
+type TerminalHistoryEnvelope struct {
+	History TerminalHistory `json:"history"`
+}
+
 // TerminalList defines model for TerminalList.
 type TerminalList struct {
 	Terminals []Terminal `json:"terminals"`
@@ -589,6 +620,24 @@ type DeleteTerminalParams struct {
 
 // GetTerminalParams defines parameters for GetTerminal.
 type GetTerminalParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetTerminalHistoryParams defines parameters for GetTerminalHistory.
+type GetTerminalHistoryParams struct {
+	// From The number of the first line; excludes tail.
+	From *int64 `form:"from,omitempty" json:"from,omitempty"`
+
+	// Count Lines from from on; 1000 when not given.
+	Count *int `form:"count,omitempty" json:"count,omitempty"`
+
+	// Tail The last lines; excludes from; 1000 when neither is given.
+	Tail *int `form:"tail,omitempty" json:"tail,omitempty"`
+
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -1020,6 +1069,19 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
 	GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTerminalHistory Lines of a terminal's history, in any state
+	//
+	// History is the lines that scrolled off the terminal's screen,
+	// numbered from 0 for the terminal's life, across relaunches of its
+	// shell, and kept up to terminal.history_lines. With from, the count
+	// lines from that number on; else the last tail lines. A from before
+	// the oldest line kept starts at that one.
+	//
+	// Errors: not_found; from with tail is a usage error.
+	//
+	// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
+	GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	//
 	// For a terminal that exited, failed or was lost; never for one stopped
@@ -1364,6 +1426,29 @@ func (c *Client) DeleteTerminal(ctx context.Context, terminal TerminalRef, param
 // Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
 func (c *Client) GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTerminalRequest(c.Server, terminal, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTerminalHistory Lines of a terminal's history, in any state
+//
+// History is the lines that scrolled off the terminal's screen,
+// numbered from 0 for the terminal's life, across relaunches of its
+// shell, and kept up to terminal.history_lines. With from, the count
+// lines from that number on; else the last tail lines. A from before
+// the oldest line kept starts at that one.
+//
+// Errors: not_found; from with tail is a usage error.
+//
+// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
+func (c *Client) GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTerminalHistoryRequest(c.Server, terminal, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1973,6 +2058,115 @@ func NewGetTerminalRequest(server string, terminal TerminalRef, params *GetTermi
 	return req, nil
 }
 
+// NewGetTerminalHistoryRequest constructs an http.Request for the GetTerminalHistory method
+func NewGetTerminalHistoryRequest(server string, terminal TerminalRef, params *GetTerminalHistoryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "terminal", terminal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/terminals/%s/history", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Count != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "count", *params.Count, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Tail != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tail", *params.Tail, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewStartTerminalRequest constructs an http.Request for the StartTerminal method
 func NewStartTerminalRequest(server string, terminal TerminalRef, params *StartTerminalParams) (*http.Request, error) {
 	var err error
@@ -2327,6 +2521,21 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
 	GetTerminalWithResponse(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*GetTerminalResponse, error)
+
+	// GetTerminalHistoryWithResponse Lines of a terminal's history, in any state
+	//
+	// History is the lines that scrolled off the terminal's screen,
+	// numbered from 0 for the terminal's life, across relaunches of its
+	// shell, and kept up to terminal.history_lines. With from, the count
+	// lines from that number on; else the last tail lines. A from before
+	// the oldest line kept starts at that one.
+	//
+	// Errors: not_found; from with tail is a usage error.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
+	GetTerminalHistoryWithResponse(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*GetTerminalHistoryResponse, error)
 
 	// StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
 	//
@@ -2886,6 +3095,54 @@ func (r GetTerminalResponse) ContentType() string {
 	return ""
 }
 
+type GetTerminalHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalHistoryEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTerminalHistoryResponse) GetJSON200() *TerminalHistoryEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetTerminalHistoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTerminalHistoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTerminalHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTerminalHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTerminalHistoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type StartTerminalResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3275,6 +3532,27 @@ func (c *ClientWithResponses) GetTerminalWithResponse(ctx context.Context, termi
 		return nil, err
 	}
 	return ParseGetTerminalResponse(rsp)
+}
+
+// GetTerminalHistoryWithResponse Lines of a terminal's history, in any state
+//
+// History is the lines that scrolled off the terminal's screen,
+// numbered from 0 for the terminal's life, across relaunches of its
+// shell, and kept up to terminal.history_lines. With from, the count
+// lines from that number on; else the last tail lines. A from before
+// the oldest line kept starts at that one.
+//
+// Errors: not_found; from with tail is a usage error.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
+func (c *ClientWithResponses) GetTerminalHistoryWithResponse(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*GetTerminalHistoryResponse, error) {
+	rsp, err := c.GetTerminalHistory(ctx, terminal, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTerminalHistoryResponse(rsp)
 }
 
 // StartTerminalWithResponse Start a fresh shell for a terminal whose last one ended
@@ -3681,6 +3959,39 @@ func ParseGetTerminalResponse(rsp *http.Response) (*GetTerminalResponse, error) 
 	return response, nil
 }
 
+// ParseGetTerminalHistoryResponse parses an HTTP response from a GetTerminalHistoryWithResponse call
+func ParseGetTerminalHistoryResponse(rsp *http.Response) (*GetTerminalHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTerminalHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalHistoryEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStartTerminalResponse parses an HTTP response from a StartTerminalWithResponse call
 func ParseStartTerminalResponse(rsp *http.Response) (*StartTerminalResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3782,6 +4093,9 @@ type ServerInterface interface {
 	// GetTerminal A terminal, in any state
 	// (GET /v1/terminals/{terminal})
 	GetTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params GetTerminalParams)
+	// GetTerminalHistory Lines of a terminal's history, in any state
+	// (GET /v1/terminals/{terminal}/history)
+	GetTerminalHistory(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params GetTerminalHistoryParams)
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	// (POST /v1/terminals/{terminal}/start)
 	StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams)
@@ -4163,6 +4477,100 @@ func (siw *ServerInterfaceWrapper) GetTerminal(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetTerminalHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetTerminalHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "terminal" -------------
+	var terminal TerminalRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "terminal", r.PathValue("terminal"), &terminal, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "terminal", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTerminalHistoryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "count" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "count", r.URL.Query(), &params.Count, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "count"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "count", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tail" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tail", r.URL.Query(), &params.Tail, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tail"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tail", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTerminalHistory(w, r, terminal, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StartTerminal operation middleware
 func (siw *ServerInterfaceWrapper) StartTerminal(w http.ResponseWriter, r *http.Request) {
 
@@ -4365,6 +4773,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.DeleteTerminal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.GetTerminal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals/{terminal}/start", wrapper.StartTerminal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals/{terminal}/history", wrapper.GetTerminalHistory)
 
 	return m
 }
@@ -4817,6 +5226,46 @@ func (response GetTerminaldefaultApplicationProblemPlusJSONResponse) VisitGetTer
 	return err
 }
 
+type GetTerminalHistoryRequestObject struct {
+	Terminal TerminalRef `json:"terminal"`
+	Params   GetTerminalHistoryParams
+}
+
+type GetTerminalHistoryResponseObject interface {
+	VisitGetTerminalHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetTerminalHistory200JSONResponse TerminalHistoryEnvelope
+
+func (response GetTerminalHistory200JSONResponse) VisitGetTerminalHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTerminalHistorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetTerminalHistorydefaultApplicationProblemPlusJSONResponse) VisitGetTerminalHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StartTerminalRequestObject struct {
 	Terminal TerminalRef `json:"terminal"`
 	Params   StartTerminalParams
@@ -4930,6 +5379,9 @@ type StrictServerInterface interface {
 	// GetTerminal A terminal, in any state
 	// (GET /v1/terminals/{terminal})
 	GetTerminal(ctx context.Context, request GetTerminalRequestObject) (GetTerminalResponseObject, error)
+	// GetTerminalHistory Lines of a terminal's history, in any state
+	// (GET /v1/terminals/{terminal}/history)
+	GetTerminalHistory(ctx context.Context, request GetTerminalHistoryRequestObject) (GetTerminalHistoryResponseObject, error)
 	// StartTerminal Start a fresh shell for a terminal whose last one ended
 	// (POST /v1/terminals/{terminal}/start)
 	StartTerminal(ctx context.Context, request StartTerminalRequestObject) (StartTerminalResponseObject, error)
@@ -5281,6 +5733,33 @@ func (sh *strictHandler) GetTerminal(w http.ResponseWriter, r *http.Request, ter
 	}
 }
 
+// GetTerminalHistory operation middleware
+func (sh *strictHandler) GetTerminalHistory(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params GetTerminalHistoryParams) {
+	var request GetTerminalHistoryRequestObject
+
+	request.Terminal = terminal
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTerminalHistory(ctx, request.(GetTerminalHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTerminalHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTerminalHistoryResponseObject); ok {
+		if err := validResponse.VisitGetTerminalHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // StartTerminal operation middleware
 func (sh *strictHandler) StartTerminal(w http.ResponseWriter, r *http.Request, terminal TerminalRef, params StartTerminalParams) {
 	var request StartTerminalRequestObject
@@ -5337,79 +5816,87 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

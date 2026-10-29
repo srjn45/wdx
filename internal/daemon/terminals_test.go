@@ -2,13 +2,18 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/telemetry"
 )
 
@@ -254,6 +259,93 @@ func TestRemoveTerminal(t *testing.T) {
 	if syscall.Kill(*term.Pid, 0) == nil {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
+	wantNoTerminalDir(t, td.home, term.Id)
+}
+
+// wantNoTerminalDir checks what terminal id kept on disk is deleted.
+func wantNoTerminalDir(t *testing.T, home, id string) {
+	t.Helper()
+	if _, err := os.Stat(identity.TerminalDir(home, id)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want the directory of %s deleted, got %v", id, err)
+	}
+}
+
+func TestTerminalHistory(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	term := td.createTerminal(t, "", app, "build")
+	quiet := td.createTerminal(t, "", app, "quiet")
+	// The test terminals keep no history: it is written as a holder would.
+	dir := filepath.Join(identity.TerminalDir(td.home, term.Id), "history")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for i := range 30 {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	if err := os.WriteFile(filepath.Join(dir, "0000000000.log"), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		ref         string
+		params      api.GetTerminalHistoryParams
+		from, count int
+	}{
+		{"default tail", "build", api.GetTerminalHistoryParams{Project: optional("app")}, 0, 30},
+		{"tail", "id:" + term.Id, api.GetTerminalHistoryParams{Tail: optional(5)}, 25, 5},
+		{"from", "id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(10)), Count: optional(3)}, 10, 3},
+		{"from to the end", "id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(28))}, 28, 2},
+	} {
+		r, err := td.client.GetTerminalHistoryWithResponse(ctx, tc.ref, &tc.params)
+		if err != nil || r.JSON200 == nil {
+			t.Fatalf("%s: %v %s", tc.name, err, r.Body)
+		}
+		h := r.JSON200.History
+		if h.From != int64(tc.from) || h.Next != 30 || h.First != 0 || !slices.Equal(h.Lines, lines[tc.from:tc.from+tc.count]) {
+			t.Fatalf("%s: got %+v", tc.name, h)
+		}
+	}
+
+	r, err := td.client.GetTerminalHistoryWithResponse(ctx, "id:"+quiet.Id, nil)
+	if err != nil || r.JSON200 == nil || r.JSON200.History.Next != 0 || r.JSON200.History.Lines == nil || len(r.JSON200.History.Lines) != 0 {
+		t.Fatalf("want an empty history, got %v %s", err, r.Body)
+	}
+
+	for _, tc := range []struct {
+		ref    string
+		params api.GetTerminalHistoryParams
+		status int
+		code   api.ErrorCode
+	}{
+		{"id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(3)), Tail: optional(5)}, http.StatusBadRequest, api.ErrorCodeUsage},
+		{"id:" + term.Id, api.GetTerminalHistoryParams{Tail: optional(10_001)}, http.StatusBadRequest, api.ErrorCodeUsage},
+		{"build", api.GetTerminalHistoryParams{}, http.StatusBadRequest, api.ErrorCodeUsage},
+		{"id:term-00000000", api.GetTerminalHistoryParams{}, http.StatusNotFound, api.ErrorCodeNotFound},
+	} {
+		r, err := td.client.GetTerminalHistoryWithResponse(ctx, tc.ref, &tc.params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantProblem(t, r.ApplicationproblemJSONDefault, tc.status, tc.code)
+	}
+}
+
+// TestSweepTerminalDirs starts a daemon on a home where a terminal that no
+// longer exists left its directory.
+func TestSweepTerminalDirs(t *testing.T) {
+	t.Parallel()
+	home := shortDir(t)
+	stray := identity.TerminalDir(home, "term-0badc0de")
+	if err := os.MkdirAll(filepath.Join(stray, "history"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	startOn(t, home, telemetry.Options{})
+	wantNoTerminalDir(t, home, "term-0badc0de")
 }
 
 func TestStartTerminal(t *testing.T) {
@@ -354,6 +446,7 @@ func TestRemoveProjectWithTerminals(t *testing.T) {
 	if list := td.terminals(t, nil); len(list) != 0 {
 		t.Fatalf("want the terminals removed with the project, got %+v", list)
 	}
+	wantNoTerminalDir(t, td.home, term.Id)
 }
 
 func TestTerminalsOutliveDaemon(t *testing.T) {

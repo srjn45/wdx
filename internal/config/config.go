@@ -36,6 +36,9 @@ type Config struct {
 	TerminalShell    string // "" for the user's login shell
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
 	TerminalHistoryLines int64
+	// TerminalAttachHistory is the history lines attach shows and history
+	// prints by default.
+	TerminalAttachHistory int
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -248,6 +251,20 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return strconv.FormatInt(c.TerminalHistoryLines, 10) },
+	},
+	{
+		key:         "terminal.attach_history",
+		description: "lines of history wdx terminal attach writes before the screen, for the terminal to scroll back through, and wdx terminal history prints; at most 10000",
+		def:         "1000",
+		set: func(c *Config, v string) error {
+			lines, err := strconv.Atoi(v)
+			if err != nil || lines < 0 || lines > 10_000 {
+				return fmt.Errorf("%q is not a whole number from 0 to 10000", v)
+			}
+			c.TerminalAttachHistory = lines
+			return nil
+		},
+		get: func(c Config) string { return strconv.Itoa(c.TerminalAttachHistory) },
 	},
 }
 
