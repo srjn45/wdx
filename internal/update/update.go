@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -173,6 +174,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		return Result{}, err
 	}
 	defer unlock()
+	warnings := sweep(ctx, o)
 
 	target, err := resolve(ctx, o, channel, version)
 	if err != nil {
@@ -188,7 +190,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 			return Result{}, &OlderError{Current: o.Current, Requested: target}
 		}
 		log.Info("already up to date", "version", o.Current, "latest", target)
-		return Result{From: o.Current, To: o.Current, SchemaFrom: from.Version, SchemaTo: from.Version, UpToDate: true, Warnings: []string{}}, nil
+		return Result{From: o.Current, To: o.Current, SchemaFrom: from.Version, SchemaTo: from.Version, UpToDate: true, Warnings: warnings}, nil
 	}
 
 	dir, err := os.MkdirTemp(o.Home, "update-")
@@ -212,7 +214,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		return Result{}, err
 	}
 	// The new version runs: what fails from here on is a warning.
-	r := Result{From: o.Current, To: target, SchemaFrom: from.Version, Settings: &settings, Warnings: []string{}}
+	r := Result{From: o.Current, To: target, SchemaFrom: from.Version, Settings: &settings, Warnings: warnings}
 	if warning, err := keep(ctx, o, replaced); err != nil {
 		log.Error("replaced version not kept", "dir", replaced, "err", err.Error())
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%s %s is not kept for a rollback: %v; its binary, database and config file are in %s", identity.Name, o.Current, err, replaced))
@@ -286,6 +288,7 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 		return Result{}, err
 	}
 	defer unlock()
+	warnings := sweep(ctx, o)
 
 	dir := identity.PreviousDir(o.Home)
 	b, err := os.ReadFile(filepath.Join(dir, "previous.json"))
@@ -323,7 +326,7 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 		return Result{}, err
 	}
 	// The previous version runs: what fails from here on is a warning.
-	r := Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, DataRestored: restore, Warnings: []string{}}
+	r := Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, DataRestored: restore, Warnings: warnings}
 	for _, left := range []string{replaced, dir} {
 		if err := os.RemoveAll(left); err != nil {
 			log.Error("not deleted after the rollback", "dir", left, "err", err.Error())
@@ -343,6 +346,7 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 // the daemon on them.
 func (o Options) switchTo(ctx context.Context, binary, backup, settings, want string) (string, error) {
 	log := logging.FromContext(ctx)
+	defer o.holdSignals()()
 	dbPath, configPath := identity.DBPath(o.Home), identity.ConfigPath(o.Home)
 	o.progress("stopping the daemon")
 	if err := o.Daemon.Stop(ctx); err != nil {
@@ -416,6 +420,7 @@ func exists(path string) bool {
 // running is stopped first, and the daemon must then answer as the version
 // put back.
 func (o Options) undo(ctx context.Context, step string, err error, r replaced) error {
+	ctx = context.WithoutCancel(ctx)
 	log := logging.FromContext(ctx)
 	log.Error("switch failed, undoing it", "step", step, "err", err.Error())
 	o.progress("%s failed; putting %s %s back", step, identity.Name, o.Current)
@@ -472,6 +477,49 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 		log.Info("switch undone", "version", o.Current)
 	}
 	return failed
+}
+
+// holdSignals holds off the signals that end wdx until the function it
+// returns is called: a switch cut short would leave the daemon stopped or
+// the files half put back. The command ends once the switch has.
+func (o Options) holdSignals() (release func()) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case sig := <-signals:
+			o.progress("%s: the switch finishes first", sig)
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(signals)
+		close(done)
+	}
+}
+
+// sweep deletes the downloads of updates cut short, and warns of the files
+// a switch cut short replaced: they may be the only copy of the version it
+// replaced, so they stay. The update lock is held: none is in use.
+func sweep(ctx context.Context, o Options) []string {
+	log := logging.FromContext(ctx)
+	warnings := []string{}
+	downloads, _ := filepath.Glob(filepath.Join(o.Home, "update-*"))
+	for _, dir := range downloads {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Error("stale download not deleted", "dir", dir, "err", err.Error())
+			continue
+		}
+		log.Info("stale download deleted", "dir", dir)
+	}
+	replaced, _ := filepath.Glob(filepath.Join(o.Home, "replaced-*"))
+	for _, dir := range replaced {
+		log.Warn("files a switch cut short replaced are left", "dir", dir)
+		w := fmt.Sprintf("%s holds the binary, database and config file a switch cut short replaced; delete it once you no longer need them", dir)
+		warnings = append(warnings, w)
+	}
+	return warnings
 }
 
 func (o Options) progress(format string, args ...any) {

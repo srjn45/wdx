@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -404,6 +405,57 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 		t.Fatalf("want a rollback, got exit %d, %+v", exit, v)
 	}
 	in.wantDaemon(t, identity.Version)
+}
+
+// TestUpdateInterrupted sends SIGTERM to wdx update as it stops the daemon:
+// the switch finishes and the new version runs. Its leftovers from earlier
+// runs cut short are swept, or warned about when they may be a backup.
+func TestUpdateInterrupted(t *testing.T) {
+	t.Parallel()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatal("the daemon did not start")
+	}
+	download := filepath.Join(in.home, "update-123")
+	replaced := filepath.Join(in.home, "replaced-456")
+	writeFile(t, filepath.Join(download, "wdx"), "")
+	writeFile(t, filepath.Join(replaced, "wdx"), "")
+
+	c := exec.Command(in.binary, "update", "--apply")
+	c.Env = append(os.Environ(), identity.Env("HOME")+"="+in.home)
+	var stdout bytes.Buffer
+	c.Stdout = &stdout
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var said strings.Builder
+	lines := bufio.NewScanner(stderr)
+	for lines.Scan() {
+		said.WriteString(lines.Text() + "\n")
+		if strings.Contains(lines.Text(), "stopping the daemon") {
+			if err := c.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := c.Wait(); err != nil || !strings.Contains(stdout.String(), "updated") {
+		t.Fatalf("want the update finished, got %v:\n%s%s", err, stdout.String(), said.String())
+	}
+	if !strings.Contains(said.String(), "the switch finishes first") || !strings.Contains(said.String(), replaced) {
+		t.Fatalf("want the signal held and the leftover named, got\n%s", said.String())
+	}
+	in.wantDaemon(t, releaseVersion)
+	if _, err := os.Stat(download); !os.IsNotExist(err) {
+		t.Fatalf("want the stale download removed, got %v", err)
+	}
+	if _, err := os.Stat(replaced); err != nil {
+		t.Fatalf("want the stale backup kept, got %v", err)
+	}
 }
 
 // TestUpdateUndoneStopsItsDaemon installs a release whose daemon starts but
