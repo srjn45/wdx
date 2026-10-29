@@ -142,21 +142,22 @@ func typed(msg tea.KeyPressMsg) bool {
 // switcherRows is the most projects the switcher lists at once.
 const switcherRows = 10
 
-// lines returns what the switcher shows, the selection kept in view.
-func (s *switcherBox) lines(m *Model) []string {
+// popup returns what the switcher shows, the selection kept in view.
+func (s *switcherBox) popup(m *Model) popup {
 	st := m.st
 	width := 30
 	for _, p := range s.projects.projects {
 		width = max(width, ansi.StringWidth(p.Name)+12)
 	}
-	width = min(width, max(m.width-6, 10))
+	width = min(width, max(m.width-8, 10))
 	filter := "> " + s.filter + "_"
-	lines := []string{st.Heading("switch project"), "", filter + strings.Repeat(" ", max(width-ansi.StringWidth(filter), 0))}
+	body := []string{filter + strings.Repeat(" ", max(width-ansi.StringWidth(filter), 0)), ""}
 	i, matches := s.keepSelection(), s.matches()
 	if len(matches) == 0 {
-		lines = append(lines, st.Muted("no project matches"))
+		body = append(body, st.Muted("no project matches"))
 	}
-	rows := max(min(switcherRows, m.height-12), 1)
+	// Room for the frame, the filter and a message under the list.
+	rows := max(min(switcherRows, m.height-1-6-2-3), 1)
 	from := max(min(i-rows/2, len(matches)-rows), 0)
 	for j := from; j < min(from+rows, len(matches)); j++ {
 		p := matches[j]
@@ -164,18 +165,29 @@ func (s *switcherBox) lines(m *Model) []string {
 		pad := strings.Repeat(" ", max(width-8-ansi.StringWidth(name), 1))
 		state := st.Muted(string(p.State))
 		if j == i {
-			lines = append(lines, st.Focused("▸ ")+st.Name(name)+pad+state)
+			body = append(body, st.Focused("▸ ")+st.Name(name)+pad+state)
 		} else {
-			lines = append(lines, "  "+name+pad+state)
+			body = append(body, "  "+name+pad+state)
 		}
 	}
+	var message []string
 	switch {
 	case s.opening != "":
-		lines = append(lines, "", st.Muted(wrap("opening "+s.opening+"…", width)))
+		message = strings.Split(st.Muted(wrap("opening "+s.opening+"…", width)), "\n")
 	case s.failure != "":
-		lines = append(lines, "", st.Failure(wrap(s.failure, width)))
+		message = strings.Split(wrap(s.failure, width), "\n")
+		for k, l := range message {
+			message[k] = st.Failure(l)
+		}
 	}
-	return lines
+	if len(message) > 0 {
+		body = append(append(body, ""), message...)
+	}
+	return popup{
+		title:  "Switch project",
+		body:   body,
+		footer: st.Command("↑↓") + " select  " + st.Command("enter") + " switch  " + st.Command("Esc") + " close",
+	}
 }
 
 // stripLinger is how long the project strip stays after the last switch.

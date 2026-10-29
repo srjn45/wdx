@@ -88,7 +88,7 @@ func TestMenu(t *testing.T) {
 	t.Parallel()
 	m, _ := newModel(80, 24)
 	m.Update(key('q', tea.ModCtrl))
-	if got := text(m); !strings.Contains(got, "q    quit") || !strings.Contains(got, "o    open project") || !strings.Contains(got, "p    switch project") {
+	if got := text(m); !strings.Contains(got, "q  quit") || !strings.Contains(got, "o  open project") || !strings.Contains(got, "p  switch project") {
 		t.Fatalf("no menu:\n%s", text(m))
 	}
 	m.Update(key(tea.KeyEscape, 0))

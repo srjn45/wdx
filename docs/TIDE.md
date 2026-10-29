@@ -219,13 +219,20 @@ Switching projects is frequent too, so it is one chord.
 - `C-q p`: the switcher, a box over the middle of the window, to find a project by name, with ↑ / ↓ or by typing:
 
   ```
-  ┌ Switch project ──────────────┐
-  │ > do_                        │
-  │   docs           open        │
-  │ ▸ dotfiles       closed      │
-  │   docker-images  closed      │
-  └──────────────────────────────┘
+  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃ Switch project                     ┃
+  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+  ┃ > do_                              ┃
+  ┃                                    ┃
+  ┃   docs                  open       ┃
+  ┃ ▸ dotfiles              closed     ┃
+  ┃   docker-images         closed     ┃
+  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+  ┃ ↑↓ select  enter switch  Esc close ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
   ```
+
+  Every popup (the switcher, the `C-q` menu) has this shape: a heavy frame, a bold title, the body, and the keys at the bottom, set apart by lines.
 
   It lists every project, open ones first, then closed ones, each by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches, reopening a closed project first; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p enter` flips back to it; at start, the first one.
 - The `C-q` menu lists no projects: it opens at once, never waiting on the daemon. `C-q p` is the way to search and switch.

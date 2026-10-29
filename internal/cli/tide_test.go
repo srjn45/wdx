@@ -44,7 +44,7 @@ func TestTide(t *testing.T) {
 	run.waitScreen("agent · zoomed")
 	run.waitScreen("got: x")
 	run.input("\x11") // C-q: the menu
-	run.waitScreen("o    open project")
+	run.waitScreen("┃ o  open project")
 	run.input("q")
 	out := run.waitText()
 	if out.exit != api.ExitOK || out.stdout != "tide closed\n" {

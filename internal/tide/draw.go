@@ -47,7 +47,7 @@ func (m *Model) render() string {
 		m.drawStrip(buf)
 	}
 	if m.switcher != nil {
-		m.drawBox(buf, m.switcher.lines(m))
+		m.drawPopup(buf, m.switcher.popup(m))
 	}
 	if m.menu {
 		m.drawMenu(buf)
@@ -183,36 +183,56 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 	return labels
 }
 
-// drawMenu draws the menu in a box in the middle of the window.
+// drawMenu draws the menu in a popup.
 func (m *Model) drawMenu(buf uv.Screen) {
-	m.drawBox(buf, []string{
-		m.st.Heading("tide"),
-		"",
-		m.st.Command("o") + "    open project",
-		m.st.Command("p") + "    switch project",
-		m.st.Command("q") + "    quit",
-		m.st.Command("Esc") + "  close",
+	m.drawPopup(buf, popup{
+		title: "Menu",
+		body: []string{
+			m.st.Command("o") + "  open project",
+			m.st.Command("p") + "  switch project",
+			m.st.Command("q") + "  quit",
+		},
+		footer: m.st.Command("Esc") + " close",
 	})
 }
 
-// drawBox draws lines in a box in the middle of the window.
-func (m *Model) drawBox(buf uv.Screen, lines []string) {
-	width := 0
-	for _, l := range lines {
+// popup is a box over the middle of the window: a title, a body and a
+// footer, set apart by lines.
+type popup struct {
+	title  string
+	body   []string
+	footer string
+}
+
+// drawPopup draws p in a heavy frame in the middle of the window, over
+// what is there. The body is cut at the bottom when the window is short.
+func (m *Model) drawPopup(buf uv.Screen, p popup) {
+	width := max(ansi.StringWidth(p.title), ansi.StringWidth(p.footer))
+	for _, l := range p.body {
 		width = max(width, ansi.StringWidth(l))
 	}
-	box := uv.Rect((m.width-width-4)/2, (m.height-1-len(lines)-2)/2, width+4, len(lines)+2)
-	box = box.Intersect(uv.Rect(0, 0, m.width, m.height-1))
-	if box.Dx() < minFrame || box.Dy() < minFrame {
+	width = min(width+4, m.width)
+	area := m.height - 1 // above the status line
+	body := min(len(p.body), area-6)
+	if width < 6 || body < 1 {
 		return
 	}
-	for at, j := range border(box) {
-		uv.NewStyledString(m.st.Focused(boxChars[j])).Draw(buf, uv.Rect(at.X, at.Y, 1, 1))
+	height := body + 6 // borders, title, two separators, footer
+	x, y := (m.width-width)/2, (area-height)/2
+	rule := func(left, fill, right string) string {
+		return m.st.Focused(left + strings.Repeat(fill, width-2) + right)
 	}
-	inside := box.Inset(1)
-	uv.NewStyledString("").Draw(buf, inside)         // clears it
-	inside.Min.X = min(inside.Min.X+1, inside.Max.X) // a space after the border
-	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, inside)
+	row := func(text string) string {
+		text = ansi.Truncate(text, width-4, "…")
+		pad := strings.Repeat(" ", width-4-ansi.StringWidth(text))
+		return m.st.Focused("┃") + " " + text + pad + " " + m.st.Focused("┃")
+	}
+	lines := []string{rule("┏", "━", "┓"), row(m.st.Heading(p.title)), rule("┣", "━", "┫")}
+	for _, l := range p.body[:body] {
+		lines = append(lines, row(l))
+	}
+	lines = append(lines, rule("┣", "━", "┫"), row(p.footer), rule("┗", "━", "┛"))
+	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, uv.Rect(x, y, width, height))
 }
 
 // statusLine says what has the focus on the left and what the keys do on
@@ -238,7 +258,7 @@ func (m *Model) statusLine() string {
 		right = "menu: o open  p switch  q quit  Esc close"
 	case m.switcher != nil:
 		state = style.StatusPrefix
-		right = "switcher: type to find  ↑↓ select  enter switch  Esc close"
+		right = "switcher: type to find a project"
 	}
 	right += " "
 	line := left + " " + right

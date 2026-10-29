@@ -178,7 +178,7 @@ func TestStartWithOpenProjects(t *testing.T) {
 		t.Fatal("the switcher did not open")
 	}
 	// Every project, the open ones first, the first selected.
-	wantText(t, m, "switch project", "▸ beta", "  gamma", "  alpha")
+	wantText(t, m, "┃ Switch project", "▸ beta", "  gamma", "  alpha")
 	var order []string
 	for _, p := range m.switcher.matches() {
 		order = append(order, p.Name)
