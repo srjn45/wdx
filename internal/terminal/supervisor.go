@@ -445,12 +445,22 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) {
 				}
 				log.Info("holder connection dropped, dialling again")
 				next, err := holder.Dial(ctx, s.socket(id), id)
+				if err != nil && ctx.Err() != nil {
+					return // the daemon stopped meanwhile; the next one dials it
+				}
 				if err != nil {
 					log.Info("holder gone", "err", err.Error())
 					s.recordGone(ctx, id)
 					return
 				}
+				// Under w.mu, which Close takes to close the current
+				// connection: either Close closes next, or this sees it began.
 				w.mu.Lock()
+				if ctx.Err() != nil {
+					w.mu.Unlock()
+					next.Close()
+					return
+				}
 				w.conn = next
 				w.mu.Unlock()
 			}

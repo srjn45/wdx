@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 )
 
@@ -386,6 +389,73 @@ func TestCreateAfterClose(t *testing.T) {
 	t.Cleanup(func() { kill(term.HolderPID, term.PID) })
 	if s.watching(term.ID) || !alive(term.HolderPID) {
 		t.Fatalf("want the holder running and not watched, got watched %v", s.watching(term.ID))
+	}
+}
+
+// TestCloseDuringRedial closes the Supervisor while a watcher dials its
+// holder again, the dial answering only after the close began: Close
+// returns, and the holder is left running for the next daemon.
+func TestCloseDuringRedial(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := NewSupervisor(context.Background(), NewStore(f.db), f.opts)
+	term := create(t, s, f.project(t, "warden"), "api", dir(t, ""))
+	t.Cleanup(func() { kill(term.HolderPID, term.PID) })
+
+	// The holder moves aside; the watcher's next dial reaches a listener
+	// that passes it on only once the close has begun.
+	socket := s.socket(term.ID)
+	moved := socket + ".moved"
+	if err := os.Rename(socket, moved); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	redialled := make(chan net.Conn, 1)
+	go func() {
+		if c, err := l.Accept(); err == nil {
+			redialled <- c
+		}
+	}()
+	// A second daemon's connection drops the watcher's.
+	other, err := holder.Dial(context.Background(), moved, term.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	var watcher net.Conn
+	select {
+	case watcher = <-redialled:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the watcher did not dial again")
+	}
+	defer watcher.Close()
+
+	closed := make(chan struct{})
+	go func() {
+		s.Close()
+		close(closed)
+	}()
+	for s.ctx.Err() == nil {
+		time.Sleep(time.Millisecond)
+	}
+	real, err := net.Dial("unix", moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer real.Close()
+	go func() { _, _ = io.Copy(real, watcher) }()
+	go func() { _, _ = io.Copy(watcher, real) }()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close hangs on the redialled connection")
+	}
+	if !alive(term.HolderPID) {
+		t.Fatal("want the holder left running")
 	}
 }
 
