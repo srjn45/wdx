@@ -317,6 +317,10 @@ install_launchd() {
 	<!-- Terminals' holders must outlive the daemon. -->
 	<key>AbandonProcessGroup</key>
 	<true/>
+	<!-- Stopping waits for a change in flight (30 s) and one it cancels
+	     (10 s); launchd's default 20 s would kill the daemon midway. -->
+	<key>ExitTimeOut</key>
+	<integer>60</integer>
 	<key>StandardOutPath</key>
 	<string>$SERVICE_LOG</string>
 	<key>StandardErrorPath</key>

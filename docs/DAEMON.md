@@ -26,7 +26,7 @@ Commands never start the daemon themselves: without it they fail with `daemon_un
 
 Without a systemd user session (containers, some WSL setups), the installer starts the daemon directly; start it again after a reboot.
 
-Terminals outlive the daemon: each shell runs in its own `wdx holder` process, which the next daemon adopts (docs/TERMINALS.md). So the unit has `KillMode=process` and the plist `AbandonProcessGroup`, which make stopping or restarting the service stop the daemon alone. An install from before terminals lacks them; install again to get them.
+Terminals outlive the daemon: each shell runs in its own `wdx holder` process, which the next daemon adopts (docs/TERMINALS.md). So the unit has `KillMode=process` and the plist `AbandonProcessGroup`, which make stopping or restarting the service stop the daemon alone. The plist also sets `ExitTimeOut` to 60 s: a stop lets a change in flight finish (30 s, then 10 s for one it cancels), which launchd's default 20 s would cut short; systemd's default 90 s already allows it. An install from before terminals lacks them; install again to get them.
 
 `scripts/install.sh --uninstall` stops and removes the service and the binary. `~/.wdx` (settings, database, logs, projects) stays, and so does linger, which other services may need.
 

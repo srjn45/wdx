@@ -156,7 +156,7 @@ Approved by the human; coding waits for their go. An update either completes, or
 4. **`fix:` rollback checks what is installed (U4).** `previous.json` also records the version the update installed; a rollback when another one is installed fails with `no_previous_version` and a hint that another install replaced it. A `previous.json` without the field, from before, is trusted as now. Test: a rollback after the installed version changed is refused. **Done**: the update tests now roll back with the installed binary, as a user does; run in the test process (version `dev`), a rollback after an update to 0.2.0 is such a changed install.
 5. **`refactor:` one atomic write (U5).** New package `internal/atomicfile` (name approved): `atomicfile.Write(path, data, mode)` and `atomicfile.Copy(dest, src, mode)` write a temporary file beside the target, fsync it, rename it into place and fsync the directory. config, update and db use it; their own copies go. AGENTS.md's layout lists it. **Done**: `Copy` streams, so a large database is not read into memory.
 6. **`fix!:` `update --rollback --json` answers its prompt up front.** A `--cancel` flag answers no ("if the previous version needs the backup restored, change nothing"), returning `restore_required` with its hint as a declined prompt does now; rollback's `jsonRequires` is `--discard-changes` or `--cancel`, as other prompting commands. `BREAKING CHANGE:` `update --rollback --json` without either is a usage error. Decided after weighing: the outcome of no flag stays the same, but `--json` never chooses an answer for the script. **Done**.
-7. **`fix:` launchd waits for the daemon to stop.** The plist sets `ExitTimeOut` to 60 s (launchd's default 20 s kills a daemon still finishing a change at its 30 s limit); a daemon that stops sooner is not waited for. Test: the generated plist carries it.
+7. **`fix:` launchd waits for the daemon to stop.** The plist sets `ExitTimeOut` to 60 s (launchd's default 20 s kills a daemon still finishing a change at its 30 s limit); a daemon that stops sooner is not waited for. Test: the generated plist carries it. **Done**: the test runs install.sh as on macOS (stubbed `uname` and `launchctl`, a release in a directory); before, nothing tested the service files.
 8. **`test:` the release code.** Unit tests for `checksum`, `extract` and `comparePre`; the GitHub API URL becomes a field of `releases` so a test serves it.
 
 Impact: an update failing at any step ends with the old version answering, or an error naming what does; a rollback point is never deleted before its replacement is in place, nor is a working update reported failed; Ctrl-C during the few seconds of the switch waits for it. Breaking only for `update --rollback --json` scripts (fix 6). The update JSON gains `warnings`.
@@ -176,7 +176,12 @@ Still to brainstorm; no behaviour changes, one `refactor:` commit per item. The 
 
 ## Step 5 proposal: tests and CI
 
-Still to brainstorm.
+Still to brainstorm, except the test resource items the human approved on 2026-10-29, after `make test` got the session's terminal killed for memory (the update tests peaked at 6 GB, fixed by `3aa4a3e` and `ae486e3`): tests are kept light on memory and CPU, not only fast, since wdx is developed on the machine it runs on.
+
+- A memory budget: CI runs `make test` under a memory cap (about 3 GB), so a regression fails CI instead of killing a machine.
+- `make test` runs fewer packages at once (`-p 4`), leaving CPU for other work.
+- Cleanup that survives a kill: `TestMain` removes stale `wdx-bin*` directories when it starts, making them writable first (a test's read-only directory stays behind otherwise).
+- Look at the slow packages: `logging` 7.3 s (likely sleeps), `cli` 20.8 s, `holder` and `daemon` about 7 s each; measure, then cut waste.
 
 1. Prompts: the cli tests give `Stdin` a PTY, and each prompt gets a test per answer (create o/n/c, open c/r, stop-running y/n, rollback y/N).
 2. The missing tests listed under "Tests" above, in their packages.

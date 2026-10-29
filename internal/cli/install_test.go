@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // installer runs scripts/install.sh with args for a user whose home is home
@@ -135,6 +141,50 @@ func TestInstallCompletionsShellsMissing(t *testing.T) {
 	} {
 		if _, err := os.Stat(filepath.Join(home, path)); (err == nil) != want {
 			t.Errorf("%s: want installed %v, got %v", path, want, err)
+		}
+	}
+}
+
+// TestInstallLaunchd installs as on macOS, from a release in a directory:
+// the agent's plist lets the daemon stop in its own time.
+func TestInstallLaunchd(t *testing.T) {
+	t.Parallel()
+	home, err := os.MkdirTemp("/tmp", "wdx") // holds the daemon's socket
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
+	wdxHome := filepath.Join(home, ".wdx")
+	t.Cleanup(func() {
+		if pid, _ := daemon.Running(wdxHome); pid != 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+	// The daemon the installer starts must send no metrics.
+	writeFile(t, identity.ConfigPath(wdxHome), "otel:\n  endpoint: \"\"\n")
+	arch := map[string]string{"amd64": "x86_64", "arm64": "arm64"}[runtime.GOARCH]
+	releases := t.TempDir()
+	name := fmt.Sprintf("%s_%s_darwin_%s.tar.gz", identity.Name, releaseVersion, runtime.GOARCH)
+	sum := writeArchive(t, filepath.Join(releases, "v"+releaseVersion, name), wdxBinary)
+	writeFile(t, filepath.Join(releases, "v"+releaseVersion, "checksums.txt"), sum+"  "+name+"\n")
+	stubs := t.TempDir()
+	stub(t, stubs, "uname", `case "$1" in -s) echo Darwin ;; -m) echo `+arch+` ;; esac`)
+	stub(t, stubs, "launchctl", "exit 0")
+
+	cmd := exec.Command("sh", "../../scripts/install.sh")
+	cmd.Env = []string{
+		"HOME=" + home,
+		"PATH=" + stubs + ":/usr/bin:/bin",
+		"WDX_DOWNLOAD_BASE=file://" + releases,
+		"WDX_VERSION=" + releaseVersion,
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install.sh: %v\n%s", err, out)
+	}
+	plist := readFile(t, filepath.Join(home, "Library/LaunchAgents/com.github.srjn45.wdx.plist"))
+	for _, want := range []string{"<key>AbandonProcessGroup</key>\n\t<true/>", "<key>ExitTimeOut</key>\n\t<integer>60</integer>"} {
+		if !strings.Contains(plist, want) {
+			t.Errorf("want %q in the plist, got\n%s", want, plist)
 		}
 	}
 }
