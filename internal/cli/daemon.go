@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -388,4 +389,17 @@ func newDaemonStatusCmd() *cobra.Command {
 			return printResult(cmd, s)
 		},
 	}
+}
+
+// daemonProblem returns the problem of a daemon error, if err is one.
+func daemonProblem(err error) (api.Problem, bool) {
+	e, ok := errors.AsType[*daemon.AlreadyRunningError](err)
+	if !ok {
+		return api.Problem{}, false
+	}
+	p := api.NewProblem(api.ErrorCodeAlreadyRunning, err.Error())
+	if e.PID != 0 {
+		p.Details = &map[string]any{"pid": e.PID}
+	}
+	return p, true
 }

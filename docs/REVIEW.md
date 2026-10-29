@@ -166,7 +166,7 @@ Impact: an update failing at any step ends with the old version answering, or an
 Agreed with the human on 2026-10-29. One `refactor:` commit per item and no behaviour change, except the three marked fixes and the one feature at the end. The items are the lists under "Structure and duplication" and "Readability and consistency" above. In order:
 
 1. Shared helpers: `internal/db` id and exec helpers for both stores; the git test helpers (`gitCmd`, `gitRepo`, `bareRemote`) into `gittest`; holder `greet`; the cli's color mode, `field`, unavailable check and `decodeDetail`; one `eventually` test helper for the four polling loops.
-2. Placement: split `project.go` (errors, paths, store); `terminal history` and the hidden `holder` command into their own cli files; result types in `output.go` and error mappings in one place; the "in use" rules in one daemon file; shared helpers out of `cli_test.go` (the project tests move in Step 5).
+2. Placement: split `project.go` (errors, paths, store); `terminal history` and the hidden `holder` command into their own cli files; result types beside their commands (as daemon, update and observe had them), and error mappings as one `xxxProblem` per command group that `problem` chains; the daemon's project handlers and "in use" rules in `projects.go`; the cli project tests in `project_test.go`, leaving `cli_test.go` the shared helpers.
 3. Logging: `"err", err` everywhere (slog prints the message); `frame` the one key for the frame type; `transition` logs only real changes, and its SQL at debug.
 4. Comments and docs: the stale ones listed; ATTACH_VIEW.md's logs and size handling; attach's output note and `--json` line with `exited`; openapi's `invalid_path` for a relative `dir`.
 5. Rules: AGENTS.md's layout gets `identity`, `gittest`, `holdertest`, `screen` and `cli -> telemetry`; depguard keeps domain packages off daemon, client and cli; forbidigo adds `os.Environ` and `os.UserHomeDir`, and `main` passes what the cli and update need (`startDaemon`, update's daemon start, config's `defaultHome`); `absolute` uses `Env.WorkDir`.
@@ -192,7 +192,7 @@ Still to brainstorm, except the test resource items the human approved on 2026-1
 1. Prompts: the cli tests give `Stdin` a PTY, and each prompt gets a test per answer (create o/n/c, open c/r, stop-running y/n, rollback y/N).
 2. The missing tests listed under "Tests" above, in their packages.
 3. Timing: `TestCompletionLoggedAtDebug` flaked once under the full suite (the cli logged no daemon call, the daemon one request: the 500 ms `completionTimeout` ran out under load); replace `TestPaneReset`'s sleep (done in Step 1), the 20 ms per key, `TestAttachConsistent`'s sleep; wait on stopped and PID 0 in `terminal_test.go:426`.
-4. Cleanup: `TestTerminalAttachConnectionLost` kills its shell in `t.Cleanup`; split tests that chain outcomes; project tests into `project_test.go`.
+4. Cleanup: `TestTerminalAttachConnectionLost` kills its shell in `t.Cleanup`; split tests that chain outcomes.
 5. Migrations: a test checks contiguous numbering, STRICT tables and a checksum of every committed migration (append-only).
 6. CI: a `macos-latest` job running `make test` (on main and tags if cost matters); dist.sh run for the host and `wdx update` against its output; the commit range falls back when `before` is unreachable.
 

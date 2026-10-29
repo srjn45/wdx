@@ -23,21 +23,6 @@ func (e *projectClosedError) Error() string {
 	return fmt.Sprintf("project %s is closed", e.project.Name)
 }
 
-// projectInUseError is returned when a project with live terminals would be
-// closed or removed without stopping them.
-type projectInUseError struct {
-	project   project.Project
-	terminals []terminal.Terminal
-}
-
-func (e *projectInUseError) Error() string {
-	names := make([]string, 0, len(e.terminals))
-	for _, t := range e.terminals {
-		names = append(names, t.Name)
-	}
-	return fmt.Sprintf("project %s has terminals running: %s", e.project.Name, strings.Join(names, ", "))
-}
-
 func (s *server) ListTerminals(ctx context.Context, req api.ListTerminalsRequestObject) (api.ListTerminalsResponseObject, error) {
 	if err := exclusive(req.Params.Project, req.Params.Dir); err != nil {
 		return nil, err
@@ -190,19 +175,6 @@ func (s *server) findTerminal(ctx context.Context, ref string, projectRef, dir *
 		return terminal.Terminal{}, fmt.Errorf("%w: %q is not in project %s", terminal.ErrNotFound, id, p.Name)
 	}
 	return t, err
-}
-
-// stopTerminals stops the project's live terminals before it is closed or
-// removed; without stopRunning it refuses when there are any.
-func (s *server) stopTerminals(ctx context.Context, p project.Project, stopRunning bool) ([]terminal.Terminal, error) {
-	live, err := s.terminals.Live(ctx, p.ID)
-	if err != nil {
-		return nil, err
-	}
-	if len(live) > 0 && !stopRunning {
-		return nil, &projectInUseError{project: p, terminals: live}
-	}
-	return s.terminals.StopProject(ctx, p.ID)
 }
 
 func terminalViews(list []terminal.Terminal) []api.Terminal {

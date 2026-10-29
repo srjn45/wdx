@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"slices"
@@ -431,4 +432,35 @@ func newVersionCmd() *cobra.Command {
 			return printResult(cmd, r)
 		},
 	}
+}
+
+type versionResponse struct {
+	CLI    api.Version  `json:"cli"`
+	Daemon *api.Version `json:"daemon"` // null when no daemon answers
+}
+
+func (r versionResponse) text(w io.Writer, st style.Style) {
+	fmt.Fprintf(w, "%s %s %s\n", r.CLI.Name, st.Name(r.CLI.Version), st.Muted("("+r.CLI.Commit+")"))
+	if r.Daemon == nil {
+		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
+		return
+	}
+	fmt.Fprintf(w, "daemon %s %s\n", st.Name(r.Daemon.Version), st.Muted("("+r.Daemon.Commit+")"))
+}
+
+// absolute makes path absolute against the working directory, which the
+// daemon does not share; "" stays "".
+func absolute(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	return filepath.Abs(path)
+}
+
+// workDir is the directory the command runs in.
+func workDir(cmd *cobra.Command) (string, error) {
+	if dir := invocationOf(cmd).env.WorkDir; dir != "" {
+		return dir, nil
+	}
+	return "", errors.New("the working directory is unknown; pass --project-id or --project-name")
 }

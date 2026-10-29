@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -254,4 +255,29 @@ func newObserveStatusCmd() *cobra.Command {
 			return printResult(cmd, observeStatus{Running: v != nil && v.Status == "running", Runtime: &s.Runtime, Stack: v})
 		},
 	}
+}
+
+// observeProblem returns the problem of an observe error, if err is one.
+func observeProblem(err error) (api.Problem, bool) {
+	var p api.Problem
+	var hint string
+	if _, ok := errors.AsType[*observe.RuntimeMissingError](err); ok {
+		p = api.NewProblem(api.ErrorCodeRuntimeMissing, err.Error())
+		hint = "install Docker or Podman"
+	} else if e, ok := errors.AsType[*observe.PortInUseError](err); ok {
+		p = api.NewProblem(api.ErrorCodePortInUse, err.Error())
+		p.Details = &map[string]any{"port": e.Port}
+		hint = "stop what listens on it"
+	} else if e, ok := errors.AsType[*observe.RuntimeError](err); ok {
+		p = api.NewProblem(api.ErrorCodeRuntimeFailed, err.Error())
+		p.Details = &map[string]any{"runtime": e.Runtime, "output": e.Output}
+		hint = "check that " + e.Runtime + " ps works for your user"
+		if e.Runtime == "docker" && strings.Contains(e.Output, "permission denied") {
+			hint = "add your user to the docker group (sudo usermod -aG docker $USER) and log in again"
+		}
+	} else {
+		return api.Problem{}, false
+	}
+	p.Hint = &hint
+	return p, true
 }

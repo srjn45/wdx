@@ -4,13 +4,17 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"io"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 func newProjectCmd(home string) *cobra.Command {
@@ -470,24 +474,132 @@ func newProjectRemoveCmd() *cobra.Command {
 	return cmd
 }
 
-// absolute makes path absolute against the working directory, which the
-// daemon does not share; "" stays "".
-func absolute(path string) (string, error) {
-	if path == "" {
-		return "", nil
+// projectResult is a project a command changed.
+type projectResult api.ProjectResult
+
+func (r projectResult) text(w io.Writer, st style.Style) {
+	p := r.Project
+	switch {
+	case r.Conflict == nil:
+		fmt.Fprintf(w, "%s project %s\n", st.Success(string(r.Result)), projectName(st, p))
+	case r.Result == api.ResultRegistered:
+		fmt.Fprintf(w, "%s existing repository as project %s; %s\n", st.Success(string(r.Result)), projectName(st, p), st.Warning("nothing was created"))
+	default:
+		fmt.Fprintf(w, "%s existing project %s; %s\n", st.Success(string(r.Result)), projectName(st, p), st.Warning("nothing was created"))
 	}
-	return filepath.Abs(path)
+	fmt.Fprintf(w, "  %s %s\n", st.Muted("origin:   "), originText(st, p.Origin))
+	for i, wt := range p.Worktrees {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", label(i, "worktrees:"))), wt.Path)
+	}
+	if r.Dropped != nil {
+		for _, wt := range *r.Dropped {
+			fmt.Fprintf(w, "  %s %s\n", st.Warning("dropped missing checkout"), wt.Path)
+		}
+	}
+	if r.Stopped != nil {
+		for _, t := range *r.Stopped {
+			fmt.Fprintf(w, "  %s %s %s\n", st.Warning("stopped terminal"), st.Name(t.Name), st.Muted("("+t.Id+")"))
+		}
+	}
+	if r.Started != nil {
+		for _, t := range *r.Started {
+			if t.State == api.TerminalStateRunning {
+				fmt.Fprintf(w, "  %s %s %s\n", st.Success("started terminal"), st.Name(t.Name), st.Muted("("+t.Id+")"))
+			} else {
+				fmt.Fprintf(w, "  %s %s %s: %s\n", st.Failure("terminal did not start"), st.Name(t.Name), st.Muted("("+t.Id+")"), deref(t.Error))
+			}
+		}
+	}
 }
 
-func ptr[T any](v T) *T {
-	return &v
+// projectDetail is a project with which of its checkouts are on disk.
+type projectDetail api.ProjectEnvelope
+
+func (d projectDetail) text(w io.Writer, st style.Style) {
+	p := d.Project
+	field := fieldPrinter(w, st, 10)
+	fmt.Fprintf(w, "project %s\n", projectName(st, p))
+	field("state:", stateText(st, p.State))
+	field("origin:", originText(st, p.Origin))
+	field("created:", p.CreatedAt.Local().Format(time.DateTime))
+	field("updated:", p.UpdatedAt.Local().Format(time.DateTime))
+	if len(p.Worktrees) == 0 {
+		field("worktrees:", st.Muted("(none)"))
+	}
+	for i, wt := range p.Worktrees {
+		missing := ""
+		if wt.Present != nil && !*wt.Present {
+			missing = " " + st.Warning("(missing)")
+		}
+		field(label(i, "worktrees:"), wt.Path+missing)
+	}
+	if p.Terminals != nil {
+		terminals(field, st, *p.Terminals)
+	}
+	if p.Orphaned != nil && *p.Orphaned {
+		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), hintText(st, missingCheckoutHint(p)))
+	}
 }
 
-// optional is nil for the zero value, a pointer to v otherwise.
-func optional[T comparable](v T) *T {
-	var zero T
-	if v == zero {
-		return nil
+// terminals writes one field line per terminal, aligned as a table.
+func terminals(field func(name, value string), st style.Style, list []api.Terminal) {
+	if len(list) == 0 {
+		field("terminals:", st.Muted("(none)"))
+		return
 	}
-	return &v
+	var table style.Table
+	for _, t := range list {
+		table.Row(st.Name(t.Name), terminalStateText(st, t), t.Dir, st.Muted(t.Id))
+	}
+	var b strings.Builder
+	table.Write(&b)
+	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
+		field(label(i, "terminals:"), line)
+	}
+}
+
+// projectList is the projects in state, every project when state is empty.
+type projectList struct {
+	api.ProjectList
+	state api.ProjectState
+}
+
+func (l projectList) text(w io.Writer, st style.Style) {
+	if len(l.Projects) == 0 {
+		if l.state == "" {
+			fmt.Fprintln(w, "no projects")
+		} else {
+			fmt.Fprintf(w, "no %s projects\n", l.state)
+		}
+		return
+	}
+	var table style.Table
+	table.Row(st.Heading("NAME"), st.Heading("ID"), st.Heading("STATE"), st.Heading("ORIGIN"), st.Heading("WORKTREES"))
+	for _, p := range l.Projects {
+		origin := st.Muted("-")
+		if p.Origin != nil {
+			origin = *p.Origin
+		}
+		table.Row(st.Name(p.Name), st.Muted(p.Id), stateText(st, p.State), origin, strconv.Itoa(p.WorktreeCount))
+	}
+	table.Write(w)
+}
+
+// projectName is the name of p followed by its id.
+func projectName(st style.Style, p api.Project) string {
+	return st.Name(p.Name) + " " + st.Muted("("+p.Id+")")
+}
+
+func stateText(st style.Style, state api.ProjectState) string {
+	if state == api.ProjectStateOpen {
+		return st.Success(string(state))
+	}
+	return st.Muted(string(state))
+}
+
+func originText(st style.Style, origin *string) string {
+	if origin == nil {
+		return st.Muted("(none)")
+	}
+	return *origin
 }

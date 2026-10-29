@@ -4,16 +4,16 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
+	"io"
+	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
-	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
-	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 func newTerminalCmd() *cobra.Command {
@@ -56,14 +56,6 @@ func (p projectScope) ref() string {
 		return "id:" + p.id
 	}
 	return p.name
-}
-
-// workDir is the directory the command runs in.
-func workDir(cmd *cobra.Command) (string, error) {
-	if dir := invocationOf(cmd).env.WorkDir; dir != "" {
-		return dir, nil
-	}
-	return "", errors.New("the working directory is unknown; pass --project-id or --project-name")
 }
 
 // outsideHint tells what to do when no project holds the working directory.
@@ -388,34 +380,86 @@ func terminalHint(err error) error {
 	return err
 }
 
-func newHolderCmd() *cobra.Command {
-	var o holder.Options
-	cmd := &cobra.Command{
-		Use:    "holder --id <id> --project <name> --dir <dir> --shell <path> [--history-lines <lines>]",
-		Short:  "Hold a terminal's PTY and shell; the daemon runs it",
-		Hidden: true,
-		Args:   cobra.NoArgs,
-		Annotations: map[string]string{
-			outputNote: "Nothing: it reports to the daemon on fd 3 and on its socket.",
-		},
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			env := invocationOf(cmd).env
-			o.Home = env.Config.Home
-			o.Socket = identity.HolderSocket(o.Home, o.ID)
-			// The daemon starts it with exactly the variables the shell gets.
-			o.Env = env.Terminal
-			o.Ready = os.NewFile(3, "ready")
-			ctx := logging.NewContext(cmd.Context(), logging.FromContext(cmd.Context()).With("terminal_id", o.ID))
-			return holder.Run(ctx, o)
-		},
+// terminalResult is a terminal a command changed.
+type terminalResult api.TerminalResult
+
+func (r terminalResult) text(w io.Writer, st style.Style) {
+	t := r.Terminal
+	in := "in"
+	if r.Result == api.ResultRemoved {
+		in = "from"
 	}
-	cmd.Flags().StringVar(&o.ID, "id", "", "`id` of the terminal")
-	cmd.Flags().StringVar(&o.Project, "project", "", "`name` of its project")
-	cmd.Flags().StringVar(&o.Dir, "dir", "", "`dir` the shell starts in")
-	cmd.Flags().StringVar(&o.Shell, "shell", "", "`path` of the shell")
-	cmd.Flags().Int64Var(&o.HistoryLines, "history-lines", 0, "`lines` of history kept; 0 keeps none")
-	for _, name := range strings.Fields("id project dir shell") {
-		cmd.MarkFlagRequired(name)
+	fmt.Fprintf(w, "%s terminal %s %s %s\n", st.Success(string(r.Result)), st.Name(t.Name), in, st.Name(t.ProjectName))
+	field := fieldPrinter(w, st, 6)
+	field("dir", t.Dir)
+	field("shell", t.Shell)
+	field("id", t.Id)
+}
+
+// terminalList is a list of terminals; all says they may belong to several
+// projects.
+type terminalList struct {
+	api.TerminalList
+	all bool
+}
+
+func (l terminalList) text(w io.Writer, st style.Style) {
+	if len(l.Terminals) == 0 {
+		fmt.Fprintln(w, "no terminals")
+		return
 	}
-	return cmd
+	var table style.Table
+	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("DIR"), st.Heading("ID")}
+	if l.all {
+		heading = append([]string{st.Heading("PROJECT")}, heading...)
+	}
+	table.Row(heading...)
+	for _, t := range l.Terminals {
+		row := []string{st.Name(t.Name), terminalStateText(st, t), t.Dir, st.Muted(t.Id)}
+		if l.all {
+			row = append([]string{st.Name(t.ProjectName)}, row...)
+		}
+		table.Row(row...)
+	}
+	table.Write(w)
+}
+
+// terminalDetail is one terminal, in any state.
+type terminalDetail api.TerminalEnvelope
+
+func (d terminalDetail) text(w io.Writer, st style.Style) {
+	t := d.Terminal
+	field := fieldPrinter(w, st, 8)
+	fmt.Fprintf(w, "terminal %s in %s\n", st.Name(t.Name), st.Name(t.ProjectName))
+	field("state", terminalStateText(st, t))
+	if t.Error != nil {
+		field("error", st.Failure(*t.Error))
+	}
+	field("dir", t.Dir)
+	field("shell", t.Shell)
+	if t.Pid != nil {
+		field("pid", strconv.Itoa(*t.Pid))
+	}
+	field("id", t.Id)
+	field("created", t.CreatedAt.Local().Format(time.DateTime))
+	if t.StartedAt != nil {
+		field("started", t.StartedAt.Local().Format(time.DateTime))
+	}
+	if t.EndedAt != nil {
+		field("ended", t.EndedAt.Local().Format(time.DateTime))
+	}
+}
+
+func terminalStateText(st style.Style, t api.Terminal) string {
+	switch t.State {
+	case api.TerminalStateRunning, api.TerminalStateStarting:
+		return st.Success(string(t.State))
+	case api.TerminalStateExited:
+		if t.ExitCode != nil {
+			return fmt.Sprintf("exited (%d)", *t.ExitCode)
+		}
+	case api.TerminalStateFailed, api.TerminalStateLost:
+		return st.Failure(string(t.State))
+	}
+	return st.Muted(string(t.State))
 }
