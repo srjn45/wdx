@@ -116,17 +116,26 @@ func (r releases) download(ctx context.Context, version, dir string) (string, er
 		return "", err
 	}
 	url := r.base + "/v" + version + "/" + name
-	body, err := r.get(ctx, url)
+	// Streamed to disk through the hash: the archive is never all in memory.
+	f, err := os.Create(filepath.Join(dir, name))
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(body)
-	if want, ok := checksum(sums, name); !ok || want != hex.EncodeToString(sum[:]) {
-		logging.FromContext(ctx).Error("checksum mismatch", "archive", name, "want", want, "got", hex.EncodeToString(sum[:]))
+	defer f.Close()
+	hash := sha256.New()
+	if err := r.fetch(ctx, url, io.MultiWriter(f, hash)); err != nil {
+		return "", err
+	}
+	got := hex.EncodeToString(hash.Sum(nil))
+	if want, ok := checksum(sums, name); !ok || want != got {
+		logging.FromContext(ctx).Error("checksum mismatch", "archive", name, "want", want, "got", got)
 		return "", &ChecksumError{Archive: name}
 	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
 	path := filepath.Join(dir, identity.Name)
-	if err := extract(body, identity.Name, path); err != nil {
+	if err := extract(f, identity.Name, path); err != nil {
 		return "", fmt.Errorf("extract %s: %w", name, err)
 	}
 	logging.FromContext(ctx).Info("release downloaded", "version", version, "archive", url, "path", path)
@@ -145,8 +154,8 @@ func checksum(sums []byte, file string) (string, bool) {
 }
 
 // extract writes the file name of the tar.gz archive to dest, executable.
-func extract(archive []byte, name, dest string) error {
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
+func extract(archive io.Reader, name, dest string) error {
+	gz, err := gzip.NewReader(archive)
 	if err != nil {
 		return err
 	}
@@ -174,22 +183,31 @@ func extract(archive []byte, name, dest string) error {
 	}
 }
 
+// get returns a small file of the releases: a tag or the checksums.
 func (r releases) get(ctx context.Context, url string) ([]byte, error) {
+	var body bytes.Buffer
+	if err := r.fetch(ctx, url, &body); err != nil {
+		return nil, err
+	}
+	return body.Bytes(), nil
+}
+
+// fetch writes the file at url to w.
+func (r releases) fetch(ctx context.Context, url string, w io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, &DownloadError{URL: url, Err: err}
+		return &DownloadError{URL: url, Err: err}
 	}
 	resp, err := r.http.Do(req)
 	if err != nil {
-		return nil, &DownloadError{URL: url, Err: err}
+		return &DownloadError{URL: url, Err: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, &DownloadError{URL: url, Err: errors.New(resp.Status)}
+		return &DownloadError{URL: url, Err: errors.New(resp.Status)}
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, &DownloadError{URL: url, Err: err}
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		return &DownloadError{URL: url, Err: err}
 	}
-	return body, nil
+	return nil
 }
