@@ -71,7 +71,7 @@ It never waits for the vt or for a client, so the shell never blocks on either. 
 `charmbracelet/x/vt` (MIT), wrapped in a `screen` type of our own, fed from the spool by one goroutine.
 
 - **Screen**: cells with colors and style, cursor position, visibility and style, scroll region, title, and the modes a program sets (alternate screen, application cursor keys and keypad, bracketed paste, mouse reporting, focus events, autowrap), tracked through the vt's mode callbacks since it exposes no getter.
-- **History**: the vt's scrollback is kept small and harvested after every chunk fed (chunks are at most 8 KiB, so at most 8192 lines, below the scrollback's size): each line is rendered with its style and appended to history, then the scrollback is cleared. The vt then holds only the screen: about 100 KB per terminal instead of ~94 MiB for 10,000 lines kept in it.
+- **History**: the vt's scrollback is harvested after every 1 KiB it parses, which cannot push more lines than its 65,536 (a screen's height per 4 bytes, for screens up to 256 rows): each line is rendered with its style and links and appended to history, then the scrollback is cleared. The vt then holds only the screen: about 100 KB per terminal instead of ~94 MiB for 10,000 lines kept in it (but see the alternate screen in docs/VT.md).
 - Only the main screen scrolls into history: what vim, less or htop show on the alternate screen never does, as in every terminal. `clear` pushes the screen into history before clearing it; a program's "clear scrollback" (`ESC[3J`) does not delete history.
 - **Panics**: the vt panics on some input (a scroll region taller than the screen, which output racing a resize produces). Every write recovers, resets the vt to an empty screen of the current size and writes a gap marker into history. The shell and the attached clients are untouched; the next screen the program draws is right again.
 - **Queries**: programs ask the terminal things (cursor position, device attributes, colors). While a client is attached its terminal answers them, through the live stream; the vt's answers are dropped. With none attached the vt answers, so a program that waits for an answer does not hang.
@@ -185,7 +185,7 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 `github.com/charmbracelet/x/vt` and what it brings: `charmbracelet/ultraviolet`, `charmbracelet/x/ansi`, `rivo/uniseg`, `clipperhouse/uax29`, `lucasb-eyer/go-colorful`, `mattn/go-runewidth` and others, all MIT. `x/vt` is pre-1.0: we pin it, wrap it in `screen` so only one file uses it, and keep a round-trip test (below) that catches a regression on upgrade.
 
-Known issues, to report upstream: the panic above, and its speed (about 1.5 MB/s; every scrolled line copies the screen cell by cell, and a full scrollback deletes from the front of a slice). The spool keeps both away from the shell.
+`x/vt` has bugs, gaps and a speed limit, found by the spike and step 2; docs/VT.md lists them with their repros, fixes and the workarounds in `screen`. Attach is built on upstream as is first; the fixes go to our fork `srjn45/x` afterwards, and upstream.
 
 ## Tests
 
