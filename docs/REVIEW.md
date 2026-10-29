@@ -108,7 +108,7 @@ Smaller ones in the same code: `writeClient` can slice with a negative `n` if th
 1. Terminal runtime bugs and the shared vt wrapper: H1–H5, C1, C2, D1. Done; below.
 2. Daemon lifecycle: D2–D6, D13.
 3. `wdx update` failure handling: U1–U5.
-4. Tidying: duplication, placement, logging, stale comments, names. Designed; below.
+4. Tidying: duplication, placement, logging, stale comments, names. Done; below.
 5. Test gaps, macOS in CI.
 
 Then the vt fork (docs/VT.md), which after Step 1 is one swap in `internal/screen`.
@@ -163,7 +163,7 @@ Impact: an update failing at any step ends with the old version answering, or an
 
 ## Step 4 design: tidying
 
-Agreed with the human on 2026-10-29. One `refactor:` commit per item and no behaviour change, except the three marked fixes and the one feature at the end. The items are the lists under "Structure and duplication" and "Readability and consistency" above. In order:
+Agreed with the human on 2026-10-29. **Done** (a088332..e4d95e7), with these differences: result types went beside their commands, not into `output.go`; config's default home stays the one marked read of the environment outside `main` (it is the settings table's default, which help and `Default` show), and install.sh and dist.sh keep their own sha256 (install.sh runs alone); item 6 is a `feat:` (the failure prefixes and the project hint show), and item 8 a `chore:`; `TestLost` flaked once (it killed the shell before the holder) and was fixed in b6d8c47. One `refactor:` commit per item and no behaviour change, except the three marked fixes and the one feature at the end. The items are the lists under "Structure and duplication" and "Readability and consistency" above. In order:
 
 1. Shared helpers: `internal/db` id and exec helpers for both stores; the git test helpers (`gitCmd`, `gitRepo`, `bareRemote`) into `gittest`; holder `greet`; the cli's color mode, `field`, unavailable check and `decodeDetail`; one `eventually` test helper for the four polling loops.
 2. Placement: split `project.go` (errors, paths, store); `terminal history` and the hidden `holder` command into their own cli files; result types beside their commands (as daemon, update and observe had them), and error mappings as one `xxxProblem` per command group that `problem` chains; the daemon's project handlers and "in use" rules in `projects.go`; the cli project tests in `project_test.go`, leaving `cli_test.go` the shared helpers.
