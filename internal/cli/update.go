@@ -53,7 +53,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			outputNote: "Without a flag, the installed version, the newest on the channel and whether it is newer;\n" +
 				"with --apply or --rollback, the versions and schema versions before and after.\n" +
 				`With --json: {"update": {"current": ..., "latest": ..., "channel": ..., "available": ...}}, or` + "\n" +
-				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}}`,
+				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}, "warnings": [...]}`,
 			resultList: annotation("rolled_back", "up_to_date", "updated"),
 			errorList: codeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
 				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeSettingsInvalid, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
@@ -76,13 +76,13 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 				if r.UpToDate {
 					result = "up_to_date"
 				}
-				return printResult(cmd, newUpdateResult(result, r, &channel))
+				return printUpdateResult(cmd, newUpdateResult(result, r, &channel))
 			case rollback:
 				r, err := rollBack(cmd, o, discardChanges)
 				if err != nil {
 					return err
 				}
-				return printResult(cmd, newUpdateResult("rolled_back", r, nil))
+				return printUpdateResult(cmd, newUpdateResult("rolled_back", r, nil))
 			}
 			s, err := update.Check(cmd.Context(), o, channel, version)
 			if err != nil {
@@ -187,6 +187,8 @@ func (c updateCheck) text(w io.Writer, st style.Style) {
 type updateResult struct {
 	Result string       `json:"result"`
 	Update updateChange `json:"update"`
+	// Warnings are what failed once the version switched to ran.
+	Warnings []string `json:"warnings"`
 }
 
 type updateChange struct {
@@ -214,7 +216,19 @@ func newUpdateResult(result string, r update.Result, channel *string) updateResu
 	if r.Settings != nil {
 		u.Settings = &updateSettings{Added: r.Settings.Added, Dropped: r.Settings.Dropped}
 	}
-	return updateResult{Result: result, Update: u}
+	return updateResult{Result: result, Update: u, Warnings: r.Warnings}
+}
+
+// printUpdateResult prints r, and in text its warnings on stderr.
+func printUpdateResult(cmd *cobra.Command, r updateResult) error {
+	if err := printResult(cmd, r); err != nil || jsonMode(cmd) {
+		return err
+	}
+	st := stderrStyle(cmd)
+	for _, w := range r.Warnings {
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s %s\n", identity.Name, st.Warning("warning:"), w)
+	}
+	return nil
 }
 
 func (r updateResult) text(w io.Writer, st style.Style) {

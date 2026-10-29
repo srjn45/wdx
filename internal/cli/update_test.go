@@ -249,6 +249,9 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		*v.Update.Channel != "stable" || v.Update.SchemaFrom != db.Known() || v.Update.SchemaTo != db.Known() || v.Update.DataRestored != nil {
 		t.Fatalf("want updated to %s, got exit %d, %+v", releaseVersion, exit, v.Update)
 	}
+	if v.Warnings == nil || len(v.Warnings) != 0 {
+		t.Fatalf("want no warnings, got %#v", v.Warnings)
+	}
 	if s := v.Update.Settings; s == nil || !slices.Contains(s.Added, "update.channel") || slices.Contains(s.Added, "update.base_url") || len(s.Dropped) != 0 {
 		t.Fatalf("want the settings not set added, got %+v", v.Update.Settings)
 	}
@@ -273,6 +276,9 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	v, exit = in.json(t, "update", "--rollback")
 	if exit != api.ExitOK || v.Result != "rolled_back" || v.Update.To != identity.Version || v.Update.Channel != nil || *v.Update.DataRestored {
 		t.Fatalf("want rolled back keeping the database, got exit %d, %+v", exit, v.Update)
+	}
+	if v.Warnings == nil || len(v.Warnings) != 0 {
+		t.Fatalf("want no warnings, got %#v", v.Warnings)
 	}
 	in.wantInstalled(t, wdxBinary)
 	in.wantDaemon(t, identity.Version)
@@ -363,6 +369,41 @@ func TestUpdateUndone(t *testing.T) {
 	if _, err := os.Stat(identity.PreviousDir(in.home)); !os.IsNotExist(err) {
 		t.Fatalf("want nothing kept after a failed update, got %v", err)
 	}
+}
+
+// TestUpdateKeepsPrevious updates where the version kept before cannot be
+// deleted: the update succeeds with a warning, and the version it replaced
+// is kept for a rollback all the same.
+func TestUpdateKeepsPrevious(t *testing.T) {
+	t.Parallel()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatal("the daemon did not start")
+	}
+	prev := identity.PreviousDir(in.home)
+	writeFile(t, filepath.Join(prev, "previous.json"), `{"version": "0.0.1", "schema": 1}`)
+	writeFile(t, filepath.Join(prev, "locked", "file"), "")
+	if err := os.Chmod(filepath.Join(prev, "locked"), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for _, dir := range []string{prev, prev + ".old"} {
+			_ = os.Chmod(filepath.Join(dir, "locked"), 0o700)
+		}
+	})
+
+	v, exit := in.json(t, "update", "--apply")
+	if exit != api.ExitOK || v.Result != "updated" || len(v.Warnings) != 1 || !strings.Contains(v.Warnings[0], prev+".old") {
+		t.Fatalf("want updated with a warning, got exit %d, %+v, %q", exit, v.Update, v.Warnings)
+	}
+	if got := readFile(t, filepath.Join(prev, "previous.json")); !strings.Contains(got, `"version":"`+identity.Version+`"`) {
+		t.Fatalf("want the replaced version kept, got %s", got)
+	}
+	if v, exit := in.json(t, "update", "--rollback"); exit != api.ExitOK || v.Result != "rolled_back" {
+		t.Fatalf("want a rollback, got exit %d, %+v", exit, v)
+	}
+	in.wantDaemon(t, identity.Version)
 }
 
 // TestUpdateUndoneStopsItsDaemon installs a release whose daemon starts but

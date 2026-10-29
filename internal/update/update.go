@@ -64,6 +64,9 @@ type Result struct {
 	// Settings is how the update changed the config file; nil for a
 	// rollback, which puts back the file the update replaced.
 	Settings *Settings
+	// Warnings are what failed once the switch succeeded: the version
+	// installed runs, but what they say needs a look.
+	Warnings []string
 }
 
 // Settings is how the new release wrote the config file anew.
@@ -185,7 +188,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 			return Result{}, &OlderError{Current: o.Current, Requested: target}
 		}
 		log.Info("already up to date", "version", o.Current, "latest", target)
-		return Result{From: o.Current, To: o.Current, SchemaFrom: from.Version, SchemaTo: from.Version, UpToDate: true}, nil
+		return Result{From: o.Current, To: o.Current, SchemaFrom: from.Version, SchemaTo: from.Version, UpToDate: true, Warnings: []string{}}, nil
 	}
 
 	dir, err := os.MkdirTemp(o.Home, "update-")
@@ -208,37 +211,68 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	if err := keep(ctx, o, replaced); err != nil {
-		os.RemoveAll(replaced)
-		return Result{}, err
+	// The new version runs: what fails from here on is a warning.
+	r := Result{From: o.Current, To: target, SchemaFrom: from.Version, Settings: &settings, Warnings: []string{}}
+	if warning, err := keep(ctx, o, replaced); err != nil {
+		log.Error("replaced version not kept", "dir", replaced, "err", err.Error())
+		r.Warnings = append(r.Warnings, fmt.Sprintf("%s %s is not kept for a rollback: %v; its binary, database and config file are in %s", identity.Name, o.Current, err, replaced))
+	} else if warning != "" {
+		r.Warnings = append(r.Warnings, warning)
 	}
+	r.SchemaTo = r.schemaTo(ctx, dbPath)
+	log.Info("updated", "from", o.Current, "to", target, "schema_from", from.Version, "schema_to", r.SchemaTo, "settings_added", settings.Added, "settings_dropped", settings.Dropped, "warnings", r.Warnings)
+	return r, nil
+}
+
+// schemaTo reads the schema version the switch left, or warns that it
+// could not.
+func (r *Result) schemaTo(ctx context.Context, dbPath string) int {
 	to, err := db.ReadSchema(ctx, dbPath)
 	if err != nil {
-		return Result{}, err
+		logging.FromContext(ctx).Error("schema version not read", "err", err.Error())
+		r.Warnings = append(r.Warnings, "the database's schema version could not be read: "+err.Error())
+		return 0
 	}
-	log.Info("updated", "from", o.Current, "to", target, "schema_from", from.Version, "schema_to", to.Version, "settings_added", settings.Added, "settings_dropped", settings.Dropped)
-	return Result{From: o.Current, To: target, SchemaFrom: from.Version, SchemaTo: to.Version, Settings: &settings}, nil
+	return to.Version
 }
 
 // keep makes the replaced binary and database the previous version, in
-// place of the one kept before.
-func keep(ctx context.Context, o Options, replaced string) error {
+// place of the one kept before, which is set aside until the new one is in
+// place: a failure leaves it kept. warning is a cleanup that failed after.
+func keep(ctx context.Context, o Options, replaced string) (warning string, err error) {
+	log := logging.FromContext(ctx)
 	b, err := json.Marshal(previous{Version: o.Current, Schema: db.Known()})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(replaced, "previous.json"), b, 0o600); err != nil {
-		return err
+		return "", err
 	}
 	dir := identity.PreviousDir(o.Home)
-	if err := os.RemoveAll(dir); err != nil {
-		return err
+	old := dir + ".old"
+	if exists(dir) {
+		// An old one beside it was left by a keep cut short: dir is newer.
+		if err := os.RemoveAll(old); err != nil {
+			return "", err
+		}
+		if err := os.Rename(dir, old); err != nil {
+			return "", err
+		}
 	}
 	if err := os.Rename(replaced, dir); err != nil {
-		return err
+		if exists(old) {
+			if err := os.Rename(old, dir); err != nil {
+				log.Error("previous version not put back", "dir", old, "err", err.Error())
+			}
+		}
+		return "", err
 	}
-	logging.FromContext(ctx).Info("previous version kept", "version", o.Current, "schema", db.Known(), "dir", dir)
-	return nil
+	log.Info("previous version kept", "version", o.Current, "schema", db.Known(), "dir", dir)
+	if err := os.RemoveAll(old); err != nil {
+		log.Error("version kept before not deleted", "dir", old, "err", err.Error())
+		return fmt.Sprintf("the version kept before is left in %s: %v", old, err), nil
+	}
+	return "", nil
 }
 
 // Rollback installs the previous version again. The database stays when
@@ -288,16 +322,17 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	os.RemoveAll(replaced)
-	if err := os.RemoveAll(dir); err != nil {
-		return Result{}, err
+	// The previous version runs: what fails from here on is a warning.
+	r := Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, DataRestored: restore, Warnings: []string{}}
+	for _, left := range []string{replaced, dir} {
+		if err := os.RemoveAll(left); err != nil {
+			log.Error("not deleted after the rollback", "dir", left, "err", err.Error())
+			r.Warnings = append(r.Warnings, fmt.Sprintf("%s is left behind: %v", left, err))
+		}
 	}
-	to, err := db.ReadSchema(ctx, dbPath)
-	if err != nil {
-		return Result{}, err
-	}
-	log.Info("rolled back", "from", o.Current, "to", p.Version, "data_restored", restore)
-	return Result{From: o.Current, To: p.Version, SchemaFrom: from.Version, SchemaTo: to.Version, DataRestored: restore}, nil
+	r.SchemaTo = r.schemaTo(ctx, dbPath)
+	log.Info("rolled back", "from", o.Current, "to", p.Version, "data_restored", restore, "warnings", r.Warnings)
+	return r, nil
 }
 
 // switchTo stops the daemon, installs binary in place of the installed one,

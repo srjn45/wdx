@@ -357,6 +357,7 @@ type jsonOutput struct {
 			Dropped []string `json:"dropped"`
 		} `json:"settings"`
 	} `json:"update"`
+	Warnings []string `json:"warnings"`
 
 	Settings *struct {
 		Path    string   `json:"path"`
