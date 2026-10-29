@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,13 +17,14 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// stopGrace is how long a shell has to end after it is hung up on, before
-// its holder kills it.
-const stopGrace = 5 * time.Second
+// DefaultStopGrace is how long a shell has to end after it is hung up on,
+// before its holder kills it, unless Options say otherwise.
+const DefaultStopGrace = 5 * time.Second
 
-// stopWait bounds how long stopping waits for the holder to report the
-// shell's exit; past it the holder and shell are killed from here.
-const stopWait = stopGrace + 5*time.Second
+// stopReport is how long past the grace stopping waits for the holder to
+// report the shell's exit; past it the holder and shell are killed from
+// here.
+const stopReport = 5 * time.Second
 
 // RunningError is returned when a terminal is starting or running and the
 // request needs it not to be.
@@ -58,6 +60,9 @@ type Options struct {
 	Shell string
 	// HistoryLines bounds each terminal's history; 0 keeps none.
 	HistoryLines int64
+	// StopGrace is how long a shell has to end after it is hung up on;
+	// DefaultStopGrace when 0.
+	StopGrace time.Duration
 }
 
 // Supervisor starts terminals' holders, watches them and stops them. It
@@ -71,6 +76,7 @@ type Supervisor struct {
 
 	mu      sync.Mutex
 	watches map[string]*watch // by terminal id
+	closed  bool              // no more watching: the daemon is stopping
 }
 
 // watch is a terminal's live connection and the goroutine following it.
@@ -90,6 +96,7 @@ func (w *watch) current() *holder.Conn {
 // watchers run until Close, logging with ctx's logger.
 func NewSupervisor(ctx context.Context, store *Store, o Options) *Supervisor {
 	ctx, stop := context.WithCancel(context.WithoutCancel(ctx))
+	o.StopGrace = cmp.Or(o.StopGrace, DefaultStopGrace)
 	return &Supervisor{store: store, opts: o, ctx: ctx, stop: stop, watches: map[string]*watch{}}
 }
 
@@ -103,6 +110,7 @@ func (s *Supervisor) Store() *Store {
 func (s *Supervisor) Close() {
 	s.stop()
 	s.mu.Lock()
+	s.closed = true
 	watches := make([]*watch, 0, len(s.watches))
 	for _, w := range s.watches {
 		watches = append(watches, w)
@@ -112,6 +120,11 @@ func (s *Supervisor) Close() {
 		w.current().Close()
 		<-w.done
 	}
+}
+
+// StopWait bounds how long stopping a terminal takes.
+func (s *Supervisor) StopWait() time.Duration {
+	return s.opts.StopGrace + stopReport
 }
 
 // Create adds a terminal named name, or a generated codename when name is
@@ -326,14 +339,14 @@ func (s *Supervisor) stopOne(ctx context.Context, t Terminal) error {
 		_, err := s.store.ended(ctx, t.ID, time.Now())
 		return err
 	}
-	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", stopGrace.Milliseconds())
-	if err := w.current().Stop(stopGrace); err != nil {
+	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", s.opts.StopGrace.Milliseconds())
+	if err := w.current().Stop(s.opts.StopGrace); err != nil {
 		log.Info("stop not sent", "terminal_id", t.ID, "err", err.Error())
 	}
 	select {
 	case <-w.done:
 		return nil
-	case <-time.After(stopWait):
+	case <-time.After(s.StopWait()):
 	}
 	log.Error("holder did not report the shell gone, killing both", "terminal_id", t.ID, "holder_pid", t.HolderPID, "pid", t.PID)
 	kill(t.HolderPID, t.PID)
@@ -383,7 +396,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		s.follow(t.ID, conn)
 		if t.State == StateStopped && hello.Exited == nil {
 			log.Info("finishing the stop", "terminal_id", t.ID)
-			if err := conn.Stop(stopGrace); err != nil {
+			if err := conn.Stop(s.opts.StopGrace); err != nil {
 				log.Info("stop not sent", "terminal_id", t.ID, "err", err.Error())
 			}
 		}
@@ -393,10 +406,17 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 
 // follow watches conn until the shell exits, then records the exit and
 // releases the holder. A connection that drops is dialled again once; a
-// holder that does not answer is lost.
+// holder that does not answer is lost. Once the Supervisor is closed it
+// closes conn instead: the next daemon adopts the holder.
 func (s *Supervisor) follow(id string, conn *holder.Conn) {
 	w := &watch{conn: conn, done: make(chan struct{})}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		logging.FromContext(s.ctx).Info("holder not followed: the daemon is stopping", "terminal_id", id)
+		conn.Close()
+		return
+	}
 	s.watches[id] = w
 	s.mu.Unlock()
 	go func() {

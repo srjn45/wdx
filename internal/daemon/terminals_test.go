@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/terminal"
 )
 
 // testShell is the shell of every test terminal: it stays alive until it
@@ -99,6 +101,58 @@ func TestCreateTerminalClientLeaves(t *testing.T) {
 			t.Fatalf("want the terminal running, got %+v", terms)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestStopDuringLongChange stops the daemon while closing a project takes
+// longer than the shutdown limit: the daemon cancels the change, and waits
+// for the terminal it was stopping before closing the database, so the
+// stop is recorded. The project stays open: its close was cancelled.
+func TestStopDuringLongChange(t *testing.T) {
+	t.Parallel()
+	shell := filepath.Join(t.TempDir(), "shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\ntrap '' HUP\ntouch trapped\nwhile :; do sleep 1; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.TerminalShell, o.ShutdownTimeout, o.StopGrace = shell, 100*time.Millisecond, time.Second
+	})
+	root := td.create(t, "app").Worktrees[0].Path
+	term := td.createTerminal(t, "app", root, "api")
+	waitFile(t, filepath.Join(root, "trapped")) // a hangup before the trap ends the shell at once
+	go func() {
+		// Cut short by the daemon stopping.
+		_, _ = td.client.UpdateProjectWithResponse(context.Background(), "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)})
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for td.terminals(t, nil)[0].State != api.TerminalStateStopped {
+		if time.Now().After(deadline) {
+			t.Fatal("the terminal is not being stopped")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	td.stop()
+
+	d, err := db.Open(context.Background(), identity.DBPath(td.home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	got, err := terminal.NewStore(d).Get(context.Background(), term.Id)
+	if err != nil || got.State != terminal.StateStopped || got.EndedAt.IsZero() {
+		t.Fatalf("want the stop recorded, got %+v, %v", got, err)
+	}
+}
+
+// waitFile waits for path to exist.
+func waitFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -378,7 +432,7 @@ func TestSweepTerminalDirs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(stray, "history"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	startOn(t, home, telemetry.Options{})
+	startOn(t, home, telemetry.Options{}, nil)
 	wantNoTerminalDir(t, home, "term-0badc0de")
 }
 
@@ -494,7 +548,7 @@ func TestTerminalsOutliveDaemon(t *testing.T) {
 	}
 
 	// The next daemon adopts it before it serves.
-	next := startOn(t, td.home, telemetry.Options{})
+	next := startOn(t, td.home, telemetry.Options{}, nil)
 	list := next.terminals(t, nil)
 	if len(list) != 1 || list[0].State != api.TerminalStateRunning || *list[0].Pid != *term.Pid {
 		t.Fatalf("want %s adopted running, got %+v", term.Name, list)

@@ -49,13 +49,13 @@ func start(t *testing.T) *testDaemon {
 // startMeasured is start, with the daemon's metrics going where metrics says.
 func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 	t.Helper()
-	return startOn(t, shortDir(t), metrics)
+	return startOn(t, shortDir(t), metrics, nil)
 }
 
-// startOn is startMeasured on an existing home. Its terminals run
-// testShell from this test binary, and are removed when the test ends
-// unless the daemon was stopped before.
-func startOn(t *testing.T, home string, metrics telemetry.Options) *testDaemon {
+// startOn is startMeasured on an existing home, with the Options adjust
+// changes when not nil. Its terminals run testShell from this test binary,
+// and are removed when the test ends unless the daemon was stopped before.
+func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*Options)) *testDaemon {
 	t.Helper()
 	td := &testDaemon{home: home, socket: socketPath(t)}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
@@ -68,10 +68,14 @@ func startOn(t *testing.T, home string, metrics telemetry.Options) *testDaemon {
 	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	d, err := Listen(ctx, Options{
+	o := Options{
 		Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics,
 		Executable: exe, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
-	})
+	}
+	if adjust != nil {
+		adjust(&o)
+	}
+	d, err := Listen(ctx, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +83,8 @@ func startOn(t *testing.T, home string, metrics telemetry.Options) *testDaemon {
 	go func() { served <- d.Serve(ctx) }()
 	td.stop = sync.OnceFunc(func() {
 		cancel()
-		if err := <-served; err != nil {
+		// Requests that outlive a short ShutdownTimeout are cut short.
+		if err := <-served; err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("serve: %v", err)
 		}
 	})

@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -29,9 +30,10 @@ import (
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
-// shutdownTimeout is how long requests in flight get to finish once the
-// daemon is asked to stop; a clone may take a while.
-const shutdownTimeout = 30 * time.Second
+// DefaultShutdownTimeout is how long requests in flight get to finish once
+// the daemon is asked to stop, unless Options say otherwise; a clone may
+// take a while.
+const DefaultShutdownTimeout = 30 * time.Second
 
 // Options configure a daemon.
 type Options struct {
@@ -49,6 +51,14 @@ type Options struct {
 	TerminalShell string
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
 	TerminalHistoryLines int64
+
+	// ShutdownTimeout is how long requests in flight get once the daemon
+	// is asked to stop, before the changes among them are cancelled;
+	// DefaultShutdownTimeout when 0.
+	ShutdownTimeout time.Duration
+	// StopGrace is how long a shell has to end after it is hung up on;
+	// terminal.DefaultStopGrace when 0.
+	StopGrace time.Duration
 }
 
 // Daemon is a daemon listening on its socket.
@@ -61,7 +71,11 @@ type Daemon struct {
 	store     *project.Store
 	terminals *terminal.Supervisor
 	changes   sync.Mutex // one request changing state at a time
-	started   time.Time
+	// abort is cancelled when the changes in flight at shutdown have run
+	// out of time.
+	abort        context.Context
+	abortChanges context.CancelFunc
+	started      time.Time
 
 	stopMetrics     func(context.Context) error
 	requestDuration metric.Float64Histogram
@@ -86,7 +100,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if opts.Socket == "" {
 		opts.Socket = identity.SocketPath(opts.Home)
 	}
+	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
 	d := &Daemon{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now()}
+	d.abort, d.abortChanges = context.WithCancel(context.Background())
 	defer func() {
 		if err != nil {
 			d.close()
@@ -131,6 +147,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Env:          opts.TerminalEnv,
 		Shell:        opts.TerminalShell,
 		HistoryLines: opts.TerminalHistoryLines,
+		StopGrace:    opts.StopGrace,
 	})
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
@@ -243,11 +260,12 @@ func (d *Daemon) Serve(ctx context.Context) error {
 		d.log.Error("daemon stopped serving", "err", err)
 	case <-ctx.Done():
 		d.log.Info("daemon stopping")
-		shutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		shutdown, cancel := context.WithTimeout(context.Background(), d.opts.ShutdownTimeout)
 		defer cancel()
 		if err = srv.Shutdown(shutdown); err != nil {
 			d.log.Error("requests cut short", "err", err)
 			srv.Close()
+			d.cancelChanges()
 		}
 		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
 			d.log.Error("daemon stopped serving", "err", err)
@@ -256,6 +274,24 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	d.close()
 	d.log.Info("daemon stopped", "uptime_ms", time.Since(d.started).Milliseconds())
 	return err
+}
+
+// cancelChanges cancels the change still running when the daemon stops,
+// and waits for it to end before the database and the terminals go:
+// stopping terminals, which waits on timers, bounds the wait.
+func (d *Daemon) cancelChanges() {
+	d.abortChanges()
+	ended := make(chan struct{})
+	go func() {
+		d.changes.Lock() // held for good: the daemon takes no more changes
+		close(ended)
+	}()
+	select {
+	case <-ended:
+		d.log.Info("change cancelled and ended")
+	case <-time.After(d.terminals.StopWait()):
+		d.log.Error("change still running after it was cancelled")
+	}
 }
 
 // close releases what Listen took; the listener removes the socket.

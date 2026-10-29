@@ -4,7 +4,7 @@ Every `wdx` command that touches projects or terminals is served by the daemon: 
 
 ```
 wdx daemon start      start it (through the service when installed) and wait until it answers
-wdx daemon stop       stop it, letting requests in flight finish
+wdx daemon stop       stop it, letting requests in flight finish (a change still running after 30 s is cancelled)
 wdx daemon restart    after updating wdx by hand or changing ~/.wdx/config.yaml
 wdx daemon status     running or not, pid, version, uptime, socket, service manager
 ```

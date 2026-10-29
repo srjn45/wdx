@@ -374,6 +374,21 @@ func TestLost(t *testing.T) {
 
 // TestReconcile stops a daemon's supervisor, changes what its terminals'
 // holders do while none runs, and starts another, which must find out.
+// TestCreateAfterClose launches a terminal once the Supervisor is closed,
+// as a change the stopping daemon waits for does: its holder is left for
+// the next daemon to adopt, not watched by a watcher nothing would stop.
+func TestCreateAfterClose(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := NewSupervisor(context.Background(), NewStore(f.db), f.opts)
+	s.Close()
+	term := create(t, s, f.project(t, "warden"), "late", dir(t, ""))
+	t.Cleanup(func() { kill(term.HolderPID, term.PID) })
+	if s.watching(term.ID) || !alive(term.HolderPID) {
+		t.Fatalf("want the holder running and not watched, got watched %v", s.watching(term.ID))
+	}
+}
+
 func TestReconcile(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

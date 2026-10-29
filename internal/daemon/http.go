@@ -74,8 +74,12 @@ func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			// A change runs to its end when the client leaves: cut short, it
-			// would leave a holder unwatched or a clone half made.
-			r = r.WithContext(context.WithoutCancel(r.Context()))
+			// would leave a holder unwatched or a clone half made. Only a
+			// daemon stopping cancels it, once it has run out of time.
+			ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
+			defer cancel()
+			defer context.AfterFunc(d.abort, cancel)()
+			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})

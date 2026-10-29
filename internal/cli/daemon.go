@@ -26,8 +26,8 @@ const (
 	// startTimeout is how long a started daemon gets to answer.
 	startTimeout = 10 * time.Second
 	// stopTimeout is how long a daemon gets to stop: longer than it gives
-	// the requests in flight.
-	stopTimeout = 40 * time.Second
+	// the requests in flight (30 s), then a change it cancels (10 s).
+	stopTimeout = 50 * time.Second
 	// pollInterval is how often starting and stopping check on the daemon.
 	pollInterval = 50 * time.Millisecond
 )
