@@ -68,8 +68,8 @@ func greet(c net.Conn) (Hello, error) {
 	if err := json.Unmarshal(body, &hello); err != nil {
 		return Hello{}, err
 	}
-	if hello.Version != Version {
-		return Hello{}, fmt.Errorf("the holder speaks protocol version %d, this daemon %d", hello.Version, Version)
+	if !drives(hello.Version) {
+		return Hello{}, fmt.Errorf("the holder speaks protocol version %d, which this daemon (version %d) cannot drive", hello.Version, Version)
 	}
 	return hello, nil
 }

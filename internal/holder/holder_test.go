@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -312,6 +313,49 @@ func TestDialOtherTerminal(t *testing.T) {
 	f.start(t, "term-00000009", f.script(t, "exec sleep 60"))
 	if _, err := Dial(context.Background(), identity.HolderSocket(f.home, "term-00000009"), "term-0000000a"); err == nil || !strings.Contains(err.Error(), "runs terminal term-00000009") {
 		t.Fatalf("want the other terminal refused, got %v", err)
+	}
+}
+
+// TestDialVersions answers the daemon's hello as a holder of each version
+// would: the daemon drives versions 1 and 2, so that it keeps the holders
+// of the release it was rolled back from.
+func TestDialVersions(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		version int
+		drives  bool
+	}{{0, false}, {1, true}, {2, true}, {3, false}} {
+		f := newFixture(t)
+		socket := filepath.Join(f.home, "holder.sock")
+		l, err := net.Listen("unix", socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { l.Close() })
+		go func() {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+			if _, _, err := readFrame(c); err != nil {
+				return
+			}
+			_ = writeFrame(c, frameHello, Hello{Version: tc.version, TerminalID: "term-0000000b"})
+			_, _, _ = readFrame(c) // until the daemon closes
+		}()
+		c, err := Dial(context.Background(), socket, "term-0000000b")
+		if tc.drives {
+			if err != nil {
+				t.Fatalf("version %d: %v", tc.version, err)
+			}
+			if c.Hello().Version != tc.version {
+				t.Fatalf("version %d: hello says %d", tc.version, c.Hello().Version)
+			}
+			c.Close()
+		} else if err == nil || !strings.Contains(err.Error(), "cannot drive") {
+			t.Fatalf("version %d: want it refused, got %v", tc.version, err)
+		}
 	}
 }
 

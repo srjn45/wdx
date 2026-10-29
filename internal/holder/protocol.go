@@ -13,6 +13,14 @@ import (
 // previous version too.
 const Version = 1
 
+// drives reports whether this daemon can drive a holder speaking version v.
+// Version 2 adds attaching clients and leaves the daemon's frames as they
+// are, so a daemon rolled back from the release that brings it keeps the
+// terminals that release started; docs/ATTACH.md.
+func drives(v int) bool {
+	return v == 1 || v == 2
+}
+
 // A frame is one byte of type, the payload's length as 4 bytes big-endian,
 // and the payload: JSON for control frames.
 type frameType byte

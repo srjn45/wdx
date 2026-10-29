@@ -23,7 +23,7 @@ A terminal is a shell running in a PTY that belongs to a project. It keeps runni
 
 - systemd kills every process in a service's cgroup when the service stops, `setsid` or not. The unit gets `KillMode=process`, so stopping or restarting the daemon stops only the daemon.
 - launchd: the holder's `setsid` takes it out of the job's process group; the plist also gets `AbandonProcessGroup` to be safe.
-- A holder keeps running the binary it was started from, also after an upgrade. The holder protocol carries a version; a daemon speaks its own and the previous one.
+- A holder keeps running the binary it was started from, also after an upgrade. The holder protocol carries a version; a daemon speaks its own and the previous one. Today the daemon speaks version 1 and also drives holders of version 2, which attach brings (docs/ATTACH.md), so rolling back from that release keeps its terminals.
 
 ## The table
 
@@ -173,7 +173,7 @@ Frames on the socket: one byte of type, a 4-byte big-endian length, the payload;
 | `stop` | daemon → holder | `{"grace_ms": 5000}`; answered by `exited` |
 | `release` | daemon → holder | none; the holder exits |
 
-Attach (next slice) adds `attach`, `snapshot`, `output`, `input` and `resize`, and the vt screen in the holder that the snapshot is drawn from.
+Attach adds `attach`, `history`, `snapshot`, `output`, `input` and `resize` in version 2, and the vt screen in the holder that the snapshot is drawn from; docs/ATTACH.md.
 
 ## Settings
 

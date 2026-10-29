@@ -203,7 +203,7 @@ tide, the web relay, a history mode inside `wdx terminal attach` (scrolling all 
 
 Each step builds and passes `make check` and `make test` on its own.
 
-1. **Daemon accepts holder versions 1 and 2**, ships in a release of its own before anything else, so the holders running then survive the upgrade that brings version 2.
+1. **Daemon accepts holder versions 1 and 2**, so that rolling back from the release that brings version 2 keeps its terminals. It needs no release of its own, but a release carrying it must be out and installed before step 4 is released, since a rollback returns to the binary installed before.
 2. **`screen`** in `internal/holder`: the `x/vt` wrapper with mode tracking, snapshot, history harvest, recovery; `make notices`. Tests from recorded output.
 3. **Spool and history files** in `internal/holder`: writers, readers, segments, trimming; the reader exported for the daemon.
 4. **Holder version 2**: the reader writing the spool and queueing to clients, the vt goroutine, roles in `hello`, the new frames, size, queries, slow clients, `exited` to clients, `--history-lines`; the ring removed. The daemon passes `terminal.history_lines`.
@@ -220,4 +220,4 @@ Each step builds and passes `make check` and `make test` on its own.
 4. A slow client is disconnected for now; resync comes with the web.
 5. `ESC[3J` (clear scrollback, sent by `clear` in some setups) does not delete history.
 6. The new codes `terminal_not_running`, `attach_unsupported`, `connection_lost`.
-7. Step 1 as its own release.
+7. Step 1 in any release before step 4's, not necessarily its own.
