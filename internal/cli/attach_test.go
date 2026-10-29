@@ -450,8 +450,14 @@ func TestTerminalHistory(t *testing.T) {
 	if exit != api.ExitOK || v.History.From != 1 || !slices.Equal(v.History.Lines, []string{"1", "2"}) {
 		t.Fatalf("want lines 1 and 2, got exit %d, %+v", exit, v.History)
 	}
-	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "api", "--tail", "2", "--from", "3")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "api", "--count", "2")
+	if exit != api.ExitOK || v.History.From != 0 || len(v.History.Lines) != 2 {
+		t.Fatalf("want the 2 oldest lines, got exit %d, %+v", exit, v.History)
+	}
+	for _, flags := range [][]string{{"--tail", "2", "--from", "3"}, {"--tail", "2", "--count", "3"}} {
+		v, exit = wdxJSONWith(t, home, in(app), append([]string{"terminal", "history", "--name", "api"}, flags...)...)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "web")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 

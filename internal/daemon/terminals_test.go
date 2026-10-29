@@ -391,6 +391,7 @@ func TestTerminalHistory(t *testing.T) {
 		{"tail", "id:" + term.Id, api.GetTerminalHistoryParams{Tail: optional(5)}, 25, 5},
 		{"from", "id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(10)), Count: optional(3)}, 10, 3},
 		{"from to the end", "id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(28))}, 28, 2},
+		{"count from the oldest", "id:" + term.Id, api.GetTerminalHistoryParams{Count: optional(4)}, 0, 4},
 	} {
 		r, err := td.client.GetTerminalHistoryWithResponse(ctx, tc.ref, &tc.params)
 		if err != nil || r.JSON200 == nil {
@@ -414,6 +415,7 @@ func TestTerminalHistory(t *testing.T) {
 		code   api.ErrorCode
 	}{
 		{"id:" + term.Id, api.GetTerminalHistoryParams{From: optional(int64(3)), Tail: optional(5)}, http.StatusBadRequest, api.ErrorCodeUsage},
+		{"id:" + term.Id, api.GetTerminalHistoryParams{Count: optional(3), Tail: optional(5)}, http.StatusBadRequest, api.ErrorCodeUsage},
 		{"id:" + term.Id, api.GetTerminalHistoryParams{Tail: optional(10_001)}, http.StatusBadRequest, api.ErrorCodeUsage},
 		{"build", api.GetTerminalHistoryParams{}, http.StatusBadRequest, api.ErrorCodeUsage},
 		{"id:term-00000000", api.GetTerminalHistoryParams{}, http.StatusNotFound, api.ErrorCodeNotFound},

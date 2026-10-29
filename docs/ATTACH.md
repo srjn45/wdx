@@ -123,7 +123,7 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 |---|---|---|
 | `GET /v1/terminals/{terminal}/history?from=<line>&count=<n>` or `?tail=<n>` | 200 `{"history": {"from": 1200, "next": 1300, "first": 0, "lines": ["...", ...]}}` | `not_found` |
 
-- `first` is the oldest line kept, `next` the number the next line will get. `count` and `tail` are at most 10,000; lines are the rendered text, escape codes included.
+- `first` is the oldest line kept, `next` the number the next line will get. `count` without `from` starts at line 0, the oldest kept; `tail` goes with neither. `count` and `tail` are at most 10,000; lines are the rendered text, escape codes included.
 - Attach itself is not in the API: clients resolve the terminal with `GET /v1/terminals/{terminal}` and dial the holder.
 
 New codes:
@@ -142,7 +142,7 @@ New codes:
 wdx terminal attach  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
                      [--prefix-key <key>]
 wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
-                     [--tail <lines> | --from <line> [--count <lines>]] [--plain]
+                     [--tail <lines> | [--from <line>] [--count <lines>]] [--plain]
 ```
 
 ### `wdx terminal attach`

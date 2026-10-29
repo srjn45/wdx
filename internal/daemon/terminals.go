@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -97,27 +98,25 @@ func (s *server) DeleteTerminal(ctx context.Context, req api.DeleteTerminalReque
 	if err != nil {
 		return nil, err
 	}
-	if t, err = s.terminals.Remove(ctx, t.ID, derefBool(req.Params.StopRunning)); err != nil {
+	if t, err = s.terminals.Remove(ctx, t.ID, deref(req.Params.StopRunning)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTerminal200JSONResponse{Result: api.ResultRemoved, Terminal: terminalView(t)}, nil
 }
 
 func (s *server) GetTerminalHistory(ctx context.Context, req api.GetTerminalHistoryRequestObject) (api.GetTerminalHistoryResponseObject, error) {
-	if req.Params.From != nil && req.Params.Tail != nil {
-		return nil, &requestError{err: errors.New("give from or tail, not both")}
+	from, count, tail := req.Params.From, req.Params.Count, req.Params.Tail
+	if tail != nil && (from != nil || count != nil) {
+		return nil, &requestError{err: errors.New("give tail, or from and count, not both")}
 	}
 	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
 	if err != nil {
 		return nil, err
 	}
-	count := 1000
-	if req.Params.From != nil && req.Params.Count != nil {
-		count = *req.Params.Count
-	} else if req.Params.From == nil && req.Params.Tail != nil {
-		count = *req.Params.Tail
+	if count != nil && from == nil {
+		from = new(int64)
 	}
-	h, err := s.terminals.History(t.ID, req.Params.From, count)
+	h, err := s.terminals.History(t.ID, from, cmp.Or(deref(count), deref(tail), 1000))
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +222,4 @@ func optionalTime(t time.Time) *time.Time {
 	}
 	t = t.UTC()
 	return &t
-}
-
-func derefBool(b *bool) bool {
-	return b != nil && *b
 }

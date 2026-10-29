@@ -290,11 +290,13 @@ paths:
       description: |
         History is the lines that scrolled off the terminal's screen,
         numbered from 0 for the terminal's life, across relaunches of its
-        shell, and kept up to terminal.history_lines. With from, the count
-        lines from that number on; else the last tail lines. A from before
-        the oldest line kept starts at that one.
+        shell, and kept up to terminal.history_lines. With from or count,
+        the count lines from that number on, from 0 when not given; else
+        the last tail lines. A from before the oldest line kept starts at
+        that one.
 
-        Errors: invalid_path, not_found; from with tail is a usage error.
+        Errors: invalid_path, not_found; tail with from or count is a usage
+        error.
       parameters:
         - name: from
           in: query
@@ -302,11 +304,11 @@ paths:
           schema: { type: integer, format: int64, minimum: 0 }
         - name: count
           in: query
-          description: Lines from from on; 1000 when not given.
+          description: Lines from from on, or from 0 without from; 1000 when not given; excludes tail.
           schema: { type: integer, minimum: 1, maximum: 10000 }
         - name: tail
           in: query
-          description: The last lines; excludes from; 1000 when neither is given.
+          description: The last lines; excludes from and count; 1000 when none is given.
           schema: { type: integer, minimum: 1, maximum: 10000 }
       responses:
         "200":

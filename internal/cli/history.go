@@ -19,12 +19,13 @@ func newTerminalHistoryCmd() *cobra.Command {
 	var from int64
 	var plain bool
 	cmd := &cobra.Command{
-		Use:   "history (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--tail <lines> | --from <line> [--count <lines>]] [--plain]",
+		Use:   "history (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--tail <lines> | [--from <line>] [--count <lines>]] [--plain]",
 		Short: "Print the lines that scrolled off a terminal's screen",
 		Long: "History is kept on disk for the terminal's life, across restarts of its shell,\n" +
 			"up to terminal.history_lines, and is there in any state. Lines keep their\n" +
 			"colors when the output gets color; --plain, or output that is not a terminal,\n" +
-			"strips them. Lines are numbered from 0, which --from counts in.",
+			"strips them. Lines are numbered from 0, which --from counts in; --count alone\n" +
+			"starts at the oldest kept.",
 		Example: examples(
 			"The last lines of a terminal of the project you are in", identity.Name+" terminal history --name server",
 			"The last 50, without colors", identity.Name+" terminal history --name server --tail 50 --plain",
@@ -43,11 +44,8 @@ func newTerminalHistoryCmd() *cobra.Command {
 			n := invocationOf(cmd).env.Config.TerminalHistoryTail
 			var start *int64
 			switch {
-			case cmd.Flags().Changed("from"):
-				start, n = &from, 1000
-				if cmd.Flags().Changed("count") {
-					n = count
-				}
+			case cmd.Flags().Changed("from") || cmd.Flags().Changed("count"):
+				start, n = &from, count
 			case cmd.Flags().Changed("tail"):
 				n = tail
 			}
@@ -64,7 +62,7 @@ func newTerminalHistoryCmd() *cobra.Command {
 	ref.addFlags(cmd)
 	cmd.Flags().IntVar(&tail, "tail", 0, "the last `lines` (default: terminal.history_tail)")
 	cmd.Flags().Int64Var(&from, "from", 0, "number of the first `line`")
-	cmd.Flags().IntVar(&count, "count", 1000, "`lines` from --from on")
+	cmd.Flags().IntVar(&count, "count", 1000, "`lines` from --from on, or from the oldest kept")
 	cmd.Flags().BoolVar(&plain, "plain", false, "strip colors and other escape codes")
 	cmd.MarkFlagsMutuallyExclusive("tail", "from")
 	cmd.MarkFlagsMutuallyExclusive("tail", "count")

@@ -71,7 +71,7 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		return nil, err
 	}
 	if req.Body.State == api.ProjectStateClosed {
-		stopped, err := s.stopTerminals(ctx, p, derefBool(req.Body.StopRunning))
+		stopped, err := s.stopTerminals(ctx, p, deref(req.Body.StopRunning))
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +98,7 @@ func (s *server) DeleteProject(ctx context.Context, req api.DeleteProjectRequest
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.remove(ctx, p, derefBool(req.Params.StopRunning))
+	r, err := s.remove(ctx, p, deref(req.Params.StopRunning))
 	if err != nil {
 		return nil, err
 	}
@@ -303,11 +303,12 @@ func origin(url string) *string {
 	return &url
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
+func deref[T any](p *T) T {
+	var v T
+	if p != nil {
+		v = *p
 	}
-	return *s
+	return v
 }
 
 // projectInUseError is returned when a project with live terminals would be

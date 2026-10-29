@@ -638,10 +638,10 @@ type GetTerminalHistoryParams struct {
 	// From The number of the first line; excludes tail.
 	From *int64 `form:"from,omitempty" json:"from,omitempty"`
 
-	// Count Lines from from on; 1000 when not given.
+	// Count Lines from from on, or from 0 without from; 1000 when not given; excludes tail.
 	Count *int `form:"count,omitempty" json:"count,omitempty"`
 
-	// Tail The last lines; excludes from; 1000 when neither is given.
+	// Tail The last lines; excludes from and count; 1000 when none is given.
 	Tail *int `form:"tail,omitempty" json:"tail,omitempty"`
 
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -1079,11 +1079,13 @@ type ClientInterface interface {
 	//
 	// History is the lines that scrolled off the terminal's screen,
 	// numbered from 0 for the terminal's life, across relaunches of its
-	// shell, and kept up to terminal.history_lines. With from, the count
-	// lines from that number on; else the last tail lines. A from before
-	// the oldest line kept starts at that one.
+	// shell, and kept up to terminal.history_lines. With from or count,
+	// the count lines from that number on, from 0 when not given; else
+	// the last tail lines. A from before the oldest line kept starts at
+	// that one.
 	//
-	// Errors: invalid_path, not_found; from with tail is a usage error.
+	// Errors: invalid_path, not_found; tail with from or count is a usage
+	// error.
 	//
 	// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
 	GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1446,11 +1448,13 @@ func (c *Client) GetTerminal(ctx context.Context, terminal TerminalRef, params *
 //
 // History is the lines that scrolled off the terminal's screen,
 // numbered from 0 for the terminal's life, across relaunches of its
-// shell, and kept up to terminal.history_lines. With from, the count
-// lines from that number on; else the last tail lines. A from before
-// the oldest line kept starts at that one.
+// shell, and kept up to terminal.history_lines. With from or count,
+// the count lines from that number on, from 0 when not given; else
+// the last tail lines. A from before the oldest line kept starts at
+// that one.
 //
-// Errors: invalid_path, not_found; from with tail is a usage error.
+// Errors: invalid_path, not_found; tail with from or count is a usage
+// error.
 //
 // Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
 func (c *Client) GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2532,11 +2536,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// History is the lines that scrolled off the terminal's screen,
 	// numbered from 0 for the terminal's life, across relaunches of its
-	// shell, and kept up to terminal.history_lines. With from, the count
-	// lines from that number on; else the last tail lines. A from before
-	// the oldest line kept starts at that one.
+	// shell, and kept up to terminal.history_lines. With from or count,
+	// the count lines from that number on, from 0 when not given; else
+	// the last tail lines. A from before the oldest line kept starts at
+	// that one.
 	//
-	// Errors: invalid_path, not_found; from with tail is a usage error.
+	// Errors: invalid_path, not_found; tail with from or count is a usage
+	// error.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3544,11 +3550,13 @@ func (c *ClientWithResponses) GetTerminalWithResponse(ctx context.Context, termi
 //
 // History is the lines that scrolled off the terminal's screen,
 // numbered from 0 for the terminal's life, across relaunches of its
-// shell, and kept up to terminal.history_lines. With from, the count
-// lines from that number on; else the last tail lines. A from before
-// the oldest line kept starts at that one.
+// shell, and kept up to terminal.history_lines. With from or count,
+// the count lines from that number on, from 0 when not given; else
+// the last tail lines. A from before the oldest line kept starts at
+// that one.
 //
-// Errors: invalid_path, not_found; from with tail is a usage error.
+// Errors: invalid_path, not_found; tail with from or count is a usage
+// error.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -5897,13 +5905,13 @@ var swaggerSpec = []string{
 	"+H9XarhoUaFVAWrykE612j/289efwseTtYSX3bLz1QKqJDpVHLyxm8mzCwadpVLR4Bxnn472m68RRKr4",
 	"lRYJztOnUCWY1qvnKBPYaGLpZBVgLiRP1QR6nuGZGfpYVaB1khfJ5zvBUGHdv0H29Jw8/gWeJ2COz4Yp",
 	"JxzEdTRnN6kBfrCODLsdb6QgZ3KtaIBZbTbD3woyuQaQaSbd5CEULt+5cVMG/XtLscHsPtfKmDi3dolR",
-	"JslzuJB/B7VlTU0QIkjWH2Dl5jcZxX7cLPXdr0baTDqyiQaiPQyCyqWL7nQ0jgCIi9KPgrKX7oE1bJT2",
-	"Ux7DidSALOhdVW5pgPoM77Z0Kzu/ijsKw7gfbAg9uVOmFaYdH2monxp5jX5fCimY66L7+c7OKkcDopWQ",
-	"omqqZHEzNSw6JOltJwifAS/Z7c3NTajEWJ8PzJAT3nyJftCJ37vtcZWbiJzbc8j5EOROIo94gsT1KBsm",
-	"LDME+jeEP5O+LxGDhpO3M57Tj0NfIq+Qzph5bPTeav8/eVJyBU8vzHzpI8wlbz/RmyktJCR35qZU05Cs",
-	"KM3chJqx4Wd80J9jHhSqsHJ9nJq8DXiwqxNFnv4rzJ9GaPRUknQeVqUnviQ2+pzkxVemL2H370l0nG00",
-	"mF2A/30dc6k/+V/UIZrlbtOZaPp2bg7vH/Ev5TwPM8MWM1x0ebYnlZTRjf7GM5loMutGlJaCyiVY64kK",
-	"Qb1ohwUf/i8AAP//",
+	"JslzuJB/B7VlTU0QIkjWH2Dl5jcZxX6XXGlGL0qkbkCDPnv66TodIkyEyjRQ6EsC1gHTJUV/t0LJESFx",
+	"UfpZUfbSPbOGjfLj78OJ1YA8uMUluKUJ6zPc39Ltcxgdhqbh3AhEJkP77pQVhsHIR3rvp6Zjo5+iQqrm",
+	"Gu5+FLQz4NEsaSWkqJoqWdxMzZUOSXrbicony5R6BDF5rIn/Ltntzc2E5M6hOrxLE/1EFL93VOKiNxHV",
+	"t+dQ/SEoCulIRATRjUpMO/ZJdvUnlwnN0OlfPf5MMr9EcBuO9M64ZD9nfYmERTovwWNv4t3B/ycXTT7k",
+	"6RWfL32EuazwJ3rlpcWa5Abd+GsasiClmRt9Mzb8PhAGCrSLUN6V6+PUSG8Aml0BKgohX2FiNoK5p7Kv",
+	"80AwPfElQdfnZEW+5H0Ju39PouNso8HsQl7R1zFXUyA3jDpEQ+JtnhSN9c4N+P0j/gme52Fm2GKGiy6B",
+	"96T6sFFVfqTHD+ahyawbUbogeAnWeqICBCjaKcSH/wsAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
