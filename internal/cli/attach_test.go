@@ -422,12 +422,27 @@ func TestTerminalAttachRefused(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "web")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
-	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", "ctrl-1")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	for _, key := range []string{"ctrl-1", "ctrl-i", "ctrl-m"} {
+		v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", key)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
 
 	small := startAttachSized(t, home, app, 8, 2, "--name", "api", "--json")
 	v, exit = small.wait()
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+}
+
+func TestParsePrefixKey(t *testing.T) {
+	t.Parallel()
+	for key, want := range map[string]string{
+		`ctrl-\`: `C-\`, "ctrl-]": "C-]", "ctrl-a": "C-a", "ctrl-b": "C-b", "ctrl-h": "C-h", "ctrl-z": "C-z",
+		"ctrl-i": "", "ctrl-m": "", "ctrl-1": "", "ctrl-B": "", "ctrl-[": "", "ctrl-": "", "b": "", "": "",
+	} {
+		got, err := parsePrefixKey(key)
+		if got.label != want || (err != nil) != (want == "") {
+			t.Errorf("%q: got %+v, %v; want %q", key, got, err, want)
+		}
+	}
 }
 
 func TestTerminalHistory(t *testing.T) {

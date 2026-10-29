@@ -41,7 +41,7 @@ Every key goes to the program in the terminal, except:
 | PageUp / PageDown | scroll a page, when the program is on its main screen (the shell); on the alternate screen (less, vim, htop) they go to the program |
 | mouse wheel, touchpad | scroll 3 lines; see Mouse |
 
-- `C-\` is the prefix, as tmux's `C-b`: one ctrl key, which nothing common uses (it sends SIGQUIT in a shell), and a plain key after it. After the prefix the status line says so, and a key with no shortcut does nothing. `--prefix-key` changes it (`ctrl-<letter>` or `ctrl-]`).
+- `C-\` is the prefix, as tmux's `C-b`: one ctrl key, which nothing common uses (it sends SIGQUIT in a shell), and a plain key after it. After the prefix the status line says so, and a key with no shortcut does nothing. `--prefix-key` changes it (`ctrl-<letter>` or `ctrl-]`; not `ctrl-i` or `ctrl-m`, which terminals send as Tab and Enter).
 - Arrow keys never scroll: they go to the program, for the shell's history and the line being edited.
 - While scrolled back, a key that is not a scroll key returns to the live screen and goes to the program, as in a terminal's own scrollback; so does scrolling past the bottom. New output does not pull the view down.
 - `C-?` (ctrl+shift+/) for the shortcut list: most terminals send it as DEL, the same byte as Backspace, so it cannot be told apart. Where the terminal speaks the kitty keyboard protocol (kitty, WezTerm, foot, Ghostty), which Bubble Tea can ask for, `C-?` opens the list too; `C-\ ?` works everywhere.

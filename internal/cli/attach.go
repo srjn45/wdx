@@ -70,7 +70,7 @@ func newTerminalAttachCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().StringVar(&prefixKey, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter>, ctrl-\\ or ctrl-]")
+	cmd.Flags().StringVar(&prefixKey, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter> but i and m, ctrl-\\ or ctrl-]")
 	cmd.RegisterFlagCompletionFunc("prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
@@ -82,6 +82,10 @@ type prefixKey struct {
 }
 
 func parsePrefixKey(key string) (prefixKey, error) {
+	// Terminals send them as the keys they stand for.
+	if same, ok := map[string]string{"ctrl-i": "Tab", "ctrl-m": "Enter"}[key]; ok {
+		return prefixKey{}, fmt.Errorf("--prefix-key %s is %s to a terminal: choose another letter", key, same)
+	}
 	rest, ok := strings.CutPrefix(key, "ctrl-")
 	if ok && (rest == `\` || rest == "]" || len(rest) == 1 && rest[0] >= 'a' && rest[0] <= 'z') {
 		return prefixKey{name: "ctrl+" + rest, label: "C-" + rest}, nil
