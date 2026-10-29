@@ -32,6 +32,7 @@ func runHolder(args []string) int {
 	flags.StringVar(&o.Project, "project", "", "")
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
+	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
 	if flags.Parse(args) != nil {
 		return 2
 	}
@@ -94,12 +95,14 @@ func (f fixture) start(t *testing.T, id, shell string) Started {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		// Most tests end their shell and holder; this catches the rest.
-		_ = syscall.Kill(-s.PID, syscall.SIGKILL)
-		_ = syscall.Kill(s.HolderPID, syscall.SIGKILL)
-	})
+	// Most tests end their shell and holder; this catches the rest.
+	t.Cleanup(func() { killHolder(s) })
 	return s
+}
+
+func killHolder(s Started) {
+	_ = syscall.Kill(-s.PID, syscall.SIGKILL)
+	_ = syscall.Kill(s.HolderPID, syscall.SIGKILL)
 }
 
 func (f fixture) dial(t *testing.T, id string) *Conn {
@@ -389,28 +392,6 @@ func TestRunDirPrivate(t *testing.T) {
 	info, err := os.Stat(filepath.Dir(identity.HolderSocket(f.home, "term-0000000c")))
 	if err != nil || info.Mode().Perm() != 0o700 {
 		t.Fatalf("want the run dir 0700, got %v, %v", info.Mode(), err)
-	}
-}
-
-func TestRing(t *testing.T) {
-	t.Parallel()
-	r := newRing(8)
-	// A ring never fails a write.
-	_, _ = r.Write([]byte("abc"))
-	if got := string(r.Bytes()); got != "abc" {
-		t.Fatalf("got %q", got)
-	}
-	_, _ = r.Write([]byte("defgh"))
-	_, _ = r.Write([]byte("ij"))
-	if got := string(r.Bytes()); got != "cdefghij" {
-		t.Fatalf("want the last 8 bytes, got %q", got)
-	}
-	_, _ = r.Write([]byte("0123456789"))
-	if got := string(r.Bytes()); got != "23456789" {
-		t.Fatalf("want the end of a long write, got %q", got)
-	}
-	if got := newRing(4).Bytes(); len(got) != 0 {
-		t.Fatalf("want an empty ring empty, got %q", got)
 	}
 }
 

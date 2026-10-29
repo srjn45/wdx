@@ -23,3 +23,18 @@ func peerUID(c *net.UnixConn) (int, error) {
 	}
 	return uid, cerr
 }
+
+// peerPID is the pid of the process at the other end of c, or 0.
+func peerPID(c *net.UnixConn) int {
+	raw, err := c.SyscallConn()
+	if err != nil {
+		return 0
+	}
+	pid := 0
+	_ = raw.Control(func(fd uintptr) {
+		if p, err := unix.GetsockoptInt(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERPID); err == nil {
+			pid = p
+		}
+	})
+	return pid
+}

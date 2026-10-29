@@ -34,6 +34,8 @@ type Config struct {
 	UpdateChannel    string
 	UpdateBaseURL    string
 	TerminalShell    string // "" for the user's login shell
+	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
+	TerminalHistoryLines int64
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -232,6 +234,20 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return c.TerminalShell },
+	},
+	{
+		key:         "terminal.history_lines",
+		description: "lines of each terminal's history kept on disk, which wdx terminal attach scrolls back through; 0 keeps none, since terminal output can hold secrets",
+		def:         "100000",
+		set: func(c *Config, v string) error {
+			lines, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || lines < 0 {
+				return fmt.Errorf("%q is not a whole number of at least 0", v)
+			}
+			c.TerminalHistoryLines = lines
+			return nil
+		},
+		get: func(c Config) string { return strconv.FormatInt(c.TerminalHistoryLines, 10) },
 	},
 }
 

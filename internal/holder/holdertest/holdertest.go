@@ -26,11 +26,13 @@ func RunIfHolder() {
 	flags.StringVar(&o.Project, "project", "", "")
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
+	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
 	if flags.Parse(os.Args[2:]) != nil {
 		os.Exit(2)
 	}
 	homeVar := identity.Env("HOME")
-	o.Socket = identity.HolderSocket(os.Getenv(homeVar), o.ID) //nolint:forbidigo // the test binary is this holder's main, which reads its home as cmd/wdx does
+	o.Home = os.Getenv(homeVar) //nolint:forbidigo // the test binary is this holder's main, which reads its home as cmd/wdx does
+	o.Socket = identity.HolderSocket(o.Home, o.ID)
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, homeVar+"=") })
 	o.Ready = os.NewFile(3, "ready")
 	if holder.Run(context.Background(), o) != nil {

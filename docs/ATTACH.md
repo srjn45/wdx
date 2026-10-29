@@ -79,14 +79,14 @@ It never waits for the vt or for a client, so the shell never blocks on either. 
 
 ### Size
 
-The PTY and the vt have one size. The client that attached or resized last sets it, as tmux's `latest`; when it detaches the size stays. A program in the shell gets SIGWINCH and redraws for the new size. A holder starts at 80×24.
+The PTY and the vt have one size. The client that attached or resized last sets it, as tmux's `latest`; when it detaches the size stays. A program in the shell gets SIGWINCH and redraws for the new size. A holder starts at 80×24. The vt is resized at once: output it has yet to read from before the resize is drawn at the new size, which only matters while it lags.
 
 ### History
 
 `<home>/terminals/<id>/history/`: the lines that scrolled off the screen, numbered from 0 for the life of the terminal (across relaunches).
 
 - Segment files of 10,000 lines, named by their first line number (`0000000000.log`); a line is its rendered text, SGR styles and hyperlinks included, ending in `\n`. Line `n` is in segment `n / 10000`.
-- A relaunched shell continues the numbering after a marker line `── shell restarted <time> ──`; gaps get `── history interrupted ──`.
+- When the holder quits, what the shell left on the main screen goes to history, as a terminal keeps it scrolled back. A relaunched shell continues the numbering after a marker line `── shell restarted <time> ──`; gaps get `── history interrupted ──`.
 - When more than `terminal.history_lines` are kept, the oldest segment is deleted: history keeps between `history_lines − 10,000` and `history_lines` lines.
 - Lines keep the width they were drawn at: the vt does not record which line breaks were soft wraps, so history cannot be reflowed to another width. A narrower client wraps long lines, a wider one shows them short.
 - `<home>/terminals/` is 0700, its files 0600. Terminal output can hold secrets (a printed token, `env`): history is off when `terminal.history_lines` is 0.
@@ -100,10 +100,10 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 | Frame | Direction | Payload |
 |---|---|---|
 | `hello` | both, first | adds `"role"` from the connecting side; the holder adds `"history_lines"`, the next line number |
-| `attach` | client → holder | `{"cols": ..., "rows": ..., "history": N}`; answered by `history`, `snapshot`, then `output` |
-| `history` | holder → client | `{"from": ..., "lines": ["...", ...]}`: the last N lines before the snapshot |
-| `snapshot` | holder → client | raw bytes that paint the screen: reset, modes, scroll region, cells, cursor, title; `pos` and the next history line number in a header |
-| `output` | holder → client | raw PTY bytes, from the snapshot's `pos` on |
+| `attach` | client → holder | `{"cols": ..., "rows": ..., "history": N}`, all of history when N is negative; answered by `history`, `snapshot`, then `output` |
+| `history` | holder → client | `{"from": ..., "lines": ["...", ...]}`: the last N lines before the snapshot, in frames of up to 256 KiB |
+| `snapshot` | holder → client | `{"cols": ..., "rows": ..., "pos": ..., "history_lines": ...}`: the screen's size, its position in the output and the history line it continues; the `output` frames after it paint the screen (reset, modes, scroll region, cells, cursor, title), then carry the output from `pos` on |
+| `output` | holder → client | raw bytes, up to 32 KiB a frame |
 | `input` | client → holder | raw bytes, written to the PTY |
 | `resize` | client → holder | `{"cols": ..., "rows": ...}` |
 | `exited` | holder → daemon and clients | as in version 1; the holder then closes the clients' connections |
@@ -111,7 +111,7 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 
 **Attaching is consistent without waiting.** The holder locks the vt, takes its position `S` (what it has consumed), its history count `H` and the snapshot, and sends history lines up to `H`, the snapshot, then the output from `S` on: from the spool up to the live position, then live. No byte is shown twice or missed, however far the vt is behind. A client that later fetches older history asks for lines before `H`.
 
-**Slow clients**: each client has a queue of 4 MiB. One that falls further behind is disconnected ("too slow"); the CLI reports it and the user attaches again. Resyncing it with a fresh snapshot instead is for later, with the web.
+**Slow clients**: each client has a queue of 4 MiB. One that falls further behind is disconnected ("too slow" in the holder's log); the client sees its connection closed, the CLI reports `connection_lost` and the user attaches again. Resyncing it with a fresh snapshot instead is for later, with the web.
 
 **Versions**: a holder keeps running the binary it started from. The daemon accepts holders of version 1 and 2 (today it accepts only its own: that check changes first, in its own release, so that rolling back from the release that brings version 2 keeps the terminals its holders run). A client needs version 2: on a version 1 holder it disconnects after the `hello` with `attach_unsupported`. That `hello` makes a version 1 holder drop the daemon's connection, which the daemon redials at once, as it does today.
 
@@ -206,9 +206,9 @@ Each step builds and passes `make check` and `make test` on its own.
 1. **Daemon accepts holder versions 1 and 2**, so that rolling back from the release that brings version 2 keeps its terminals. It needs no release of its own, but a release carrying it must be out and installed before step 4 is released, since a rollback returns to the binary installed before.
 2. **`screen`** in `internal/holder`: the `x/vt` wrapper with mode tracking, snapshot, history harvest, recovery; `make notices`. Tests from recorded output.
 3. **Spool and history files** in `internal/holder`: writers, readers, segments, trimming; the reader exported for the daemon.
-4. **Holder version 2**: the reader writing the spool and queueing to clients, the vt goroutine, roles in `hello`, the new frames, size, queries, slow clients, `exited` to clients, `--history-lines`; the ring removed. The daemon passes `terminal.history_lines`.
+4. **Holder version 2**: the reader writing the spool and queueing to clients, the vt goroutine, roles in `hello`, the new frames, size, queries, slow clients, `exited` to clients, `--history-lines`; the ring removed. The setting `terminal.history_lines`, which the daemon passes.
 5. **Attach client** in `internal/holder`: `Attach(ctx, socket, id, size, history)` returning the history, the snapshot, an output reader, input and resize; used by the CLI now and tide later.
-6. **API and daemon**: the history endpoint, the new codes, the settings, deleting terminal directories on removal and sweeping them at startup.
+6. **API and daemon**: the history endpoint, the new codes, `terminal.attach_history`, deleting terminal directories on removal and sweeping them at startup.
 7. **CLI**: `wdx terminal attach` and `wdx terminal history`, help, examples, completions; `cli.Env` gains the controlling terminal; tests per outcome.
 8. **Docs**: TERMINALS.md's holder, protocol and API sections point here, AGENTS.md's layout line for `internal/holder`, V1_FEATURES.md.
 

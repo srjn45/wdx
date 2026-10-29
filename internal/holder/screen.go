@@ -176,6 +176,30 @@ func (s *screen) harvest() {
 	sb.Clear()
 }
 
+// lines renders the main screen's lines, styles and links included, up to
+// its last that is not blank; none while the alternate screen shows, which
+// never goes to history.
+func (s *screen) lines() []string {
+	if s.vt.IsAltScreen() {
+		return nil
+	}
+	var lines []string
+	line := make(uv.Line, s.vt.Width())
+	for y := range s.vt.Height() {
+		for x := range line {
+			line[x] = uv.Cell{}
+			if c := s.vt.CellAt(x, y); c != nil {
+				line[x] = *c
+			}
+		}
+		lines = append(lines, line.Render())
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
 // resize changes the screen's size; false means the vt panicked and was
 // replaced by an empty screen of the new size.
 func (s *screen) resize(cols, rows int) (ok bool) {

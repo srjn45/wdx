@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -28,6 +29,8 @@ type StartOptions struct {
 	Project    string
 	Dir        string
 	Shell      string
+	// HistoryLines bounds the terminal's history; 0 keeps none.
+	HistoryLines int64
 	// Env holds the variables the shell inherits, as KEY=value. They reach
 	// the holder in its environment, never its arguments, which ps shows.
 	Env []string
@@ -48,7 +51,8 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 		return Started{}, err
 	}
 	defer ready.Close()
-	cmd := exec.Command(o.Executable, "holder", "--id", o.ID, "--project", o.Project, "--dir", o.Dir, "--shell", o.Shell)
+	cmd := exec.Command(o.Executable, "holder", "--id", o.ID, "--project", o.Project, "--dir", o.Dir, "--shell", o.Shell,
+		"--history-lines", strconv.FormatInt(o.HistoryLines, 10))
 	cmd.Env = append(slices.Clip(o.Env), identity.Env("HOME")+"="+o.Home)
 	cmd.ExtraFiles = []*os.File{readyW} // fd 3
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

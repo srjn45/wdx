@@ -47,6 +47,8 @@ type Options struct {
 	TerminalEnv []string
 	// TerminalShell is the shell terminals run; "" for the login shell.
 	TerminalShell string
+	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
+	TerminalHistoryLines int64
 }
 
 // Daemon is a daemon listening on its socket.
@@ -124,10 +126,11 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	logged := logging.NewContext(ctx, d.log)
 	d.terminals = terminal.NewSupervisor(logged, terminal.NewStore(d.db), terminal.Options{
-		Executable: opts.Executable,
-		Home:       opts.Home,
-		Env:        opts.TerminalEnv,
-		Shell:      opts.TerminalShell,
+		Executable:   opts.Executable,
+		Home:         opts.Home,
+		Env:          opts.TerminalEnv,
+		Shell:        opts.TerminalShell,
+		HistoryLines: opts.TerminalHistoryLines,
 	})
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err

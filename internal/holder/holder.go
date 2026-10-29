@@ -8,6 +8,7 @@
 package holder
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -39,6 +40,8 @@ type Options struct {
 	Project string // the project's name, for WDX_PROJECT
 	Dir     string
 	Shell   string
+	// HistoryLines bounds the terminal's history; 0 keeps none.
+	HistoryLines int64
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
 	// reaches the daemon that owns it.
 	Home   string
@@ -84,15 +87,41 @@ type holder struct {
 	listener *net.UnixListener
 	cmd      *exec.Cmd
 	master   *os.File
-	output   *ring
+	spool    *spool
 	ended    chan struct{} // closed once the shell is reaped
+	drained  chan struct{} // closed once the PTY's output is read to its end
+	followed chan struct{} // closed once the vt has read the spool to its end
 	released chan struct{} // closed once the daemon releases the holder
 	release  sync.Once
 
 	mu   sync.Mutex
 	exit *Exit
 	conn net.Conn // the daemon's; nil when none is connected
+
+	// The vt's side: it follows the spool to vtPos and writes history.
+	screenMu   sync.Mutex
+	screen     *screen
+	size       Size
+	vtPos      int64
+	history    *historyWriter // nil when history is off
+	historyDir string
+	historyErr bool // a failed write is logged once
+
+	// The clients' side: the PTY's reader queues output to them.
+	clientsMu  sync.Mutex
+	clients    map[*client]bool
+	clientExit []byte // the exited frame's payload, once the shell ended
+	spoolErr   bool   // a failed append is logged once
 }
+
+// startSize is a terminal's size until a client attaches.
+var startSize = Size{Cols: 80, Rows: 24}
+
+// Lines the holder writes into history.
+const (
+	markRestarted   = "── shell restarted %s ──"
+	markInterrupted = "── history interrupted ──"
+)
 
 // start listens on the socket and starts the shell in a new PTY.
 func start(ctx context.Context, o Options) (*holder, error) {
@@ -119,22 +148,66 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		identity.Env("PROJECT") + "=" + o.Project,
 		identity.Env("HOME") + "=" + o.Home,
 	}, o.Env...)
-	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
-	if err != nil {
-		listener.Close()
-		return nil, fmt.Errorf("start %s in %s: %w", o.Shell, o.Dir, err)
-	}
-	log.Info("shell started", "pid", cmd.Process.Pid, "shell", o.Shell, "dir", o.Dir, "socket", o.Socket)
-	return &holder{
+	h := &holder{
 		id:       o.ID,
 		log:      log,
 		listener: listener,
 		cmd:      cmd,
-		master:   master,
-		output:   newRing(ringSize),
 		ended:    make(chan struct{}),
+		drained:  make(chan struct{}),
+		followed: make(chan struct{}),
 		released: make(chan struct{}),
-	}, nil
+		size:     startSize,
+		clients:  map[*client]bool{},
+	}
+	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
+		listener.Close()
+		return nil, err
+	}
+	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(startSize.Rows), Cols: uint16(startSize.Cols)})
+	if err != nil {
+		listener.Close()
+		h.spool.close()
+		if h.history != nil {
+			h.history.close()
+		}
+		return nil, fmt.Errorf("start %s in %s: %w", o.Shell, o.Dir, err)
+	}
+	h.master = master
+	log.Info("shell started", "pid", cmd.Process.Pid, "shell", o.Shell, "dir", o.Dir, "socket", o.Socket)
+	return h, nil
+}
+
+// open starts the spool, the screen and, unless historyLines is 0, the
+// history in dir, which only the user may enter.
+func (h *holder) open(dir string, historyLines int64) error {
+	if !filepath.IsAbs(dir) {
+		return fmt.Errorf("the terminal's directory %q is not absolute: no home", dir)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	var err error
+	if h.spool, err = openSpool(filepath.Join(dir, "spool"), spoolSegment, spoolBacklog, spoolKeep); err != nil {
+		return err
+	}
+	h.screen = newScreen(startSize.Cols, startSize.Rows, h.answer)
+	h.historyDir = filepath.Join(dir, "history")
+	if historyLines == 0 {
+		return nil
+	}
+	if h.history, err = openHistory(h.historyDir, historyLines); err != nil {
+		h.spool.close()
+		return err
+	}
+	if h.history.next > 0 {
+		h.writeHistory(fmt.Sprintf(markRestarted, time.Now().Format(time.DateTime)))
+	}
+	h.log.Info("history opened", "dir", h.historyDir, "history_lines", historyLines, "next_line", h.history.next)
+	return nil
 }
 
 // listen listens on socket, in a directory only the user may enter.
@@ -156,8 +229,10 @@ func listen(socket string) (*net.UnixListener, error) {
 
 func (h *holder) serve(ctx context.Context) error {
 	defer h.master.Close()
-	go func() { _, _ = io.Copy(h.output, h.master) }() // ends with an error once the PTY closes
+	go h.read()
+	go h.follow()
 	go h.wait()
+	go h.exitClients()
 	go h.accept(ctx)
 
 	select {
@@ -174,7 +249,129 @@ func (h *holder) serve(ctx context.Context) error {
 		h.conn.Close()
 	}
 	h.mu.Unlock()
+	h.closeClients()
+	select {
+	case <-h.followed:
+	case <-time.After(exitDrain):
+	}
+	h.spool.close()
+	h.screenMu.Lock()
+	// What the shell left on the screen goes to history, as a terminal
+	// keeps it scrolled back when the shell is started again.
+	h.writeHistory(h.screen.lines()...)
+	h.screen.close()
+	if h.history != nil {
+		h.history.close()
+	}
+	h.screenMu.Unlock()
 	return nil
+}
+
+// read drains the PTY into the spool and the clients' queues, never
+// waiting for either: a shell whose output nobody reads blocks.
+func (h *holder) read() {
+	defer close(h.drained)
+	defer h.spool.finish()
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := h.master.Read(buf)
+		if n > 0 {
+			h.output(buf[:n])
+		}
+		if err != nil {
+			return // the PTY closed: the shell and its children are gone
+		}
+	}
+}
+
+func (h *holder) output(p []byte) {
+	chunk := bytes.Clone(p)
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	if err := h.spool.append(chunk); err != nil && !h.spoolErr {
+		h.spoolErr = true
+		h.log.Error("output not spooled: the screen and history miss it", "err", err.Error())
+	}
+	for c := range h.clients {
+		c.send(frameOutput, chunk)
+	}
+}
+
+// follow feeds the spool to the screen at the vt's own pace, and what
+// scrolls off it to history.
+func (h *holder) follow() {
+	defer close(h.followed)
+	buf := make([]byte, 32<<10)
+	for {
+		wait := h.spool.wait()
+		from, n, err := h.spool.read(h.vtPos, buf)
+		if n > 0 || from > h.vtPos {
+			h.feed(from, buf[:n])
+			continue
+		}
+		if err != nil {
+			return // the spool is finished and read
+		}
+		<-wait
+	}
+}
+
+func (h *holder) feed(from int64, p []byte) {
+	h.screenMu.Lock()
+	defer h.screenMu.Unlock()
+	if from > h.vtPos {
+		h.log.Warn("history interrupted: the screen fell too far behind", "skipped_bytes", from-h.vtPos)
+		h.screen.reset(h.size.Cols, h.size.Rows)
+		h.writeHistory(markInterrupted)
+	}
+	lines, reset := h.screen.write(p)
+	h.writeHistory(lines...)
+	if reset {
+		h.log.Warn("vt reset: it failed on the output")
+		h.writeHistory(markInterrupted)
+	}
+	h.vtPos = from + int64(len(p))
+	h.spool.consume(h.vtPos)
+}
+
+// writeHistory appends lines to history, when it is on; h.screenMu is
+// held.
+func (h *holder) writeHistory(lines ...string) {
+	if h.history == nil || len(lines) == 0 {
+		return
+	}
+	first := h.history.starts[0]
+	if err := h.history.append(lines...); err != nil {
+		if !h.historyErr {
+			h.historyErr = true
+			h.log.Error("history not written", "err", err.Error())
+		}
+		return
+	}
+	if h.history.starts[0] != first {
+		h.log.Info("history trimmed", "first_line", h.history.starts[0])
+	}
+}
+
+// historyNext is the number the next history line will take; h.screenMu
+// is held.
+func (h *holder) historyNext() int64 {
+	if h.history == nil {
+		return 0
+	}
+	return h.history.next
+}
+
+// answer writes the vt's answers to programs' queries to the shell when no
+// client is attached; an attached client's terminal answers them itself.
+func (h *holder) answer(p []byte) {
+	h.clientsMu.Lock()
+	attached := len(h.clients) > 0
+	h.clientsMu.Unlock()
+	if !attached {
+		// A closed PTY wants no answers.
+		_, _ = h.master.Write(p)
+	}
 }
 
 // wait reaps the shell and tells the daemon how it ended.
@@ -225,8 +422,8 @@ func (h *holder) accept(ctx context.Context) {
 	}
 }
 
-// handle serves a daemon's connection. A new one replaces the last: a
-// daemon that restarted dials again.
+// handle serves a connection: a client's, or the daemon's. A daemon's
+// replaces the last: a daemon that restarted dials again.
 func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 	defer c.Close()
 	if uid, err := peerUID(c); err != nil || uid != os.Getuid() {
@@ -235,18 +432,27 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 	}
 	// Fails only on a closed connection, which the read reports.
 	_ = c.SetReadDeadline(time.Now().Add(writeTimeout))
-	if t, _, err := readFrame(c); err != nil || t != frameHello {
+	t, body, err := readFrame(c)
+	var hello Hello
+	if err == nil && t == frameHello {
+		err = json.Unmarshal(body, &hello)
+	}
+	if err != nil || t != frameHello {
 		h.log.Warn("connection without hello", "err", err)
 		return
 	}
 	_ = c.SetReadDeadline(time.Time{})
+	if hello.Role == roleClient {
+		h.serveClient(c)
+		return
+	}
 
 	h.mu.Lock()
 	if h.conn != nil {
 		h.conn.Close()
 	}
 	h.conn = c
-	err := h.write(c, frameHello, Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit})
+	err = h.write(c, frameHello, h.hello())
 	h.mu.Unlock()
 	if err != nil {
 		h.log.Info("hello not sent", "err", err.Error())
@@ -287,6 +493,14 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 			h.log.Warn("unknown frame ignored", "type", int(t))
 		}
 	}
+}
+
+// hello is what the holder says to whoever connects; h.mu is held.
+func (h *holder) hello() Hello {
+	h.screenMu.Lock()
+	next := h.historyNext()
+	h.screenMu.Unlock()
+	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: next}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills

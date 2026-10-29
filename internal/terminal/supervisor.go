@@ -54,6 +54,8 @@ type Options struct {
 	Env []string
 	// Shell is the shell terminals run; "" for the user's login shell.
 	Shell string
+	// HistoryLines bounds each terminal's history; 0 keeps none.
+	HistoryLines int64
 }
 
 // Supervisor starts terminals' holders, watches them and stops them. It
@@ -152,6 +154,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	started, err := holder.Start(ctx, holder.StartOptions{
 		Executable: s.opts.Executable, Home: s.opts.Home,
 		ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, Env: s.opts.Env,
+		HistoryLines: s.opts.HistoryLines,
 	})
 	var conn *holder.Conn
 	if err == nil {

@@ -54,7 +54,7 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 }
 
 func greet(c net.Conn) (Hello, error) {
-	if err := writeFrame(c, frameHello, Hello{Version: Version}); err != nil {
+	if err := writeFrame(c, frameHello, Hello{Version: Version, Role: roleDaemon}); err != nil {
 		return Hello{}, err
 	}
 	t, body, err := readFrame(c)

@@ -11,7 +11,7 @@ import (
 // Version is the protocol version this binary speaks. A holder keeps
 // running the binary it was started from, so a daemon must speak the
 // previous version too.
-const Version = 1
+const Version = 2
 
 // drives reports whether this daemon can drive a holder speaking version v.
 // Version 2 adds attaching clients and leaves the daemon's frames as they
@@ -26,23 +26,71 @@ func drives(v int) bool {
 type frameType byte
 
 const (
-	frameHello   frameType = 1 // both ways, first: the daemon's version, then the holder's Hello
-	frameExited  frameType = 2 // holder to daemon: the shell ended, with an Exit
+	frameHello   frameType = 1 // both ways, first: the connecting side's Hello, then the holder's
+	frameExited  frameType = 2 // holder to daemon and clients: the shell ended, with an Exit
 	frameStop    frameType = 3 // daemon to holder: stop the shell, answered by frameExited
 	frameRelease frameType = 4 // daemon to holder: the exit is recorded, quit
+	// Version 2: clients attach (docs/ATTACH.md).
+	frameAttach   frameType = 5  // client to holder: an attachRequest
+	frameHistory  frameType = 6  // holder to client: HistoryLines, the lines before the snapshot
+	frameSnapshot frameType = 7  // holder to client: a Snapshot; the output frames after it paint the screen first
+	frameOutput   frameType = 8  // holder to client: raw output
+	frameInput    frameType = 9  // client to holder: raw input for the shell
+	frameResize   frameType = 10 // client to holder: a Size
+)
+
+// Roles a connecting side gives in its hello; a hello without one is a
+// version 1 daemon's.
+const (
+	roleDaemon = "daemon"
+	roleClient = "client"
 )
 
 // maxPayload bounds a frame read, so a broken peer cannot make the reader
 // allocate without end.
 const maxPayload = 1 << 20
 
-// Hello is what a holder tells the daemon that connects.
+// Hello is what each side says first: the connecting side its version and
+// role, the holder the rest.
 type Hello struct {
 	Version    int    `json:"version"`
+	Role       string `json:"role,omitempty"`
 	TerminalID string `json:"terminal_id,omitempty"`
 	PID        int    `json:"pid,omitempty"` // the shell's
 	HolderPID  int    `json:"holder_pid,omitempty"`
 	Exited     *Exit  `json:"exited,omitempty"`
+	// HistoryLines is the number the next history line will take.
+	HistoryLines int64 `json:"history_lines,omitempty"`
+}
+
+// Size is a terminal's size in cells.
+type Size struct {
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
+}
+
+// attachRequest asks for the screen, after History lines of history: all
+// of it when negative.
+type attachRequest struct {
+	Size
+	History int `json:"history"`
+}
+
+// HistoryLines are lines of history, numbered from From.
+type HistoryLines struct {
+	From  int64    `json:"from"`
+	Lines []string `json:"lines"`
+}
+
+// Snapshot heads the screen as an attaching client gets it: the output
+// frames after it paint the screen, then carry the output from Pos on.
+type Snapshot struct {
+	Size
+	// Pos is the position in the shell's output the screen shows.
+	Pos int64 `json:"pos"`
+	// HistoryLines is the number of the first history line not sent: the
+	// screen continues the history from there.
+	HistoryLines int64 `json:"history_lines"`
 }
 
 // Exit is how the shell ended.
@@ -65,6 +113,11 @@ func writeFrame(w io.Writer, t frameType, payload any) error {
 			return err
 		}
 	}
+	return writeRaw(w, t, body)
+}
+
+// writeRaw writes a frame whose payload is body as is.
+func writeRaw(w io.Writer, t frameType, body []byte) error {
 	frame := make([]byte, 5+len(body))
 	frame[0] = byte(t)
 	binary.BigEndian.PutUint32(frame[1:5], uint32(len(body)))
