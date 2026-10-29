@@ -104,6 +104,8 @@ func keys(m *Model, names ...string) {
 		"up": key(tea.KeyUp, 0), "down": key(tea.KeyDown, 0), "enter": key(tea.KeyEnter, 0), "esc": key(tea.KeyEscape, 0),
 		"C-q": key('q', tea.ModCtrl), `C-\`: key('\\', tea.ModCtrl), "alt+right": key(tea.KeyRight, tea.ModAlt),
 		"C-]": key(']', tea.ModCtrl), "backspace": key(tea.KeyBackspace, 0),
+		"left": key(tea.KeyLeft, 0), "right": key(tea.KeyRight, 0), "home": key(tea.KeyHome, 0), "end": key(tea.KeyEnd, 0),
+		"pgup": key(tea.KeyPgUp, 0), "pgdown": key(tea.KeyPgDown, 0),
 		"alt+shift+left": key(tea.KeyLeft, tea.ModAlt|tea.ModShift), "alt+shift+right": key(tea.KeyRight, tea.ModAlt|tea.ModShift),
 	}
 	for _, name := range names {

@@ -78,8 +78,9 @@ func (m *Model) listed(msg projectsListed) {
 // reopenProject asks tide to open the closed project name.
 type reopenProject struct{ name string }
 
-// projectReopened is the answer to reopening a project.
-type projectReopened struct {
+// projectOpened is the answer to opening or reopening a project: the name
+// of the project opened, or of the one asked for when it failed.
+type projectOpened struct {
 	name string
 	err  error
 }
@@ -88,7 +89,18 @@ func (m *Model) reopen(name string) tea.Cmd {
 	m.log.Info("project reopening", "name", name)
 	return func() tea.Msg {
 		_, err := m.client.UpdateProject(m.ctx, name, api.ProjectStateOpen, false)
-		return projectReopened{name: name, err: err}
+		return projectOpened{name: name, err: err}
+	}
+}
+
+// openLocalRepo opens the repository that holds path as a project.
+func (m *Model) openLocalRepo(path string) tea.Cmd {
+	m.log.Info("local repository opening", "path", path)
+	var source api.Source
+	_ = source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
+	return func() tea.Msg {
+		r, err := m.client.CreateProject(m.ctx, api.CreateProject{Source: source})
+		return projectOpened{name: r.Project.Name, err: err}
 	}
 }
 

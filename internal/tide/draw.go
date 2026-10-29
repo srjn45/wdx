@@ -252,6 +252,9 @@ func (m *Model) statusLine() string {
 	}
 	state := style.StatusLive
 	right := m.st.BarMuted("Alt+arrows move  C-] zoom  C-\\ terminal  C-q menu")
+	if _, browsing := m.top().(*dirBrowser); browsing && l.focus == project && m.projects.loaded {
+		right = m.st.BarMuted("type to filter  → into  ← up  enter open  Esc back")
+	}
 	switch {
 	case m.menu:
 		state = style.StatusPrefix

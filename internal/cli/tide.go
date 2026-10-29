@@ -27,9 +27,9 @@ func newTideCmd() *cobra.Command {
 			"terminals and C-q opens the menu: o opens a project, p switches projects and\n" +
 			"q quits. Alt+Shift and ← or → switch to the previous or next open project.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button. For\n" +
-			"now only closed projects can be opened, and the agent and terminal panes\n" +
-			"hold placeholders. tide needs the daemon running, runs in the terminal it\n" +
-			"was started from and has no --json.",
+			"now projects open from a local repository or reopen when closed, and the\n" +
+			"agent and terminal panes hold placeholders. tide needs the daemon running,\n" +
+			"runs in the terminal it was started from and has no --json.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),

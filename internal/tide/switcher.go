@@ -92,7 +92,7 @@ func (s *switcherBox) keepSelection() int {
 
 func (s *switcherBox) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case projectReopened: // only a failure reaches the switcher
+	case projectOpened: // only a failure reaches the switcher
 		s.opening, s.failure = "", msg.err.Error()
 	case tea.KeyPressMsg:
 		if s.opening != "" {

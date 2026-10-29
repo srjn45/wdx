@@ -22,6 +22,9 @@ type screen interface {
 	draw(buf uv.Screen, area uv.Rectangle, st style.Style)
 }
 
+// browseLocal pushes the directory browser, to open a local repository.
+type browseLocal struct{}
+
 // popScreen takes the top screen off the stack, unless it is the root.
 type popScreen struct{}
 
@@ -74,7 +77,7 @@ func (s *openProjectScreen) entries() []string {
 
 func (s *openProjectScreen) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case projectReopened: // only a failure reaches the screen
+	case projectOpened: // only a failure reaches the screen
 		s.opening, s.failure = "", msg.err.Error()
 	case tea.KeyPressMsg:
 		if s.opening != "" {
@@ -90,6 +93,8 @@ func (s *openProjectScreen) update(msg tea.Msg) tea.Cmd {
 			s.selected = max(s.selected-1, 0)
 		case slices.Contains(downKeys, key):
 			s.selected = min(s.selected+1, len(entries)-1)
+		case key == "enter" && s.selected == 0:
+			return send(browseLocal{})
 		case key == "enter" && s.selected < len(sources):
 			s.notice = "not built yet: it comes in a later step"
 		case key == "enter":

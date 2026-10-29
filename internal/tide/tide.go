@@ -121,15 +121,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case reopenProject:
 		return m, m.reopen(msg.name)
-	case projectReopened:
+	case browseLocal:
+		dir := m.workDir
+		if dir == "" {
+			dir = m.userHome
+		}
+		b, cmd := newDirBrowser(dir, m.userHome)
+		m.stack = append(m.stack, b)
+		m.log.Debug("screen pushed", "screen", b.title(), "dir", dir)
+		return m, cmd
+	case openLocal:
+		return m, m.openLocalRepo(msg.path)
+	case dirRead:
+		// The browser may be gone: Esc does not wait for a listing.
+		if b, ok := m.top().(*dirBrowser); ok {
+			return m, b.update(msg)
+		}
+	case projectOpened:
 		if msg.err != nil {
-			m.log.Info("project not reopened", "name", msg.name, "err", msg.err)
+			m.log.Info("project not opened", "name", msg.name, "err", msg.err)
 			if m.switcher != nil && m.switcher.opening == msg.name {
 				return m, m.switcher.update(msg)
 			}
 			return m, m.top().update(msg)
 		}
-		m.log.Info("project reopened", "name", msg.name)
+		m.log.Info("project opened", "name", msg.name)
 		return m, m.show(msg.name)
 	case switchProject:
 		if msg.closed {
