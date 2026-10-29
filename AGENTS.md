@@ -75,7 +75,7 @@ internal/<domain>/  one package per feature (e.g. project, terminal): types, Sto
 - A `{project}` in a path is its name, or `id:` and its id; names cannot contain `:`.
 - Paths in requests are absolute: the daemon's working directory means nothing to a client.
 - Errors are Problem Details (`application/problem+json`) with a stable `code` from the `ErrorCode` enum. `internal/api/codes.go` gives each code its HTTP status, CLI exit code and description; the daemon maps domain errors to codes in one place.
-- Requests are validated against the spec before a handler runs. Requests that change anything run one at a time.
+- Requests are validated against the spec before a handler runs. Requests that change anything run one at a time, and to their end even when the client leaves.
 
 ## CLI conventions
 

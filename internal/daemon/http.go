@@ -73,6 +73,9 @@ func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 		if r.Method != http.MethodGet {
 			d.changes.Lock()
 			defer d.changes.Unlock()
+			// A change runs to its end when the client leaves: cut short, it
+			// would leave a holder unwatched or a clone half made.
+			r = r.WithContext(context.WithoutCancel(r.Context()))
 		}
 		next.ServeHTTP(w, r)
 	})

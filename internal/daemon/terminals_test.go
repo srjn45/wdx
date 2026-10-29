@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
@@ -66,6 +67,39 @@ func detail(t *testing.T, p *api.Problem, key string) map[string]any {
 		t.Fatalf("want details.%s, got %v", key, *p.Details)
 	}
 	return v
+}
+
+// TestCreateTerminalClientLeaves cancels a create while its holder starts,
+// as Ctrl-C on the command does: the terminal still ends up running.
+func TestCreateTerminalClientLeaves(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	root := td.create(t, "app").Worktrees[0].Path
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		for {
+			if socks, _ := filepath.Glob(filepath.Join(td.home, "run", "term-*.sock")); len(socks) > 0 {
+				return // the holder is starting
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	_, err := td.client.CreateTerminalWithResponse(ctx, api.CreateTerminal{Project: optional("app"), Dir: root, Name: optional("api")})
+	if !errors.Is(err, context.Canceled) {
+		t.Skipf("the create finished before it was cancelled: %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		terms := td.terminals(t, nil)
+		if len(terms) == 1 && terms[0].State == api.TerminalStateRunning {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("want the terminal running, got %+v", terms)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func TestCreateTerminal(t *testing.T) {
