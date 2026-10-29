@@ -28,7 +28,6 @@ type attachView struct {
 	status        bool // the status line is shown
 	pending       bool // the prefix was pressed
 	help          bool // the list of keys is shown
-	detached      bool
 	ended         *termview.EndedMsg
 }
 
@@ -99,7 +98,6 @@ func (v *attachView) key(msg tea.KeyPressMsg) tea.Cmd {
 		v.pending = false
 		switch name {
 		case "d":
-			v.detached = true
 			return tea.Quit
 		case "[":
 			return v.pane.ScrollPage(1)

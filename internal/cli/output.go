@@ -36,6 +36,21 @@ func label(i int, name string) string {
 	return name
 }
 
+// The results of the commands that do not go through the API, whose
+// results are api.Result.
+const (
+	resultRunning    = "running"
+	resultStarted    = "started"
+	resultStopped    = "stopped"
+	resultNotRunning = "not_running"
+	resultRestarted  = "restarted"
+	resultUpdated    = "updated"
+	resultUpToDate   = "up_to_date"
+	resultRolledBack = "rolled_back"
+	resultWritten    = "written"
+	resultUnchanged  = "unchanged"
+)
+
 // printResult writes r to stdout as JSON or as text.
 func printResult(cmd *cobra.Command, r result) error {
 	invocationOf(cmd).response = r

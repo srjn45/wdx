@@ -209,7 +209,7 @@ func newProjectGetCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := clientOf(cmd).GetProject(cmd.Context(), ref.path())
 			if err != nil {
-				return err
+				return projectNotFoundHint(err)
 			}
 			return printResult(cmd, projectDetail(p))
 		},
@@ -233,6 +233,14 @@ func (r *projectRef) addFlags(cmd *cobra.Command, state api.ProjectState) {
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
 	cmd.RegisterFlagCompletionFunc("id", completeProjects("id", state))
 	cmd.RegisterFlagCompletionFunc("name", completeProjects("name", state))
+}
+
+// projectNotFoundHint tells where to find the projects when one was not found.
+func projectNotFoundHint(err error) error {
+	if problemCode(err) != api.ErrorCodeNotFound {
+		return err
+	}
+	return &hinted{err, "see every project with " + identity.Name + " project list --all"}
 }
 
 // path is how the API names the project.
@@ -265,6 +273,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not opened",
 			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\",\n" +
 				"and the terminals closing it stopped, started again, under \"started\".\n" +
 				`With --json: {"result": ..., "project": {...}, "dropped": [...], "started": [...]}`,
@@ -395,6 +404,7 @@ func newProjectCloseCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not closed",
 			outputNote: "The closed project, with the terminals it stopped under \"stopped\".\n" +
 				`With --json: {"result": "closed", "project": {...}, "stopped": [...]}`,
 			resultList:   "closed",
@@ -407,7 +417,7 @@ func newProjectCloseCmd() *cobra.Command {
 			}
 			r, err := stoppingRunning(cmd, update, stopRunning, cancel, "stop them and close it?")
 			if err != nil {
-				return err
+				return projectNotFoundHint(err)
 			}
 			return printResult(cmd, projectResult(r))
 		},
@@ -452,6 +462,7 @@ func newProjectRemoveCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not removed",
 			outputNote: "The removed project, with the terminals it stopped under \"stopped\".\n" +
 				`With --json: {"result": "removed", "project": {...}, "stopped": [...]}`,
 			resultList:   "removed",
@@ -464,7 +475,7 @@ func newProjectRemoveCmd() *cobra.Command {
 			}
 			r, err := stoppingRunning(cmd, remove, stopRunning, cancel, "stop them and remove it?")
 			if err != nil {
-				return err
+				return projectNotFoundHint(err)
 			}
 			return printResult(cmd, projectResult(r))
 		},

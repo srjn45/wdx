@@ -60,9 +60,9 @@ func (r daemonResult) text(w io.Writer, st style.Style) {
 	}
 	d := r.Daemon
 	switch r.Result {
-	case "stopped":
+	case resultStopped:
 		fmt.Fprintf(w, "daemon %s %s\n", st.Success("stopped"), st.Muted(fmt.Sprintf("(pid %d)", d.Pid)))
-	case "running":
+	case resultRunning:
 		fmt.Fprintf(w, "daemon %s %s on %s\n", st.Warning("already running"), st.Muted(fmt.Sprintf("(pid %d, version %s)", d.Pid, d.Version)), d.Socket)
 	default:
 		fmt.Fprintf(w, "daemon %s %s on %s\n", st.Success(r.Result), st.Muted(fmt.Sprintf("(pid %d, version %s)", d.Pid, d.Version)), d.Socket)
@@ -84,9 +84,10 @@ func newDaemonStartCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not started",
 			outputNote: "The daemon, already running or started; with --foreground, the daemon once stopped.\n" +
 				`With --json: {"result": ..., "daemon": {...}}`,
-			resultList: annotation("running", "started", "stopped"),
+			resultList: annotation(resultRunning, resultStarted, resultStopped),
 			errorList:  codeList(api.ErrorCodeAlreadyRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -97,9 +98,9 @@ func newDaemonStartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result := "running"
+			result := resultRunning
 			if started {
-				result = "started"
+				result = resultStarted
 			}
 			return printResult(cmd, daemonResult{Result: result, Daemon: &d})
 		},
@@ -138,7 +139,7 @@ func runForeground(cmd *cobra.Command) error {
 	if err := d.Serve(ctx); err != nil {
 		return err
 	}
-	return printResult(cmd, daemonResult{Result: "stopped", Daemon: &info})
+	return printResult(cmd, daemonResult{Result: resultStopped, Daemon: &info})
 }
 
 // startDaemon starts the daemon in the background unless one is running,
@@ -238,8 +239,9 @@ func newDaemonStopCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
-			resultList: annotation("not_running", "stopped"),
+			failurePrefix: "not stopped",
+			outputNote:    "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
+			resultList:    annotation(resultNotRunning, resultStopped),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, err := stopDaemon(cmd)
@@ -247,9 +249,9 @@ func newDaemonStopCmd() *cobra.Command {
 				return err
 			}
 			if d == nil {
-				return printResult(cmd, daemonResult{Result: "not_running"})
+				return printResult(cmd, daemonResult{Result: resultNotRunning})
 			}
-			return printResult(cmd, daemonResult{Result: "stopped", Daemon: d})
+			return printResult(cmd, daemonResult{Result: resultStopped, Daemon: d})
 		},
 	}
 }
@@ -309,9 +311,10 @@ func newDaemonRestartCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
-			resultList: "restarted",
-			errorList:  codeList(api.ErrorCodeDaemonUnavailable),
+			failurePrefix: "not restarted",
+			outputNote:    "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
+			resultList:    resultRestarted,
+			errorList:     codeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, err := stopDaemon(cmd); err != nil {
@@ -321,7 +324,7 @@ func newDaemonRestartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, daemonResult{Result: "restarted", Daemon: &d})
+			return printResult(cmd, daemonResult{Result: resultRestarted, Daemon: &d})
 		},
 	}
 }

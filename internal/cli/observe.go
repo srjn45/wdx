@@ -92,19 +92,19 @@ type observeResult struct {
 
 func (r observeResult) text(w io.Writer, st style.Style) {
 	switch r.Result {
-	case "started":
+	case resultStarted:
 		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Success("started"), st.Hint(r.Stack.GrafanaURL))
 		r.Stack.text(w, st)
-	case "running":
+	case resultRunning:
 		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Warning("already running"), st.Hint(r.Stack.GrafanaURL))
 		r.Stack.text(w, st)
-	case "stopped":
+	case resultStopped:
 		fmt.Fprintf(w, "observability stack %s\n", st.Success("stopped"))
 	default:
 		fmt.Fprintf(w, "observability stack %s\n", st.Warning("not running"))
 	}
 	switch {
-	case r.DataRemoved == nil && r.Result == "stopped":
+	case r.DataRemoved == nil && r.Result == resultStopped:
 		fmt.Fprintf(w, "  its data stays for the next start; %s removes it\n", st.Command(identity.Name+" observe stop --purge"))
 	case r.DataRemoved != nil && *r.DataRemoved:
 		fmt.Fprintln(w, "  its data was removed")
@@ -126,9 +126,10 @@ func newObserveStartCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not started",
 			outputNote: "The stack, already running or started, and where to open Grafana.\n" +
 				`With --json: {"result": ..., "stack": {...}, "data_removed": null}`,
-			resultList: annotation("running", "started"),
+			resultList: annotation(resultRunning, resultStarted),
 			errorList:  codeList(api.ErrorCodePortInUse, api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -141,7 +142,7 @@ func newObserveStartCmd() *cobra.Command {
 				return err
 			}
 			if v != nil && v.Status == "running" {
-				return printResult(cmd, observeResult{Result: "running", Stack: v})
+				return printResult(cmd, observeResult{Result: resultRunning, Stack: v})
 			}
 			progress := io.Discard
 			if !jsonMode(cmd) {
@@ -153,7 +154,7 @@ func newObserveStartCmd() *cobra.Command {
 			if v, err = stackState(cmd, s); err != nil {
 				return err
 			}
-			return printResult(cmd, observeResult{Result: "started", Stack: v})
+			return printResult(cmd, observeResult{Result: resultStarted, Stack: v})
 		},
 	}
 }
@@ -171,9 +172,10 @@ func newObserveStopCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not stopped",
 			outputNote: "Whether the stack was stopped and, with --purge, whether its data was removed.\n" +
 				`With --json: {"result": ..., "stack": null, "data_removed": ...}`,
-			resultList: annotation("not_running", "stopped"),
+			resultList: annotation(resultNotRunning, resultStopped),
 			errorList:  codeList(api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -185,9 +187,9 @@ func newObserveStopCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r := observeResult{Result: "not_running"}
+			r := observeResult{Result: resultNotRunning}
 			if removed {
-				r.Result = "stopped"
+				r.Result = resultStopped
 			}
 			if purge {
 				dataRemoved, err := s.RemoveData(cmd.Context())

@@ -44,9 +44,10 @@ func newSettingsWriteCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
+			failurePrefix: "not written",
 			outputNote: "The file written, the settings it lists that the file did not and the keys moved to its end.\n" +
 				`With --json: {"result": ..., "settings": {"path": ..., "added": [...], "dropped": [...]}}`,
-			resultList: annotation("unchanged", "written"),
+			resultList: annotation(resultUnchanged, resultWritten),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			log := logging.FromContext(cmd.Context())
@@ -59,7 +60,7 @@ func newSettingsWriteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result := "unchanged"
+			result := resultUnchanged
 			if dest == "" {
 				dest = path
 			}
@@ -70,7 +71,7 @@ func newSettingsWriteCmd() *cobra.Command {
 				if err := config.WriteFile(dest, r.Content); err != nil {
 					return err
 				}
-				result = "written"
+				result = resultWritten
 			}
 			log.Info("settings "+result, "from", path, "path", dest, "added", r.Added, "dropped", r.Dropped)
 			return printResult(cmd, settingsResult{Result: result, Settings: settingsChange{Path: dest, Added: r.Added, Dropped: r.Dropped}})
@@ -107,7 +108,7 @@ type settingsChange struct {
 
 func (r settingsResult) text(w io.Writer, st style.Style) {
 	s := r.Settings
-	if r.Result == "unchanged" {
+	if r.Result == resultUnchanged {
 		fmt.Fprintf(w, "%s: %s already lists every setting\n", st.Success("up to date"), st.Name(s.Path))
 	} else {
 		fmt.Fprintf(w, "%s %s\n", st.Success("wrote"), st.Name(s.Path))

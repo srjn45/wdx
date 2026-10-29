@@ -52,12 +52,13 @@ func TestNotFound(t *testing.T) {
 	} {
 		v, exit := wdxJSON(t, home, append([]string{"project"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
-		if v.Hint != nil || v.Details != nil {
-			t.Fatalf("%v: want null hint and details, got %+v", args, v)
+		wantHint(t, v, "see every project with wdx project list --all")
+		if v.Details != nil {
+			t.Fatalf("%v: want null details, got %+v", args, v)
 		}
 	}
 	out := wdx(t, home, "project", "close", "--name", "nope")
-	if out.exit != api.ExitRejected || out.stdout != "" || !strings.HasPrefix(out.stderr, "wdx: project not found") {
+	if out.exit != api.ExitRejected || out.stdout != "" || !strings.HasPrefix(out.stderr, "wdx: not closed: project not found") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 }
@@ -436,6 +437,7 @@ func TestGetNotFound(t *testing.T) {
 	for _, args := range [][]string{{"--id", "proj-nope"}, {"--name", "nope"}, {"--id", "app"}, {"--name", id}} {
 		v, exit := wdxJSON(t, home, append([]string{"project", "get"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+		wantHint(t, v, "see every project with wdx project list --all")
 	}
 }
 

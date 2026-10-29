@@ -56,7 +56,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 				"with --apply or --rollback, the versions and schema versions before and after.\n" +
 				`With --json: {"update": {"current": ..., "latest": ..., "channel": ..., "available": ...}}, or` + "\n" +
 				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}, "warnings": [...]}`,
-			resultList:   annotation("rolled_back", "up_to_date", "updated"),
+			resultList:   annotation(resultRolledBack, resultUpToDate, resultUpdated),
 			jsonRequires: "rollback:" + annotation("discard-changes", "cancel"),
 			errorList: codeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
 				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeSettingsInvalid, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
@@ -74,21 +74,23 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			o := updateOptions(cmd)
 			switch {
 			case apply:
+				cmd.Annotations[failurePrefix] = "not updated"
 				r, err := update.Apply(cmd.Context(), o, channel, version)
 				if err != nil {
 					return err
 				}
-				result := "updated"
+				result := resultUpdated
 				if r.UpToDate {
-					result = "up_to_date"
+					result = resultUpToDate
 				}
 				return printUpdateResult(cmd, newUpdateResult(result, r, &channel))
 			case rollback:
+				cmd.Annotations[failurePrefix] = "not rolled back"
 				r, err := rollBack(cmd, o, discardChanges, cancel)
 				if err != nil {
 					return err
 				}
-				return printUpdateResult(cmd, newUpdateResult("rolled_back", r, nil))
+				return printUpdateResult(cmd, newUpdateResult(resultRolledBack, r, nil))
 			}
 			s, err := update.Check(cmd.Context(), o, channel, version)
 			if err != nil {
@@ -223,7 +225,7 @@ type updateSettings struct {
 
 func newUpdateResult(result string, r update.Result, channel *string) updateResult {
 	u := updateChange{From: r.From, To: r.To, Channel: channel, SchemaFrom: r.SchemaFrom, SchemaTo: r.SchemaTo}
-	if result == "rolled_back" {
+	if result == resultRolledBack {
 		u.DataRestored = &r.DataRestored
 	}
 	if r.Settings != nil {
@@ -252,9 +254,9 @@ func (r updateResult) text(w io.Writer, st style.Style) {
 		schema = fmt.Sprintf("%d -> %d", u.SchemaFrom, u.SchemaTo)
 	}
 	switch r.Result {
-	case "up_to_date":
+	case resultUpToDate:
 		fmt.Fprintf(w, "%s: %s %s %s\n", st.Success("up to date"), identity.Name, st.Name(u.To), st.Muted("(newest on the "+*u.Channel+" channel)"))
-	case "updated":
+	case resultUpdated:
 		fmt.Fprintf(w, "%s %s %s -> %s\n", st.Success("updated"), identity.Name, u.From, st.Name(u.To))
 		field("schema:", schema)
 		if s := u.Settings; s != nil && len(s.Added) > 0 {
