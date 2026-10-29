@@ -1,6 +1,6 @@
 # The vt and its fork
 
-The holder keeps each terminal's screen in `github.com/charmbracelet/x/vt` (MIT), wrapped by `screen` in `internal/holder/screen.go` for the holder (docs/ATTACH.md), and used by `internal/termview` to draw an attached terminal (docs/ATTACH_VIEW.md); no other package uses it. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is to be fixed in our fork and offered upstream.
+wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule), so the fork is one `replace`. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is to be fixed in our fork and offered upstream.
 
 - Fork: `github.com/srjn45/x`, branch `wdx`, cloned at `~/dev/x`; `upstream` is `charmbracelet/x`.
 - wdx uses upstream for now: `x/vt` at `v0.1.1-0.20261028143050-ac49f62f807e` and `ultraviolet` at `v0.0.0-20260303162955-0b88c25f3fff`. Once the fork has fixes worth having, `go.mod` gets `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, and `make notices`. Each fix also goes upstream as a pull request; the `replace` goes when upstream has them all.
@@ -11,7 +11,7 @@ The holder keeps each terminal's screen in `github.com/charmbracelet/x/vt` (MIT)
 | # | Bug | Repro | Fix | Workaround in `screen` | Status |
 |---|---|---|---|---|---|
 | 1 | The alternate screen keeps its own scrollback, up to 10,000 lines, that no API reaches or clears | Enter `CSI ?1049h`, print 20,000 lines, leave: 107 MiB held for good | `NewEmulator` gives the alternate screen no scrollback (`scrs[1].scrollback = nil`; `Screen` already checks for nil) | none: accepted | open |
-| 2 | A bottom or right margin past the screen panics on the next scroll | 80×24: `CSI 1;30r`, `CSI 30;1H`, `CSI S` | Clamp the stored margins to the screen; ignore a top or left margin past it | `feed` recovers, resets the vt and reports a gap | fixed in the fork (`68419ef`), not pushed |
+| 2 | A bottom or right margin past the screen panics on the next scroll | 80×24: `CSI 1;30r`, `CSI 30;1H`, `CSI S` | Clamp the stored margins to the screen; ignore a top or left margin past it | `feed` recovers, resets the vt, feeds the rest of the piece a byte at a time and reports a gap | fixed in the fork (`68419ef`), not pushed |
 | 3 | Lines scrolled out of a region that does not start at the top go to scrollback; so do lines deleted by `DL` (`CSI M`) at the region's top | `CSI 2;3r`, `CSI 3;1H`, print lines | Push to scrollback only when scrolling (index, `SU`) a region whose top is the screen's top, as xterm; never on `DL` | none: such lines appear in history | open |
 | 4 | The `CursorStyle` callback is given "steady" as its `blink` argument | `CSI 6 q`: the callback says blink | Pass `blink` in the vt's `Screen.setCursorStyle` | the callback reads `CursorStyle()` back | open |
 | 5 | `Close` sets `closed` while `Read` reads it in another goroutine: a data race | Read answers in one goroutine, `Close` in another | Guard `closed` with the pipe, or a mutex or atomic | `close` closes the answer pipe's writer instead of the vt | open |

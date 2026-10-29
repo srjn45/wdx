@@ -62,7 +62,7 @@ Every key goes to the program in the terminal, except:
 
 ## The pane: `internal/termview`
 
-A Bubble Tea v2 model, `termview.Model`, around a `holder.Session` and a vt (`charmbracelet/x/vt`):
+A Bubble Tea v2 model, `termview.Model`, around a `holder.Session` and a screen of its own (`internal/screen`, the vt wrapper the holder uses too):
 
 - a goroutine reads the session and hands the output to the model in messages; the model feeds its vt and asks for a frame. Bubble Tea draws at most 60 frames a second from the vt's screen, so a flood is drawn as it stands, not byte by byte (the vt draws through `ultraviolet`, as Bubble Tea v2 does; step 1 settles how a frame takes it);
 - keys and mouse events are encoded by the vt for the program inside (`SendKey`, `SendMouse`, `Paste`), honouring its modes (application cursor keys, mouse reporting, bracketed paste), and the vt's input stream is written to the session; the vt also answers the program's queries (cursor position, colors) on that stream, which the holder leaves to an attached client;

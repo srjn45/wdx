@@ -5,22 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"image/color"
-	"io"
 	"os"
 	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/pty"
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // interactiveShell is a shell to type into.
@@ -34,8 +34,10 @@ type attachRun struct {
 	home   string
 	args   []string
 	master *os.File
-	screen *vt.SafeEmulator // the calling terminal
 	done   chan output
+
+	mu     sync.Mutex
+	screen *screen.Screen // the calling terminal
 }
 
 // callingText is on the calling terminal's screen before attaching.
@@ -56,24 +58,26 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 	if err := pty.Setsize(master, cols, rows); err != nil {
 		t.Fatal(err)
 	}
-	screen := vt.NewSafeEmulator(cols, rows)
-	_, _ = screen.Write([]byte(callingText + "\r\n$ "))
-	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, screen: screen, done: make(chan output, 1)}
+	// The terminal's answers go back to the view.
+	sc := screen.New(cols, rows, func(p []byte) { _, _ = master.Write(p) })
+	sc.Write([]byte(callingText + "\r\n$ "))
+	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, screen: sc, done: make(chan output, 1)}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := master.Read(buf)
-			_, _ = screen.Write(buf[:n])
+			a.mu.Lock()
+			sc.Write(buf[:n])
+			a.mu.Unlock()
 			if err != nil {
 				return
 			}
 		}
 	}()
-	go func() { _, _ = io.Copy(master, screen) }() // the terminal's answers
 	t.Cleanup(func() {
-		if w, ok := screen.InputPipe().(io.Closer); ok {
-			w.Close()
-		}
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		sc.Close()
 	})
 	go func() {
 		var stdout, stderr bytes.Buffer
@@ -97,7 +101,9 @@ func (a *attachRun) input(s string) {
 
 // text is what the calling terminal shows, without trailing spaces.
 func (a *attachRun) text() string {
+	a.mu.Lock()
 	lines := strings.Split(ansi.Strip(a.screen.Render()), "\n")
+	a.mu.Unlock()
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " ")
 	}
@@ -150,7 +156,14 @@ func (a *attachRun) wantBar(bg color.Color) {
 	a.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		cell := a.screen.CellAt(0, a.screen.Height()-1)
+		a.mu.Lock()
+		_, rows := a.screen.Size()
+		var cell *uv.Cell
+		if c := a.screen.CellAt(0, rows-1); c != nil {
+			copied := *c // the vt changes it
+			cell = &copied
+		}
+		a.mu.Unlock()
 		if cell != nil && (bg == nil && cell.Style.Attrs&uv.AttrReverse != 0 || bg != nil && cell.Style.Bg == bg) {
 			return
 		}
@@ -161,11 +174,17 @@ func (a *attachRun) wantBar(bg color.Color) {
 	}
 }
 
+func (a *attachRun) altScreen() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.screen.AltScreen()
+}
+
 // wantGivenBack checks the calling terminal shows what it did before
 // attaching, and nothing of the session.
 func (a *attachRun) wantGivenBack(session string) {
 	a.t.Helper()
-	a.waitFor("the calling terminal back", func(string) bool { return !a.screen.IsAltScreen() })
+	a.waitFor("the calling terminal back", func(string) bool { return !a.altScreen() })
 	if text := a.text(); !strings.Contains(text, callingText) || strings.Contains(text, session) {
 		a.t.Fatalf("want the calling terminal as it was, got:\n%s", text)
 	}
@@ -180,7 +199,7 @@ func TestTerminalAttach(t *testing.T) {
 	a := startAttach(t, home, app, "--name", "api", "--json")
 	a.waitScreen("C-\\ ? for keys")
 	a.wantBar(ansi.Green)
-	if !a.screen.IsAltScreen() || !strings.Contains(a.text(), "api · app") {
+	if !a.altScreen() || !strings.Contains(a.text(), "api · app") {
 		t.Fatalf("want the view full-window with its status line, got:\n%s", a.text())
 	}
 	a.input("echo hel''lo\r")

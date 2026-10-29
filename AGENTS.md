@@ -40,6 +40,7 @@ internal/git/   thin wrapper over the git CLI
 internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its screen, spool and history, its protocol and clients; docs/TERMINALS.md, docs/ATTACH.md
 internal/pty/   opens pseudo-terminals and starts commands in them
 internal/termview/  the Bubble Tea pane that shows an attached terminal; docs/ATTACH_VIEW.md
+internal/screen/  a terminal's screen kept by a headless vt, for the holder and termview; the only user of the vt; docs/VT.md
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service
 internal/telemetry/  sends the daemon's metrics to an OpenTelemetry collector
@@ -55,7 +56,7 @@ internal/update/  replaces the installed wdx with a release and rolls it back (w
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder, and cli -> daemon -> domain -> db/git/holder -> pty, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

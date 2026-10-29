@@ -1,4 +1,8 @@
-package holder
+// Package screen keeps a terminal's screen as its output draws it, in a
+// headless vt: the holder's copy of each terminal (docs/ATTACH.md), and
+// each attached pane's (docs/ATTACH_VIEW.md). It is the only package that
+// uses the vt, whose bugs it works around (docs/VT.md).
+package screen
 
 import (
 	"fmt"
@@ -10,13 +14,10 @@ import (
 	"github.com/charmbracelet/x/vt"
 )
 
-// screen is the terminal's screen as the shell's output drew it, kept by a
-// headless vt: what an attaching client is shown first, and where the
-// history's lines come from. Only screen uses the vt (docs/ATTACH.md). It is
-// not safe for concurrent use.
-type screen struct {
-	vt     *vt.Emulator
-	answer func([]byte)
+// Screen is a terminal's screen. It is not safe for concurrent use.
+type Screen struct {
+	vt    *vt.Emulator
+	input func([]byte)
 	// What the vt has no getter for, tracked through its callbacks and
 	// handlers.
 	modes       map[ansi.Mode]bool // as the output last set them
@@ -42,18 +43,20 @@ const (
 	scrollbackLines = 1 << 16
 )
 
-// newScreen returns an empty screen of cols×rows. The vt answers programs'
-// queries (cursor position, device attributes) through answer, called from
-// another goroutine; nil drops the answers.
-func newScreen(cols, rows int, answer func([]byte)) *screen {
-	s := &screen{answer: answer}
-	s.reset(cols, rows)
+// New returns an empty screen of cols×rows. What the vt sends the program
+// goes to input, called from another goroutine: its answers to the
+// program's queries (cursor position, device attributes), and the keys,
+// mouse events and pastes given to the screen. nil drops it.
+func New(cols, rows int, input func([]byte)) *Screen {
+	s := &Screen{input: input}
+	s.Reset(cols, rows)
 	return s
 }
 
-func (s *screen) reset(cols, rows int) {
+// Reset empties the screen, at cols×rows.
+func (s *Screen) Reset(cols, rows int) {
 	if s.vt != nil {
-		s.close()
+		s.Close()
 	}
 	e := vt.NewEmulator(cols, rows)
 	e.SetScrollbackSize(scrollbackLines)
@@ -94,13 +97,13 @@ func (s *screen) reset(cols, rows int) {
 		}
 		return false
 	})
-	// The vt writes answers to a pipe and blocks until they are read.
+	// The vt writes to a pipe and blocks until it is read.
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := e.Read(buf)
-			if n > 0 && s.answer != nil {
-				s.answer(append([]byte(nil), buf[:n]...))
+			if n > 0 && s.input != nil {
+				s.input(append([]byte(nil), buf[:n]...))
 			}
 			if err != nil {
 				return
@@ -110,7 +113,7 @@ func (s *screen) reset(cols, rows int) {
 }
 
 // setMargins tracks DECSTBM as the vt applies it, to the current screen.
-func (s *screen) setMargins(params ansi.Params) {
+func (s *Screen) setMargins(params ansi.Params) {
 	rows := s.vt.Height()
 	top, _, _ := params.Param(0, 1)
 	top = max(top, 1)
@@ -128,22 +131,23 @@ func (s *screen) setMargins(params ansi.Params) {
 	s.margins[s.current()] = m
 }
 
-func (s *screen) current() int {
+func (s *Screen) current() int {
 	if s.vt.IsAltScreen() {
 		return 1
 	}
 	return 0
 }
 
-// write feeds the shell's output to the screen and returns the lines it
-// scrolled off the main screen, oldest first, each rendered with its styles
-// and links. reset is true when the vt failed on the output: the screen was
-// reset to empty, and lines may be missing before it.
-func (s *screen) write(p []byte) (lines []string, reset bool) {
+// Write feeds output to the screen and returns the lines it scrolled off
+// the main screen, oldest first, each rendered with its styles and links.
+// reset is true when the vt failed on the output: the screen was reset to
+// empty, and lines may be missing before it.
+func (s *Screen) Write(p []byte) (lines []string, reset bool) {
 	for len(p) > 0 {
 		n := min(len(p), writePiece)
 		if !s.feed(p[:n]) {
 			reset = true
+			s.feedBytes(p[:n])
 		}
 		p = p[n:]
 	}
@@ -153,10 +157,10 @@ func (s *screen) write(p []byte) (lines []string, reset bool) {
 
 // feed writes one piece to the vt and harvests it; false means the vt
 // panicked and was replaced by an empty one.
-func (s *screen) feed(p []byte) (ok bool) {
+func (s *Screen) feed(p []byte) (ok bool) {
 	defer func() {
 		if recover() != nil {
-			s.reset(s.vt.Width(), s.vt.Height())
+			s.Reset(s.vt.Width(), s.vt.Height())
 			ok = false
 		}
 	}()
@@ -165,8 +169,16 @@ func (s *screen) feed(p []byte) (ok bool) {
 	return true
 }
 
+// feedBytes writes a piece the vt failed on again, a byte at a time: what
+// follows the sequence it fails on is drawn, not lost with the piece.
+func (s *Screen) feedBytes(p []byte) {
+	for i := range p {
+		s.feed(p[i : i+1])
+	}
+}
+
 // harvest moves the vt's scrollback into scrolled.
-func (s *screen) harvest() {
+func (s *Screen) harvest() {
 	sb := s.vt.Scrollback()
 	lines := sb.Lines()
 	for i, line := range lines {
@@ -176,28 +188,33 @@ func (s *screen) harvest() {
 	sb.Clear()
 }
 
-// lines renders the main screen's lines, styles and links included, up to
+// Lines renders the main screen's lines, styles and links included, up to
 // its last that is not blank; none while the alternate screen shows, which
 // never goes to history.
-func (s *screen) lines() []string {
+func (s *Screen) Lines() []string {
 	if s.vt.IsAltScreen() {
 		return nil
 	}
 	var lines []string
 	line := make(uv.Line, s.vt.Width())
 	for y := range s.vt.Height() {
-		for x := range line {
-			line[x] = uv.Cell{}
-			if c := s.vt.CellAt(x, y); c != nil {
-				line[x] = *c
-			}
-		}
+		s.row(line, y)
 		lines = append(lines, trimmed(line).Render())
 	}
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+// row copies row y's cells into line.
+func (s *Screen) row(line uv.Line, y int) {
+	for x := range line {
+		line[x] = uv.Cell{}
+		if c := s.vt.CellAt(x, y); c != nil {
+			line[x] = *c
+		}
+	}
 }
 
 // trimmed is line without its trailing blank cells, as the vt keeps lines
@@ -210,12 +227,12 @@ func trimmed(line uv.Line) uv.Line {
 	return line[:end]
 }
 
-// resize changes the screen's size; false means the vt panicked and was
+// Resize changes the screen's size; false means the vt panicked and was
 // replaced by an empty screen of the new size.
-func (s *screen) resize(cols, rows int) (ok bool) {
+func (s *Screen) Resize(cols, rows int) (ok bool) {
 	defer func() {
 		if recover() != nil {
-			s.reset(cols, rows)
+			s.Reset(cols, rows)
 			ok = false
 		}
 	}()
@@ -224,11 +241,88 @@ func (s *screen) resize(cols, rows int) (ok bool) {
 	return true
 }
 
-// snapshot returns the bytes that paint the screen on a terminal of its
+// Size is the screen's size.
+func (s *Screen) Size() (cols, rows int) {
+	return s.vt.Width(), s.vt.Height()
+}
+
+// Render is the screen as styled lines.
+func (s *Screen) Render() string {
+	return s.vt.Render()
+}
+
+// CellAt is the cell at x, y; nil outside the screen.
+func (s *Screen) CellAt(x, y int) *uv.Cell {
+	return s.vt.CellAt(x, y)
+}
+
+// Title is the title the output set, "" until it sets one.
+func (s *Screen) Title() string {
+	return s.title
+}
+
+// Mode reports whether the output set mode m.
+func (s *Screen) Mode(m ansi.Mode) bool {
+	return s.modes[m]
+}
+
+// AltScreen reports whether the alternate screen shows.
+func (s *Screen) AltScreen() bool {
+	return s.vt.IsAltScreen()
+}
+
+// Cursor is where the screen's cursor is and how it looks.
+type Cursor struct {
+	X, Y   int
+	Hidden bool
+	Shape  CursorShape
+	Blink  bool
+}
+
+// CursorShape is the shape a program gave the cursor.
+type CursorShape int
+
+const (
+	CursorBlock CursorShape = iota
+	CursorUnderline
+	CursorBar
+)
+
+// Cursor is the screen's cursor.
+func (s *Screen) Cursor() Cursor {
+	p := s.vt.CursorPosition()
+	style, blink := s.vt.CursorStyle()
+	shape := CursorBlock
+	switch style {
+	case vt.CursorUnderline:
+		shape = CursorUnderline
+	case vt.CursorBar:
+		shape = CursorBar
+	}
+	return Cursor{X: p.X, Y: p.Y, Hidden: s.vt.CursorHidden(), Shape: shape, Blink: blink}
+}
+
+// SendKey sends a key to the program, encoded as the modes it set ask.
+func (s *Screen) SendKey(k uv.KeyPressEvent) {
+	s.vt.SendKey(k)
+}
+
+// SendMouse sends a mouse event to the program, encoded as the modes it
+// set ask.
+func (s *Screen) SendMouse(m uv.MouseEvent) {
+	s.vt.SendMouse(m)
+}
+
+// Paste sends text to the program as a paste, bracketed when it asked.
+func (s *Screen) Paste(text string) {
+	s.vt.Paste(text)
+}
+
+// Snapshot returns the bytes that paint the screen on a terminal of its
 // size: a soft reset, the cells, the margins, the modes the output set, the
 // cursor and the title. The pen, character sets and left/right margins are
 // not carried: programs set them again before they draw.
-func (s *screen) snapshot() []byte {
+func (s *Screen) Snapshot() []byte {
 	e := s.vt
 	var b strings.Builder
 	b.WriteString("\x1b[!p\x1b[H\x1b[2J") // soft reset, home, clear
@@ -237,12 +331,7 @@ func (s *screen) snapshot() []byte {
 	}
 	line := make(uv.Line, e.Width())
 	for y := range e.Height() {
-		for x := range line {
-			line[x] = uv.Cell{}
-			if c := e.CellAt(x, y); c != nil {
-				line[x] = *c
-			}
-		}
+		s.row(line, y)
 		fmt.Fprintf(&b, "\x1b[%d;1H", y+1)
 		b.WriteString(line.Render())
 	}
@@ -296,9 +385,9 @@ func modeSequence(m ansi.Mode, on bool) string {
 	return fmt.Sprintf("\x1b[%d%c", m.Mode(), final)
 }
 
-// close ends the goroutine reading the vt's answers; the screen cannot be
+// Close ends the goroutine reading what the vt sends; the screen cannot be
 // used after.
-func (s *screen) close() {
+func (s *Screen) Close() {
 	// Closing the pipe's writer rather than the vt: Close sets a field that
 	// the reading goroutine reads without a lock.
 	if w, ok := s.vt.InputPipe().(io.Closer); ok {

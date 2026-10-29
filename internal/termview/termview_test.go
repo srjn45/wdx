@@ -235,7 +235,7 @@ func TestPaneCursorAndTitle(t *testing.T) {
 // empty and keeps showing what follows.
 func TestPaneReset(t *testing.T) {
 	t.Parallel()
-	d := attach(t, `echo ready; read x; printf 'before\033[1;30r\033[30;1H\033[S'; sleep 0.2; printf '\033[r\033[Hafter'; exec sleep 60`)
+	d := attach(t, `echo ready; read x; printf 'before\033[1;30r\033[30;1H\033[S\033[r\033[Hafter'; exec sleep 60`)
 	d.waitText("ready") // attached before the output it fails on
 	d.typeText("\n")
 	d.waitText("after")

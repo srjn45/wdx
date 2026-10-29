@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // testClient attaches to a holder as a client does, frame by frame, and
@@ -172,12 +173,12 @@ func TestAttachConsistent(t *testing.T) {
 	f.startShell(t, "term-00000102", fmt.Sprintf(`i=0; while [ $i -lt %d ]; do echo "line $i"; i=$((i+1)); done; echo done; exec sleep 60`, n))
 	time.Sleep(20 * time.Millisecond) // into the output
 	c := f.attach(t, "term-00000102", Size{Cols: 80, Rows: 24}, -1)
-	replayed := newScreen(80, 24, nil)
-	defer replayed.close()
+	replayed := screen.New(80, 24, nil)
+	defer replayed.Close()
 	var scrolled []string
 	fed := 0
 	c.waitFor("done", func(out string) bool {
-		lines, _ := replayed.write([]byte(out[fed:]))
+		lines, _ := replayed.Write([]byte(out[fed:]))
 		scrolled, fed = append(scrolled, lines...), len(out)
 		return slices.Contains(screenLines(replayed), "done")
 	})
@@ -211,16 +212,10 @@ func TestAttachConsistent(t *testing.T) {
 }
 
 // screenLines is the text of the screen's lines, without trailing spaces.
-func screenLines(s *screen) []string {
-	var lines []string
-	for y := range s.vt.Height() {
-		var b strings.Builder
-		for x := range s.vt.Width() {
-			if c := s.vt.CellAt(x, y); c != nil {
-				b.WriteString(c.Content)
-			}
-		}
-		lines = append(lines, strings.TrimRight(b.String(), " "))
+func screenLines(s *screen.Screen) []string {
+	lines := strings.Split(ansi.Strip(s.Render()), "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
 	}
 	return lines
 }

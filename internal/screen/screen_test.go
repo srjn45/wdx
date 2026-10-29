@@ -1,4 +1,4 @@
-package holder
+package screen
 
 import (
 	"fmt"
@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TestScreenSnapshot paints a fresh screen with another's snapshot and
 // compares the two: output recorded from programs in a 100×30 PTY
-// (testdata/screen), and sequences that set what the snapshot carries.
+// (testdata), and sequences that set what the snapshot carries.
 func TestScreenSnapshot(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
@@ -25,7 +27,7 @@ func TestScreenSnapshot(t *testing.T) {
 		"title":         "\x1b]0;a title\x07",
 		"alt margins":   "main\x1b[?1049h\x1b[2;10ralt",
 	}
-	files, err := filepath.Glob("testdata/screen/*.out")
+	files, err := filepath.Glob("testdata/*.out")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no recordings: %v", err)
 	}
@@ -39,14 +41,14 @@ func TestScreenSnapshot(t *testing.T) {
 	for name, out := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			a := newScreen(100, 30, nil)
-			defer a.close()
-			if _, reset := a.write([]byte(out)); reset {
+			a := New(100, 30, nil)
+			defer a.Close()
+			if _, reset := a.Write([]byte(out)); reset {
 				t.Fatal("the vt reset")
 			}
-			b := newScreen(100, 30, nil)
-			defer b.close()
-			if _, reset := b.write(a.snapshot()); reset {
+			b := New(100, 30, nil)
+			defer b.Close()
+			if _, reset := b.Write(a.Snapshot()); reset {
 				t.Fatal("the vt reset on the snapshot")
 			}
 			for _, d := range screenDiffs(a, b) {
@@ -58,7 +60,7 @@ func TestScreenSnapshot(t *testing.T) {
 
 // screenDiffs lists how b differs from a: cells, cursor, alternate screen,
 // margins, title and the modes a's output set.
-func screenDiffs(a, b *screen) []string {
+func screenDiffs(a, b *Screen) []string {
 	var diffs []string
 	for y := range a.vt.Height() {
 		for x := range a.vt.Width() {
@@ -132,9 +134,9 @@ func TestScreenHistory(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := newScreen(10, 3, nil)
-			defer s.close()
-			got, reset := s.write([]byte(tc.out))
+			s := New(10, 3, nil)
+			defer s.Close()
+			got, reset := s.Write([]byte(tc.out))
 			if reset {
 				t.Fatal("the vt reset")
 			}
@@ -145,32 +147,35 @@ func TestScreenHistory(t *testing.T) {
 	}
 }
 
-// TestScreenReset feeds the vt input it panics on: the screen starts
-// again empty and keeps working.
+// TestScreenReset feeds the vt output it panics on: the screen starts
+// again empty, draws what follows in the same write, and keeps working.
 func TestScreenReset(t *testing.T) {
 	t.Parallel()
-	s := newScreen(80, 24, nil)
-	defer s.close()
-	if _, reset := s.write([]byte("before\x1b[1;30r\x1b[30;1H\x1b[S")); !reset {
+	s := New(80, 24, nil)
+	defer s.Close()
+	if _, reset := s.Write([]byte("before\x1b[1;30r\x1b[30;1H\x1b[S\x1b[r\x1b[Hafter")); !reset {
 		t.Fatal("want the screen reset")
 	}
-	if c := s.vt.CellAt(0, 0); c == nil || c.Content != "" && c.Content != " " {
-		t.Fatalf("want the screen empty, got %q", c.Content)
+	if got := strings.TrimRight(ansi.Strip(s.Render()), " \n"); got != "after" {
+		t.Fatalf("got %q, want only the output after the failure", got)
 	}
-	if _, reset := s.write([]byte("after")); reset {
+	if _, reset := s.Write([]byte(" more")); reset {
 		t.Fatal("want the new vt to work")
 	}
-	if got := s.vt.CellAt(0, 0).Content; got != "a" {
+	if got := strings.TrimRight(ansi.Strip(s.Render()), " \n"); got != "after more" {
 		t.Fatalf("got %q, want the output after the reset", got)
 	}
 }
 
+// waitLimit bounds every wait for the vt's answers.
+const waitLimit = 10 * time.Second
+
 func TestScreenAnswers(t *testing.T) {
 	t.Parallel()
 	answers := make(chan []byte, 1)
-	s := newScreen(80, 24, func(p []byte) { answers <- p })
-	defer s.close()
-	s.write([]byte("\x1b[5;7H\x1b[6n"))
+	s := New(80, 24, func(p []byte) { answers <- p })
+	defer s.Close()
+	s.Write([]byte("\x1b[5;7H\x1b[6n"))
 	select {
 	case got := <-answers:
 		if string(got) != "\x1b[5;7R" {
@@ -180,11 +185,11 @@ func TestScreenAnswers(t *testing.T) {
 		t.Fatal("no answer")
 	}
 
-	quiet := newScreen(80, 24, nil)
-	defer quiet.close()
+	quiet := New(80, 24, nil)
+	defer quiet.Close()
 	done := make(chan struct{})
 	go func() {
-		quiet.write([]byte("\x1b[6n\x1b[c"))
+		quiet.Write([]byte("\x1b[6n\x1b[c"))
 		close(done)
 	}()
 	select {
@@ -196,18 +201,18 @@ func TestScreenAnswers(t *testing.T) {
 
 func TestScreenResize(t *testing.T) {
 	t.Parallel()
-	s := newScreen(80, 24, nil)
-	defer s.close()
-	s.write([]byte("\x1b[2;10rtext"))
-	if !s.resize(100, 30) {
+	s := New(80, 24, nil)
+	defer s.Close()
+	s.Write([]byte("\x1b[2;10rtext"))
+	if !s.Resize(100, 30) {
 		t.Fatal("the vt reset")
 	}
 	if s.vt.Width() != 100 || s.vt.Height() != 30 || s.margins != [2]margins{} {
 		t.Fatalf("got %d×%d with margins %v", s.vt.Width(), s.vt.Height(), s.margins)
 	}
-	b := newScreen(100, 30, nil)
-	defer b.close()
-	b.write(s.snapshot())
+	b := New(100, 30, nil)
+	defer b.Close()
+	b.Write(s.Snapshot())
 	for _, d := range screenDiffs(s, b) {
 		t.Error(d)
 	}

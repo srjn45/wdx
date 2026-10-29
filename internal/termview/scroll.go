@@ -30,10 +30,6 @@ const (
 	// prefetchLines is how close to lines it does not have the view comes
 	// before fetching them.
 	prefetchLines = 200
-	// writePiece bounds what the vt parses between two harvests of its
-	// scrollback; see the holder's screen.
-	writePiece      = 1 << 10
-	scrollbackLines = 1 << 16
 )
 
 // scrollback is what the pane scrolls through: history lines by number,
@@ -240,5 +236,5 @@ func (m *Model) fetchNeeded() tea.Cmd {
 // scrolledContent is the view scrolled back, as styled lines.
 func (m *Model) scrolledContent() string {
 	cols, rows := m.Size()
-	return strings.Join(m.back.view(strings.Split(m.vt.Render(), "\n"), cols, rows), "\n")
+	return strings.Join(m.back.view(strings.Split(m.screen.Render(), "\n"), cols, rows), "\n")
 }

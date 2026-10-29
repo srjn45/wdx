@@ -170,7 +170,7 @@ func (h *holder) attach(c *client, size Size) attachStart {
 	h.resizeLocked(size)
 	start := attachStart{
 		Snapshot: Snapshot{Size: h.size, Pos: h.vtPos, HistoryLines: h.historyNext()},
-		paint:    h.screen.snapshot(),
+		paint:    h.screen.Snapshot(),
 	}
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
@@ -320,7 +320,7 @@ func (h *holder) resizeLocked(size Size) {
 		h.log.Warn("terminal not resized", "err", err.Error())
 		return
 	}
-	if !h.screen.resize(size.Cols, size.Rows) {
+	if !h.screen.Resize(size.Cols, size.Rows) {
 		h.log.Warn("vt reset: it failed on the resize")
 		h.writeHistory(markInterrupted)
 	}

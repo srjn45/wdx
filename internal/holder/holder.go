@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/pty"
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // writeTimeout bounds a write to the daemon, so one that stopped reading
@@ -100,7 +101,7 @@ type holder struct {
 
 	// The vt's side: it follows the spool to vtPos and writes history.
 	screenMu   sync.Mutex
-	screen     *screen
+	screen     *screen.Screen
 	size       Size
 	vtPos      int64
 	history    *historyWriter // nil when history is off
@@ -203,7 +204,7 @@ func (h *holder) open(dir string, historyLines int64) error {
 	if h.spool, err = openSpool(filepath.Join(dir, "spool"), spoolSegment, spoolBacklog, spoolKeep); err != nil {
 		return err
 	}
-	h.screen = newScreen(startSize.Cols, startSize.Rows, h.answer)
+	h.screen = screen.New(startSize.Cols, startSize.Rows, h.answer)
 	h.historyDir = historyDir(dir)
 	if historyLines == 0 {
 		return nil
@@ -267,8 +268,8 @@ func (h *holder) serve(ctx context.Context) error {
 	h.screenMu.Lock()
 	// What the shell left on the screen goes to history, as a terminal
 	// keeps it scrolled back when the shell is started again.
-	h.writeHistory(h.screen.lines()...)
-	h.screen.close()
+	h.writeHistory(h.screen.Lines()...)
+	h.screen.Close()
 	if h.history != nil {
 		h.history.close()
 	}
@@ -330,10 +331,10 @@ func (h *holder) feed(from int64, p []byte) {
 	defer h.screenMu.Unlock()
 	if from > h.vtPos {
 		h.log.Warn("history interrupted: the screen fell too far behind", "skipped_bytes", from-h.vtPos)
-		h.screen.reset(h.size.Cols, h.size.Rows)
+		h.screen.Reset(h.size.Cols, h.size.Rows)
 		h.writeHistory(markInterrupted)
 	}
-	lines, reset := h.screen.write(p)
+	lines, reset := h.screen.Write(p)
 	h.writeHistory(lines...)
 	if reset {
 		h.log.Warn("vt reset: it failed on the output")

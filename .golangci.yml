@@ -28,6 +28,13 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/terminal
               desc: the cli calls the daemon's API, never the domain
+        vt-in-screen-only:
+          files:
+            - "$all"
+            - "!**/internal/screen/**"
+          deny:
+            - pkg: github.com/charmbracelet/x/vt
+              desc: only internal/screen uses the vt, so its fork is one replace
         config-in-cli-only:
           files:
             - "$all"

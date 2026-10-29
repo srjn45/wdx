@@ -69,7 +69,7 @@ It never waits for the vt or for a client, so the shell never blocks on either. 
 
 ### The vt
 
-`charmbracelet/x/vt` (MIT), wrapped in a `screen` type of our own, fed from the spool by one goroutine.
+`charmbracelet/x/vt` (MIT), wrapped in `internal/screen`, fed from the spool by one goroutine.
 
 - **Screen**: cells with colors and style, cursor position, visibility and style, scroll region, title, and the modes a program sets (alternate screen, application cursor keys and keypad, bracketed paste, mouse reporting, focus events, autowrap), tracked through the vt's mode callbacks since it exposes no getter.
 - **History**: the vt's scrollback is harvested after every 1 KiB it parses, which cannot push more lines than its 65,536 (a screen's height per 4 bytes, for screens up to 256 rows): each line is rendered with its style and links and appended to history, then the scrollback is cleared. The vt then holds only the screen: about 100 KB per terminal instead of ~94 MiB for 10,000 lines kept in it (but see the alternate screen in docs/VT.md).
@@ -183,7 +183,7 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 ## Dependencies
 
-`github.com/charmbracelet/x/vt` and what it brings: `charmbracelet/ultraviolet`, `charmbracelet/x/ansi`, `rivo/uniseg`, `clipperhouse/uax29`, `lucasb-eyer/go-colorful`, `mattn/go-runewidth` and others, all MIT. `x/vt` is pre-1.0: we pin it, wrap it in `screen` so only one file uses it, and keep a round-trip test (below) that catches a regression on upgrade.
+`github.com/charmbracelet/x/vt` and what it brings: `charmbracelet/ultraviolet`, `charmbracelet/x/ansi`, `rivo/uniseg`, `clipperhouse/uax29`, `lucasb-eyer/go-colorful`, `mattn/go-runewidth` and others, all MIT. `x/vt` is pre-1.0: we pin it, wrap it in `internal/screen` so only that package uses it, and keep a round-trip test (below) that catches a regression on upgrade.
 
 `x/vt` has bugs, gaps and a speed limit, found by the spike and step 2; docs/VT.md lists them with their repros, fixes and the workarounds in `screen`. Attach is built on upstream as is first; the fixes go to our fork `srjn45/x` afterwards, and upstream.
 
@@ -204,7 +204,7 @@ tide, the web relay, reflow of history, resyncing slow clients, recording with t
 Each step builds and passes `make check` and `make test` on its own. All of them are done.
 
 1. **Daemon accepts holder versions 1 and 2**, so that rolling back from the release that brings version 2 keeps its terminals. It needs no release of its own, but a release carrying it must be out and installed before step 4 is released, since a rollback returns to the binary installed before.
-2. **`screen`** in `internal/holder`: the `x/vt` wrapper with mode tracking, snapshot, history harvest, recovery; `make notices`. Tests from recorded output.
+2. **`screen`** (now `internal/screen`, shared with `termview`): the `x/vt` wrapper with mode tracking, snapshot, history harvest, recovery; `make notices`. Tests from recorded output.
 3. **Spool and history files** in `internal/holder`: writers, readers, segments, trimming; the reader exported for the daemon.
 4. **Holder version 2**: the reader writing the spool and queueing to clients, the vt goroutine, roles in `hello`, the new frames, size, queries, slow clients, `exited` to clients, `--history-lines`; the ring removed. The setting `terminal.history_lines`, which the daemon passes.
 5. **Attach client** in `internal/holder`: `Attach(ctx, socket, id, size, history)` returning the history, the snapshot, an output reader, input and resize; used by the CLI now and tide later.
