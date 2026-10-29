@@ -145,6 +145,8 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 ### `wdx terminal attach`
 
+Proposed to be replaced by a full-window view, as tmux's: docs/ATTACH_VIEW.md.
+
 - Resolves the terminal through the daemon (`terminalRef`, as `get`), which must be `running`, else `terminal_not_running`; then dials the holder.
 - Talks to the controlling terminal, `/dev/tty`, not stdin and stdout: it puts it in raw mode, sends its size, forwards SIGWINCH as `resize`, writes the history, the snapshot and the output to it, and sends what is typed as `input`. Without a controlling terminal: `usage`. stdout stays free for the result, so `--json` works as for every command.
 - `--history`: how many history lines to write before the snapshot, into the terminal app's own scrollback; default `terminal.attach_history`. `all` writes everything kept. A screenful of newlines follows them, so what the terminal showed scrolls up into its scrollback rather than being cleared by the screen painted over it.
