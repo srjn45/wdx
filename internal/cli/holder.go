@@ -26,7 +26,7 @@ func newHolderCmd() *cobra.Command {
 			o.Home = env.Config.Home
 			o.Socket = identity.HolderSocket(o.Home, o.ID)
 			// The daemon starts it with exactly the variables the shell gets.
-			o.Env = env.Terminal
+			o.Env = env.ShellEnv
 			o.Ready = os.NewFile(3, "ready")
 			ctx := logging.NewContext(cmd.Context(), logging.FromContext(cmd.Context()).With("terminal_id", o.ID))
 			return holder.Run(ctx, o)

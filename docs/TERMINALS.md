@@ -157,7 +157,7 @@ Built, never inherited whole, and never taken from the CLI that asked: the termi
 | `PATH`, `LANG`, `LC_*`, `SSH_AUTH_SOCK`, `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` | the daemon's environment, those set |
 
 - The last row is a fixed allowlist: what a login shell's profile assumes is already there. Without it the shell runs in the C locale, `git push` over ssh cannot reach the agent, and GUI and clipboard tools cannot reach the desktop. The login shell then reads the user's profile and rc, which build the rest.
-- `main` reads the allowlist once into `cli.Env.Terminal`, keeping it the only place that reads the environment. The daemon starts each holder with exactly those variables, plus `WDX_HOME`; the holder's `main` reads them the same way and hands them to the shell. Never in arguments, where `ps` shows them, and never logged.
+- `main` reads the allowlist once into `cli.Env.ShellEnv`, keeping it the only place that reads the environment. The daemon starts each holder with exactly those variables, plus `WDX_HOME`; the holder's `main` reads them the same way and hands them to the shell. Never in arguments, where `ps` shows them, and never logged.
 - The values are the daemon's from when it started: after logging in again with a new ssh agent, `wdx daemon restart` picks up the new socket. Shells already running keep the old one, as in tmux.
 
 Logs: the holder logs to the same daily files, with `terminal_id` on every line: started, shell started, exited, stopped, released, and what docs/ATTACH.md lists for attach. Never PTY bytes.
@@ -274,7 +274,7 @@ swift-falcon  running       /home/me/dev/warden    term-1a2b3c4d
 
 Each step builds and passes `make test` on its own. All of them are done.
 
-1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.Terminal`; AGENTS.md's Config section names it as the third exception.
+1. **Table and settings**: migration `0003_terminals.sql`, which only adds a table and so does not break older binaries; the `terminal.shell` setting; the terminal allowlist read by `main` into `cli.Env.ShellEnv`; AGENTS.md's Config section names it as the third exception.
 2. **`internal/holder`**: the process (`Run`), the protocol, the client (`Dial`, `Stop`, `Release`, watching for `exited`) and `Start`, which launches `wdx holder` with the ready pipe. Tests with real PTYs.
 3. **`internal/terminal`**: the Store (rows, transitions, names with codenames, lookup by id or by name in a project) and the supervisor that starts, watches, stops and reconciles holders. It does not import `project`: the daemon passes the project's id and the dir. `holder/holdertest` makes a test binary its own holder. Tests with a temp DB and real holders.
 4. **API and daemon**, one step since the daemon must implement every operation of the spec to build: the terminal paths and schemas, `stop_running`, `started` / `stopped` on project results, the new codes, `make generate`; `GetByPath` (the project whose worktree holds a dir, the deepest winning) in the project Store; the terminal handlers; reconciliation before serving; project close, open and remove going through the supervisor; shutdown leaving holders alone. The daemon takes the binary holders run, the shells' variables and `terminal.shell` as options.

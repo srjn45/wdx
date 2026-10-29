@@ -109,7 +109,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 	ctx, stop := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: home, Log: log,
-		Executable: wdxBinary, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
 	})
 	if err != nil {

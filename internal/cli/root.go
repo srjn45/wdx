@@ -62,9 +62,9 @@ type Env struct {
 	// NoColor is true when the terminal asks for no color: NO_COLOR is set
 	// or TERM is dumb. It turns off color mode auto only.
 	NoColor bool
-	// Terminal holds the variables terminals take from the daemon's
-	// environment, as KEY=value: TerminalEnv of it. Never logged.
-	Terminal []string
+	// ShellEnv holds the variables terminals take from the daemon's
+	// environment, as KEY=value: ShellEnv of it. Never logged.
+	ShellEnv []string
 	// Environ is the environment, as os.Environ gives it, which the
 	// processes the cli starts inherit: the daemon in the background and
 	// the binary wdx update checks. Never logged.
@@ -75,17 +75,17 @@ type Env struct {
 	// TTY opens the controlling terminal, which terminal attach shows a
 	// terminal in; it fails when there is none, and is nil in tests.
 	TTY func() (*os.File, error)
-	// TermEnv holds the variables that say what that terminal is (TERM,
-	// COLORTERM, TERM_PROGRAM), as KEY=value, for the attach view to draw
-	// for it. Read by main, as Terminal is.
-	TermEnv []string
+	// CallerTerm holds the variables that say what the terminal wdx runs
+	// in is (TERM, COLORTERM, TERM_PROGRAM), as KEY=value, for the attach
+	// view to draw for it. Read by main, as ShellEnv is.
+	CallerTerm []string
 }
 
 // termVars are the variables that describe the terminal wdx runs in.
 var termVars = []string{"TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"}
 
-// TermEnv returns the variables of environ that describe the terminal.
-func TermEnv(environ []string) []string {
+// CallerTerm returns the variables of environ that describe the terminal.
+func CallerTerm(environ []string) []string {
 	var vars []string
 	for _, kv := range environ {
 		if name, _, _ := strings.Cut(kv, "="); slices.Contains(termVars, name) {
@@ -100,9 +100,9 @@ func TermEnv(environ []string) []string {
 // locale, the ssh agent and the desktop session.
 var terminalVars = []string{"PATH", "LANG", "SSH_AUTH_SOCK", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"}
 
-// TerminalEnv returns the variables of environ, as os.Environ gives them,
+// ShellEnv returns the variables of environ, as os.Environ gives them,
 // that terminals inherit. Empty ones are left out.
-func TerminalEnv(environ []string) []string {
+func ShellEnv(environ []string) []string {
 	var vars []string
 	for _, kv := range environ {
 		name, value, _ := strings.Cut(kv, "=")

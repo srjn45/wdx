@@ -22,7 +22,7 @@ func (s *server) ListProjects(ctx context.Context, req api.ListProjectsRequestOb
 	if req.Params.State != nil {
 		state = project.State(*req.Params.State)
 	}
-	list, err := s.store.List(ctx, state)
+	list, err := s.projects.List(ctx, state)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 	if err != nil {
 		return nil, err
 	}
-	status, err := s.store.DiskStatus(ctx, p)
+	status, err := s.projects.DiskStatus(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -75,14 +75,14 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		if err != nil {
 			return nil, err
 		}
-		if p, err = s.store.Close(ctx, p.ID); err != nil {
+		if p, err = s.projects.Close(ctx, p.ID); err != nil {
 			return nil, err
 		}
 		r := result(api.ResultClosed, p)
 		r.Stopped = optionalTerminals(stopped)
 		return api.UpdateProject200JSONResponse(r), nil
 	}
-	o, err := s.store.Open(ctx, p.ID)
+	o, err := s.projects.Open(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
-	if p, err = s.store.Remove(ctx, p.ID); err != nil {
+	if p, err = s.projects.Remove(ctx, p.ID); err != nil {
 		return api.ProjectResult{}, err
 	}
 	// Its terminals went with it.
@@ -129,7 +129,7 @@ func (s *server) RecloneProject(ctx context.Context, req api.RecloneProjectReque
 	if err != nil {
 		return nil, err
 	}
-	o, err := s.store.Reclone(ctx, p.ID, io.Discard)
+	o, err := s.projects.Reclone(ctx, p.ID, io.Discard)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (s *server) create(ctx context.Context, b api.CreateProject) (api.ProjectRe
 				return api.ProjectResult{}, err
 			}
 		}
-		if o, err = s.store.Create(ctx, name, parent); err == nil {
+		if o, err = s.projects.Create(ctx, name, parent); err == nil {
 			return result(api.ResultCreated, o.Project), nil
 		}
 		if b.OnConflict == nil || *b.OnConflict != api.CreateProjectOnConflictOpen {
@@ -180,9 +180,9 @@ func (s *server) create(ctx context.Context, b api.CreateProject) (api.ProjectRe
 		if err := absolute(src.Path); err != nil {
 			return api.ProjectResult{}, err
 		}
-		o, err = s.store.OpenLocal(ctx, src.Path, name)
+		o, err = s.projects.OpenLocal(ctx, src.Path, name)
 	case api.GitSource:
-		o, err = s.store.OpenGit(ctx, src.Url, name, io.Discard)
+		o, err = s.projects.OpenGit(ctx, src.Url, name, io.Discard)
 	}
 
 	r, err := s.settleMissing(ctx, o, err, b.OnMissingCheckout)
@@ -202,11 +202,11 @@ func (s *server) openConflicting(ctx context.Context, conflict error) (project.O
 	log := logging.FromContext(ctx)
 	if taken, ok := errors.AsType[*project.NameTakenError](conflict); ok {
 		log.Info("conflict answered", "answer", "open", "project_id", taken.Project.ID)
-		return s.store.Open(ctx, taken.Project.ID)
+		return s.projects.Open(ctx, taken.Project.ID)
 	}
 	if exists, ok := errors.AsType[*project.RepoExistsError](conflict); ok {
 		log.Info("conflict answered", "answer", "open", "path", exists.Root)
-		return s.store.OpenLocal(ctx, exists.Root, "")
+		return s.projects.OpenLocal(ctx, exists.Root, "")
 	}
 	return project.Opened{}, conflict
 }
@@ -220,7 +220,7 @@ func (s *server) settleMissing(ctx context.Context, o project.Opened, err error,
 		if *choice == api.CreateProjectOnMissingCheckoutRemove {
 			return s.remove(ctx, missing.Project, false)
 		}
-		o, err = s.store.Reclone(ctx, missing.Project.ID, io.Discard)
+		o, err = s.projects.Reclone(ctx, missing.Project.ID, io.Discard)
 	}
 	if err != nil {
 		return api.ProjectResult{}, err
@@ -231,9 +231,9 @@ func (s *server) settleMissing(ctx context.Context, o project.Opened, err error,
 // find returns the project ref names: "id:" and its id, or its name.
 func (s *server) find(ctx context.Context, ref string) (project.Project, error) {
 	if id, ok := strings.CutPrefix(ref, idPrefix); ok {
-		return s.store.GetByID(ctx, id)
+		return s.projects.GetByID(ctx, id)
 	}
-	return s.store.GetByName(ctx, ref)
+	return s.projects.GetByName(ctx, ref)
 }
 
 // absolute fails for a relative path: the daemon's working directory means

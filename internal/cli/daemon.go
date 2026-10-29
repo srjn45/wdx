@@ -122,7 +122,7 @@ func runForeground(cmd *cobra.Command) error {
 		Home:                 cfg.Home,
 		Log:                  log,
 		Metrics:              telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
-		TerminalEnv:          invocationOf(cmd).env.Terminal,
+		ShellEnv:             invocationOf(cmd).env.ShellEnv,
 		TerminalShell:        cfg.TerminalShell,
 		TerminalHistoryLines: cfg.TerminalHistoryLines,
 	})

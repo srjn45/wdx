@@ -69,7 +69,7 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	}
 	o := Options{
 		Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics,
-		Executable: exe, TerminalEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+		Executable: exe, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 	}
 	if adjust != nil {
 		adjust(&o)

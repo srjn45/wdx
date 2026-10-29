@@ -12,7 +12,7 @@ import (
 // server implements the API on the project store and the terminals'
 // supervisor.
 type server struct {
-	store     *project.Store
+	projects  *project.Store
 	terminals *terminal.Supervisor
 	self      api.Daemon
 }

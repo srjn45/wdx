@@ -79,7 +79,7 @@ func (s *server) StartTerminal(ctx context.Context, req api.StartTerminalRequest
 	if err != nil {
 		return nil, err
 	}
-	p, err := s.store.GetByID(ctx, t.ProjectID)
+	p, err := s.projects.GetByID(ctx, t.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *server) projectOf(ctx context.Context, ref, dir *string) (project.Proje
 	if err := absolute(*dir); err != nil {
 		return project.Project{}, err
 	}
-	return s.store.GetByPath(ctx, *dir)
+	return s.projects.GetByPath(ctx, *dir)
 }
 
 // exclusive fails when a request names a project both ways.

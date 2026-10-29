@@ -15,10 +15,10 @@ func main() {
 	env := cli.Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, LookPath: exec.LookPath,
 		// The conventions of terminals, not settings of wdx: https://no-color.org
-		NoColor:  os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
-		Environ:  os.Environ(),
-		Terminal: cli.TerminalEnv(os.Environ()),
-		TermEnv:  cli.TermEnv(os.Environ()),
+		NoColor:    os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
+		Environ:    os.Environ(),
+		ShellEnv:   cli.ShellEnv(os.Environ()),
+		CallerTerm: cli.CallerTerm(os.Environ()),
 	}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil && !cli.RewritesSettings(os.Args[1:], err) {

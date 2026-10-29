@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestTerminalEnv(t *testing.T) {
+func TestShellEnv(t *testing.T) {
 	t.Parallel()
-	got := TerminalEnv([]string{
+	got := ShellEnv([]string{
 		"PATH=/usr/bin:/bin",
 		"LANG=en_US.UTF-8",
 		"LC_ALL=C.UTF-8",

@@ -63,7 +63,7 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 		var stdout, stderr bytes.Buffer
 		env := Env{
 			Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary,
-			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, TermEnv: []string{"TERM=xterm-256color"},
+			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, CallerTerm: []string{"TERM=xterm-256color"},
 		}
 		exit := Run(context.Background(), a.args, env)
 		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}

@@ -45,8 +45,8 @@ type Options struct {
 	// Executable is the wdx binary terminals' holders run; this process's
 	// own when empty.
 	Executable string
-	// TerminalEnv holds the variables shells inherit, as KEY=value.
-	TerminalEnv []string
+	// ShellEnv holds the variables shells inherit, as KEY=value.
+	ShellEnv []string
 	// TerminalShell is the shell terminals run; "" for the login shell.
 	TerminalShell string
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
@@ -68,7 +68,7 @@ type Daemon struct {
 	lock      *os.File
 	listener  net.Listener
 	db        *sql.DB
-	store     *project.Store
+	projects  *project.Store
 	terminals *terminal.Supervisor
 	changes   sync.Mutex // one request changing state at a time
 	// abort is cancelled when the changes in flight at shutdown have run
@@ -134,7 +134,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if d.db, err = db.Open(logging.NewContext(ctx, d.log), identity.DBPath(opts.Home)); err != nil {
 		return nil, err
 	}
-	d.store = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
+	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	if opts.Executable == "" {
 		if opts.Executable, err = os.Executable(); err != nil {
 			return nil, err
@@ -144,7 +144,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.terminals = terminal.NewSupervisor(logged, terminal.NewStore(d.db), terminal.Options{
 		Executable:   opts.Executable,
 		Home:         opts.Home,
-		Env:          opts.TerminalEnv,
+		Env:          opts.ShellEnv,
 		Shell:        opts.TerminalShell,
 		HistoryLines: opts.TerminalHistoryLines,
 		StopGrace:    opts.StopGrace,

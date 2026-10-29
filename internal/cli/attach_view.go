@@ -49,7 +49,7 @@ func runAttachView(ctx context.Context, tty *os.File, env Env, v *attachView) (a
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
 	p := tea.NewProgram(v, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
-		tea.WithEnvironment(env.TermEnv), tea.WithoutSignalHandler())
+		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	_, err := p.Run()
 	switch {
 	case errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil:
