@@ -108,7 +108,7 @@ Smaller ones in the same code: `writeClient` can slice with a negative `n` if th
 1. Terminal runtime bugs and the shared vt wrapper: H1–H5, C1, C2, D1. Done; below.
 2. Daemon lifecycle: D2–D6, D13.
 3. `wdx update` failure handling: U1–U5.
-4. Tidying: duplication, placement, logging, stale comments, names.
+4. Tidying: duplication, placement, logging, stale comments, names. Designed; below.
 5. Test gaps, macOS in CI.
 
 Then the vt fork (docs/VT.md), which after Step 1 is one swap in `internal/screen`.
@@ -161,18 +161,24 @@ Approved by the human. **Done** 2026-10-29: `f5669eb` to the release tests, with
 
 Impact: an update failing at any step ends with the old version answering, or an error naming what does; a rollback point is never deleted before its replacement is in place, nor is a working update reported failed; Ctrl-C during the few seconds of the switch waits for it. Breaking only for `update --rollback --json` scripts (fix 6). The update JSON gains `warnings`.
 
-## Step 4 proposal: tidying
+## Step 4 design: tidying
 
-Still to brainstorm; no behaviour changes, one `refactor:` commit per item. The items are the lists under "Structure and duplication" and "Readability and consistency" above. In order:
+Agreed with the human on 2026-10-29. One `refactor:` commit per item and no behaviour change, except the three marked fixes and the one feature at the end. The items are the lists under "Structure and duplication" and "Readability and consistency" above. In order:
 
-1. Shared helpers: `internal/db` id and exec helpers for both stores; the git test helpers into `gittest`; holder `greet`; the cli's color mode, `field`, unavailable check and `decodeDetail`; one `eventually` test helper.
-2. Placement: split `project.go` (errors, paths, store); `terminal history` and the hidden `holder` command into their own cli files; result types and error mappings in one place each; the "in use" rules in one daemon file.
-3. Logging: `"err", err.Error()` everywhere; one key for the frame type; `transition` logs only real changes, and its SQL at debug.
-4. Comments and docs: the stale ones listed; ATTACH_VIEW.md's logs and size handling; attach's output note; openapi's `invalid_path`; `count` without `from` a usage error or documented.
-5. Rules: AGENTS.md's layout gets `identity`, `gittest`, `holdertest`, `screen`; depguard keeps domain packages off daemon, client and cli; forbidigo adds `os.Environ` and `os.UserHomeDir`, and `main` passes what the cli needs; `absolute` uses `Env.WorkDir`.
-6. Consistency: `failurePrefix` on every changing command; not-found hints on project too; local result constants.
-7. Names to agree with the human: `Env.Terminal` / `Env.TermEnv` (e.g. `ShellEnv` / `CallerTerm`), the daemon's `store` field (`projects`).
+1. Shared helpers: `internal/db` id and exec helpers for both stores; the git test helpers (`gitCmd`, `gitRepo`, `bareRemote`) into `gittest`; holder `greet`; the cli's color mode, `field`, unavailable check and `decodeDetail`; one `eventually` test helper for the four polling loops.
+2. Placement: split `project.go` (errors, paths, store); `terminal history` and the hidden `holder` command into their own cli files; result types in `output.go` and error mappings in one place; the "in use" rules in one daemon file; shared helpers out of `cli_test.go` (the project tests move in Step 5).
+3. Logging: `"err", err` everywhere (slog prints the message); `frame` the one key for the frame type; `transition` logs only real changes, and its SQL at debug.
+4. Comments and docs: the stale ones listed; ATTACH_VIEW.md's logs and size handling; attach's output note and `--json` line with `exited`; openapi's `invalid_path` for a relative `dir`.
+5. Rules: AGENTS.md's layout gets `identity`, `gittest`, `holdertest`, `screen` and `cli -> telemetry`; depguard keeps domain packages off daemon, client and cli; forbidigo adds `os.Environ` and `os.UserHomeDir`, and `main` passes what the cli and update need (`startDaemon`, update's daemon start, config's `defaultHome`); `absolute` uses `Env.WorkDir`.
+6. Consistency: `failurePrefix` on every changing command; not-found hints on project too; result constants in daemon, update and settings; the dead `attachView.detached` removed.
+7. Names: `Env.Terminal` becomes `Env.ShellEnv` (what shells inherit from the daemon), `Env.TermEnv` becomes `Env.CallerTerm` (the terminal `wdx` runs in); the daemon's `store` field becomes `projects`.
 8. Scripts: one `fetch-release.sh` and one sha256 function.
+
+Fixes and the feature, each its own commit:
+
+- `fix!:` history's paging. `from` and `count` are one mode, `tail` the other: `count` alone starts at line 0 (the oldest kept), `from` alone takes 1000 lines, `tail` with either is a usage error (`usage` from the API), neither gives the default tail. Breaking: `count` alone and `count` with `tail` were ignored before. History lists once; following new lines (`--follow`) is a feature for later, if wanted.
+- `fix!:` an unknown endpoint answers 400 `usage`, not 404 with that code.
+- `feat:` `Terminal` gets `updated_at`, the time of its last state change; the column exists, only the API leaves it out.
 
 ## Step 5 proposal: tests and CI
 

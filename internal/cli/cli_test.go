@@ -423,6 +423,17 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	return wdxJSONWith(t, home, func(*Env) {}, args...)
 }
 
+// eventually polls ok until it holds, for up to ten seconds, and reports
+// whether it did.
+func eventually(ok func() bool) bool {
+	for deadline := time.Now().Add(10 * time.Second); !ok(); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			return false
+		}
+	}
+	return true
+}
+
 func wdxJSONWith(t *testing.T, home string, adjust func(*Env), args ...string) (jsonOutput, int) {
 	t.Helper()
 	out := wdxWith(t, home, adjust, append(args, "--json")...)
@@ -630,34 +641,6 @@ func TestNoHome(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
 }
 
-func gitCmd(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-}
-
-// gitRepo creates a repository with one commit in a temp dir named name.
-func gitRepo(t *testing.T, name string) string {
-	t.Helper()
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir = filepath.Join(dir, name)
-	gitCmd(t, filepath.Dir(dir), "init", "-q", dir)
-	gitCmd(t, dir, "commit", "-q", "--allow-empty", "-m", "init")
-	return dir
-}
-
-// bareRemote creates a bare repository named name.git to clone from.
-func bareRemote(t *testing.T, name string) string {
-	t.Helper()
-	bare := filepath.Join(t.TempDir(), name+".git")
-	gitCmd(t, gitRepo(t, name), "clone", "-q", "--bare", ".", bare)
-	return bare
-}
-
 func wantHint(t *testing.T, v jsonOutput, hint string) {
 	t.Helper()
 	if v.Hint == nil || !strings.Contains(*v.Hint, hint) {
@@ -668,7 +651,7 @@ func wantHint(t *testing.T, v jsonOutput, hint string) {
 func TestOpenLocal(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	repo := gitRepo(t, "app")
+	repo := gittest.Repo(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--local", repo)
 	if exit != api.ExitOK || v.Result != "registered" || v.Project.Name != "app" || v.Project.Worktrees[0].Path != repo {
@@ -685,9 +668,9 @@ func TestOpenLocal(t *testing.T) {
 func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	repo := gitRepo(t, "app")
+	repo := gittest.Repo(t, "app")
 	wt := filepath.Join(filepath.Dir(repo), "wt")
-	gitCmd(t, repo, "worktree", "add", "-q", wt)
+	gittest.Git(t, repo, "worktree", "add", "-q", wt)
 	wdxJSON(t, home, "project", "open", "--local", wt)
 	if err := os.RemoveAll(wt); err != nil {
 		t.Fatal(err)
@@ -711,7 +694,7 @@ func TestOpenLocalErrors(t *testing.T) {
 	wantHint(t, v, "git init")
 
 	id := newProject(t, home, "app")
-	v, exit = wdxJSON(t, home, "project", "open", "--local", gitRepo(t, "other"), "--name", "APP")
+	v, exit = wdxJSON(t, home, "project", "open", "--local", gittest.Repo(t, "other"), "--name", "APP")
 	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
 	wantHint(t, v, "--name")
 	if p, _ := v.Details["project"].(map[string]any); p["id"] != id {
@@ -722,11 +705,11 @@ func TestOpenLocalErrors(t *testing.T) {
 func TestOpenLocalProjectMismatch(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	a, b := gitRepo(t, "a"), gitRepo(t, "b")
-	gitCmd(t, a, "remote", "add", "origin", "https://example.com/a.git")
+	a, b := gittest.Repo(t, "a"), gittest.Repo(t, "b")
+	gittest.Git(t, a, "remote", "add", "origin", "https://example.com/a.git")
 	wdxJSON(t, home, "project", "open", "--local", a)
 	wdxJSON(t, home, "project", "open", "--local", b)
-	gitCmd(t, b, "remote", "add", "origin", "https://example.com/a.git")
+	gittest.Git(t, b, "remote", "add", "origin", "https://example.com/a.git")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--local", b)
 	wantError(t, v, exit, api.ErrorCodeProjectMismatch, api.ExitRejected)
@@ -735,7 +718,7 @@ func TestOpenLocalProjectMismatch(t *testing.T) {
 func TestOpenGit(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
 	want := filepath.Join(home, "projects", "app")
@@ -749,7 +732,7 @@ func TestOpenGit(t *testing.T) {
 
 func TestOpenGitJSONRequiresAnswer(t *testing.T) {
 	t.Parallel()
-	v, exit := wdxJSON(t, t.TempDir(), "project", "open", "--git", bareRemote(t, "app"))
+	v, exit := wdxJSON(t, t.TempDir(), "project", "open", "--git", gittest.Bare(t, "app"))
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	wantHint(t, v, "--reclone or --remove")
 }
@@ -757,7 +740,7 @@ func TestOpenGitJSONRequiresAnswer(t *testing.T) {
 func TestOpenGitCheckoutMissing(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 	clone := filepath.Join(home, "projects", "app")
 	first, _ := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
 
@@ -791,14 +774,14 @@ func TestOpenGitErrors(t *testing.T) {
 	v, exit := wdxJSON(t, home, "project", "open", "--git", "", "--reclone")
 	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 
-	v, exit = wdxJSON(t, home, "project", "open", "--git", bareRemote(t, "app"), "--name", "../x", "--reclone")
+	v, exit = wdxJSON(t, home, "project", "open", "--git", gittest.Bare(t, "app"), "--name", "../x", "--reclone")
 	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
 	wantHint(t, v, "--name")
 
 	if err := os.MkdirAll(filepath.Join(home, "projects", "taken"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	v, exit = wdxJSON(t, home, "project", "open", "--git", bareRemote(t, "taken"), "--reclone")
+	v, exit = wdxJSON(t, home, "project", "open", "--git", gittest.Bare(t, "taken"), "--reclone")
 	wantError(t, v, exit, api.ErrorCodePathExists, api.ExitRejected)
 	wantHint(t, v, "--name")
 
@@ -864,7 +847,7 @@ func TestCreateNameTaken(t *testing.T) {
 func TestCreateRepoExists(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	repo := gitRepo(t, "app")
+	repo := gittest.Repo(t, "app")
 
 	v, exit := wdxJSON(t, home, "project", "create", "--name", "app", "--path", filepath.Dir(repo), "--cancel")
 	wantError(t, v, exit, api.ErrorCodeRepoExists, api.ExitRejected)

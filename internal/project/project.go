@@ -4,10 +4,7 @@ package project
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"database/sql/driver"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -300,10 +298,10 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 		if err := s.checkName(ctx, tx, name, ""); err != nil {
 			return Opened{}, err
 		}
-		if id, err = newID("proj"); err != nil {
+		if id, err = db.NewID("proj"); err != nil {
 			return Opened{}, err
 		}
-		if err := execSQL(ctx, tx, `
+		if _, err := db.Exec(ctx, tx, `
 			INSERT INTO projects (id, name, origin_url, origin_key, state, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			id, name, nullable(origin), nullable(key), StateOpen, now, now); err != nil {
@@ -320,7 +318,7 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 			return Opened{}, err
 		}
 		// Keep the stored origin when this checkout has none; another clone may.
-		if err := execSQL(ctx, tx, `
+		if _, err := db.Exec(ctx, tx, `
 			UPDATE projects SET
 				name       = coalesce(?, name),
 				origin_url = coalesce(?, origin_url),
@@ -335,11 +333,11 @@ func (s *Store) OpenLocal(ctx context.Context, path, name string) (Opened, error
 	}
 
 	// A known path is re-pointed, in case it was deleted and re-cloned.
-	wtID, err := newID("wt")
+	wtID, err := db.NewID("wt")
 	if err != nil {
 		return Opened{}, err
 	}
-	if err := execSQL(ctx, tx, `
+	if _, err := db.Exec(ctx, tx, `
 		INSERT INTO project_worktrees (id, project_id, path, git_common_dir, created_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
@@ -763,7 +761,7 @@ func (s *Store) Close(ctx context.Context, id string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	if err := execSQL(ctx, s.db, "UPDATE projects SET state = ?, updated_at = ? WHERE id = ?",
+	if _, err := db.Exec(ctx, s.db, "UPDATE projects SET state = ?, updated_at = ? WHERE id = ?",
 		StateClosed, time.Now().UnixMilli(), p.ID); err != nil {
 		return Project{}, err
 	}
@@ -779,7 +777,7 @@ func (s *Store) Remove(ctx context.Context, id string) (Project, error) {
 		return Project{}, err
 	}
 	// Related rows go via ON DELETE CASCADE.
-	if err := execSQL(ctx, s.db, "DELETE FROM projects WHERE id = ?", p.ID); err != nil {
+	if _, err := db.Exec(ctx, s.db, "DELETE FROM projects WHERE id = ?", p.ID); err != nil {
 		return Project{}, err
 	}
 	logging.FromContext(ctx).Info("project removed", "project_id", p.ID, "name", p.Name, "worktrees", len(p.Worktrees))
@@ -820,7 +818,7 @@ func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree,
 		if ok {
 			continue
 		}
-		if err := execSQL(ctx, tx, "DELETE FROM project_worktrees WHERE id = ?", w.ID); err != nil {
+		if _, err := db.Exec(ctx, tx, "DELETE FROM project_worktrees WHERE id = ?", w.ID); err != nil {
 			return nil, err
 		}
 		logging.FromContext(ctx).Info("worktree dropped", "project_id", projectID, "worktree_id", w.ID, "path", w.Path)
@@ -890,43 +888,6 @@ func queryID(ctx context.Context, q queryRower, query string, args ...any) (stri
 	return id, err
 }
 
-// execer is satisfied by *sql.DB and *sql.Tx.
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
-// execSQL runs a statement that changes rows.
-func execSQL(ctx context.Context, e execer, query string, args ...any) error {
-	res, err := e.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	logging.FromContext(ctx).Debug("sql exec", "query", strings.Join(strings.Fields(query), " "), "args", sqlValues(args), "rows", rows)
-	return err
-}
-
-// sqlValues returns args as the database receives them: NULL for an invalid
-// sql.NullString rather than the struct.
-func sqlValues(args []any) []any {
-	values := make([]any, len(args))
-	for i, a := range args {
-		values[i] = a
-		if v, ok := a.(driver.Valuer); ok {
-			values[i], _ = v.Value()
-		}
-	}
-	return values
-}
-
 func nullable(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
-}
-
-func newID(prefix string) (string, error) {
-	b := make([]byte, 4)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return prefix + "-" + hex.EncodeToString(b), nil
 }

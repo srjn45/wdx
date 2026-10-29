@@ -44,14 +44,10 @@ type Session struct {
 func Attach(ctx context.Context, socket, id string, size Size, history int) (*Session, error) {
 	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
-	var d net.Dialer
-	c, err := d.DialContext(ctx, "unix", socket)
+	c, err := dial(ctx, socket)
 	if err != nil {
 		return nil, err
 	}
-	deadline, _ := ctx.Deadline()
-	// Fails only on a closed connection, which the attach reports.
-	_ = c.SetDeadline(deadline)
 	s := &Session{conn: c}
 	if err := s.attach(id, size, history); err != nil {
 		c.Close()
@@ -62,15 +58,9 @@ func Attach(ctx context.Context, socket, id string, size Size, history int) (*Se
 }
 
 func (s *Session) attach(id string, size Size, history int) error {
-	if err := writeFrame(s.conn, frameHello, Hello{Version: Version, Role: roleClient}); err != nil {
+	var err error
+	if s.Hello, err = greet(s.conn, roleClient); err != nil {
 		return err
-	}
-	t, body, err := readFrame(s.conn)
-	if err != nil {
-		return err
-	}
-	if t != frameHello || json.Unmarshal(body, &s.Hello) != nil {
-		return fmt.Errorf("the holder answered with frame %d, not hello", t)
 	}
 	if s.Hello.Version < 2 {
 		// It took this connection for the daemon's, which dials it again.

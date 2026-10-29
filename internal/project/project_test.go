@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,29 +38,18 @@ func gitRepo(t *testing.T, name, origin string) string {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	gitCmd(t, dir, "init", "-q")
+	gittest.Git(t, dir, "init", "-q")
 	if origin != "" {
-		gitCmd(t, dir, "remote", "add", "origin", origin)
+		gittest.Git(t, dir, "remote", "add", "origin", origin)
 	}
 	return realPath(t, dir)
 }
 
-// worktree adds a linked worktree of repo and returns its path.
-// bareRemote creates a bare repository with one commit to clone from.
-func bareRemote(t *testing.T, name string) string {
-	t.Helper()
-	src := gitRepo(t, name, "")
-	gitCmd(t, src, "commit", "-q", "--allow-empty", "-m", "init")
-	bare := filepath.Join(realPath(t, t.TempDir()), name+".git")
-	gitCmd(t, src, "clone", "-q", "--bare", src, bare)
-	return bare
-}
-
 func worktree(t *testing.T, repo string) string {
 	t.Helper()
-	gitCmd(t, repo, "commit", "-q", "--allow-empty", "-m", "init")
+	gittest.Git(t, repo, "commit", "-q", "--allow-empty", "-m", "init")
 	wt := filepath.Join(t.TempDir(), "wt")
-	gitCmd(t, repo, "worktree", "add", "-q", wt)
+	gittest.Git(t, repo, "worktree", "add", "-q", wt)
 	return realPath(t, wt)
 }
 
@@ -73,13 +61,6 @@ func realPath(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return real
-}
-
-func gitCmd(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
 }
 
 func paths(p Project) []string {
@@ -226,7 +207,7 @@ func TestOriginAddedLater(t *testing.T) {
 	repo := gitRepo(t, "myrepo", "")
 	open(t, s, repo, "")
 
-	gitCmd(t, repo, "remote", "add", "origin", "https://example.com/r.git")
+	gittest.Git(t, repo, "remote", "add", "origin", "https://example.com/r.git")
 	p := open(t, s, repo, "")
 	if p.OriginURL != "https://example.com/r.git" {
 		t.Fatalf("origin not picked up: %+v", p)
@@ -240,7 +221,7 @@ func TestOriginAddedLater(t *testing.T) {
 	// Another remote-less repo that later gains the same origin conflicts.
 	stray := gitRepo(t, "stray", "")
 	open(t, s, stray, "")
-	gitCmd(t, stray, "remote", "add", "origin", "https://example.com/r.git")
+	gittest.Git(t, stray, "remote", "add", "origin", "https://example.com/r.git")
 	_, err := s.OpenLocal(context.Background(), stray, "")
 	if m, ok := errors.AsType[*ProjectMismatchError](err); !ok || m.ByOrigin.ID != p.ID || m.Root != stray {
 		t.Fatalf("want ProjectMismatchError for %s, got %v", p.ID, err)
@@ -275,8 +256,8 @@ func TestReinitInSamePathKeepsProject(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(repo, ".git")); err != nil {
 		t.Fatal(err)
 	}
-	gitCmd(t, repo, "init", "-q")
-	gitCmd(t, repo, "remote", "add", "origin", "https://example.com/new.git")
+	gittest.Git(t, repo, "init", "-q")
+	gittest.Git(t, repo, "remote", "add", "origin", "https://example.com/new.git")
 
 	p := open(t, s, repo, "")
 	if p.ID != old.ID || p.OriginURL != "https://example.com/new.git" || countRows(t, s, "project_worktrees") != 1 {
@@ -409,7 +390,7 @@ func TestOpenLocalNewCloneReplacesDeletedOne(t *testing.T) {
 func TestOpenGitClones(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 
 	o := openGit(t, s, remote, "")
 	want := filepath.Join(s.projectsDir, "app")
@@ -444,7 +425,7 @@ func TestOpenGitReusesLeftoverClone(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 	p := openGit(t, s, remote, "")
 	if _, err := s.Remove(ctx, p.ID); err != nil {
 		t.Fatal(err)
@@ -470,11 +451,11 @@ func TestOpenGitDirectoryTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
+	_, err := s.OpenGit(context.Background(), gittest.Bare(t, "app"), "", io.Discard)
 	if exists, ok := errors.AsType[*PathExistsError](err); !ok || exists.Path != filepath.Join(s.projectsDir, "app") {
 		t.Fatalf("want PathExistsError, got %v", err)
 	}
-	if o := openGit(t, s, bareRemote(t, "app"), "app-2"); o.Name != "app-2" {
+	if o := openGit(t, s, gittest.Bare(t, "app"), "app-2"); o.Name != "app-2" {
 		t.Fatalf("want name app-2, got %q", o.Name)
 	}
 }
@@ -484,7 +465,7 @@ func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
 	s := newStore(t)
 	p := open(t, s, gitRepo(t, "app", ""), "")
 
-	_, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard)
+	_, err := s.OpenGit(context.Background(), gittest.Bare(t, "app"), "", io.Discard)
 	if taken, ok := errors.AsType[*NameTakenError](err); !ok || taken.Project.ID != p.ID {
 		t.Fatalf("want NameTakenError for %s, got %v", p.ID, err)
 	}
@@ -495,7 +476,7 @@ func TestOpenGitNameTakenDoesNotClone(t *testing.T) {
 
 func TestOpenGitRejectsPathAsName(t *testing.T) {
 	t.Parallel()
-	_, err := newStore(t).OpenGit(context.Background(), bareRemote(t, "app"), "../app", io.Discard)
+	_, err := newStore(t).OpenGit(context.Background(), gittest.Bare(t, "app"), "../app", io.Discard)
 	if _, ok := errors.AsType[*InvalidNameError](err); !ok {
 		t.Fatalf("want InvalidNameError, got %v", err)
 	}
@@ -524,7 +505,7 @@ func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
 func TestOpenGitCloneKilled(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
@@ -555,7 +536,7 @@ func TestOpenGitRemovesCloneLeftovers(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(left, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if o, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard); err != nil || !o.Cloned {
+	if o, err := s.OpenGit(context.Background(), gittest.Bare(t, "app"), "", io.Discard); err != nil || !o.Cloned {
 		t.Fatalf("want a clone, got %+v, %v", o, err)
 	}
 	if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
@@ -570,7 +551,7 @@ func TestOpenGitCheckoutMissingThenReclone(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	s := newStore(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 	p := openGit(t, s, remote, "")
 	dest := paths(p.Project)[0]
 	if err := os.RemoveAll(dest); err != nil {
@@ -917,7 +898,7 @@ func TestGetByPath(t *testing.T) {
 	if err := os.MkdirAll(inner, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	gitCmd(t, inner, "init", "-q")
+	gittest.Git(t, inner, "init", "-q")
 	o, err := s.OpenLocal(ctx, outer, "")
 	if err != nil {
 		t.Fatal(err)

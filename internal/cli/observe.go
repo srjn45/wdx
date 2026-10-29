@@ -52,9 +52,7 @@ func newStackView(s *observe.Stack, state observe.State) *stackView {
 }
 
 func (v *stackView) text(w io.Writer, st style.Style) {
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
-	}
+	field := fieldPrinter(w, st, 8)
 	field("grafana:", st.Hint(v.GrafanaURL))
 	field("metrics:", v.OTLPEndpoint)
 	field("logs:", v.Logs)

@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -248,32 +247,6 @@ func (td *testDaemon) create(t *testing.T, name string) api.Project {
 	return r.JSON201.Project
 }
 
-func gitCmd(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-}
-
-func gitRepo(t *testing.T, name string) string {
-	t.Helper()
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir = filepath.Join(dir, name)
-	gitCmd(t, filepath.Dir(dir), "init", "-q", dir)
-	gitCmd(t, dir, "commit", "-q", "--allow-empty", "-m", "init")
-	return dir
-}
-
-func bareRemote(t *testing.T, name string) string {
-	t.Helper()
-	bare := filepath.Join(t.TempDir(), name+".git")
-	gitCmd(t, gitRepo(t, name), "clone", "-q", "--bare", ".", bare)
-	return bare
-}
-
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	td := start(t)
@@ -318,7 +291,7 @@ func TestCreate(t *testing.T) {
 func TestCreateConflictWithRepository(t *testing.T) {
 	t.Parallel()
 	td := start(t)
-	repo := gitRepo(t, "repo")
+	repo := gittest.Repo(t, "repo")
 	name := "sub"
 	open := api.CreateProjectOnConflictOpen
 	r, err := td.client.CreateProjectWithResponse(context.Background(), api.CreateProject{Source: newSource(repo), Name: &name, OnConflict: &open})
@@ -355,7 +328,7 @@ func TestOpenLocal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	td := start(t)
-	repo := gitRepo(t, "app")
+	repo := gittest.Repo(t, "app")
 
 	r, err := td.client.CreateProjectWithResponse(ctx, api.CreateProject{Source: localSource(repo)})
 	if err != nil || r.JSON201 == nil || r.JSON201.Result != api.ResultRegistered || r.JSON201.Project.Name != "app" {
@@ -385,7 +358,7 @@ func TestOpenGitAndMissingCheckout(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	td := start(t)
-	remote := bareRemote(t, "app")
+	remote := gittest.Bare(t, "app")
 	body := api.CreateProject{Source: gitSource(remote)}
 
 	r, err := td.client.CreateProjectWithResponse(ctx, body)
@@ -556,7 +529,7 @@ func TestReclone(t *testing.T) {
 	}
 	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidArgument)
 
-	c, err := td.client.CreateProjectWithResponse(ctx, api.CreateProject{Source: gitSource(bareRemote(t, "app"))})
+	c, err := td.client.CreateProjectWithResponse(ctx, api.CreateProject{Source: gitSource(gittest.Bare(t, "app"))})
 	if err != nil || c.JSON201 == nil {
 		t.Fatalf("clone: %v %s", err, c.Body)
 	}

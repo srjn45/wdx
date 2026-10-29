@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -96,7 +97,7 @@ func (s *Store) insert(ctx context.Context, projectID, name, dir, shell string) 
 	if strings.Contains(name, ":") {
 		return Terminal{}, &InvalidNameError{Name: name, Reason: `cannot contain ":"`}
 	}
-	id, err := newID()
+	id, err := db.NewID("term")
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -110,7 +111,7 @@ func (s *Store) insert(ctx context.Context, projectID, name, dir, shell string) 
 		return Terminal{}, err
 	}
 	now := time.Now().UnixMilli()
-	if err := s.exec(ctx, `
+	if _, err := db.Exec(ctx, s.db, `
 		INSERT INTO terminals (id, project_id, name, dir, shell, state, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, projectID, name, dir, shell, StateStarting, now, now); err != nil {
 		return Terminal{}, err
@@ -258,33 +259,21 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 	for _, st := range from {
 		all = append(all, st)
 	}
-	res, err := s.db.ExecContext(ctx, "UPDATE terminals SET state = ?, updated_at = ?"+set+" WHERE id = ? AND state IN ("+marks+")", all...)
+	n, err := db.Exec(ctx, s.db, "UPDATE terminals SET state = ?, updated_at = ?"+set+" WHERE id = ? AND state IN ("+marks+")", all...)
 	if err != nil {
 		return false, err
 	}
-	n, err := res.RowsAffected()
 	logging.FromContext(ctx).Info("terminal state changed", "terminal_id", id, "state", to, "from", from, "changed", n > 0)
 	return n > 0, err
 }
 
 // remove deletes the terminal with id.
 func (s *Store) remove(ctx context.Context, id string) error {
-	if err := s.exec(ctx, "DELETE FROM terminals WHERE id = ?", id); err != nil {
+	if _, err := db.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ?", id); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("terminal removed", "terminal_id", id)
 	return nil
-}
-
-func (s *Store) exec(ctx context.Context, query string, args ...any) error {
-	_, err := s.db.ExecContext(ctx, query, args...)
-	logging.FromContext(ctx).Debug("sql exec", "query", strings.Join(strings.Fields(query), " "), "args", args)
-	return err
-}
-
-func newID() (string, error) {
-	h, err := randomHex(4)
-	return "term-" + h, err
 }
 
 func randomHex(n int) (string, error) {

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -210,7 +209,7 @@ func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) 
 	defer tick.Stop()
 	for {
 		d, err := clientOf(cmd).Daemon(cmd.Context())
-		if _, unavailable := errors.AsType[*client.UnavailableError](err); !unavailable {
+		if !unavailable(err) {
 			return d, err
 		}
 		select {
@@ -333,9 +332,7 @@ type daemonStatus struct {
 }
 
 func (s daemonStatus) text(w io.Writer, st style.Style) {
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
-	}
+	field := fieldPrinter(w, st, 8)
 	switch {
 	case !s.Running:
 		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
@@ -381,7 +378,7 @@ func newDaemonStatusCmd() *cobra.Command {
 			if pid != 0 {
 				s.Pid = &pid
 				d, err := clientOf(cmd).Daemon(cmd.Context())
-				if _, unavailable := errors.AsType[*client.UnavailableError](err); err != nil && !unavailable {
+				if err != nil && !unavailable(err) {
 					return err
 				}
 				if err == nil {

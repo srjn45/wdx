@@ -28,15 +28,14 @@ type Conn struct {
 func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
-	var d net.Dialer
-	c, err := d.DialContext(ctx, "unix", socket)
+	c, err := dial(ctx, socket)
 	if err != nil {
 		return nil, err
 	}
-	deadline, _ := ctx.Deadline()
-	// Fails only on a closed connection, which greeting reports.
-	_ = c.SetDeadline(deadline)
-	hello, err := greet(c)
+	hello, err := greet(c, roleDaemon)
+	if err == nil && !drives(hello.Version) {
+		err = fmt.Errorf("the holder speaks protocol version %d, which this daemon (version %d) cannot drive", hello.Version, Version)
+	}
 	if err == nil && hello.TerminalID != id {
 		err = fmt.Errorf("the holder on %s runs terminal %s, not %s", socket, hello.TerminalID, id)
 	}
@@ -53,8 +52,23 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 	return conn, nil
 }
 
-func greet(c net.Conn) (Hello, error) {
-	if err := writeFrame(c, frameHello, Hello{Version: Version, Role: roleDaemon}); err != nil {
+// dial connects to the holder on socket, with ctx's deadline on the
+// connection for the greeting that follows.
+func dial(ctx context.Context, socket string) (net.Conn, error) {
+	var d net.Dialer
+	c, err := d.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return nil, err
+	}
+	deadline, _ := ctx.Deadline()
+	// Fails only on a closed connection, which the greeting reports.
+	_ = c.SetDeadline(deadline)
+	return c, nil
+}
+
+// greet says hello as role and returns the holder's hello.
+func greet(c net.Conn, role string) (Hello, error) {
+	if err := writeFrame(c, frameHello, Hello{Version: Version, Role: role}); err != nil {
 		return Hello{}, err
 	}
 	t, body, err := readFrame(c)
@@ -62,14 +76,8 @@ func greet(c net.Conn) (Hello, error) {
 		return Hello{}, err
 	}
 	var hello Hello
-	if t != frameHello {
+	if t != frameHello || json.Unmarshal(body, &hello) != nil {
 		return Hello{}, fmt.Errorf("the holder answered with frame %d, not hello", t)
-	}
-	if err := json.Unmarshal(body, &hello); err != nil {
-		return Hello{}, err
-	}
-	if !drives(hello.Version) {
-		return Hello{}, fmt.Errorf("the holder speaks protocol version %d, which this daemon (version %d) cannot drive", hello.Version, Version)
 	}
 	return hello, nil
 }

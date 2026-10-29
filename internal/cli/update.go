@@ -245,9 +245,7 @@ func printUpdateResult(cmd *cobra.Command, r updateResult) error {
 
 func (r updateResult) text(w io.Writer, st style.Style) {
 	u := r.Update
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-9s", name)), value)
-	}
+	field := fieldPrinter(w, st, 9)
 	schema := fmt.Sprint(u.SchemaTo)
 	if u.SchemaFrom != u.SchemaTo {
 		schema = fmt.Sprintf("%d -> %d", u.SchemaFrom, u.SchemaTo)

@@ -209,17 +209,21 @@ func colorOn(cmd *cobra.Command, env Env, w io.Writer) bool {
 	if jsonMode(cmd) {
 		return false
 	}
-	mode := env.Config.Color
-	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
-		mode = config.ColorMode(f.Value.String())
-	}
-	switch mode {
+	switch colorMode(cmd, env) {
 	case config.ColorAlways:
 		return true
 	case config.ColorNever:
 		return false
 	}
 	return !env.NoColor && isTerminal(w)
+}
+
+// colorMode is --color when given, else the color setting.
+func colorMode(cmd *cobra.Command, env Env) config.ColorMode {
+	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
+		return config.ColorMode(f.Value.String())
+	}
+	return env.Config.Color
 }
 
 // stdoutStyle styles what cmd prints to stdout.
@@ -418,7 +422,7 @@ func newVersionCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r := versionResponse{CLI: api.Version{Name: identity.Name, Version: identity.Version, Commit: identity.Commit}}
 			v, err := clientOf(cmd).Version(cmd.Context())
-			if _, unavailable := errors.AsType[*client.UnavailableError](err); err != nil && !unavailable {
+			if err != nil && !unavailable(err) {
 				return err
 			}
 			if err == nil {

@@ -239,10 +239,7 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 // is: off only when color is turned off.
 func viewStyle(cmd *cobra.Command) style.Style {
 	env := invocationOf(cmd).env
-	mode := env.Config.Color
-	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
-		mode = config.ColorMode(f.Value.String())
-	}
+	mode := colorMode(cmd, env)
 	return style.New(mode == config.ColorAlways || mode == config.ColorAuto && !env.NoColor)
 }
 

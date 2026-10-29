@@ -10,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/daemon"
@@ -110,15 +109,11 @@ func TestDaemonForeground(t *testing.T) {
 		done <- Run(ctx, []string{"daemon", "start", "--foreground", "--json"}, Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &bytes.Buffer{}, Config: cfg})
 	}()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if v, _ := wdxJSON(t, home, "daemon", "status"); v.Daemon != nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the daemon did not answer")
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !eventually(func() bool {
+		v, _ := wdxJSON(t, home, "daemon", "status")
+		return v.Daemon != nil
+	}) {
+		t.Fatal("the daemon did not answer")
 	}
 	newProject(t, home, "app")
 

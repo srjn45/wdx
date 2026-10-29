@@ -74,9 +74,7 @@ func (r terminalResult) text(w io.Writer, st style.Style) {
 		in = "from"
 	}
 	fmt.Fprintf(w, "%s terminal %s %s %s\n", st.Success(string(r.Result)), st.Name(t.Name), in, st.Name(t.ProjectName))
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-6s", name)), value)
-	}
+	field := fieldPrinter(w, st, 6)
 	field("dir", t.Dir)
 	field("shell", t.Shell)
 	field("id", t.Id)
@@ -115,9 +113,7 @@ type terminalDetail api.TerminalEnvelope
 
 func (d terminalDetail) text(w io.Writer, st style.Style) {
 	t := d.Terminal
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-8s", name)), value)
-	}
+	field := fieldPrinter(w, st, 8)
 	fmt.Fprintf(w, "terminal %s in %s\n", st.Name(t.Name), st.Name(t.ProjectName))
 	field("state", terminalStateText(st, t))
 	if t.Error != nil {
@@ -157,9 +153,7 @@ type projectDetail api.ProjectEnvelope
 
 func (d projectDetail) text(w io.Writer, st style.Style) {
 	p := d.Project
-	field := func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", name)), value)
-	}
+	field := fieldPrinter(w, st, 10)
 	fmt.Fprintf(w, "project %s\n", projectName(st, p))
 	field("state:", stateText(st, p.State))
 	field("origin:", originText(st, p.Origin))
@@ -349,7 +343,7 @@ func problem(err error) (api.Problem, int) {
 		p = settingsProblem(e)
 	} else if up, found := updateProblem(err); found {
 		p = up
-	} else if _, ok := errors.AsType[*client.UnavailableError](err); ok {
+	} else if unavailable(err) {
 		p = api.NewProblem(api.ErrorCodeDaemonUnavailable, err.Error())
 		hint := "run " + identity.Name + " daemon start"
 		p.Hint = &hint
@@ -385,13 +379,20 @@ func decodeDetail(p api.Problem, key string, v any) bool {
 
 // detailProject returns the project under key in the details of p.
 func detailProject(p api.Problem, key string) (api.Project, bool) {
-	if p.Details == nil {
-		return api.Project{}, false
-	}
-	b, err := json.Marshal((*p.Details)[key])
-	if err != nil {
-		return api.Project{}, false
-	}
 	var project api.Project
-	return project, json.Unmarshal(b, &project) == nil && project.Id != ""
+	return project, decodeDetail(p, key, &project) && project.Id != ""
+}
+
+// unavailable reports whether err says the daemon did not answer.
+func unavailable(err error) bool {
+	_, ok := errors.AsType[*client.UnavailableError](err)
+	return ok
+}
+
+// fieldPrinter returns a func that writes an indented line of a name,
+// padded to width, and its value.
+func fieldPrinter(w io.Writer, st style.Style, width int) func(name, value string) {
+	return func(name, value string) {
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-*s", width, name)), value)
+	}
 }

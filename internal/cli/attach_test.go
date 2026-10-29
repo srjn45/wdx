@@ -154,12 +154,8 @@ func (a *attachRun) waitScreen(s string) {
 
 func (a *attachRun) waitFor(what string, ok func(text string) bool) {
 	a.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !ok(a.text()) {
-		if time.Now().After(deadline) {
-			a.t.Fatalf("no %s on the terminal:\n%s", what, a.text())
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !eventually(func() bool { return ok(a.text()) }) {
+		a.t.Fatalf("no %s on the terminal:\n%s", what, a.text())
 	}
 }
 
@@ -191,23 +187,20 @@ func (a *attachRun) wait() (jsonOutput, int) {
 // bg, or in reverse video when bg is nil.
 func (a *attachRun) wantBar(bg color.Color) {
 	a.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	var cell *uv.Cell
+	painted := eventually(func() bool {
 		a.mu.Lock()
+		defer a.mu.Unlock()
 		_, rows := a.screen.Size()
-		var cell *uv.Cell
+		cell = nil
 		if c := a.screen.CellAt(0, rows-1); c != nil {
 			copied := *c // the vt changes it
 			cell = &copied
 		}
-		a.mu.Unlock()
-		if cell != nil && (bg == nil && cell.Style.Attrs&uv.AttrReverse != 0 || bg != nil && cell.Style.Bg == bg) {
-			return
-		}
-		if time.Now().After(deadline) {
-			a.t.Fatalf("want the status line painted in %v, got %+v", bg, cell)
-		}
-		time.Sleep(20 * time.Millisecond)
+		return cell != nil && (bg == nil && cell.Style.Attrs&uv.AttrReverse != 0 || bg != nil && cell.Style.Bg == bg)
+	})
+	if !painted {
+		a.t.Fatalf("want the status line painted in %v, got %+v", bg, cell)
 	}
 }
 
@@ -372,16 +365,13 @@ func TestTerminalAttachScroll(t *testing.T) {
 // waitHistory waits until the terminal's history holds lines lines.
 func waitHistory(t *testing.T, home, dir, name string, lines int64) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		v, exit := wdxJSONWith(t, home, in(dir), "terminal", "history", "--name", name, "--tail", "1")
-		if exit == api.ExitOK && v.History.Next >= lines {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("history of %s stays at %+v", name, v.History)
-		}
-		time.Sleep(50 * time.Millisecond)
+	var v jsonOutput
+	if !eventually(func() bool {
+		var exit int
+		v, exit = wdxJSONWith(t, home, in(dir), "terminal", "history", "--name", name, "--tail", "1")
+		return exit == api.ExitOK && v.History.Next >= lines
+	}) {
+		t.Fatalf("history of %s stays at %+v", name, v.History)
 	}
 }
 
