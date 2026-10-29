@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -361,6 +362,53 @@ func TestUpdateUndone(t *testing.T) {
 	}
 	if _, err := os.Stat(identity.PreviousDir(in.home)); !os.IsNotExist(err) {
 		t.Fatalf("want nothing kept after a failed update, got %v", err)
+	}
+}
+
+// TestUpdateUndoneStopsItsDaemon installs a release whose daemon starts but
+// answers as another version: undoing the update stops it before putting
+// the old version back, which then answers.
+func TestUpdateUndoneStopsItsDaemon(t *testing.T) {
+	t.Parallel()
+	wrong := filepath.Join(t.TempDir(), identity.Name)
+	writeFile(t, wrong, strings.ReplaceAll(brokenRelease, `*) echo "broken release"`, `daemon) exec `+releaseBinary+` "$@" ;;
+*) echo "broken release"`))
+	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": wrong})
+	in := install(t, base)
+	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatal("the daemon did not start")
+	}
+	newProject(t, in.home, "before")
+
+	v, exit := in.json(t, "update", "--apply")
+	wantError(t, v, exit, api.ErrorCodeUpdateFailed, api.ExitSystem)
+	if v.Details["step"] != "start" || v.Details["undone"] != true || v.Details["version"] != identity.Version {
+		t.Fatalf("want the start undone, got %+v", v.Details)
+	}
+	in.wantInstalled(t, wdxBinary)
+	in.wantDaemon(t, identity.Version)
+	in.wantProjects(t, "before")
+}
+
+// TestDaemonStartGivesUp starts a daemon that never answers: start gives
+// up on it and kills it, not leaving it running behind its failure.
+func TestDaemonStartGivesUp(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	mute := filepath.Join(t.TempDir(), identity.Name)
+	writeFile(t, mute, "#!/bin/sh\necho $$ >"+pidFile+"\nexec sleep 60\n")
+	out := wdxWith(t, home, func(env *Env) { env.Executable = mute }, "daemon", "start", "--json")
+	if out.exit != api.ExitSystem {
+		t.Fatalf("want start to fail, got %+v", out)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(readFile(t, pidFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syscall.Kill(pid, 0) == nil {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Fatalf("want the daemon that did not answer killed, pid %d runs", pid)
 	}
 }
 

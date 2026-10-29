@@ -188,6 +188,11 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 
 	d, err := waitAnswering(cmd, exited)
 	if err != nil {
+		// Given up on, it must not start serving behind the failure.
+		if c.Process.Kill() == nil {
+			status := <-exited
+			log.Error("daemon killed: it did not answer in time", "daemon_pid", c.Process.Pid, "status", fmt.Sprint(status))
+		}
 		if out, _ := os.ReadFile(stderr.Name()); len(out) > 0 {
 			log.Error("daemon failed to start", "stderr", string(out))
 			err = fmt.Errorf("%w: %s", err, out)

@@ -377,13 +377,21 @@ func exists(path string) bool {
 }
 
 // undo puts back what switchTo replaced, kept in r, and starts the daemon
-// on it, after step failed with err.
+// on it, after step failed with err. A daemon the failed start left
+// running is stopped first, and the daemon must then answer as the version
+// put back.
 func (o Options) undo(ctx context.Context, step string, err error, r replaced) error {
 	log := logging.FromContext(ctx)
 	log.Error("switch failed, undoing it", "step", step, "err", err.Error())
 	o.progress("%s failed; putting %s %s back", step, identity.Name, o.Current)
 	failed := &FailedError{Step: step, Err: err, Version: o.Current}
 	undo := func() error {
+		if step == "start" {
+			// It may run late, as another version, or restarted by systemd.
+			if err := o.Daemon.Stop(ctx); err != nil {
+				return fmt.Errorf("stop the daemon the update started: %w", err)
+			}
+		}
 		if r.dir == "" {
 			return nil
 		}
@@ -415,7 +423,11 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 		return nil
 	}
 	if failed.UndoErr = undo(); failed.UndoErr == nil {
-		if _, err := o.Daemon.Start(ctx); err != nil {
+		got, err := o.Daemon.Start(ctx)
+		if err == nil && got != o.Current {
+			err = fmt.Errorf("the daemon answers as version %s, not %s", got, o.Current)
+		}
+		if err != nil {
 			failed.UndoErr = fmt.Errorf("start the daemon again: %w", err)
 		}
 	}
