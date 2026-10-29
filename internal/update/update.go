@@ -503,17 +503,27 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 func (o Options) holdSignals() (release func()) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	done := make(chan struct{})
+	done, said := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(said)
+		var sig os.Signal
 		select {
-		case sig := <-signals:
-			o.progress("%s: the switch finishes first", sig)
+		case sig = <-signals:
 		case <-done:
+			// One held as the switch ended is said all the same.
+			select {
+			case sig = <-signals:
+			default:
+			}
+		}
+		if sig != nil {
+			o.progress("%s: the switch finishes first", sig)
 		}
 	}()
 	return func() {
 		signal.Stop(signals)
 		close(done)
+		<-said
 	}
 }
 

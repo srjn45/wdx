@@ -460,8 +460,11 @@ func TestUpdateInterrupted(t *testing.T) {
 	if err := c.Wait(); err != nil || !strings.Contains(stdout.String(), "updated") {
 		t.Fatalf("want the update finished, got %v:\n%s%s", err, stdout.String(), said.String())
 	}
-	if !strings.Contains(said.String(), "the switch finishes first") || !strings.Contains(said.String(), replaced) {
-		t.Fatalf("want the signal held and the leftover named, got\n%s", said.String())
+	if !strings.Contains(said.String(), "the switch finishes first") {
+		t.Fatalf("want the signal said to be held, got\n%s", said.String())
+	}
+	if !strings.Contains(said.String(), replaced) {
+		t.Fatalf("want the leftover %s named, got\n%s", replaced, said.String())
 	}
 	in.wantDaemon(t, releaseVersion)
 	if _, err := os.Stat(download); !os.IsNotExist(err) {
