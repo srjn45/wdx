@@ -17,7 +17,7 @@ import (
 )
 
 // The names scripts/install.sh installs the service under; vars because
-// identity.Name is set at build time.
+// identity.Name is a var.
 var (
 	Unit  = identity.Name + ".service"
 	Label = "com.github.srjn45." + identity.Name

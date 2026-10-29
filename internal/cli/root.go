@@ -69,7 +69,7 @@ type Env struct {
 	// terminal commands when no project flag does.
 	WorkDir string
 	// TTY opens the controlling terminal, which terminal attach shows a
-	// terminal in; nil when there is none.
+	// terminal in; it fails when there is none, and is nil in tests.
 	TTY func() (*os.File, error)
 	// TermEnv holds the variables that say what that terminal is (TERM,
 	// COLORTERM, TERM_PROGRAM), as KEY=value, for the attach view to draw

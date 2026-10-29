@@ -1017,7 +1017,7 @@ type ClientInterface interface {
 	// The terminals of the project named by project, or of the project whose
 	// worktree holds dir; of every project when neither is given.
 	//
-	// Errors: not_found.
+	// Errors: invalid_path, not_found.
 	//
 	// Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
 	ListTerminals(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1063,14 +1063,14 @@ type ClientInterface interface {
 	// A terminal starting or running refuses it with terminal_running
 	// unless stop_running is true, which stops its shell first.
 	//
-	// Errors: not_found, terminal_running.
+	// Errors: invalid_path, not_found, terminal_running.
 	//
 	// Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
 	DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTerminal A terminal, in any state
 	//
-	// Errors: not_found.
+	// Errors: invalid_path, not_found.
 	//
 	// Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
 	GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1083,7 +1083,7 @@ type ClientInterface interface {
 	// lines from that number on; else the last tail lines. A from before
 	// the oldest line kept starts at that one.
 	//
-	// Errors: not_found; from with tail is a usage error.
+	// Errors: invalid_path, not_found; from with tail is a usage error.
 	//
 	// Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
 	GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1096,7 +1096,7 @@ type ClientInterface interface {
 	// A shell that does not start leaves the terminal failed and returns
 	// start_failed with the terminal under details.terminal.
 	//
-	// Errors: not_found, project_closed, start_failed, terminal_running.
+	// Errors: invalid_path, not_found, project_closed, start_failed, terminal_running.
 	//
 	// Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
 	StartTerminal(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1334,7 +1334,7 @@ func (c *Client) RecloneProject(ctx context.Context, project ProjectRef, reqEdit
 // The terminals of the project named by project, or of the project whose
 // worktree holds dir; of every project when neither is given.
 //
-// Errors: not_found.
+// Errors: invalid_path, not_found.
 //
 // Corresponds with GET /v1/terminals (the `ListTerminals` operationId).
 func (c *Client) ListTerminals(ctx context.Context, params *ListTerminalsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1410,7 +1410,7 @@ func (c *Client) CreateTerminal(ctx context.Context, body CreateTerminalJSONRequ
 // A terminal starting or running refuses it with terminal_running
 // unless stop_running is true, which stops its shell first.
 //
-// Errors: not_found, terminal_running.
+// Errors: invalid_path, not_found, terminal_running.
 //
 // Corresponds with DELETE /v1/terminals/{terminal} (the `DeleteTerminal` operationId).
 func (c *Client) DeleteTerminal(ctx context.Context, terminal TerminalRef, params *DeleteTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1427,7 +1427,7 @@ func (c *Client) DeleteTerminal(ctx context.Context, terminal TerminalRef, param
 
 // GetTerminal A terminal, in any state
 //
-// Errors: not_found.
+// Errors: invalid_path, not_found.
 //
 // Corresponds with GET /v1/terminals/{terminal} (the `GetTerminal` operationId).
 func (c *Client) GetTerminal(ctx context.Context, terminal TerminalRef, params *GetTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1450,7 +1450,7 @@ func (c *Client) GetTerminal(ctx context.Context, terminal TerminalRef, params *
 // lines from that number on; else the last tail lines. A from before
 // the oldest line kept starts at that one.
 //
-// Errors: not_found; from with tail is a usage error.
+// Errors: invalid_path, not_found; from with tail is a usage error.
 //
 // Corresponds with GET /v1/terminals/{terminal}/history (the `GetTerminalHistory` operationId).
 func (c *Client) GetTerminalHistory(ctx context.Context, terminal TerminalRef, params *GetTerminalHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1473,7 +1473,7 @@ func (c *Client) GetTerminalHistory(ctx context.Context, terminal TerminalRef, p
 // A shell that does not start leaves the terminal failed and returns
 // start_failed with the terminal under details.terminal.
 //
-// Errors: not_found, project_closed, start_failed, terminal_running.
+// Errors: invalid_path, not_found, project_closed, start_failed, terminal_running.
 //
 // Corresponds with POST /v1/terminals/{terminal}/start (the `StartTerminal` operationId).
 func (c *Client) StartTerminal(ctx context.Context, terminal TerminalRef, params *StartTerminalParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2464,7 +2464,7 @@ type ClientWithResponsesInterface interface {
 	// The terminals of the project named by project, or of the project whose
 	// worktree holds dir; of every project when neither is given.
 	//
-	// Errors: not_found.
+	// Errors: invalid_path, not_found.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2512,7 +2512,7 @@ type ClientWithResponsesInterface interface {
 	// A terminal starting or running refuses it with terminal_running
 	// unless stop_running is true, which stops its shell first.
 	//
-	// Errors: not_found, terminal_running.
+	// Errors: invalid_path, not_found, terminal_running.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2521,7 +2521,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetTerminalWithResponse A terminal, in any state
 	//
-	// Errors: not_found.
+	// Errors: invalid_path, not_found.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2536,7 +2536,7 @@ type ClientWithResponsesInterface interface {
 	// lines from that number on; else the last tail lines. A from before
 	// the oldest line kept starts at that one.
 	//
-	// Errors: not_found; from with tail is a usage error.
+	// Errors: invalid_path, not_found; from with tail is a usage error.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2551,7 +2551,7 @@ type ClientWithResponsesInterface interface {
 	// A shell that does not start leaves the terminal failed and returns
 	// start_failed with the terminal under details.terminal.
 	//
-	// Errors: not_found, project_closed, start_failed, terminal_running.
+	// Errors: invalid_path, not_found, project_closed, start_failed, terminal_running.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3446,7 +3446,7 @@ func (c *ClientWithResponses) RecloneProjectWithResponse(ctx context.Context, pr
 // The terminals of the project named by project, or of the project whose
 // worktree holds dir; of every project when neither is given.
 //
-// Errors: not_found.
+// Errors: invalid_path, not_found.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3512,7 +3512,7 @@ func (c *ClientWithResponses) CreateTerminalWithResponse(ctx context.Context, bo
 // A terminal starting or running refuses it with terminal_running
 // unless stop_running is true, which stops its shell first.
 //
-// Errors: not_found, terminal_running.
+// Errors: invalid_path, not_found, terminal_running.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3527,7 +3527,7 @@ func (c *ClientWithResponses) DeleteTerminalWithResponse(ctx context.Context, te
 
 // GetTerminalWithResponse A terminal, in any state
 //
-// Errors: not_found.
+// Errors: invalid_path, not_found.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3548,7 +3548,7 @@ func (c *ClientWithResponses) GetTerminalWithResponse(ctx context.Context, termi
 // lines from that number on; else the last tail lines. A from before
 // the oldest line kept starts at that one.
 //
-// Errors: not_found; from with tail is a usage error.
+// Errors: invalid_path, not_found; from with tail is a usage error.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3569,7 +3569,7 @@ func (c *ClientWithResponses) GetTerminalHistoryWithResponse(ctx context.Context
 // A shell that does not start leaves the terminal failed and returns
 // start_failed with the terminal under details.terminal.
 //
-// Errors: not_found, project_closed, start_failed, terminal_running.
+// Errors: invalid_path, not_found, project_closed, start_failed, terminal_running.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -5822,88 +5822,88 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"//8=",
+	"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",
+	"Qb1ohwUf/i8AAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

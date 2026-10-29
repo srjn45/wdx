@@ -183,7 +183,7 @@ paths:
         The terminals of the project named by project, or of the project whose
         worktree holds dir; of every project when neither is given.
 
-        Errors: not_found.
+        Errors: invalid_path, not_found.
       parameters:
         - $ref: "#/components/parameters/TerminalProject"
         - $ref: "#/components/parameters/TerminalDir"
@@ -229,7 +229,7 @@ paths:
     get:
       operationId: getTerminal
       summary: A terminal, in any state
-      description: "Errors: not_found."
+      description: "Errors: invalid_path, not_found."
       responses:
         "200":
           description: The terminal.
@@ -244,7 +244,7 @@ paths:
         A terminal starting or running refuses it with terminal_running
         unless stop_running is true, which stops its shell first.
 
-        Errors: not_found, terminal_running.
+        Errors: invalid_path, not_found, terminal_running.
       parameters:
         - $ref: "#/components/parameters/StopRunning"
       responses:
@@ -270,7 +270,7 @@ paths:
         A shell that does not start leaves the terminal failed and returns
         start_failed with the terminal under details.terminal.
 
-        Errors: not_found, project_closed, start_failed, terminal_running.
+        Errors: invalid_path, not_found, project_closed, start_failed, terminal_running.
       responses:
         "200":
           description: The terminal, with result started.
@@ -294,7 +294,7 @@ paths:
         lines from that number on; else the last tail lines. A from before
         the oldest line kept starts at that one.
 
-        Errors: not_found; from with tail is a usage error.
+        Errors: invalid_path, not_found; from with tail is a usage error.
       parameters:
         - name: from
           in: query

@@ -15,7 +15,7 @@ const (
 	StateClosed State = "closed"
 )
 
-// Project is a git repository registered with warden. All clones of the
+// Project is a git repository the daemon knows. All clones of the
 // repository and all their worktrees belong to one project.
 type Project struct {
 	ID        string

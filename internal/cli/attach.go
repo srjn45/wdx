@@ -53,8 +53,8 @@ func newTerminalAttachCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not attached",
-			outputNote: "Once you detach or the shell exits, the terminal.\n" +
-				`With --json: {"result": "detached", "terminal": {...}}`,
+			outputNote: "The terminal, once you detach or its shell exits.\n" +
+				`With --json: {"result": "detached" or "exited", "terminal": {...}}`,
 			resultList: annotation("detached", "exited"),
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeAttachUnsupported,
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
