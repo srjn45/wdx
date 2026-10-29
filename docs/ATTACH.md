@@ -36,12 +36,13 @@ The holder never draws. It keeps a headless vt (terminal emulator) to know what 
                                    ▲ socket <home>/run/<id>.sock
             ┌──────────────────────┼─────────────────────────┐
   wdx terminal attach          tide pane                 daemon relay (later)
-  → your terminal app draws    → tide's vt draws         → browser, xterm.js draws
+  → its own vt draws,          → tide's vt draws         → browser, xterm.js draws
+    full-window
 ```
 
 | Client | Connects | Draws with | Scrolls through history |
 |---|---|---|---|
-| `wdx terminal attach` | the holder's socket | your terminal app (GNOME Terminal, iTerm...) | its own scrollback, filled with the last N history lines on attach; the rest through `wdx terminal history` |
+| `wdx terminal attach` | the holder's socket | its own vt, in a full-window pane (docs/ATTACH_VIEW.md) | inside the pane: the lines it saw scroll off, older ones page by page through the API |
 | tide (later) | the holder's socket | its own vt per pane | lazily, page by page through the API |
 | web (later) | the daemon (WebSocket), which relays to the holder | xterm.js | the last N lines on attach, older pages through the API |
 
@@ -138,33 +139,30 @@ New codes:
 
 ```
 wdx terminal attach  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
-                     [--history <lines> | --history all] [--detach-key <key>]
+                     [--prefix-key <key>]
 wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
                      [--tail <lines> | --from <line> [--count <lines>]] [--plain]
 ```
 
 ### `wdx terminal attach`
 
-Proposed to be replaced by a full-window view, as tmux's: docs/ATTACH_VIEW.md.
-
 - Resolves the terminal through the daemon (`terminalRef`, as `get`), which must be `running`, else `terminal_not_running`; then dials the holder.
-- Talks to the controlling terminal, `/dev/tty`, not stdin and stdout: it puts it in raw mode, sends its size, forwards SIGWINCH as `resize`, writes the history, the snapshot and the output to it, and sends what is typed as `input`. Without a controlling terminal: `usage`. stdout stays free for the result, so `--json` works as for every command.
-- `--history`: how many history lines to write before the snapshot, into the terminal app's own scrollback; default `terminal.attach_history`. `all` writes everything kept. A screenful of newlines follows them, so what the terminal showed scrolls up into its scrollback rather than being cleared by the screen painted over it.
-- `--detach-key`: default `ctrl-\`; `ctrl-<letter>`, `ctrl-\`, `ctrl-]`, `ctrl-^`, `ctrl-_` or `none`. It detaches unless pressed again within half a second, which sends it to the shell once; anything else typed in that half second detaches too.
+- Runs full-window, as tmux does, on the controlling terminal, `/dev/tty`, not stdin and stdout: the terminal in a pane above a status line, drawn from a vt of its own, with its whole history to scroll through in the pane. Nothing of the session reaches the calling terminal's own screen or scrollback. The keys, the mouse, scrolling and the status line: docs/ATTACH_VIEW.md. Without a controlling terminal, or with one smaller than 10 columns by 3 rows: `usage`. stdout stays free for the result, so `--json` works as for every command.
+- `--prefix-key`: the key before attach's own keys, as tmux's `C-b`; default `ctrl-\`, else `ctrl-<letter>` or `ctrl-]`. Detaching is the prefix, then `d`.
 - Ends with:
 
 | How | Text (after restoring the terminal) | `--json` | Exit |
 |---|---|---|---|
-| detach key | `detached from terminal api in app` | `{"result": "detached", "terminal": {...}}` | 0 |
+| `C-\ d` | `detached from terminal api in app` | `{"result": "detached", "terminal": {...}}` | 0 |
 | the shell exited | `terminal api in app exited with code 0` | `{"result": "exited", "terminal": {...}}` | 0 |
 | the holder vanished | `connection_lost` | Problem Details | 3 |
 | too slow | `connection_lost`, hint to attach again | Problem Details | 3 |
 
-- Detaching, exiting or losing the connection restores the terminal's mode, leaves the alternate screen and shows the cursor, whatever the program inside had set, gives the window its title back, and puts the cursor on a new line at the bottom.
+- Detaching, exiting or losing the connection leaves the alternate screen and gives the terminal back its mode, cursor and title, whatever the program inside had set: the window shows what it showed before attaching.
 
 ### `wdx terminal history`
 
-- Prints history lines through the API; by default the last `terminal.attach_history`, or 1,000 when that is 0.
+- Prints history lines through the API; by default the last `terminal.history_tail`.
 - Escape codes are kept when stdout gets color (`--color`, the `color` setting, as for our own output) and stripped otherwise; `--plain` always strips them. Agents and scripts get plain text.
 - `--json`: the API's body.
 - Works in any state, also after the shell exited.
@@ -174,7 +172,7 @@ Proposed to be replaced by a full-window view, as tmux's: docs/ATTACH_VIEW.md.
 | Key | Default | |
 |---|---|---|
 | `terminal.history_lines` | `100000` | lines of history kept per terminal; `0` keeps none |
-| `terminal.attach_history` | `1000` | history lines written on attach and printed by `terminal history` |
+| `terminal.history_tail` | `1000` | history lines `terminal history` prints by default, 1 to 10,000 |
 
 `terminal.history_lines` reaches the holder as an argument when the daemon starts it: a change applies to terminals started after it.
 
@@ -195,11 +193,11 @@ Proposed to be replaced by a full-window view, as tmux's: docs/ATTACH_VIEW.md.
 - Spool and history files: positions, segments, trimming, the 256 MiB skip, numbering across relaunches.
 - Holder, with real PTYs and `/bin/sh`: attach gets history, snapshot and output with nothing missed or doubled while output flows; input reaches the shell; latest-wins resize (`stty size`); several clients; a slow client is dropped; `exited` reaches clients; queries answered only without clients; a version 1 hello still works for the daemon.
 - Daemon: history endpoint per outcome; directories deleted on terminal and project removal and swept at startup.
-- CLI: `attach` and `history` per outcome with `--json`, the controlling terminal given by the test as a PTY through `cli.Env` (no `/dev/tty` in tests); `usage` without one; detach key; restore of the terminal's mode.
+- CLI: `attach` and `history` per outcome with `--json`, the controlling terminal given by the test as a PTY through `cli.Env` (no `/dev/tty` in tests); `usage` without one; the prefix keys and scrolling; the calling terminal given back as it was (docs/ATTACH_VIEW.md).
 
 ## Out of scope
 
-tide, the web relay, a history mode inside `wdx terminal attach` (scrolling all history in place, like tmux's copy mode), reflow of history, resyncing slow clients, recording with timing, read-only attach, `wdx terminal send` for scripts to type into a terminal.
+tide, the web relay, reflow of history, resyncing slow clients, recording with timing, read-only attach, `wdx terminal send` for scripts to type into a terminal.
 
 ## Implementation plan
 
@@ -228,3 +226,5 @@ Taken while designing and building it:
 8. The detach key is `ctrl-\`; the latest client to attach or resize sets the size.
 9. The new codes `terminal_not_running`, `attach_unsupported`, `connection_lost`.
 10. Step 1 in any release before step 4's, not necessarily its own.
+
+The attach view (docs/ATTACH_VIEW.md) changed decisions 5 and 8 since: `terminal.attach_history` is now `terminal.history_tail`, and attach's keys follow the prefix `C-\`, detaching with `C-\ d`.

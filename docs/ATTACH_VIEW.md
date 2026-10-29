@@ -1,14 +1,14 @@
 # The attach view
 
-Status: proposed. Replaces how `wdx terminal attach` shows a terminal (docs/ATTACH.md, CLI); the holder, its protocol, history and the API stay as they are.
+Status: implemented. Replaced how `wdx terminal attach` shows a terminal (docs/ATTACH.md, CLI); the holder, its protocol, history and the API stay as they are.
 
-`wdx terminal attach` becomes a full-window app, as tmux is: it takes over the terminal it runs in, shows the attached terminal in a pane above a status line, scrolls through the whole history inside the pane, and on detach gives the window back exactly as it was. Nothing of the session is left behind in the calling terminal, which never sees what happened in the attached one. The terminal keeps running, with its history, attached or not, as many times as it is attached and detached.
+`wdx terminal attach` is a full-window app, as tmux is: it takes over the terminal it runs in, shows the attached terminal in a pane above a status line, scrolls through the whole history inside the pane, and on detach gives the window back exactly as it was. Nothing of the session is left behind in the calling terminal, which never sees what happened in the attached one. The terminal keeps running, with its history, attached or not, as many times as it is attached and detached.
 
 The pane is a component of its own, `internal/termview`, which tide reuses for its terminal and agent panes.
 
 ## Why it draws itself
 
-Today attach passes the holder's bytes straight to the calling terminal and writes history into that terminal's scrollback, so the session stays in it after detaching. Running on the alternate screen alone would not fix that: the bytes come from programs that switch screens themselves, and vim's "leave the alternate screen" would drop the calling terminal back to its own screen mid-session. So, as tmux does, the client keeps its own vt, fed by the holder's snapshot and output, and draws that vt: the calling terminal only ever receives what the app draws.
+Attach used to pass the holder's bytes straight to the calling terminal and write history into that terminal's scrollback, so the session stayed in it after detaching. Running on the alternate screen alone would not fix that: the bytes come from programs that switch screens themselves, and vim's "leave the alternate screen" would drop the calling terminal back to its own screen mid-session. So, as tmux does, the client keeps its own vt, fed by the holder's snapshot and output, and draws that vt: the calling terminal only ever receives what the app draws.
 
 ## What it looks like
 
@@ -41,7 +41,7 @@ Every key goes to the program in the terminal, except:
 | PageUp / PageDown | scroll a page, when the program is on its main screen (the shell); on the alternate screen (less, vim, htop) they go to the program |
 | mouse wheel, touchpad | scroll 3 lines; see Mouse |
 
-- `C-\` is the prefix, as tmux's `C-b`: one ctrl key, which nothing common uses (it sends SIGQUIT in a shell), and a plain key after it. After the prefix the status line says so, and a key with no shortcut does nothing. `--prefix-key` changes it (`ctrl-<letter>`, `ctrl-]`, `ctrl-^`, `ctrl-_`).
+- `C-\` is the prefix, as tmux's `C-b`: one ctrl key, which nothing common uses (it sends SIGQUIT in a shell), and a plain key after it. After the prefix the status line says so, and a key with no shortcut does nothing. `--prefix-key` changes it (`ctrl-<letter>` or `ctrl-]`).
 - Arrow keys never scroll: they go to the program, for the shell's history and the line being edited.
 - While scrolled back, a key that is not a scroll key returns to the live screen and goes to the program, as in a terminal's own scrollback; so does scrolling past the bottom. New output does not pull the view down.
 - `C-?` (ctrl+shift+/) for the shortcut list: most terminals send it as DEL, the same byte as Backspace, so it cannot be told apart. Where the terminal speaks the kitty keyboard protocol (kitty, WezTerm, foot, Ghostty), which Bubble Tea can ask for, `C-?` opens the list too; `C-\ ?` works everywhere.
@@ -105,7 +105,9 @@ Selecting and copying inside the pane, searching history, several panes in the C
 3. **CLI**: attach runs the pane full-window on the calling terminal, with the status line, the prefix keys, the shortcut list and detaching; `--prefix-key`; `--history` and `--detach-key` removed and `terminal.history_tail`; tests.
 4. **Docs**: ATTACH.md's CLI section and VT.md (the vt is now used by `termview` too).
 
-## Decisions for the human
+All of them are done.
+
+## Decisions
 
 1. The shortcut list is `C-\ ?`; `C-?` too where the terminal tells it apart (kitty keyboard protocol), since elsewhere it is Backspace.
 2. PageUp/PageDown scroll only while the program is on its main screen; in less, vim or htop they go to the program. `C-\ [` and `]` always scroll.
