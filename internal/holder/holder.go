@@ -118,10 +118,12 @@ type holder struct {
 // startSize is a terminal's size until a client attaches.
 var startSize = Size{Cols: 80, Rows: 24}
 
-// Lines the holder writes into history.
+// Lines the holder writes into history. A pane writes MarkInterrupted
+// too when its vt resets, so that it numbers history lines as the holder
+// does.
 const (
 	markRestarted   = "── shell restarted %s ──"
-	markInterrupted = "── history interrupted ──"
+	MarkInterrupted = "── history interrupted ──"
 )
 
 // start listens on the socket and starts the shell in a new PTY.
@@ -332,13 +334,13 @@ func (h *holder) feed(from int64, p []byte) {
 	if from > h.vtPos {
 		h.log.Warn("history interrupted: the screen fell too far behind", "skipped_bytes", from-h.vtPos)
 		h.screen.Reset(h.size.Cols, h.size.Rows)
-		h.writeHistory(markInterrupted)
+		h.writeHistory(MarkInterrupted)
 	}
 	lines, reset := h.screen.Write(p)
 	h.writeHistory(lines...)
 	if reset {
 		h.log.Warn("vt reset: it failed on the output")
-		h.writeHistory(markInterrupted)
+		h.writeHistory(MarkInterrupted)
 	}
 	h.vtPos = from + int64(len(p))
 	h.spool.consume(h.vtPos)

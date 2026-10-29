@@ -77,13 +77,6 @@ func (s *scrollback) add(lines []string) {
 	}
 }
 
-// restart forgets the kept lines after the vt failed: what it scrolled off
-// meanwhile is only in the holder's history.
-func (s *scrollback) restart() {
-	s.kept = nil
-	s.offset = 0
-}
-
 // line returns history line n, and false when it is not at hand.
 func (s *scrollback) line(n int64) (string, bool) {
 	if start := s.next - int64(len(s.kept)); n >= start && n < s.next {

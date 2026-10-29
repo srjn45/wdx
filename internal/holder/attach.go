@@ -322,7 +322,7 @@ func (h *holder) resizeLocked(size Size) {
 	}
 	if !h.screen.Resize(size.Cols, size.Rows) {
 		h.log.Warn("vt reset: it failed on the resize")
-		h.writeHistory(markInterrupted)
+		h.writeHistory(MarkInterrupted)
 	}
 	h.size = size
 	h.log.Info("terminal resized", "cols", size.Cols, "rows", size.Rows)

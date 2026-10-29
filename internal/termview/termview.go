@@ -124,17 +124,17 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 // fills it.
 func (m *Model) write(p []byte) {
 	lines, reset := m.screen.Write(p)
+	m.back.add(lines)
 	if reset {
 		m.reset()
 	}
-	m.back.add(lines)
 }
 
-// reset counts a vt that failed and started again: what it scrolled off
-// before is only in the holder's history.
+// reset marks where the vt failed and started again, with the line the
+// holder writes into history then.
 func (m *Model) reset() {
 	m.resets++
-	m.back.restart()
+	m.back.add([]string{holder.MarkInterrupted})
 }
 
 // mouse passes a mouse event to a program that asked for the mouse.

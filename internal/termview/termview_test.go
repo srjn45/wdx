@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -123,7 +124,8 @@ func (d *driver) send(msg tea.Msg) {
 	d.run(d.m.Update(msg))
 }
 
-// waitFor handles messages until ok holds.
+// waitFor handles messages until ok holds, checking it after each and
+// every 20 ms, for conditions outside the pane.
 func (d *driver) waitFor(what string, ok func() bool) {
 	d.t.Helper()
 	deadline := time.After(waitLimit)
@@ -135,6 +137,7 @@ func (d *driver) waitFor(what string, ok func() bool) {
 				continue
 			}
 			d.send(msg)
+		case <-time.After(20 * time.Millisecond):
 		case <-deadline:
 			d.t.Fatalf("no %s on the pane:\n%s", what, d.m.Text())
 		}
@@ -242,6 +245,44 @@ func TestPaneReset(t *testing.T) {
 	if d.m.Resets() != 1 || strings.Contains(d.m.Text(), "before") {
 		t.Fatalf("want one reset and an empty screen before after, got %d resets:\n%s", d.m.Resets(), d.m.Text())
 	}
+}
+
+// TestPaneNumbersAsHolder resets the vt amid output: the pane numbers the
+// lines it keeps as the holder's history does, the gap's marker included.
+// The output it fails on is written at once: the vts start again on the
+// same bytes only when it arrives in one piece (docs/ATTACH_VIEW.md).
+func TestPaneNumbersAsHolder(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, `printf 'before\033[1;30r\033[30;1H\033[S\033[r\033[Hafter\n' >fails; echo ready; read x; seq 1 30; read x; cat fails; seq 31 60; echo done; exec sleep 60`)
+	d := sh.attach()
+	d.waitText("ready")
+	d.typeText("\n")
+	d.waitText("30")
+	sh.waitNext(d) // the holder's vt past seq, so the reset is fed alone
+	d.typeText("\n")
+	d.waitText("done")
+	next := sh.waitNext(d)
+	kept := d.m.back.kept
+	h, err := sh.fetch(next-int64(len(kept)), len(kept))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.Lines, kept) || !slices.Contains(kept, holder.MarkInterrupted) {
+		t.Fatalf("the pane keeps\n%q\nthe holder\n%q", kept, h.Lines)
+	}
+}
+
+// waitNext waits until the holder's history and the pane's continue at the
+// same line, and returns it.
+func (sh shell) waitNext(d *driver) int64 {
+	sh.t.Helper()
+	var next int64
+	d.waitFor("the holder's history at the pane's line", func() bool {
+		_, next = d.m.Position()
+		h, err := holder.TailHistory(holder.HistoryDir(sh.home, sh.id), 1)
+		return err == nil && h.Next == next
+	})
+	return next
 }
 
 func TestPaneEnded(t *testing.T) {
