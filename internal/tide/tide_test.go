@@ -1,0 +1,190 @@
+package tide
+
+import (
+	"log/slog"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/srjn45/wdx/internal/style"
+)
+
+// newModel returns tide's window at width × height, uncolored, with a clock
+// the test moves.
+func newModel(width, height int) (*Model, *time.Time) {
+	m := New(slog.New(slog.DiscardHandler), style.New(false))
+	now := time.UnixMilli(0)
+	m.now = func() time.Time { return now }
+	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return m, &now
+}
+
+func key(code rune, mod tea.KeyMod) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code, Mod: mod} }
+
+func clickAt(x, y int) tea.MouseClickMsg { return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft} }
+
+// text is what m shows, a line per row, without trailing spaces.
+func text(m *Model) string {
+	lines := strings.Split(ansi.Strip(m.render()), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " ")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func TestKeys(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(80, 24)
+	m.Update(key('a', 0))
+	m.Update(key(tea.KeyLeft, tea.ModAlt))
+	m.Update(key('b', 0))
+	m.Update(key(tea.KeyDown, tea.ModAlt))
+	m.Update(key('c', tea.ModCtrl))
+	m.Update(tea.PasteMsg{Content: "hello"})
+	for _, tc := range []struct {
+		got  *placeholder
+		want []string
+	}{
+		{m.content[agent], []string{"a"}},
+		{m.content[project], []string{"b"}},
+		{m.tabs[0], []string{"ctrl+c", "paste(5)"}},
+	} {
+		if !slices.Equal(tc.got.inputs, tc.want) {
+			t.Errorf("%s got %v, want %v", tc.got.name, tc.got.inputs, tc.want)
+		}
+	}
+
+	// In the terminal pane, left and right switch tabs, going round.
+	m.Update(key(tea.KeyLeft, tea.ModAlt))
+	if m.tab != 2 || m.layout.focus != terminal {
+		t.Fatalf("tab %d, focus %s after ←", m.tab, m.layout.focus)
+	}
+	m.Update(key(tea.KeyRight, tea.ModAlt))
+	m.Update(key(tea.KeyRight, tea.ModAlt))
+	if m.tab != 1 {
+		t.Fatalf("tab %d after → →", m.tab)
+	}
+
+	m.Update(key(']', tea.ModCtrl))
+	if m.layout.zoomed != terminal {
+		t.Fatalf("C-] zoomed %s", m.layout.zoomed)
+	}
+	m.Update(key('\\', tea.ModCtrl))
+	if m.layout.shown(terminal) || m.layout.focus != project {
+		t.Fatalf("C-\\ left %+v", m.layout)
+	}
+}
+
+func TestMenu(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(80, 24)
+	m.Update(key('q', tea.ModCtrl))
+	if !strings.Contains(text(m), "q    quit") {
+		t.Fatalf("no menu:\n%s", text(m))
+	}
+	m.Update(key(tea.KeyEscape, 0))
+	if m.menu || strings.Contains(text(m), "quit") {
+		t.Fatalf("Esc left the menu open:\n%s", text(m))
+	}
+	m.Update(key('q', 0)) // without the menu, q is the pane's
+	if !slices.Equal(m.content[agent].inputs, []string{"q"}) {
+		t.Fatalf("q went to %v", m.content[agent].inputs)
+	}
+	m.Update(key('q', tea.ModCtrl))
+	_, cmd := m.Update(key('q', 0))
+	if cmd == nil {
+		t.Fatal("C-q q did not quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("C-q q returned %T", cmd())
+	}
+}
+
+func TestClicks(t *testing.T) {
+	t.Parallel()
+	m, now := newModel(100, 41) // panes in 100 × 40: project 0-40, agent 40-99, terminal from row 30
+	m.Update(clickAt(5, 3))
+	if m.layout.focus != project || !slices.Equal(m.content[project].inputs, []string{"click 4,2"}) {
+		t.Fatalf("focus %s, project got %v", m.layout.focus, m.content[project].inputs)
+	}
+	m.Update(tea.MouseClickMsg{X: 60, Y: 5, Button: tea.MouseRight})
+	if m.layout.focus != project {
+		t.Fatal("a right click moved the focus")
+	}
+	m.Update(tea.MouseWheelMsg{X: 60, Y: 5, Button: tea.MouseWheelUp})
+	if m.layout.focus != project || !slices.Equal(m.content[agent].inputs, []string{"wheelup"}) {
+		t.Fatalf("the wheel: focus %s, agent got %v", m.layout.focus, m.content[agent].inputs)
+	}
+
+	// The tabs: " [shell] [tests] [server] " from column 1 of row 30.
+	m.Update(clickAt(12, 30))
+	if m.layout.focus != terminal || m.tab != 1 {
+		t.Fatalf("a click on [tests]: focus %s, tab %d", m.layout.focus, m.tab)
+	}
+
+	// The zoom button, 4 columns before the corner.
+	m.Update(clickAt(95, 0))
+	if m.layout.zoomed != agent {
+		t.Fatalf("the agent's zoom button zoomed %s", m.layout.zoomed)
+	}
+	m.Update(clickAt(95, 0))
+	if m.layout.zoomed != none {
+		t.Fatalf("the zoom button again left %s zoomed", m.layout.zoomed)
+	}
+
+	// A double-click on a title zooms; two slow clicks do not.
+	m.Update(clickAt(20, 0))
+	*now = now.Add(doubleClick + time.Millisecond)
+	m.Update(clickAt(20, 0))
+	if m.layout.zoomed != none {
+		t.Fatal("two slow clicks zoomed")
+	}
+	*now = now.Add(doubleClick)
+	m.Update(clickAt(20, 0))
+	if m.layout.zoomed != project {
+		t.Fatalf("a double-click zoomed %s", m.layout.zoomed)
+	}
+}
+
+func TestRender(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(40, 11)
+	m.Update(key('x', 0))
+	want := `┌ project ──[⤢]─┬ agent ───────────[⤢]─┐
+│project        │agent                 │
+│15×6           │22×6                  │
+│got: nothing ye│got: x                │
+│               │                      │
+│               │                      │
+│               │                      │
+├ [shell] [tests] [server] ────────[⤢]─┤
+│shell                                 │
+└──────────────────────────────────────┘
+ agent Alt+arrows move  C-] zoom  C-\ te`
+	if got := text(m); got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestTooSmall(t *testing.T) {
+	t.Parallel()
+	for _, size := range [][2]int{{4, 24}, {80, 5}, {1, 1}, {0, 0}} {
+		m, _ := newModel(size[0], size[1])
+		got := text(m)
+		if want := ansi.Truncate(tooSmall, size[0], ""); got != want {
+			t.Errorf("%v: got %q, want %q", size, got, want)
+		}
+		m.Update(clickAt(0, 0))
+		m.Update(key(tea.KeyDown, tea.ModAlt))
+	}
+	// Zoomed, a pane fits where the three do not.
+	m, _ := newModel(4, 5)
+	m.Update(key(']', tea.ModCtrl))
+	if got := text(m); got == tooSmall || !strings.HasPrefix(got, "┌") {
+		t.Fatalf("zoomed at 4×5:\n%s", got)
+	}
+}

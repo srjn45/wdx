@@ -57,6 +57,12 @@ func startAttach(t *testing.T, home, dir string, args ...string) *attachRun {
 
 func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...string) *attachRun {
 	t.Helper()
+	return startInTerminal(t, home, dir, cols, rows, append([]string{"terminal", "attach"}, args...))
+}
+
+// startInTerminal runs args in a cols × rows terminal of their own.
+func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []string) *attachRun {
+	t.Helper()
 	master, tty, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +99,7 @@ func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachR
 	if err := pty.Setsize(master, 80, 24); err != nil {
 		t.Fatal(err)
 	}
-	a := newAttachRun(t, home, master, tty, 80, 24, args)
+	a := newAttachRun(t, home, master, tty, 80, 24, append([]string{"terminal", "attach"}, args...))
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(wdxBinary, a.args...)
 	cmd.Dir = dir
@@ -128,7 +134,7 @@ func newAttachRun(t *testing.T, home string, master, tty *os.File, cols, rows in
 	// The terminal's answers go back to the view.
 	sc := screen.New(cols, rows, func(p []byte) { _, _ = master.Write(p) })
 	sc.Write([]byte(callingText + "\r\n$ "))
-	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, tty: tty, screen: sc, done: make(chan output, 1)}
+	a := &attachRun{t: t, home: home, args: args, master: master, tty: tty, screen: sc, done: make(chan output, 1)}
 	go func() {
 		buf := make([]byte, 4096)
 		for {

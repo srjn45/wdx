@@ -64,6 +64,10 @@ func (s Style) Name(text string) string { return s.apply(text, bold) }
 // Muted styles details that matter less: ids, timestamps, labels.
 func (s Style) Muted(text string) string { return s.apply(text, dim) }
 
+// Focused styles what marks the part of a window that has the focus, such
+// as a pane's border.
+func (s Style) Focused(text string) string { return s.apply(text, bold, green) }
+
 // StatusBar is the state a status line shows, which picks its colors.
 type StatusBar int
 

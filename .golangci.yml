@@ -47,6 +47,20 @@ linters:
               desc: only the cli runs the daemon; the domain never calls up
             - pkg: github.com/srjn45/wdx/internal/client$
               desc: only the cli calls the daemon's API
+        # tide is a client of the daemon's API, as the cli is.
+        tide-through-api:
+          files: ["**/internal/tide/**"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/daemon
+              desc: tide calls the daemon's API, never the daemon
+            - pkg: github.com/srjn45/wdx/internal/project
+              desc: tide calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/git$
+              desc: tide calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/terminal
+              desc: tide calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/db
+              desc: tide calls the daemon's API, never the database
         config-in-cli-only:
           files:
             - "$all"

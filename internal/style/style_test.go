@@ -12,7 +12,7 @@ func TestStyles(t *testing.T) {
 		for name, f := range map[string]func(string) string{
 			"heading": s.Heading, "command": s.Command, "flag": s.Flag, "placeholder": s.Placeholder,
 			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
-			"name": s.Name, "muted": s.Muted, "bar name": s.BarName, "bar muted": s.BarMuted,
+			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "bar name": s.BarName, "bar muted": s.BarMuted,
 		} {
 			got := f("text")
 			if Width(got) != len("text") || (got != "text") != on {
