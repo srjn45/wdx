@@ -499,6 +499,27 @@ func TestCloseDuringRedial(t *testing.T) {
 	}
 }
 
+// TestRemoveUnwatched removes a terminal left starting with its holder
+// running and nothing watching it, as a launch that failed after starting
+// the holder leaves it: the holder is found and stopped.
+func TestRemoveUnwatched(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	first := NewSupervisor(context.Background(), NewStore(f.db), f.opts)
+	term := create(t, first, f.project(t, "warden"), "api", dir(t, ""))
+	first.Close()
+	t.Cleanup(func() { kill(term.HolderPID, term.PID) })
+	f.exec(t, "UPDATE terminals SET state = 'starting' WHERE id = ?", term.ID)
+
+	s := f.supervisor(t)
+	got, err := s.Remove(context.Background(), term.ID, true)
+	if err != nil || got.State != StateStopped {
+		t.Fatalf("want the terminal stopped and removed, got %+v, %v", got, err)
+	}
+	waitGone(t, term.HolderPID)
+	waitGone(t, term.PID)
+}
+
 func TestReconcile(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

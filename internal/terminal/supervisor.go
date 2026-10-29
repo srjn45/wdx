@@ -360,9 +360,19 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 	w := s.watches[t.ID]
 	s.mu.Unlock()
 	if w == nil {
-		log.Info("terminal has no holder to stop", "terminal_id", t.ID)
-		_, err := s.store.ended(ctx, t.ID, time.Now())
-		return nil, err
+		// Nothing watches it, as after a launch that failed once its holder
+		// started: the holder may still run. One that does not answer is
+		// gone; its pids are never killed, as they may be another's now.
+		conn, err := holder.Dial(ctx, s.socket(t.ID), t.ID)
+		if err != nil {
+			log.Info("terminal has no holder to stop", "terminal_id", t.ID, "err", err.Error())
+			_, err := s.store.ended(ctx, t.ID, time.Now())
+			return nil, err
+		}
+		log.Info("unwatched holder found", "terminal_id", t.ID, "holder_pid", conn.Hello().HolderPID)
+		if w = s.follow(t.ID, conn); w == nil {
+			return nil, nil // the daemon is stopping: the next one finishes the stop
+		}
 	}
 	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", s.opts.StopGrace.Milliseconds())
 	if err := w.current().Stop(s.opts.StopGrace); err != nil {
@@ -442,15 +452,15 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 // follow watches conn until the shell exits, then records the exit and
 // releases the holder. A connection that drops is dialled again once; a
 // holder that does not answer is lost. Once the Supervisor is closed it
-// closes conn instead: the next daemon adopts the holder.
-func (s *Supervisor) follow(id string, conn *holder.Conn) {
+// closes conn instead and returns nil: the next daemon adopts the holder.
+func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 	w := &watch{conn: conn, done: make(chan struct{})}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
 		logging.FromContext(s.ctx).Info("holder not followed: the daemon is stopping", "terminal_id", id)
 		conn.Close()
-		return
+		return nil
 	}
 	s.watches[id] = w
 	s.mu.Unlock()
@@ -501,6 +511,7 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) {
 			}
 		}
 	}()
+	return w
 }
 
 func (s *Supervisor) recordExit(ctx context.Context, id string, exit holder.Exit) {
