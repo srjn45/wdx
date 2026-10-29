@@ -92,7 +92,7 @@ The PTY and the vt have one size. The client that attached or resized last sets 
 - Lines keep the width they were drawn at: the vt does not record which line breaks were soft wraps, so history cannot be reflowed to another width. A narrower client wraps long lines, a wider one shows them short.
 - `<home>/terminals/` is 0700, its files 0600. Terminal output can hold secrets (a printed token, `env`): history is off when `terminal.history_lines` is 0.
 - The daemon reads history straight from the files (append-only, written by one holder): it serves it while the holder runs, after the shell exited, and for a `lost` terminal.
-- Removing a terminal, or the project, deletes `<home>/terminals/<id>/` once its holder is gone. At startup the daemon deletes the directories of terminals that have no row (a crash between the two).
+- Removing a terminal, or the project, deletes `<home>/terminals/<id>/` once its holder is gone. At startup the daemon deletes the directories of terminals that have no row (a crash between the two), and, then and on every remove, the sockets in `<home>/run/` that killed holders left: those of terminals without a row, or neither live nor watched.
 
 ## Protocol, version 2
 

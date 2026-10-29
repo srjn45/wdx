@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -238,8 +239,11 @@ func (s *Supervisor) History(id string, from *int64, count int) (holder.History,
 // Sweep deletes what terminals that no longer exist kept on disk: removing
 // one, or its project, leaves it behind, as does a daemon that died
 // meanwhile. Their holders are gone: a live terminal is stopped before it
-// is removed.
+// is removed. It also deletes the sockets killed holders left.
 func (s *Supervisor) Sweep(ctx context.Context) error {
+	if err := s.sweepSockets(ctx); err != nil {
+		return err
+	}
 	log := logging.FromContext(ctx)
 	parent := identity.TerminalsDir(s.opts.Home)
 	// Listed before the terminals: a directory is made after its row.
@@ -268,6 +272,38 @@ func (s *Supervisor) Sweep(ctx context.Context) error {
 			continue
 		}
 		log.Info("terminal directory deleted", "terminal_id", e.Name(), "path", dir)
+	}
+	return nil
+}
+
+// sweepSockets deletes the sockets of holders that cannot be running: a
+// holder removes its own when it quits, but not when it is killed.
+func (s *Supervisor) sweepSockets(ctx context.Context) error {
+	log := logging.FromContext(ctx)
+	// Globbed before the terminals are listed: a holder's socket comes
+	// after its row.
+	sockets, err := filepath.Glob(s.socket("term-*"))
+	if err != nil {
+		return err
+	}
+	list, err := s.store.List(ctx, "")
+	if err != nil {
+		return err
+	}
+	live := map[string]bool{}
+	for _, t := range list {
+		live[t.ID] = t.State.Live() || s.watching(t.ID)
+	}
+	for _, path := range sockets {
+		id := strings.TrimSuffix(filepath.Base(path), ".sock")
+		if live[id] {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Error("holder socket not deleted", "path", path, "err", err.Error())
+			continue
+		}
+		log.Info("holder socket deleted", "terminal_id", id, "path", path)
 	}
 	return nil
 }

@@ -518,6 +518,35 @@ func TestRemoveUnwatched(t *testing.T) {
 	waitGone(t, term.PID)
 }
 
+// TestSweepSockets sweeps the sockets holders that were killed left: of a
+// terminal lost, and of one removed; a live terminal's stays.
+func TestSweepSockets(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	p := f.project(t, "warden")
+	live := create(t, s, p, "live", dir(t, ""))
+	lost := create(t, s, p, "lost", dir(t, ""))
+	kill(lost.HolderPID, lost.PID)
+	waitState(t, s, lost.ID, StateLost)
+	removed := s.socket("term-00000000")
+	if err := os.WriteFile(removed, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{s.socket(lost.ID), removed} {
+		if _, err := os.Stat(gone); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("want %s swept, got %v", gone, err)
+		}
+	}
+	if _, err := os.Stat(s.socket(live.ID)); err != nil {
+		t.Errorf("want the live terminal's socket kept, got %v", err)
+	}
+}
+
 // TestReconcile stops a daemon's supervisor, changes what its terminals'
 // holders do while none runs, and starts another, which must find out.
 func TestReconcile(t *testing.T) {
