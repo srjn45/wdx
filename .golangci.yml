@@ -36,23 +36,28 @@ linters:
             - pkg: github.com/charmbracelet/x/vt
               desc: only internal/screen uses the vt, so its fork is one replace
         # Dependencies point down: only the cli runs the daemon and calls
-        # it through the client.
+        # it through the client; tide is a client too, with its own rule.
         daemon-and-client-in-cli-only:
           files:
             - "$all"
             - "!**/cmd/wdx/**"
             - "!**/internal/cli/**"
+            - "!**/internal/tide/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/daemon$
               desc: only the cli runs the daemon; the domain never calls up
             - pkg: github.com/srjn45/wdx/internal/client$
               desc: only the cli calls the daemon's API
-        # tide is a client of the daemon's API, as the cli is.
+        # tide is a client of the daemon's API, as the cli is; its tests
+        # run a daemon in the test process, as the cli's do.
         tide-through-api:
-          files: ["**/internal/tide/**"]
+          files: ["**/internal/tide/**", "!$test"]
           deny:
             - pkg: github.com/srjn45/wdx/internal/daemon
               desc: tide calls the daemon's API, never the daemon
+        tide-not-domain:
+          files: ["**/internal/tide/**"]
+          deny:
             - pkg: github.com/srjn45/wdx/internal/project
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/git$
@@ -70,7 +75,7 @@ linters:
           deny:
             - pkg: github.com/srjn45/wdx/internal/config
               desc: only cmd and cli hold the Config; pass packages the values they need
-            - pkg: github.com/srjn45/wdx/internal/cli
+            - pkg: github.com/srjn45/wdx/internal/cli$
               desc: only cmd/wdx runs the cli
     errcheck:
       # Errors these return have nothing left to handle: a rollback after

@@ -1,7 +1,7 @@
 package tide
 
 import (
-	"log/slog"
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -14,9 +14,9 @@ import (
 )
 
 // newModel returns tide's window at width × height, uncolored, with a clock
-// the test moves.
+// the test moves and no daemon: it has not listed the projects.
 func newModel(width, height int) (*Model, *time.Time) {
-	m := New(slog.New(slog.DiscardHandler), style.New(false))
+	m := New(context.Background(), Options{Style: style.New(false)})
 	now := time.UnixMilli(0)
 	m.now = func() time.Time { return now }
 	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
@@ -39,9 +39,12 @@ func text(m *Model) string {
 func TestKeys(t *testing.T) {
 	t.Parallel()
 	m, _ := newModel(80, 24)
+	if m.layout.focus != project {
+		t.Fatalf("tide starts focused on %s", m.layout.focus)
+	}
+	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('a', 0))
 	m.Update(key(tea.KeyLeft, tea.ModAlt))
-	m.Update(key('b', 0))
 	m.Update(key(tea.KeyDown, tea.ModAlt))
 	m.Update(key('c', tea.ModCtrl))
 	m.Update(tea.PasteMsg{Content: "hello"})
@@ -49,8 +52,7 @@ func TestKeys(t *testing.T) {
 		got  *placeholder
 		want []string
 	}{
-		{m.content[agent], []string{"a"}},
-		{m.content[project], []string{"b"}},
+		{m.content[agent].(*placeholder), []string{"a"}},
 		{m.tabs[0], []string{"ctrl+c", "paste(5)"}},
 	} {
 		if !slices.Equal(tc.got.inputs, tc.want) {
@@ -90,9 +92,8 @@ func TestMenu(t *testing.T) {
 	if m.menu || strings.Contains(text(m), "quit") {
 		t.Fatalf("Esc left the menu open:\n%s", text(m))
 	}
-	m.Update(key('q', 0)) // without the menu, q is the pane's
-	if !slices.Equal(m.content[agent].inputs, []string{"q"}) {
-		t.Fatalf("q went to %v", m.content[agent].inputs)
+	if _, cmd := m.Update(key('q', 0)); cmd != nil { // without the menu, q is the pane's
+		t.Fatal("q without the menu quit")
 	}
 	m.Update(key('q', tea.ModCtrl))
 	_, cmd := m.Update(key('q', 0))
@@ -107,17 +108,19 @@ func TestMenu(t *testing.T) {
 func TestClicks(t *testing.T) {
 	t.Parallel()
 	m, now := newModel(100, 41) // panes in 100 × 40: project 0-40, agent 40-99, terminal from row 30
-	m.Update(clickAt(5, 3))
-	if m.layout.focus != project || !slices.Equal(m.content[project].inputs, []string{"click 4,2"}) {
-		t.Fatalf("focus %s, project got %v", m.layout.focus, m.content[project].inputs)
+	agentPane := m.content[agent].(*placeholder)
+	m.Update(clickAt(60, 5))
+	if m.layout.focus != agent || !slices.Equal(agentPane.inputs, []string{"click 19,4"}) {
+		t.Fatalf("focus %s, agent got %v", m.layout.focus, agentPane.inputs)
 	}
-	m.Update(tea.MouseClickMsg{X: 60, Y: 5, Button: tea.MouseRight})
-	if m.layout.focus != project {
+	m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseRight})
+	if m.layout.focus != agent {
 		t.Fatal("a right click moved the focus")
 	}
+	m.Update(clickAt(5, 3))
 	m.Update(tea.MouseWheelMsg{X: 60, Y: 5, Button: tea.MouseWheelUp})
-	if m.layout.focus != project || !slices.Equal(m.content[agent].inputs, []string{"wheelup"}) {
-		t.Fatalf("the wheel: focus %s, agent got %v", m.layout.focus, m.content[agent].inputs)
+	if m.layout.focus != project || !slices.Equal(agentPane.inputs, []string{"click 19,4", "wheelup"}) {
+		t.Fatalf("the wheel: focus %s, agent got %v", m.layout.focus, agentPane.inputs)
 	}
 
 	// The tabs: " [shell] [tests] [server] " from column 1 of row 30.
@@ -153,11 +156,12 @@ func TestClicks(t *testing.T) {
 func TestRender(t *testing.T) {
 	t.Parallel()
 	m, _ := newModel(40, 11)
+	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
 	want := `┌ project ──[⤢]─┬ agent ───────────[⤢]─┐
-│project        │agent                 │
-│15×6           │22×6                  │
-│got: nothing ye│got: x                │
+│loading…       │agent                 │
+│               │22×6                  │
+│               │got: x                │
 │               │                      │
 │               │                      │
 │               │                      │

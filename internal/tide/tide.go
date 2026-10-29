@@ -1,10 +1,12 @@
 // Package tide is the terminal IDE, wdx tide: a project pane, an agent pane
 // and a terminal pane in one window, which the keys and the mouse move the
-// focus between, zoom and hide (docs/TIDE.md). For now its panes hold
+// focus between, zoom and hide (docs/TIDE.md). It is a client of the
+// daemon, as the cli is. For now its agent and terminal panes hold
 // placeholders.
 package tide
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,6 +14,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -31,17 +35,37 @@ const doubleClick = 400 * time.Millisecond
 
 // Model is tide's window.
 type Model struct {
-	log *slog.Logger
-	st  style.Style
-	now func() time.Time
+	ctx    context.Context // every request's, carrying the run's logger and debug id
+	log    *slog.Logger
+	st     style.Style
+	client *client.Client
+	now    func() time.Time
+
+	workDir, userHome string // from Options
 
 	width, height int
 	layout        layout
-	content       map[pane]*placeholder // the project and agent panes'
-	tabs          []*placeholder        // the terminal pane's
-	tab           int                   // the tab shown
-	menu          bool                  // the menu is open
+	projects      *projectsPane
+	content       map[pane]content // the project and agent panes'
+	tabs          []*placeholder   // the terminal pane's
+	tab           int              // the tab shown
+	menu          bool             // the menu is open
+	switcher      bool             // the project switcher is open
 	lastClick     click
+}
+
+// content is what a pane shows.
+type content interface {
+	input(s string)
+	draw(buf uv.Screen, area uv.Rectangle, st style.Style)
+}
+
+// Options are what tide needs from the cli.
+type Options struct {
+	Client   *client.Client
+	Style    style.Style
+	WorkDir  string // the directory tide was started in, where the directory browser starts
+	UserHome string // shown as ~ in paths
 }
 
 // click is where and when a click on a frame's title happened.
@@ -50,24 +74,36 @@ type click struct {
 	at   time.Time
 }
 
-// New returns tide's window, which logs to log and styles its text with st.
-func New(log *slog.Logger, st style.Style) *Model {
-	return &Model{
-		log:     log,
-		st:      st,
-		now:     time.Now,
-		layout:  newLayout(),
-		content: map[pane]*placeholder{project: {name: "project"}, agent: {name: "agent"}},
-		tabs:    []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
+// New returns tide's window. Its requests to the daemon run with ctx,
+// whose logger it logs to.
+func New(ctx context.Context, opts Options) *Model {
+	projects := &projectsPane{}
+	m := &Model{
+		ctx:      ctx,
+		log:      logging.FromContext(ctx),
+		st:       opts.Style,
+		client:   opts.Client,
+		workDir:  opts.WorkDir,
+		userHome: opts.UserHome,
+		now:      time.Now,
+		layout:   newLayout(),
+		projects: projects,
+		content:  map[pane]content{project: projects, agent: &placeholder{name: "agent"}},
+		tabs:     []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
 	}
+	// tide starts on the project pane: the switcher or [Open Project].
+	m.layout.setFocus(project)
+	return m
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return m.listProjects() }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+	case projectsListed:
+		m.listed(msg)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
 	case tea.MouseClickMsg:
@@ -81,7 +117,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // pane returns what p shows: for the terminal pane, its tab shown.
-func (m *Model) pane(p pane) *placeholder {
+func (m *Model) pane(p pane) content {
 	if p == terminal {
 		return m.tabs[m.tab]
 	}
@@ -98,6 +134,11 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
+	if m.switcher && name == "esc" {
+		m.switcher = false
+		m.log.Debug("switcher closed")
+		return nil
+	}
 	switch name {
 	case zoomKey:
 		m.layout.toggleZoom()
@@ -110,6 +151,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	default:
 		d, ok := focusKeys[name]
 		switch {
+		case !ok && name == retryKey && m.layout.focus == project && m.projects.err != nil && !m.projects.listing:
+			m.log.Info("projects listed again", "reason", "retry key")
+			return m.listProjects()
 		case !ok:
 			m.pane(m.layout.focus).input(name)
 		case m.layout.focus == terminal && (d == left || d == right):

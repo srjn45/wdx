@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -23,8 +25,9 @@ func newTideCmd() *cobra.Command {
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
 			"terminals and C-q opens the menu, where q quits. The mouse focuses a pane,\n" +
-			"switches tabs and zooms with the [⤢] button. For now the panes hold\n" +
-			"placeholders. It runs in the terminal it was started from and has no --json.",
+			"switches tabs and zooms with the [⤢] button. For now the project pane lists\n" +
+			"the projects and the other panes hold placeholders. tide needs the daemon\n" +
+			"running, runs in the terminal it was started from and has no --json.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),
@@ -54,12 +57,25 @@ func runTide(cmd *cobra.Command, _ []string) error {
 
 	ctx := cmd.Context()
 	log := logging.FromContext(ctx)
+	inv := invocationOf(cmd)
+	// A warning written while tide holds the window would land in it: it
+	// waits until tide gives the window back.
+	var daemonVersion atomic.Pointer[string]
+	c := client.New(client.Options{
+		Socket:          identity.SocketPath(env.Config.Home),
+		DebugID:         inv.debugID,
+		VersionMismatch: func(v string) { daemonVersion.Store(&v) },
+	})
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
-	p := tea.NewProgram(tide.New(log, viewStyle(cmd)), tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
+	model := tide.New(ctx, tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome})
+	p := tea.NewProgram(model, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
 		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	log.Info("tide started")
 	_, err = p.Run()
+	if v := daemonVersion.Load(); v != nil {
+		warnVersion(cmd, *v)
+	}
 	killed := errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil // the command is ending
 	if err != nil && !killed {
 		return err

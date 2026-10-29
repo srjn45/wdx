@@ -39,6 +39,9 @@ func (m *Model) render() string {
 			uv.NewStyledString(l.styled).Draw(buf, l.area)
 		}
 	}
+	if m.switcher {
+		m.drawSwitcher(buf)
+	}
 	if m.menu {
 		m.drawMenu(buf)
 	}
@@ -153,7 +156,7 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		x += width
 	}
 	if p != terminal {
-		add(" "+m.content[p].name+" ", -1, m.st.Name)
+		add(" "+p.String()+" ", -1, m.st.Name)
 		return labels
 	}
 	plain := func(s string) string { return s }
@@ -171,12 +174,25 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 
 // drawMenu draws the menu in a box in the middle of the window.
 func (m *Model) drawMenu(buf uv.Screen) {
-	lines := []string{
+	m.drawBox(buf, []string{
 		m.st.Heading("tide"),
 		"",
 		m.st.Command("q") + "    quit",
 		m.st.Command("Esc") + "  close",
+	})
+}
+
+// drawSwitcher draws the project switcher: for now, the open projects.
+func (m *Model) drawSwitcher(buf uv.Screen) {
+	lines := []string{m.st.Heading("switch project"), ""}
+	for _, name := range m.projects.open() {
+		lines = append(lines, m.st.Name(name))
 	}
+	m.drawBox(buf, append(lines, "", m.st.Command("Esc")+"  close"))
+}
+
+// drawBox draws lines in a box in the middle of the window.
+func (m *Model) drawBox(buf uv.Screen, lines []string) {
 	width := 0
 	for _, l := range lines {
 		width = max(width, ansi.StringWidth(l))
@@ -208,9 +224,13 @@ func (m *Model) statusLine() string {
 	}
 	state := style.StatusLive
 	right := m.st.BarMuted("Alt+arrows move  C-] zoom  C-\\ terminal  C-q menu")
-	if m.menu {
+	switch {
+	case m.menu:
 		state = style.StatusPrefix
 		right = "menu: q quit  Esc close"
+	case m.switcher:
+		state = style.StatusPrefix
+		right = "switcher: Esc close"
 	}
 	right += " "
 	line := left + " " + right

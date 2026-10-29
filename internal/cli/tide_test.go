@@ -21,10 +21,12 @@ func TestTideRefused(t *testing.T) {
 
 func TestTide(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home := newHome(t)
 	run := startInTerminal(t, home, home, 80, 24, []string{"tide"})
 	run.waitScreen("┌ project")
-	run.waitScreen("Alt+arrows move")
+	run.waitScreen("no projects yet")
+	run.input("\x1b[1;3C") // Alt+→: the agent pane
+	run.waitScreen(" agent ")
 	run.input("\x1b[1;3B") // Alt+↓: the terminal pane
 	run.waitScreen(" terminal · shell")
 	run.input("\x1b\x1b[A") // Alt+↑ as a Meta key sends it: back to the agent

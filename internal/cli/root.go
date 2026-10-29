@@ -72,6 +72,9 @@ type Env struct {
 	// WorkDir is the working directory, which names the project of the
 	// terminal commands when no project flag does.
 	WorkDir string
+	// UserHome is the user's home directory, which tide shows paths in as
+	// ~; "" when unknown.
+	UserHome string
 	// TTY opens the controlling terminal, which terminal attach shows a
 	// terminal in; it fails when there is none, and is nil in tests.
 	TTY func() (*os.File, error)
@@ -295,17 +298,20 @@ func clientOf(cmd *cobra.Command) *client.Client {
 	inv := invocationOf(cmd)
 	if inv.client == nil {
 		inv.client = client.New(client.Options{
-			Socket:  identity.SocketPath(inv.env.Config.Home),
-			DebugID: inv.debugID,
-			Quiet:   inv.quiet,
-			VersionMismatch: func(daemonVersion string) {
-				st := stderrStyle(cmd)
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but %s is %s; run %s\n",
-					identity.Name, st.Warning("warning:"), daemonVersion, identity.Name, identity.Version, st.Command(identity.Name+" daemon restart"))
-			},
+			Socket:          identity.SocketPath(inv.env.Config.Home),
+			DebugID:         inv.debugID,
+			Quiet:           inv.quiet,
+			VersionMismatch: func(daemonVersion string) { warnVersion(cmd, daemonVersion) },
 		})
 	}
 	return inv.client
+}
+
+// warnVersion warns on stderr that the daemon is of another version.
+func warnVersion(cmd *cobra.Command, daemonVersion string) {
+	st := stderrStyle(cmd)
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but %s is %s; run %s\n",
+		identity.Name, st.Warning("warning:"), daemonVersion, identity.Name, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
 
 // wrapRun makes every RunE in the tree log its start, check the flags --json

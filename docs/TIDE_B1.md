@@ -1,6 +1,6 @@
 # tide Phase B1: projects
 
-Status: designed and approved, not started. Built in the worktree `~/dev/warden-rebuild-tide`, branch `tide-skeleton`, rebased on `origin/main`.
+Status: in progress; steps 1 and 2 are built (see Progress). Built in the worktree `~/dev/warden-rebuild-tide`, branch `tide-skeleton`, rebased on `origin/main`.
 
 What B1 builds is the user journey in docs/TIDE.md: starting on `[Open Project]` or the switcher, `[Open Project]` complete (local, clone, create, reopen) with the directory browser and the choice screens, `[Project: <name>]`, the daemon-not-running screen, and switching projects with the strip, `Alt+Shift+←/→` and `C-q p`. The agent and terminal panes stay placeholders. The daemon does not change. This file is the plan to build it; docs/TIDE.md stays the design.
 
@@ -46,3 +46,8 @@ What Phase A left in the code, which B1 builds on:
 - `internal/cli/tide.go` runs it on the controlling terminal, like attach, and prints `tide closed` on quit (every cli run must log the response it printed). `internal/cli/attach_test.go`'s `startInTerminal` runs any command line in a pty for end-to-end tests; `internal/cli/tide_test.go` uses it.
 - The branch tracks no upstream on purpose (it was created tracking `origin/main`); push it with an explicit `git push -u origin tide-skeleton`.
 - Run the checks from the worktree: `make check`, `make test`. Use git and make directly in this repo, not warden's tools.
+
+## Progress
+
+- Step 1: committed (`f7a86b6`).
+- Step 2: built. tide starts focused on the project pane, which says "loading…", then the daemon-not-running message (`r` retries there), the error of a failed list, or for now the open and closed projects as text, until steps 3 and 4 replace it. The switcher is for now a box listing the open projects, which `Esc` closes; step 7 makes it the real one. A daemon of another version gets its warning once tide gives the window back, since a write while tide draws would land in it. Fixed on the way: `.golangci.yml`'s rule against importing `internal/cli` matched `internal/client` too; it is anchored now.

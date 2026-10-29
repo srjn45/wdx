@@ -30,9 +30,11 @@ func main() {
 	// Without it only the terminal commands that rely on it fail.
 	env.WorkDir, _ = os.Getwd()
 	env.TTY = func() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDWR, 0) }
+	// Without it tide shows paths in full.
+	env.UserHome, _ = os.UserHomeDir()
 	// The service runs the daemon for the default home only.
-	if userHome, err := os.UserHomeDir(); err == nil && cfg.Home == config.Default().Home {
-		env.Service = service.Installed(runtime.GOOS, userHome)
+	if env.UserHome != "" && cfg.Home == config.Default().Home {
+		env.Service = service.Installed(runtime.GOOS, env.UserHome)
 	}
 	os.Exit(cli.Run(context.Background(), os.Args[1:], env))
 }
