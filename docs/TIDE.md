@@ -87,11 +87,13 @@ zoomed       pane // none, project, agent or terminal
 
 ```go
 type screen interface {
-    Update(msg tea.Msg) (screen, tea.Cmd)
-    View(width, height int) string
-    Title() string // shown on the left pane's frame line
+    title() string // shown on the left pane's frame line
+    update(msg tea.Msg) tea.Cmd // a key, or the answer to a request it asked for
+    draw(buf uv.Screen, area uv.Rectangle, st style.Style)
 }
 ```
+
+- A screen changes the stack through the messages of the commands it returns (`popScreen`), and asks for requests the same way (`reopenProject`): tide sends them and hands a failure back to the screen on top.
 
 - A screen draws only inside the rectangle it gets, so it works the same at 2/5 width or zoomed.
 - When a screen finishes, it returns a result message (project created, agent created, ...). The screen below reacts to it, e.g. the project view selects the new agent and the agent pane switches to it.

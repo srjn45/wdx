@@ -45,12 +45,14 @@ type Model struct {
 
 	width, height int
 	layout        layout
-	projects      *projectsPane
-	content       map[pane]content // the project and agent panes'
-	tabs          []*placeholder   // the terminal pane's
-	tab           int              // the tab shown
-	menu          bool             // the menu is open
-	switcher      bool             // the project switcher is open
+	projects      *projectList
+	stack         []screen       // the project pane's, the root first
+	shown         string         // the project shown, or "" before one is
+	agent         *placeholder   // the agent pane's
+	tabs          []*placeholder // the terminal pane's
+	tab           int            // the tab shown
+	menu          bool           // the menu is open
+	switcher      bool           // the project switcher is open
 	lastClick     click
 }
 
@@ -77,7 +79,7 @@ type click struct {
 // New returns tide's window. Its requests to the daemon run with ctx,
 // whose logger it logs to.
 func New(ctx context.Context, opts Options) *Model {
-	projects := &projectsPane{}
+	projects := &projectList{}
 	m := &Model{
 		ctx:      ctx,
 		log:      logging.FromContext(ctx),
@@ -88,11 +90,14 @@ func New(ctx context.Context, opts Options) *Model {
 		now:      time.Now,
 		layout:   newLayout(),
 		projects: projects,
-		content:  map[pane]content{project: projects, agent: &placeholder{name: "agent"}},
+		stack:    []screen{&openProjectScreen{projects: projects}},
+		agent:    &placeholder{name: "agent"},
 		tabs:     []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
 	}
-	// tide starts on the project pane: the switcher or [Open Project].
+	// tide starts on the project pane, the switcher or [Open Project], and
+	// shows the terminals of a project only once one is shown.
 	m.layout.setFocus(project)
+	m.layout.terminalOpen = false
 	return m
 }
 
@@ -104,6 +109,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 	case projectsListed:
 		m.listed(msg)
+	case popScreen:
+		if len(m.stack) > 1 {
+			m.stack = m.stack[:len(m.stack)-1]
+			m.log.Debug("screen popped", "screen", m.top().title())
+		}
+	case reopenProject:
+		return m, m.reopen(msg.name)
+	case projectReopened:
+		if msg.err != nil {
+			m.log.Info("project not reopened", "name", msg.name, "err", msg.err)
+			return m, m.top().update(msg)
+		}
+		m.log.Info("project reopened", "name", msg.name)
+		return m, m.show(msg.name)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
 	case tea.MouseClickMsg:
@@ -118,25 +137,74 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // pane returns what p shows: for the terminal pane, its tab shown.
 func (m *Model) pane(p pane) content {
-	if p == terminal {
+	switch p {
+	case terminal:
 		return m.tabs[m.tab]
+	case agent:
+		return m.agent
 	}
-	return m.content[p]
+	return projectPane{m}
+}
+
+// top is the project pane's screen on top.
+func (m *Model) top() screen { return m.stack[len(m.stack)-1] }
+
+// show makes name the project shown: the root of the project pane's stack,
+// which the screens above it leave for. The first one shown brings the
+// terminal pane.
+func (m *Model) show(name string) tea.Cmd {
+	if m.shown == "" {
+		m.layout.terminalOpen = true
+	}
+	m.shown, m.switcher = name, false
+	m.stack = []screen{&projectScreen{name: name}}
+	m.log.Info("project shown", "name", name)
+	return m.listProjects()
+}
+
+// openProject opens [Open Project] over the project pane, focused, and
+// lists the projects again for it.
+func (m *Model) openProject() tea.Cmd {
+	m.focusProjectPane()
+	if _, open := m.top().(*openProjectScreen); !open {
+		m.stack = append(m.stack, &openProjectScreen{projects: m.projects})
+		m.log.Debug("screen pushed", "screen", m.top().title())
+	}
+	return m.listProjects()
+}
+
+// focusProjectPane focuses the project pane, the zoom going with it as it
+// does with the focus keys.
+func (m *Model) focusProjectPane() {
+	m.layout.setFocus(project)
+	if m.layout.zoomed != none {
+		m.layout.zoomed = project
+	}
+	m.changed("project pane")
 }
 
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	name := msg.String()
 	if m.menu {
 		m.menu = false
-		if name == "q" {
+		switch name {
+		case "o":
+			m.switcher = false
+			return m.openProject()
+		case "p":
+			m.switcher = true
+			return m.listProjects()
+		case "q":
 			m.log.Info("tide quit")
 			return tea.Quit
 		}
 		return nil
 	}
-	if m.switcher && name == "esc" {
-		m.switcher = false
-		m.log.Debug("switcher closed")
+	if m.switcher && name != menuKey {
+		if name == "esc" {
+			m.switcher = false
+			m.log.Debug("switcher closed")
+		}
 		return nil
 	}
 	switch name {
@@ -144,6 +212,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		m.layout.toggleZoom()
 		m.changed("zoom")
 	case terminalKey:
+		if m.shown == "" {
+			return nil // no project, no terminals
+		}
 		m.layout.toggleTerminal()
 		m.changed("toggle terminal")
 	case menuKey:
@@ -151,9 +222,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	default:
 		d, ok := focusKeys[name]
 		switch {
-		case !ok && name == retryKey && m.layout.focus == project && m.projects.err != nil && !m.projects.listing:
-			m.log.Info("projects listed again", "reason", "retry key")
-			return m.listProjects()
+		case !ok && m.layout.focus == project:
+			return m.projectPaneKey(msg)
 		case !ok:
 			m.pane(m.layout.focus).input(name)
 		case m.layout.focus == terminal && (d == left || d == right):
@@ -163,6 +233,35 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// projectPaneKey gives a key to the screen on top of the project pane,
+// once the projects are listed; until then r lists them again after a
+// failure.
+func (m *Model) projectPaneKey(msg tea.KeyPressMsg) tea.Cmd {
+	l := m.projects
+	switch {
+	case l.loaded:
+		return m.top().update(msg)
+	case msg.String() == retryKey && l.err != nil && !l.listing:
+		m.log.Info("projects listed again", "reason", "retry key")
+		return m.listProjects()
+	}
+	return nil
+}
+
+// projectPane is the project pane as a content: its screens take keys, not
+// inputs.
+type projectPane struct{ m *Model }
+
+func (projectPane) input(string) {}
+
+func (p projectPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
+	if !p.m.projects.loaded {
+		p.m.projects.drawStatus(buf, area, st)
+		return
+	}
+	p.m.top().draw(buf, area, st)
 }
 
 // switchTab shows the terminal pane's tab to the left or right of the one

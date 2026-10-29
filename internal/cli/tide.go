@@ -24,10 +24,11 @@ func newTideCmd() *cobra.Command {
 		Long: "tide takes the whole window: the project on the left, an agent on the right\n" +
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
-			"terminals and C-q opens the menu, where q quits. The mouse focuses a pane,\n" +
-			"switches tabs and zooms with the [⤢] button. For now the project pane lists\n" +
-			"the projects and the other panes hold placeholders. tide needs the daemon\n" +
-			"running, runs in the terminal it was started from and has no --json.",
+			"terminals and C-q opens the menu: o opens a project, p switches projects and\n" +
+			"q quits. The mouse focuses a pane, switches tabs and zooms with the [⤢]\n" +
+			"button. For now only closed projects can be opened, and the agent and\n" +
+			"terminal panes hold placeholders. tide needs the daemon running, runs in the\n" +
+			"terminal it was started from and has no --json.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),

@@ -34,7 +34,11 @@ func (m *Model) render() string {
 	buf := uv.NewScreenBuffer(m.width, m.height)
 	m.drawBorders(buf, frames)
 	for p, f := range frames {
-		m.pane(p).draw(buf, f.Inset(1), m.st)
+		if p == agent && m.shown == "" {
+			uv.NewStyledString(m.st.Muted("no project open")).Draw(buf, f.Inset(1))
+		} else {
+			m.pane(p).draw(buf, f.Inset(1), m.st)
+		}
 		for _, l := range m.labels(p, f) {
 			uv.NewStyledString(l.styled).Draw(buf, l.area)
 		}
@@ -155,7 +159,11 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		labels = append(labels, label{styled: styled(ansi.Truncate(text, width, "")), area: uv.Rect(x, f.Min.Y, width, 1), tab: tab})
 		x += width
 	}
-	if p != terminal {
+	switch {
+	case p == project && m.projects.loaded:
+		add(" ["+m.top().title()+"] ", -1, m.st.Name)
+		return labels
+	case p != terminal:
 		add(" "+p.String()+" ", -1, m.st.Name)
 		return labels
 	}
@@ -177,6 +185,8 @@ func (m *Model) drawMenu(buf uv.Screen) {
 	m.drawBox(buf, []string{
 		m.st.Heading("tide"),
 		"",
+		m.st.Command("o") + "    open project",
+		m.st.Command("p") + "    switch project",
 		m.st.Command("q") + "    quit",
 		m.st.Command("Esc") + "  close",
 	})
@@ -215,7 +225,11 @@ func (m *Model) drawBox(buf uv.Screen, lines []string) {
 // the right, in a bar.
 func (m *Model) statusLine() string {
 	l := m.layout
-	left := " " + m.st.BarName(l.focus.String())
+	left := " "
+	if m.shown != "" {
+		left += m.st.BarName(m.shown) + " · "
+	}
+	left += m.st.BarName(l.focus.String())
 	if l.focus == terminal {
 		left += " · " + m.tabs[m.tab].name
 	}
@@ -227,7 +241,7 @@ func (m *Model) statusLine() string {
 	switch {
 	case m.menu:
 		state = style.StatusPrefix
-		right = "menu: q quit  Esc close"
+		right = "menu: o open  p switch  q quit  Esc close"
 	case m.switcher:
 		state = style.StatusPrefix
 		right = "switcher: Esc close"

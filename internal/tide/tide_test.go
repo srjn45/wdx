@@ -14,9 +14,11 @@ import (
 )
 
 // newModel returns tide's window at width × height, uncolored, with a clock
-// the test moves and no daemon: it has not listed the projects.
+// the test moves and no daemon, showing the project demo.
 func newModel(width, height int) (*Model, *time.Time) {
 	m := New(context.Background(), Options{Style: style.New(false)})
+	m.projects.loaded = true
+	m.show("demo") // its command, listing the projects again, never runs
 	now := time.UnixMilli(0)
 	m.now = func() time.Time { return now }
 	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
@@ -52,7 +54,7 @@ func TestKeys(t *testing.T) {
 		got  *placeholder
 		want []string
 	}{
-		{m.content[agent].(*placeholder), []string{"a"}},
+		{m.agent, []string{"a"}},
 		{m.tabs[0], []string{"ctrl+c", "paste(5)"}},
 	} {
 		if !slices.Equal(tc.got.inputs, tc.want) {
@@ -85,7 +87,7 @@ func TestMenu(t *testing.T) {
 	t.Parallel()
 	m, _ := newModel(80, 24)
 	m.Update(key('q', tea.ModCtrl))
-	if !strings.Contains(text(m), "q    quit") {
+	if got := text(m); !strings.Contains(got, "q    quit") || !strings.Contains(got, "o    open project") || !strings.Contains(got, "p    switch project") {
 		t.Fatalf("no menu:\n%s", text(m))
 	}
 	m.Update(key(tea.KeyEscape, 0))
@@ -108,7 +110,7 @@ func TestMenu(t *testing.T) {
 func TestClicks(t *testing.T) {
 	t.Parallel()
 	m, now := newModel(100, 41) // panes in 100 × 40: project 0-40, agent 40-99, terminal from row 30
-	agentPane := m.content[agent].(*placeholder)
+	agentPane := m.agent
 	m.Update(clickAt(60, 5))
 	if m.layout.focus != agent || !slices.Equal(agentPane.inputs, []string{"click 19,4"}) {
 		t.Fatalf("focus %s, agent got %v", m.layout.focus, agentPane.inputs)
@@ -158,9 +160,9 @@ func TestRender(t *testing.T) {
 	m, _ := newModel(40, 11)
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
-	want := `┌ project ──[⤢]─┬ agent ───────────[⤢]─┐
-│loading…       │agent                 │
-│               │22×6                  │
+	want := `┌ [Project:─[⤢]─┬ agent ───────────[⤢]─┐
+│demo           │agent                 │
+│its detail come│22×6                  │
 │               │got: x                │
 │               │                      │
 │               │                      │
@@ -168,7 +170,7 @@ func TestRender(t *testing.T) {
 ├ [shell] [tests] [server] ────────[⤢]─┤
 │shell                                 │
 └──────────────────────────────────────┘
- agent Alt+arrows move  C-] zoom  C-\ te`
+ demo · agent Alt+arrows move  C-] zoom`
 	if got := text(m); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}

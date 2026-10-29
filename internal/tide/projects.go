@@ -16,6 +16,27 @@ import (
 // retryKey lists the projects again after the daemon could not.
 const retryKey = "r"
 
+// projectList is the projects tide knows, as last listed.
+type projectList struct {
+	projects []api.ProjectSummary // every project, by name
+	loaded   bool                 // listed at least once
+	listing  bool
+	err      error // why the last list failed
+}
+
+// names returns the names of the projects in state, in order.
+func (l *projectList) names(state api.ProjectState) []string {
+	var names []string
+	for _, p := range l.projects {
+		if p.State == state {
+			names = append(names, p.Name)
+		}
+	}
+	return names
+}
+
+func (l *projectList) open() []string { return l.names(api.ProjectStateOpen) }
+
 // projectsListed is the answer to listing the projects.
 type projectsListed struct {
 	projects []api.ProjectSummary
@@ -35,56 +56,49 @@ func (m *Model) listProjects() tea.Cmd {
 // starts: on the switcher when any project is open, on [Open Project]
 // otherwise.
 func (m *Model) listed(msg projectsListed) {
-	ps := m.projects
-	first := !ps.loaded
-	ps.listing, ps.err = false, msg.err
+	l := m.projects
+	first := !l.loaded
+	l.listing, l.err = false, msg.err
 	if msg.err != nil {
 		m.log.Info("projects not listed", "err", msg.err)
 		return
 	}
-	ps.projects, ps.loaded = msg.projects, true
+	l.projects, l.loaded = msg.projects, true
 	if !first {
 		return
 	}
-	m.switcher = len(ps.open()) > 0
+	m.switcher = len(l.open()) > 0
 	start := "open project"
 	if m.switcher {
 		start = "switcher"
 	}
-	m.log.Info("tide starts", "on", start, "projects", len(ps.projects), "open", len(ps.open()))
+	m.log.Info("tide starts", "on", start, "projects", len(l.projects), "open", len(l.open()))
 }
 
-// projectsPane is the project pane until it holds screens: the projects
-// tide knows, or why it does not know them.
-type projectsPane struct {
-	projects []api.ProjectSummary // every project, by name, as last listed
-	loaded   bool                 // listed at least once
-	listing  bool
-	err      error // why the last list failed
+// reopenProject asks tide to open the closed project name.
+type reopenProject struct{ name string }
+
+// projectReopened is the answer to reopening a project.
+type projectReopened struct {
+	name string
+	err  error
 }
 
-// open returns the names of the open projects.
-func (ps *projectsPane) open() []string {
-	return ps.names(api.ProjectStateOpen)
-}
-
-func (ps *projectsPane) names(state api.ProjectState) []string {
-	var names []string
-	for _, p := range ps.projects {
-		if p.State == state {
-			names = append(names, p.Name)
-		}
+func (m *Model) reopen(name string) tea.Cmd {
+	m.log.Info("project reopening", "name", name)
+	return func() tea.Msg {
+		_, err := m.client.UpdateProject(m.ctx, name, api.ProjectStateOpen, false)
+		return projectReopened{name: name, err: err}
 	}
-	return names
 }
 
-func (ps *projectsPane) input(string) {}
-
-func (ps *projectsPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
+// drawStatus draws why the projects are not known yet: they are being
+// listed, or the daemon could not list them.
+func (l *projectList) drawStatus(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	var lines []string
-	_, unavailable := errors.AsType[*client.UnavailableError](ps.err)
+	_, unavailable := errors.AsType[*client.UnavailableError](l.err)
 	switch {
-	case ps.listing, !ps.loaded && ps.err == nil:
+	case l.listing || l.err == nil:
 		lines = []string{st.Muted("loading…")}
 	case unavailable:
 		lines = []string{
@@ -93,19 +107,12 @@ func (ps *projectsPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			"start it with " + st.Command(identity.Name+" daemon start"),
 			"then press " + st.Command(retryKey) + " to try again",
 		}
-	case ps.err != nil:
-		lines = []string{
-			st.Failure("the projects could not be listed:"),
-			ps.err.Error(),
-			"",
-			"press " + st.Command(retryKey) + " to try again",
-		}
-	case len(ps.projects) == 0:
-		lines = []string{st.Muted("no projects yet")}
 	default:
 		lines = []string{
-			st.Muted("open: ") + strings.Join(ps.open(), ", "),
-			st.Muted("closed: ") + strings.Join(ps.names(api.ProjectStateClosed), ", "),
+			st.Failure("the projects could not be listed:"),
+			wrap(l.err.Error(), area.Dx()),
+			"",
+			"press " + st.Command(retryKey) + " to try again",
 		}
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
