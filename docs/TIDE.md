@@ -1,12 +1,13 @@
 # tide: the wdx Terminal-IDE
 
-Status: design under discussion, nothing implemented.
+Status: Phase A, the layout skeleton with placeholder panes, is implemented in `internal/tide` (see Phases); the rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
 ## Architecture
 
-- tide is a client of the daemon API and holds no business logic, like `internal/cli`.
+- tide is a client of the daemon API and holds no business logic, like `internal/cli`. It lives in `internal/tide`; `wdx tide` in the cli starts it.
+- `wdx tide` is interactive by nature: with `--json` or without a terminal it fails with a `usage` error, the one exception to every command supporting `--json`. When you quit it gives the window back and prints `tide closed`.
 - Agents and terminals run in PTYs owned by the daemon's holders. tide attaches to them; quitting tide stops nothing.
 - Built with Bubble Tea. Each PTY pane renders a terminal emulator screen (`charmbracelet/x/vt` behind our own `Screen` interface) into its rectangle.
 - Must work in the default terminals of Linux (GNOME Terminal, Konsole, xterm) and macOS (Terminal.app).
@@ -77,9 +78,11 @@ zoomed       pane // none, project, agent or terminal
 
 ### Sizing
 
-- Cells are whole numbers. Project width = ⌊2/5 · width⌋, and the agent pane takes the rest. Terminal height = ⌊1/4 · height⌋, and the top row takes the rest.
+- Cells are whole numbers. Project width = ⌊2/5 · width⌋, and the agent pane takes the rest. Terminal height = ⌊1/4 · height⌋ but at least 3 rows (its borders and a line), and the top row takes the rest. Sizes are of frames, borders included; neighbours share the border line between them.
 - A PTY pane that changes size resizes its PTY, so the program inside redraws to fit.
-- Small screens just get cramped for now. No automatic zoom.
+- The status line takes the last row; the ratios share the rows above it.
+- Neighbouring panes share one border line, as in the drawing above; the border around the focused pane is highlighted.
+- Small screens just get cramped for now. No automatic zoom. No size is ever negative and a pane with no room is not drawn; when a shown pane would have no cell inside its frame, tide shows only "window too small": below 5 × 5 cells for the panes above the status line, 3 × 3 when one is zoomed.
 
 ## Screens
 
@@ -99,7 +102,9 @@ type screen interface {
 ## Focus
 
 - Exactly one pane has focus and receives keys, except tide's own shortcuts.
-- Hidden panes cannot have focus. Hiding the focused terminal pane moves focus to the agent pane.
+- Hidden panes cannot have focus. Hiding the focused terminal pane moves focus to the top pane that had it last.
+- Opening the terminal pane (`C-\`) while a top pane is zoomed leaves the zoom, docks the terminal and focuses it.
+- While a pane is zoomed, moving focus moves the zoom with it: the neighbour becomes the zoomed pane.
 
 ## Key bindings
 
@@ -113,7 +118,7 @@ Constraint: in basic terminals only `Ctrl+letter`, a few `Ctrl+symbol`, plain ke
 | `C-\` | show or hide the terminal pane (focuses it when it opens) |
 | `C-q` | open the shortcut menu |
 
-The keys are configurable, since `C-]` and `C-\` are awkward on some non-US keyboard layouts.
+These three keys are configurable, since `C-]` and `C-\` are awkward on some non-US keyboard layouts.
 
 ### Shortcut menu (`C-q`)
 
@@ -123,14 +128,18 @@ The keys are configurable, since `C-]` and `C-\` are awkward on some non-US keyb
 - Screens open from this menu.
 - The final list of actions and letters is still to be decided.
 
-### Open: switching panes
+### Switching panes
 
-- Wanted: a modifier plus arrows, moving focus in the arrow's direction. `↓` from either top pane goes to the terminal pane; `↑` from the terminal returns to the top pane that had focus last.
+Switching focus is the most frequent action, so it is one chord, never a prefix and a letter.
+
+- A modifier plus arrows, moving focus in the arrow's direction. `↓` from either top pane goes to the terminal pane; `↑` from the terminal returns to the top pane that had focus last.
 - While the terminal pane has focus, left and right switch tabs, since it has no horizontal neighbor.
-- Candidates:
-  - `Alt+arrows`: works on Linux. On macOS Terminal.app, Option+←/→ arrive as word-jump codes (`ESC b` / `ESC f`) and ↑/↓ are unverified. Taking it breaks word jump inside panes.
-  - `Ctrl+Alt+arrows` (preferred): no word-jump conflict, but GNOME switches workspaces with it by default and macOS behavior is unverified.
-- To verify with a key probe in GNOME Terminal and macOS Terminal.app before deciding.
+- `Alt+arrows`. It works out of the box in GNOME Terminal, Konsole and xterm, and costs little inside panes, where word jump is usually `ESC b` / `ESC f` or `Ctrl+←/→`. Both encodings terminals send for it are accepted (`CSI 1;3 A` and `ESC` before the arrow).
+- `ESC b` / `ESC f` are never taken: they are word jump in every shell. A macOS terminal set to send them for Option+←/→ needs Option+arrows mapped back to the arrow codes, which tide's help explains.
+- `Ctrl+arrows` are out: macOS takes them, and they are word jump on Linux. `Ctrl+Alt+arrows` never reach the terminal on GNOME, which switches workspaces with them.
+- The chord is fixed: `Alt+arrows` only, not configurable.
+- Key probe on Linux (2026-10-29): `Alt+arrows` arrive as `CSI 1;3 A`–`D`; `Ctrl+arrows` as `CSI 1;5 A`–`D`; `Ctrl+Alt+arrows` never reach the terminal (the desktop takes them); `C-]`, `C-\` and `C-q` arrive as 0x1d, 0x1c and 0x11. So `Alt+arrows` works on Linux.
+- Key probe on macOS (2026-10-29): Option+arrows arrive as `CSI 1;3 A`–`D`, Ctrl+Option+arrows as `CSI 1;7 A`–`D`; `Ctrl+arrows` never reach the terminal (macOS takes them); `C-]`, `C-\` and `C-q` arrive as on Linux. So `Alt+arrows` works on both, and is the only chord that does.
 
 ### Panes without a PTY
 
@@ -148,9 +157,13 @@ Supported, though most users will mostly use the keyboard.
 - Programs that request the mouse (vim, htop) get mouse events inside their pane.
 - While tide captures the mouse, native text selection needs `Shift`-drag (Linux) or `Option`-drag (macOS).
 
+## Phases
+
+- **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
+- **Later:** the left pane's screen stack, configurable keys, dragging dividers, then real content: termview in the terminal tabs and the agent pane, the project view from the API.
+
 ## Open questions
 
-- Pane-switching keys (see above).
 - Resizing: whether dividers can move away from 2:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
 - The shortcut menu's actions and letters, and how screens are opened.
 - Rendering performance with several live PTY panes, and color, wide-character and cursor fidelity. To measure in a spike.
