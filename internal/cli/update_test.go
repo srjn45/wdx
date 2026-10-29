@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,30 +56,86 @@ func publish(t *testing.T, latest, latestDev string, binaries map[string]string)
 	t.Helper()
 	dir = t.TempDir()
 	for version, binary := range binaries {
-		b, err := os.ReadFile(binary)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var archive bytes.Buffer
-		// Compressing the binary under the race detector takes seconds.
-		gz, _ := gzip.NewWriterLevel(&archive, gzip.NoCompression)
-		tw := tar.NewWriter(gz)
-		if err := tw.WriteHeader(&tar.Header{Name: identity.Name, Mode: 0o755, Size: int64(len(b))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write(b); err != nil {
-			t.Fatal(err)
-		}
-		tw.Close()
-		gz.Close()
 		name := fmt.Sprintf("%s_%s_%s_%s.tar.gz", identity.Name, version, runtime.GOOS, runtime.GOARCH)
-		sum := sha256.Sum256(archive.Bytes())
-		writeFile(t, filepath.Join(dir, "v"+version, name), archive.String())
-		writeFile(t, filepath.Join(dir, "v"+version, "checksums.txt"), hex.EncodeToString(sum[:])+"  "+name+"\n")
+		sum := writeArchive(t, filepath.Join(dir, "v"+version, name), binary)
+		writeFile(t, filepath.Join(dir, "v"+version, "checksums.txt"), sum+"  "+name+"\n")
 	}
 	writeFile(t, filepath.Join(dir, "LATEST"), "v"+latest+"\n")
 	writeFile(t, filepath.Join(dir, "LATEST-dev"), "v"+latestDev+"\n")
 	return "file://" + dir, dir
+}
+
+// writeArchive writes a release archive at path holding binary, streamed
+// file to file, and returns its sha256.
+func writeArchive(t *testing.T, path, binary string) string {
+	t.Helper()
+	in, err := os.Open(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	hash := sha256.New()
+	// Compressing the binary under the race detector takes seconds.
+	gz, _ := gzip.NewWriterLevel(io.MultiWriter(out, hash), gzip.NoCompression)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: identity.Name, Mode: 0o755, Size: info.Size()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(tw, in); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// copyBinary copies the binary src to dest, file to file.
+func copyBinary(t *testing.T, dest, src string) {
+	t.Helper()
+	in, err := os.Open(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// digest is the sha256 of the file at path, read a block at a time.
+func digest(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func readFile(t *testing.T, path string) string {
@@ -118,11 +175,7 @@ func install(t *testing.T, base string) installation {
 	// The installed binaries read it when run on their own.
 	writeFile(t, identity.ConfigPath(home), "otel:\n  endpoint: \"\"\nupdate:\n  base_url: "+base+"\n")
 	binary := filepath.Join(t.TempDir(), identity.Name)
-	b, err := os.ReadFile(wdxBinary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, binary, string(b))
+	copyBinary(t, binary, wdxBinary)
 	return installation{home: home, binary: binary, base: base}
 }
 
@@ -163,15 +216,7 @@ func (in installation) runText(t *testing.T, args ...string) output {
 // wantInstalled checks that the installed binary is binary.
 func (in installation) wantInstalled(t *testing.T, binary string) {
 	t.Helper()
-	got, err := os.ReadFile(in.binary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := os.ReadFile(binary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
+	if digest(t, in.binary) != digest(t, binary) {
 		t.Fatalf("want %s installed, got another binary", binary)
 	}
 }
@@ -486,7 +531,7 @@ func TestUpdateRollbackAfterReinstall(t *testing.T) {
 		t.Fatalf("want updated, got exit %d, %+v", exit, v)
 	}
 	// Renamed into place, as install.sh does: the daemon runs the other.
-	writeFile(t, in.binary+".new", readFile(t, wdxBinary))
+	copyBinary(t, in.binary+".new", wdxBinary)
 	if err := os.Rename(in.binary+".new", in.binary); err != nil {
 		t.Fatal(err)
 	}
