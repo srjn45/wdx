@@ -77,7 +77,7 @@ func newProjectCreateCmd(home string) *cobra.Command {
 const createConflictQuestion = "create conflict"
 
 func runCreate(cmd *cobra.Command, opts createOptions) error {
-	parent, err := absolute(opts.parent)
+	parent, err := absolute(cmd, opts.parent)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var source api.Source
 			if cmd.Flags().Changed("local") {
-				path, err := absolute(local)
+				path, err := absolute(cmd, local)
 				if err != nil {
 					return err
 				}

@@ -79,6 +79,19 @@ func TestOpenLocal(t *testing.T) {
 	}
 }
 
+// TestOpenLocalRelative gives --local a path relative to the command's
+// working directory, which is not the process's.
+func TestOpenLocalRelative(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	repo := gittest.Repo(t, "app")
+
+	v, exit := wdxJSONWith(t, home, in(filepath.Dir(repo)), "project", "open", "--local", "app")
+	if exit != api.ExitOK || v.Result != "registered" || v.Project.Worktrees[0].Path != repo {
+		t.Fatalf("want %s registered, got %+v", repo, v)
+	}
+}
+
 func TestOpenLocalDropsMissingCheckouts(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

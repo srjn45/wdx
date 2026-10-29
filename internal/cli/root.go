@@ -65,6 +65,10 @@ type Env struct {
 	// Terminal holds the variables terminals take from the daemon's
 	// environment, as KEY=value: TerminalEnv of it. Never logged.
 	Terminal []string
+	// Environ is the environment, as os.Environ gives it, which the
+	// processes the cli starts inherit: the daemon in the background and
+	// the binary wdx update checks. Never logged.
+	Environ []string
 	// WorkDir is the working directory, which names the project of the
 	// terminal commands when no project flag does.
 	WorkDir string
@@ -450,11 +454,18 @@ func (r versionResponse) text(w io.Writer, st style.Style) {
 
 // absolute makes path absolute against the working directory, which the
 // daemon does not share; "" stays "".
-func absolute(path string) (string, error) {
-	if path == "" {
+func absolute(cmd *cobra.Command, path string) (string, error) {
+	switch {
+	case path == "":
 		return "", nil
+	case filepath.IsAbs(path):
+		return filepath.Clean(path), nil
 	}
-	return filepath.Abs(path)
+	dir := invocationOf(cmd).env.WorkDir
+	if dir == "" {
+		return "", errors.New("the working directory is unknown; give an absolute path")
+	}
+	return filepath.Join(dir, path), nil
 }
 
 // workDir is the directory the command runs in.

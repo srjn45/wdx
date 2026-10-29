@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -37,6 +38,9 @@ type Options struct {
 	Binary  string // the installed wdx, replaced in place
 	Current string // the version installed
 	BaseURL string // where the releases are
+	// Environ is the environment, as os.Environ gives it, of the new
+	// binary when it is checked.
+	Environ []string
 	Daemon  Daemon
 	// Progress gets a line for each step.
 	Progress io.Writer
@@ -218,7 +222,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		return Result{}, err
 	}
 	o.progress("checking that it runs on the settings")
-	staged, settings, err := preflight(ctx, o.Home, binary, target, dir)
+	staged, settings, err := preflight(ctx, o, binary, target, dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -560,7 +564,7 @@ func (o Options) progress(format string, args ...any) {
 // home: its settings write writes the config file anew into dir, then its
 // version command, run on that file, must say it is version. staged is the
 // file written, "" when the home has none or it is already as written.
-func preflight(ctx context.Context, home, binary, version, dir string) (staged string, s Settings, err error) {
+func preflight(ctx context.Context, o Options, binary, version, dir string) (staged string, s Settings, err error) {
 	ctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
 	log := logging.FromContext(ctx)
@@ -572,10 +576,10 @@ func preflight(ctx context.Context, home, binary, version, dir string) (staged s
 	if err := os.MkdirAll(checkHome, 0o700); err != nil {
 		return "", Settings{}, err
 	}
-	current := identity.ConfigPath(home)
+	current := identity.ConfigPath(o.Home)
 	if exists(current) {
 		staged = identity.ConfigPath(checkHome)
-		out, err := run(ctx, binary, home, "settings", "write", "--json", "--to", staged)
+		out, err := run(ctx, o.Environ, binary, o.Home, "settings", "write", "--json", "--to", staged)
 		log.Info("new binary wrote the settings", "path", staged, "output", string(out), "ok", err == nil)
 		if err != nil {
 			var p struct {
@@ -604,7 +608,7 @@ func preflight(ctx context.Context, home, binary, version, dir string) (staged s
 		}
 	}
 
-	out, err := run(ctx, binary, checkHome, "version", "--json")
+	out, err := run(ctx, o.Environ, binary, checkHome, "version", "--json")
 	var v struct {
 		CLI struct {
 			Version string `json:"version"`
@@ -623,11 +627,11 @@ func preflight(ctx context.Context, home, binary, version, dir string) (staged s
 	return staged, s, nil
 }
 
-// run runs binary on home and returns its stdout.
-func run(ctx context.Context, binary, home string, args ...string) ([]byte, error) {
+// run runs binary on home, in environ, and returns its stdout.
+func run(ctx context.Context, environ []string, binary, home string, args ...string) ([]byte, error) {
 	for attempt := 1; ; attempt++ {
 		c := exec.CommandContext(ctx, binary, args...)
-		c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
+		c.Env = append(slices.Clip(environ), identity.Env("HOME")+"="+home)
 		out, err := c.Output()
 		// A process forked while binary was being written holds it open for
 		// writing until it execs: golang.org/issue/22315.

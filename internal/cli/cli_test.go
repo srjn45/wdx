@@ -164,7 +164,7 @@ func wdxService(t *testing.T, home string, svc *service.Manager, args ...string)
 func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) output {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary}
+	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
 	adjust(&env)
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
@@ -566,7 +566,7 @@ func TestDaemonUnavailable(t *testing.T) {
 		{"project", "list"},
 		{"project", "get", "--name", "app"},
 		{"project", "create", "--name", "app", "--cancel"},
-		{"project", "open", "--local", "."},
+		{"project", "open", "--local", home},
 		{"project", "close", "--name", "app", "--cancel"},
 		{"project", "remove", "--name", "app", "--cancel"},
 	} {

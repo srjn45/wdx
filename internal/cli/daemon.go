@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -169,14 +170,17 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 
 	// The daemon's stderr goes to a file read only if it exits at once; a
 	// pipe would break once this process exits.
-	stderr, err := os.CreateTemp("", identity.Name+"-daemon-*.log")
+	if err := os.MkdirAll(identity.LogsDir(home), 0o700); err != nil {
+		return api.Daemon{}, false, err
+	}
+	stderr, err := os.CreateTemp(identity.LogsDir(home), "daemon-start-*.log")
 	if err != nil {
 		return api.Daemon{}, false, err
 	}
 	defer os.Remove(stderr.Name())
 	defer stderr.Close()
 	c := exec.Command(inv.env.Executable, "daemon", "start", "--foreground")
-	c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
+	c.Env = append(slices.Clip(inv.env.Environ), identity.Env("HOME")+"="+home)
 	c.Stderr = stderr
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := c.Start(); err != nil {

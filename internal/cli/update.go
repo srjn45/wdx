@@ -127,6 +127,7 @@ func updateOptions(cmd *cobra.Command) update.Options {
 		Binary:  inv.env.Executable,
 		Current: identity.Version,
 		BaseURL: inv.env.Config.UpdateBaseURL,
+		Environ: inv.env.Environ,
 		Daemon: update.Daemon{
 			Stop: func(context.Context) error {
 				_, err := stopDaemon(cmd)

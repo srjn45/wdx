@@ -38,6 +38,7 @@ internal/config/   the settings, loaded once at startup from their sources, and 
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/git/   thin wrapper over the git CLI
 internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its screen, spool and history, its protocol and clients; docs/TERMINALS.md, docs/ATTACH.md
+internal/holder/holdertest/  lets a test binary be its own holder, for the tests that start terminals
 internal/pty/   opens pseudo-terminals and starts commands in them
 internal/termview/  the Bubble Tea pane that shows an attached terminal; docs/ATTACH_VIEW.md
 internal/screen/  a terminal's screen kept by a headless vt, for the holder and termview; the only user of the vt; docs/VT.md
@@ -54,10 +55,12 @@ scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive ca
 .golangci.yml   the linters make lint runs
 internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
 internal/atomicfile/  writes a file whole or not at all: a synced temporary file renamed into place
+internal/identity/  the name, version and paths every package agrees on: the home's files, sockets, environment variables
+internal/gittest/  makes git behave the same in every test run, and creates the repositories tests use
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and daemon -> telemetry; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and cli/daemon -> telemetry; every package may use identity; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon and client, only cmd and cli use config, only screen uses the vt.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

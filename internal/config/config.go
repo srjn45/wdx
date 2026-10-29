@@ -269,7 +269,8 @@ var settings = []setting{
 }
 
 func defaultHome() string {
-	home, err := os.UserHomeDir()
+	home, err := os.UserHomeDir() //nolint:forbidigo // the default in the settings table, which help and Default show
+
 	if err != nil {
 		home = os.TempDir()
 	}

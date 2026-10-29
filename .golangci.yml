@@ -35,6 +35,18 @@ linters:
           deny:
             - pkg: github.com/charmbracelet/x/vt
               desc: only internal/screen uses the vt, so its fork is one replace
+        # Dependencies point down: only the cli runs the daemon and calls
+        # it through the client.
+        daemon-and-client-in-cli-only:
+          files:
+            - "$all"
+            - "!**/cmd/wdx/**"
+            - "!**/internal/cli/**"
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/daemon$
+              desc: only the cli runs the daemon; the domain never calls up
+            - pkg: github.com/srjn45/wdx/internal/client$
+              desc: only the cli calls the daemon's API
         config-in-cli-only:
           files:
             - "$all"
@@ -60,6 +72,8 @@ linters:
       forbid:
         - pattern: ^os\.(Getenv|LookupEnv)$
           msg: only main reads the environment; take the value from the Config
+        - pattern: ^os\.(Environ|UserHomeDir)$
+          msg: only main and tests read the whole environment; take it from cli.Env
         - pattern: ^os\.Chdir$
           msg: paths are absolute; never change the working directory
         - pattern: ^testing\.(T|B|TB)\.Setenv$
@@ -82,7 +96,12 @@ linters:
     rules:
       - path: ^cmd/wdx/main\.go$
         linters: [forbidigo]
-        text: only main reads the environment
+        text: only main (and tests )?reads? the
+      # Tests and their helpers pass the test process's environment on to
+      # the processes they start, and set it up for git.
+      - path: (_test\.go$|^internal/gittest/|^internal/holder/holdertest/)
+        linters: [forbidigo]
+        text: only main and tests read the whole environment
       # The tests' request helpers read and close the body themselves.
       - path: _test\.go$
         linters: [bodyclose]

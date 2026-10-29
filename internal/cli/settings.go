@@ -51,7 +51,7 @@ func newSettingsWriteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			log := logging.FromContext(cmd.Context())
 			path := identity.ConfigPath(invocationOf(cmd).env.Config.Home)
-			dest, err := absolute(to)
+			dest, err := absolute(cmd, to)
 			if err != nil {
 				return err
 			}
