@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/srjn45/wdx/internal/atomicfile"
 	"github.com/srjn45/wdx/internal/identity"
 )
 
@@ -90,25 +90,10 @@ func rewrite(table []setting, path string) (Rewritten, error) {
 	}, nil
 }
 
-// WriteFile writes content to path, readable by the user only, renamed into
-// place so a wdx starting meanwhile reads the old file or the new one.
+// WriteFile writes content to path, readable by the user only, so that a
+// wdx starting meanwhile reads the old file or the new one.
 func WriteFile(path string, content []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return atomicfile.Write(path, content, 0o600)
 }
 
 // render writes the config file of table: values holds the nodes of the

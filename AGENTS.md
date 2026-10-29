@@ -53,10 +53,11 @@ scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive ca
 .github/workflows/release.yml  publishes the GitHub Release of every pushed tag, through scripts/publish.sh
 .golangci.yml   the linters make lint runs
 internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
+internal/atomicfile/  writes a file whole or not at all: a synced temporary file renamed into place
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and daemon -> telemetry. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and daemon -> telemetry; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

@@ -14,6 +14,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 
+	"github.com/srjn45/wdx/internal/atomicfile"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -122,29 +123,17 @@ func Backup(ctx context.Context, path, dest string) error {
 // Restore replaces the database at path, which nothing may have open, with
 // the backup.
 func Restore(ctx context.Context, backup, path string) error {
-	tmp := path + ".restore"
-	if err := copyFile(backup, tmp); err != nil {
-		return err
-	}
 	// The write-ahead log belongs to the database being replaced.
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := atomicfile.Copy(path, backup, 0o600); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("database restored", "path", path, "backup", backup)
 	return nil
-}
-
-func copyFile(src, dest string) error {
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dest, b, 0o600)
 }
 
 func mustMigrations() []migration {

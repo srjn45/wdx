@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/srjn45/wdx/internal/atomicfile"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -376,7 +377,7 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 	}
 	r := replaced{dir: dir, db: exists(dbPath), config: exists(configPath), settings: settings != ""}
 	o.progress("backing up %s %s, the database and the settings", identity.Name, o.Current)
-	if err := copyFile(filepath.Join(dir, identity.Name), o.Binary, 0o755); err != nil {
+	if err := atomicfile.Copy(filepath.Join(dir, identity.Name), o.Binary, 0o755); err != nil {
 		return "", o.undo(ctx, "back up", err, r)
 	}
 	if r.db {
@@ -385,13 +386,13 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		}
 	}
 	if r.config {
-		if err := copyFile(filepath.Join(dir, "config.yaml"), configPath, 0o600); err != nil {
+		if err := atomicfile.Copy(filepath.Join(dir, "config.yaml"), configPath, 0o600); err != nil {
 			return "", o.undo(ctx, "back up", err, r)
 		}
 	}
 
 	o.progress("installing %s %s", identity.Name, want)
-	if err := install(binary, o.Binary, 0o755); err != nil {
+	if err := atomicfile.Copy(o.Binary, binary, 0o755); err != nil {
 		return "", o.undo(ctx, "install", err, r)
 	}
 	log.Info("binary installed", "path", o.Binary, "version", want)
@@ -402,7 +403,7 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		}
 	}
 	if settings != "" {
-		if err := install(settings, configPath, 0o600); err != nil {
+		if err := atomicfile.Copy(configPath, settings, 0o600); err != nil {
 			return "", o.undo(ctx, "install", err, r)
 		}
 		log.Info("settings installed", "path", configPath, "from", settings)
@@ -454,11 +455,11 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 		}
 		defer os.RemoveAll(r.dir)
 		if step != "back up" {
-			if err := install(filepath.Join(r.dir, identity.Name), o.Binary, 0o755); err != nil {
+			if err := atomicfile.Copy(o.Binary, filepath.Join(r.dir, identity.Name), 0o755); err != nil {
 				return err
 			}
 			if r.config {
-				if err := install(filepath.Join(r.dir, "config.yaml"), identity.ConfigPath(o.Home), 0o600); err != nil {
+				if err := atomicfile.Copy(identity.ConfigPath(o.Home), filepath.Join(r.dir, "config.yaml"), 0o600); err != nil {
 					return err
 				}
 			} else if r.settings {
@@ -637,28 +638,6 @@ func sameContent(a, b string) (bool, error) {
 		return false, err
 	}
 	return string(x) == string(y), nil
-}
-
-// install puts a copy of src at path, renamed into place so a running wdx
-// never sees a half-written file.
-func install(src, path string, mode os.FileMode) error {
-	tmp := fmt.Sprintf("%s.tmp.%d", path, os.Getpid())
-	if err := copyFile(tmp, src, mode); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-func copyFile(dest, src string, mode os.FileMode) error {
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(dest, b, mode); err != nil {
-		return err
-	}
-	return os.Chmod(dest, mode)
 }
 
 // lock takes the update lock of home, failing with a *RunningError when
