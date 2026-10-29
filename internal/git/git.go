@@ -63,8 +63,8 @@ func (e *CloneError) Error() string {
 
 func (e *CloneError) Unwrap() error { return e.Err }
 
-// Clone clones url into dest, writing git's output to progress. On failure git
-// removes dest.
+// Clone clones url into dest, writing git's output to progress. git
+// removes what it made of dest when it fails, but not when it is killed.
 func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
 	log := logging.FromContext(ctx).With("url", url, "dest", dest)
 	log.Info("cloning")

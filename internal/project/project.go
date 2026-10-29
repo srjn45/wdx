@@ -572,16 +572,61 @@ func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) 
 	return Opened{}, &CheckoutMissingError{Project: p}
 }
 
+// cloneAndOpen clones url beside dest and moves it into place once whole,
+// so that dest is never a clone cut short, then opens it.
 func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progress io.Writer) (Opened, error) {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	log := logging.FromContext(ctx)
+	parent := filepath.Dir(dest)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return Opened{}, err
 	}
-	if err := git.Clone(ctx, url, dest, progress); err != nil {
+	removeCloneLeftovers(ctx, parent)
+	tmp, err := os.MkdirTemp(parent, "."+filepath.Base(dest)+cloneSuffix)
+	if err != nil {
 		return Opened{}, err
 	}
+	// As git would make it, not private as a temporary directory is.
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		removeClone(ctx, tmp)
+		return Opened{}, err
+	}
+	if err := git.Clone(ctx, url, tmp, progress); err != nil {
+		removeClone(ctx, tmp)
+		return Opened{}, err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		removeClone(ctx, tmp)
+		return Opened{}, err
+	}
+	log.Info("clone moved into place", "from", tmp, "path", dest)
 	o, err := s.OpenLocal(ctx, dest, name)
 	o.Cloned = err == nil
 	return o, err
+}
+
+// cloneSuffix marks a clone in progress, made beside where it goes as
+// .<name>.clone-<random>.
+const cloneSuffix = ".clone-"
+
+// removeCloneLeftovers removes the clones in parent that a daemon dying
+// midway left behind; changes run one at a time, so none is in progress.
+func removeCloneLeftovers(ctx context.Context, parent string) {
+	left, err := filepath.Glob(filepath.Join(parent, ".*"+cloneSuffix+"*"))
+	if err != nil {
+		return // the pattern is valid
+	}
+	for _, dir := range left {
+		removeClone(ctx, dir)
+	}
+}
+
+func removeClone(ctx context.Context, dir string) {
+	log := logging.FromContext(ctx)
+	if err := os.RemoveAll(dir); err != nil {
+		log.Error("unfinished clone not removed", "path", dir, "err", err.Error())
+		return
+	}
+	log.Info("unfinished clone removed", "path", dir)
 }
 
 // GetByID returns the project with id, whatever its state.

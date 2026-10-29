@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
@@ -514,6 +515,54 @@ func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(s.projectsDir, "nope")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("want no leftover directory, got %v", err)
+	}
+}
+
+// TestOpenGitCloneKilled kills a clone midway, as a daemon giving up at
+// shutdown does: nothing is left that a later open would take for a
+// checkout, and the next open clones afresh.
+func TestOpenGitCloneKilled(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	remote := bareRemote(t, "app")
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		for {
+			if entries, _ := os.ReadDir(s.projectsDir); len(entries) > 0 {
+				return // git is cloning
+			}
+			time.Sleep(100 * time.Microsecond)
+		}
+	}()
+	if _, err := s.OpenGit(ctx, remote, "", io.Discard); err == nil {
+		t.Skip("the clone finished before it was killed")
+	}
+	if entries, _ := os.ReadDir(s.projectsDir); len(entries) > 0 {
+		t.Fatalf("the killed clone left %s", entries[0].Name())
+	}
+	if o, err := s.OpenGit(context.Background(), remote, "", io.Discard); err != nil || !o.Cloned {
+		t.Fatalf("want a fresh clone, got %+v, %v", o, err)
+	}
+}
+
+// TestOpenGitRemovesCloneLeftovers clones beside what a daemon that died
+// midway through a clone left: the leftover goes.
+func TestOpenGitRemovesCloneLeftovers(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	left := filepath.Join(s.projectsDir, ".web.clone-123")
+	if err := os.MkdirAll(filepath.Join(left, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if o, err := s.OpenGit(context.Background(), bareRemote(t, "app"), "", io.Discard); err != nil || !o.Cloned {
+		t.Fatalf("want a clone, got %+v, %v", o, err)
+	}
+	if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want the leftover removed, got %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(s.projectsDir, "app")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("want the clone at app, readable as git makes it, got %v, %v", info, err)
 	}
 }
 

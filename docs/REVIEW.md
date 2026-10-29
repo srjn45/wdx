@@ -105,7 +105,7 @@ Smaller ones in the same code: `writeClient` can slice with a negative `n` if th
 
 ## Steps
 
-1. Terminal runtime bugs and the shared vt wrapper: H1–H5, C1, C2, D1. Approved; below.
+1. Terminal runtime bugs and the shared vt wrapper: H1–H5, C1, C2, D1. Done; below.
 2. Daemon lifecycle: D2–D6, D13.
 3. `wdx update` failure handling: U1–U5.
 4. Tidying: duplication, placement, logging, stale comments, names.
@@ -130,19 +130,21 @@ Approved by the human. **Done** 2026-10-29: `8ecb74d` to `60f4808`, one commit e
 
 Tests, each failing before its fix: H1 attach, dial as daemon, `exit`, release, repeated; H2 a fetch that always fails is called once per scroll; H3 hello stays fast during `yes | head -c 40000000`; H4 a never-reading query loop still lets the daemon dial and stop; H5 numbering equal to the holder's after a reset, a second client's size reaching the first and taken back by a key, `TestPaneReset` without its sleep; C1 the built `wdx` in a PTY given SIGTERM, the window given back; C2 table cases; D1 a create cancelled midway reaches `running`.
 
-## Step 2 proposal: daemon lifecycle
+## Step 2 design: daemon lifecycle
 
-Still to brainstorm. Each change finishes what was started, or cleans up what it leaves, however the client or the daemon ends.
+Approved by the human; coding waits for their go. Each change finishes what it started, or cleans up what it leaves, however the client or the daemon ends. Since Step 1's D1 fix a client leaving no longer cancels a change, so what is left is the daemon giving up on a change at shutdown, or dying. One commit per fix, each with a test failing before it.
 
-1. **Partial clones (D2).** `cloneAndOpen` clones into a temporary sibling of `dest` (`.<name>.clone-*`) and renames it into place on success; a clone that fails or is killed leaves only the temporary directory, which the next clone into the same parent removes. `git.go`'s comment is corrected. Test: a clone killed midway leaves no `dest`, and the next `project open --git` clones afresh.
-2. **Shutdown waits for handlers (D3).** `oneChangeAtATime` counts changes in flight; after `srv.Shutdown` times out, the daemon waits for them, bounded, before closing the DB and the supervisor; `follow` refuses once the supervisor is closed and closes the connection it was given. Test: a stop during a slow change returns after it, with the change's rows written.
-3. **Close during a redial (D4).** A watcher checks its context after a successful redial and closes the new connection when it is done. Test: `Close` while a holder is dropped and redialled returns.
-4. **Remove reports the stopped terminal (D5).** `Remove` reads the terminal again after `stopOne`, as `StopProject` does. Test: `TestRemoveTerminal` checks `state` and `pid`.
-5. **Stop a project's terminals together (D6).** `StopProject` sends Stop to every live terminal, then waits for all, so closing a project takes one `stopWait` at most, not one per terminal. Test: a project of three terminals that ignore SIGHUP closes in about one grace.
-6. **Holders nobody watches.** `stopOne` with no watch but a `HolderPID` dials the holder and stops it, or kills the pid when the dial fails, before marking the row ended. Test: a row left `starting` with a live holder is stopped by remove.
-7. **Stale sockets (D13).** `Sweep` removes `run/term-*.sock` whose terminal has no row or no live holder.
+1. **`fix:` clone into a temporary sibling (D2).** `cloneAndOpen` clones into `.<name>.clone-<random>` beside `dest` and renames it into place only on success, so `dest` only ever exists complete. A clone that dies leaves only the hidden directory; the next clone into the same parent removes such leftovers (changes run one at a time, so none is in progress). `git.go`'s "on failure git removes dest" corrected. Test: a clone killed midway leaves no `dest`, and the next open clones afresh. **Done**: git's progress now names the hidden directory (`Cloning into '.app.clone-…'`).
+2. **`fix:` shutdown cancels changes that outlive it, then waits for them (D3).** The daemon gets a context cancelled only when `shutdownTimeout` runs out; changing requests run on the client's context without its cancellation (as now) and with this one, so a change still running then is cancelled: a clone is killed (fix 1 cleans up), a launch fails fast. The daemon then takes `d.changes` itself, which every change holds, waiting at most `stopWait` (stopping terminals waits on timers, not the context), and only then closes the DB and the supervisor. A closed supervisor's `follow` refuses and closes the connection it is given. Decided: cancel rather than wait without limit (a stalled clone would hang `wdx daemon stop` until systemd kills the daemon). Test: a 100 ms shutdown limit during a slow project close; the daemon stops after the change, with its rows written.
+3. **`fix:` close during a redial (D4).** After a successful redial, a watcher whose supervisor is closing closes the new connection and returns; a redial failing because of the shutdown no longer marks the terminal `lost`. Test: `Close` while a holder is being redialled returns.
+4. **`fix:` remove reports the stopped terminal (D5).** `Remove` reads the row again after `stopOne`, before deleting it, as `StopProject` does. Test: `TestRemoveTerminal` checks `state` and `pid`.
+5. **`fix:` stop a project's terminals together (D6).** `stopOne` splits in two: mark stopped and send Stop; then wait for the holder to report the shell gone, killing it otherwise. `StopProject` does the first for every terminal, then the second for every one against one deadline: a project closes in about one `stopWait`, however many terminals it has. Test: three terminals that ignore SIGHUP close in about one grace.
+6. **`fix:` stop holders nobody watches.** `stopOne` finding no watch on a live row dials the holder first: one that answers is followed and stopped as usual; one that does not leaves the row marked ended, as now. Decided: never kill the recorded pids, which may have been reused; a holder that does not answer is gone, as `Reconcile` already assumes. Test: a row left `starting` with a live holder is stopped by remove.
+7. **`fix:` sweep stale sockets (D13).** `Sweep` also removes `run/term-*.sock` whose terminal has no row, or a row neither live nor watched. Test: a dead holder's socket is gone after a sweep.
 
-Impact: every change request runs to the end even when the daemon is stopping, so `wdx daemon stop` can take longer while a clone or stop runs (bounded); nothing is left half done on disk.
+Settings for tests (decided): `daemon.Options` gets `ShutdownTimeout` and `StopGrace` (passed on to the supervisor's `Options`), defaulting to today's 30 s and 5 s; `stopWait` stays grace plus 5 s. Not user settings.
+
+Impact: closing a project with several terminals blocks other changes about 10 s at most, not 10 s per terminal; `wdx daemon stop` takes at most 30 s plus 10 s when a change is in flight at the limit, rather than closing the DB under it; nothing is left half done on disk. No API or CLI change, except `terminal remove --stop-running` reporting `stopped`.
 
 ## Step 3 proposal: `wdx update` failure handling
 
