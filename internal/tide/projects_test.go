@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/daemon"
@@ -78,6 +79,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"),
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
+		ACA: &acatest.ACA{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +91,11 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 		if list, err := c.ListTerminals(bg, "", ""); err == nil {
 			for _, term := range list.Terminals {
 				_, _ = c.DeleteTerminal(bg, "id:"+term.Id, "", "", true)
+			}
+		}
+		if list, err := c.ListAgents(bg, "", ""); err == nil {
+			for _, a := range list.Agents {
+				_, _ = c.DeleteAgent(bg, "id:"+a.Id, "", "", true)
 			}
 		}
 		cancel()

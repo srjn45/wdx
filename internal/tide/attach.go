@@ -15,9 +15,10 @@ import (
 	"github.com/srjn45/wdx/internal/termview"
 )
 
-// The terminal pane shows the terminal of the tab selected, and only that
-// one is attached (docs/TIDE_B3.md): a running terminal through a session
-// with its holder, one that is not running from its history, read-only.
+// The terminal pane shows the terminal of the tab selected and the agent pane
+// the active agent, and only those are attached (docs/TIDE_B3.md,
+// docs/TIDE_B4.md): what runs through a session with its holder, what does not
+// from its history, read-only.
 
 const (
 	// attachRest is how long a project switched to stays before its
@@ -28,12 +29,18 @@ const (
 	tailLines = 1000
 )
 
-// attachment is the terminal the terminal pane shows.
+// historyFunc reads count lines of a history from line from on, or the last
+// count lines when from is nil.
+type historyFunc func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error)
+
+// attachment is the terminal a pane shows, an agent's being one too.
 type attachment struct {
-	gen     int    // which attachment this is: the messages of an older one are dropped
-	id      string // the terminal's
+	gen     int    // which attachment this is, of either pane: the messages of an older one are dropped
+	where   pane   // the pane it shows in
+	id      string // the terminal's, which names its holder
 	name    string
 	live    bool // attached to a session; false shows its history alone
+	history historyFunc
 	ctx     context.Context
 	cancel  context.CancelFunc
 	session *holder.Session
@@ -61,34 +68,65 @@ type (
 	rested struct{ rests int }
 )
 
-// attachSelected attaches the terminal of the tab selected when it is not
-// the one attached, or not as it should be: live while it runs, its
-// history once it does not. Called after every message, it does nothing
-// when all is as it should be.
+// attachedIn returns the attachment of the pane p, if any.
+func (m *Model) attachedIn(p pane) *attachment {
+	switch p {
+	case terminal:
+		return m.term
+	case agent:
+		return m.agentTerm
+	}
+	return nil
+}
+
+func (m *Model) setAttached(p pane, a *attachment) {
+	if p == agent {
+		m.agentTerm = a
+		return
+	}
+	m.term = a
+}
+
+// attachSelected attaches the terminal of the tab selected and the active
+// agent. Called after every message, it does nothing when all is as it should
+// be.
 func (m *Model) attachSelected() tea.Cmd {
 	t, ok := m.selectedTerminal()
+	attachTerminal := m.attachPane(terminal, t, ok, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+		return m.client.GetTerminalHistory(ctx, "id:"+t.Id, "", "", from, count)
+	})
+	active, ok := m.activeAgent()
+	attachAgent := m.attachPane(agent, terminalOf(active), ok, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+		return m.client.GetAgentHistory(ctx, "id:"+active.Id, "", "", from, count)
+	})
+	return tea.Batch(attachTerminal, attachAgent)
+}
+
+// attachPane attaches t to p when it is not the one attached, or not as it
+// should be: live while it runs, its history once it does not.
+func (m *Model) attachPane(p pane, t api.Terminal, ok bool, history historyFunc) tea.Cmd {
 	want := ok && !m.resting && t.State != api.TerminalStateStarting
 	live := t.State == api.TerminalStateRunning
-	if a := m.term; a != nil {
+	if a := m.attachedIn(p); a != nil {
 		if want && a.id == t.Id && a.live == live {
 			return nil
 		}
-		m.detach()
+		m.detach(p)
 	}
 	if !want {
 		return nil
 	}
 	m.attaches++
 	ctx, cancel := context.WithCancel(m.ctx)
-	a := &attachment{gen: m.attaches, id: t.Id, name: t.Name, live: live, ctx: ctx, cancel: cancel}
-	m.term = a
+	a := &attachment{gen: m.attaches, where: p, id: t.Id, name: t.Name, live: live, history: history, ctx: ctx, cancel: cancel}
+	m.setAttached(p, a)
 	return m.tryAttach(a)
 }
 
-// tryAttach attaches a at the terminal pane's size, or fetches the end of
-// its history.
+// tryAttach attaches a at its pane's size, or fetches the end of its
+// history.
 func (m *Model) tryAttach(a *attachment) tea.Cmd {
-	cols, rows := m.terminalArea(a.live)
+	cols, rows := m.paneArea(a.where, a.live)
 	gen := a.gen
 	if a.live {
 		socket := identity.HolderSocket(m.home, a.id)
@@ -98,17 +136,20 @@ func (m *Model) tryAttach(a *attachment) tea.Cmd {
 			return attachedMsg{gen: gen, session: s, err: err}
 		}
 	}
-	ref := "id:" + a.id
 	return func() tea.Msg {
-		h, err := m.client.GetTerminalHistory(a.ctx, ref, "", "", nil, tailLines)
+		h, err := a.history(a.ctx, nil, tailLines)
 		return tailMsg{gen: gen, tail: termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err: err}
 	}
 }
 
 // attachment returns the attachment when it is gen.
 func (m *Model) attachment(gen int) (*attachment, bool) {
-	a := m.term
-	return a, a != nil && a.gen == gen
+	for _, a := range []*attachment{m.term, m.agentTerm} {
+		if a != nil && a.gen == gen {
+			return a, true
+		}
+	}
+	return nil, false
 }
 
 func (m *Model) attached(msg attachedMsg) tea.Cmd {
@@ -123,7 +164,7 @@ func (m *Model) attached(msg attachedMsg) tea.Cmd {
 		return m.attachFailed(a, msg.err)
 	}
 	a.session, a.err, a.wait = msg.session, nil, 0
-	a.pane = termview.New(msg.session, m.fetcher(a.ctx, a.id))
+	a.pane = termview.New(msg.session, fetcher(a))
 	snap := msg.session.Snapshot
 	m.log.Info("terminal attached", "terminal_id", a.id, "cols", snap.Cols, "rows", snap.Rows,
 		"history_lines", snap.HistoryLines)
@@ -139,17 +180,16 @@ func (m *Model) tailFetched(msg tailMsg) tea.Cmd {
 		return m.attachFailed(a, msg.err)
 	}
 	a.err, a.wait = nil, 0
-	cols, rows := m.terminalArea(false)
-	a.pane = termview.NewHistory(msg.tail, cols, rows, m.fetcher(a.ctx, a.id))
+	cols, rows := m.paneArea(a.where, false)
+	a.pane = termview.NewHistory(msg.tail, cols, rows, fetcher(a))
 	m.log.Debug("terminal history shown", "terminal_id", a.id, "lines", len(msg.tail.Lines))
 	return a.pane.Init()
 }
 
-// fetcher fetches the history of terminal id for its pane.
-func (m *Model) fetcher(ctx context.Context, id string) termview.FetchFunc {
-	ref := "id:" + id
+// fetcher fetches the history of a for its pane.
+func fetcher(a *attachment) termview.FetchFunc {
 	return func(from int64, count int) (termview.History, error) {
-		h, err := m.client.GetTerminalHistory(ctx, ref, "", "", &from, count)
+		h, err := a.history(a.ctx, &from, count)
 		return termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err
 	}
 }
@@ -181,8 +221,13 @@ func (m *Model) retryAttach(msg retryAttach) tea.Cmd {
 // the stream will tell, or the connection was lost while it may run, and
 // it is attached again.
 func (m *Model) ended(msg termview.EndedMsg) tea.Cmd {
-	a := m.term
-	if a == nil || a.pane == nil || msg.Pane != a.pane {
+	var a *attachment
+	for _, shown := range []*attachment{m.term, m.agentTerm} {
+		if shown != nil && shown.pane != nil && msg.Pane == shown.pane {
+			a = shown
+		}
+	}
+	if a == nil {
 		return nil
 	}
 	if msg.Exit != nil {
@@ -199,15 +244,21 @@ func (m *Model) ended(msg termview.EndedMsg) tea.Cmd {
 	return m.attachFailed(a, err)
 }
 
-// detach leaves the terminal attached; it keeps running.
-func (m *Model) detach() {
-	a := m.term
+// detachAll leaves what the panes show, as tide quits.
+func (m *Model) detachAll() {
+	m.detach(terminal)
+	m.detach(agent)
+}
+
+// detach leaves the terminal attached to p; it keeps running.
+func (m *Model) detach(p pane) {
+	a := m.attachedIn(p)
 	if a == nil {
 		return
 	}
 	a.cancel()
 	m.closePane(a)
-	m.term = nil
+	m.setAttached(p, nil)
 	m.log.Debug("terminal detached", "terminal_id", a.id)
 }
 
@@ -233,17 +284,17 @@ func (m *Model) rest() tea.Cmd {
 	return m.tick(attachRest, func(time.Time) tea.Msg { return rested{rests: n} })
 }
 
-// terminalArea is the size the terminal pane gives a terminal: inside its
-// frame, as docked when it is hidden, less the line saying its state when
-// it is not live.
-func (m *Model) terminalArea(live bool) (cols, rows int) {
+// paneArea is the size p gives a terminal: inside its frame, as docked when
+// it is hidden, less the line saying its state when it is not live.
+func (m *Model) paneArea(p pane, live bool) (cols, rows int) {
 	l := m.layout
-	if !l.shown(terminal) {
-		l.terminalOpen, l.zoomed = true, none
+	if !l.shown(p) {
+		l.zoomed = none
+		l.terminalOpen = l.terminalOpen || p == terminal
 	}
 	cols, rows = 80, 24
 	if frames, ok := l.frames(m.width, m.height-1); ok {
-		inside := frames[terminal].Inset(1)
+		inside := frames[p].Inset(1)
 		cols, rows = inside.Dx(), inside.Dy()
 	}
 	if !live {
@@ -252,69 +303,72 @@ func (m *Model) terminalArea(live bool) (cols, rows int) {
 	return max(cols, 1), max(rows, 1)
 }
 
-// syncSize gives the terminal attached the terminal pane's size, when the
-// pane shows: a hidden pane leaves it as it was.
+// syncSize gives what each pane shows its size, when the pane shows: a hidden
+// pane leaves it as it was.
 func (m *Model) syncSize() {
-	a := m.term
-	if a == nil || a.pane == nil || !m.layout.shown(terminal) {
-		return
-	}
 	if _, ok := m.frames(); !ok {
 		return
 	}
-	// A size that cannot be sent means the session is gone, which reading
-	// it tells.
-	_ = a.pane.SetSize(m.terminalArea(a.live))
+	for _, a := range []*attachment{m.term, m.agentTerm} {
+		if a == nil || a.pane == nil || !m.layout.shown(a.where) {
+			continue
+		}
+		// A size that cannot be sent means the session is gone, which reading
+		// it tells.
+		_ = a.pane.SetSize(m.paneArea(a.where, a.live))
+	}
 }
 
-// terminalInput gives a key, a paste or a mouse event to the terminal
-// shown.
-func (m *Model) terminalInput(msg tea.Msg) tea.Cmd {
-	a := m.term
+// paneInput gives a key, a paste or a mouse event to what the pane p shows.
+func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
+	a := m.attachedIn(p)
 	if a == nil || a.pane == nil || a.ended {
 		return nil
 	}
 	return a.pane.Update(msg)
 }
 
-// terminalMouse gives a mouse event to the program in the terminal pane,
-// at the pane's coordinates, when it asked for the mouse: a press inside
-// the pane, and the drag and release that follow it. It reports whether
-// the program took it.
-func (m *Model) terminalMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
-	a := m.term
-	if a == nil || a.pane == nil || !a.live || a.ended || !a.pane.MouseWanted() {
-		m.mouseToTerminal = false
+// programMouse gives a mouse event to the program in the agent or terminal
+// pane, at the pane's coordinates, when it asked for the mouse: a press inside
+// the pane, and the drag and release that follow it. It reports whether the
+// program took it.
+func (m *Model) programMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
+	frames, ok := m.frames()
+	if !ok {
 		return nil, false
 	}
-	frames, ok := m.frames()
-	f, shown := frames[terminal]
-	if !ok || !shown {
+	mouse := msg.Mouse()
+	at := uv.Pos(mouse.X, mouse.Y)
+	p := m.mouseTo
+	if _, pressed := msg.(tea.MouseClickMsg); pressed {
+		p = none
+		for _, q := range []pane{agent, terminal} {
+			if f, shown := frames[q]; shown && at.In(f.Inset(1)) {
+				p = q
+			}
+		}
+	}
+	a := m.attachedIn(p)
+	if a == nil || a.pane == nil || !a.live || a.ended || !a.pane.MouseWanted() {
+		m.mouseTo = none
+		return nil, false
+	}
+	f, shown := frames[p]
+	if !shown {
 		return nil, false
 	}
 	area := f.Inset(1)
-	mouse := msg.Mouse()
-	at := uv.Pos(mouse.X, mouse.Y)
 	mouse.X = min(max(at.X, area.Min.X), area.Max.X-1) - area.Min.X
 	mouse.Y = min(max(at.Y, area.Min.Y), area.Max.Y-1) - area.Min.Y
 	var out tea.Msg
 	switch msg.(type) {
 	case tea.MouseClickMsg:
-		if !at.In(area) {
-			return nil, false
-		}
-		m.mouseToTerminal = true
+		m.mouseTo = p
 		out = tea.MouseClickMsg(mouse)
 	case tea.MouseMotionMsg:
-		if !m.mouseToTerminal {
-			return nil, false
-		}
 		out = tea.MouseMotionMsg(mouse)
 	case tea.MouseReleaseMsg:
-		if !m.mouseToTerminal {
-			return nil, false
-		}
-		m.mouseToTerminal = false
+		m.mouseTo = none
 		out = tea.MouseReleaseMsg(mouse)
 	default:
 		return nil, false
@@ -322,10 +376,10 @@ func (m *Model) terminalMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 	return a.pane.Update(out), true
 }
 
-// terminalWheel gives a turn of the wheel over the terminal pane to it: to
-// the program, or scrolling its history.
-func (m *Model) terminalWheel(msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd {
-	a := m.term
+// paneWheel gives a turn of the wheel over the pane p to it: to the program,
+// or scrolling its history.
+func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd {
+	a := m.attachedIn(p)
 	if a == nil || a.pane == nil {
 		return nil
 	}
@@ -333,15 +387,15 @@ func (m *Model) terminalWheel(msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd 
 	return a.pane.Update(msg)
 }
 
-// terminalCursor is the program's cursor in the window, while the terminal
-// pane has the focus and shows the live screen, with nothing over it.
-func (m *Model) terminalCursor() *tea.Cursor {
-	a := m.term
-	if a == nil || a.pane == nil || !a.live || m.layout.focus != terminal || m.menu || m.confirm != nil || m.switcher != nil {
+// paneCursor is the program's cursor in the window, while its pane has the
+// focus and shows the live screen, with nothing over it.
+func (m *Model) paneCursor() *tea.Cursor {
+	a := m.attachedIn(m.layout.focus)
+	if a == nil || a.pane == nil || !a.live || m.menu || m.confirm != nil || m.switcher != nil {
 		return nil
 	}
 	frames, ok := m.frames()
-	f, shown := frames[terminal]
+	f, shown := frames[a.where]
 	if !ok || !shown {
 		return nil
 	}
@@ -354,11 +408,11 @@ func (m *Model) terminalCursor() *tea.Cursor {
 	return c
 }
 
-// terminalStatus is what the status line says of the terminal pane while
-// it is scrolled back or cannot fetch history.
-func (m *Model) terminalStatus() (string, bool) {
-	a := m.term
-	if a == nil || a.pane == nil || m.layout.focus != terminal {
+// paneStatus is what the status line says of the pane focused while it is
+// scrolled back or cannot fetch history.
+func (m *Model) paneStatus() (string, bool) {
+	a := m.attachedIn(m.layout.focus)
+	if a == nil || a.pane == nil {
 		return "", false
 	}
 	if a.pane.FetchErr() != nil {
@@ -375,10 +429,10 @@ func (m *Model) terminalStatus() (string, bool) {
 	return s, true
 }
 
-// attachState is what the terminal pane says of the terminal t while it
-// does not show it: why, and what happens.
-func (m *Model) attachState(t api.Terminal) string {
-	a := m.term
+// attachState is what the pane p says of the terminal t while it does not
+// show it: why, and what happens.
+func (m *Model) attachState(p pane, t api.Terminal) string {
+	a := m.attachedIn(p)
 	switch {
 	case t.State == api.TerminalStateStarting:
 		return m.st.Muted("starting…")
@@ -386,7 +440,7 @@ func (m *Model) attachState(t api.Terminal) string {
 		return m.st.Muted("attaching…")
 	case a.tooOld:
 		return m.st.Failure("it was started by a wdx too old to attach to") + "\n" +
-			m.st.Muted("close and open its project, or remove the terminal and create it again, to restart its shell")
+			m.st.Muted("close and open its project, or remove the "+p.String()+" and create it again, to restart it")
 	case a.err != nil && a.live:
 		return m.st.Failure("could not attach, trying again…") + "\n" + m.st.Muted(a.err.Error())
 	case a.err != nil:

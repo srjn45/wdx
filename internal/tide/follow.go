@@ -122,6 +122,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	p := msg.event.Project
 	f.project, f.ref, f.err, f.wait = &p, "id:"+p.Id, nil, 0
 	m.terminalsChanged()
+	m.agentsChanged()
 	return m.next()
 }
 
@@ -219,42 +220,53 @@ func stateMark(st style.Style, state api.TerminalState) string {
 // selected, or why there is none.
 type terminalPane struct{ m *Model }
 
-// input is nothing: keys, pastes and the mouse reach the terminal as
-// messages (terminalInput).
-func (terminalPane) input(string) {}
-
 func (p terminalPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	m := p.m
-	f := m.following
 	var lines []string
 	if m.terminalNotice != "" {
 		lines = append(lines, st.Failure(wrap(m.terminalNotice, area.Dx())))
 	}
 	t, ok := m.selectedTerminal()
+	state, following := m.followState(st, area.Dx())
 	switch {
-	case f == nil || f.project == nil && f.err == nil:
-		lines = append(lines, st.Muted("loading…"))
-	case f.err != nil:
-		// The pane may be three rows: what happens comes first.
-		lines = append(lines, st.Failure("the project could not be followed, trying again…"), st.Muted(wrap(f.err.Error(), area.Dx())))
+	case !following:
+		lines = append(lines, state...)
 	case !ok:
 		lines = append(lines, st.Muted("no terminals: ")+st.Command("C-q t")+st.Muted(" creates one"))
-	case m.term != nil && m.term.id == t.Id && m.term.pane != nil:
-		p.drawTerminal(buf, area, st, t, lines)
-		return
 	default:
-		lines = append(lines, p.stateLine(st, t), st.Muted(tildePath(t.Dir, m.userHome)), m.attachState(t))
+		m.drawShown(buf, area, st, terminal, t, lines)
+		return
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 }
 
-// drawTerminal draws the terminal t shown: the live screen, or under a
-// line saying its state, its history; a notice goes over its top.
-func (p terminalPane) drawTerminal(buf uv.Screen, area uv.Rectangle, st style.Style, t api.Terminal, notice []string) {
-	a := p.m.term
+// followState says why the project shown is not known, when it is not: its
+// stream has yet to bring it, or broke.
+func (m *Model) followState(st style.Style, width int) (lines []string, following bool) {
+	f := m.following
+	switch {
+	case f == nil || f.project == nil && f.err == nil:
+		return []string{st.Muted("loading…")}, false
+	case f.err != nil:
+		// The pane may be three rows: what happens comes first.
+		return []string{st.Failure("the project could not be followed, trying again…"), st.Muted(wrap(f.err.Error(), width))}, false
+	}
+	return nil, true
+}
+
+// drawShown draws t in the pane p: the live screen, or under a line saying its
+// state, its history, or what happens until it shows; a notice goes over its
+// top.
+func (m *Model) drawShown(buf uv.Screen, area uv.Rectangle, st style.Style, p pane, t api.Terminal, notice []string) {
+	a := m.attachedIn(p)
+	if a == nil || a.id != t.Id || a.pane == nil {
+		lines := append(notice, stateLine(st, t), st.Muted(tildePath(t.Dir, m.userHome)), m.attachState(p, t))
+		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
+		return
+	}
 	screen := area
 	if !a.live {
-		uv.NewStyledString(p.stateLine(st, t)).Draw(buf, uv.Rect(area.Min.X, area.Min.Y, area.Dx(), 1))
+		uv.NewStyledString(stateLine(st, t)).Draw(buf, uv.Rect(area.Min.X, area.Min.Y, area.Dx(), 1))
 		screen.Min.Y++
 	}
 	uv.NewStyledString(a.pane.Content()).Draw(buf, screen)
@@ -264,7 +276,7 @@ func (p terminalPane) drawTerminal(buf uv.Screen, area uv.Rectangle, st style.St
 }
 
 // stateLine says the terminal's name and state, and how it ended.
-func (p terminalPane) stateLine(st style.Style, t api.Terminal) string {
+func stateLine(st style.Style, t api.Terminal) string {
 	line := stateMark(st, t.State) + " " + st.Name(t.Name) + " " + st.Muted(string(t.State))
 	switch {
 	case t.ExitCode != nil:

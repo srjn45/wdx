@@ -18,8 +18,8 @@ type menuItem struct {
 // out.
 func (m *Model) menuItems() []menuItem {
 	items := []menuItem{{"o", "open project", "open"}, {"p", "switch project", "switch"}}
-	if _, ok := m.terminalDir(); ok {
-		items = append(items, menuItem{"t", "new terminal", "terminal"})
+	if _, ok := m.checkoutDir(); ok {
+		items = append(items, menuItem{"t", "new terminal", "terminal"}, menuItem{"a", "new agent", "agent"})
 	}
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
@@ -27,9 +27,10 @@ func (m *Model) menuItems() []menuItem {
 	return append(items, menuItem{"q", "quit", "quit"})
 }
 
-// terminalDir is where C-q t creates a terminal: the first of the project
-// shown's checkouts on disk, its main checkout unless it was removed.
-func (m *Model) terminalDir() (string, bool) {
+// checkoutDir is where C-q t creates a terminal and C-q a an agent: the first
+// of the project shown's checkouts on disk, its main checkout unless it was
+// removed.
+func (m *Model) checkoutDir() (string, bool) {
 	f := m.following
 	if f == nil || f.project == nil {
 		return "", false
@@ -52,7 +53,7 @@ type terminalCreated struct {
 // createTerminal creates a terminal in the project shown and shows the
 // terminal pane, focused; its tab is selected once the answer comes.
 func (m *Model) createTerminal() tea.Cmd {
-	dir, _ := m.terminalDir()
+	dir, _ := m.checkoutDir()
 	p := m.following.project
 	m.focusTerminalPane()
 	m.log.Info("terminal requested", "project", p.Name, "dir", dir)
@@ -92,8 +93,7 @@ func (m *Model) focusTerminalPane() {
 	m.changed("terminal pane")
 }
 
-// removal is what C-q x would remove: the entity in focus. For now only a
-// terminal; later an agent too.
+// removal is what C-q x would remove: the entity in focus.
 type removal struct {
 	kind, id, name string
 	running        bool // removing it stops what runs
@@ -101,15 +101,29 @@ type removal struct {
 
 // removable returns what C-q x would remove now.
 func (m *Model) removable() (removal, bool) {
-	if m.layout.focus != terminal {
-		return removal{}, false
+	switch m.layout.focus {
+	case terminal:
+		t, ok := m.selectedTerminal()
+		if !ok {
+			return removal{}, false
+		}
+		running := t.State == api.TerminalStateRunning || t.State == api.TerminalStateStarting
+		return removal{kind: "terminal", id: t.Id, name: t.Name, running: running}, true
+	case agent:
+		a, ok := m.activeAgent()
+		return agentRemoval(a), ok
+	case project:
+		if _, ok := m.top().(*projectScreen); ok {
+			a, ok := m.cursorAgent()
+			return agentRemoval(a), ok
+		}
 	}
-	t, ok := m.selectedTerminal()
-	if !ok {
-		return removal{}, false
-	}
-	running := t.State == api.TerminalStateRunning || t.State == api.TerminalStateStarting
-	return removal{kind: "terminal", id: t.Id, name: t.Name, running: running}, true
+	return removal{}, false
+}
+
+func agentRemoval(a api.Agent) removal {
+	running := a.State == api.AgentStateRunning || a.State == api.AgentStateStarting
+	return removal{kind: "agent", id: a.Id, name: a.Name, running: running}
 }
 
 // confirmBox asks before C-q x removes: removing cannot be undone.
@@ -137,7 +151,12 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 		r := c.r
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
 		return func() tea.Msg {
-			_, err := m.client.DeleteTerminal(m.ctx, "id:"+r.id, "", "", true)
+			var err error
+			if r.kind == "agent" {
+				_, err = m.client.DeleteAgent(m.ctx, "id:"+r.id, "", "", true)
+			} else {
+				_, err = m.client.DeleteTerminal(m.ctx, "id:"+r.id, "", "", true)
+			}
 			return removed{r: r, err: err}
 		}
 	case "n", "esc":
@@ -151,10 +170,14 @@ func (m *Model) removed(msg removed) {
 	m.confirm = nil
 	if msg.err != nil {
 		m.log.Info("not removed", "kind", msg.r.kind, "name", msg.r.name, "err", msg.err)
-		m.terminalNotice = msg.err.Error()
+		if msg.r.kind == "agent" {
+			m.statusNotice = msg.err.Error()
+		} else {
+			m.terminalNotice = msg.err.Error()
+		}
 		return
 	}
-	// Its tab goes with the stream's next event.
+	// Its tab or row goes with the stream's next event.
 	m.log.Info("removed", "kind", msg.r.kind, "name", msg.r.name)
 }
 
@@ -162,7 +185,9 @@ func (m *Model) removed(msg removed) {
 func (m *Model) confirmPopup() popup {
 	c, st := m.confirm, m.st
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
-	if c.r.running {
+	if c.r.running && c.r.kind == "agent" {
+		body = append(body, "It is running: it is stopped.")
+	} else if c.r.running {
 		body = append(body, "It is running: its shell is stopped.")
 	}
 	if c.busy {

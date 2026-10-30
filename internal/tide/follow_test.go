@@ -28,7 +28,7 @@ func (h testHome) follow(t *testing.T) *program {
 	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
 	t.Cleanup(func() {
 		m.unfollow()
-		m.detach()
+		m.detachAll()
 	})
 	p := &program{m: m, msgs: make(chan tea.Msg, 1000)}
 	p.update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -320,7 +320,7 @@ func TestTerminalAttached(t *testing.T) {
 	// 80 × 24: the pane's frame is a quarter of the 23 rows above the
 	// status line, 5, and 80 wide.
 	p.until(t, "the echo at the pane's size", screenHas("hello\n3 78"))
-	if c := p.m.terminalCursor(); c == nil || c.Y < 19 {
+	if c := p.m.paneCursor(); c == nil || c.Y < 19 {
 		t.Fatalf("cursor %v, want it in the terminal pane", c)
 	}
 	wantText(t, p.m, "hello")
@@ -386,7 +386,7 @@ func TestTerminalExits(t *testing.T) {
 	wantText(t, p.m, "○ a-one exited · exit code 3", "$ echo by''e; exit 3")
 	before := screenText(p.m)
 	p.typed("x\n")
-	if screenText(p.m) != before || p.m.terminalCursor() != nil {
+	if screenText(p.m) != before || p.m.paneCursor() != nil {
 		t.Fatal("want keys to do nothing, and no cursor, on a terminal not running")
 	}
 }

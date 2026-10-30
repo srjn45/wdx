@@ -2,13 +2,12 @@
 // and a terminal pane in one window, which the keys and the mouse move the
 // focus between, zoom and hide (docs/TIDE.md). It is a client of the
 // daemon, as the cli is. The terminal pane shows the terminal of the tab
-// selected; for now the agent pane holds a placeholder.
+// selected, and the agent pane the agent made active in the project pane.
 package tide
 
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"time"
@@ -47,38 +46,38 @@ type Model struct {
 
 	workDir, userHome, projectsDir, home string // from Options
 
-	width, height   int
-	layout          layout
-	projects        *projectList
-	stack           []screen                                                             // the project pane's, the root first
-	shown           string                                                               // the project shown, or "" before one is
-	previous        string                                                               // the project shown before it, which the switcher selects first
-	agent           *placeholder                                                         // the agent pane's
-	tab             int                                                                  // the terminal pane's tab shown, an index into terminals()
-	following       *following                                                           // the stream of the project shown
-	streams         int                                                                  // how many streams were opened, numbering them
-	openStream      func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
-	selectedTab     map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
-	term            *attachment                                                          // the terminal the terminal pane shows
-	attaches        int                                                                  // how many attachments were made, numbering them
-	rests           int                                                                  // how many project switches rested, numbering them
-	resting         bool                                                                 // a project switched to has not rested yet: nothing attaches
-	mouseToTerminal bool                                                                 // a press went to the program in the terminal pane: its drag and release go too
-	confirm         *confirmBox                                                          // the confirmation of C-q x, while it is open
-	terminalNotice  string                                                               // why the last terminal request failed, until the next key
-	statusNotice    string                                                               // what the status line says in place of the keys, until the next key or click
-	menu            bool                                                                 // the menu is open
-	switcher        *switcherBox                                                         // the project switcher, while it is open
-	strip           int                                                                  // how many times the project strip was shown
-	stripShown      bool                                                                 // the project strip is shown
-	lastClick       click
-	sel             *selection                // text selected with the mouse, while dragged and until the next click or key
-	copy            func(text string) tea.Cmd // puts text on the clipboard; tests replace it
+	width, height  int
+	layout         layout
+	projects       *projectList
+	stack          []screen                                                             // the project pane's, the root first
+	shown          string                                                               // the project shown, or "" before one is
+	previous       string                                                               // the project shown before it, which the switcher selects first
+	tab            int                                                                  // the terminal pane's tab shown, an index into terminals()
+	following      *following                                                           // the stream of the project shown
+	streams        int                                                                  // how many streams were opened, numbering them
+	openStream     func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
+	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
+	agentLists     map[string]*agentList                                                // the Agents list of each project shown, by project id, for the run
+	term           *attachment                                                          // the terminal the terminal pane shows
+	agentTerm      *attachment                                                          // the active agent's terminal, which the agent pane shows
+	attaches       int                                                                  // how many attachments were made, numbering them
+	rests          int                                                                  // how many project switches rested, numbering them
+	resting        bool                                                                 // a project switched to has not rested yet: nothing attaches
+	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
+	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
+	terminalNotice string                                                               // why the last terminal request failed, until the next key
+	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
+	menu           bool                                                                 // the menu is open
+	switcher       *switcherBox                                                         // the project switcher, while it is open
+	strip          int                                                                  // how many times the project strip was shown
+	stripShown     bool                                                                 // the project strip is shown
+	lastClick      click
+	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
+	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
 }
 
 // content is what a pane shows.
 type content interface {
-	input(s string)
 	draw(buf uv.Screen, area uv.Rectangle, st style.Style)
 }
 
@@ -119,9 +118,9 @@ func New(ctx context.Context, opts Options) *Model {
 		layout:      newLayout(),
 		projects:    projects,
 		stack:       []screen{&openProjectScreen{projects: projects}},
-		agent:       &placeholder{name: "agent"},
 		openStream:  opts.Client.ProjectEvents,
 		selectedTab: map[string]string{},
+		agentLists:  map[string]*agentList{},
 	}
 	// tide starts on the project pane, the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -133,8 +132,8 @@ func New(ctx context.Context, opts Options) *Model {
 
 func (m *Model) Init() tea.Cmd { return m.listProjects() }
 
-// Update handles msg, then attaches the terminal of the tab selected if it
-// is not, and gives it the terminal pane's size.
+// Update handles msg, then attaches the terminal of the tab selected and the
+// active agent if they are not, and gives them their panes' sizes.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
 	attach := m.attachSelected()
@@ -189,6 +188,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.projectEvent(msg)
 	case terminalCreated:
 		m.terminalCreated(msg)
+	case agentCreated:
+		m.agentCreated(msg)
 	case attachedMsg:
 		return m, m.attached(msg)
 	case tailMsg:
@@ -219,12 +220,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusNotice = ""
 		return m, m.click(msg)
 	case tea.MouseMotionMsg:
-		if cmd, ok := m.terminalMouse(msg); ok {
+		if cmd, ok := m.programMouse(msg); ok {
 			return m, cmd
 		}
 		m.drag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		if cmd, ok := m.terminalMouse(msg); ok {
+		if cmd, ok := m.programMouse(msg); ok {
 			return m, cmd
 		}
 		return m, m.release(msg.Mouse())
@@ -235,16 +236,19 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			f.paste(msg.Content)
 			return m, nil
 		}
-		if m.layout.focus == terminal && m.switcher == nil && !m.menu && m.confirm == nil {
-			return m, m.terminalInput(msg)
+		if m.switcher == nil && !m.menu && m.confirm == nil {
+			return m, m.paneInput(m.layout.focus, msg)
 		}
-		m.pane(m.layout.focus).input(fmt.Sprintf("paste(%d)", len(msg.Content)))
 	default:
-		// The terminal pane's own messages: its output, the history it
-		// fetched. Each names its pane, which drops those of another.
-		if a := m.term; a != nil && a.pane != nil {
-			return m, a.pane.Update(msg)
+		// The panes' own messages: their output, the history they fetched.
+		// Each names its pane, which drops those of another.
+		var cmds []tea.Cmd
+		for _, a := range []*attachment{m.term, m.agentTerm} {
+			if a != nil && a.pane != nil {
+				cmds = append(cmds, a.pane.Update(msg))
+			}
 		}
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
@@ -255,7 +259,7 @@ func (m *Model) pane(p pane) content {
 	case terminal:
 		return terminalPane{m}
 	case agent:
-		return m.agent
+		return agentPane{m}
 	}
 	return projectPane{m}
 }
@@ -280,7 +284,7 @@ func (m *Model) show(name string) tea.Cmd {
 		rest = m.rest()
 	}
 	m.shown, m.switcher = name, nil
-	m.stack = []screen{&projectScreen{name: name}}
+	m.stack = []screen{&projectScreen{m: m, name: name}}
 	m.log.Info("project shown", "name", name)
 	return tea.Batch(m.listProjects(), follow, rest)
 }
@@ -365,8 +369,12 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			m.switcher = newSwitcher(m.projects, m.previous)
 			return m.listProjects()
 		case "t":
-			if _, ok := m.terminalDir(); ok {
+			if _, ok := m.checkoutDir(); ok {
 				return m.createTerminal()
+			}
+		case "a":
+			if _, ok := m.checkoutDir(); ok {
+				return m.createAgent()
 			}
 		case "x":
 			if r, ok := m.removable(); ok {
@@ -376,7 +384,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case "q":
 			m.log.Info("tide quit")
 			m.unfollow() // the daemon ends the stream, and logs it
-			m.detach()
+			m.detachAll()
 			return tea.Quit
 		}
 		return nil
@@ -409,10 +417,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case !ok && m.layout.focus == project:
 			return m.projectPaneKey(msg)
-		case !ok && m.layout.focus == terminal:
-			return m.terminalInput(msg)
 		case !ok:
-			m.pane(m.layout.focus).input(name)
+			return m.paneInput(m.layout.focus, msg)
 		case m.layout.focus == terminal && (d == left || d == right):
 			m.switchTab(d)
 		case m.layout.move(d):
@@ -437,11 +443,8 @@ func (m *Model) projectPaneKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// projectPane is the project pane as a content: its screens take keys, not
-// inputs.
+// projectPane is the project pane as a content.
 type projectPane struct{ m *Model }
-
-func (projectPane) input(string) {}
 
 func (p projectPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	if !p.m.projects.loaded {
@@ -474,9 +477,9 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 	if m.confirm == nil && m.switcher == nil {
-		if cmd, ok := m.terminalMouse(msg); ok {
+		if cmd, ok := m.programMouse(msg); ok {
 			m.sel = nil
-			m.layout.setFocus(terminal)
+			m.layout.setFocus(m.mouseTo)
 			m.changed("click")
 			return cmd
 		}
@@ -506,7 +509,9 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 		m.layout.setFocus(p)
 		if at.In(f.Inset(1)) {
 			m.press(f.Inset(1), at)
-			m.pane(p).input(fmt.Sprintf("click %d,%d", at.X-f.Min.X-1, at.Y-f.Min.Y-1))
+			if s, ok := m.top().(*projectScreen); ok && p == project && m.projects.loaded {
+				s.click(at.Y - f.Min.Y - 1)
+			}
 		}
 		m.changed("click")
 		return nil
@@ -552,11 +557,7 @@ func (m *Model) wheel(msg tea.MouseWheelMsg) tea.Cmd {
 	at := uv.Pos(msg.X, msg.Y)
 	for _, p := range panes {
 		if f, shown := frames[p]; shown && at.In(f.Inset(1)) {
-			if p == terminal {
-				return m.terminalWheel(msg, f.Inset(1))
-			}
-			m.pane(p).input(msg.Button.String())
-			return nil
+			return m.paneWheel(p, msg, f.Inset(1))
 		}
 	}
 	return nil

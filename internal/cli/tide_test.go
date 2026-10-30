@@ -42,9 +42,9 @@ func TestTide(t *testing.T) {
 	run.input("\x1b\x1b[A") // Alt+↑ as a Meta key sends it: back to the project
 	run.input("\x1b[1;3C")  // Alt+→: the agent
 	run.waitScreen(" app · agent ")
-	run.input("x\x1d") // a key for the agent, then C-]: zoomed
+	run.input("\x1d") // C-]: zoomed
 	run.waitScreen("agent · zoomed")
-	run.waitScreen("got: x")
+	run.waitScreen("no agents: C-q a creates one")
 	run.input("\x11") // C-q: the menu
 	run.waitScreen("┃ o  open project")
 	run.input("q")

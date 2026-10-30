@@ -2,7 +2,6 @@ package tide
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -65,12 +64,6 @@ func TestKeys(t *testing.T) {
 	m.Update(key(tea.KeyDown, tea.ModAlt))
 	m.Update(key('c', tea.ModCtrl))
 	m.Update(tea.PasteMsg{Content: "hello"})
-	// The terminal pane's keys and pastes go to its terminal
-	// (follow_test.go), not to the agent pane.
-	if !slices.Equal(m.agent.inputs, []string{"a"}) {
-		t.Errorf("agent got %v, want [a]", m.agent.inputs)
-	}
-
 	// In the terminal pane, left and right switch tabs, going round.
 	m.Update(key(tea.KeyLeft, tea.ModAlt))
 	if m.tab != 2 || m.layout.focus != terminal {
@@ -119,10 +112,9 @@ func TestMenu(t *testing.T) {
 func TestClicks(t *testing.T) {
 	t.Parallel()
 	m, now := newModel(100, 41) // panes in 100 × 40: project 0-40, agent 40-99, terminal from row 30
-	agentPane := m.agent
 	m.Update(clickAt(60, 5))
-	if m.layout.focus != agent || !slices.Equal(agentPane.inputs, []string{"click 19,4"}) {
-		t.Fatalf("focus %s, agent got %v", m.layout.focus, agentPane.inputs)
+	if m.layout.focus != agent {
+		t.Fatalf("focus %s", m.layout.focus)
 	}
 	m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseRight})
 	if m.layout.focus != agent {
@@ -130,8 +122,8 @@ func TestClicks(t *testing.T) {
 	}
 	m.Update(clickAt(5, 3))
 	m.Update(tea.MouseWheelMsg{X: 60, Y: 5, Button: tea.MouseWheelUp})
-	if m.layout.focus != project || !slices.Equal(agentPane.inputs, []string{"click 19,4", "wheelup"}) {
-		t.Fatalf("the wheel: focus %s, agent got %v", m.layout.focus, agentPane.inputs)
+	if m.layout.focus != project {
+		t.Fatalf("the wheel moved the focus to %s", m.layout.focus)
 	}
 
 	// The tabs: " [● shell] [● tests] [● server] " from column 1 of row 30.
@@ -170,9 +162,9 @@ func TestRender(t *testing.T) {
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
 	want := `┌ [Project:─[⤢]─┬ agent ───────────[⤢]─┐
-│demo           │agent                 │
-│its detail come│22×6                  │
-│               │got: x                │
+│ Agents      0 │no agents: C-q a creat│
+│ no agents: C-q│                      │
+│               │                      │
 │               │                      │
 │               │                      │
 │               │                      │

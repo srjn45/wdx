@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestActiveRowKeepsItsTint(t *testing.T) {
+	t.Parallel()
+	s := New(true)
+	got := s.ActiveRow("a" + s.Muted("b") + "c")
+	want := "\x1b[100ma\x1b[2mb\x1b[0m\x1b[100mc\x1b[0m"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestSection(t *testing.T) {
+	t.Parallel()
+	if got, want := New(true).Section("Agents"), "\x1b[1;30;47mAgents\x1b[0m"; got != want {
+		t.Errorf("on: got %q, want %q", got, want)
+	}
+	if got, want := New(false).Section("Agents"), "\x1b[7mAgents\x1b[0m"; got != want {
+		t.Errorf("off: got %q, want %q", got, want)
+	}
+}
+
 func TestStyles(t *testing.T) {
 	t.Parallel()
 	for _, on := range []bool{false, true} {
@@ -12,7 +32,7 @@ func TestStyles(t *testing.T) {
 		for name, f := range map[string]func(string) string{
 			"heading": s.Heading, "command": s.Command, "flag": s.Flag, "placeholder": s.Placeholder,
 			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
-			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "bar name": s.BarName, "bar muted": s.BarMuted,
+			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "bar name": s.BarName, "bar muted": s.BarMuted,
 		} {
 			got := f("text")
 			if Width(got) != len("text") || (got != "text") != on {

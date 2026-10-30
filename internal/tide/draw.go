@@ -15,7 +15,7 @@ func (m *Model) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	view.WindowTitle = "tide"
-	view.Cursor = m.terminalCursor()
+	view.Cursor = m.paneCursor()
 	return view
 }
 
@@ -184,7 +184,11 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		add(" ["+m.top().title()+"] ", -1, m.st.Name)
 		return labels
 	case p != terminal:
-		add(" "+p.String()+" ", -1, m.st.Name)
+		title := p.String()
+		if a, ok := m.activeAgent(); ok && p == agent {
+			title = a.Name
+		}
+		add(" "+title+" ", -1, m.st.Name)
 		return labels
 	}
 	plain := func(s string) string { return s }
@@ -255,6 +259,10 @@ func (m *Model) drawPopup(buf uv.Screen, p popup) {
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, uv.Rect(x, y, width, height))
 }
 
+// defaultHint is what the status line says of the keys, when a screen has
+// nothing else to say.
+const defaultHint = "Alt+arrows move  C-] zoom  C-\\ terminal  C-q menu"
+
 // statusLine says what has the focus on the left and what the keys do on
 // the right, in a bar.
 func (m *Model) statusLine() string {
@@ -267,17 +275,20 @@ func (m *Model) statusLine() string {
 	if t, ok := m.selectedTerminal(); ok && l.focus == terminal {
 		left += " · " + t.Name
 	}
+	if a, ok := m.activeAgent(); ok && l.focus == agent {
+		left += " · " + a.Name
+	}
 	if l.zoomed != none {
 		left += " · zoomed"
 	}
 	state := style.StatusLive
-	right := m.st.BarMuted("Alt+arrows move  C-] zoom  C-\\ terminal  C-q menu")
+	right := m.st.BarMuted(defaultHint)
 	if h, ok := m.top().(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
 	}
-	if s, ok := m.terminalStatus(); ok {
+	if s, ok := m.paneStatus(); ok {
 		state = style.StatusScrolled
-		if m.term.pane.FetchErr() != nil {
+		if m.attachedIn(l.focus).pane.FetchErr() != nil {
 			state = style.StatusFailed
 		}
 		right = s

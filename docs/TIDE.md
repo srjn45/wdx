@@ -1,6 +1,6 @@
 # tide: the wdx Terminal-IDE
 
-Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, Phase B2, the project followed live with its terminals as tabs, and Phase B3, the selected terminal live in the terminal pane, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md, docs/TIDE_B2.md and docs/TIDE_B3.md record how they were built). The agent pane still holds a placeholder; the rest is design.
+Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, Phase B2, the project followed live with its terminals as tabs, Phase B3, the selected terminal live in the terminal pane, and Phase B4, the Agents list with the active agent live in the agent pane, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md, docs/TIDE_B2.md, docs/TIDE_B3.md and docs/TIDE_B4.md record how they were built). The rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
@@ -38,7 +38,7 @@ Three fixed panes. No general split tree.
 ### Right pane: agent
 
 - 3/5 of the width.
-- Shows one agent at a time: the one selected in the project view.
+- Shows one agent at a time: the one made active in the project view.
 - The agent's name is on the pane's frame line.
 - Live agent PTY.
 
@@ -190,7 +190,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
-- Built so far: `o` open project, `p` switch project, `t` new terminal (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- Built so far: `o` open project, `p` switch project, `t` new terminal and `a` new agent (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -267,7 +267,8 @@ Supported, though most users will mostly use the keyboard.
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Phase B3, terminals in the terminal pane (implemented, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.
-- **Later:** configurable keys, dragging dividers, termview in the agent pane, the project detail screen, and how the directory browser moves.
+- **Phase B4, the Agents list (implemented, docs/TIDE_B4.md):** the project pane lists the project's agents; `Enter` or a click makes one active, live in the agent pane through termview; `C-q a` creates an agent and `C-q x` removes one. The list is linear; child agents come next.
+- **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves.
 
 ## Open questions
 

@@ -68,6 +68,25 @@ func (s Style) Muted(text string) string { return s.apply(text, dim) }
 // as a pane's border.
 func (s Style) Focused(text string) string { return s.apply(text, bold, green) }
 
+// Section styles the heading of a section of a pane, as a band across it; in
+// reverse video when off, so that it still stands apart from what is below it.
+func (s Style) Section(text string) string {
+	if !s.on {
+		return "\x1b[7m" + text + "\x1b[0m"
+	}
+	return s.apply(text, bold, "30", "47")
+}
+
+// ActiveRow tints a row of a list, styled already, which marks what is active;
+// nothing when off, so the row needs a mark of its own too.
+func (s Style) ActiveRow(text string) string {
+	if !s.on || text == "" {
+		return text
+	}
+	const tint, reset = "\x1b[100m", "\x1b[0m"
+	return tint + strings.ReplaceAll(text, reset, reset+tint) + reset
+}
+
 // StatusBar is the state a status line shows, which picks its colors.
 type StatusBar int
 

@@ -62,18 +62,6 @@ var (
 // it can.
 func wrap(text string, width int) string { return ansi.Wrap(text, max(width, 1), "") }
 
-// projectScreen is the project shown, [Project: <name>]: for now only its
-// name; the project detail screen comes later.
-type projectScreen struct{ name string }
-
-func (s *projectScreen) title() string { return "Project: " + s.name }
-
-func (s *projectScreen) update(tea.Msg) tea.Cmd { return nil }
-
-func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
-	uv.NewStyledString(st.Name(s.name)+"\n"+st.Muted("its detail comes later")).Draw(buf, area)
-}
-
 // openProjectScreen is [Open Project]: the ways to open a project, then
 // the closed projects to reopen.
 type openProjectScreen struct {

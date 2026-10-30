@@ -45,14 +45,14 @@ func TestSelect(t *testing.T) {
 	m.Update(clickAt(in.Min.X, in.Min.Y))
 	dragTo(m, in.Max.X+10, in.Min.Y)
 	dragTo(m, in.Max.X+20, frames[terminal].Min.Y+2)
-	if !reversed(m, in.Min.X, in.Min.Y) || reversed(m, in.Max.X, in.Min.Y) {
+	if !reversed(m, in.Min.X, in.Min.Y+2) || reversed(m, in.Max.X, in.Min.Y+2) {
 		t.Fatal("the selection is not highlighted inside the pane only")
 	}
 	releaseAt(m, in.Max.X+20, frames[terminal].Min.Y+2)
-	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], "demo\nits detail comes later\n") {
+	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], " Agents                      0\n no agents: C-q a creates one\n") {
 		t.Fatalf("copied %q", *copied)
 	}
-	if strings.Contains((*copied)[0], "agent") || strings.Contains((*copied)[0], "shell") {
+	if strings.Count((*copied)[0], "no agents") != 1 || strings.Contains((*copied)[0], "shell") {
 		t.Fatalf("copied another pane: %q", (*copied)[0])
 	}
 	if m.sel == nil {
@@ -61,7 +61,7 @@ func TestSelect(t *testing.T) {
 
 	// A key clears it.
 	keys(m, "x")
-	if m.sel != nil || reversed(m, in.Min.X, in.Min.Y) {
+	if m.sel != nil || reversed(m, in.Min.X, in.Min.Y+2) {
 		t.Fatal("a key left the selection")
 	}
 
@@ -70,7 +70,7 @@ func TestSelect(t *testing.T) {
 	m.Update(clickAt(a.Min.X+5, a.Min.Y+1))
 	dragTo(m, 0, a.Min.Y)
 	releaseAt(m, 0, a.Min.Y)
-	if got := strings.Split((*copied)[1], "\n"); len(got) != 2 || got[0] != "agent" || got[1] != "46×17" {
+	if got := strings.Split((*copied)[1], "\n"); len(got) != 2 || got[0] != "no agents: C-q a creates one" || got[1] != "" {
 		t.Fatalf("copied %q", got)
 	}
 }
