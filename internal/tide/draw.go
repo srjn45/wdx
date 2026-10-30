@@ -184,13 +184,20 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		return labels
 	}
 	plain := func(s string) string { return s }
-	for i, t := range m.tabs {
+	for i, t := range m.terminals() {
 		add(" ", -1, plain)
 		styled := m.st.Muted
 		if i == m.tab {
 			styled = m.st.Name
 		}
-		add("["+t.name+"]", i, styled)
+		// The mark keeps its state's color unless the tab is cut short.
+		mark := stateMark(m.st, t.State)
+		add("[● "+t.Name+"]", i, func(s string) string {
+			if s != "[● "+t.Name+"]" {
+				return styled(s)
+			}
+			return styled("[") + mark + styled(" "+t.Name+"]")
+		})
 	}
 	add(" ", -1, plain)
 	return labels
@@ -257,8 +264,8 @@ func (m *Model) statusLine() string {
 		left += m.st.BarName(m.shown) + " · "
 	}
 	left += m.st.BarName(l.focus.String())
-	if l.focus == terminal {
-		left += " · " + m.tabs[m.tab].name
+	if t, ok := m.selectedTerminal(); ok && l.focus == terminal {
+		left += " · " + t.Name
 	}
 	if l.zoomed != none {
 		left += " · zoomed"

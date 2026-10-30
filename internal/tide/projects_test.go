@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,14 +17,20 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 )
 
 func TestMain(m *testing.M) {
+	holdertest.RunIfHolder()
 	gittest.Isolate()
 	m.Run()
 }
+
+// testShell is the shell of the test terminals: it stays until it is hung
+// up on.
+const testShell = "#!/bin/sh\nexec sleep 60\n"
 
 // testHome is a home with the socket a daemon serving it listens on.
 type testHome struct {
@@ -42,22 +49,43 @@ func newTestHome(t *testing.T) testHome {
 	return testHome{home: t.TempDir(), socket: filepath.Join(dir, "wdx.sock")}
 }
 
-// serve runs a daemon on h until the test ends.
-func (h testHome) serve(t *testing.T) {
+// serve runs a daemon on h until the test ends or the function it
+// returns stops it. Its terminals run testShell, and are removed when it
+// stops.
+func (h testHome) serve(t *testing.T) (stop func()) {
 	t.Helper()
-	ctx, stop := context.WithCancel(context.Background())
-	d, err := daemon.Listen(ctx, daemon.Options{Home: h.home, Socket: h.socket, Log: slog.New(slog.DiscardHandler)})
+	shell := filepath.Join(t.TempDir(), "shell")
+	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	d, err := daemon.Listen(ctx, daemon.Options{
+		Home: h.home, Socket: h.socket, Log: slog.New(slog.DiscardHandler),
+		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(ctx) }()
-	t.Cleanup(func() {
-		stop()
+	stop = sync.OnceFunc(func() {
+		c, bg := h.client(), context.Background()
+		if list, err := c.ListTerminals(bg, "", ""); err == nil {
+			for _, term := range list.Terminals {
+				_, _ = c.DeleteTerminal(bg, "id:"+term.Id, "", "", true)
+			}
+		}
+		cancel()
 		if err := <-served; err != nil {
 			t.Errorf("daemon: %v", err)
 		}
 	})
+	t.Cleanup(stop)
+	return stop
 }
 
 func (h testHome) client() *client.Client {
@@ -89,6 +117,9 @@ func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
 	m := New(context.Background(), Options{Client: h.client(), Style: style.New(false)})
 	m.tick = noTick
+	// run waits for each command: one waiting for the stream's next event
+	// would never end. follow_test.go follows the stream.
+	m.openStream = nil
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	run(m, m.Init())
 	return m
@@ -100,25 +131,34 @@ func noTick(time.Duration, func(time.Time) tea.Msg) tea.Cmd { return nil }
 // keys sends m each of names, a key as Bubble Tea names it, and runs what
 // follows from each.
 func keys(m *Model, names ...string) {
+	for _, k := range keyMsgs(names...) {
+		_, cmd := m.Update(k)
+		run(m, cmd)
+	}
+}
+
+// keyMsgs returns the keys names name; any other name types its runes.
+func keyMsgs(names ...string) []tea.KeyPressMsg {
 	byName := map[string]tea.KeyPressMsg{
 		"up": key(tea.KeyUp, 0), "down": key(tea.KeyDown, 0), "enter": key(tea.KeyEnter, 0), "esc": key(tea.KeyEscape, 0),
 		"C-q": key('q', tea.ModCtrl), `C-\`: key('\\', tea.ModCtrl), "alt+right": key(tea.KeyRight, tea.ModAlt),
+		"alt+down": key(tea.KeyDown, tea.ModAlt), "alt+up": key(tea.KeyUp, tea.ModAlt), "alt+left": key(tea.KeyLeft, tea.ModAlt),
 		"C-]": key(']', tea.ModCtrl), "backspace": key(tea.KeyBackspace, 0),
 		"left": key(tea.KeyLeft, 0), "right": key(tea.KeyRight, 0), "home": key(tea.KeyHome, 0), "end": key(tea.KeyEnd, 0),
 		"pgup": key(tea.KeyPgUp, 0), "pgdown": key(tea.KeyPgDown, 0),
 		"alt+shift+left": key(tea.KeyLeft, tea.ModAlt|tea.ModShift), "alt+shift+right": key(tea.KeyRight, tea.ModAlt|tea.ModShift),
 	}
+	var msgs []tea.KeyPressMsg
 	for _, name := range names {
 		if k, ok := byName[name]; ok {
-			_, cmd := m.Update(k)
-			run(m, cmd)
+			msgs = append(msgs, k)
 			continue
 		}
 		for _, r := range name { // typed
-			_, cmd := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-			run(m, cmd)
+			msgs = append(msgs, tea.KeyPressMsg{Code: r, Text: string(r)})
 		}
 	}
+	return msgs
 }
 
 // run runs cmd and what follows from it, as Bubble Tea would.

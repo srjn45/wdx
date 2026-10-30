@@ -10,20 +10,34 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/style"
 )
 
 // newModel returns tide's window at width × height, uncolored, with a clock
-// the test moves and no daemon, showing the project demo.
+// the test moves and no daemon, showing the project demo with the running
+// terminals shell, tests and server.
 func newModel(width, height int) (*Model, *time.Time) {
 	m := New(context.Background(), Options{Style: style.New(false)})
 	m.tick = noTick
 	m.projects.loaded = true
-	m.show("demo") // its command, listing the projects again, never runs
+	m.show("demo") // its commands, listing the projects again and opening the stream, never run
+	sent(m, "shell", "tests", "server")
 	now := time.UnixMilli(0)
 	m.now = func() time.Time { return now }
 	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return m, &now
+}
+
+// sent makes m get the project demo from its stream, with running
+// terminals named names, their ids term-<name>.
+func sent(m *Model, names ...string) {
+	terms := []api.Terminal{}
+	for _, name := range names {
+		terms = append(terms, api.Terminal{Id: "term-" + name, Name: name, State: api.TerminalStateRunning, Dir: "/work/demo"})
+	}
+	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Terminals: &terms}}})
 }
 
 func key(code rune, mod tea.KeyMod) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code, Mod: mod} }
@@ -56,7 +70,7 @@ func TestKeys(t *testing.T) {
 		want []string
 	}{
 		{m.agent, []string{"a"}},
-		{m.tabs[0], []string{"ctrl+c", "paste(5)"}},
+		{m.terminalInputs("term-shell"), []string{"ctrl+c", "paste(5)"}},
 	} {
 		if !slices.Equal(tc.got.inputs, tc.want) {
 			t.Errorf("%s got %v, want %v", tc.got.name, tc.got.inputs, tc.want)
@@ -126,7 +140,7 @@ func TestClicks(t *testing.T) {
 		t.Fatalf("the wheel: focus %s, agent got %v", m.layout.focus, agentPane.inputs)
 	}
 
-	// The tabs: " [shell] [tests] [server] " from column 1 of row 30.
+	// The tabs: " [● shell] [● tests] [● server] " from column 1 of row 30.
 	m.Update(clickAt(12, 30))
 	if m.layout.focus != terminal || m.tab != 1 {
 		t.Fatalf("a click on [tests]: focus %s, tab %d", m.layout.focus, m.tab)
@@ -168,8 +182,8 @@ func TestRender(t *testing.T) {
 │               │                      │
 │               │                      │
 │               │                      │
-├ [shell] [tests] [server] ────────[⤢]─┤
-│shell                                 │
+├ [● shell] [● tests] [● server] ──[⤢]─┤
+│● shell running                       │
 └──────────────────────────────────────┘
  demo · agent Alt+arrows move  C-] zoom`
 	if got := text(m); got != want {

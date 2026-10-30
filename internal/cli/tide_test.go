@@ -22,17 +22,19 @@ func TestTideRefused(t *testing.T) {
 func TestTide(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	for _, args := range [][]string{{"project", "create", "--name", "app", "--cancel"}, {"project", "close", "--name", "app", "--cancel"}} {
-		if _, exit := wdxJSON(t, home, args...); exit != api.ExitOK {
-			t.Fatalf("%v: exit %d", args, exit)
-		}
+	dir := newProjectDir(t, home, "app")
+	newTerminal(t, home, dir, "shell")
+	if _, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("close: exit %d", exit)
 	}
 	run := startInTerminal(t, home, home, 80, 24, []string{"tide"})
 	run.waitScreen("┌ [Open Project]")
 	run.waitScreen("no project open")
 	run.input("\x1b[B\x1b[B\x1b[B\r") // ↓ ↓ ↓ enter: reopen app
 	run.waitScreen("┌ [Project: app]")
-	run.waitScreen(" [shell] [tests] [server] ")
+	run.waitScreen(" [● shell] ") // relaunched with the project
+	newTerminal(t, home, dir, "build")
+	run.waitScreen(" [● build] [● shell] ")
 	run.input("\x1b[1;4C") // Alt+Shift+→: the next open project, app again, on the strip
 	run.waitScreen("▸ app ◂")
 	run.input("\x1b[1;3B") // Alt+↓: the terminal pane

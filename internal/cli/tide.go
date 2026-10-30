@@ -29,9 +29,10 @@ func newTideCmd() *cobra.Command {
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
-			"when closed. For now the agent and terminal panes hold placeholders. tide\n" +
-			"needs the daemon running, runs in the terminal it was started from and has\n" +
-			"no --json.",
+			"when closed. The terminal pane has a tab for each of the project's\n" +
+			"terminals, kept up to date as they change; for now a tab and the agent pane\n" +
+			"hold placeholders. tide needs the daemon running, runs in the terminal it\n" +
+			"was started from and has no --json.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),

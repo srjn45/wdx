@@ -49,16 +49,20 @@ type Model struct {
 	width, height int
 	layout        layout
 	projects      *projectList
-	stack         []screen       // the project pane's, the root first
-	shown         string         // the project shown, or "" before one is
-	previous      string         // the project shown before it, which the switcher selects first
-	agent         *placeholder   // the agent pane's
-	tabs          []*placeholder // the terminal pane's
-	tab           int            // the tab shown
-	menu          bool           // the menu is open
-	switcher      *switcherBox   // the project switcher, while it is open
-	strip         int            // how many times the project strip was shown
-	stripShown    bool           // the project strip is shown
+	stack         []screen                                                             // the project pane's, the root first
+	shown         string                                                               // the project shown, or "" before one is
+	previous      string                                                               // the project shown before it, which the switcher selects first
+	agent         *placeholder                                                         // the agent pane's
+	tab           int                                                                  // the terminal pane's tab shown, an index into terminals()
+	following     *following                                                           // the stream of the project shown
+	streams       int                                                                  // how many streams were opened, numbering them
+	openStream    func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
+	selectedTab   map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
+	inputs        map[string]*placeholder                                              // what each terminal got, by id, until termview shows them
+	menu          bool                                                                 // the menu is open
+	switcher      *switcherBox                                                         // the project switcher, while it is open
+	strip         int                                                                  // how many times the project strip was shown
+	stripShown    bool                                                                 // the project strip is shown
 	lastClick     click
 	sel           *selection                // text selected with the mouse, while dragged and until the next click or key
 	copy          func(text string) tea.Cmd // puts text on the clipboard; tests replace it
@@ -105,7 +109,9 @@ func New(ctx context.Context, opts Options) *Model {
 		projects:    projects,
 		stack:       []screen{&openProjectScreen{projects: projects}},
 		agent:       &placeholder{name: "agent"},
-		tabs:        []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
+		openStream:  opts.Client.ProjectEvents,
+		selectedTab: map[string]string{},
+		inputs:      map[string]*placeholder{},
 	}
 	// tide starts on the project pane, the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -158,6 +164,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case closeSwitcher:
 		m.switcher = nil
 		m.log.Debug("switcher closed")
+	case streamOpened:
+		return m, m.streamOpened(msg)
+	case projectEvent:
+		return m, m.projectEvent(msg)
+	case reopenStream:
+		if _, ok := m.current(msg.gen); ok {
+			return m, m.open()
+		}
 	case hideStrip:
 		if msg.shown == m.strip {
 			m.stripShown = false
@@ -186,7 +200,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) pane(p pane) content {
 	switch p {
 	case terminal:
-		return m.tabs[m.tab]
+		return terminalPane{m}
 	case agent:
 		return m.agent
 	}
@@ -206,10 +220,15 @@ func (m *Model) show(name string) tea.Cmd {
 	if name != m.shown && m.shown != "" {
 		m.previous = m.shown
 	}
+	var follow tea.Cmd
+	if name != m.shown || m.following == nil {
+		m.tab = 0
+		follow = m.follow(name)
+	}
 	m.shown, m.switcher = name, nil
 	m.stack = []screen{&projectScreen{name: name}}
 	m.log.Info("project shown", "name", name)
-	return m.listProjects()
+	return tea.Batch(m.listProjects(), follow)
 }
 
 // push puts s on top of the project pane's stack.
@@ -293,6 +312,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			return m.listProjects()
 		case "q":
 			m.log.Info("tide quit")
+			m.unfollow() // the daemon ends the stream, and logs it
 			return tea.Quit
 		}
 		return nil
@@ -364,12 +384,15 @@ func (p projectPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 // switchTab shows the terminal pane's tab to the left or right of the one
 // shown, going round at the ends.
 func (m *Model) switchTab(d direction) {
+	n := len(m.terminals())
+	if n == 0 {
+		return
+	}
 	step := 1
 	if d == left {
 		step = -1
 	}
-	m.tab = (m.tab + step + len(m.tabs)) % len(m.tabs)
-	m.log.Debug("tab switched", "tab", m.tabs[m.tab].name)
+	m.selectTab((m.tab + step + n) % n)
 }
 
 // click focuses the pane clicked; on a frame's title it may also zoom or
@@ -424,7 +447,7 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 			m.changed("zoom button")
 			return
 		case l.tab >= 0:
-			m.tab = l.tab
+			m.selectTab(l.tab)
 		}
 	}
 	if double {
