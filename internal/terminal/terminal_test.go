@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -261,6 +264,57 @@ func TestCreateFails(t *testing.T) {
 	if err != nil || started.State != StateRunning || started.Error != "" {
 		t.Fatalf("want it running once its dir exists, got %+v, %v", started, err)
 	}
+}
+
+// TestCreateHolderDoesNotAnswer starts a holder that reports its shell
+// started and never listens: the terminal fails, and the holder is killed.
+func TestCreateHolderDoesNotAnswer(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	pidFile := filepath.Join(f.home, "holder.pid")
+	mute := filepath.Join(f.home, "mute")
+	script := fmt.Sprintf("#!/bin/sh\necho $$ >%s\necho \"{\\\"pid\\\": $$}\" >&3\nexec sleep 60\n", pidFile)
+	if err := os.WriteFile(mute, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.opts.Executable = mute
+	s := f.supervisor(t)
+
+	_, err := s.Create(context.Background(), f.project(t, "warden"), "", dir(t, ""))
+	e, ok := errors.AsType[*StartError](err)
+	if !ok || e.Terminal.State != StateFailed || !strings.Contains(e.Terminal.Error, "did not answer") {
+		t.Fatalf("want a failed terminal, got %v", err)
+	}
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitGone(t, pid)
+}
+
+// TestStopKillsHolderThatDoesNotReport stops a terminal whose holder is
+// frozen: once the grace and the wait for its report have passed, the
+// holder and the shell are killed from here.
+func TestStopKillsHolderThatDoesNotReport(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.opts.StopGrace = 100 * time.Millisecond
+	s := f.supervisor(t)
+	term := create(t, s, f.project(t, "warden"), "", dir(t, ""))
+	if err := syscall.Kill(term.HolderPID, syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := s.Remove(context.Background(), term.ID, true)
+	if err != nil || removed.State != StateStopped {
+		t.Fatalf("want it stopped and removed, got %+v, %v", removed, err)
+	}
+	waitGone(t, term.HolderPID)
+	waitGone(t, term.PID)
 }
 
 func TestRemove(t *testing.T) {
