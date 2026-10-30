@@ -465,3 +465,46 @@ func TestLookupAccount(t *testing.T) {
 		t.Fatalf("want /bin/sh without a shell in the database, got %q", got)
 	}
 }
+
+// TestScreenKeptOnExit: what the shell left on the main screen is in
+// history by the time the exit is heard, so a client reading history then
+// shows it; the alternate screen never goes there.
+func TestScreenKeptOnExit(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, id, body string
+		want           []string
+	}{
+		{"main screen", "term-00000010", `printf 'one\ntwo\n\n\n'; exit 3`, []string{"one", "two"}},
+		{"alternate screen", "term-00000011", `printf 'main\n\033[?1049halt'; exit 0`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			id := tc.id
+			o := f.options(id, f.script(t, tc.body))
+			o.HistoryLines = 1000
+			s, err := Start(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { killHolder(s) })
+			c := f.dial(t, id)
+			waitExit(t, c)
+			got, err := TailHistory(HistoryDir(f.home, id), 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got.Lines, tc.want) {
+				t.Fatalf("history when the exit is heard: %q, want %q", got.Lines, tc.want)
+			}
+			if err := c.Release(); err != nil {
+				t.Fatal(err)
+			}
+			waitGone(t, s.HolderPID)
+			if again, err := TailHistory(HistoryDir(f.home, id), 10); err != nil || !slices.Equal(again.Lines, tc.want) {
+				t.Fatalf("history after the holder quit: %q, %v, want it unchanged", again.Lines, err)
+			}
+		})
+	}
+}

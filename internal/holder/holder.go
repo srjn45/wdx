@@ -118,6 +118,9 @@ type holder struct {
 	nextLine   atomic.Int64
 	historyDir string
 	historyErr bool // a failed write is logged once
+	// historyDone is set once the screen the shell left is written: later
+	// output, from a child the shell left behind, does not go to history.
+	historyDone bool
 
 	// The vt's answers to programs' queries, for the PTY while no client
 	// is attached; full drops them, logged once.
@@ -311,9 +314,6 @@ func (h *holder) serve(ctx context.Context) error {
 	}
 	h.spool.close()
 	h.screenMu.Lock()
-	// What the shell left on the screen goes to history, as a terminal
-	// keeps it scrolled back when the shell is started again.
-	h.writeHistory(h.screen.Lines()...)
 	h.screen.Close()
 	if h.history != nil {
 		h.history.close()
@@ -434,7 +434,7 @@ func (l *lag) fed(log *slog.Logger, behind int64, n int, took time.Duration) {
 // writeHistory appends lines to history, when it is on; h.screenMu is
 // held.
 func (h *holder) writeHistory(lines ...string) {
-	if h.history == nil || len(lines) == 0 {
+	if h.history == nil || h.historyDone || len(lines) == 0 {
 		return
 	}
 	first := h.history.starts[0]
@@ -482,16 +482,35 @@ func (h *holder) writeAnswers() {
 	}
 }
 
-// wait reaps the shell and tells the daemon how it ended.
+// wait reaps the shell and tells the daemon how it ended, once what the
+// shell left on the screen is in history.
 func (h *holder) wait() {
 	_ = h.cmd.Wait() // an exit status other than 0 is an error; ProcessState has it
 	exit := &Exit{Code: exitCode(h.cmd.ProcessState), At: time.Now()}
 	h.log.Info("shell exited", "exit_code", exit.Code)
+	h.keepScreen()
 	h.mu.Lock()
 	h.exit = exit
 	h.mu.Unlock()
 	close(h.ended)
 	h.sendExit()
+}
+
+// keepScreen writes what the shell left on the main screen to history, as
+// a terminal keeps it scrolled back, once the vt has read the last output:
+// whoever hears of the exit finds it there, and a shell started again
+// continues below it.
+func (h *holder) keepScreen() {
+	select {
+	case <-h.followed:
+	case <-time.After(exitDrain):
+		// A child the shell left behind keeps the PTY open.
+		h.log.Info("screen kept before the output ended")
+	}
+	h.screenMu.Lock()
+	defer h.screenMu.Unlock()
+	h.writeHistory(h.screen.Lines()...)
+	h.historyDone = true
 }
 
 // exitCode is the shell's exit status, or 128 + the signal that killed it.
