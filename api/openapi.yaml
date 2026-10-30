@@ -156,6 +156,34 @@ paths:
               schema: { $ref: "#/components/schemas/ProjectResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/projects/{project}/events:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: streamProject
+      summary: Follow a project, sent whole every time it changes
+      description: |
+        Server-sent events (text/event-stream) for as long as the client
+        stays. The first event is the project as getProject returns it;
+        after every change under it (the project opened or closed, a
+        terminal created, changing state or removed, whoever made it) the
+        project is sent whole again, never a delta, so a client replaces
+        what it holds. Changes close together may be sent as one.
+
+        Each event is "event: project" with a ProjectEnvelope as its data.
+        When the project is removed, "event: removed" with a ProjectRemoved
+        ends the stream. The project is followed by its id, so a rename
+        keeps it. The stream also ends when the daemon stops.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The stream of the project's events.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/projects/{project}/worktrees:
     parameters:
       - $ref: "#/components/parameters/ProjectRef"
@@ -445,6 +473,13 @@ components:
       required: [project]
       properties:
         project: { $ref: "#/components/schemas/Project" }
+
+    ProjectRemoved:
+      type: object
+      description: The data of streamProject's removed event.
+      required: [project_id]
+      properties:
+        project_id: { type: string }
 
     ProjectResult:
       type: object

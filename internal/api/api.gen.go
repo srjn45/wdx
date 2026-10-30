@@ -435,6 +435,11 @@ type ProjectList struct {
 	Projects []ProjectSummary `json:"projects"`
 }
 
+// ProjectRemoved The data of streamProject's removed event.
+type ProjectRemoved struct {
+	ProjectId string `json:"project_id"`
+}
+
 // ProjectResult defines model for ProjectResult.
 type ProjectResult struct {
 	// Conflict An error as Problem Details (RFC 9457).
@@ -1005,6 +1010,25 @@ type ClientInterface interface {
 	// Corresponds with PATCH /v1/projects/{project} (the `UpdateProject` operationId).
 	UpdateProject(ctx context.Context, project ProjectRef, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// StreamProject Follow a project, sent whole every time it changes
+	//
+	// Server-sent events (text/event-stream) for as long as the client
+	// stays. The first event is the project as getProject returns it;
+	// after every change under it (the project opened or closed, a
+	// terminal created, changing state or removed, whoever made it) the
+	// project is sent whole again, never a delta, so a client replaces
+	// what it holds. Changes close together may be sent as one.
+	//
+	// Each event is "event: project" with a ProjectEnvelope as its data.
+	// When the project is removed, "event: removed" with a ProjectRemoved
+	// ends the stream. The project is followed by its id, so a rename
+	// keeps it. The stream also ends when the daemon stops.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
+	StreamProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	//
 	// Relaunches the terminals closing the project stopped, as opening it
@@ -1304,6 +1328,35 @@ func (c *Client) UpdateProjectWithBody(ctx context.Context, project ProjectRef, 
 // Corresponds with PATCH /v1/projects/{project} (the `UpdateProject` operationId).
 func (c *Client) UpdateProject(ctx context.Context, project ProjectRef, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateProjectRequest(c.Server, project, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StreamProject Follow a project, sent whole every time it changes
+//
+// Server-sent events (text/event-stream) for as long as the client
+// stays. The first event is the project as getProject returns it;
+// after every change under it (the project opened or closed, a
+// terminal created, changing state or removed, whoever made it) the
+// project is sent whole again, never a delta, so a client replaces
+// what it holds. Changes close together may be sent as one.
+//
+// Each event is "event: project" with a ProjectEnvelope as its data.
+// When the project is removed, "event: removed" with a ProjectRemoved
+// ends the stream. The project is followed by its id, so a rename
+// keeps it. The stream also ends when the daemon stops.
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
+func (c *Client) StreamProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamProjectRequest(c.Server, project)
 	if err != nil {
 		return nil, err
 	}
@@ -1769,6 +1822,40 @@ func NewUpdateProjectRequestWithBody(server string, project ProjectRef, contentT
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewStreamProjectRequest constructs an http.Request for the StreamProject method
+func NewStreamProjectRequest(server string, project ProjectRef) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/projects/%s/events", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2454,6 +2541,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /v1/projects/{project} (the `UpdateProject` operationId).
 	UpdateProjectWithResponse(ctx context.Context, project ProjectRef, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProjectResponse, error)
 
+	// StreamProjectWithResponse Follow a project, sent whole every time it changes
+	//
+	// Server-sent events (text/event-stream) for as long as the client
+	// stays. The first event is the project as getProject returns it;
+	// after every change under it (the project opened or closed, a
+	// terminal created, changing state or removed, whoever made it) the
+	// project is sent whole again, never a delta, so a client replaces
+	// what it holds. Changes close together may be sent as one.
+	//
+	// Each event is "event: project" with a ProjectEnvelope as its data.
+	// When the project is removed, "event: removed" with a ProjectRemoved
+	// ends the stream. The project is followed by its id, so a rename
+	// keeps it. The stream also ends when the daemon stops.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
+	StreamProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error)
+
 	// RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 	//
 	// Relaunches the terminals closing the project stopped, as opening it
@@ -2864,6 +2972,47 @@ func (r UpdateProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StreamProjectResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StreamProjectResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StreamProjectResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StreamProjectResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StreamProjectResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StreamProjectResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3432,6 +3581,33 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 	return ParseUpdateProjectResponse(rsp)
 }
 
+// StreamProjectWithResponse Follow a project, sent whole every time it changes
+//
+// Server-sent events (text/event-stream) for as long as the client
+// stays. The first event is the project as getProject returns it;
+// after every change under it (the project opened or closed, a
+// terminal created, changing state or removed, whoever made it) the
+// project is sent whole again, never a delta, so a client replaces
+// what it holds. Changes close together may be sent as one.
+//
+// Each event is "event: project" with a ProjectEnvelope as its data.
+// When the project is removed, "event: removed" with a ProjectRemoved
+// ends the stream. The project is followed by its id, so a rename
+// keeps it. The stream also ends when the daemon stops.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
+func (c *ClientWithResponses) StreamProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error) {
+	rsp, err := c.StreamProject(ctx, project, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStreamProjectResponse(rsp)
+}
+
 // RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 //
 // Relaunches the terminals closing the project stopped, as opening it
@@ -3811,6 +3987,32 @@ func ParseUpdateProjectResponse(rsp *http.Response) (*UpdateProjectResponse, err
 	return response, nil
 }
 
+// ParseStreamProjectResponse parses an HTTP response from a StreamProjectWithResponse call
+func ParseStreamProjectResponse(rsp *http.Response) (*StreamProjectResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StreamProjectResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRecloneProjectResponse parses an HTTP response from a RecloneProjectWithResponse call
 func ParseRecloneProjectResponse(rsp *http.Response) (*RecloneProjectResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4095,6 +4297,9 @@ type ServerInterface interface {
 	// UpdateProject Close a project, or open it again from one of its checkouts
 	// (PATCH /v1/projects/{project})
 	UpdateProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	// StreamProject Follow a project, sent whole every time it changes
+	// (GET /v1/projects/{project}/events)
+	StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
@@ -4276,6 +4481,32 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProject(w, r, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamProject operation middleware
+func (siw *ServerInterfaceWrapper) StreamProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamProject(w, r, project)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4784,6 +5015,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/projects/{project}", wrapper.DeleteProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/projects/{project}", wrapper.UpdateProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}/events", wrapper.StreamProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees", wrapper.RecloneProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals", wrapper.ListTerminals)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals", wrapper.CreateTerminal)
@@ -5035,6 +5267,74 @@ type UpdateProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdateProjectdefaultApplicationProblemPlusJSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamProjectRequestObject struct {
+	Project ProjectRef `json:"project"`
+}
+
+type StreamProjectResponseObject interface {
+	VisitStreamProjectResponse(w http.ResponseWriter) error
+}
+
+type StreamProject200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response StreamProject200TexteventStreamResponse) VisitStreamProjectResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type StreamProjectdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StreamProjectdefaultApplicationProblemPlusJSONResponse) VisitStreamProjectResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5381,6 +5681,9 @@ type StrictServerInterface interface {
 	// UpdateProject Close a project, or open it again from one of its checkouts
 	// (PATCH /v1/projects/{project})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+	// StreamProject Follow a project, sent whole every time it changes
+	// (GET /v1/projects/{project}/events)
+	StreamProject(ctx context.Context, request StreamProjectRequestObject) (StreamProjectResponseObject, error)
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(ctx context.Context, request RecloneProjectRequestObject) (RecloneProjectResponseObject, error)
@@ -5613,6 +5916,32 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// StreamProject operation middleware
+func (sh *strictHandler) StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef) {
+	var request StreamProjectRequestObject
+
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamProject(ctx, request.(StreamProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamProjectResponseObject); ok {
+		if err := validResponse.VisitStreamProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RecloneProject operation middleware
 func (sh *strictHandler) RecloneProject(w http.ResponseWriter, r *http.Request, project ProjectRef) {
 	var request RecloneProjectRequestObject
@@ -5833,88 +6162,94 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

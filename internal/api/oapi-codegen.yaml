@@ -10,3 +10,7 @@ compatibility:
   always-prefix-enum-values: true
   # Keeps operationIds in the embedded spec as written: they label metrics.
   preserve-original-operation-id-casing-in-embedded-spec: true
+output-options:
+  # Keeps the schemas only the descriptions name, as the data of
+  # streamProject's events.
+  skip-prune: true

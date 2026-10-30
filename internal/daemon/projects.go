@@ -46,9 +46,19 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 	if err != nil {
 		return nil, err
 	}
-	status, err := s.projects.DiskStatus(ctx, p)
+	v, err := s.detail(ctx, p)
 	if err != nil {
 		return nil, err
+	}
+	return api.GetProject200JSONResponse{Project: v}, nil
+}
+
+// detail is p as getProject returns it: which of its checkouts are on disk,
+// and its terminals in every state.
+func (s *server) detail(ctx context.Context, p project.Project) (api.Project, error) {
+	status, err := s.projects.DiskStatus(ctx, p)
+	if err != nil {
+		return api.Project{}, err
 	}
 	v := projectView(p)
 	v.Orphaned = &status.Orphaned
@@ -58,11 +68,11 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 	}
 	terminals, err := s.terminals.Store().List(ctx, p.ID)
 	if err != nil {
-		return nil, err
+		return api.Project{}, err
 	}
 	views := terminalViews(terminals)
 	v.Terminals = &views
-	return api.GetProject200JSONResponse{Project: v}, nil
+	return v, nil
 }
 
 func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequestObject) (api.UpdateProjectResponseObject, error) {

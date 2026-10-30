@@ -40,7 +40,8 @@ func (d *Daemon) handler() http.Handler {
 		ErrorHandlerWithOpts:  invalidRequest,
 	})
 
-	strict := api.NewStrictHandlerWithOptions(&server{projects: d.projects, terminals: d.terminals, self: d.Info()}, nil, api.StrictHTTPServerOptions{
+	s := &server{projects: d.projects, terminals: d.terminals, self: d.Info(), notices: d.notices, stopping: d.stopping}
+	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
 	})
@@ -79,6 +80,7 @@ func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 			ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 			defer cancel()
 			defer context.AfterFunc(d.abort, cancel)()
+			defer d.notices.notify() // the streams send what changed
 			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
@@ -129,7 +131,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 
 		w.Header().Set(api.DebugIDHeader, id)
 		w.Header().Set(api.VersionHeader, identity.Version)
-		rec := &recorder{ResponseWriter: w}
+		// A stream's body is not kept: it never ends.
+		rec := &recorder{ResponseWriter: w, stream: operation == streamOperation}
 		defer func() {
 			var stack []byte
 			if v := recover(); v != nil {
@@ -155,8 +158,11 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				attrs = append(attrs, "stack", string(stack))
 			}
 			response := jsonValue(rec.body.Bytes())
-			if operation == "getTerminalHistory" && rec.status == http.StatusOK {
+			switch {
+			case operation == "getTerminalHistory" && rec.status == http.StatusOK:
 				response = historyLogged(rec.body.Bytes())
+			case rec.stream && rec.status == http.StatusOK:
+				response = "event stream"
 			}
 			log.Log(context.Background(), level, "request returned", append(attrs, "response", response)...)
 		}()
@@ -183,12 +189,17 @@ func jsonValue(b []byte) any {
 	return string(b)
 }
 
-// recorder keeps the status and body written, for the log.
+// recorder keeps the status and body written, for the log; of a stream,
+// only the status, and a problem returned before it started.
 type recorder struct {
 	http.ResponseWriter
 	status int
 	body   bytes.Buffer
+	stream bool
 }
+
+// Unwrap lets http.ResponseController flush a stream's events.
+func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 // code is the error code of the problem written.
 func (r *recorder) code() api.ErrorCode {
@@ -210,6 +221,8 @@ func (r *recorder) Write(b []byte) (int, error) {
 	if r.status == 0 {
 		r.status = http.StatusOK
 	}
-	r.body.Write(b)
+	if !r.stream || r.status != http.StatusOK {
+		r.body.Write(b)
+	}
 	return r.ResponseWriter.Write(b)
 }

@@ -79,13 +79,18 @@ func (e *InvalidNameError) Error() string {
 
 // Store persists terminals.
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	changed func() // called after every change; see OnChange
 }
 
 // NewStore returns a Store backed by db.
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{db: db, changed: func() {}}
 }
+
+// OnChange makes the store call fn after every change it writes, before it
+// is used: a terminal created, changing state or removed.
+func (s *Store) OnChange(fn func()) { s.changed = fn }
 
 // codenameTries is how many generated names are tried before one gets a
 // random suffix: there are about ten thousand.
@@ -117,6 +122,7 @@ func (s *Store) insert(ctx context.Context, projectID, name, dir, shell string) 
 		return Terminal{}, err
 	}
 	logging.FromContext(ctx).Info("terminal created", "terminal_id", id, "project_id", projectID, "name", name, "dir", dir, "shell", shell)
+	s.changed()
 	return s.Get(ctx, id)
 }
 
@@ -265,6 +271,7 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 	}
 	if n > 0 {
 		logging.FromContext(ctx).Info("terminal state changed", "terminal_id", id, "state", to)
+		s.changed()
 	}
 	return n > 0, err
 }
@@ -275,6 +282,7 @@ func (s *Store) remove(ctx context.Context, id string) error {
 		return err
 	}
 	logging.FromContext(ctx).Info("terminal removed", "terminal_id", id)
+	s.changed()
 	return nil
 }
 

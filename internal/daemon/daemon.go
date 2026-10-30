@@ -70,7 +70,9 @@ type Daemon struct {
 	db        *sql.DB
 	projects  *project.Store
 	terminals *terminal.Supervisor
-	changes   sync.Mutex // one request changing state at a time
+	changes   sync.Mutex    // one request changing state at a time
+	notices   *notices      // tells the project streams about changes
+	stopping  chan struct{} // closed when the daemon starts stopping
 	// abort is cancelled when the changes in flight at shutdown have run
 	// out of time.
 	abort        context.Context
@@ -101,7 +103,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		opts.Socket = identity.SocketPath(opts.Home)
 	}
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
-	d := &Daemon{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now()}
+	d := &Daemon{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), notices: newNotices(), stopping: make(chan struct{})}
 	d.abort, d.abortChanges = context.WithCancel(context.Background())
 	defer func() {
 		if err != nil {
@@ -141,7 +143,11 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		}
 	}
 	logged := logging.NewContext(ctx, d.log)
-	d.terminals = terminal.NewSupervisor(logged, terminal.NewStore(d.db), terminal.Options{
+	terminals := terminal.NewStore(d.db)
+	// A terminal changes state outside requests too, as when its shell
+	// exits.
+	terminals.OnChange(d.notices.notify)
+	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:   opts.Executable,
 		Home:         opts.Home,
 		Env:          opts.ShellEnv,
@@ -251,6 +257,8 @@ func lock(path string) (*os.File, error) {
 // finish, closes the database and gives up the socket and the lock.
 func (d *Daemon) Serve(ctx context.Context) error {
 	srv := &http.Server{Handler: d.handler(), ReadHeaderTimeout: 10 * time.Second}
+	// Streams never end by themselves, and Shutdown waits for them.
+	srv.RegisterOnShutdown(func() { close(d.stopping) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(d.listener) }()
 

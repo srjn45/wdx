@@ -15,6 +15,8 @@ type server struct {
 	projects  *project.Store
 	terminals *terminal.Supervisor
 	self      api.Daemon
+	notices   *notices        // tells the streams about changes
+	stopping  <-chan struct{} // closed when the daemon starts stopping: the streams end
 }
 
 var _ api.StrictServerInterface = (*server)(nil)
