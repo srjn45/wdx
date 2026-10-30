@@ -172,4 +172,5 @@ The log must tell the story of any run: what was asked, every step taken and why
 - A failure explains itself: every test home calls `logtest.OnFailure`, so a failing test shows what the daemon, the CLI and the holders logged, and a wait that gives up says what it last saw, not only what it waited for.
 - Time a test would wait out is injectable: a timeout, a grace period or a timer is an option, a field of `cli.Env.Timeouts` or a function the test replaces (as tide's `tick`), so tests shorten it rather than sleep through it.
 - `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes.
+- A test seen failing now and then gets a row in `docs/FLAKES.md`, even when it is fixed at once or not understood yet. Read that file first when one fails, and never answer a flake by retrying the test: many have been bugs in wdx.
 - Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.
