@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -42,6 +43,10 @@ type Options struct {
 	Project string // the project's name, for WDX_PROJECT
 	Dir     string
 	Shell   string
+	// Command, when given, is run through the shell in place of a shell to
+	// type in: the shell starts only to read the user's profile and rc, and
+	// the command's end is the terminal's.
+	Command []string
 	// HistoryLines bounds the terminal's history; 0 keeps none.
 	HistoryLines int64
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
@@ -153,9 +158,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(o.Shell)
-	// A leading dash makes it a login shell, which reads the user's profile.
-	cmd.Args = []string{"-" + filepath.Base(o.Shell)}
+	cmd := shellCommand(o.Shell, o.Command)
 	cmd.Dir = o.Dir
 	cmd.Env = append([]string{
 		"HOME=" + account.Home,
@@ -196,8 +199,26 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		return nil, fmt.Errorf("start %s in %s: %w", o.Shell, o.Dir, err)
 	}
 	h.master = master
-	log.Info("shell started", "pid", cmd.Process.Pid, "shell", o.Shell, "dir", o.Dir, "socket", o.Socket)
+	log.Info("shell started", "pid", cmd.Process.Pid, "shell", o.Shell, "command", o.Command, "dir", o.Dir, "socket", o.Socket)
 	return h, nil
+}
+
+// shellCommand is what a holder starts: the login shell, or the command
+// through it. Interactive too, since many keep their PATH in the rc file
+// only a shell asked to be interactive reads. The command is one string of
+// quoted words, which every shell parses, fish too, as it does not "$@".
+func shellCommand(shell string, command []string) *exec.Cmd {
+	if len(command) > 0 {
+		words := make([]string, len(command))
+		for i, word := range command {
+			words[i] = "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
+		}
+		return exec.Command(shell, "-l", "-i", "-c", "exec "+strings.Join(words, " "))
+	}
+	cmd := exec.Command(shell)
+	// A leading dash makes it a login shell, which reads the user's profile.
+	cmd.Args = []string{"-" + filepath.Base(shell)}
+	return cmd
 }
 
 // HistoryDir is where the history of terminal id is kept under home.

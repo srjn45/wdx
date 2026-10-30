@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
@@ -116,8 +117,9 @@ func testConfig(home string) config.Config {
 }
 
 // testShell is the shell of every test terminal: it stays alive until it
-// is hung up on.
-const testShell = "#!/bin/sh\nexec sleep 60\n"
+// is hung up on. Given a command, as an agent's holder gives it, it runs it
+// as a login shell does, skipping the -l and -i.
+const testShell = "#!/bin/sh\nif [ \"$3\" = -c ]; then exec /bin/sh -c \"$4\"; fi\nexec sleep 60\n"
 
 // newHome returns a home with a daemon serving it in this process until the
 // test ends. Its terminals run testShell in holders of the wdx binary, and
@@ -142,6 +144,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 		Home: home, Log: log,
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
+		ACA:                  &acatest.ACA{Launches: launchesPath(home)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -159,11 +162,22 @@ func newHomeWithShell(t *testing.T, script string) string {
 	return home
 }
 
-// removeTerminals removes every terminal in home, stopping the live ones,
-// so no holder outlives the test.
+// launchesPath is the file where the test agents of home record the session
+// of each start.
+func launchesPath(home string) string {
+	return filepath.Join(home, "test-launches")
+}
+
+// removeTerminals removes every terminal and agent in home, stopping the live
+// ones, so no holder outlives the test.
 func removeTerminals(home string) {
 	ctx := context.Background()
 	c := client.New(client.Options{Socket: identity.SocketPath(home), DebugID: logging.NewDebugID()})
+	if agents, err := c.ListAgents(ctx, "", ""); err == nil {
+		for _, a := range agents.Agents {
+			_, _ = c.DeleteAgent(ctx, "id:"+a.Id, "", "", true) // as for terminals below
+		}
+	}
 	list, err := c.ListTerminals(ctx, "", "")
 	if err != nil {
 		return
@@ -334,6 +348,7 @@ type jsonProject struct {
 		Present *bool  `json:"present"`
 	} `json:"worktrees"`
 	Terminals *[]api.Terminal `json:"terminals"`
+	Agents    *[]api.Agent    `json:"agents"`
 }
 
 // jsonOutput holds every field a command prints with --json: a result, or a
@@ -366,9 +381,14 @@ type jsonOutput struct {
 
 	Terminal  *api.Terminal        `json:"terminal"`
 	Terminals []api.Terminal       `json:"terminals"`
+	Agent     *api.Agent           `json:"agent"`
+	Agents    []api.Agent          `json:"agents"`
 	History   *api.TerminalHistory `json:"history"`
 	Started   []api.Terminal       `json:"started"`
 	Stopped   []api.Terminal       `json:"stopped"`
+
+	StartedAgents []api.Agent `json:"started_agents"`
+	StoppedAgents []api.Agent `json:"stopped_agents"`
 
 	CLI     *api.Version `json:"cli"`
 	Daemon  *api.Daemon  `json:"daemon"`

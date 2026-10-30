@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,7 +34,7 @@ const minCols, minRows = 10, 3
 
 func newTerminalAttachCmd() *cobra.Command {
 	var ref terminalRef
-	var prefixKey string
+	var prefix string
 	cmd := &cobra.Command{
 		Use:   "attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--prefix-key <key>]",
 		Short: "Show a terminal full-window and type into it, as tmux does",
@@ -60,17 +61,72 @@ func newTerminalAttachCmd() *cobra.Command {
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			prefix, err := parsePrefixKey(prefixKey)
+			key, err := parsePrefixKey(prefix)
 			if err != nil {
 				return &usageError{err}
 			}
-			return attach(cmd, ref, prefix)
+			return attach(cmd, func(ctx context.Context) (attachTarget, error) {
+				path, project, dir, err := ref.resolve(cmd)
+				if err != nil {
+					return attachTarget{}, err
+				}
+				got, err := clientOf(cmd).GetTerminal(ctx, path, project, dir)
+				if err != nil {
+					return attachTarget{}, ref.notFoundHint(err)
+				}
+				return terminalTarget(cmd, got.Terminal), nil
+			}, key)
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().StringVar(&prefixKey, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter> but i and m, ctrl-\\ or ctrl-]")
-	cmd.RegisterFlagCompletionFunc("prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
+	addPrefixKeyFlag(cmd, &prefix)
 	return cmd
+}
+
+func addPrefixKeyFlag(cmd *cobra.Command, prefix *string) {
+	cmd.Flags().StringVar(prefix, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter> but i and m, ctrl-\\ or ctrl-]")
+	cmd.RegisterFlagCompletionFunc("prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
+}
+
+// attachTarget is what attach shows: a terminal, or an agent. Both are a
+// holder to dial; they differ in what the API calls them.
+type attachTarget struct {
+	noun          string // "terminal" or "agent"
+	holderID      string // the terminal row's
+	name, project string
+	state         string
+	running       bool
+	exitCode      *int
+	value         any // the api.Terminal or api.Agent, as results and problems show it
+	// reread returns the target as it is now.
+	reread func(ctx context.Context) (attachTarget, error)
+	// exited is the target with an exit the daemon has not recorded yet.
+	exited func(code int) attachTarget
+	// history reads count lines from line from on.
+	history func(ctx context.Context, from int64, count int) (api.TerminalHistoryEnvelope, error)
+}
+
+func terminalTarget(cmd *cobra.Command, t api.Terminal) attachTarget {
+	c := clientOf(cmd)
+	ref := "id:" + t.Id
+	return attachTarget{
+		noun: "terminal", holderID: t.Id, name: t.Name, project: t.ProjectName,
+		state: string(t.State), running: t.State == api.TerminalStateRunning, exitCode: t.ExitCode, value: t,
+		reread: func(ctx context.Context) (attachTarget, error) {
+			got, err := c.GetTerminal(ctx, ref, "", "")
+			if err != nil {
+				return attachTarget{}, err
+			}
+			return terminalTarget(cmd, got.Terminal), nil
+		},
+		exited: func(code int) attachTarget {
+			t.ExitCode = &code
+			return terminalTarget(cmd, t)
+		},
+		history: func(ctx context.Context, from int64, count int) (api.TerminalHistoryEnvelope, error) {
+			return c.GetTerminalHistory(ctx, ref, "", "", &from, count)
+		},
+	}
 }
 
 // prefixKey is the key before attach's own keys.
@@ -91,32 +147,32 @@ func parsePrefixKey(key string) (prefixKey, error) {
 	return prefixKey{}, fmt.Errorf("--prefix-key %q is not ctrl-<letter>, ctrl-\\ or ctrl-]", key)
 }
 
-// terminalNotRunningError is a terminal whose shell is not running.
-type terminalNotRunningError struct {
-	terminal api.Terminal
+// notRunningError is a target whose shell or AI coding agent is not running.
+type notRunningError struct {
+	target attachTarget
 }
 
-func (e *terminalNotRunningError) Error() string {
-	return fmt.Sprintf("terminal %s is %s, not running", e.terminal.Name, e.terminal.State)
+func (e *notRunningError) Error() string {
+	return fmt.Sprintf("%s %s is %s, not running", e.target.noun, e.target.name, e.target.state)
 }
 
-// attachUnsupportedError is a terminal whose holder is too old to attach to.
+// attachUnsupportedError is a target whose holder is too old to attach to.
 type attachUnsupportedError struct {
-	terminal api.Terminal
+	target attachTarget
 }
 
 func (e *attachUnsupportedError) Error() string {
-	return fmt.Sprintf("terminal %s was started by a wdx too old to attach to", e.terminal.Name)
+	return fmt.Sprintf("%s %s was started by a wdx too old to attach to", e.target.noun, e.target.name)
 }
 
 // connectionLostError is an attach whose connection ended before the shell.
 type connectionLostError struct {
-	terminal api.Terminal
-	err      error
+	target attachTarget
+	err    error
 }
 
 func (e *connectionLostError) Error() string {
-	return fmt.Sprintf("the connection to terminal %s was lost: %v", e.terminal.Name, e.err)
+	return fmt.Sprintf("the connection to %s %s was lost: %v", e.target.noun, e.target.name, e.err)
 }
 
 func (e *connectionLostError) Unwrap() error { return e.err }
@@ -124,57 +180,77 @@ func (e *connectionLostError) Unwrap() error { return e.err }
 // attachProblem returns the problem of an attach error, if err is one.
 func attachProblem(err error) (api.Problem, bool) {
 	var p api.Problem
-	var t api.Terminal
+	var target attachTarget
 	var hint string
-	if e, ok := errors.AsType[*terminalNotRunningError](err); ok {
-		p, t = api.NewProblem(api.ErrorCodeTerminalNotRunning, err.Error()), e.terminal
-		hint = "start its shell with " + identity.Name + " terminal start, or open its project"
+	if e, ok := errors.AsType[*notRunningError](err); ok {
+		target = e.target
+		if target.noun == "agent" {
+			p = api.NewProblem(api.ErrorCodeAgentNotRunning, err.Error())
+			hint = "start it with " + identity.Name + " agent start, or open its project"
+		} else {
+			p = api.NewProblem(api.ErrorCodeTerminalNotRunning, err.Error())
+			hint = "start its shell with " + identity.Name + " terminal start, or open its project"
+		}
 	} else if e, ok := errors.AsType[*attachUnsupportedError](err); ok {
-		p, t = api.NewProblem(api.ErrorCodeAttachUnsupported, err.Error()), e.terminal
+		target = e.target
+		p = api.NewProblem(api.ErrorCodeAttachUnsupported, err.Error())
 		hint = "close and open its project, or remove the terminal and create it again, to restart its shell"
 	} else if e, ok := errors.AsType[*connectionLostError](err); ok {
-		p, t = api.NewProblem(api.ErrorCodeConnectionLost, err.Error()), e.terminal
-		hint = "attach again; the shell may still run: check " + identity.Name + " terminal get"
+		target = e.target
+		p = api.NewProblem(api.ErrorCodeConnectionLost, err.Error())
+		if target.noun == "agent" {
+			hint = "attach again; it may still run: check " + identity.Name + " agent get"
+		} else {
+			hint = "attach again; the shell may still run: check " + identity.Name + " terminal get"
+		}
 	} else {
 		return api.Problem{}, false
 	}
-	p.Details = &map[string]any{"terminal": t}
+	p.Details = &map[string]any{target.noun: target.value}
 	p.Hint = &hint
 	return p, true
 }
 
 // attachResult is how an attach ended.
-type attachResult api.TerminalResult
-
-func (r attachResult) text(w io.Writer, st style.Style) {
-	t := r.Terminal
-	if r.Result == api.ResultExited {
-		code := "?"
-		if t.ExitCode != nil {
-			code = strconv.Itoa(*t.ExitCode)
-		}
-		fmt.Fprintf(w, "terminal %s in %s %s with code %s\n", st.Name(t.Name), st.Name(t.ProjectName), st.Success("exited"), code)
-		return
-	}
-	fmt.Fprintf(w, "%s from terminal %s in %s\n", st.Success("detached"), st.Name(t.Name), st.Name(t.ProjectName))
-	fmt.Fprintf(w, "  %s %s\n", st.Muted("id    "), t.Id)
+type attachResult struct {
+	Result api.Result
+	target attachTarget
 }
 
-func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
+// MarshalJSON gives the result with the target under its own key, as the
+// API's results do.
+func (r attachResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{"result": r.Result, r.target.noun: r.target.value})
+}
+
+func (r attachResult) text(w io.Writer, st style.Style) {
+	t := r.target
+	if r.Result == api.ResultExited {
+		code := "?"
+		if t.exitCode != nil {
+			code = strconv.Itoa(*t.exitCode)
+		}
+		fmt.Fprintf(w, "%s %s in %s %s with code %s\n", t.noun, st.Name(t.name), st.Name(t.project), st.Success("exited"), code)
+		return
+	}
+	fmt.Fprintf(w, "%s from %s %s in %s\n", st.Success("detached"), t.noun, st.Name(t.name), st.Name(t.project))
+	id := t.holderID
+	if a, ok := t.value.(api.Agent); ok {
+		id = a.Id
+	}
+	fmt.Fprintf(w, "  %s %s\n", st.Muted("id    "), id)
+}
+
+// attach shows the target find returns.
+func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error), prefix prefixKey) error {
 	ctx := cmd.Context()
 	log := logging.FromContext(ctx)
-	path, project, dir, err := ref.resolve(cmd)
+	t, err := find(ctx)
 	if err != nil {
 		return err
 	}
-	c := clientOf(cmd)
-	got, err := c.GetTerminal(ctx, path, project, dir)
-	if err != nil {
-		return ref.notFoundHint(err)
-	}
-	t := got.Terminal
-	if t.State != api.TerminalStateRunning {
-		return &terminalNotRunningError{t}
+	if !t.running {
+		return &notRunningError{t}
 	}
 	env := invocationOf(cmd).env
 	if env.TTY == nil {
@@ -198,7 +274,7 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 	}
 	size.Rows-- // the status line's
 
-	session, err := holder.Attach(ctx, identity.HolderSocket(env.Config.Home, t.Id), t.Id, size, 0)
+	session, err := holder.Attach(ctx, identity.HolderSocket(env.Config.Home, t.holderID), t.holderID, size, 0)
 	if errors.Is(err, holder.ErrAttachUnsupported) {
 		return &attachUnsupportedError{t}
 	}
@@ -206,11 +282,11 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 		return &connectionLostError{t, err}
 	}
 	defer session.Close()
-	log.Info("attached", "terminal_id", t.Id, "cols", size.Cols, "rows", size.Rows,
+	log.Info("attached", "terminal_id", t.holderID, "cols", size.Cols, "rows", size.Rows,
 		"history_lines", session.Snapshot.HistoryLines, "pos", session.Snapshot.Pos)
 
 	fetch := func(from int64, count int) (termview.History, error) {
-		h, err := c.GetTerminalHistory(ctx, "id:"+t.Id, "", "", &from, count)
+		h, err := t.history(ctx, from, count)
 		return termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err
 	}
 	view := newAttachView(termview.New(session, fetch), t, prefix, viewStyle(cmd))
@@ -221,16 +297,16 @@ func attach(cmd *cobra.Command, ref terminalRef, prefix prefixKey) error {
 	defer stop()
 	ended, err := runAttachView(viewCtx, tty, env, view)
 	if err != nil {
-		log.Info("connection lost", "terminal_id", t.Id, "err", err)
+		log.Info("connection lost", "terminal_id", t.holderID, "err", err)
 		return &connectionLostError{t, err}
 	}
-	log.Info("attach ended", "terminal_id", t.Id, "result", ended, "vt_resets", view.pane.Resets())
+	log.Info("attach ended", "terminal_id", t.holderID, "result", ended, "vt_resets", view.pane.Resets())
 	if ended == api.ResultExited {
-		t = waitRecorded(ctx, cmd, t, session.Exit())
-	} else if got, err := c.GetTerminal(ctx, "id:"+t.Id, "", ""); err == nil {
-		t = got.Terminal
+		t = waitRecorded(ctx, t, session.Exit())
+	} else if got, err := t.reread(ctx); err == nil {
+		t = got
 	}
-	return printResult(cmd, attachResult{Result: ended, Terminal: t})
+	return printResult(cmd, attachResult{Result: ended, target: t})
 }
 
 // viewStyle styles the attach view, which is on a terminal whatever stdout
@@ -241,18 +317,18 @@ func viewStyle(cmd *cobra.Command) style.Style {
 	return style.New(mode == config.ColorAlways || mode == config.ColorAuto && !env.NoColor)
 }
 
-// waitRecorded returns the terminal once the daemon has recorded the exit
-// the session saw, or with that exit if it takes too long.
-func waitRecorded(ctx context.Context, cmd *cobra.Command, t api.Terminal, exit *holder.Exit) api.Terminal {
+// waitRecorded returns the target once the daemon has recorded the exit the
+// session saw, or with that exit if it takes too long.
+func waitRecorded(ctx context.Context, t attachTarget, exit *holder.Exit) attachTarget {
 	deadline := time.Now().Add(attachExitWait)
 	for {
-		got, err := clientOf(cmd).GetTerminal(ctx, "id:"+t.Id, "", "")
-		if err == nil && got.Terminal.State != api.TerminalStateRunning {
-			return got.Terminal
+		got, err := t.reread(ctx)
+		if err == nil && !got.running {
+			return got
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
 			if exit != nil {
-				t.ExitCode = &exit.Code
+				return t.exited(exit.Code)
 			}
 			return t
 		}

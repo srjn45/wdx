@@ -29,6 +29,8 @@ type StartOptions struct {
 	Project    string
 	Dir        string
 	Shell      string
+	// Command, when given, runs through the shell; see Options.Command.
+	Command []string
 	// HistoryLines bounds the terminal's history; 0 keeps none.
 	HistoryLines int64
 	// Env holds the variables the shell inherits, as KEY=value. They reach
@@ -51,8 +53,12 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 		return Started{}, err
 	}
 	defer ready.Close()
-	cmd := exec.Command(o.Executable, "holder", "--id", o.ID, "--project", o.Project, "--dir", o.Dir, "--shell", o.Shell,
-		"--history-lines", strconv.FormatInt(o.HistoryLines, 10))
+	args := []string{"holder", "--id", o.ID, "--project", o.Project, "--dir", o.Dir, "--shell", o.Shell,
+		"--history-lines", strconv.FormatInt(o.HistoryLines, 10)}
+	for _, word := range o.Command {
+		args = append(args, "--command="+word)
+	}
+	cmd := exec.Command(o.Executable, args...)
 	cmd.Env = append(slices.Clip(o.Env), identity.Env("HOME")+"="+o.Home)
 	cmd.ExtraFiles = []*os.File{readyW} // fd 3
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

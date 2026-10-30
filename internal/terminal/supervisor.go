@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -64,6 +65,9 @@ type Options struct {
 	// StopGrace is how long a shell has to end after it is hung up on;
 	// DefaultStopGrace when 0.
 	StopGrace time.Duration
+	// AgentCommand is what a row of KindAgent runs, asked at each launch,
+	// since an AI coding agent may start differently the second time.
+	AgentCommand func(ctx context.Context, t Terminal) ([]string, error)
 }
 
 // Supervisor starts terminals' holders, watches them and stops them. It
@@ -132,6 +136,16 @@ func (s *Supervisor) StopWait() time.Duration {
 // empty, to the project, and starts its shell in dir. A shell that does not
 // start leaves the terminal failed and returns a *StartError.
 func (s *Supervisor) Create(ctx context.Context, projectID, name, dir string) (Terminal, error) {
+	return s.create(ctx, KindShell, projectID, name, dir, nil)
+}
+
+// CreateAgent is Create for an agent's row: linked inserts what points at the
+// new row, in the transaction that inserts it.
+func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
+	return s.create(ctx, KindAgent, projectID, name, dir, linked)
+}
+
+func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
 	shell := s.opts.Shell
 	if shell == "" {
 		account, err := holder.LookupAccount(ctx)
@@ -141,7 +155,7 @@ func (s *Supervisor) Create(ctx context.Context, projectID, name, dir string) (T
 		shell = account.LoginShell()
 		logging.FromContext(ctx).Info("login shell looked up", "shell", shell)
 	}
-	t, err := s.store.insert(ctx, projectID, name, dir, shell)
+	t, err := s.store.insert(ctx, kind, projectID, name, dir, shell, linked)
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -149,9 +163,18 @@ func (s *Supervisor) Create(ctx context.Context, projectID, name, dir string) (T
 }
 
 // Start starts a fresh shell for a terminal whose last one ended; a live
-// terminal fails with a *RunningError.
+// terminal fails with a *RunningError. An agent's row is not found.
 func (s *Supervisor) Start(ctx context.Context, id string) (Terminal, error) {
-	t, err := s.store.Get(ctx, id)
+	return s.start(ctx, KindShell, id)
+}
+
+// StartAgent is Start for an agent's row; a terminal's is not found.
+func (s *Supervisor) StartAgent(ctx context.Context, id string) (Terminal, error) {
+	return s.start(ctx, KindAgent, id)
+}
+
+func (s *Supervisor) start(ctx context.Context, kind Kind, id string) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, kind, id)
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -167,11 +190,19 @@ func (s *Supervisor) Start(ctx context.Context, id string) (Terminal, error) {
 // launch starts the holder of t, which is starting.
 func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	log := logging.FromContext(ctx)
-	started, err := holder.Start(ctx, holder.StartOptions{
-		Executable: s.opts.Executable, Home: s.opts.Home,
-		ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, Env: s.opts.Env,
-		HistoryLines: s.opts.HistoryLines,
-	})
+	var command []string
+	var started holder.Started
+	var err error
+	if t.Kind == KindAgent {
+		command, err = s.opts.AgentCommand(ctx, t)
+	}
+	if err == nil {
+		started, err = holder.Start(ctx, holder.StartOptions{
+			Executable: s.opts.Executable, Home: s.opts.Home,
+			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, Command: command, Env: s.opts.Env,
+			HistoryLines: s.opts.HistoryLines,
+		})
+	}
 	var conn *holder.Conn
 	if err == nil {
 		if conn, err = holder.Dial(ctx, s.socket(t.ID), t.ID); err != nil {
@@ -184,7 +215,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		if _, ferr := s.store.failed(ctx, t.ID, err.Error()); ferr != nil {
 			return Terminal{}, ferr
 		}
-		failed, gerr := s.store.Get(ctx, t.ID)
+		failed, gerr := s.store.row(ctx, t.ID)
 		if gerr != nil {
 			return Terminal{}, gerr
 		}
@@ -195,14 +226,24 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		return Terminal{}, err
 	}
 	s.follow(t.ID, conn)
-	return s.store.Get(ctx, t.ID)
+	return s.store.row(ctx, t.ID)
 }
 
 // Remove deletes a terminal and returns it as it was last, stopped when
 // it was live. A live one fails with a *RunningError unless stopRunning,
-// which stops its shell first.
+// which stops its shell first. An agent's row is not found.
 func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (Terminal, error) {
-	t, err := s.store.Get(ctx, id)
+	return s.remove(ctx, KindShell, id, stopRunning)
+}
+
+// RemoveAgent is Remove for an agent's row, which takes the agent with it; a
+// terminal's is not found.
+func (s *Supervisor) RemoveAgent(ctx context.Context, id string, stopRunning bool) (Terminal, error) {
+	return s.remove(ctx, KindAgent, id, stopRunning)
+}
+
+func (s *Supervisor) remove(ctx context.Context, kind Kind, id string, stopRunning bool) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, kind, id)
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -213,7 +254,7 @@ func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (T
 		if err := s.stopOne(ctx, t); err != nil {
 			return Terminal{}, err
 		}
-		if t, err = s.store.Get(ctx, id); err != nil {
+		if t, err = s.store.row(ctx, id); err != nil {
 			return Terminal{}, err
 		}
 	}
@@ -227,8 +268,20 @@ func (s *Supervisor) Remove(ctx context.Context, id string, stopRunning bool) (T
 }
 
 // History reads count lines of the terminal's history from line from on,
-// or its last count lines when from is nil.
-func (s *Supervisor) History(id string, from *int64, count int) (holder.History, error) {
+// or its last count lines when from is nil. An agent's row is not found.
+func (s *Supervisor) History(ctx context.Context, id string, from *int64, count int) (holder.History, error) {
+	return s.history(ctx, KindShell, id, from, count)
+}
+
+// AgentHistory is History for an agent's row; a terminal's is not found.
+func (s *Supervisor) AgentHistory(ctx context.Context, id string, from *int64, count int) (holder.History, error) {
+	return s.history(ctx, KindAgent, id, from, count)
+}
+
+func (s *Supervisor) history(ctx context.Context, kind Kind, id string, from *int64, count int) (holder.History, error) {
+	if _, err := s.store.ofKind(ctx, kind, id); err != nil {
+		return holder.History{}, err
+	}
 	dir := holder.HistoryDir(s.opts.Home, id)
 	if from == nil {
 		return holder.TailHistory(dir, count)
@@ -254,7 +307,7 @@ func (s *Supervisor) Sweep(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	list, err := s.store.List(ctx, "")
+	list, err := s.store.rows(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -286,7 +339,7 @@ func (s *Supervisor) sweepSockets(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	list, err := s.store.List(ctx, "")
+	list, err := s.store.rows(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -308,9 +361,10 @@ func (s *Supervisor) sweepSockets(ctx context.Context) error {
 	return nil
 }
 
-// Live returns the project's terminals that are starting or running.
+// Live returns the project's rows of both kinds that are starting or
+// running: closing a project stops them all.
 func (s *Supervisor) Live(ctx context.Context, projectID string) ([]Terminal, error) {
-	list, err := s.store.List(ctx, projectID)
+	list, err := s.store.rows(ctx, projectID)
 	return slices.DeleteFunc(list, func(t Terminal) bool { return !t.State.Live() }), err
 }
 
@@ -338,7 +392,7 @@ func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Termi
 	}
 	stopped := []Terminal{}
 	for _, t := range live {
-		if t, err = s.store.Get(ctx, t.ID); err != nil {
+		if t, err = s.store.row(ctx, t.ID); err != nil {
 			return nil, err
 		}
 		stopped = append(stopped, t)
@@ -350,7 +404,7 @@ func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Termi
 // does, and returns them in the state they reached: one that did not start
 // is failed, not an error.
 func (s *Supervisor) StartProject(ctx context.Context, projectID string) ([]Terminal, error) {
-	list, err := s.store.List(ctx, projectID)
+	list, err := s.store.rows(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}

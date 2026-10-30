@@ -16,13 +16,13 @@ import (
 	"github.com/srjn45/wdx/internal/termview"
 )
 
-// attachView is wdx terminal attach's window: the terminal's pane above a
-// status line, and the prefix keys (docs/ATTACH_VIEW.md).
+// attachView is the window of wdx terminal attach and wdx agent attach: the
+// pane of what is attached to above a status line, and the prefix keys (docs/ATTACH_VIEW.md).
 type attachView struct {
-	pane     *termview.Model
-	terminal api.Terminal
-	prefix   prefixKey
-	st       style.Style
+	pane   *termview.Model
+	target attachTarget
+	prefix prefixKey
+	st     style.Style
 
 	width, height int
 	status        bool // the status line is shown
@@ -31,9 +31,9 @@ type attachView struct {
 	ended         *termview.EndedMsg
 }
 
-func newAttachView(pane *termview.Model, t api.Terminal, prefix prefixKey, st style.Style) *attachView {
+func newAttachView(pane *termview.Model, t attachTarget, prefix prefixKey, st style.Style) *attachView {
 	cols, rows := pane.Size()
-	return &attachView{pane: pane, terminal: t, prefix: prefix, st: st, width: cols, height: rows + 1, status: true}
+	return &attachView{pane: pane, target: t, prefix: prefix, st: st, width: cols, height: rows + 1, status: true}
 }
 
 // Sequences around the view: the calling terminal's title is kept and given
@@ -153,7 +153,7 @@ func (v *attachView) View() tea.View {
 	}
 	view.WindowTitle = v.pane.Title()
 	if view.WindowTitle == "" {
-		view.WindowTitle = v.terminal.Name + " · " + v.terminal.ProjectName
+		view.WindowTitle = v.target.name + " · " + v.target.project
 	}
 	return view
 }
@@ -162,7 +162,7 @@ func (v *attachView) View() tea.View {
 // on the right, in a bar whose color tells the state.
 func (v *attachView) statusLine() string {
 	st := v.st
-	left := " " + st.BarName(v.terminal.Name) + " · " + v.terminal.ProjectName
+	left := " " + st.BarName(v.target.name) + " · " + v.target.project
 	var right string
 	state := style.StatusLive
 	switch {
@@ -194,7 +194,7 @@ func (v *attachView) helpContent() string {
 		"",
 		"  " + v.st.Heading("Keys") + v.st.Muted(" (any key closes this)"),
 		"",
-		"  " + p + " d          detach, leaving the terminal running",
+		"  " + p + " d          detach, leaving the " + v.target.noun + " running",
 		"  " + p + " [  " + p + " ]    scroll a page up / down through its history",
 		"  " + p + " ?          this list",
 		"  " + p + " s          hide or show the status line",

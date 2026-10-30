@@ -312,9 +312,9 @@ func addStopRunningFlags(cmd *cobra.Command, stopRunning, cancel *bool, what str
 	cmd.MarkFlagsMutuallyExclusive("stop-running", "cancel")
 }
 
-// askStopRunning asks whether to stop the terminals the problem in err
-// says are running, them in the hints; nil means stop them. cancel answers
-// no in advance.
+// askStopRunning asks whether to stop the terminals and agents the problem
+// in err says are running, them in the hints; nil means stop them. cancel
+// answers no in advance.
 func askStopRunning(cmd *cobra.Command, err error, question string, cancel bool, confirm, them string) error {
 	if cancel {
 		logAnswer(cmd, question, "cancel", "--cancel")
@@ -326,14 +326,26 @@ func askStopRunning(cmd *cobra.Command, err error, question string, cancel bool,
 	}
 	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
 	fmt.Fprintln(prompt, err)
-	for _, t := range detailTerminals(err) {
-		pid := ""
-		if t.Pid != nil {
-			pid = fmt.Sprintf(" (pid %d)", *t.Pid)
+	terminals, agents := detailRunning(err)
+	line := func(name, state string, pid *int) {
+		text := ""
+		if pid != nil {
+			text = fmt.Sprintf(" (pid %d)", *pid)
 		}
-		fmt.Fprintf(prompt, "  %s %s%s\n", st.Name(t.Name), t.State, st.Muted(pid))
+		fmt.Fprintf(prompt, "  %s %s%s\n", st.Name(name), state, st.Muted(text))
 	}
-	fmt.Fprintln(prompt, st.Warning("stopping a shell ends the programs running in it"))
+	for _, t := range terminals {
+		line(t.Name, string(t.State), t.Pid)
+	}
+	for _, a := range agents {
+		line(a.Name, string(a.State), a.Pid)
+	}
+	if len(terminals) > 0 {
+		fmt.Fprintln(prompt, st.Warning("stopping a shell ends the programs running in it"))
+	}
+	if len(agents) > 0 {
+		fmt.Fprintln(prompt, st.Warning("stopping an agent interrupts what it is doing"))
+	}
 	choice, aerr := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), confirm+" "+st.Command("[y/n]")+": ", "y", "n")
 	if aerr != nil {
 		return aerr
@@ -346,22 +358,27 @@ func askStopRunning(cmd *cobra.Command, err error, question string, cancel bool,
 	return nil
 }
 
-// detailTerminals returns the terminals the problem in err involves: those
-// under details.terminals, or the one under details.terminal.
-func detailTerminals(err error) []api.Terminal {
+// detailRunning returns the terminals and agents the problem in err involves:
+// those under details.terminals and details.agents, or the one under
+// details.terminal or details.agent.
+func detailRunning(err error) ([]api.Terminal, []api.Agent) {
 	e, ok := errors.AsType[*client.ProblemError](err)
 	if !ok || e.Problem.Details == nil {
-		return nil
+		return nil, nil
 	}
-	var list []api.Terminal
-	if decodeDetail(e.Problem, "terminals", &list) {
-		return list
-	}
+	var terminals []api.Terminal
+	var agents []api.Agent
+	decodeDetail(e.Problem, "terminals", &terminals)
+	decodeDetail(e.Problem, "agents", &agents)
 	var t api.Terminal
 	if decodeDetail(e.Problem, "terminal", &t) {
-		return []api.Terminal{t}
+		terminals = append(terminals, t)
 	}
-	return nil
+	var a api.Agent
+	if decodeDetail(e.Problem, "agent", &a) {
+		agents = append(agents, a)
+	}
+	return terminals, agents
 }
 
 // terminalHint tells what to do about the errors creating or starting a

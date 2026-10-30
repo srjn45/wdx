@@ -199,6 +199,74 @@ func (c *Client) RecloneProject(ctx context.Context, ref string) (api.ProjectRes
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
 }
 
+// ListAgents lists the agents of the project named by project, or of the one
+// whose worktree holds dir, or of every project.
+func (c *Client) ListAgents(ctx context.Context, project, dir string) (api.AgentList, error) {
+	r, err := c.api.ListAgentsWithResponse(ctx, &api.ListAgentsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.AgentList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// CreateAgent creates an agent and starts its AI coding agent.
+func (c *Client) CreateAgent(ctx context.Context, body api.CreateAgent) (api.AgentResult, error) {
+	r, err := c.api.CreateAgentWithResponse(ctx, body)
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// GetAgent returns the agent ref names, as StartAgent does.
+func (c *Client) GetAgent(ctx context.Context, ref, project, dir string) (api.AgentEnvelope, error) {
+	r, err := c.api.GetAgentWithResponse(ctx, ref, &api.GetAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.AgentEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// GetAgentHistory reads the history of the agent ref names, as GetAgent does:
+// count lines from line from on, or the last count lines when from is nil.
+func (c *Client) GetAgentHistory(ctx context.Context, ref, project, dir string, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+	params := api.GetAgentHistoryParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if from != nil {
+		params.From, params.Count = from, &count
+	} else {
+		params.Tail = &count
+	}
+	r, err := c.api.GetAgentHistoryWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.TerminalHistoryEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// StartAgent starts the agent ref names: "id:" and its id, or its name in the
+// project named by project or holding dir.
+func (c *Client) StartAgent(ctx context.Context, ref, project, dir string) (api.AgentResult, error) {
+	r, err := c.api.StartAgentWithResponse(ctx, ref, &api.StartAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// DeleteAgent removes the agent ref names, as StartAgent does; a live one is
+// refused unless stopRunning.
+func (c *Client) DeleteAgent(ctx context.Context, ref, project, dir string, stopRunning bool) (api.AgentResult, error) {
+	params := api.DeleteAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if stopRunning {
+		params.StopRunning = &stopRunning
+	}
+	r, err := c.api.DeleteAgentWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // ListTerminals lists the terminals of the project named by project, or of
 // the one holding dir, or of every project when both are empty.
 func (c *Client) ListTerminals(ctx context.Context, project, dir string) (api.TerminalList, error) {

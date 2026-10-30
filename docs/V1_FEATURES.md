@@ -19,8 +19,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 - [x] P0 Daemon running as a local service (systemd user unit / launchd): see docs/DAEMON.md
 - [x] P0 Local API over a Unix socket, with client/daemon version handshake (the CLI warns when the versions differ)
-- [x] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption (terminals for now; docs/TERMINALS.md)
-- [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, full-window as tmux's, with their whole history to scroll through (docs/ATTACH.md, docs/ATTACH_VIEW.md); agents later
+- [x] P0 PTY holder process per session: survives daemon restart, update and crash; authenticated re-adoption (terminals and agents; docs/TERMINALS.md, docs/AGENT.md)
+- [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, full-window as tmux's, with their whole history to scroll through (docs/ATTACH.md, docs/ATTACH_VIEW.md); and agents (docs/AGENT.md)
 - [x] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`, `wdx terminal attach` and `history`
 - [~] P0 Session output tail / recent output: `wdx terminal history` prints what scrolled off a terminal's screen; still to do, the screen of a running terminal after it, so that the latest output is in it too (history gets the screen only when the shell exits)
 - [ ] P0 Send text into a session
@@ -38,8 +38,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 
 ## 3. Agent lifecycle
 
-- [ ] P0 Spawn an agent (prompt / ticket / typed)
-- [ ] P0 List agents; status and detail; live states (`pending`, `busy`, `idle`, `need-input`, `done`, `orphaned`, `rate_limited`)
+- [~] P0 Spawn an agent (prompt / ticket / typed): typed, by attaching, with Claude Code (docs/AGENT.md)
+- [~] P0 List agents; status and detail; live states (`pending`, `busy`, `idle`, `need-input`, `done`, `orphaned`, `rate_limited`): list and detail, whether the process is alive; no live states yet
 - [ ] P0 Terminate / tear down (umbrella verb)
 - [ ] P0 Delete / hard-purge
 - [ ] P1 Restore an orphaned agent; recover orphaned agents with live panes

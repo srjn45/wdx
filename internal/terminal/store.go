@@ -34,9 +34,20 @@ func (s State) Live() bool {
 	return s == StateStarting || s == StateRunning
 }
 
+// Kind says what a terminal row is for. Rows of KindAgent hold the process
+// of an agent and are its only: the terminal commands and API deal with
+// KindShell alone. See docs/AGENT.md.
+type Kind string
+
+const (
+	KindShell Kind = "shell" // a shell to type in
+	KindAgent Kind = "agent" // an AI coding agent, read through internal/agent
+)
+
 // Terminal is a terminal's row.
 type Terminal struct {
 	ID          string
+	Kind        Kind
 	Name        string
 	ProjectID   string
 	ProjectName string
@@ -64,7 +75,15 @@ type NameTakenError struct {
 }
 
 func (e *NameTakenError) Error() string {
-	return fmt.Sprintf("terminal name %q is already used by terminal %s", e.Name, e.Terminal.ID)
+	return fmt.Sprintf("name %q is already used by %s %s", e.Name, e.Terminal.Kind.noun(), e.Terminal.Name)
+}
+
+// noun is what a user calls a row of kind k.
+func (k Kind) noun() string {
+	if k == KindAgent {
+		return "agent"
+	}
+	return "terminal"
 }
 
 // InvalidNameError is returned for a terminal name that cannot be used.
@@ -74,7 +93,7 @@ type InvalidNameError struct {
 }
 
 func (e *InvalidNameError) Error() string {
-	return fmt.Sprintf("invalid terminal name %q: %s", e.Name, e.Reason)
+	return fmt.Sprintf("invalid name %q: %s", e.Name, e.Reason)
 }
 
 // Store persists terminals.
@@ -97,8 +116,10 @@ func (s *Store) OnChange(fn func()) { s.changed = fn }
 const codenameTries = 10
 
 // insert adds a terminal in state starting, named name or, when name is
-// empty, a generated codename free in its project.
-func (s *Store) insert(ctx context.Context, projectID, name, dir, shell string) (Terminal, error) {
+// empty, a generated codename free in its project among both kinds. linked,
+// if any, runs in the same transaction with the new id, so that a crash
+// leaves both its rows or neither.
+func (s *Store) insert(ctx context.Context, kind Kind, projectID, name, dir, shell string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
 	if strings.Contains(name, ":") {
 		return Terminal{}, &InvalidNameError{Name: name, Reason: `cannot contain ":"`}
 	}
@@ -110,26 +131,39 @@ func (s *Store) insert(ctx context.Context, projectID, name, dir, shell string) 
 		if name, err = s.freeCodename(ctx, projectID); err != nil {
 			return Terminal{}, err
 		}
-	} else if other, err := s.GetByName(ctx, projectID, name); err == nil {
+	} else if other, err := s.rowByName(ctx, projectID, name); err == nil {
 		return Terminal{}, &NameTakenError{Name: name, Terminal: other}
 	} else if !errors.Is(err, ErrNotFound) {
 		return Terminal{}, err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := db.Exec(ctx, s.db, `
-		INSERT INTO terminals (id, project_id, name, dir, shell, state, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, projectID, name, dir, shell, StateStarting, now, now); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return Terminal{}, err
 	}
-	logging.FromContext(ctx).Info("terminal created", "terminal_id", id, "project_id", projectID, "name", name, "dir", dir, "shell", shell)
+	defer tx.Rollback()
+	if _, err := db.Exec(ctx, tx, `
+		INSERT INTO terminals (id, kind, project_id, name, dir, shell, state, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, kind, projectID, name, dir, shell, StateStarting, now, now); err != nil {
+		return Terminal{}, err
+	}
+	if linked != nil {
+		if err := linked(ctx, tx, id); err != nil {
+			return Terminal{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Terminal{}, err
+	}
+	logging.FromContext(ctx).Info("terminal created", "terminal_id", id, "kind", kind, "project_id", projectID, "name", name, "dir", dir, "shell", shell)
 	s.changed()
-	return s.Get(ctx, id)
+	return s.row(ctx, id)
 }
 
 func (s *Store) freeCodename(ctx context.Context, projectID string) (string, error) {
 	for range codenameTries {
 		name := codename()
-		if _, err := s.GetByName(ctx, projectID, name); errors.Is(err, ErrNotFound) {
+		if _, err := s.rowByName(ctx, projectID, name); errors.Is(err, ErrNotFound) {
 			return name, nil
 		} else if err != nil {
 			return "", err
@@ -139,24 +173,49 @@ func (s *Store) freeCodename(ctx context.Context, projectID string) (string, err
 	return codename() + "-" + suffix, err
 }
 
+// The terminal flow's queries: they see KindShell alone, so an agent's row
+// is not found, as any unknown id or name is.
+
 // Get returns the terminal with id.
 func (s *Store) Get(ctx context.Context, id string) (Terminal, error) {
-	return s.one(ctx, "t.id = ?", id)
+	return s.ofKind(ctx, KindShell, id)
 }
 
 // GetByName returns the terminal named name, ignoring case, in the project
 // with projectID.
 func (s *Store) GetByName(ctx context.Context, projectID, name string) (Terminal, error) {
-	return s.one(ctx, "t.project_id = ? AND t.name = ?", projectID, name)
+	return s.one(ctx, "t.kind = 'shell' AND t.project_id = ? AND t.name = ?", projectID, name)
 }
 
 // List returns the terminals of the project with projectID, or of every
 // project when it is "", by project name and then name.
 func (s *Store) List(ctx context.Context, projectID string) ([]Terminal, error) {
+	return s.query(ctx, "t.kind = 'shell' AND (?1 = '' OR t.project_id = ?1)", projectID)
+}
+
+// The supervisor's process work, on rows of either kind: nothing outside
+// this package reaches these.
+
+// ofKind returns the row with id if it is of kind.
+func (s *Store) ofKind(ctx context.Context, kind Kind, id string) (Terminal, error) {
+	return s.one(ctx, "t.kind = ? AND t.id = ?", kind, id)
+}
+
+func (s *Store) row(ctx context.Context, id string) (Terminal, error) {
+	return s.one(ctx, "t.id = ?", id)
+}
+
+func (s *Store) rowByName(ctx context.Context, projectID, name string) (Terminal, error) {
+	return s.one(ctx, "t.project_id = ? AND t.name = ?", projectID, name)
+}
+
+// rows returns the rows of the project with projectID, or of every project
+// when it is "".
+func (s *Store) rows(ctx context.Context, projectID string) ([]Terminal, error) {
 	return s.query(ctx, "?1 = '' OR t.project_id = ?1", projectID)
 }
 
-// inStates returns the terminals of every project in one of states.
+// inStates returns the rows of every project in one of states.
 func (s *Store) inStates(ctx context.Context, states ...State) ([]Terminal, error) {
 	marks := strings.TrimSuffix(strings.Repeat("?, ", len(states)), ", ")
 	args := make([]any, len(states))
@@ -177,12 +236,42 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Terminal, e
 	return list[0], nil
 }
 
-// query returns the terminals matching where, a constant condition on t,
-// the terminals, and p, their projects.
+// Columns are a terminal's columns for ScanRow, in a query where t is the
+// terminals and p their projects.
+const Columns = `t.id, t.kind, t.name, t.project_id, p.name, t.dir, t.shell, t.state, t.pid, t.holder_pid,
+	t.exit_code, t.error, t.created_at, t.updated_at, t.started_at, t.ended_at`
+
+// ScanRow reads a row of Columns with scan, as sql.Rows.Scan; before lists
+// where the columns selected before them go.
+func ScanRow(scan func(dest ...any) error, before ...any) (Terminal, error) {
+	var t Terminal
+	var pid, holderPID, exitCode, started, ended sql.NullInt64
+	var errText sql.NullString
+	var created, updated int64
+	if err := scan(append(before, &t.ID, &t.Kind, &t.Name, &t.ProjectID, &t.ProjectName, &t.Dir, &t.Shell, &t.State, &pid, &holderPID,
+		&exitCode, &errText, &created, &updated, &started, &ended)...); err != nil {
+		return Terminal{}, err
+	}
+	t.PID, t.HolderPID, t.Error = int(pid.Int64), int(holderPID.Int64), errText.String
+	if exitCode.Valid {
+		code := int(exitCode.Int64)
+		t.ExitCode = &code
+	}
+	t.CreatedAt, t.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
+	if started.Valid {
+		t.StartedAt = time.UnixMilli(started.Int64)
+	}
+	if ended.Valid {
+		t.EndedAt = time.UnixMilli(ended.Int64)
+	}
+	return t, nil
+}
+
+// query returns the rows matching where, a constant condition on t, the
+// terminals, and p, their projects.
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Terminal, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.name, t.project_id, p.name, t.dir, t.shell, t.state, t.pid, t.holder_pid,
-			t.exit_code, t.error, t.created_at, t.updated_at, t.started_at, t.ended_at
+		SELECT `+Columns+`
 		FROM terminals t JOIN projects p ON p.id = t.project_id
 		WHERE `+where+`
 		ORDER BY p.name, t.name`, args...)
@@ -192,25 +281,9 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Termina
 	defer rows.Close()
 	var list []Terminal
 	for rows.Next() {
-		var t Terminal
-		var pid, holderPID, exitCode, started, ended sql.NullInt64
-		var errText sql.NullString
-		var created, updated int64
-		if err := rows.Scan(&t.ID, &t.Name, &t.ProjectID, &t.ProjectName, &t.Dir, &t.Shell, &t.State, &pid, &holderPID,
-			&exitCode, &errText, &created, &updated, &started, &ended); err != nil {
+		t, err := ScanRow(rows.Scan)
+		if err != nil {
 			return nil, err
-		}
-		t.PID, t.HolderPID, t.Error = int(pid.Int64), int(holderPID.Int64), errText.String
-		if exitCode.Valid {
-			code := int(exitCode.Int64)
-			t.ExitCode = &code
-		}
-		t.CreatedAt, t.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
-		if started.Valid {
-			t.StartedAt = time.UnixMilli(started.Int64)
-		}
-		if ended.Valid {
-			t.EndedAt = time.UnixMilli(ended.Int64)
 		}
 		list = append(list, t)
 	}

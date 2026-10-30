@@ -72,10 +72,10 @@ func (f fixture) supervisor(t *testing.T) *Supervisor {
 	t.Helper()
 	s := NewSupervisor(context.Background(), NewStore(f.db), f.opts)
 	t.Cleanup(func() {
-		list, _ := s.store.List(context.Background(), "")
+		list, _ := s.store.rows(context.Background(), "")
 		for _, term := range list {
 			// What removing leaves running is killed next.
-			_, _ = s.Remove(context.Background(), term.ID, true)
+			_, _ = s.remove(context.Background(), term.Kind, term.ID, true)
 			kill(term.HolderPID, term.PID)
 		}
 		s.Close()

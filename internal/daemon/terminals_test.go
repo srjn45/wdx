@@ -22,13 +22,19 @@ import (
 )
 
 // testShell is the shell of every test terminal: it stays alive until it
-// is hung up on.
-const testShell = "#!/bin/sh\nexec sleep 60\n"
+// is hung up on. Given a command, as an agent's holder gives it, it runs it
+// as a login shell does, skipping the -l and -i.
+const testShell = "#!/bin/sh\nif [ \"$3\" = -c ]; then exec /bin/sh -c \"$4\"; fi\nexec sleep 60\n"
 
-// removeTerminals removes every terminal, stopping the live ones, so no
-// holder outlives the test; it does nothing once the daemon is stopped.
+// removeTerminals removes every terminal and agent, stopping the live ones,
+// so no holder outlives the test; it does nothing once the daemon is stopped.
 func (td *testDaemon) removeTerminals() {
 	ctx := context.Background()
+	if agents, err := td.client.ListAgentsWithResponse(ctx, nil); err == nil && agents.JSON200 != nil {
+		for _, a := range agents.JSON200.Agents {
+			_, _ = td.client.DeleteAgentWithResponse(ctx, "id:"+a.Id, &api.DeleteAgentParams{StopRunning: optional(true)})
+		}
+	}
 	l, err := td.client.ListTerminalsWithResponse(ctx, nil)
 	if err != nil || l.JSON200 == nil {
 		return

@@ -40,7 +40,7 @@ func (d *Daemon) handler() http.Handler {
 		ErrorHandlerWithOpts:  invalidRequest,
 	})
 
-	s := &server{projects: d.projects, terminals: d.terminals, self: d.Info(), notices: d.notices, stopping: d.stopping}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,

@@ -84,6 +84,37 @@ func completeTerminals(key string) cobra.CompletionFunc {
 	}
 }
 
+// completeAgents completes --id or --name, as key says, with the agents of
+// the project the command line names, else of the one the working directory
+// is in. It offers nothing when the daemon does not answer.
+func completeAgents(key string) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+		defer cancel()
+		var scope projectScope
+		scope.id, _ = cmd.Flags().GetString("project-id")
+		scope.name, _ = cmd.Flags().GetString("project-name")
+		var dir string
+		if !scope.given() {
+			dir = invocationOf(cmd).env.WorkDir
+		}
+		list, err := clientOf(cmd).ListAgents(ctx, scope.ref(), dir)
+		if err != nil {
+			logging.FromContext(cmd.Context()).Info("no agents to complete", "err", err)
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var completions []cobra.Completion
+		for _, a := range list.Agents {
+			if key == "id" {
+				completions = append(completions, cobra.CompletionWithDesc(a.Id, fmt.Sprintf("%s in %s", a.Name, a.ProjectName)))
+			} else {
+				completions = append(completions, cobra.CompletionWithDesc(a.Name, fmt.Sprintf("%s, %s", a.State, a.Id)))
+			}
+		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
 // completeDirs completes a flag with directories.
 func completeDirs(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	return nil, cobra.ShellCompDirectiveFilterDirs

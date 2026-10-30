@@ -28,6 +28,8 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/terminal
               desc: the cli calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/agent
+              desc: the cli calls the daemon's API, never the domain
         vt-in-screen-only:
           files:
             - "$all"
@@ -63,6 +65,8 @@ linters:
             - pkg: github.com/srjn45/wdx/internal/git$
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/terminal
+              desc: tide calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/agent
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/db
               desc: tide calls the daemon's API, never the database

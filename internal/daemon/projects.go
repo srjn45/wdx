@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
@@ -54,7 +55,7 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 }
 
 // detail is p as getProject returns it: which of its checkouts are on disk,
-// and its terminals in every state.
+// and its terminals and agents in every state.
 func (s *server) detail(ctx context.Context, p project.Project) (api.Project, error) {
 	status, err := s.projects.DiskStatus(ctx, p)
 	if err != nil {
@@ -72,6 +73,12 @@ func (s *server) detail(ctx context.Context, p project.Project) (api.Project, er
 	}
 	views := terminalViews(terminals)
 	v.Terminals = &views
+	agents, err := s.agents.Store().List(ctx, p.ID)
+	if err != nil {
+		return api.Project{}, err
+	}
+	agentList := agentViews(agents)
+	v.Agents = &agentList
 	return v, nil
 }
 
@@ -81,7 +88,7 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		return nil, err
 	}
 	if req.Body.State == api.ProjectStateClosed {
-		stopped, err := s.stopTerminals(ctx, p, deref(req.Body.StopRunning))
+		stopped, stoppedAgents, err := s.stopRunning(ctx, p, deref(req.Body.StopRunning))
 		if err != nil {
 			return nil, err
 		}
@@ -90,6 +97,7 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		}
 		r := result(api.ResultClosed, p)
 		r.Stopped = optionalTerminals(stopped)
+		r.StoppedAgents = optionalAgents(stoppedAgents)
 		return api.UpdateProject200JSONResponse(r), nil
 	}
 	o, err := s.projects.Open(ctx, p.ID)
@@ -115,22 +123,23 @@ func (s *server) DeleteProject(ctx context.Context, req api.DeleteProjectRequest
 	return api.DeleteProject200JSONResponse(r), nil
 }
 
-// remove stops the project's live terminals, refusing without stopRunning,
-// then deletes it.
+// remove stops the project's live terminals and agents, refusing without
+// stopRunning, then deletes it.
 func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool) (api.ProjectResult, error) {
-	stopped, err := s.stopTerminals(ctx, p, stopRunning)
+	stopped, stoppedAgents, err := s.stopRunning(ctx, p, stopRunning)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
 	if p, err = s.projects.Remove(ctx, p.ID); err != nil {
 		return api.ProjectResult{}, err
 	}
-	// Its terminals went with it.
+	// Its terminals and agents went with it.
 	if err := s.terminals.Sweep(ctx); err != nil {
 		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
 	}
 	r := result(api.ResultRemoved, p)
 	r.Stopped = optionalTerminals(stopped)
+	r.StoppedAgents = optionalAgents(stoppedAgents)
 	return r, nil
 }
 
@@ -259,15 +268,20 @@ func result(r api.Result, p project.Project) api.ProjectResult {
 	return api.ProjectResult{Result: r, Project: projectView(p)}
 }
 
-// opened relaunches the terminals closing the project stopped and returns
-// what opening it led to.
+// opened relaunches the terminals and agents closing the project stopped and
+// returns what opening it led to.
 func (s *server) opened(ctx context.Context, o project.Opened) (api.ProjectResult, error) {
-	started, err := s.terminals.StartProject(ctx, o.ID)
+	rows, err := s.terminals.StartProject(ctx, o.ID)
+	if err != nil {
+		return api.ProjectResult{}, err
+	}
+	started, startedAgents, err := s.byKind(ctx, rows)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
 	r := openedResult(o)
 	r.Started = optionalTerminals(started)
+	r.StartedAgents = optionalAgents(startedAgents)
 	return r, nil
 }
 
@@ -321,30 +335,70 @@ func deref[T any](p *T) T {
 	return v
 }
 
-// projectInUseError is returned when a project with live terminals would be
-// closed or removed without stopping them.
+// projectInUseError is returned when a project with live terminals or agents
+// would be closed or removed without stopping them.
 type projectInUseError struct {
 	project   project.Project
 	terminals []terminal.Terminal
+	agents    []agent.Agent
 }
 
 func (e *projectInUseError) Error() string {
-	names := make([]string, 0, len(e.terminals))
+	names := make([]string, 0, len(e.terminals)+len(e.agents))
 	for _, t := range e.terminals {
 		names = append(names, t.Name)
 	}
-	return fmt.Sprintf("project %s has terminals running: %s", e.project.Name, strings.Join(names, ", "))
+	for _, a := range e.agents {
+		names = append(names, a.Terminal.Name)
+	}
+	what := "terminals"
+	if len(e.agents) > 0 {
+		what = "agents"
+		if len(e.terminals) > 0 {
+			what = "terminals and agents"
+		}
+	}
+	return fmt.Sprintf("project %s has %s running: %s", e.project.Name, what, strings.Join(names, ", "))
 }
 
-// stopTerminals stops the project's live terminals before it is closed or
-// removed; without stopRunning it refuses when there are any.
-func (s *server) stopTerminals(ctx context.Context, p project.Project, stopRunning bool) ([]terminal.Terminal, error) {
+// stopRunning stops the project's live terminals and agents before it is
+// closed or removed; without stop it refuses when there are any. The agents
+// are read while their rows still exist: removing the project deletes them.
+func (s *server) stopRunning(ctx context.Context, p project.Project, stop bool) ([]terminal.Terminal, []agent.Agent, error) {
 	live, err := s.terminals.Live(ctx, p.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if len(live) > 0 && !stopRunning {
-		return nil, &projectInUseError{project: p, terminals: live}
+	if len(live) > 0 && !stop {
+		terminals, agents, err := s.byKind(ctx, live)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, &projectInUseError{project: p, terminals: terminals, agents: agents}
 	}
-	return s.terminals.StopProject(ctx, p.ID)
+	rows, err := s.terminals.StopProject(ctx, p.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.byKind(ctx, rows)
+}
+
+// byKind splits what the supervisor did to a project's rows of both kinds
+// into the terminals and the agents they are.
+func (s *server) byKind(ctx context.Context, rows []terminal.Terminal) ([]terminal.Terminal, []agent.Agent, error) {
+	var terminals []terminal.Terminal
+	var agents []agent.Agent
+	for _, t := range rows {
+		if t.Kind == terminal.KindShell {
+			terminals = append(terminals, t)
+			continue
+		}
+		a, err := s.agents.Store().GetByTerminal(ctx, t.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		a.Terminal = t
+		agents = append(agents, a)
+	}
+	return terminals, agents, nil
 }

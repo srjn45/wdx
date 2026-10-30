@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
@@ -72,6 +73,7 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	o := Options{
 		Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics,
 		Executable: exe, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
+		ACA: &acatest.ACA{Launches: filepath.Join(home, "test-launches")},
 	}
 	if adjust != nil {
 		adjust(&o)

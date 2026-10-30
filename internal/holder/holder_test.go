@@ -34,6 +34,10 @@ func runHolder(args []string) int {
 	flags.StringVar(&o.Project, "project", "", "")
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
+	flags.Func("command", "", func(word string) error {
+		o.Command = append(o.Command, word)
+		return nil
+	})
 	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
 	if flags.Parse(args) != nil {
 		return 2
@@ -231,6 +235,47 @@ func TestExitBySignal(t *testing.T) {
 	f.start(t, "term-00000004", f.script(t, "kill -TERM $$"))
 	if e := waitExit(t, f.dial(t, "term-00000004")); e.Code != 128+int(syscall.SIGTERM) {
 		t.Fatalf("want 128 + SIGTERM, got %d", e.Code)
+	}
+}
+
+// TestCommandReplacesTheShell runs a command through the shell: its end is
+// the terminal's, so no shell is left to type in.
+func TestCommandReplacesTheShell(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	o := f.options("term-00000020", "/bin/sh")
+	o.Command = []string{"/bin/sh", "-c", "exit 7"}
+	s, err := Start(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { killHolder(s) })
+	if e := waitExit(t, f.dial(t, "term-00000020")); e.Code != 7 {
+		t.Fatalf("want the command's exit code 7, got %d", e.Code)
+	}
+}
+
+// TestCommandWords passes words the shell must not split or expand.
+func TestCommandWords(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	got := filepath.Join(f.dir, "got")
+	o := f.options("term-00000021", "/bin/sh")
+	o.Command = []string{"/bin/sh", "-c", `printf %s "$1" > "$2"`, "sh", `it's $HOME and two  spaces`, got}
+	s, err := Start(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { killHolder(s) })
+	if e := waitExit(t, f.dial(t, "term-00000021")); e.Code != 0 {
+		t.Fatalf("want exit code 0, got %d", e.Code)
+	}
+	data, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `it's $HOME and two  spaces`; string(data) != want {
+		t.Fatalf("the command got %q, want %q", data, want)
 	}
 }
 

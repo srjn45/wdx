@@ -14,8 +14,8 @@ import (
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
-// projectClosedError is returned when a terminal would start in a closed
-// project.
+// projectClosedError is returned when a terminal or an agent would start in a
+// closed project.
 type projectClosedError struct {
 	project project.Project
 }
@@ -116,7 +116,7 @@ func (s *server) GetTerminalHistory(ctx context.Context, req api.GetTerminalHist
 	if count != nil && from == nil {
 		from = new(int64)
 	}
-	h, err := s.terminals.History(t.ID, from, cmp.Or(deref(count), deref(tail), 1000))
+	h, err := s.terminals.History(ctx, t.ID, from, cmp.Or(deref(count), deref(tail), 1000))
 	if err != nil {
 		return nil, err
 	}

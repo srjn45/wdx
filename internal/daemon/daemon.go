@@ -21,6 +21,8 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
@@ -51,6 +53,9 @@ type Options struct {
 	TerminalShell string
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
 	TerminalHistoryLines int64
+	// ACA is what new agents run, and among the ones agents may have been
+	// created with; aca.ClaudeCode when nil.
+	ACA aca.AiCodingAgent
 
 	// ShutdownTimeout is how long requests in flight get once the daemon
 	// is asked to stop, before the changes among them are cancelled;
@@ -69,6 +74,7 @@ type Daemon struct {
 	listener  net.Listener
 	db        *sql.DB
 	projects  *project.Store
+	agents    *agent.Manager
 	terminals *terminal.Supervisor
 	changes   sync.Mutex    // one request changing state at a time
 	notices   *notices      // tells the project streams about changes
@@ -147,6 +153,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	// A terminal changes state outside requests too, as when its shell
 	// exits.
 	terminals.OnChange(d.notices.notify)
+	if opts.ACA == nil {
+		opts.ACA = aca.ClaudeCode{}
+	}
+	agents := agent.NewStore(d.db)
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:   opts.Executable,
 		Home:         opts.Home,
@@ -154,7 +164,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Shell:        opts.TerminalShell,
 		HistoryLines: opts.TerminalHistoryLines,
 		StopGrace:    opts.StopGrace,
+		AgentCommand: agent.Commands(agents, []aca.AiCodingAgent{opts.ACA}),
 	})
+	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
 	}

@@ -423,14 +423,14 @@ func newProjectCloseCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd, api.ProjectStateOpen)
-	addStopRunningFlags(cmd, &stopRunning, &cancel, "a terminal")
+	addStopRunningFlags(cmd, &stopRunning, &cancel, "a terminal or agent")
 	return cmd
 }
 
-const stopProjectQuestion = "stop running terminals"
+const stopProjectQuestion = "stop running terminals and agents"
 
 // stoppingRunning sends a request that closes or removes a project, asking
-// first whether to stop its running terminals unless stopRunning or cancel
+// first whether to stop its running terminals and agents unless stopRunning or cancel
 // answers; confirm is the question.
 func stoppingRunning(cmd *cobra.Command, send func(stopRunning bool) (api.ProjectResult, error), stopRunning, cancel bool, confirm string) (api.ProjectResult, error) {
 	if stopRunning {
@@ -481,7 +481,7 @@ func newProjectRemoveCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd, "")
-	addStopRunningFlags(cmd, &stopRunning, &cancel, "a terminal")
+	addStopRunningFlags(cmd, &stopRunning, &cancel, "a terminal or agent")
 	return cmd
 }
 
@@ -521,6 +521,20 @@ func (r projectResult) text(w io.Writer, st style.Style) {
 			}
 		}
 	}
+	if r.StoppedAgents != nil {
+		for _, a := range *r.StoppedAgents {
+			fmt.Fprintf(w, "  %s %s %s\n", st.Warning("stopped agent"), st.Name(a.Name), st.Muted("("+a.Id+")"))
+		}
+	}
+	if r.StartedAgents != nil {
+		for _, a := range *r.StartedAgents {
+			if a.State == api.AgentStateRunning {
+				fmt.Fprintf(w, "  %s %s %s\n", st.Success("started agent"), st.Name(a.Name), st.Muted("("+a.Id+")"))
+			} else {
+				fmt.Fprintf(w, "  %s %s %s: %s\n", st.Failure("agent did not start"), st.Name(a.Name), st.Muted("("+a.Id+")"), deref(a.Error))
+			}
+		}
+	}
 }
 
 // projectDetail is a project with which of its checkouts are on disk.
@@ -547,6 +561,9 @@ func (d projectDetail) text(w io.Writer, st style.Style) {
 	if p.Terminals != nil {
 		terminals(field, st, *p.Terminals)
 	}
+	if p.Agents != nil {
+		agents(field, st, *p.Agents)
+	}
 	if p.Orphaned != nil && *p.Orphaned {
 		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), hintText(st, missingCheckoutHint(p)))
 	}
@@ -566,6 +583,23 @@ func terminals(field func(name, value string), st style.Style, list []api.Termin
 	table.Write(&b)
 	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
 		field(label(i, "terminals:"), line)
+	}
+}
+
+// agents writes one field line per agent, aligned as a table.
+func agents(field func(name, value string), st style.Style, list []api.Agent) {
+	if len(list) == 0 {
+		field("agents:", st.Muted("(none)"))
+		return
+	}
+	var table style.Table
+	for _, a := range list {
+		table.Row(st.Name(a.Name), agentStateText(st, a), a.Dir, st.Muted(a.Id))
+	}
+	var b strings.Builder
+	table.Write(&b)
+	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
+		field(label(i, "agents:"), line)
 	}
 }
 

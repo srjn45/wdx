@@ -2,7 +2,7 @@
 
 Status: implemented. Attaching to a terminal and its history are in docs/ATTACH.md.
 
-A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents will later run in the same kind of PTY; terminals come first because they need no AI CLI.
+A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents run in the same kind of PTY, on a row of this table of kind `agent` that the terminal commands and API never show: docs/AGENT.md. This document's commands and API deal with kind `shell`.
 
 ## Architecture
 
@@ -209,7 +209,7 @@ A terminal in JSON:
 
 Projects:
 
-- `PATCH /v1/projects/{project}` takes `stop_running` with `state: closed`; `DELETE` takes `?stop_running=true`. With a terminal `starting` or `running` and without it: 409 `project_in_use`, the live terminals under `details.terminals` (agents later under `details.agents`).
+- `PATCH /v1/projects/{project}` takes `stop_running` with `state: closed`; `DELETE` takes `?stop_running=true`. With a terminal `starting` or `running` and without it: 409 `project_in_use`, the live terminals under `details.terminals` (agents under `details.agents`).
 - Close marks those terminals `stopped` and stops them, then closes the project; the result lists them under `stopped`. Remove stops them, lists them under `stopped` too, then the cascade deletes every row. `on_missing_checkout: remove` on `POST /v1/projects` removes the same way, without `stop_running`: live terminals refuse it with `project_in_use`.
 - Opening a project (`PATCH` to open, `POST /v1/projects` reopening a known one, or recloning it) relaunches its `stopped` terminals and lists them under `started`, each with the state it reached: one whose dir is gone ends `failed`.
 - `started` and `stopped` are left out when empty, as `dropped` is.

@@ -24,6 +24,36 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AgentState.
+const (
+	AgentStateExited   AgentState = "exited"
+	AgentStateFailed   AgentState = "failed"
+	AgentStateLost     AgentState = "lost"
+	AgentStateRunning  AgentState = "running"
+	AgentStateStarting AgentState = "starting"
+	AgentStateStopped  AgentState = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the AgentState enum.
+func (e AgentState) Valid() bool {
+	switch e {
+	case AgentStateExited:
+		return true
+	case AgentStateFailed:
+		return true
+	case AgentStateLost:
+		return true
+	case AgentStateRunning:
+		return true
+	case AgentStateStarting:
+		return true
+	case AgentStateStopped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateProjectOnConflict.
 const (
 	CreateProjectOnConflictCancel CreateProjectOnConflict = "cancel"
@@ -62,6 +92,8 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
+	ErrorCodeAgentNotRunning    ErrorCode = "agent_not_running"
+	ErrorCodeAgentRunning       ErrorCode = "agent_running"
 	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
 	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
 	ErrorCodeCancelled          ErrorCode = "cancelled"
@@ -105,6 +137,10 @@ const (
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeAgentNotRunning:
+		return true
+	case ErrorCodeAgentRunning:
+		return true
 	case ErrorCodeAlreadyRunning:
 		return true
 	case ErrorCodeAttachUnsupported:
@@ -318,6 +354,84 @@ func (e TerminalState) Valid() bool {
 	}
 }
 
+// Agent defines model for Agent.
+type Agent struct {
+	// Aca Which AI coding agent it runs, as claude_code.
+	Aca       string    `json:"aca"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Dir Where it starts, now and on every relaunch.
+	Dir     string     `json:"dir"`
+	EndedAt *time.Time `json:"ended_at"`
+
+	// Error Only when failed; why it did not start.
+	Error *string `json:"error"`
+
+	// ExitCode Only when exited; 128 and the signal for one killed by a signal.
+	ExitCode *int   `json:"exit_code"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+
+	// Pid The AI coding agent's, while it has one.
+	Pid         *int   `json:"pid"`
+	ProjectId   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+
+	// SessionId The AI coding agent's session, which it goes on with when started again.
+	SessionId string     `json:"session_id"`
+	StartedAt *time.Time `json:"started_at"`
+
+	// State Whether its process is alive, not what its AI coding agent is doing.
+	// starting: its holder is being started; running: its AI coding agent
+	// is alive; exited: it ended by itself; stopped: closing its project
+	// stopped it; failed: it did not start; lost: its holder is gone and
+	// nobody stopped it.
+	State AgentState `json:"state"`
+
+	// TerminalId What holds its process, which attaching dials; no terminal path accepts it.
+	TerminalId string `json:"terminal_id"`
+
+	// UpdatedAt When its state last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AgentEnvelope defines model for AgentEnvelope.
+type AgentEnvelope struct {
+	Agent Agent `json:"agent"`
+}
+
+// AgentList defines model for AgentList.
+type AgentList struct {
+	Agents []Agent `json:"agents"`
+}
+
+// AgentResult defines model for AgentResult.
+type AgentResult struct {
+	Agent Agent `json:"agent"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
+// AgentState Whether its process is alive, not what its AI coding agent is doing.
+// starting: its holder is being started; running: its AI coding agent
+// is alive; exited: it ended by itself; stopped: closing its project
+// stopped it; failed: it did not start; lost: its holder is gone and
+// nobody stopped it.
+type AgentState string
+
+// CreateAgent defines model for CreateAgent.
+type CreateAgent struct {
+	// Dir Absolute path it starts in; see createAgent.
+	Dir string `json:"dir"`
+
+	// Name A generated adjective-noun codename by default.
+	Name *string `json:"name,omitempty"`
+
+	// Project The project's name, or "id:" and its id; by default the one whose worktree holds dir.
+	Project *string `json:"project,omitempty"`
+}
+
 // CreateProject defines model for CreateProject.
 type CreateProject struct {
 	// Name Required for source new; otherwise the repository directory or URL name by default.
@@ -358,7 +472,8 @@ type Daemon struct {
 
 // ErrorCode Stable error code; never changed or reused. daemon_unavailable,
 // already_running, runtime_missing, port_in_use, runtime_failed,
-// terminal_not_running, attach_unsupported, connection_lost, the
+// terminal_not_running, agent_not_running, attach_unsupported,
+// connection_lost, the
 // codes of wdx update (download_failed to restore_required) and of
 // wdx deps install (cancelled to privileges_required) are reported
 // by the CLI, never by the daemon.
@@ -399,7 +514,8 @@ type NewSourceType string
 type Problem struct {
 	// Code Stable error code; never changed or reused. daemon_unavailable,
 	// already_running, runtime_missing, port_in_use, runtime_failed,
-	// terminal_not_running, attach_unsupported, connection_lost, the
+	// terminal_not_running, agent_not_running, attach_unsupported,
+	// connection_lost, the
 	// codes of wdx update (download_failed to restore_required) and of
 	// wdx deps install (cancelled to privileges_required) are reported
 	// by the CLI, never by the daemon.
@@ -427,6 +543,8 @@ type Problem struct {
 
 // Project defines model for Project.
 type Project struct {
+	// Agents The project's agents by name, in every state; set by getProject only.
+	Agents    *[]Agent  `json:"agents,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Id        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -472,8 +590,14 @@ type ProjectResult struct {
 	// Started The terminals opening the project relaunched, in the state each reached.
 	Started *[]Terminal `json:"started,omitempty"`
 
+	// StartedAgents The agents opening the project relaunched, in the state each reached.
+	StartedAgents *[]Agent `json:"started_agents,omitempty"`
+
 	// Stopped The terminals closing or removing the project stopped.
 	Stopped *[]Terminal `json:"stopped,omitempty"`
+
+	// StoppedAgents The agents closing or removing the project stopped.
+	StoppedAgents *[]Agent `json:"stopped_agents,omitempty"`
 }
 
 // ProjectState defines model for ProjectState.
@@ -601,6 +725,9 @@ type Worktree struct {
 	Present *bool `json:"present,omitempty"`
 }
 
+// AgentRef defines model for AgentRef.
+type AgentRef = string
+
 // ProjectRef defines model for ProjectRef.
 type ProjectRef = string
 
@@ -616,6 +743,63 @@ type TerminalProject = string
 // TerminalRef defines model for TerminalRef.
 type TerminalRef = string
 
+// ListAgentsParams defines parameters for ListAgents.
+type ListAgentsParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// DeleteAgentParams defines parameters for DeleteAgent.
+type DeleteAgentParams struct {
+	// StopRunning Stop the terminals and agents that are starting or running instead of refusing.
+	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetAgentParams defines parameters for GetAgent.
+type GetAgentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetAgentHistoryParams defines parameters for GetAgentHistory.
+type GetAgentHistoryParams struct {
+	// From The number of the first line; excludes tail.
+	From *int64 `form:"from,omitempty" json:"from,omitempty"`
+
+	// Count Lines from from on, or from 0 without from; 1000 when not given; excludes tail.
+	Count *int `form:"count,omitempty" json:"count,omitempty"`
+
+	// Tail The last lines; excludes from and count; 1000 when none is given.
+	Tail *int `form:"tail,omitempty" json:"tail,omitempty"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// StartAgentParams defines parameters for StartAgent.
+type StartAgentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
 	// State Only projects in this state; every project when absent.
@@ -624,7 +808,7 @@ type ListProjectsParams struct {
 
 // DeleteProjectParams defines parameters for DeleteProject.
 type DeleteProjectParams struct {
-	// StopRunning Stop the terminals that are starting or running instead of refusing.
+	// StopRunning Stop the terminals and agents that are starting or running instead of refusing.
 	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
 }
 
@@ -639,7 +823,7 @@ type ListTerminalsParams struct {
 
 // DeleteTerminalParams defines parameters for DeleteTerminal.
 type DeleteTerminalParams struct {
-	// StopRunning Stop the terminals that are starting or running instead of refusing.
+	// StopRunning Stop the terminals and agents that are starting or running instead of refusing.
 	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
 
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -684,6 +868,9 @@ type StartTerminalParams struct {
 	// Dir An absolute path in one of the project's worktrees; excludes project.
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
+
+// CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
+type CreateAgentJSONRequestBody = CreateAgent
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProject
@@ -905,6 +1092,92 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// ListAgents List agents by project name, then name
+	//
+	// The agents of the project named by project, or of the project whose
+	// worktree holds dir, or of every project without either; every state
+	// is listed.
+	//
+	// Errors: invalid_path, not_found.
+	//
+	// Corresponds with GET /v1/agents (the `ListAgents` operationId).
+	ListAgents(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentWithBody Create an agent and start its AI coding agent
+	//
+	// Without project, the agent belongs to the project whose worktree
+	// holds dir, and starts there. With it, in dir when dir is in the
+	// project, else in the project's clone path.
+	//
+	// An agent that does not start is left failed and returns start_failed
+	// with the agent under details.agent.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+	CreateAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgent Create an agent and start its AI coding agent
+	//
+	// Without project, the agent belongs to the project whose worktree
+	// holds dir, and starts there. With it, in dir when dir is in the
+	// project, else in the project's clone path.
+	//
+	// An agent that does not start is left failed and returns start_failed
+	// with the agent under details.agent.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+	CreateAgent(ctx context.Context, body CreateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAgent Delete an agent
+	//
+	// An agent starting or running refuses it with agent_running unless
+	// stop_running is true. What the AI coding agent keeps of its session
+	// stays on disk.
+	//
+	// Errors: agent_running, invalid_path, not_found.
+	//
+	// Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
+	DeleteAgent(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgent An agent, in any state
+	//
+	// Errors: invalid_path, not_found.
+	//
+	// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
+	GetAgent(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentHistory Lines of an agent's history, in any state
+	//
+	// As getTerminalHistory, of the lines that scrolled off the agent's
+	// screen.
+	//
+	// Errors: invalid_path, not_found; tail with from or count is a usage
+	// error.
+	//
+	// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
+	GetAgentHistory(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartAgent Start an agent whose AI coding agent ended, in the same session
+	//
+	// For an agent that exited, failed or was lost. One that does not start
+	// is left failed and returns start_failed with the agent under
+	// details.agent.
+	//
+	// Errors: agent_running, invalid_path, not_found, project_closed,
+	// start_failed.
+	//
+	// Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
+	StartAgent(ctx context.Context, agent AgentRef, params *StartAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetDaemon The daemon serving this socket
 	//
 	// Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
@@ -930,10 +1203,10 @@ type ClientInterface interface {
 	//   <home>/projects/<name> if it is unknown.
 	//
 	// Opening a known project marks it open, drops its checkouts no longer
-	// on disk and relaunches the terminals closing it stopped, listing them
-	// under "started". When no checkout is left, on_missing_checkout
+	// on disk and relaunches the terminals and agents closing it stopped, listing
+	// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 	// "reclone" clones it again and "remove" removes it, which terminals
-	// still running refuse with project_in_use; without it checkout_missing
+	// and agents still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
@@ -960,10 +1233,10 @@ type ClientInterface interface {
 	//   <home>/projects/<name> if it is unknown.
 	//
 	// Opening a known project marks it open, drops its checkouts no longer
-	// on disk and relaunches the terminals closing it stopped, listing them
-	// under "started". When no checkout is left, on_missing_checkout
+	// on disk and relaunches the terminals and agents closing it stopped, listing
+	// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 	// "reclone" clones it again and "remove" removes it, which terminals
-	// still running refuse with project_in_use; without it checkout_missing
+	// and agents still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
@@ -986,7 +1259,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
 	DeleteProject(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 	//
 	// Errors: not_found.
 	//
@@ -995,13 +1268,15 @@ type ClientInterface interface {
 
 	// UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals that
-	// are starting or running, which it refuses with project_in_use unless
-	// stop_running is true, and lists them under "stopped".
+	// Closing touches nothing on disk. It stops the project's terminals and
+	// agents that are starting or running, which it refuses with
+	// project_in_use unless stop_running is true, and lists them under
+	// "stopped" and "stopped_agents".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
-	// checkout_missing is returned. It relaunches the terminals closing
-	// stopped and lists them under "started", each in the state it reached.
+	// checkout_missing is returned. It relaunches the terminals and agents
+	// closing stopped and lists them under "started" and "started_agents",
+	// each in the state it reached.
 	//
 	// Errors: checkout_missing, not_found, project_in_use.
 	//
@@ -1012,13 +1287,15 @@ type ClientInterface interface {
 
 	// UpdateProject Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals that
-	// are starting or running, which it refuses with project_in_use unless
-	// stop_running is true, and lists them under "stopped".
+	// Closing touches nothing on disk. It stops the project's terminals and
+	// agents that are starting or running, which it refuses with
+	// project_in_use unless stop_running is true, and lists them under
+	// "stopped" and "stopped_agents".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
-	// checkout_missing is returned. It relaunches the terminals closing
-	// stopped and lists them under "started", each in the state it reached.
+	// checkout_missing is returned. It relaunches the terminals and agents
+	// closing stopped and lists them under "started" and "started_agents",
+	// each in the state it reached.
 	//
 	// Errors: checkout_missing, not_found, project_in_use.
 	//
@@ -1153,6 +1430,162 @@ type ClientInterface interface {
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+// ListAgents List agents by project name, then name
+//
+// The agents of the project named by project, or of the project whose
+// worktree holds dir, or of every project without either; every state
+// is listed.
+//
+// Errors: invalid_path, not_found.
+//
+// Corresponds with GET /v1/agents (the `ListAgents` operationId).
+func (c *Client) ListAgents(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAgentWithBody Create an agent and start its AI coding agent
+//
+// Without project, the agent belongs to the project whose worktree
+// holds dir, and starts there. With it, in dir when dir is in the
+// project, else in the project's clone path.
+//
+// An agent that does not start is left failed and returns start_failed
+// with the agent under details.agent.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+func (c *Client) CreateAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAgent Create an agent and start its AI coding agent
+//
+// Without project, the agent belongs to the project whose worktree
+// holds dir, and starts there. With it, in dir when dir is in the
+// project, else in the project's clone path.
+//
+// An agent that does not start is left failed and returns start_failed
+// with the agent under details.agent.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+func (c *Client) CreateAgent(ctx context.Context, body CreateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteAgent Delete an agent
+//
+// An agent starting or running refuses it with agent_running unless
+// stop_running is true. What the AI coding agent keeps of its session
+// stays on disk.
+//
+// Errors: agent_running, invalid_path, not_found.
+//
+// Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
+func (c *Client) DeleteAgent(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAgentRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAgent An agent, in any state
+//
+// Errors: invalid_path, not_found.
+//
+// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
+func (c *Client) GetAgent(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAgentHistory Lines of an agent's history, in any state
+//
+// As getTerminalHistory, of the lines that scrolled off the agent's
+// screen.
+//
+// Errors: invalid_path, not_found; tail with from or count is a usage
+// error.
+//
+// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
+func (c *Client) GetAgentHistory(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentHistoryRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartAgent Start an agent whose AI coding agent ended, in the same session
+//
+// For an agent that exited, failed or was lost. One that does not start
+// is left failed and returns start_failed with the agent under
+// details.agent.
+//
+// Errors: agent_running, invalid_path, not_found, project_closed,
+// start_failed.
+//
+// Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
+func (c *Client) StartAgent(ctx context.Context, agent AgentRef, params *StartAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartAgentRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetDaemon The daemon serving this socket
 //
 // Corresponds with GET /v1/daemon (the `GetDaemon` operationId).
@@ -1198,10 +1631,10 @@ func (c *Client) ListProjects(ctx context.Context, params *ListProjectsParams, r
 //     <home>/projects/<name> if it is unknown.
 //
 // Opening a known project marks it open, drops its checkouts no longer
-// on disk and relaunches the terminals closing it stopped, listing them
-// under "started". When no checkout is left, on_missing_checkout
+// on disk and relaunches the terminals and agents closing it stopped, listing
+// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 // "reclone" clones it again and "remove" removes it, which terminals
-// still running refuse with project_in_use; without it checkout_missing
+// and agents still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
@@ -1238,10 +1671,10 @@ func (c *Client) CreateProjectWithBody(ctx context.Context, contentType string, 
 //     <home>/projects/<name> if it is unknown.
 //
 // Opening a known project marks it open, drops its checkouts no longer
-// on disk and relaunches the terminals closing it stopped, listing them
-// under "started". When no checkout is left, on_missing_checkout
+// on disk and relaunches the terminals and agents closing it stopped, listing
+// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 // "reclone" clones it again and "remove" removes it, which terminals
-// still running refuse with project_in_use; without it checkout_missing
+// and agents still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
@@ -1284,7 +1717,7 @@ func (c *Client) DeleteProject(ctx context.Context, project ProjectRef, params *
 	return c.Client.Do(req)
 }
 
-// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
+// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 //
 // Errors: not_found.
 //
@@ -1303,13 +1736,15 @@ func (c *Client) GetProject(ctx context.Context, project ProjectRef, reqEditors 
 
 // UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals that
-// are starting or running, which it refuses with project_in_use unless
-// stop_running is true, and lists them under "stopped".
+// Closing touches nothing on disk. It stops the project's terminals and
+// agents that are starting or running, which it refuses with
+// project_in_use unless stop_running is true, and lists them under
+// "stopped" and "stopped_agents".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
-// checkout_missing is returned. It relaunches the terminals closing
-// stopped and lists them under "started", each in the state it reached.
+// checkout_missing is returned. It relaunches the terminals and agents
+// closing stopped and lists them under "started" and "started_agents",
+// each in the state it reached.
 //
 // Errors: checkout_missing, not_found, project_in_use.
 //
@@ -1330,13 +1765,15 @@ func (c *Client) UpdateProjectWithBody(ctx context.Context, project ProjectRef, 
 
 // UpdateProject Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals that
-// are starting or running, which it refuses with project_in_use unless
-// stop_running is true, and lists them under "stopped".
+// Closing touches nothing on disk. It stops the project's terminals and
+// agents that are starting or running, which it refuses with
+// project_in_use unless stop_running is true, and lists them under
+// "stopped" and "stopped_agents".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
-// checkout_missing is returned. It relaunches the terminals closing
-// stopped and lists them under "started", each in the state it reached.
+// checkout_missing is returned. It relaunches the terminals and agents
+// closing stopped and lists them under "started" and "started_agents",
+// each in the state it reached.
 //
 // Errors: checkout_missing, not_found, project_in_use.
 //
@@ -1578,6 +2015,452 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewListAgentsRequest constructs an http.Request for the ListAgents method
+func NewListAgentsRequest(server string, params *ListAgentsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentRequest calls the generic CreateAgent builder with application/json body
+func NewCreateAgentRequest(server string, body CreateAgentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateAgentRequestWithBody constructs an http.Request for the CreateAgent method, with any body, and a specified content type
+func NewCreateAgentRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAgentRequest constructs an http.Request for the DeleteAgent method
+func NewDeleteAgentRequest(server string, agent AgentRef, params *DeleteAgentParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.StopRunning != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "stop_running", *params.StopRunning, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentRequest constructs an http.Request for the GetAgent method
+func NewGetAgentRequest(server string, agent AgentRef, params *GetAgentParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentHistoryRequest constructs an http.Request for the GetAgentHistory method
+func NewGetAgentHistoryRequest(server string, agent AgentRef, params *GetAgentHistoryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s/history", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Count != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "count", *params.Count, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Tail != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tail", *params.Tail, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStartAgentRequest constructs an http.Request for the StartAgent method
+func NewStartAgentRequest(server string, agent AgentRef, params *StartAgentParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s/start", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetDaemonRequest constructs an http.Request for the GetDaemon method
@@ -2428,6 +3311,102 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListAgentsWithResponse List agents by project name, then name
+	//
+	// The agents of the project named by project, or of the project whose
+	// worktree holds dir, or of every project without either; every state
+	// is listed.
+	//
+	// Errors: invalid_path, not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/agents (the `ListAgents` operationId).
+	ListAgentsWithResponse(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error)
+
+	// CreateAgentWithBodyWithResponse Create an agent and start its AI coding agent
+	//
+	// Without project, the agent belongs to the project whose worktree
+	// holds dir, and starts there. With it, in dir when dir is in the
+	// project, else in the project's clone path.
+	//
+	// An agent that does not start is left failed and returns start_failed
+	// with the agent under details.agent.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+	CreateAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentResponse, error)
+
+	// CreateAgentWithResponse Create an agent and start its AI coding agent
+	//
+	// Without project, the agent belongs to the project whose worktree
+	// holds dir, and starts there. With it, in dir when dir is in the
+	// project, else in the project's clone path.
+	//
+	// An agent that does not start is left failed and returns start_failed
+	// with the agent under details.agent.
+	//
+	// Errors: invalid_name, invalid_path, name_taken, not_found,
+	// project_closed, start_failed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+	CreateAgentWithResponse(ctx context.Context, body CreateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentResponse, error)
+
+	// DeleteAgentWithResponse Delete an agent
+	//
+	// An agent starting or running refuses it with agent_running unless
+	// stop_running is true. What the AI coding agent keeps of its session
+	// stays on disk.
+	//
+	// Errors: agent_running, invalid_path, not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
+	DeleteAgentWithResponse(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*DeleteAgentResponse, error)
+
+	// GetAgentWithResponse An agent, in any state
+	//
+	// Errors: invalid_path, not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
+	GetAgentWithResponse(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*GetAgentResponse, error)
+
+	// GetAgentHistoryWithResponse Lines of an agent's history, in any state
+	//
+	// As getTerminalHistory, of the lines that scrolled off the agent's
+	// screen.
+	//
+	// Errors: invalid_path, not_found; tail with from or count is a usage
+	// error.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
+	GetAgentHistoryWithResponse(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*GetAgentHistoryResponse, error)
+
+	// StartAgentWithResponse Start an agent whose AI coding agent ended, in the same session
+	//
+	// For an agent that exited, failed or was lost. One that does not start
+	// is left failed and returns start_failed with the agent under
+	// details.agent.
+	//
+	// Errors: agent_running, invalid_path, not_found, project_closed,
+	// start_failed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
+	StartAgentWithResponse(ctx context.Context, agent AgentRef, params *StartAgentParams, reqEditors ...RequestEditorFn) (*StartAgentResponse, error)
+
 	// GetDaemonWithResponse The daemon serving this socket
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2457,10 +3436,10 @@ type ClientWithResponsesInterface interface {
 	//   <home>/projects/<name> if it is unknown.
 	//
 	// Opening a known project marks it open, drops its checkouts no longer
-	// on disk and relaunches the terminals closing it stopped, listing them
-	// under "started". When no checkout is left, on_missing_checkout
+	// on disk and relaunches the terminals and agents closing it stopped, listing
+	// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 	// "reclone" clones it again and "remove" removes it, which terminals
-	// still running refuse with project_in_use; without it checkout_missing
+	// and agents still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
@@ -2487,10 +3466,10 @@ type ClientWithResponsesInterface interface {
 	//   <home>/projects/<name> if it is unknown.
 	//
 	// Opening a known project marks it open, drops its checkouts no longer
-	// on disk and relaunches the terminals closing it stopped, listing them
-	// under "started". When no checkout is left, on_missing_checkout
+	// on disk and relaunches the terminals and agents closing it stopped, listing
+	// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 	// "reclone" clones it again and "remove" removes it, which terminals
-	// still running refuse with project_in_use; without it checkout_missing
+	// and agents still running refuse with project_in_use; without it checkout_missing
 	// is returned.
 	//
 	// Errors: checkout_missing, clone_failed, invalid_argument,
@@ -2515,7 +3494,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /v1/projects/{project} (the `DeleteProject` operationId).
 	DeleteProjectWithResponse(ctx context.Context, project ProjectRef, params *DeleteProjectParams, reqEditors ...RequestEditorFn) (*DeleteProjectResponse, error)
 
-	// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals
+	// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 	//
 	// Errors: not_found.
 	//
@@ -2526,13 +3505,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals that
-	// are starting or running, which it refuses with project_in_use unless
-	// stop_running is true, and lists them under "stopped".
+	// Closing touches nothing on disk. It stops the project's terminals and
+	// agents that are starting or running, which it refuses with
+	// project_in_use unless stop_running is true, and lists them under
+	// "stopped" and "stopped_agents".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
-	// checkout_missing is returned. It relaunches the terminals closing
-	// stopped and lists them under "started", each in the state it reached.
+	// checkout_missing is returned. It relaunches the terminals and agents
+	// closing stopped and lists them under "started" and "started_agents",
+	// each in the state it reached.
 	//
 	// Errors: checkout_missing, not_found, project_in_use.
 	//
@@ -2543,13 +3524,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals that
-	// are starting or running, which it refuses with project_in_use unless
-	// stop_running is true, and lists them under "stopped".
+	// Closing touches nothing on disk. It stops the project's terminals and
+	// agents that are starting or running, which it refuses with
+	// project_in_use unless stop_running is true, and lists them under
+	// "stopped" and "stopped_agents".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
-	// checkout_missing is returned. It relaunches the terminals closing
-	// stopped and lists them under "started", each in the state it reached.
+	// checkout_missing is returned. It relaunches the terminals and agents
+	// closing stopped and lists them under "started" and "started_agents",
+	// each in the state it reached.
 	//
 	// Errors: checkout_missing, not_found, project_in_use.
 	//
@@ -2698,6 +3681,294 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
+}
+
+type ListAgentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAgentsResponse) GetJSON200() *AgentList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListAgentsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAgentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAgentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *AgentResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateAgentResponse) GetJSON201() *AgentResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteAgentResponse) GetJSON200() *AgentResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAgentResponse) GetJSON200() *AgentEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAgentHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TerminalHistoryEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAgentHistoryResponse) GetJSON200() *TerminalHistoryEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAgentHistoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAgentHistoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAgentHistoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StartAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r StartAgentResponse) GetJSON200() *AgentResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StartAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StartAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type GetDaemonResponse struct {
@@ -3420,6 +4691,144 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
+// ListAgentsWithResponse List agents by project name, then name
+//
+// The agents of the project named by project, or of the project whose
+// worktree holds dir, or of every project without either; every state
+// is listed.
+//
+// Errors: invalid_path, not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/agents (the `ListAgents` operationId).
+func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error) {
+	rsp, err := c.ListAgents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentsResponse(rsp)
+}
+
+// CreateAgentWithBodyWithResponse Create an agent and start its AI coding agent
+//
+// Without project, the agent belongs to the project whose worktree
+// holds dir, and starts there. With it, in dir when dir is in the
+// project, else in the project's clone path.
+//
+// An agent that does not start is left failed and returns start_failed
+// with the agent under details.agent.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+func (c *ClientWithResponses) CreateAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentResponse, error) {
+	rsp, err := c.CreateAgentWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentResponse(rsp)
+}
+
+// CreateAgentWithResponse Create an agent and start its AI coding agent
+//
+// Without project, the agent belongs to the project whose worktree
+// holds dir, and starts there. With it, in dir when dir is in the
+// project, else in the project's clone path.
+//
+// An agent that does not start is left failed and returns start_failed
+// with the agent under details.agent.
+//
+// Errors: invalid_name, invalid_path, name_taken, not_found,
+// project_closed, start_failed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/agents (the `CreateAgent` operationId).
+func (c *ClientWithResponses) CreateAgentWithResponse(ctx context.Context, body CreateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentResponse, error) {
+	rsp, err := c.CreateAgent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentResponse(rsp)
+}
+
+// DeleteAgentWithResponse Delete an agent
+//
+// An agent starting or running refuses it with agent_running unless
+// stop_running is true. What the AI coding agent keeps of its session
+// stays on disk.
+//
+// Errors: agent_running, invalid_path, not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
+func (c *ClientWithResponses) DeleteAgentWithResponse(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*DeleteAgentResponse, error) {
+	rsp, err := c.DeleteAgent(ctx, agent, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAgentResponse(rsp)
+}
+
+// GetAgentWithResponse An agent, in any state
+//
+// Errors: invalid_path, not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
+func (c *ClientWithResponses) GetAgentWithResponse(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*GetAgentResponse, error) {
+	rsp, err := c.GetAgent(ctx, agent, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentResponse(rsp)
+}
+
+// GetAgentHistoryWithResponse Lines of an agent's history, in any state
+//
+// As getTerminalHistory, of the lines that scrolled off the agent's
+// screen.
+//
+// Errors: invalid_path, not_found; tail with from or count is a usage
+// error.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
+func (c *ClientWithResponses) GetAgentHistoryWithResponse(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*GetAgentHistoryResponse, error) {
+	rsp, err := c.GetAgentHistory(ctx, agent, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentHistoryResponse(rsp)
+}
+
+// StartAgentWithResponse Start an agent whose AI coding agent ended, in the same session
+//
+// For an agent that exited, failed or was lost. One that does not start
+// is left failed and returns start_failed with the agent under
+// details.agent.
+//
+// Errors: agent_running, invalid_path, not_found, project_closed,
+// start_failed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
+func (c *ClientWithResponses) StartAgentWithResponse(ctx context.Context, agent AgentRef, params *StartAgentParams, reqEditors ...RequestEditorFn) (*StartAgentResponse, error) {
+	rsp, err := c.StartAgent(ctx, agent, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartAgentResponse(rsp)
+}
+
 // GetDaemonWithResponse The daemon serving this socket
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3461,10 +4870,10 @@ func (c *ClientWithResponses) ListProjectsWithResponse(ctx context.Context, para
 //     <home>/projects/<name> if it is unknown.
 //
 // Opening a known project marks it open, drops its checkouts no longer
-// on disk and relaunches the terminals closing it stopped, listing them
-// under "started". When no checkout is left, on_missing_checkout
+// on disk and relaunches the terminals and agents closing it stopped, listing
+// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 // "reclone" clones it again and "remove" removes it, which terminals
-// still running refuse with project_in_use; without it checkout_missing
+// and agents still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
@@ -3497,10 +4906,10 @@ func (c *ClientWithResponses) CreateProjectWithBodyWithResponse(ctx context.Cont
 //     <home>/projects/<name> if it is unknown.
 //
 // Opening a known project marks it open, drops its checkouts no longer
-// on disk and relaunches the terminals closing it stopped, listing them
-// under "started". When no checkout is left, on_missing_checkout
+// on disk and relaunches the terminals and agents closing it stopped, listing
+// them under "started" and "started_agents". When no checkout is left, on_missing_checkout
 // "reclone" clones it again and "remove" removes it, which terminals
-// still running refuse with project_in_use; without it checkout_missing
+// and agents still running refuse with project_in_use; without it checkout_missing
 // is returned.
 //
 // Errors: checkout_missing, clone_failed, invalid_argument,
@@ -3537,7 +4946,7 @@ func (c *ClientWithResponses) DeleteProjectWithResponse(ctx context.Context, pro
 	return ParseDeleteProjectResponse(rsp)
 }
 
-// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals
+// GetProjectWithResponse A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 //
 // Errors: not_found.
 //
@@ -3554,13 +4963,15 @@ func (c *ClientWithResponses) GetProjectWithResponse(ctx context.Context, projec
 
 // UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals that
-// are starting or running, which it refuses with project_in_use unless
-// stop_running is true, and lists them under "stopped".
+// Closing touches nothing on disk. It stops the project's terminals and
+// agents that are starting or running, which it refuses with
+// project_in_use unless stop_running is true, and lists them under
+// "stopped" and "stopped_agents".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
-// checkout_missing is returned. It relaunches the terminals closing
-// stopped and lists them under "started", each in the state it reached.
+// checkout_missing is returned. It relaunches the terminals and agents
+// closing stopped and lists them under "started" and "started_agents",
+// each in the state it reached.
 //
 // Errors: checkout_missing, not_found, project_in_use.
 //
@@ -3577,13 +4988,15 @@ func (c *ClientWithResponses) UpdateProjectWithBodyWithResponse(ctx context.Cont
 
 // UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals that
-// are starting or running, which it refuses with project_in_use unless
-// stop_running is true, and lists them under "stopped".
+// Closing touches nothing on disk. It stops the project's terminals and
+// agents that are starting or running, which it refuses with
+// project_in_use unless stop_running is true, and lists them under
+// "stopped" and "stopped_agents".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
-// checkout_missing is returned. It relaunches the terminals closing
-// stopped and lists them under "started", each in the state it reached.
+// checkout_missing is returned. It relaunches the terminals and agents
+// closing stopped and lists them under "started" and "started_agents",
+// each in the state it reached.
 //
 // Errors: checkout_missing, not_found, project_in_use.
 //
@@ -3797,6 +5210,204 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetVersionResponse(rsp)
+}
+
+// ParseListAgentsResponse parses an HTTP response from a ListAgentsWithResponse call
+func ParseListAgentsResponse(rsp *http.Response) (*ListAgentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentResponse parses an HTTP response from a CreateAgentWithResponse call
+func ParseCreateAgentResponse(rsp *http.Response) (*CreateAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAgentResponse parses an HTTP response from a DeleteAgentWithResponse call
+func ParseDeleteAgentResponse(rsp *http.Response) (*DeleteAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentResponse parses an HTTP response from a GetAgentWithResponse call
+func ParseGetAgentResponse(rsp *http.Response) (*GetAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentHistoryResponse parses an HTTP response from a GetAgentHistoryWithResponse call
+func ParseGetAgentHistoryResponse(rsp *http.Response) (*GetAgentHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TerminalHistoryEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartAgentResponse parses an HTTP response from a StartAgentWithResponse call
+func ParseStartAgentResponse(rsp *http.Response) (*StartAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetDaemonResponse parses an HTTP response from a GetDaemonWithResponse call
@@ -4296,6 +5907,24 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAgents List agents by project name, then name
+	// (GET /v1/agents)
+	ListAgents(w http.ResponseWriter, r *http.Request, params ListAgentsParams)
+	// CreateAgent Create an agent and start its AI coding agent
+	// (POST /v1/agents)
+	CreateAgent(w http.ResponseWriter, r *http.Request)
+	// DeleteAgent Delete an agent
+	// (DELETE /v1/agents/{agent})
+	DeleteAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params DeleteAgentParams)
+	// GetAgent An agent, in any state
+	// (GET /v1/agents/{agent})
+	GetAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentParams)
+	// GetAgentHistory Lines of an agent's history, in any state
+	// (GET /v1/agents/{agent}/history)
+	GetAgentHistory(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentHistoryParams)
+	// StartAgent Start an agent whose AI coding agent ended, in the same session
+	// (POST /v1/agents/{agent}/start)
+	StartAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params StartAgentParams)
 	// GetDaemon The daemon serving this socket
 	// (GET /v1/daemon)
 	GetDaemon(w http.ResponseWriter, r *http.Request)
@@ -4308,7 +5937,7 @@ type ServerInterface interface {
 	// DeleteProject Delete a project and everything that belongs to it
 	// (DELETE /v1/projects/{project})
 	DeleteProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params DeleteProjectParams)
-	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 	// (GET /v1/projects/{project})
 	GetProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
 	// UpdateProject Close a project, or open it again from one of its checkouts
@@ -4351,6 +5980,338 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAgents operation middleware
+func (siw *ServerInterfaceWrapper) ListAgents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAgentsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAgent operation middleware
+func (siw *ServerInterfaceWrapper) CreateAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAgent operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteAgentParams
+
+	// ------------- Optional query parameter "stop_running" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "stop_running", r.URL.Query(), &params.StopRunning, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "stop_running"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stop_running", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAgent(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgent operation middleware
+func (siw *ServerInterfaceWrapper) GetAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAgentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgent(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAgentHistoryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "count" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "count", r.URL.Query(), &params.Count, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "count"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "count", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tail" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tail", r.URL.Query(), &params.Tail, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tail"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tail", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentHistory(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartAgent operation middleware
+func (siw *ServerInterfaceWrapper) StartAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StartAgentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartAgent(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetDaemon operation middleware
 func (siw *ServerInterfaceWrapper) GetDaemon(w http.ResponseWriter, r *http.Request) {
@@ -5040,11 +7001,255 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.GetTerminal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals/{terminal}/start", wrapper.StartTerminal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals/{terminal}/history", wrapper.GetTerminalHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents", wrapper.ListAgents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents", wrapper.CreateAgent)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.DeleteAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.GetAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/start", wrapper.StartAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/history", wrapper.GetAgentHistory)
 
 	return m
 }
 
 type ProblemApplicationProblemPlusJSONResponse Problem
+
+type ListAgentsRequestObject struct {
+	Params ListAgentsParams
+}
+
+type ListAgentsResponseObject interface {
+	VisitListAgentsResponse(w http.ResponseWriter) error
+}
+
+type ListAgents200JSONResponse AgentList
+
+func (response ListAgents200JSONResponse) VisitListAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListAgentsdefaultApplicationProblemPlusJSONResponse) VisitListAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentRequestObject struct {
+	Body *CreateAgentJSONRequestBody
+}
+
+type CreateAgentResponseObject interface {
+	VisitCreateAgentResponse(w http.ResponseWriter) error
+}
+
+type CreateAgent201JSONResponse AgentResult
+
+func (response CreateAgent201JSONResponse) VisitCreateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateAgentdefaultApplicationProblemPlusJSONResponse) VisitCreateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params DeleteAgentParams
+}
+
+type DeleteAgentResponseObject interface {
+	VisitDeleteAgentResponse(w http.ResponseWriter) error
+}
+
+type DeleteAgent200JSONResponse AgentResult
+
+func (response DeleteAgent200JSONResponse) VisitDeleteAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteAgentdefaultApplicationProblemPlusJSONResponse) VisitDeleteAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params GetAgentParams
+}
+
+type GetAgentResponseObject interface {
+	VisitGetAgentResponse(w http.ResponseWriter) error
+}
+
+type GetAgent200JSONResponse AgentEnvelope
+
+func (response GetAgent200JSONResponse) VisitGetAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetAgentdefaultApplicationProblemPlusJSONResponse) VisitGetAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentHistoryRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params GetAgentHistoryParams
+}
+
+type GetAgentHistoryResponseObject interface {
+	VisitGetAgentHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetAgentHistory200JSONResponse TerminalHistoryEnvelope
+
+func (response GetAgentHistory200JSONResponse) VisitGetAgentHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentHistorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetAgentHistorydefaultApplicationProblemPlusJSONResponse) VisitGetAgentHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartAgentRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params StartAgentParams
+}
+
+type StartAgentResponseObject interface {
+	VisitStartAgentResponse(w http.ResponseWriter) error
+}
+
+type StartAgent200JSONResponse AgentResult
+
+func (response StartAgent200JSONResponse) VisitStartAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StartAgentdefaultApplicationProblemPlusJSONResponse) VisitStartAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetDaemonRequestObject struct {
 }
@@ -5680,6 +7885,24 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListAgents List agents by project name, then name
+	// (GET /v1/agents)
+	ListAgents(ctx context.Context, request ListAgentsRequestObject) (ListAgentsResponseObject, error)
+	// CreateAgent Create an agent and start its AI coding agent
+	// (POST /v1/agents)
+	CreateAgent(ctx context.Context, request CreateAgentRequestObject) (CreateAgentResponseObject, error)
+	// DeleteAgent Delete an agent
+	// (DELETE /v1/agents/{agent})
+	DeleteAgent(ctx context.Context, request DeleteAgentRequestObject) (DeleteAgentResponseObject, error)
+	// GetAgent An agent, in any state
+	// (GET /v1/agents/{agent})
+	GetAgent(ctx context.Context, request GetAgentRequestObject) (GetAgentResponseObject, error)
+	// GetAgentHistory Lines of an agent's history, in any state
+	// (GET /v1/agents/{agent}/history)
+	GetAgentHistory(ctx context.Context, request GetAgentHistoryRequestObject) (GetAgentHistoryResponseObject, error)
+	// StartAgent Start an agent whose AI coding agent ended, in the same session
+	// (POST /v1/agents/{agent}/start)
+	StartAgent(ctx context.Context, request StartAgentRequestObject) (StartAgentResponseObject, error)
 	// GetDaemon The daemon serving this socket
 	// (GET /v1/daemon)
 	GetDaemon(ctx context.Context, request GetDaemonRequestObject) (GetDaemonResponseObject, error)
@@ -5692,7 +7915,7 @@ type StrictServerInterface interface {
 	// DeleteProject Delete a project and everything that belongs to it
 	// (DELETE /v1/projects/{project})
 	DeleteProject(ctx context.Context, request DeleteProjectRequestObject) (DeleteProjectResponseObject, error)
-	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals
+	// GetProject A project, open or closed, with which of its checkouts are on disk and its terminals and agents
 	// (GET /v1/projects/{project})
 	GetProject(ctx context.Context, request GetProjectRequestObject) (GetProjectResponseObject, error)
 	// UpdateProject Close a project, or open it again from one of its checkouts
@@ -5764,6 +7987,171 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAgents operation middleware
+func (sh *strictHandler) ListAgents(w http.ResponseWriter, r *http.Request, params ListAgentsParams) {
+	var request ListAgentsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgents(ctx, request.(ListAgentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentsResponseObject); ok {
+		if err := validResponse.VisitListAgentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAgent operation middleware
+func (sh *strictHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
+	var request CreateAgentRequestObject
+
+	var body CreateAgentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAgent(ctx, request.(CreateAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAgentResponseObject); ok {
+		if err := validResponse.VisitCreateAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAgent operation middleware
+func (sh *strictHandler) DeleteAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params DeleteAgentParams) {
+	var request DeleteAgentRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAgent(ctx, request.(DeleteAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAgentResponseObject); ok {
+		if err := validResponse.VisitDeleteAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgent operation middleware
+func (sh *strictHandler) GetAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentParams) {
+	var request GetAgentRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgent(ctx, request.(GetAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentResponseObject); ok {
+		if err := validResponse.VisitGetAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentHistory operation middleware
+func (sh *strictHandler) GetAgentHistory(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentHistoryParams) {
+	var request GetAgentHistoryRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentHistory(ctx, request.(GetAgentHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentHistoryResponseObject); ok {
+		if err := validResponse.VisitGetAgentHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartAgent operation middleware
+func (sh *strictHandler) StartAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params StartAgentParams) {
+	var request StartAgentRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartAgent(ctx, request.(StartAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartAgentResponseObject); ok {
+		if err := validResponse.VisitStartAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetDaemon operation middleware
@@ -6179,95 +8567,108 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

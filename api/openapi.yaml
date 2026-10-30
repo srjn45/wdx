@@ -71,10 +71,10 @@ paths:
           <home>/projects/<name> if it is unknown.
 
         Opening a known project marks it open, drops its checkouts no longer
-        on disk and relaunches the terminals closing it stopped, listing them
-        under "started". When no checkout is left, on_missing_checkout
+        on disk and relaunches the terminals and agents closing it stopped, listing
+        them under "started" and "started_agents". When no checkout is left, on_missing_checkout
         "reclone" clones it again and "remove" removes it, which terminals
-        still running refuse with project_in_use; without it checkout_missing
+        and agents still running refuse with project_in_use; without it checkout_missing
         is returned.
 
         Errors: checkout_missing, clone_failed, invalid_argument,
@@ -103,11 +103,11 @@ paths:
       - $ref: "#/components/parameters/ProjectRef"
     get:
       operationId: getProject
-      summary: A project, open or closed, with which of its checkouts are on disk and its terminals
+      summary: A project, open or closed, with which of its checkouts are on disk and its terminals and agents
       description: "Errors: not_found."
       responses:
         "200":
-          description: The project, with "present" on each worktree, "orphaned" and "terminals" set.
+          description: The project, with "present" on each worktree, "orphaned", "terminals" and "agents" set.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProjectEnvelope" }
@@ -116,13 +116,15 @@ paths:
       operationId: updateProject
       summary: Close a project, or open it again from one of its checkouts
       description: |
-        Closing touches nothing on disk. It stops the project's terminals that
-        are starting or running, which it refuses with project_in_use unless
-        stop_running is true, and lists them under "stopped".
+        Closing touches nothing on disk. It stops the project's terminals and
+        agents that are starting or running, which it refuses with
+        project_in_use unless stop_running is true, and lists them under
+        "stopped" and "stopped_agents".
 
         Opening drops the checkouts no longer on disk; when none is left,
-        checkout_missing is returned. It relaunches the terminals closing
-        stopped and lists them under "started", each in the state it reached.
+        checkout_missing is returned. It relaunches the terminals and agents
+        closing stopped and lists them under "started" and "started_agents",
+        each in the state it reached.
 
         Errors: checkout_missing, not_found, project_in_use.
       requestBody:
@@ -346,6 +348,145 @@ paths:
               schema: { $ref: "#/components/schemas/TerminalHistoryEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/agents:
+    get:
+      operationId: listAgents
+      summary: List agents by project name, then name
+      description: |
+        The agents of the project named by project, or of the project whose
+        worktree holds dir, or of every project without either; every state
+        is listed.
+
+        Errors: invalid_path, not_found.
+      parameters:
+        - $ref: "#/components/parameters/TerminalProject"
+        - $ref: "#/components/parameters/TerminalDir"
+      responses:
+        "200":
+          description: The agents.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createAgent
+      summary: Create an agent and start its AI coding agent
+      description: |
+        Without project, the agent belongs to the project whose worktree
+        holds dir, and starts there. With it, in dir when dir is in the
+        project, else in the project's clone path.
+
+        An agent that does not start is left failed and returns start_failed
+        with the agent under details.agent.
+
+        Errors: invalid_name, invalid_path, name_taken, not_found,
+        project_closed, start_failed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgent" }
+      responses:
+        "201":
+          description: The agent, with result created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/agents/{agent}:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getAgent
+      summary: An agent, in any state
+      description: "Errors: invalid_path, not_found."
+      responses:
+        "200":
+          description: The agent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteAgent
+      summary: Delete an agent
+      description: |
+        An agent starting or running refuses it with agent_running unless
+        stop_running is true. What the AI coding agent keeps of its session
+        stays on disk.
+
+        Errors: agent_running, invalid_path, not_found.
+      parameters:
+        - $ref: "#/components/parameters/StopRunning"
+      responses:
+        "200":
+          description: The removed agent, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/agents/{agent}/start:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: startAgent
+      summary: Start an agent whose AI coding agent ended, in the same session
+      description: |
+        For an agent that exited, failed or was lost. One that does not start
+        is left failed and returns start_failed with the agent under
+        details.agent.
+
+        Errors: agent_running, invalid_path, not_found, project_closed,
+        start_failed.
+      responses:
+        "200":
+          description: The agent, with result started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/agents/{agent}/history:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getAgentHistory
+      summary: Lines of an agent's history, in any state
+      description: |
+        As getTerminalHistory, of the lines that scrolled off the agent's
+        screen.
+
+        Errors: invalid_path, not_found; tail with from or count is a usage
+        error.
+      parameters:
+        - name: from
+          in: query
+          description: The number of the first line; excludes tail.
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: count
+          in: query
+          description: Lines from from on, or from 0 without from; 1000 when not given; excludes tail.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+        - name: tail
+          in: query
+          description: The last lines; excludes from and count; 1000 when none is given.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalHistoryEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     ProjectRef:
@@ -373,10 +514,19 @@ components:
       in: query
       description: An absolute path in one of the project's worktrees; excludes project.
       schema: { type: string, minLength: 1 }
+    AgentRef:
+      name: agent
+      in: path
+      required: true
+      description: |
+        "id:" and the agent's id, as in id:agent-1a2b3c4d, or its name
+        (case-insensitive) together with project or dir, since names are
+        unique only within a project.
+      schema: { type: string, minLength: 1 }
     StopRunning:
       name: stop_running
       in: query
-      description: Stop the terminals that are starting or running instead of refusing.
+      description: Stop the terminals and agents that are starting or running instead of refusing.
       schema: { type: boolean, default: false }
 
   responses:
@@ -445,6 +595,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Terminal" }
           description: The project's terminals by name, in every state; set by getProject only.
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+          description: The project's agents by name, in every state; set by getProject only.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -501,6 +655,14 @@ components:
           type: array
           description: The terminals closing or removing the project stopped.
           items: { $ref: "#/components/schemas/Terminal" }
+        started_agents:
+          type: array
+          description: The agents opening the project relaunched, in the state each reached.
+          items: { $ref: "#/components/schemas/Agent" }
+        stopped_agents:
+          type: array
+          description: The agents closing or removing the project stopped.
+          items: { $ref: "#/components/schemas/Agent" }
 
     CreateProject:
       type: object
@@ -655,12 +817,85 @@ components:
           nullable: true
           description: A generated adjective-noun codename by default.
 
+    AgentState:
+      type: string
+      description: |
+        Whether its process is alive, not what its AI coding agent is doing.
+        starting: its holder is being started; running: its AI coding agent
+        is alive; exited: it ended by itself; stopped: closing its project
+        stopped it; failed: it did not start; lost: its holder is gone and
+        nobody stopped it.
+      enum: [starting, running, exited, stopped, failed, lost]
+
+    Agent:
+      type: object
+      required: [id, name, project_id, project_name, terminal_id, aca, session_id, dir, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        project_id: { type: string }
+        project_name: { type: string }
+        terminal_id: { type: string, description: "What holds its process, which attaching dials; no terminal path accepts it." }
+        aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
+        session_id: { type: string, description: "The AI coding agent's session, which it goes on with when started again." }
+        dir: { type: string, description: "Where it starts, now and on every relaunch." }
+        state: { $ref: "#/components/schemas/AgentState" }
+        pid: { type: integer, nullable: true, description: "The AI coding agent's, while it has one." }
+        exit_code:
+          type: integer
+          nullable: true
+          description: Only when exited; 128 and the signal for one killed by a signal.
+        error: { type: string, nullable: true, description: Only when failed; why it did not start. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: When its state last changed. }
+        started_at: { type: string, format: date-time, nullable: true }
+        ended_at: { type: string, format: date-time, nullable: true }
+
+    AgentList:
+      type: object
+      required: [agents]
+      properties:
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+
+    AgentEnvelope:
+      type: object
+      required: [agent]
+      properties:
+        agent: { $ref: "#/components/schemas/Agent" }
+
+    AgentResult:
+      type: object
+      required: [result, agent]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        agent: { $ref: "#/components/schemas/Agent" }
+
+    CreateAgent:
+      type: object
+      required: [dir]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          nullable: true
+          description: The project's name, or "id:" and its id; by default the one whose worktree holds dir.
+        dir:
+          type: string
+          description: Absolute path it starts in; see createAgent.
+        name:
+          type: string
+          nullable: true
+          description: A generated adjective-noun codename by default.
+
     ErrorCode:
       type: string
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
         already_running, runtime_missing, port_in_use, runtime_failed,
-        terminal_not_running, attach_unsupported, connection_lost, the
+        terminal_not_running, agent_not_running, attach_unsupported,
+        connection_lost, the
         codes of wdx update (download_failed to restore_required) and of
         wdx deps install (cancelled to privileges_required) are reported
         by the CLI, never by the daemon.
@@ -683,6 +918,8 @@ components:
         - terminal_running
         - start_failed
         - terminal_not_running
+        - agent_running
+        - agent_not_running
         - attach_unsupported
         - connection_lost
         - daemon_unavailable

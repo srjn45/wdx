@@ -64,10 +64,11 @@ internal/identity/  the name, version and paths every package agrees on: the hom
 internal/gittest/  makes git behave the same in every test run, and creates the repositories tests use
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
 internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
-internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
+internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md
+internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/holder -> pty/screen, and cli/daemon -> telemetry; every package may use identity; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/holder -> pty/screen, agent -> aca/terminal, and cli/daemon -> telemetry; every package may use identity; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `settings` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

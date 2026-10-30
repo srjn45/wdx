@@ -29,6 +29,10 @@ func RunIfHolder() {
 	flags.StringVar(&o.Project, "project", "", "")
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
+	flags.Func("command", "", func(word string) error {
+		o.Command = append(o.Command, word)
+		return nil
+	})
 	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
 	if flags.Parse(os.Args[2:]) != nil {
 		os.Exit(2)
