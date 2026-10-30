@@ -240,17 +240,20 @@ func (p terminalPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	m := p.m
 	f := m.following
 	var lines []string
+	if m.terminalNotice != "" {
+		lines = append(lines, st.Failure(wrap(m.terminalNotice, area.Dx())))
+	}
 	t, ok := m.selectedTerminal()
 	switch {
 	case f == nil || f.project == nil && f.err == nil:
-		lines = []string{st.Muted("loading…")}
+		lines = append(lines, st.Muted("loading…"))
 	case f.err != nil:
 		// The pane may be three rows: what happens comes first.
-		lines = []string{st.Failure("the project could not be followed, trying again…"), st.Muted(wrap(f.err.Error(), area.Dx()))}
+		lines = append(lines, st.Failure("the project could not be followed, trying again…"), st.Muted(wrap(f.err.Error(), area.Dx())))
 	case !ok:
-		lines = []string{st.Muted("no terminals: ") + st.Command("C-q t") + st.Muted(" creates one")}
+		lines = append(lines, st.Muted("no terminals: ")+st.Command("C-q t")+st.Muted(" creates one"))
 	default:
-		lines = []string{stateMark(st, t.State) + " " + st.Name(t.Name) + " " + st.Muted(string(t.State)), st.Muted(tildePath(t.Dir, m.userHome))}
+		lines = append(lines, stateMark(st, t.State)+" "+st.Name(t.Name)+" "+st.Muted(string(t.State)), st.Muted(tildePath(t.Dir, m.userHome)))
 		switch {
 		case t.ExitCode != nil:
 			lines = append(lines, st.Muted(fmt.Sprintf("exit code %d", *t.ExitCode)))

@@ -191,3 +191,70 @@ func TestFollowReconnects(t *testing.T) {
 	p.until(t, "the stream back", func(m *Model) bool { return m.following.err == nil })
 	wantText(t, p.m, "no terminals: C-q t creates one")
 }
+
+func TestNewTerminal(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.follow(t)
+	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
+	p.keys("enter")
+	p.until(t, "no terminals", func(m *Model) bool { return strings.Contains(text(m), "no terminals") })
+
+	// The menu offers it, and nothing to remove with the project pane focused.
+	p.keys("C-q")
+	wantText(t, p.m, "t  new terminal", "t terminal")
+	if strings.Contains(text(p.m), "x  remove") {
+		t.Fatalf("x offered with nothing to remove:\n%s", text(p.m))
+	}
+	p.keys("t")
+	p.until(t, "a tab", func(m *Model) bool { return len(tabs(m)) == 1 })
+	first := tabs(p.m)[0]
+	if p.m.layout.focus != terminal {
+		t.Fatalf("focus %s", p.m.layout.focus)
+	}
+
+	// A second one gets selected once it comes.
+	p.keys("C-q", "t")
+	p.until(t, "the new tab selected", func(m *Model) bool {
+		sel, ok := m.selectedTerminal()
+		return len(tabs(m)) == 2 && ok && sel.Name != first
+	})
+	sel, _ := p.m.selectedTerminal()
+	wantText(t, p.m, " api · terminal · "+sel.Name)
+}
+
+func TestRemoveTerminalConfirmed(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newTerminal(t, "api", dir, "shell")
+	p := h.follow(t)
+	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
+	p.keys("enter")
+	p.until(t, "the tab", tabsAre("shell"))
+
+	p.keys("alt+down", "C-q")
+	wantText(t, p.m, "x  remove shell")
+	p.keys("x")
+	wantText(t, p.m, "┃ Remove terminal", "Remove shell?", "It is running: its shell is stopped.", "y remove  n or Esc keep")
+
+	// n keeps it; so does any key but y.
+	p.keys("n")
+	if p.m.confirm != nil || !slices.Equal(tabs(p.m), []string{"shell"}) {
+		t.Fatalf("n: confirm %v, tabs %v", p.m.confirm, tabs(p.m))
+	}
+	p.keys("C-q", "x", "q", "esc")
+	if p.m.confirm != nil || !slices.Equal(tabs(p.m), []string{"shell"}) {
+		t.Fatalf("q then Esc: confirm %v, tabs %v", p.m.confirm, tabs(p.m))
+	}
+
+	p.keys("C-q", "x", "y")
+	p.until(t, "the tab gone", func(m *Model) bool { return m.confirm == nil && len(tabs(m)) == 0 })
+	list, err := h.client().ListTerminals(context.Background(), "api", "")
+	if err != nil || len(list.Terminals) != 0 {
+		t.Fatalf("terminals: %+v, %v", list.Terminals, err)
+	}
+}

@@ -46,26 +46,28 @@ type Model struct {
 
 	workDir, userHome, projectsDir string // from Options
 
-	width, height int
-	layout        layout
-	projects      *projectList
-	stack         []screen                                                             // the project pane's, the root first
-	shown         string                                                               // the project shown, or "" before one is
-	previous      string                                                               // the project shown before it, which the switcher selects first
-	agent         *placeholder                                                         // the agent pane's
-	tab           int                                                                  // the terminal pane's tab shown, an index into terminals()
-	following     *following                                                           // the stream of the project shown
-	streams       int                                                                  // how many streams were opened, numbering them
-	openStream    func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
-	selectedTab   map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
-	inputs        map[string]*placeholder                                              // what each terminal got, by id, until termview shows them
-	menu          bool                                                                 // the menu is open
-	switcher      *switcherBox                                                         // the project switcher, while it is open
-	strip         int                                                                  // how many times the project strip was shown
-	stripShown    bool                                                                 // the project strip is shown
-	lastClick     click
-	sel           *selection                // text selected with the mouse, while dragged and until the next click or key
-	copy          func(text string) tea.Cmd // puts text on the clipboard; tests replace it
+	width, height  int
+	layout         layout
+	projects       *projectList
+	stack          []screen                                                             // the project pane's, the root first
+	shown          string                                                               // the project shown, or "" before one is
+	previous       string                                                               // the project shown before it, which the switcher selects first
+	agent          *placeholder                                                         // the agent pane's
+	tab            int                                                                  // the terminal pane's tab shown, an index into terminals()
+	following      *following                                                           // the stream of the project shown
+	streams        int                                                                  // how many streams were opened, numbering them
+	openStream     func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
+	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
+	inputs         map[string]*placeholder                                              // what each terminal got, by id, until termview shows them
+	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
+	terminalNotice string                                                               // why the last terminal request failed, until the next key
+	menu           bool                                                                 // the menu is open
+	switcher       *switcherBox                                                         // the project switcher, while it is open
+	strip          int                                                                  // how many times the project strip was shown
+	stripShown     bool                                                                 // the project strip is shown
+	lastClick      click
+	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
+	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
 }
 
 // content is what a pane shows.
@@ -168,6 +170,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.streamOpened(msg)
 	case projectEvent:
 		return m, m.projectEvent(msg)
+	case terminalCreated:
+		m.terminalCreated(msg)
+	case removed:
+		m.removed(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -310,12 +316,25 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case "p":
 			m.switcher = newSwitcher(m.projects, m.previous)
 			return m.listProjects()
+		case "t":
+			if _, ok := m.terminalDir(); ok {
+				return m.createTerminal()
+			}
+		case "x":
+			if r, ok := m.removable(); ok {
+				m.confirm = &confirmBox{r: r}
+				m.log.Info("removal asked", "kind", r.kind, "name", r.name)
+			}
 		case "q":
 			m.log.Info("tide quit")
 			m.unfollow() // the daemon ends the stream, and logs it
 			return tea.Quit
 		}
 		return nil
+	}
+	m.terminalNotice = ""
+	if m.confirm != nil {
+		return m.confirmKey(name)
 	}
 	if m.switcher != nil && name != menuKey {
 		return m.switcher.update(msg)

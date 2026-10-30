@@ -24,8 +24,10 @@ func newTideCmd() *cobra.Command {
 		Long: "tide takes the whole window: the project on the left, an agent on the right\n" +
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
-			"terminals and C-q opens the menu: o opens a project, p switches projects and\n" +
-			"q quits. Alt+Shift and ← or → switch to the previous or next open project.\n" +
+			"terminals and C-q opens the menu: o opens a project, p switches projects, t\n" +
+			"creates a terminal, x removes the terminal of the tab selected after asking,\n" +
+			"and q quits. Alt+Shift and ← or → switch to the previous or next open\n" +
+			"project.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +

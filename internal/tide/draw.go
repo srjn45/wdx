@@ -62,6 +62,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.switcher != nil {
 		m.drawPopup(buf, m.switcher.popup(m))
 	}
+	if m.confirm != nil {
+		m.drawPopup(buf, m.confirmPopup())
+	}
 	if m.menu {
 		m.drawMenu(buf)
 	}
@@ -205,15 +208,11 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 
 // drawMenu draws the menu in a popup.
 func (m *Model) drawMenu(buf uv.Screen) {
-	m.drawPopup(buf, popup{
-		title: "Menu",
-		body: []string{
-			m.st.Command("o") + "  open project",
-			m.st.Command("p") + "  switch project",
-			m.st.Command("q") + "  quit",
-		},
-		footer: m.st.Command("Esc") + " close",
-	})
+	var body []string
+	for _, it := range m.menuItems() {
+		body = append(body, m.st.Command(it.key)+"  "+it.label)
+	}
+	m.drawPopup(buf, popup{title: "Menu", body: body, footer: m.st.Command("Esc") + " close"})
 }
 
 // popup is a box over the middle of the window: a title, a body and a
@@ -278,7 +277,10 @@ func (m *Model) statusLine() string {
 	switch {
 	case m.menu:
 		state = style.StatusPrefix
-		right = "menu: o open  p switch  q quit  Esc close"
+		right = m.menuHint()
+	case m.confirm != nil:
+		state = style.StatusPrefix
+		right = "confirm: y remove  n or Esc keep"
 	case m.switcher != nil:
 		state = style.StatusPrefix
 		right = "switcher: type to find a project"
