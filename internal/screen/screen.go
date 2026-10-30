@@ -23,16 +23,9 @@ type Screen struct {
 	modes       map[ansi.Mode]bool // as the output last set them
 	title       string
 	cursorStyle *int // the DECSCUSR parameter, nil until the output sets one
-	margins     [2]margins
 	// scrolled holds the lines harvested from the vt's scrollback during a
 	// write.
 	scrolled []string
-}
-
-// margins are a screen's top and bottom margins, 0-based and exclusive at
-// the bottom; zero values are the whole screen.
-type margins struct {
-	top, bottom int
 }
 
 const (
@@ -64,7 +57,6 @@ func (s *Screen) Reset(cols, rows int) {
 	s.modes = map[ansi.Mode]bool{}
 	s.title = ""
 	s.cursorStyle = nil
-	s.margins = [2]margins{}
 	e.SetCallbacks(vt.Callbacks{
 		EnableMode:  func(m ansi.Mode) { s.modes[m] = true },
 		DisableMode: func(m ansi.Mode) { s.modes[m] = false },
@@ -81,14 +73,6 @@ func (s *Screen) Reset(cols, rows int) {
 	})
 	// Handlers registered last run first; returning false hands the
 	// sequence on to the vt's own.
-	e.RegisterCsiHandler('r', func(params ansi.Params) bool {
-		s.setMargins(params)
-		return false
-	})
-	e.RegisterEscHandler('c', func() bool {
-		s.margins = [2]margins{}
-		return false
-	})
 	e.RegisterCsiHandler('J', func(params ansi.Params) bool {
 		// ED 3 clears the vt's scrollback: harvest it first, since history
 		// keeps what scrolled off however a program clears.
@@ -112,30 +96,24 @@ func (s *Screen) Reset(cols, rows int) {
 	}()
 }
 
-// setMargins tracks DECSTBM as the vt applies it, to the current screen.
-func (s *Screen) setMargins(params ansi.Params) {
-	rows := s.vt.Height()
-	top, _, _ := params.Param(0, 1)
-	top = max(top, 1)
-	bottom, _, _ := params.Param(1, rows)
-	if bottom < 1 {
-		bottom = rows
+// current is the vt's screen that shows.
+func (s *Screen) current() *vt.Screen {
+	if s.vt.IsAltScreen() {
+		return s.vt.AltScreen()
 	}
-	if top >= bottom {
-		return // the vt ignores it too
-	}
-	m := margins{top: top - 1, bottom: min(bottom, rows)}
-	if m.top == 0 && m.bottom == rows {
-		m = margins{}
-	}
-	s.margins[s.current()] = m
+	return s.vt.MainScreen()
 }
 
-func (s *Screen) current() int {
-	if s.vt.IsAltScreen() {
-		return 1
-	}
-	return 0
+// region is the scroll region of the screen that shows.
+func (s *Screen) region() uv.Rectangle {
+	return s.current().ScrollRegion()
+}
+
+// FailOn makes the vt panic on the CSI sequence ending in final until the
+// screen is reset, as on input it fails on, which no known input does: for
+// tests of what users of the screen do after a reset.
+func (s *Screen) FailOn(final byte) {
+	s.vt.RegisterCsiHandler(int(final), func(ansi.Params) bool { panic("the vt failed") })
 }
 
 // Write feeds output to the screen and returns the lines it scrolled off
@@ -198,7 +176,7 @@ func (s *Screen) Lines() []string {
 	var lines []string
 	line := make(uv.Line, s.vt.Width())
 	for y := range s.vt.Height() {
-		s.row(line, y)
+		row(line, s.vt.MainScreen(), y)
 		lines = append(lines, trimmed(line).Render())
 	}
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -207,11 +185,11 @@ func (s *Screen) Lines() []string {
 	return lines
 }
 
-// row copies row y's cells into line.
-func (s *Screen) row(line uv.Line, y int) {
+// row copies row y of scr into line.
+func row(line uv.Line, scr *vt.Screen, y int) {
 	for x := range line {
 		line[x] = uv.Cell{}
-		if c := s.vt.CellAt(x, y); c != nil {
+		if c := scr.CellAt(x, y); c != nil {
 			line[x] = *c
 		}
 	}
@@ -237,7 +215,6 @@ func (s *Screen) Resize(cols, rows int) (ok bool) {
 		}
 	}()
 	s.vt.Resize(cols, rows)
-	s.margins = [2]margins{} // the vt resets both screens' margins
 	return true
 }
 
@@ -319,25 +296,22 @@ func (s *Screen) Paste(text string) {
 }
 
 // Snapshot returns the bytes that paint the screen on a terminal of its
-// size: a soft reset, the cells, the margins, the modes the output set, the
-// cursor and the title. The pen, character sets and left/right margins are
-// not carried: programs set them again before they draw.
+// size: a soft reset, the main screen's cells and cursor, then, when it
+// shows, the alternate screen's, so that leaving it shows the main screen;
+// the modes the output set, the margins, the cursor with its pen and link,
+// the character sets and the title. The character set GR invokes is not
+// carried: it applies only to bytes UTF-8 output never sends alone.
 func (s *Screen) Snapshot() []byte {
 	e := s.vt
 	var b strings.Builder
 	b.WriteString("\x1b[!p\x1b[H\x1b[2J") // soft reset, home, clear
+	paint(&b, e.MainScreen())
 	if e.IsAltScreen() {
-		b.WriteString("\x1b[?1049h\x1b[H\x1b[2J")
-	}
-	line := make(uv.Line, e.Width())
-	for y := range e.Height() {
-		s.row(line, y)
-		fmt.Fprintf(&b, "\x1b[%d;1H", y+1)
-		b.WriteString(line.Render())
-	}
-	m := s.margins[s.current()]
-	if m != (margins{}) {
-		fmt.Fprintf(&b, "\x1b[%d;%dr", m.top+1, m.bottom)
+		// Entering the alternate screen saves the main screen's cursor,
+		// which leaving it restores.
+		pen(&b, e.MainScreen().Cursor(), uv.Position{})
+		b.WriteString("\x1b[?1049h\x1b[0m\x1b]8;;\x07\x1b[H\x1b[2J")
+		paint(&b, e.AltScreen())
 	}
 	for mode, on := range s.modes {
 		if skipMode(mode) {
@@ -345,21 +319,68 @@ func (s *Screen) Snapshot() []byte {
 		}
 		b.WriteString(modeSequence(mode, on))
 	}
+	r := s.region()
+	if r.Min.Y != 0 || r.Max.Y != e.Height() {
+		fmt.Fprintf(&b, "\x1b[%d;%dr", r.Min.Y+1, r.Max.Y)
+	}
+	if r.Min.X != 0 || r.Max.X != e.Width() {
+		fmt.Fprintf(&b, "\x1b[%d;%ds", r.Min.X+1, r.Max.X)
+	}
 	if s.cursorStyle != nil {
 		fmt.Fprintf(&b, "\x1b[%d q", *s.cursorStyle)
 	}
-	p := e.CursorPosition()
+	var origin uv.Position
 	if s.modes[ansi.ModeOrigin] {
-		p.Y -= m.top // the cursor moves within the margins
+		origin = r.Min // the cursor moves within the margins
 	}
-	fmt.Fprintf(&b, "\x1b[%d;%dH", p.Y+1, p.X+1)
+	pen(&b, s.current().Cursor(), origin)
 	if e.CursorHidden() {
 		b.WriteString("\x1b[?25l")
 	}
+	charSets(&b, e)
 	if s.title != "" {
 		b.WriteString(ansi.SetWindowTitle(s.title))
 	}
 	return []byte(b.String())
+}
+
+// paint writes the cells of scr, a vt screen of the screen's size.
+func paint(b *strings.Builder, scr *vt.Screen) {
+	line := make(uv.Line, scr.Width())
+	for y := range scr.Height() {
+		row(line, scr, y)
+		fmt.Fprintf(b, "\x1b[%d;1H", y+1)
+		b.WriteString(line.Render())
+	}
+}
+
+// pen moves the cursor to where c is, relative to origin, and sets its pen
+// and link: what the program writes next is drawn with them.
+func pen(b *strings.Builder, c vt.Cursor, origin uv.Position) {
+	fmt.Fprintf(b, "\x1b[%d;%dH", c.Y-origin.Y+1, c.X-origin.X+1)
+	b.WriteString(c.Pen.String())
+	if c.Link.URL != "" {
+		b.WriteString(ansi.SetHyperlink(c.Link.URL, c.Link.Params))
+	}
+}
+
+// charSets designates the character sets that are not USASCII, and invokes
+// the one GL holds.
+func charSets(b *strings.Builder, e *vt.Emulator) {
+	sets, gl, _ := e.CharSets()
+	for g, set := range sets {
+		if set != 'B' {
+			fmt.Fprintf(b, "\x1b%c%c", "()*+"[g], set)
+		}
+	}
+	switch gl {
+	case 1:
+		b.WriteString("\x0e") // SO
+	case 2:
+		b.WriteString("\x1bn") // LS2
+	case 3:
+		b.WriteString("\x1bo") // LS3
+	}
 }
 
 // skipMode reports the modes the snapshot does not set from the tracked

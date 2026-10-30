@@ -200,4 +200,4 @@ Approved on 2026-10-30. **Done** 2026-10-30: `239a73f` to the commit marking it 
 
 ## After the steps: the vt fork
 
-Per docs/VT.md, in the order users notice: #11 (a snapshot under less or vim blanks the shell's screen afterwards), #10 (the pen and character sets lost on attach), #3 (lines scrolled in a region go to history), push #2 (fixed in the fork), then #1 (the alternate screen's scrollback memory) and #7 (speed, an ultraviolet fork). After Step 1 only `internal/screen` imports the vt, so the fork is one `replace` in `go.mod`.
+The plan, approved on 2026-10-30, is in docs/VT.md: what an attach shows (#11, #10), history (#3), memory (#1), then the workarounds (#2, #4, #5, #6, #9); speed (#7, an ultraviolet fork) is deferred. After Step 1 only `internal/screen` imports the vt, so the fork is one `replace` in `go.mod`.

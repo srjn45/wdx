@@ -10,22 +10,32 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 )
 
 // TestScreenSnapshot paints a fresh screen with another's snapshot and
 // compares the two: output recorded from programs in a 100×30 PTY
-// (testdata), and sequences that set what the snapshot carries.
+// (testdata), and sequences that set what the snapshot carries. Both then
+// leave the alternate screen and print text that sets nothing, which must
+// look the same on both.
 func TestScreenSnapshot(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"margins":       "\x1b[5;20r\x1b[10;3Hin margins",
-		"origin":        "\x1b[5;20r\x1b[?6h\x1b[3;4Hrelative",
-		"hidden cursor": "text\x1b[?25l",
-		"no autowrap":   "\x1b[?7l" + strings.Repeat("w", 120),
-		"insert mode":   "\x1b[4hab\x1b[Dc",
-		"cursor style":  "\x1b[6 q",
-		"title":         "\x1b]0;a title\x07",
-		"alt margins":   "main\x1b[?1049h\x1b[2;10ralt",
+		"margins":        "\x1b[5;20r\x1b[10;3Hin margins",
+		"origin":         "\x1b[5;20r\x1b[?6h\x1b[3;4Hrelative",
+		"hidden cursor":  "text\x1b[?25l",
+		"no autowrap":    "\x1b[?7l" + strings.Repeat("w", 120),
+		"insert mode":    "\x1b[4hab\x1b[Dc",
+		"cursor style":   "\x1b[6 q",
+		"title":          "\x1b]0;a title\x07",
+		"alt margins":    "main\x1b[?1049h\x1b[2;10ralt",
+		"lr margins":     "\x1b[?69h\x1b[5;20s\x1b[3;10Hin margins",
+		"origin lr":      "\x1b[?69h\x1b[5;20s\x1b[4;12r\x1b[?6h\x1b[2;3Hrelative",
+		"pen":            "\x1b[1;31mbold red, not repeated",
+		"link":           "\x1b]8;;https://example.com\x07linked",
+		"line drawing":   "\x1b(0lqk",
+		"shift out":      "\x1b)0\x0elqk",
+		"main under alt": "shell\r\n\x1b[1m$ \x1b]8;;https://example.com\x07\x1b[?1049h\x1b[0;7mless",
 	}
 	files, err := filepath.Glob("testdata/*.out")
 	if err != nil || len(files) == 0 {
@@ -54,31 +64,63 @@ func TestScreenSnapshot(t *testing.T) {
 			for _, d := range screenDiffs(a, b) {
 				t.Error(d)
 			}
+			const after = "\x1b[?1049lafter"
+			a.Write([]byte(after))
+			b.Write([]byte(after))
+			for _, d := range screenDiffs(a, b) {
+				t.Error("after: " + d)
+			}
 		})
 	}
 }
 
-// screenDiffs lists how b differs from a: cells, cursor, alternate screen,
-// margins, title and the modes a's output set.
+// screenDiffs lists how b differs from a: both screens' cells, cursors and
+// pens, the alternate screen, margins, character sets, title and the modes
+// a's output set.
 func screenDiffs(a, b *Screen) []string {
+	diffs := cellDiffs("main", a.vt.MainScreen(), b.vt.MainScreen())
+	diffs = append(diffs, cursorDiffs("main", a.vt.MainScreen(), b.vt.MainScreen())...)
+	if a.vt.IsAltScreen() {
+		diffs = append(diffs, cellDiffs("alt", a.vt.AltScreen(), b.vt.AltScreen())...)
+		diffs = append(diffs, cursorDiffs("alt", a.vt.AltScreen(), b.vt.AltScreen())...)
+	}
+	return append(diffs, stateDiffs(a, b)...)
+}
+
+func cellDiffs(name string, a, b *vt.Screen) []string {
 	var diffs []string
-	for y := range a.vt.Height() {
-		for x := range a.vt.Width() {
-			ca, cb := a.vt.CellAt(x, y), b.vt.CellAt(x, y)
+	for y := range a.Height() {
+		for x := range a.Width() {
+			ca, cb := a.CellAt(x, y), b.CellAt(x, y)
 			if ca == nil || cb == nil {
 				if ca != cb {
-					diffs = append(diffs, fmt.Sprintf("(%d,%d): %v vs %v", x, y, ca, cb))
+					diffs = append(diffs, fmt.Sprintf("%s (%d,%d): %v vs %v", name, x, y, ca, cb))
 				}
 				continue
 			}
 			if ca.Content != cb.Content || ca.Width != cb.Width || !ca.Style.Equal(&cb.Style) || ca.Link != cb.Link {
-				diffs = append(diffs, fmt.Sprintf("(%d,%d): %q %v %v vs %q %v %v", x, y, ca.Content, ca.Style, ca.Link, cb.Content, cb.Style, cb.Link))
+				diffs = append(diffs, fmt.Sprintf("%s (%d,%d): %q %v %v vs %q %v %v", name, x, y, ca.Content, ca.Style, ca.Link, cb.Content, cb.Style, cb.Link))
 			}
 		}
 	}
-	if pa, pb := a.vt.CursorPosition(), b.vt.CursorPosition(); pa != pb {
-		diffs = append(diffs, fmt.Sprintf("cursor at %v vs %v", pa, pb))
+	return diffs
+}
+
+func cursorDiffs(name string, a, b *vt.Screen) []string {
+	var diffs []string
+	ca, cb := a.Cursor(), b.Cursor()
+	if ca.Position != cb.Position {
+		diffs = append(diffs, fmt.Sprintf("%s cursor at %v vs %v", name, ca.Position, cb.Position))
 	}
+	if !ca.Pen.Equal(&cb.Pen) || ca.Link != cb.Link {
+		diffs = append(diffs, fmt.Sprintf("%s pen %v %v vs %v %v", name, ca.Pen, ca.Link, cb.Pen, cb.Link))
+	}
+	return diffs
+}
+
+// stateDiffs compares what is not the screens' cells and cursors.
+func stateDiffs(a, b *Screen) []string {
+	var diffs []string
 	if a.vt.CursorHidden() != b.vt.CursorHidden() {
 		diffs = append(diffs, "cursor visibility differs")
 	}
@@ -90,8 +132,13 @@ func screenDiffs(a, b *Screen) []string {
 	if a.vt.IsAltScreen() != b.vt.IsAltScreen() {
 		diffs = append(diffs, "alternate screen differs")
 	}
-	if ma, mb := a.margins[a.current()], b.margins[b.current()]; ma != mb {
-		diffs = append(diffs, fmt.Sprintf("margins %v vs %v", ma, mb))
+	if ra, rb := a.region(), b.region(); ra != rb {
+		diffs = append(diffs, fmt.Sprintf("margins %v vs %v", ra, rb))
+	}
+	if ga, gla, _ := a.vt.CharSets(); true {
+		if gb, glb, _ := b.vt.CharSets(); ga != gb || gla != glb {
+			diffs = append(diffs, fmt.Sprintf("character sets %q G%d vs %q G%d", ga, gla, gb, glb))
+		}
 	}
 	if a.title != b.title {
 		diffs = append(diffs, fmt.Sprintf("title %q vs %q", a.title, b.title))
@@ -147,13 +194,14 @@ func TestScreenHistory(t *testing.T) {
 	}
 }
 
-// TestScreenReset feeds the vt output it panics on: the screen starts
-// again empty, draws what follows in the same write, and keeps working.
+// TestScreenReset feeds the vt output it fails on: the screen starts again
+// empty, draws what follows in the same write, and keeps working.
 func TestScreenReset(t *testing.T) {
 	t.Parallel()
 	s := New(80, 24, nil)
 	defer s.Close()
-	if _, reset := s.Write([]byte("before\x1b[1;30r\x1b[30;1H\x1b[S\x1b[r\x1b[Hafter")); !reset {
+	s.FailOn('z')
+	if _, reset := s.Write([]byte("before\x1b[z\x1b[2K\rafter")); !reset {
 		t.Fatal("want the screen reset")
 	}
 	if got := strings.TrimRight(ansi.Strip(s.Render()), " \n"); got != "after" {
@@ -207,8 +255,8 @@ func TestScreenResize(t *testing.T) {
 	if !s.Resize(100, 30) {
 		t.Fatal("the vt reset")
 	}
-	if s.vt.Width() != 100 || s.vt.Height() != 30 || s.margins != [2]margins{} {
-		t.Fatalf("got %d×%d with margins %v", s.vt.Width(), s.vt.Height(), s.margins)
+	if r := s.region(); s.vt.Width() != 100 || s.vt.Height() != 30 || r != s.vt.Bounds() {
+		t.Fatalf("got %d×%d with margins %v", s.vt.Width(), s.vt.Height(), r)
 	}
 	b := New(100, 30, nil)
 	defer b.Close()

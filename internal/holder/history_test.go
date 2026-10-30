@@ -2,10 +2,13 @@ package holder
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 func numberedLines(from, to int64) []string {
@@ -121,5 +124,31 @@ func TestHistoryNone(t *testing.T) {
 	got, err := TailHistory(filepath.Join(t.TempDir(), "missing"), 10)
 	if err != nil || got.Next != 0 || len(got.Lines) != 0 {
 		t.Fatalf("got %+v, %v, want an empty history", got, err)
+	}
+}
+
+// TestHistoryMarksReset: when the vt fails on the output, history marks
+// the gap and goes on with the lines that scroll off after it.
+func TestHistoryMarksReset(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "history")
+	h := &holder{
+		log:     slog.New(slog.DiscardHandler),
+		screen:  screen.New(80, 2, nil),
+		size:    Size{Cols: 80, Rows: 2},
+		history: openTestHistory(t, dir, 1000),
+		spool:   newTestSpool(t, spoolSegment, spoolBacklog),
+	}
+	defer h.screen.Close()
+	h.screen.FailOn('z')
+	for _, out := range []string{"1\r\n2\r\n3\r\n", "\x1b[z\x1b[2J\x1b[H", "a\r\nb\r\nc\r\n"} {
+		if err := h.spool.append([]byte(out)); err != nil {
+			t.Fatal(err)
+		}
+		h.feed(h.vtPos, []byte(out))
+	}
+	got, err := ReadHistory(dir, 0, 10)
+	if want := []string{"1", "2", MarkInterrupted, "a", "b"}; err != nil || !slices.Equal(got.Lines, want) {
+		t.Fatalf("got %q, %v, want %q", got.Lines, err, want)
 	}
 }

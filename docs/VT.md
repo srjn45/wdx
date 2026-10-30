@@ -1,21 +1,37 @@
 # The vt and its fork
 
-wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule), so the fork is one `replace`. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is to be fixed in our fork and offered upstream.
+wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule), so the fork is one `replace`. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is fixed in our fork, whose branch we merge into ourselves; once the changes are stable, they go upstream as one or a few pull requests.
 
 - Fork: `github.com/srjn45/x`, branch `wdx`, cloned at `~/dev/x`; `upstream` is `charmbracelet/x`.
-- wdx uses upstream for now: `x/vt` at `v0.1.1-0.20261028143050-ac49f62f807e` and `ultraviolet` at `v0.0.0-20260303162955-0b88c25f3fff`. Once the fork has fixes worth having, `go.mod` gets `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, and `make notices`. Each fix also goes upstream as a pull request; the `replace` goes when upstream has them all.
+- wdx uses the fork: `go.mod` has `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, the branch's last pushed commit, with `make notices` run after each move. It forks upstream at `v0.1.1-0.20261028143050-ac49f62f807e`. The `replace` goes when upstream has every fix.
 - When a fix lands, remove its workaround in `screen` (the last column) and its test's comment, keeping the test.
+
+## Plan
+
+Approved on 2026-10-30, in the order users notice. Each fix is a commit in the fork's branch `wdx` with its test; wdx then moves its `replace` to the fork's new version, runs `make notices`, and removes the fix's workaround in `screen`, in a commit of its own. Each group ships in a dev release.
+
+1. **What an attach shows.** #11: a snapshot paints the main screen, then enters the alternate one, so quitting less or vim after an attach shows the shell's output. #10: the snapshot replays the cursor's pen and link, the character sets and the left and right margins. **Done**: the fork's `02f5ccb` (both screens) and `44d7b55` (the character sets), with #15, found on the way; `screen` reads the margins from the vt (part of #9). The reset tests no longer have an input the vt fails on: `screen.FailOn` makes one.
+2. **History.** #3: lines go to history only when scrolled out of a region at the screen's top, as xterm; never on `DL`.
+3. **Memory.** #1: the alternate screen has no scrollback.
+4. **Workarounds.** #4, #5, #6; #9's getters, so `screen` stops tracking the modes and title itself. `screen`'s tests stay.
+
+Later:
+
+- **Speed, deferred.** #7 lives in `charmbracelet/ultraviolet`, a repository of its own: it needs a fork `srjn45/ultraviolet` and a second `replace`, run as above. With #8, which alone gains `screen` little, it takes typical output from about 1.5 MB/s to about 5.5 MB/s, the holder's CPU under heavy output. Taken up when that cost shows, or when upstream takes the fix.
+- **Features.** #12 (reflowing history to a new width), #13 and #14, each discussed on its own.
+- **Upstream.** Once the fork's changes are stable, they are offered to `charmbracelet/x` as one or a few pull requests.
 
 ## Bugs
 
 | # | Bug | Repro | Fix | Workaround in `screen` | Status |
 |---|---|---|---|---|---|
 | 1 | The alternate screen keeps its own scrollback, up to 10,000 lines, that no API reaches or clears | Enter `CSI ?1049h`, print 20,000 lines, leave: 107 MiB held for good | `NewEmulator` gives the alternate screen no scrollback (`scrs[1].scrollback = nil`; `Screen` already checks for nil) | none: accepted | open |
-| 2 | A bottom or right margin past the screen panics on the next scroll | 80×24: `CSI 1;30r`, `CSI 30;1H`, `CSI S` | Clamp the stored margins to the screen; ignore a top or left margin past it | `feed` recovers, resets the vt, feeds the rest of the piece a byte at a time and reports a gap | fixed in the fork (`68419ef`), not pushed |
+| 2 | A bottom or right margin past the screen panics on the next scroll | 80×24: `CSI 1;30r`, `CSI 30;1H`, `CSI S` | Clamp the stored margins to the screen; ignore a top or left margin past it | `feed` recovers, resets the vt, feeds the rest of the piece a byte at a time and reports a gap | fixed in the fork (`68419ef`), used by wdx |
 | 3 | Lines scrolled out of a region that does not start at the top go to scrollback; so do lines deleted by `DL` (`CSI M`) at the region's top | `CSI 2;3r`, `CSI 3;1H`, print lines | Push to scrollback only when scrolling (index, `SU`) a region whose top is the screen's top, as xterm; never on `DL` | none: such lines appear in history | open |
 | 4 | The `CursorStyle` callback is given "steady" as its `blink` argument | `CSI 6 q`: the callback says blink | Pass `blink` in the vt's `Screen.setCursorStyle` | the callback reads `CursorStyle()` back | open |
 | 5 | `Close` sets `closed` while `Read` reads it in another goroutine: a data race | Read answers in one goroutine, `Close` in another | Guard `closed` with the pipe, or a mutex or atomic | `close` closes the answer pipe's writer instead of the vt | open |
 | 6 | `SetScrollbackSize(0)` is ignored: the scrollback stays at 10,000 | `SetScrollbackSize(0)`, scroll: lines kept | 0 disables the scrollback | not needed: `screen` empties it after every piece | open |
+| 15 | Shift out and shift in (`SO`, `SI`) do nothing: their handlers are registered among the C1 controls, which never reach them | `ESC ) 0`, `SO`, `q`: prints `q`, not `─` | Register them with the C0 controls | none | fixed in the fork (`c3a44c3`), used by wdx |
 
 ## Speed
 
@@ -32,9 +48,9 @@ What `screen` has to track itself, or cannot do at all.
 
 | # | Missing | Effect today | Wanted |
 |---|---|---|---|
-| 9 | Getters for the modes, title, scroll margins | `screen` tracks them through callbacks and its own handlers, mirroring the vt's logic | `Modes()`, `Title()`, `ScrollRegion()` |
-| 10 | The cursor's pen (current style and link), character sets, left/right margins | A snapshot does not carry them: a program writing on after an attach with a style set but not repeated, or in line-drawing characters, looks wrong until it sets them again | Getters for the current screen's cursor, pen and charsets |
-| 11 | The main screen's cells while the alternate screen is active | A snapshot taken under `less` or vim paints only the alternate screen: after the program quits, the client's main screen is blank where the shell's output was | Access to both screens' cells |
+| 9 | Getters for the modes and title | `screen` tracks them through callbacks, mirroring the vt's logic; the margins it reads from the vt's screens since #11 | `Modes()`, `Title()` |
+| 10 | The character sets; the cursor's pen (current style and link) and left/right margins are on the vt's screens, which #11 reaches | Done in the fork (`44d7b55`): `CharSets()`; a snapshot carries all of them | — |
+| 11 | The main screen's cells while the alternate screen is active | Done in the fork (`02f5ccb`): `MainScreen()`, `AltScreen()`; a snapshot under less or vim paints the main screen first, so it shows after the program quits | — |
 | 12 | A soft-wrap flag on lines | History cannot be reflowed to another width; a long line wrapped at 80 columns stays two lines | Mark lines that continue on the next |
 | 13 | Compact scrollback lines | A line costs ~9.4 KB (a full `uv.Cell` per column); not a problem for `screen`, which keeps none | Smaller cells for stored lines |
 | 14 | One scroll region per terminal | The vt keeps one per screen (main and alternate), unlike xterm; `screen` tracks both | One region, as xterm |

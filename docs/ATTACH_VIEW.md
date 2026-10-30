@@ -74,7 +74,7 @@ The CLI runs it full-window with the status line and the prefix keys; tide runs 
 
 The vt's known issues (docs/VT.md) now show on the client too: its speed bounds how fast a flood is drawn, and a panic resets the pane's vt to an empty screen, which the program's next drawing fills (a shell's next prompt, a full-screen program's next redraw); attaching again would repaint it at once.
 
-The pane numbers the lines it keeps as the holder numbers history, so scrolling past them into fetched pages has no seam. When its vt resets, it keeps a `── history interrupted ──` line where the holder writes one. Two cases still shift its numbers from the holder's until the next attach: the holder's vt falling more than 16 MiB behind the output (it skips ahead, logged; the pane does not), and a failure whose output reached the two in different pieces, since each vt starts again on the rest of its piece. Both are rare: the second needs the vt to panic (docs/VT.md #2, fixed in the fork).
+The pane numbers the lines it keeps as the holder numbers history, so scrolling past them into fetched pages has no seam. When its vt resets, it keeps a `── history interrupted ──` line where the holder writes one. Two cases still shift its numbers from the holder's until the next attach: the holder's vt falling more than 16 MiB behind the output (it skips ahead, logged; the pane does not), and a failure whose output reached the two in different pieces, since each vt starts again on the rest of its piece. Both are rare: the second needs the vt to panic, which no known input does since the fork fixed docs/VT.md #2.
 
 ## Changes to `wdx terminal attach`
 
