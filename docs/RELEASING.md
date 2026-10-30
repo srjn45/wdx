@@ -86,8 +86,7 @@ Tags are annotated, their message holding the release's notes, and are never mov
 ```
 make cover         on Linux: the tests, as make test runs them, with coverage: bin/cover.html and a
                    summary per package; under the same 3 GB memory cap, in a user systemd CI starts
-make test          on macOS, without a memory cap
-make test-update   on both: a wdx built from the tree updated to a release dist.sh builds of it, and
+make test-update   on Linux: a wdx built from the tree updated to a release dist.sh builds of it, and
                    rolled back
 make check         on Linux: golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified
                    go.mod; current notices; govulncheck; go vet for macOS and Linux arm64; the commit
