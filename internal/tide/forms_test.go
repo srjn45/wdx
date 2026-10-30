@@ -38,7 +38,7 @@ func TestClone(t *testing.T) {
 	url := bareRemote(t, "api")
 	m := h.start(t)
 	keys(m, "down", "enter", "enter")
-	wantText(t, m, "[Open Project › Clone]", "type  enter submit", "type a URL")
+	wantText(t, m, "┃ Open Project › Clone", "type  enter submit", "type a URL")
 	m.Update(tea.PasteMsg{Content: url + "\n"})
 	keys(m, "enter")
 	if m.shown != "api" {
@@ -58,7 +58,7 @@ func TestClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys(m, "C-q", "o", "down", "down", "down", "enter")
-	wantText(t, m, "[Open Project › api]", "no checkout", "▸ clone it again", "  remove it from wdx")
+	wantText(t, m, "┃ Open Project › api", "no checkout", "▸ clone it again", "  remove it from wdx")
 	keys(m, "enter")
 	if m.shown != "api" || !exists(filepath.Join(clone, ".git")) {
 		t.Fatalf("shown %q:\n%s", m.shown, text(m))
@@ -71,7 +71,7 @@ func TestCloneFails(t *testing.T) {
 	h.serve(t)
 	m := h.start(t)
 	keys(m, "down", "enter", filepath.Join(t.TempDir(), "none.git"), "enter")
-	wantText(t, m, "[Open Project › Clone]", "none.git_")
+	wantText(t, m, "┃ Open Project › Clone", "none.git_")
 	if m.shown != "" || !strings.Contains(text(m), "clon") {
 		t.Fatalf("shown %q:\n%s", m.shown, text(m))
 	}
@@ -84,8 +84,8 @@ func TestCloneNameTaken(t *testing.T) {
 	h.newProject(t, "api", api.ProjectStateOpen)
 	url := bareRemote(t, "api")
 	m := h.start(t)
-	keys(m, "esc", "down", "enter", url, "enter")
-	wantText(t, m, "[Open Project › Clone]", "is already", "Another name", "> _")
+	keys(m, "esc", "C-q", "o", "down", "enter", url, "enter")
+	wantText(t, m, "┃ Open Project › Clone", "is already", "Another name", "> _")
 	keys(m, "esc") // back to the URL
 	wantText(t, m, "api.git_")
 	keys(m, "enter", "api-2", "enter")
@@ -102,8 +102,8 @@ func TestCreate(t *testing.T) {
 	// Created where projects are, or the closest directory that exists.
 	m.projectsDir = filepath.Join(h.home, "projects")
 	keys(m, "down", "down", "enter")
-	wantText(t, m, "[Open Project › Create]", "▸ create the project here", "enter choose")
-	if b := m.top().(*dirBrowser); b.dir != h.home {
+	wantText(t, m, "┃ Open Project › Create", "▸ create the project here", "enter choose")
+	if b := m.openTop().(*dirBrowser); b.dir != h.home {
 		t.Fatalf("browser in %s", b.dir)
 	}
 	keys(m, "enter", "enter")
@@ -122,14 +122,14 @@ func TestCreateConflict(t *testing.T) {
 	m := h.start(t)
 	m.projectsDir = t.TempDir()
 	keys(m, "down", "down", "enter", "enter", "web", "enter")
-	wantText(t, m, "[Open Project › Create]", "is already", "▸ open that project", "  try another name", "  cancel")
+	wantText(t, m, "┃ Open Project › Create", "is already", "▸ open that project", "  try another name", "  cancel")
 
 	keys(m, "down", "enter") // another name
 	wantText(t, m, "> web_")
 	keys(m, "enter", "down", "down", "enter") // cancel
-	wantText(t, m, "[Open Project]", "closed projects")
+	wantText(t, m, "┃ Open Project", "closed projects")
 
-	keys(m, "down", "down", "enter", "enter", "web", "enter", "enter") // open it
+	keys(m, "enter", "enter", "web", "enter", "enter") // open it
 	if m.shown != "web" {
 		t.Fatalf("shown %q:\n%s", m.shown, text(m))
 	}

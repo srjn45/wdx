@@ -151,7 +151,8 @@ func (m *Model) projectGone() tea.Cmd {
 	m.unfollow()
 	m.shown = ""
 	m.layout.terminalOpen = false
-	m.stack = []screen{&openProjectScreen{projects: m.projects, notice: name + " was removed"}}
+	m.root, m.switcher = noProjectScreen{}, nil
+	m.opening = []screen{&openProjectScreen{projects: m.projects, notice: name + " was removed"}}
 	m.focusProjectPane()
 	return m.listProjects()
 }

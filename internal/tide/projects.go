@@ -72,6 +72,8 @@ func (m *Model) listed(msg projectsListed) {
 	if len(l.open()) > 0 {
 		m.switcher = newSwitcher(l, "")
 		start = "switcher"
+	} else {
+		m.push(&openProjectScreen{projects: l})
 	}
 	m.log.Info("tide starts", "on", start, "projects", len(l.projects), "open", len(l.open()))
 }
@@ -187,9 +189,9 @@ func (m *Model) remove(name string) tea.Cmd {
 }
 
 // opened takes the answer to opening a project. A failure goes to the
-// screen that asked, or the switcher; the ones that need an answer push a
-// screen asking for it, as the CLI prompts: a name taken, a create
-// conflict, a missing checkout.
+// screen that asked, or to the status line when Esc closed the popup since;
+// the ones that need an answer push a screen asking for it, as the CLI
+// prompts: a name taken, a create conflict, a missing checkout.
 func (m *Model) opened(msg projectOpened) tea.Cmd {
 	switch {
 	case msg.err == nil && msg.removed:
@@ -202,10 +204,10 @@ func (m *Model) opened(msg projectOpened) tea.Cmd {
 	}
 	m.log.Info("project not opened", "name", msg.name, "err", msg.err)
 	var cmd tea.Cmd
-	if m.switcher != nil && m.switcher.opening == msg.name {
-		cmd = m.switcher.update(msg)
+	if s := m.openTop(); s != nil {
+		cmd = s.update(msg)
 	} else {
-		cmd = m.top().update(msg)
+		m.statusNotice = msg.err.Error()
 	}
 	var problem api.Problem
 	if e, ok := errors.AsType[*client.ProblemError](msg.err); ok {
@@ -224,9 +226,9 @@ func (m *Model) opened(msg projectOpened) tea.Cmd {
 	if asked == nil {
 		return cmd
 	}
-	if m.switcher != nil {
-		m.switcher = nil
-		m.focusProjectPane()
+	m.switcher = nil
+	if len(m.opening) == 0 {
+		m.toOpenProject("")
 	}
 	m.push(asked)
 	return cmd
@@ -235,8 +237,12 @@ func (m *Model) opened(msg projectOpened) tea.Cmd {
 // nameField asks for another name for the project req would open, its own
 // taken.
 func (m *Model) nameField(req api.CreateProject, err error) screen {
+	heading := openProjectTitle
+	if s := m.openTop(); s != nil {
+		heading = s.title()
+	}
 	return &fieldScreen{
-		heading: m.top().title(),
+		heading: heading,
 		prompt:  err.Error() + "\n\nAnother name for the project:",
 		empty:   "type a name",
 		working: working(req),

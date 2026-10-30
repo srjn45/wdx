@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -9,52 +10,60 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/style"
 )
 
-// switcherBox is the project switcher, C-q p: every project in a box over
-// the window, found by typing part of its name (docs/TIDE.md).
+// openCreateLabel is the switcher's way to [Open Project].
+const openCreateLabel = "Open/Create Project"
+
+// switcherBox is the project switcher, C-q p: the open projects in a popup,
+// found by typing part of their names, and the way to [Open Project]
+// (docs/TIDE.md).
 type switcherBox struct {
 	projects *projectList
 	filter   string
-	selected string // the name of the project selected
-	opening  string // the closed project being reopened, while it is
-	failure  string // why the last reopen failed
+	selected string // the name of the project selected; "" selects openCreateLabel
 }
 
-// switchProject asks tide to show the project name, reopening it first
-// when closed.
-type switchProject struct {
-	name   string
-	closed bool
-}
+// switchProject asks tide to show the open project name.
+type switchProject struct{ name string }
 
 // closeSwitcher closes the switcher.
 type closeSwitcher struct{}
 
+// openCreate closes the switcher and opens [Open Project].
+type openCreate struct{}
+
 // newSwitcher returns the switcher with first selected, or the first
-// project when first is "".
+// project when first is not open.
 func newSwitcher(projects *projectList, first string) *switcherBox {
 	s := &switcherBox{projects: projects, selected: first}
-	s.keepSelection()
+	s.selectMatch()
 	return s
 }
 
-// matches returns the projects whose names match the filter, the open ones
-// first, then the closed ones, each by name.
-func (s *switcherBox) matches() []api.ProjectSummary {
-	var open, closed []api.ProjectSummary
-	for _, p := range s.projects.projects {
-		switch {
-		case !fuzzy(s.filter, p.Name):
-		case p.State == api.ProjectStateOpen:
-			open = append(open, p)
-		default:
-			closed = append(closed, p)
+// matches returns the open projects whose names match the filter, by name.
+func (s *switcherBox) matches() []string {
+	var matches []string
+	for _, name := range s.projects.open() {
+		if fuzzy(s.filter, name) {
+			matches = append(matches, name)
 		}
 	}
-	return append(open, closed...)
+	return matches
+}
+
+// selectMatch selects the first match, or openCreateLabel when none is left,
+// unless the project selected is one.
+func (s *switcherBox) selectMatch() {
+	matches := s.matches()
+	if slices.Contains(matches, s.selected) {
+		return
+	}
+	s.selected = ""
+	if len(matches) > 0 {
+		s.selected = matches[0]
+	}
 }
 
 // fuzzy reports whether the letters of filter appear in name in order,
@@ -74,53 +83,43 @@ func fuzzy(filter, name string) bool {
 	return true
 }
 
-// keepSelection selects the first match when the project selected is not
-// among them, as after the filter changed or the projects were listed.
-func (s *switcherBox) keepSelection() int {
+// selection returns the matches and the index of the one selected, -1 for
+// openCreateLabel. A project selected that is not among them any more, the
+// projects listed since, gives way to the first.
+func (s *switcherBox) selection() ([]string, int) {
+	if s.selected != "" {
+		s.selectMatch()
+	}
 	matches := s.matches()
-	for i, p := range matches {
-		if p.Name == s.selected {
-			return i
-		}
-	}
-	s.selected = ""
-	if len(matches) > 0 {
-		s.selected = matches[0].Name
-	}
-	return 0
+	return matches, slices.Index(matches, s.selected)
 }
 
 func (s *switcherBox) update(msg tea.Msg) tea.Cmd {
-	switch msg := msg.(type) {
-	case projectOpened: // only a failure reaches the switcher
-		s.opening, s.failure = "", msg.err.Error()
-	case tea.KeyPressMsg:
-		if s.opening != "" {
-			return nil
-		}
-		s.failure = ""
-		i, matches := s.keepSelection(), s.matches()
-		switch key := msg.String(); {
-		case key == "esc":
-			return send(closeSwitcher{})
-		case key == "up" && i > 0:
-			s.selected = matches[i-1].Name
-		case key == "down" && i < len(matches)-1:
-			s.selected = matches[i+1].Name
-		case key == "enter" && len(matches) > 0:
-			p := matches[i]
-			if p.State != api.ProjectStateOpen {
-				s.opening = p.Name
-			}
-			return send(switchProject{name: p.Name, closed: p.State != api.ProjectStateOpen})
-		case key == "backspace" && s.filter != "":
-			r := []rune(s.filter)
-			s.filter = string(r[:len(r)-1])
-			s.keepSelection()
-		case typed(msg):
-			s.filter += msg.Text
-			s.keepSelection()
-		}
+	key, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	matches, i := s.selection()
+	switch name := key.String(); {
+	case name == "esc":
+		return send(closeSwitcher{})
+	case name == "up" && i == 0:
+		s.selected = ""
+	case name == "up" && i > 0:
+		s.selected = matches[i-1]
+	case name == "down" && i < len(matches)-1:
+		s.selected = matches[i+1]
+	case name == "enter" && i < 0:
+		return send(openCreate{})
+	case name == "enter":
+		return send(switchProject{name: matches[i]})
+	case name == "backspace" && s.filter != "":
+		r := []rune(s.filter)
+		s.filter = string(r[:len(r)-1])
+		s.selectMatch()
+	case typed(key):
+		s.filter += key.Text
+		s.selectMatch()
 	}
 	return nil
 }
@@ -146,47 +145,34 @@ const switcherRows = 10
 func (s *switcherBox) popup(m *Model) popup {
 	st := m.st
 	width := 30
-	for _, p := range s.projects.projects {
-		width = max(width, ansi.StringWidth(p.Name)+12)
+	for _, name := range s.projects.open() {
+		width = max(width, ansi.StringWidth(name)+2)
 	}
 	width = min(width, max(m.width-8, 10))
+	mark := func(text string, selected bool) string {
+		text = ansi.Truncate(text, width-2, "…")
+		if selected {
+			return st.Focused("▸ ") + st.Name(text)
+		}
+		return "  " + text
+	}
 	filter := "> " + s.filter + "_"
-	body := []string{filter + strings.Repeat(" ", max(width-ansi.StringWidth(filter), 0)), ""}
-	i, matches := s.keepSelection(), s.matches()
-	if len(matches) == 0 {
+	matches, i := s.selection()
+	body := []string{filter + strings.Repeat(" ", max(width-ansi.StringWidth(filter), 0)), "", mark(openCreateLabel, i < 0), ""}
+	if len(matches) == 0 && s.filter != "" {
 		body = append(body, st.Muted("no project matches"))
 	}
-	// Room for the frame, the filter and a message under the list.
-	rows := max(min(switcherRows, m.height-1-6-2-3), 1)
+	// Room for the whole popup when the window has it, or at least the frame.
+	area := m.height - 1 - len(body)
+	rows := max(min(switcherRows, area-popupRows), min(3, area-6), 1)
 	from := max(min(i-rows/2, len(matches)-rows), 0)
 	for j := from; j < min(from+rows, len(matches)); j++ {
-		p := matches[j]
-		name := ansi.Truncate(p.Name, width-10, "…")
-		pad := strings.Repeat(" ", max(width-8-ansi.StringWidth(name), 1))
-		state := st.Muted(string(p.State))
-		if j == i {
-			body = append(body, st.Focused("▸ ")+st.Name(name)+pad+state)
-		} else {
-			body = append(body, "  "+name+pad+state)
-		}
-	}
-	var message []string
-	switch {
-	case s.opening != "":
-		message = strings.Split(st.Muted(wrap("opening "+s.opening+"…", width)), "\n")
-	case s.failure != "":
-		message = strings.Split(wrap(s.failure, width), "\n")
-		for k, l := range message {
-			message[k] = st.Failure(l)
-		}
-	}
-	if len(message) > 0 {
-		body = append(append(body, ""), message...)
+		body = append(body, mark(matches[j], j == i))
 	}
 	return popup{
-		title:  "Switch project",
+		title:  "Switch Project",
 		body:   body,
-		footer: st.Command("↑↓") + " select  " + st.Command("enter") + " switch  " + st.Command("Esc") + " close",
+		footer: st.Command("↑↓") + " select  " + st.Command("enter") + " choose  " + st.Command("Esc") + " close",
 	}
 }
 

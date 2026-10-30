@@ -29,11 +29,8 @@ Three fixed panes. No general split tree.
 ### Left pane: multipurpose
 
 - 2/5 of the width.
-- Holds a stack of screens. The root is the project view, `[Project: <name>]`, or `[Open Project]` while no project is open (see User journey).
-- Other screens push on top: open or create a project, create an agent, agent detail, and more later.
-- Screens can nest, e.g. agent detail → fork agent. `Esc` (or finishing a screen) pops one level.
-- A screen may open zoomed by default when it needs room. Closing it restores the pane's previous zoom state.
-- Screens are left-only for now. They never take over the agent or terminal pane.
+- Shows the project view, `[Project: <name>]`, or `[No Project]` while none is shown (see User journey).
+- Opening or creating a project happens in a popup over the window. Later screens, such as agent detail, are still to be placed.
 
 ### Right pane: agent
 
@@ -93,13 +90,14 @@ type screen interface {
 }
 ```
 
+- The project pane shows one screen: `[Project: <name>]`, or `[No Project]`, which says how to open one. Every other screen is on the stack of the `Open Project` popup (see User journey).
 - A screen changes the stack through the messages of the commands it returns (`pushScreen`, `popScreen`), and asks for requests the same way (`reopenProject`, `createProject`): tide sends them, so screens hold no client, and hands a failure back to the screen that asked.
 - A failure that needs an answer (a name taken, a conflict, a missing checkout) also pushes a screen asking for it over the one that asked, so `Esc` goes back to it.
 - A screen may say what its keys do on the status line (`hint()`), while the left pane has the focus.
 
 - A screen draws only inside the rectangle it gets, so it works the same at 2/5 width or zoomed.
 - When a screen finishes, it returns a result message (project created, agent created, ...). In B1 a project opened replaces the stack with `[Project: <name>]`; later the screen below will react to results, e.g. the project view selecting a new agent.
-- Opening a screen focuses the left pane. Popping a screen keeps focus there.
+- A project popup takes the keys, the pastes and the clicks while it is open, and changes neither the focus nor the zoom: closing it returns to the pane that had the focus.
 - Adding a screen means adding one type. The layout does not change.
 
 ## User journey
@@ -107,21 +105,24 @@ type screen interface {
 ### Starting tide
 
 - tide is meant to stay open, so it does not remember a project across runs: the user picks one.
-- With no open project (the first run, or every one closed since), the left pane opens `[Open Project]` with the focus.
-- With open projects, even one, tide starts with the switcher (`C-q p`) open over the window. `Esc` closes it, leaving `[Open Project]` in the left pane.
+- With no open project (the first run, or every one closed since), tide starts with the `Open Project` popup (`C-q o`) open.
+- With open projects, even one, tide starts with the `Switch Project` popup (`C-q p`) open.
+- `Esc` closes either, leaving `[No Project]` in the left pane, which says "no project open" and names `C-q p` and `C-q o`.
 - While no project is shown, the terminal pane is hidden and the agent pane says "no project open". `C-q p` and `C-q o` work there as anywhere.
 - With no daemon, the left pane says so with the hint `wdx daemon start` and a key to try again. tide never starts the daemon itself, as no command does.
 
-### `[Open Project]`
+### `Open Project`
 
-A list chosen with ↑ / ↓ and `enter`:
+A popup, whose size depends on the window only, so it does not jump from one step to the next. Typing filters the closed projects by fuzzy match, and letters always type, `j` and `k` too; ↑ / ↓ and `enter` choose:
 
 1. **Open a local repository** → the directory browser, from the directory tide was started in.
 2. **Clone a git repository** → a URL field.
 3. **Create a new project** → the directory browser, from `~/.wdx/projects`, then a name field.
-4. **The closed projects**, one entry each, under the three: `enter` reopens one at once. Shown only when there are some.
+4. **The closed projects**, one entry each, under the three: `enter` reopens one at once. These and the filter line are shown only when there are some.
 
-Sub-screens are titled as a path, `[Open Project › Local]`, `[Open Project › Clone]`, `[Open Project › Create]`, so it is clear where `Esc` goes: back to `[Open Project]`. When a project is already open, `Esc` on `[Open Project]` goes back to it.
+The three ways stay in view whatever the filter is. A filter selects the first closed project it matches.
+
+The whole flow stays in the popup: the browser, the fields, and the questions and errors below. Its steps are titled as a path, `Open Project › Local`, `Open Project › Clone`, `Open Project › Create`, so it is clear where `Esc` goes: back to `Open Project`. `Esc` on `Open Project` closes the popup.
 
 ### Directory browser
 
@@ -144,7 +145,7 @@ Built to be obvious without help:
 
 ### Questions and errors
 
-The CLI's prompts become small choice screens in the left pane, chosen with ↑ / ↓ and `enter`:
+The CLI's prompts become small choice screens in the popup, chosen with ↑ / ↓ and `enter`:
 
 - Create, when the name is taken or the directory is in a repository: open that project, try another name, cancel.
 - Clone or reopen, when none of a known project's checkouts is left: clone it again, remove it from wdx.
@@ -153,13 +154,13 @@ A failure (not a git repository, a clone that failed) shows in the screen, which
 
 ### After opening
 
-- The left pane's root becomes `[Project: <name>]`, showing the name for now; the project detail screen comes later.
+- The popup closes and the left pane shows `[Project: <name>]`.
 - The project becomes the current one: the terminal pane shows its terminals.
 
 ## Data from the daemon
 
 - tide changes things only through the API's create, update and delete requests.
-- tide reads with get and list requests where they fit: the projects at start, the closed ones for `[Open Project]`, the open ones for the strip and `C-q p`.
+- tide reads with get and list requests where they fit: the projects at start, the closed ones for `Open Project`, the open ones for the strip and `C-q p`.
 - The current project's detail comes from an event stream the daemon pushes: every change under the project (a terminal started or exited, an agent going idle or waiting for input) reaches tide at once. Each event is the whole project, never a delta, so tide replaces what it holds and a reconnect needs no replay. Server-sent events on the daemon's socket, `GET /v1/projects/{project}/events`; designed in docs/TIDE_B2.md.
 - So that switching never waits on the daemon, the strip and `C-q p` use the open projects tide fetched at start and after each change it made, refreshed in the background whenever they show.
 
@@ -186,11 +187,11 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 
 ### Shortcut menu (`C-q`)
 
-- A menu of actions with one-letter keys, e.g. `t` new terminal, `x` remove the entity in focus (the selected terminal, later an agent; always after a confirmation), `a` new agent, `o` open project (`[Open Project]`), `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
+- A menu of actions with one-letter keys, e.g. `t` new terminal, `x` remove the entity in focus (the selected terminal, later an agent; always after a confirmation), `a` new agent, `o` open project, `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
-- Built so far: `o` open project, `p` switch project, `t` new terminal and `a` new agent (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -220,25 +221,35 @@ Switching projects is frequent too, so it is one chord.
   ```
 
   It lists the open projects, the current one marked, and scrolls sideways to keep the current one in view when they overflow the width. It hides about a second after the last tap, or at once on any other key.
-- `C-q p`: the switcher, a box over the middle of the window, to find a project by name, with ↑ / ↓ or by typing:
+- `C-q p`: the `Switch Project` popup, over the middle of the window, to find an open project by name, with ↑ / ↓ or by typing:
 
   ```
-  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-  ┃ Switch project                     ┃
-  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-  ┃ > do_                              ┃
-  ┃                                    ┃
-  ┃   docs                  open       ┃
-  ┃ ▸ dotfiles              closed     ┃
-  ┃   docker-images         closed     ┃
-  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-  ┃ ↑↓ select  enter switch  Esc close ┃
-  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+                                                
+    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    ┃                                          ┃
+    ┃  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ┃
+    ┃  ┃ Switch Project                     ┃  ┃
+    ┃  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫  ┃
+    ┃  ┃ > do_                              ┃  ┃
+    ┃  ┃                                    ┃  ┃
+    ┃  ┃   Open/Create Project              ┃  ┃
+    ┃  ┃                                    ┃  ┃
+    ┃  ┃ ▸ docs                             ┃  ┃
+    ┃  ┃   dotfiles                         ┃  ┃
+    ┃  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫  ┃
+    ┃  ┃ ↑↓ select  enter choose  Esc close ┃  ┃
+    ┃  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ┃
+    ┃                                          ┃
+    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                                
   ```
 
-  Every popup (the switcher, the `C-q` menu) has this shape: a heavy frame, a bold title, the body, and the keys at the bottom, set apart by lines.
+  Every popup (`Switch Project`, `Open Project`, the `C-q` menu, the confirmation) has this shape: a heavy frame with a bold title, the body and the keys set apart by lines; around it a blank gap and a muted outer frame; around that a blank margin. A layer is one row or two columns, which look about the same on a screen, since a terminal's cells are about twice as tall as they are wide. On a small window the margin goes first, then the outer frame and its gap, so the content keeps the room.
 
-  It lists every project, open ones first, then closed ones, each by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches, reopening a closed project first; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p enter` flips back to it; at start, the first one.
+  It lists the open projects by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p enter` flips back to it; at start, the first one.
+
+  `Open/Create Project`, above the list and whatever the filter is, closes this popup and opens `Open Project`, where the closed projects are; `Esc` there closes it rather than coming back. `↑` from the first project reaches it, and it is selected when no project matches.
 - The `C-q` menu lists no projects: it opens at once, never waiting on the daemon. `C-q p` is the way to search and switch.
 - Key probe (2026-10-29): `Alt+Shift+arrows` arrive as `CSI 1;4 A`–`D` on Linux and macOS. `Alt+1`…`9` never reach the terminal on GNOME, which switches its own tabs with them, and type characters on macOS (`¡`, `™`), as Option+letters do. `Ctrl+Tab` arrives as a plain Tab on Linux and not at all on macOS; `Alt+PageUp` / `PageDown` do not reach the terminal on macOS.
 - `Alt+Shift+↑` / `↓` are free for later.
@@ -263,7 +274,7 @@ Supported, though most users will mostly use the keyboard.
 ## Phases
 
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
-- **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
+- **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide (the left pane's screens became the `Open Project` popup later): starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Phase B3, terminals in the terminal pane (implemented, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.

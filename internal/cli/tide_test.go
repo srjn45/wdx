@@ -28,8 +28,7 @@ func TestTide(t *testing.T) {
 		t.Fatalf("close: exit %d", exit)
 	}
 	run := startInTerminal(t, home, home, 80, 24, []string{"tide"})
-	run.waitScreen("┌ [Open Project]")
-	run.waitScreen("no project open")
+	run.waitScreen("┃ Open Project")
 	run.input("\x1b[B\x1b[B\x1b[B\r") // ↓ ↓ ↓ enter: reopen app
 	run.waitScreen("┌ [Project: app]")
 	run.waitScreen(" [● shell] ") // relaunched with the project

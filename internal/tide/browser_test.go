@@ -40,10 +40,10 @@ func (h testHome) browse(t *testing.T, dir, home string) *Model {
 	m := h.start(t)
 	m.workDir, m.userHome = dir, home
 	if m.switcher != nil {
-		keys(m, "esc")
+		keys(m, "esc", "C-q", "o")
 	}
 	keys(m, "enter")
-	if _, ok := m.top().(*dirBrowser); !ok {
+	if _, ok := m.openTop().(*dirBrowser); !ok {
 		t.Fatalf("no browser on top:\n%s", text(m))
 	}
 	return m
@@ -55,14 +55,14 @@ func TestBrowser(t *testing.T) {
 	h.serve(t)
 	root := tree(t, "api/.git", "beta/inner", "Bravo", "abc", ".hidden")
 	m := h.browse(t, root, filepath.Dir(root))
-	wantText(t, m, "type to filter  → into  ← up", "[Open Project › Local]", "~/"+filepath.Base(root), "▸ abc/", "  api/ (git)", "  beta/", "  Bravo/")
+	wantText(t, m, "type to filter  → into  ← up", "┃ Open Project › Local", "~/"+filepath.Base(root), "▸ abc/", "  api/ (git)", "  beta/", "  Bravo/")
 	if got := text(m); strings.Contains(got, ".hidden") || strings.Contains(got, "notes") || strings.Contains(got, openHere) {
 		t.Fatalf("listed what it should not:\n%s", got)
 	}
 
 	// Typing filters, ignoring case, the names it starts first.
 	keys(m, "B")
-	if got := m.top().(*dirBrowser).items(); strings.Join(got, " ") != "beta Bravo abc" {
+	if got := m.openTop().(*dirBrowser).items(); strings.Join(got, " ") != "beta Bravo abc" {
 		t.Fatalf("b matches %v", got)
 	}
 	keys(m, "backspace", ".")
@@ -79,7 +79,7 @@ func TestBrowser(t *testing.T) {
 	wantText(t, m, "▸ "+filepath.Base(root)+"/")
 
 	keys(m, "esc")
-	wantText(t, m, "[Open Project]")
+	wantText(t, m, "┃ Open Project")
 }
 
 func TestOpenLocal(t *testing.T) {
@@ -124,7 +124,7 @@ func TestOpenLocalFails(t *testing.T) {
 		t.Fatalf("shown %q", m.shown)
 	}
 	// A name taken asks for another.
-	wantText(t, m, "[Open Project › Local]", "is already", "Another name", "> _")
+	wantText(t, m, "┃ Open Project › Local", "is already", "Another name", "> _")
 	keys(m, "api", "enter")
 	wantText(t, m, "> api_", "is already")
 	keys(m, "-2", "enter")

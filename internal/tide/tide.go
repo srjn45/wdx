@@ -49,7 +49,7 @@ type Model struct {
 	width, height  int
 	layout         layout
 	projects       *projectList
-	stack          []screen                                                             // the project pane's, the root first
+	root           screen                                                               // what the project pane shows: the project, or that there is none
 	shown          string                                                               // the project shown, or "" before one is
 	previous       string                                                               // the project shown before it, which the switcher selects first
 	tab            int                                                                  // the terminal pane's tab shown, an index into terminals()
@@ -69,6 +69,7 @@ type Model struct {
 	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
 	menu           bool                                                                 // the menu is open
 	switcher       *switcherBox                                                         // the project switcher, while it is open
+	opening        []screen                                                             // [Open Project] and the screens above it, while that popup is open
 	strip          int                                                                  // how many times the project strip was shown
 	stripShown     bool                                                                 // the project strip is shown
 	lastClick      click
@@ -117,12 +118,12 @@ func New(ctx context.Context, opts Options) *Model {
 		tick:        tea.Tick,
 		layout:      newLayout(),
 		projects:    projects,
-		stack:       []screen{&openProjectScreen{projects: projects}},
+		root:        noProjectScreen{},
 		openStream:  opts.Client.ProjectEvents,
 		selectedTab: map[string]string{},
 		agentLists:  map[string]*agentList{},
 	}
-	// tide starts on the project pane, the switcher or [Open Project], and
+	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
 	m.copy = m.copyToClipboard
 	m.layout.setFocus(project)
@@ -149,9 +150,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectsListed:
 		m.listed(msg)
 	case popScreen:
-		if len(m.stack) > 1 {
-			m.stack = m.stack[:len(m.stack)-1]
-			m.log.Debug("screen popped", "screen", m.top().title())
+		if n := len(m.opening); n > 0 {
+			m.log.Debug("screen popped", "screen", m.opening[n-1].title())
+			m.opening = m.opening[:n-1]
 		}
 	case pushScreen:
 		m.push(msg.s)
@@ -169,16 +170,16 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.browse(msg.create)
 	case dirRead:
 		// The browser may be gone: Esc does not wait for a listing.
-		if b, ok := m.top().(*dirBrowser); ok {
+		if b, ok := m.openTop().(*dirBrowser); ok {
 			return m, b.update(msg)
 		}
 	case projectOpened:
 		return m, m.opened(msg)
 	case switchProject:
-		if msg.closed {
-			return m, m.reopen(msg.name)
-		}
 		return m, m.show(msg.name)
+	case openCreate:
+		m.switcher = nil
+		return m, m.openProject()
 	case closeSwitcher:
 		m.switcher = nil
 		m.log.Debug("switcher closed")
@@ -232,11 +233,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		return m, m.wheel(msg)
 	case tea.PasteMsg:
-		if f, ok := m.top().(*fieldScreen); ok && m.layout.focus == project && m.switcher == nil && !m.menu {
+		if f, ok := m.openTop().(*fieldScreen); ok && !m.menu && m.confirm == nil {
 			f.paste(msg.Content)
 			return m, nil
 		}
-		if m.switcher == nil && !m.menu && m.confirm == nil {
+		if !m.popupOpen() && !m.menu && m.confirm == nil {
 			return m, m.paneInput(m.layout.focus, msg)
 		}
 	default:
@@ -264,12 +265,21 @@ func (m *Model) pane(p pane) content {
 	return projectPane{m}
 }
 
-// top is the project pane's screen on top.
-func (m *Model) top() screen { return m.stack[len(m.stack)-1] }
+// openTop is the screen on top of the [Open Project] popup; nil while it is
+// closed.
+func (m *Model) openTop() screen {
+	if n := len(m.opening); n > 0 {
+		return m.opening[n-1]
+	}
+	return nil
+}
 
-// show makes name the project shown: the root of the project pane's stack,
-// which the screens above it leave for. The first one shown brings the
-// terminal pane.
+// popupOpen reports whether a project popup, the switcher or [Open Project],
+// takes the keys.
+func (m *Model) popupOpen() bool { return m.switcher != nil || len(m.opening) > 0 }
+
+// show makes name the project shown, in the project pane, and closes the
+// project popups. The first one shown brings the terminal pane.
 func (m *Model) show(name string) tea.Cmd {
 	if m.shown == "" {
 		m.layout.terminalOpen = true
@@ -283,15 +293,15 @@ func (m *Model) show(name string) tea.Cmd {
 		follow = m.follow(name)
 		rest = m.rest()
 	}
-	m.shown, m.switcher = name, nil
-	m.stack = []screen{&projectScreen{m: m, name: name}}
+	m.shown, m.switcher, m.opening = name, nil, nil
+	m.root = &projectScreen{m: m, name: name}
 	m.log.Info("project shown", "name", name)
 	return tea.Batch(m.listProjects(), follow, rest)
 }
 
-// push puts s on top of the project pane's stack.
+// push puts s on top of the [Open Project] popup's stack.
 func (m *Model) push(s screen) {
-	m.stack = append(m.stack, s)
+	m.opening = append(m.opening, s)
 	m.log.Debug("screen pushed", "screen", s.title())
 }
 
@@ -322,26 +332,35 @@ func existing(dir string) string {
 	return ""
 }
 
-// toOpenProject leaves the screens above [Open Project] for it, pushing it
-// when it is not on the stack, with notice saying what happened.
+// toOpenProject leaves the screens above [Open Project] for it, opening it
+// when it is closed, with notice saying what happened.
 func (m *Model) toOpenProject(notice string) {
-	for i, s := range m.stack {
-		if o, ok := s.(*openProjectScreen); ok {
-			m.stack = m.stack[:i+1]
-			o.notice, o.failure = notice, ""
-			return
-		}
+	if len(m.opening) == 0 {
+		m.push(&openProjectScreen{projects: m.projects, notice: notice})
+		return
 	}
-	m.push(&openProjectScreen{projects: m.projects, notice: notice})
+	m.opening = m.opening[:1]
+	o := m.opening[0].(*openProjectScreen)
+	o.notice, o.failure = notice, ""
 }
 
-// openProject opens [Open Project] over the project pane, focused, and
-// lists the projects again for it.
+// openProject opens the [Open Project] popup, unless it is open, and lists
+// the projects again for it. Until they are first listed that is all it
+// does: the answer decides which popup opens.
 func (m *Model) openProject() tea.Cmd {
-	m.focusProjectPane()
-	if _, open := m.top().(*openProjectScreen); !open {
-		m.stack = append(m.stack, &openProjectScreen{projects: m.projects})
-		m.log.Debug("screen pushed", "screen", m.top().title())
+	if m.projects.loaded && len(m.opening) == 0 {
+		m.push(&openProjectScreen{projects: m.projects})
+	}
+	return m.listProjects()
+}
+
+// openSwitcher opens the switcher, in place of [Open Project], and lists
+// the projects again for it. Until they are first listed that is all it
+// does: the answer decides which popup opens.
+func (m *Model) openSwitcher() tea.Cmd {
+	if m.projects.loaded {
+		m.opening = nil
+		m.switcher = newSwitcher(m.projects, m.previous)
 	}
 	return m.listProjects()
 }
@@ -366,14 +385,15 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			m.switcher = nil
 			return m.openProject()
 		case "p":
-			m.switcher = newSwitcher(m.projects, m.previous)
-			return m.listProjects()
+			return m.openSwitcher()
 		case "t":
 			if _, ok := m.checkoutDir(); ok {
+				m.switcher, m.opening = nil, nil
 				return m.createTerminal()
 			}
 		case "a":
 			if _, ok := m.checkoutDir(); ok {
+				m.switcher, m.opening = nil, nil
 				return m.createAgent()
 			}
 		case "x":
@@ -395,6 +415,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.switcher != nil && name != menuKey {
 		return m.switcher.update(msg)
+	}
+	if s := m.openTop(); s != nil && name != menuKey {
+		return s.update(msg)
 	}
 	if by, ok := switchKeys[name]; ok {
 		return m.step(by)
@@ -428,14 +451,13 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// projectPaneKey gives a key to the screen on top of the project pane,
-// once the projects are listed; until then r lists them again after a
-// failure.
+// projectPaneKey gives a key to the project pane's screen, once the projects
+// are listed; until then r lists them again after a failure.
 func (m *Model) projectPaneKey(msg tea.KeyPressMsg) tea.Cmd {
 	l := m.projects
 	switch {
 	case l.loaded:
-		return m.top().update(msg)
+		return m.root.update(msg)
 	case msg.String() == retryKey && l.err != nil && !l.listing:
 		m.log.Info("projects listed again", "reason", "retry key")
 		return m.listProjects()
@@ -451,7 +473,7 @@ func (p projectPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		p.m.projects.drawStatus(buf, area, st)
 		return
 	}
-	p.m.top().draw(buf, area, st)
+	p.m.root.draw(buf, area, st)
 }
 
 // switchTab shows the terminal pane's tab to the left or right of the one
@@ -473,10 +495,10 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu {
+	if m.menu || m.popupOpen() {
 		return nil
 	}
-	if m.confirm == nil && m.switcher == nil {
+	if m.confirm == nil {
 		if cmd, ok := m.programMouse(msg); ok {
 			m.sel = nil
 			m.layout.setFocus(m.mouseTo)
@@ -509,7 +531,7 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 		m.layout.setFocus(p)
 		if at.In(f.Inset(1)) {
 			m.press(f.Inset(1), at)
-			if s, ok := m.top().(*projectScreen); ok && p == project && m.projects.loaded {
+			if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
 				s.click(at.Y - f.Min.Y - 1)
 			}
 		}

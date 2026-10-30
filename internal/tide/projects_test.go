@@ -2,16 +2,18 @@ package tide
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
@@ -215,18 +217,32 @@ func TestStartWithoutProjects(t *testing.T) {
 	if m.switcher != nil || m.layout.focus != project {
 		t.Fatalf("switcher %v, focus %s", m.switcher, m.layout.focus)
 	}
-	wantText(t, m, "[Open Project]", "▸ Open a local repository", "Create a new project", "no project open")
-	if strings.Contains(text(m), "closed projects") {
+	wantText(t, m, "┃ Open Project", "▸ Open a local repository", "Create a new project")
+	if strings.Contains(text(m), "closed projects") || strings.Contains(text(m), "> _") {
 		t.Fatalf("closed projects listed with none:\n%s", text(m))
 	}
+	keys(m, "down", "enter")
+	wantText(t, m, "┃ Open Project › Clone", "URL of the git repository")
+	keys(m, "esc")
+	wantText(t, m, "┃ Open Project", "▸ Clone a git repository")
+
+	// Esc closes it, and the project pane says how to get back.
+	keys(m, "esc")
+	if len(m.opening) != 0 {
+		t.Fatalf("Esc left it open:\n%s", text(m))
+	}
+	wantText(t, m, "[No Project]", "no project open", "C-q p switch project", "C-q o open project")
 	keys(m, `C-\`)
 	if m.layout.shown(terminal) {
 		t.Fatal("C-\\ showed terminals with no project")
 	}
-	keys(m, "esc", "down", "enter")
-	wantText(t, m, "[Open Project › Clone]", "URL of the git repository")
-	keys(m, "esc")
-	wantText(t, m, "[Open Project]", "▸ Clone a git repository")
+	keys(m, "C-q", "p")
+	wantText(t, m, "┃ Switch Project", "▸ Open/Create Project")
+	keys(m, "enter")
+	if m.switcher != nil {
+		t.Fatalf("the switcher stayed:\n%s", text(m))
+	}
+	wantText(t, m, "┃ Open Project", "▸ Open a local repository")
 }
 
 func TestStartWithOpenProjects(t *testing.T) {
@@ -240,20 +256,18 @@ func TestStartWithOpenProjects(t *testing.T) {
 	if m.switcher == nil {
 		t.Fatal("the switcher did not open")
 	}
-	// Every project, the open ones first, the first selected.
-	wantText(t, m, "┃ Switch project", "▸ beta", "  gamma", "  alpha")
-	var order []string
-	for _, p := range m.switcher.matches() {
-		order = append(order, p.Name)
-	}
-	if !slices.Equal(order, []string{"beta", "gamma", "alpha"}) {
-		t.Fatalf("listed %v", order)
+	// The open projects only, the first selected.
+	wantText(t, m, "┃ Switch Project", "  Open/Create Project", "▸ beta", "  gamma")
+	if strings.Contains(text(m), "alpha") {
+		t.Fatalf("a closed project in the switcher:\n%s", text(m))
 	}
 	keys(m, "esc")
 	if m.switcher != nil || m.shown != "" {
 		t.Fatalf("Esc: switcher %v, shown %q", m.switcher, m.shown)
 	}
-	wantText(t, m, "[Open Project]", "▸ Open a local repository", "closed projects", "  alpha")
+	wantText(t, m, "[No Project]")
+	keys(m, "C-q", "o")
+	wantText(t, m, "┃ Open Project", "▸ Open a local repository", "closed projects", "  alpha")
 }
 
 func TestReopen(t *testing.T) {
@@ -263,9 +277,9 @@ func TestReopen(t *testing.T) {
 	h.newProject(t, "alpha", api.ProjectStateClosed)
 	h.newProject(t, "beta", api.ProjectStateClosed)
 	m := h.start(t)
-	keys(m, "down", "j", "j", "down", "down") // past beta, the last: it stays
+	keys(m, "down", "down", "down", "down", "down", "down") // past beta, the last: it stays
 	wantText(t, m, "▸ beta")
-	keys(m, "k", "enter")
+	keys(m, "up", "enter")
 	if m.shown != "alpha" || !m.layout.shown(terminal) {
 		t.Fatalf("shown %q, terminal shown %v", m.shown, m.layout.shown(terminal))
 	}
@@ -275,20 +289,49 @@ func TestReopen(t *testing.T) {
 		t.Fatalf("open projects: %+v, %v", list.Projects, err)
 	}
 
-	// C-q o opens [Open Project] over it, from any pane; Esc goes back.
+	// C-q o opens the popup from any pane, whose focus and zoom it leaves.
 	keys(m, "alt+right", "C-]", "C-q", "o")
-	if m.layout.focus != project || m.layout.zoomed != project {
+	if m.layout.focus != agent || m.layout.zoomed != agent {
 		t.Fatalf("C-q o: focus %s, zoomed %s", m.layout.focus, m.layout.zoomed)
 	}
-	wantText(t, m, "[Open Project]", "closed projects", "  beta")
+	wantText(t, m, "┃ Open Project", "closed projects", "  beta")
 	if strings.Contains(text(m), "  alpha") {
 		t.Fatalf("alpha still listed closed:\n%s", text(m))
 	}
 	keys(m, "C-q", "o") // once is enough
 	keys(m, "esc")
+	if len(m.opening) != 0 || m.layout.focus != agent || m.layout.zoomed != agent {
+		t.Fatalf("Esc: popup %d screens, focus %s, zoomed %s", len(m.opening), m.layout.focus, m.layout.zoomed)
+	}
+	keys(m, "C-]")
 	wantText(t, m, "[Project: alpha]")
-	keys(m, "esc") // the root stays
-	wantText(t, m, "[Project: alpha]")
+}
+
+func TestOpenProjectFilter(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	for _, name := range []string{"alpha", "bravo", "jack"} {
+		h.newProject(t, name, api.ProjectStateClosed)
+	}
+	m := h.start(t)
+	wantText(t, m, "> _", "▸ Open a local repository", "  alpha", "  bravo", "  jack")
+
+	// Letters type, j and k too; the sources stay.
+	keys(m, "jk")
+	wantText(t, m, "> jk_", "  Open a local repository", "  Clone a git repository", "  Create a new project", "▸ jack")
+	if got := text(m); strings.Contains(got, "alpha") || strings.Contains(got, "bravo") {
+		t.Fatalf("listed what does not match:\n%s", got)
+	}
+	keys(m, "x")
+	wantText(t, m, "> jkx_", "▸ Open a local repository", "no closed project matches")
+	keys(m, "backspace", "backspace", "backspace")
+	wantText(t, m, "> _", "▸ Open a local repository", "  alpha")
+
+	keys(m, "brv", "enter")
+	if m.shown != "bravo" {
+		t.Fatalf("shown %q:\n%s", m.shown, text(m))
+	}
 }
 
 func TestReopenFails(t *testing.T) {
@@ -305,14 +348,14 @@ func TestReopenFails(t *testing.T) {
 		t.Fatalf("shown %q", m.shown)
 	}
 	// No origin to clone it again from: it can only be removed.
-	wantText(t, m, "[Open Project › alpha]", "no checkout", "▸ remove it from wdx", "  cancel")
+	wantText(t, m, "┃ Open Project › alpha", "no checkout", "▸ remove it from wdx", "  cancel")
 	if strings.Contains(text(m), "clone it again") {
 		t.Fatalf("offered to clone with no origin:\n%s", text(m))
 	}
 	keys(m, "down", "enter") // cancel
-	wantText(t, m, "[Open Project]", "▸ alpha", "no checkout")
+	wantText(t, m, "┃ Open Project", "▸ alpha", "no checkout")
 	keys(m, "enter", "enter")
-	wantText(t, m, "[Open Project]", "removed alpha")
+	wantText(t, m, "┃ Open Project", "removed alpha")
 	if strings.Contains(text(m), "closed projects") {
 		t.Fatalf("alpha still listed:\n%s", text(m))
 	}
@@ -336,7 +379,7 @@ func TestDaemonUnavailable(t *testing.T) {
 	_, cmd := m.Update(key('r', 0))
 	wantText(t, m, "loading…")
 	run(m, cmd)
-	wantText(t, m, "[Open Project]")
+	wantText(t, m, "┃ Open Project")
 }
 
 func TestSwitcher(t *testing.T) {
@@ -349,9 +392,9 @@ func TestSwitcher(t *testing.T) {
 	m := h.start(t)
 
 	keys(m, "zzz")
-	wantText(t, m, "> zzz_", "no project matches")
-	keys(m, "enter", "backspace", "backspace", "backspace", "gm")
-	wantText(t, m, "> gm_", "▸ gamma")
+	wantText(t, m, "> zzz_", "▸ Open/Create Project", "no project matches")
+	keys(m, "backspace", "backspace", "backspace", "gm")
+	wantText(t, m, "> gm_", "  Open/Create Project", "▸ gamma")
 	if strings.Contains(text(m), "beta") {
 		t.Fatalf("beta matches gm:\n%s", text(m))
 	}
@@ -368,22 +411,40 @@ func TestSwitcher(t *testing.T) {
 		t.Fatalf("C-q p enter: shown %q, previous %q", m.shown, m.previous)
 	}
 
-	// A closed project reopens.
-	keys(m, "C-q", "p", "down", "down", "enter")
-	if m.shown != "alpha" {
-		t.Fatalf("shown %q", m.shown)
+	// Above the first project is the way to [Open Project], where the closed
+	// ones are; Esc there closes it, rather than going back to the switcher.
+	keys(m, "C-q", "p", "up", "up")
+	wantText(t, m, "▸ Open/Create Project")
+	keys(m, "down")
+	wantText(t, m, "▸ beta")
+	keys(m, "up", "enter")
+	if m.switcher != nil || len(m.opening) != 1 {
+		t.Fatalf("switcher %v, popup %d screens", m.switcher, len(m.opening))
 	}
-	list, err := h.client().ListProjects(context.Background(), api.ProjectStateOpen)
-	if err != nil || len(list.Projects) != 3 {
-		t.Fatalf("open projects: %+v, %v", list.Projects, err)
+	wantText(t, m, "┃ Open Project", "  alpha")
+	keys(m, "esc")
+	if m.switcher != nil || len(m.opening) != 0 || m.shown != "gamma" {
+		t.Fatalf("Esc: switcher %v, popup %d screens, shown %q", m.switcher, len(m.opening), m.shown)
 	}
-	keys(m, "C-q", "p", "esc")
-	if m.switcher != nil || m.shown != "alpha" {
+
+	// The two popups take each other's place.
+	keys(m, "C-q", "p", "C-q", "o")
+	if m.switcher != nil || len(m.opening) != 1 {
+		t.Fatalf("C-q o: switcher %v, popup %d screens", m.switcher, len(m.opening))
+	}
+	keys(m, "C-q", "p")
+	if m.switcher == nil || len(m.opening) != 0 {
+		t.Fatalf("C-q p: switcher %v, popup %d screens", m.switcher, len(m.opening))
+	}
+	keys(m, "esc")
+	if m.switcher != nil || m.shown != "gamma" {
 		t.Fatalf("Esc: switcher %v, shown %q", m.switcher, m.shown)
 	}
 }
 
-func TestSwitcherReopenFails(t *testing.T) {
+// TestPopupQuestionKeepsFocus: a question goes on in the popup, and the pane
+// that has the focus keeps it.
+func TestPopupQuestionKeepsFocus(t *testing.T) {
 	t.Parallel()
 	h := newTestHome(t)
 	h.serve(t)
@@ -393,14 +454,114 @@ func TestSwitcherReopenFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := h.start(t)
-	keys(m, "esc", "alt+right", "C-q", "p", "alp", "enter")
-	// The question goes to the project pane, which gets the focus.
-	if m.switcher != nil || m.shown != "" || m.layout.focus != project {
-		t.Fatalf("switcher %v, shown %q, focus %s", m.switcher, m.shown, m.layout.focus)
+	keys(m, "esc", "alt+right", "C-q", "o", "alp", "enter")
+	if m.shown != "" || m.layout.focus != agent {
+		t.Fatalf("shown %q, focus %s", m.shown, m.layout.focus)
 	}
-	wantText(t, m, "[Open Project › alpha]", "no checkout", "▸ remove it from wdx")
+	wantText(t, m, "┃ Open Project › alpha", "no checkout", "▸ remove it from wdx")
 	keys(m, "esc")
-	wantText(t, m, "[Open Project]")
+	wantText(t, m, "┃ Open Project")
+}
+
+// TestAnswerAfterPopupClosed: Esc does not wait for the daemon, so the answer
+// can find the popup closed: a question opens it again, and a failure with
+// nothing to ask goes to the status line.
+func TestAnswerAfterPopupClosed(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(80, 24)
+	m.projects.loaded = true
+	req := localRequest("/work/demo")
+
+	m.Update(projectOpened{name: "x", req: &req, err: errors.New("cannot open x")})
+	wantText(t, m, "cannot open x")
+	if len(m.opening) != 0 {
+		t.Fatalf("popup %d screens", len(m.opening))
+	}
+
+	problem := &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeNameTaken, Title: "taken"}}
+	m.Update(projectOpened{req: &req, err: problem})
+	if _, ok := m.openTop().(*fieldScreen); !ok || len(m.opening) != 2 {
+		t.Fatalf("no name asked:\n%s", text(m))
+	}
+	wantText(t, m, "┃ Open Project", "Another name")
+}
+
+func TestPopupTakesTheMouse(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(100, 41)
+	m.Update(key('q', tea.ModCtrl))
+	m.Update(key('o', 0)) // its command, listing the projects again, never runs
+	m.Update(clickAt(90, 2))
+	if m.layout.focus != project {
+		t.Fatalf("a click under the popup focused %s", m.layout.focus)
+	}
+}
+
+// TestPopupFrame: both frames and the margin, equidistant, over the panes.
+func TestPopupFrame(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(60, 24)
+	m.Update(key('q', tea.ModCtrl))
+	want := []string{
+		"                               ",
+		"  ┏━━━━━━━━━━━━━━━━━━━━━━━━━┓  ",
+		"  ┃                         ┃  ",
+		"  ┃  ┏━━━━━━━━━━━━━━━━━━━┓  ┃  ",
+		"  ┃  ┃ Menu              ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ o  open project   ┃  ┃  ",
+		"  ┃  ┃ p  switch project ┃  ┃  ",
+		"  ┃  ┃ q  quit           ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ Esc close         ┃  ┃  ",
+		"  ┃  ┗━━━━━━━━━━━━━━━━━━━┛  ┃  ",
+		"  ┃                         ┃  ",
+		"  ┗━━━━━━━━━━━━━━━━━━━━━━━━━┛  ",
+		"                               ",
+	}
+	got := strings.Split(ansi.Strip(m.render()), "\n")
+	const x, y = 14, 4 // the middle of the 60 × 23 above the status line
+	for i, w := range want {
+		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
+			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))
+		}
+	}
+}
+
+// TestPopupFrameSmallWindow: the margin goes first, then the outer frame.
+func TestPopupFrameSmallWindow(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		width, height int
+		outer, margin bool
+	}{
+		{80, 24, true, true},
+		{80, 15, true, false},
+		{80, 13, false, false},
+		{24, 24, false, false},
+	} {
+		m, _ := newModel(tc.width, tc.height)
+		m.Update(key('q', tea.ModCtrl))
+		rows := strings.Split(ansi.Strip(m.render()), "\n")
+		got := strings.Join(rows, "\n")
+		if !strings.Contains(got, "┃ Menu") || !strings.Contains(got, "quit") {
+			t.Errorf("%d×%d: the popup lost its content:\n%s", tc.width, tc.height, got)
+		}
+		if strings.Contains(got, "┃  ┏━") != tc.outer {
+			t.Errorf("%d×%d: outer frame, want %v:\n%s", tc.width, tc.height, tc.outer, got)
+		}
+		// The margin is the row above the outer frame, blank over the panes.
+		margin := false
+		for y, row := range rows {
+			if x := strings.Index(row, "┏"); x >= 0 && tc.outer {
+				margin = y > 0 && []rune(rows[y-1])[utf8.RuneCountInString(row[:x])] == ' '
+				break
+			}
+		}
+		if margin != tc.margin {
+			t.Errorf("%d×%d: margin %v, want %v:\n%s", tc.width, tc.height, margin, tc.margin, got)
+		}
+	}
 }
 
 func TestStrip(t *testing.T) {

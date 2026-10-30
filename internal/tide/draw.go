@@ -63,6 +63,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.switcher != nil {
 		m.drawPopup(buf, m.switcher.popup(m))
 	}
+	if s := m.openTop(); s != nil {
+		m.drawScreenPopup(buf, s)
+	}
 	if m.confirm != nil {
 		m.drawPopup(buf, m.confirmPopup())
 	}
@@ -181,7 +184,7 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 	}
 	switch {
 	case p == project && m.projects.loaded:
-		add(" ["+m.top().title()+"] ", -1, m.st.Name)
+		add(" ["+m.root.title()+"] ", -1, m.st.Name)
 		return labels
 	case p != terminal:
 		title := p.String()
@@ -228,9 +231,25 @@ type popup struct {
 	footer string
 }
 
-// drawPopup draws p in a heavy frame in the middle of the window, over
-// what is there. The body is cut at the bottom when the window is short.
-func (m *Model) drawPopup(buf uv.Screen, p popup) {
+// Around a popup's frame, its outer frame and its margin: a row costs about
+// what two columns do on the screen, a terminal's cells being twice as tall
+// as they are wide, so these leave it equidistant.
+const (
+	layerColumns = 2
+	layerRows    = 1
+
+	// What a popup takes around its body: its frame, then the outer frame
+	// with its gap, then the margin.
+	popupColumns = 4 + 2 + 2*layerColumns + 2*layerColumns
+	popupRows    = 6 + 2 + 2*layerRows + 2*layerRows
+)
+
+// drawPopup draws p in the middle of the window, over what is there, and
+// returns where its body is. A heavy frame holds it, inside a muted outer
+// frame and a blank margin, which go first when the window is small: the
+// margin, then the outer frame. The body is cut at the bottom when the
+// window is short.
+func (m *Model) drawPopup(buf uv.Screen, p popup) uv.Rectangle {
 	width := max(ansi.StringWidth(p.title), ansi.StringWidth(p.footer))
 	for _, l := range p.body {
 		width = max(width, ansi.StringWidth(l))
@@ -239,10 +258,9 @@ func (m *Model) drawPopup(buf uv.Screen, p popup) {
 	area := m.height - 1 // above the status line
 	body := min(len(p.body), area-6)
 	if width < 6 || body < 1 {
-		return
+		return uv.Rectangle{}
 	}
 	height := body + 6 // borders, title, two separators, footer
-	x, y := (m.width-width)/2, (area-height)/2
 	rule := func(left, fill, right string) string {
 		return m.st.Focused(left + strings.Repeat(fill, width-2) + right)
 	}
@@ -256,7 +274,59 @@ func (m *Model) drawPopup(buf uv.Screen, p popup) {
 		lines = append(lines, row(l))
 	}
 	lines = append(lines, rule("┣", "━", "┫"), row(p.footer), rule("┗", "━", "┛"))
+
+	// A frame costs a line on each side, and the gap inside it one layer.
+	outerWidth, outerHeight := width+2+2*layerColumns, height+2+2*layerRows
+	marginWidth, marginHeight := outerWidth+2*layerColumns, outerHeight+2*layerRows
+	left, top := 2, 3 // where the body starts in lines
+	outer := outerWidth <= m.width && outerHeight <= area
+	if outer {
+		gap, blank := strings.Repeat(" ", layerColumns), strings.Repeat(" ", width+2*layerColumns)
+		edge := m.st.Muted("┃")
+		framed := []string{m.st.Muted("┏" + strings.Repeat("━", width+2*layerColumns) + "┓"), edge + blank + edge}
+		for _, l := range lines {
+			framed = append(framed, edge+gap+l+gap+edge)
+		}
+		lines = append(framed, edge+blank+edge, m.st.Muted("┗"+strings.Repeat("━", width+2*layerColumns)+"┛"))
+		width, height = outerWidth, outerHeight
+		left, top = left+1+layerColumns, top+1+layerRows
+	}
+	if outer && marginWidth <= m.width && marginHeight <= area {
+		gap, blank := strings.Repeat(" ", layerColumns), strings.Repeat(" ", marginWidth)
+		spaced := []string{blank}
+		for _, l := range lines {
+			spaced = append(spaced, gap+l+gap)
+		}
+		lines = append(spaced, blank)
+		width, height = marginWidth, marginHeight
+		left, top = left+layerColumns, top+layerRows
+	}
+	x, y := (m.width-width)/2, (area-height)/2
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, uv.Rect(x, y, width, height))
+	return uv.Rect(x+left, y+top, width-2*left, body)
+}
+
+// Most of the window [Open Project]'s popup takes for its body, so that it
+// keeps its size from one of its screens to the next, and the least it asks
+// for on a small window.
+const (
+	screenPopupColumns, screenPopupRows       = 60, 16
+	screenPopupMinColumns, screenPopupMinRows = 30, 8
+)
+
+// drawScreenPopup draws s in a popup whose size depends on the window only.
+func (m *Model) drawScreenPopup(buf uv.Screen, s screen) {
+	columns := max(min(screenPopupColumns, m.width-popupColumns), screenPopupMinColumns)
+	rows := max(min(screenPopupRows, m.height-1-popupRows), screenPopupMinRows)
+	body := make([]string, rows)
+	body[0] = strings.Repeat(" ", columns)
+	footer := ""
+	if h, ok := s.(hinter); ok {
+		footer = h.hint()
+	}
+	if area := m.drawPopup(buf, popup{title: s.title(), body: body, footer: footer}); !area.Empty() {
+		s.draw(buf, area, m.st)
+	}
 }
 
 // defaultHint is what the status line says of the keys, when a screen has
@@ -283,7 +353,7 @@ func (m *Model) statusLine() string {
 	}
 	state := style.StatusLive
 	right := m.st.BarMuted(defaultHint)
-	if h, ok := m.top().(hinter); ok && l.focus == project && m.projects.loaded {
+	if h, ok := m.root.(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
 	}
 	if s, ok := m.paneStatus(); ok {
@@ -306,6 +376,9 @@ func (m *Model) statusLine() string {
 	case m.switcher != nil:
 		state = style.StatusPrefix
 		right = "switcher: type to find a project"
+	case len(m.opening) > 0:
+		state = style.StatusPrefix
+		right = "open project: Esc goes back"
 	}
 	right += " "
 	line := left + " " + right

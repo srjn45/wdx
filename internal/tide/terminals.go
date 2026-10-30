@@ -113,7 +113,7 @@ func (m *Model) removable() (removal, bool) {
 		a, ok := m.activeAgent()
 		return agentRemoval(a), ok
 	case project:
-		if _, ok := m.top().(*projectScreen); ok {
+		if _, ok := m.root.(*projectScreen); ok {
 			a, ok := m.cursorAgent()
 			return agentRemoval(a), ok
 		}

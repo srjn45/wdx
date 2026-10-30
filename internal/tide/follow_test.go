@@ -174,7 +174,10 @@ func TestFollowRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.until(t, "[Open Project]", shown(""))
-	wantText(t, p.m, "[Open Project]", "api was removed", "no project open")
+	wantText(t, p.m, "┃ Open Project", "api was removed")
+	p.keys("esc")
+	p.until(t, "the popup closed", func(m *Model) bool { return len(m.opening) == 0 })
+	wantText(t, p.m, "[No Project]", "no project open")
 }
 
 func TestFollowReconnects(t *testing.T) {
@@ -220,11 +223,14 @@ func TestNewTerminal(t *testing.T) {
 	}
 
 	// A second one gets selected once it comes.
-	p.keys("C-q", "t")
+	p.keys("C-q", "o", "C-q", "t") // from a popup too, which it closes
 	p.until(t, "the new tab selected", func(m *Model) bool {
 		sel, ok := m.selectedTerminal()
 		return len(tabs(m)) == 2 && ok && sel.Name != first
 	})
+	if p.m.popupOpen() {
+		t.Fatalf("C-q t left the popup open:\n%s", text(p.m))
+	}
 	sel, _ := p.m.selectedTerminal()
 	wantText(t, p.m, " api · terminal · "+sel.Name)
 }
