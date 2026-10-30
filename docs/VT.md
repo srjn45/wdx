@@ -1,9 +1,9 @@
 # The vt and its fork
 
-wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule), so the fork is one `replace`. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is fixed in our fork, whose branch we merge into ourselves; once the changes are stable, they go upstream as one or a few pull requests.
+wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule). The vt parses with `github.com/charmbracelet/x/ansi`, in the same repository, which the fork also holds for #16; every package that uses `ansi`, Bubble Tea among them, builds with the fork's. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is fixed in our fork, whose branch we merge into ourselves; once the changes are stable, they go upstream as one or a few pull requests.
 
 - Fork: `github.com/srjn45/x`, branch `wdx`, cloned at `~/dev/x`; `upstream` is `charmbracelet/x`.
-- wdx uses the fork: `go.mod` has `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, the branch's last pushed commit, with `make notices` run after each move. It forks upstream at `v0.1.1-0.20261028143050-ac49f62f807e`. The `replace` goes when upstream has every fix.
+- wdx uses the fork: `go.mod` has `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>` and the same for `ansi`, both the branch's last pushed commit, with `make notices` run after each move. It forks upstream at `v0.1.1-0.20261028143050-ac49f62f807e`. Each `replace` goes when upstream has its module's fixes.
 - When a fix lands, remove its workaround in `screen` (the last column) and its test's comment, keeping the test.
 
 ## Keeping the fork current
@@ -14,11 +14,11 @@ While wdx depends on the fork, its branch `wdx` is rebased onto upstream's `main
 2. Stop when `wdx` already contains `upstream/main`.
 3. Tag `wdx`'s tip `wdx-<UTC date>-<time>` and push the tag: a rebase rewrites the branch, and the tags keep on the fork every commit wdx has pinned.
 4. Rebase `wdx` onto `upstream/main`. A conflict stops the sync, to be resolved by hand. A fix upstream took is dropped by the rebase; the script lists them, for the tables below and to remove the fix's commit from what goes upstream.
-5. Run the vt's tests with the race detector, then push `wdx` with `--force-with-lease`.
-6. Move the `replace` in `go.mod` to the new tip; `go mod tidy`, `make notices`, `make check`, `make test`.
-7. Commit `chore: build the vt from the fork at <tip>, on upstream <sha>` in the worktree, then rebase it into `main`.
+5. Run the tests of the vt and `ansi` with the race detector, then push `wdx` with `--force-with-lease`.
+6. Move both `replace`s in `go.mod` to the new tip; `go mod tidy`, `make notices`, `make check`, `make test`.
+7. Commit `chore: build the vt and ansi from the fork at <tip>, on upstream <sha>` in the worktree, then rebase it into `main`.
 
-Run again after resolving a conflict, it finishes the sync. It also pushes commits made on `wdx` and not pushed yet, once the vt's tests pass, and moves wdx to them.
+Run again after resolving a conflict, it finishes the sync. It also pushes commits made on `wdx` and not pushed yet, once the tests pass, and moves wdx to them.
 
 ## Plan
 
@@ -46,6 +46,7 @@ Later:
 | 5 | `Close` sets `closed` while `Read` reads it in another goroutine: a data race | Read answers in one goroutine, `Close` in another | Guard `closed` with the pipe, or a mutex or atomic | `Close` closed the answer pipe's writer instead of the vt | fixed in the fork (`ab55c1a`), used by wdx |
 | 6 | `SetScrollbackSize(0)` is ignored: the scrollback stays at 10,000 | `SetScrollbackSize(0)`, scroll: lines kept | 0 disables the scrollback | not needed: `screen` empties it after every piece | fixed in the fork (`0b22536`) |
 | 15 | Shift out and shift in (`SO`, `SI`) do nothing: their handlers are registered among the C1 controls, which never reach them | `ESC ) 0`, `SO`, `q`: prints `q`, not `─` | Register them with the C0 controls | none | fixed in the fork (`c3a44c3`), used by wdx |
+| 16 | An OSC or DCS string ends at any `0x9C`, the C1 string terminator, even a byte inside a UTF-8 character, and the rest prints on the screen; in `x/ansi`'s parser. Claude Code's idle title starts with `✳` (`E2 9C B3`): the title showed at its prompt, and stayed, as it redraws only cells it thinks changed | `OSC 0 ; ✳ title BEL` | Bytes that continue a UTF-8 character are text; a `0x9C` elsewhere still ends the string, and so does `C2 9C` (U+009C). `ansi`'s functions that read sequences without the parser (`DecodeSequence`, `Strip`, `Truncate`, `Wrap`) still end at any `0x9C`, in the strings of text they are given | none | fixed in the fork (`59a343f`), used by wdx |
 
 ## Speed
 

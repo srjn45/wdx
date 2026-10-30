@@ -153,6 +153,24 @@ func stateDiffs(a, b *Screen) []string {
 	return diffs
 }
 
+// TestScreenTitleKeepsToItself sets titles whose characters hold the byte of
+// the C1 string terminator, as Claude Code's idle title does: none of it
+// reaches the screen.
+func TestScreenTitleKeepsToItself(t *testing.T) {
+	t.Parallel()
+	for _, title := range []string{"✳ Tide project", "Ü末", "plain"} {
+		s := New(40, 3, nil)
+		defer s.Close()
+		s.Write([]byte("\x1b[2;3H\x1b]0;" + title + "\x07"))
+		if s.Title() != title {
+			t.Errorf("title %q: got %q", title, s.Title())
+		}
+		if got := strings.TrimSpace(ansi.Strip(s.Render())); got != "" {
+			t.Errorf("title %q: the screen shows %q", title, got)
+		}
+	}
+}
+
 func TestScreenHistory(t *testing.T) {
 	t.Parallel()
 	numbered := func(from, to int) string {

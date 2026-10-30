@@ -1,5 +1,6 @@
 #!/bin/sh
-# Rebase our vt fork's branch onto upstream's main and move wdx to it
+# Rebase our fork's branch, which holds the vt and ansi modules, onto
+# upstream's main and move wdx to it
 # (docs/VT.md, Keeping the fork current). Run from a clean wdx checkout,
 # on request and before releasing; the fork's checkout is $VT_FORK,
 # ~/dev/x by default, on its branch wdx with nothing to commit.
@@ -12,8 +13,8 @@ set -eu
 
 FORK="${VT_FORK:-$HOME/dev/x}"
 BRANCH=wdx
-MODULE=github.com/charmbracelet/x/vt
-FORK_MODULE=github.com/srjn45/x/vt
+# The modules of the fork wdx builds from, all at the branch's tip.
+MODULES="vt ansi"
 
 cd "$(dirname "$0")/.."
 
@@ -62,28 +63,35 @@ else
 fi
 
 if [ "$(fork rev-parse HEAD)" != "$(fork rev-parse "origin/$BRANCH")" ]; then
-	echo "testing the vt"
-	(cd "$FORK/vt" && go test -race ./...)
+	for m in $MODULES; do
+		echo "testing $m"
+		(cd "$FORK/$m" && go test -race ./...)
+	done
 	fork push -q --force-with-lease origin "$BRANCH"
 	echo "pushed the fork's $BRANCH"
 fi
 
 tip="$(fork rev-parse --short=12 HEAD)"
-info="$(go mod download -json "$FORK_MODULE@$tip")" ||
-	die "go cannot fetch the fork at $tip: $(echo "$info" | jq -r .Error)"
-version="$(echo "$info" | jq -r .Version)"
-current="$(go list -m -f '{{.Replace.Version}}' "$MODULE")"
-if [ "$version" = "$current" ]; then
-	echo "wdx already uses the fork's $BRANCH ($version)"
+moved=
+for m in $MODULES; do
+	info="$(go mod download -json "github.com/srjn45/x/$m@$tip")" ||
+		die "go cannot fetch the fork's $m at $tip: $(echo "$info" | jq -r .Error)"
+	version="$(echo "$info" | jq -r .Version)"
+	if [ "$version" != "$(go list -m -f '{{.Replace.Version}}' "github.com/charmbracelet/x/$m")" ]; then
+		echo "moving wdx's $m to $version"
+		go mod edit -replace "github.com/charmbracelet/x/$m=github.com/srjn45/x/$m@$version"
+		moved=yes
+	fi
+done
+if [ -z "$moved" ]; then
+	echo "wdx already uses the fork's $BRANCH ($tip)"
 	exit 0
 fi
 
-echo "moving wdx to $version"
-go mod edit -replace "$MODULE=$FORK_MODULE@$version"
 go mod tidy
 make notices
 make check
 make test
 git add go.mod go.sum THIRD-PARTY-NOTICES.md
-git commit -q -m "chore: build the vt from the fork at $tip, on upstream $upstream"
+git commit -q -m "chore: build the vt and ansi from the fork at $tip, on upstream $upstream"
 echo "committed: $(git log -1 --format='%h %s')"
