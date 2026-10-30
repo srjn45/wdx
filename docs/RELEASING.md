@@ -9,6 +9,8 @@ make changelog     print what changed since the last stable release
 make notices       write THIRD-PARTY-NOTICES.md from the modules linked into wdx
 ```
 
+While wdx builds its vt from our fork, run `make vt-sync` before releasing, so a release has upstream's latest vt (docs/VT.md).
+
 Both release targets need a clean working tree on `main`, not behind `origin/main`, and a passing `make check` and `make test`, and refuse when there is nothing to release. They end by pushing `main` and the tag together.
 
 ## Publishing

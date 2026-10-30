@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 PKG     := github.com/srjn45/wdx/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build generate test test-update cover lint check tools notices dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -80,6 +80,10 @@ tools: $(GOLANGCI_LINT) $(SHELLCHECK) $(ACTIONLINT) $(GOVULNCHECK)
 # Write THIRD-PARTY-NOTICES.md from the modules linked into wdx.
 notices:
 	scripts/notices.sh
+
+# Rebase the vt fork onto upstream and move wdx to it (docs/VT.md).
+vt-sync:
+	scripts/vt-sync.sh
 
 # Build release archives + checksums into dist/, laid out like GitHub Releases.
 dist:

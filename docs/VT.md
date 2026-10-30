@@ -6,6 +6,20 @@ wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped b
 - wdx uses the fork: `go.mod` has `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>`, the branch's last pushed commit, with `make notices` run after each move. It forks upstream at `v0.1.1-0.20261028143050-ac49f62f807e`. The `replace` goes when upstream has every fix.
 - When a fix lands, remove its workaround in `screen` (the last column) and its test's comment, keeping the test.
 
+## Keeping the fork current
+
+While wdx depends on the fork, its branch `wdx` is rebased onto upstream's `main` on request, and before every release (`make release-dev`, `make release`), by `make vt-sync` (`scripts/vt-sync.sh`, decided 2026-10-30), run from a wdx worktree, with the fork's checkout in `VT_FORK` (default `~/dev/x`):
+
+1. Fetch upstream and fast-forward the fork's `main` to `upstream/main`, pushed: the fork's `main` mirrors upstream.
+2. Stop when `wdx` already contains `upstream/main`.
+3. Tag `wdx`'s tip `wdx-<UTC date>-<time>` and push the tag: a rebase rewrites the branch, and the tags keep on the fork every commit wdx has pinned.
+4. Rebase `wdx` onto `upstream/main`. A conflict stops the sync, to be resolved by hand. A fix upstream took is dropped by the rebase; the script lists them, for the tables below and to remove the fix's commit from what goes upstream.
+5. Run the vt's tests with the race detector, then push `wdx` with `--force-with-lease`.
+6. Move the `replace` in `go.mod` to the new tip; `go mod tidy`, `make notices`, `make check`, `make test`.
+7. Commit `chore: build the vt from the fork at <tip>, on upstream <sha>` in the worktree, then rebase it into `main`.
+
+Run again after resolving a conflict, it finishes the sync. It also pushes commits made on `wdx` and not pushed yet, once the vt's tests pass, and moves wdx to them.
+
 ## Plan
 
 Approved on 2026-10-30, in the order users notice. Each fix is a commit in the fork's branch `wdx` with its test; wdx then moves its `replace` to the fork's new version, runs `make notices`, and removes the fix's workaround in `screen`, in a commit of its own. Each group ships in a dev release.
