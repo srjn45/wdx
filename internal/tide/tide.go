@@ -60,6 +60,8 @@ type Model struct {
 	strip         int            // how many times the project strip was shown
 	stripShown    bool           // the project strip is shown
 	lastClick     click
+	sel           *selection                // text selected with the mouse, while dragged and until the next click or key
+	copy          func(text string) tea.Cmd // puts text on the clipboard; tests replace it
 }
 
 // content is what a pane shows.
@@ -107,6 +109,7 @@ func New(ctx context.Context, opts Options) *Model {
 	}
 	// tide starts on the project pane, the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
+	m.copy = m.copyToClipboard
 	m.layout.setFocus(project)
 	m.layout.terminalOpen = false
 	return m
@@ -118,6 +121,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.sel = nil // the panes move
 	case projectsListed:
 		m.listed(msg)
 	case popScreen:
@@ -162,6 +166,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.key(msg)
 	case tea.MouseClickMsg:
 		m.click(msg.Mouse())
+	case tea.MouseMotionMsg:
+		m.drag(msg.Mouse())
+	case tea.MouseReleaseMsg:
+		return m, m.release(msg.Mouse())
 	case tea.MouseWheelMsg:
 		m.wheel(msg.Mouse())
 	case tea.PasteMsg:
@@ -273,6 +281,7 @@ func (m *Model) focusProjectPane() {
 
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	name := msg.String()
+	m.sel = nil
 	if m.menu {
 		m.menu = false
 		switch name {
@@ -364,11 +373,12 @@ func (m *Model) switchTab(d direction) {
 }
 
 // click focuses the pane clicked; on a frame's title it may also zoom or
-// switch tabs.
+// switch tabs. A press inside a pane may start a selection.
 func (m *Model) click(mouse tea.Mouse) {
 	if m.menu || mouse.Button != tea.MouseLeft {
 		return
 	}
+	m.sel = nil
 	frames, ok := m.frames()
 	if !ok {
 		return
@@ -389,6 +399,7 @@ func (m *Model) click(mouse tea.Mouse) {
 		}
 		m.layout.setFocus(p)
 		if at.In(f.Inset(1)) {
+			m.press(f.Inset(1), at)
 			m.pane(p).input(fmt.Sprintf("click %d,%d", at.X-f.Min.X-1, at.Y-f.Min.Y-1))
 		}
 		m.changed("click")

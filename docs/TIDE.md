@@ -256,7 +256,8 @@ Supported, though most users will mostly use the keyboard.
 - Drag the dividers to resize.
 - The wheel scrolls a pane's scrollback.
 - Programs that request the mouse (vim, htop) get mouse events inside their pane.
-- While tide captures the mouse, native text selection needs `Shift`-drag (Linux) or `Option`-drag (macOS).
+- Dragging selects text inside the pane where the drag started, never past its edges, highlighted in reverse; releasing copies it, as terminals do on Linux. A click or a key clears it. The copy goes both through OSC 52, which works over ssh, and through the system's tool (`wl-copy`, `xclip` or `xsel` on Linux, `pbcopy` on macOS), since GNOME Terminal and Terminal.app ignore OSC 52. In a pane whose program takes the mouse, the program will get the drags instead.
+- The terminal's own selection, `Shift`-drag (Linux) or `Option`-drag (macOS), still works but crosses the panes, as the terminal knows nothing of them.
 
 ## Phases
 

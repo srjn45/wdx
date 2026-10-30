@@ -21,15 +21,25 @@ func (m *Model) View() tea.View {
 // tooSmall is all a window too small for the panes shows.
 const tooSmall = "window too small"
 
-// render draws the window: the panes' frames and content, the menu over
-// them and the status line below.
+// render draws the window.
 func (m *Model) render() string {
 	if m.width < 1 || m.height < 1 {
 		return ""
 	}
-	frames, ok := m.frames()
+	buf, ok := m.paint(true)
 	if !ok {
 		return ansi.Truncate(tooSmall, m.width, "")
+	}
+	return buf.Render()
+}
+
+// paint draws the window in a buffer: the panes' frames and content, the
+// selection when highlight, the popups over them and the status line
+// below. It fails when the window is too small for the panes.
+func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
+	frames, ok := m.frames()
+	if !ok {
+		return uv.ScreenBuffer{}, false
 	}
 	buf := uv.NewScreenBuffer(m.width, m.height)
 	m.drawBorders(buf, frames)
@@ -43,6 +53,9 @@ func (m *Model) render() string {
 			uv.NewStyledString(l.styled).Draw(buf, l.area)
 		}
 	}
+	if highlight && m.sel != nil && m.sel.dragged {
+		m.sel.highlight(buf)
+	}
 	if m.stripShown {
 		m.drawStrip(buf)
 	}
@@ -53,7 +66,7 @@ func (m *Model) render() string {
 		m.drawMenu(buf)
 	}
 	uv.NewStyledString(m.statusLine()).Draw(buf, uv.Rect(0, m.height-1, m.width, 1))
-	return buf.Render()
+	return buf, true
 }
 
 // joins are the sides of a border cell its lines leave by.
