@@ -360,10 +360,9 @@ func TestPaneFetchFails(t *testing.T) {
 	d.waitText("3000")
 	d.run(d.m.ScrollUp(500))
 	d.waitFor("the fetch failing", func() bool { return d.m.FetchErr() != nil })
-	quiet := time.Now().Add(200 * time.Millisecond)
-	d.waitFor("200 ms", func() bool { return time.Now().After(quiet) })
-	if n := fetches.Load(); n != 1 {
-		t.Fatalf("one scroll fetched %d times", n)
+	// A retry would be a fetch started handling the failure: none is.
+	if len(d.m.back.fetching) != 0 || fetches.Load() != 1 {
+		t.Fatalf("fetching %v after one scroll fetched %d times", d.m.back.fetching, fetches.Load())
 	}
 	d.run(d.m.ScrollUp(1))
 	d.waitFor("a second fetch", func() bool { return fetches.Load() == 2 })

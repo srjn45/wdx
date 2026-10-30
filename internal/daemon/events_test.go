@@ -84,6 +84,16 @@ func waitEvent(t *testing.T, events <-chan event, what string, want func(event) 
 	}
 }
 
+// waitProject follows the project ref until want accepts it and returns
+// it: the stream sends the project as it is when opened, then on changes,
+// so no state is missed between two polls.
+func (td *testDaemon) waitProject(t *testing.T, ref, what string, want func(event) bool) event {
+	t.Helper()
+	events, leave := td.follow(t, ref)
+	defer leave()
+	return waitEvent(t, events, what, func(e event) bool { return e.name == "project" && want(e) })
+}
+
 // String sums an event up: its name, the project's state and terminals.
 func (e event) String() string {
 	if e.name != "project" {
@@ -172,10 +182,12 @@ func TestStreamUnchangedSendsNothing(t *testing.T) {
 	if r, err := td.client.UpdateProjectWithResponse(context.Background(), "web", api.UpdateProject{State: api.ProjectStateClosed}); err != nil || r.JSON200 == nil {
 		t.Fatalf("close web: %v %s", err, r.Body)
 	}
-	select {
-	case e := <-events:
-		t.Fatalf("an event for another project's change: %+v", e)
-	case <-time.After(200 * time.Millisecond):
+	// Then one to this project: the next event is that one, none before.
+	if r, err := td.client.UpdateProjectWithResponse(context.Background(), "docs", api.UpdateProject{State: api.ProjectStateClosed}); err != nil || r.JSON200 == nil {
+		t.Fatalf("close docs: %v %s", err, r.Body)
+	}
+	if e := waitEvent(t, events, "an event", func(event) bool { return true }); e.project.State != api.ProjectStateClosed {
+		t.Fatalf("an event for another project's change: %s", e)
 	}
 	leave() // the stream ends when the client leaves: checked as logged
 }

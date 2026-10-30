@@ -93,16 +93,10 @@ func TestCreateTerminalClientLeaves(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Skipf("the create finished before it was cancelled: %v", err)
 	}
-	for {
-		terms := td.terminals(t, nil)
-		if len(terms) == 1 && terms[0].State == api.TerminalStateRunning {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("want the terminal running, got %+v", terms)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	td.waitProject(t, "app", "the terminal running", func(e event) bool {
+		terms := terminalsIn(e)
+		return len(terms) == 1 && terms[0].State == api.TerminalStateRunning
+	})
 }
 
 // TestStopDuringLongChange stops the daemon while closing a project takes
@@ -125,13 +119,10 @@ func TestStopDuringLongChange(t *testing.T) {
 		// Cut short by the daemon stopping.
 		_, _ = td.client.UpdateProjectWithResponse(context.Background(), "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)})
 	}()
-	deadline := waittest.Deadline(t)
-	for td.terminals(t, nil)[0].State != api.TerminalStateStopped {
-		if time.Now().After(deadline) {
-			t.Fatalf("the terminal is not being stopped: %+v", td.terminals(t, nil)[0])
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	td.waitProject(t, "app", "the terminal being stopped", func(e event) bool {
+		terms := terminalsIn(e)
+		return len(terms) == 1 && terms[0].State == api.TerminalStateStopped
+	})
 	td.stop()
 
 	d, err := db.Open(context.Background(), identity.DBPath(td.home))
