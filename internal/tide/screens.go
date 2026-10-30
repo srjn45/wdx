@@ -22,11 +22,30 @@ type screen interface {
 	draw(buf uv.Screen, area uv.Rectangle, st style.Style)
 }
 
-// browseLocal pushes the directory browser, to open a local repository.
-type browseLocal struct{}
+// browse pushes the directory browser: to open a local repository, or to
+// create a project in a directory when create.
+type browse struct{ create bool }
+
+// pushScreen pushes s on the stack.
+type pushScreen struct{ s screen }
 
 // popScreen takes the top screen off the stack, unless it is the root.
 type popScreen struct{}
+
+// cancelOpen leaves the screens above [Open Project] for it.
+type cancelOpen struct{}
+
+// hinter is a screen that says what its keys do on the status line.
+type hinter interface{ hint() string }
+
+// Titles of [Open Project] and the screens above it, which are paths so it
+// is clear where Esc goes.
+const (
+	openProjectTitle = "Open Project"
+	localTitle       = openProjectTitle + " › Local"
+	cloneTitle       = openProjectTitle + " › Clone"
+	createTitle      = openProjectTitle + " › Create"
+)
 
 func pop() tea.Msg { return popScreen{} }
 
@@ -61,14 +80,25 @@ type openProjectScreen struct {
 	projects *projectList
 	selected int    // an index into entries
 	opening  string // the project being reopened, while it is
-	notice   string // why the last enter did nothing
+	notice   string // what happened last, a project removed
 	failure  string // why the last reopen failed
+}
+
+// cloneField asks for the URL of a repository to clone.
+func cloneField() *fieldScreen {
+	return &fieldScreen{
+		heading: cloneTitle,
+		prompt:  "URL of the git repository to clone:",
+		empty:   "type a URL",
+		working: "cloning…",
+		submit:  func(url string) tea.Msg { return createProject{req: gitRequest(url)} },
+	}
 }
 
 // sources are the entries that open a project not known yet.
 var sources = []string{"Open a local repository", "Clone a git repository", "Create a new project"}
 
-func (s *openProjectScreen) title() string { return "Open Project" }
+func (s *openProjectScreen) title() string { return openProjectTitle }
 
 // entries are what can be selected: the sources, then the closed projects.
 func (s *openProjectScreen) entries() []string {
@@ -94,9 +124,11 @@ func (s *openProjectScreen) update(msg tea.Msg) tea.Cmd {
 		case slices.Contains(downKeys, key):
 			s.selected = min(s.selected+1, len(entries)-1)
 		case key == "enter" && s.selected == 0:
-			return send(browseLocal{})
-		case key == "enter" && s.selected < len(sources):
-			s.notice = "not built yet: it comes in a later step"
+			return send(browse{})
+		case key == "enter" && s.selected == 1:
+			return send(pushScreen{cloneField()})
+		case key == "enter" && s.selected == 2:
+			return send(browse{create: true})
 		case key == "enter":
 			s.opening = entries[s.selected]
 			return send(reopenProject{name: s.opening})

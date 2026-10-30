@@ -6,9 +6,11 @@
 package tide
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -42,7 +44,7 @@ type Model struct {
 	now    func() time.Time
 	tick   func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd // tea.Tick, which tests replace
 
-	workDir, userHome string // from Options
+	workDir, userHome, projectsDir string // from Options
 
 	width, height int
 	layout        layout
@@ -72,6 +74,9 @@ type Options struct {
 	Style    style.Style
 	WorkDir  string // the directory tide was started in, where the directory browser starts
 	UserHome string // shown as ~ in paths
+	// ProjectsDir is where projects are created by default, where the
+	// directory browser starts to create one.
+	ProjectsDir string
 }
 
 // click is where and when a click on a frame's title happened.
@@ -85,19 +90,20 @@ type click struct {
 func New(ctx context.Context, opts Options) *Model {
 	projects := &projectList{}
 	m := &Model{
-		ctx:      ctx,
-		log:      logging.FromContext(ctx),
-		st:       opts.Style,
-		client:   opts.Client,
-		workDir:  opts.WorkDir,
-		userHome: opts.UserHome,
-		now:      time.Now,
-		tick:     tea.Tick,
-		layout:   newLayout(),
-		projects: projects,
-		stack:    []screen{&openProjectScreen{projects: projects}},
-		agent:    &placeholder{name: "agent"},
-		tabs:     []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
+		ctx:         ctx,
+		log:         logging.FromContext(ctx),
+		st:          opts.Style,
+		client:      opts.Client,
+		workDir:     opts.WorkDir,
+		userHome:    opts.UserHome,
+		projectsDir: opts.ProjectsDir,
+		now:         time.Now,
+		tick:        tea.Tick,
+		layout:      newLayout(),
+		projects:    projects,
+		stack:       []screen{&openProjectScreen{projects: projects}},
+		agent:       &placeholder{name: "agent"},
+		tabs:        []*placeholder{{name: "shell"}, {name: "tests"}, {name: "server"}},
 	}
 	// tide starts on the project pane, the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -119,34 +125,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stack = m.stack[:len(m.stack)-1]
 			m.log.Debug("screen popped", "screen", m.top().title())
 		}
+	case pushScreen:
+		m.push(msg.s)
+	case cancelOpen:
+		m.toOpenProject("")
 	case reopenProject:
 		return m, m.reopen(msg.name)
-	case browseLocal:
-		dir := m.workDir
-		if dir == "" {
-			dir = m.userHome
-		}
-		b, cmd := newDirBrowser(dir, m.userHome)
-		m.stack = append(m.stack, b)
-		m.log.Debug("screen pushed", "screen", b.title(), "dir", dir)
-		return m, cmd
-	case openLocal:
-		return m, m.openLocalRepo(msg.path)
+	case createProject:
+		return m, m.create(msg.req)
+	case recloneProject:
+		return m, m.reclone(msg.name)
+	case removeProject:
+		return m, m.remove(msg.name)
+	case browse:
+		return m, m.browse(msg.create)
 	case dirRead:
 		// The browser may be gone: Esc does not wait for a listing.
 		if b, ok := m.top().(*dirBrowser); ok {
 			return m, b.update(msg)
 		}
 	case projectOpened:
-		if msg.err != nil {
-			m.log.Info("project not opened", "name", msg.name, "err", msg.err)
-			if m.switcher != nil && m.switcher.opening == msg.name {
-				return m, m.switcher.update(msg)
-			}
-			return m, m.top().update(msg)
-		}
-		m.log.Info("project opened", "name", msg.name)
-		return m, m.show(msg.name)
+		return m, m.opened(msg)
 	case switchProject:
 		if msg.closed {
 			return m, m.reopen(msg.name)
@@ -166,6 +165,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		m.wheel(msg.Mouse())
 	case tea.PasteMsg:
+		if f, ok := m.top().(*fieldScreen); ok && m.layout.focus == project && m.switcher == nil && !m.menu {
+			f.paste(msg.Content)
+			return m, nil
+		}
 		m.pane(m.layout.focus).input(fmt.Sprintf("paste(%d)", len(msg.Content)))
 	}
 	return m, nil
@@ -199,6 +202,52 @@ func (m *Model) show(name string) tea.Cmd {
 	m.stack = []screen{&projectScreen{name: name}}
 	m.log.Info("project shown", "name", name)
 	return m.listProjects()
+}
+
+// push puts s on top of the project pane's stack.
+func (m *Model) push(s screen) {
+	m.stack = append(m.stack, s)
+	m.log.Debug("screen pushed", "screen", s.title())
+}
+
+// browse pushes the directory browser: to open a local repository, from
+// tide's working directory, or to create a project, from where projects
+// are created when it exists.
+func (m *Model) browse(create bool) tea.Cmd {
+	dir := cmp.Or(m.workDir, m.userHome)
+	if create {
+		dir = cmp.Or(existing(m.projectsDir), dir)
+	}
+	b, cmd := newDirBrowser(dir, m.userHome, create)
+	m.push(b)
+	m.log.Debug("directory browsed", "dir", dir)
+	return cmd
+}
+
+// existing returns dir, or its closest parent that exists; "" for "".
+func existing(dir string) string {
+	for d := dir; d != ""; d = filepath.Dir(d) {
+		if exists(d) {
+			return d
+		}
+		if d == filepath.Dir(d) {
+			break
+		}
+	}
+	return ""
+}
+
+// toOpenProject leaves the screens above [Open Project] for it, pushing it
+// when it is not on the stack, with notice saying what happened.
+func (m *Model) toOpenProject(notice string) {
+	for i, s := range m.stack {
+		if o, ok := s.(*openProjectScreen); ok {
+			m.stack = m.stack[:i+1]
+			o.notice, o.failure = notice, ""
+			return
+		}
+	}
+	m.push(&openProjectScreen{projects: m.projects, notice: notice})
 }
 
 // openProject opens [Open Project] over the project pane, focused, and

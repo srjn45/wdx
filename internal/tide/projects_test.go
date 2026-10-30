@@ -165,7 +165,9 @@ func TestStartWithoutProjects(t *testing.T) {
 		t.Fatal("C-\\ showed terminals with no project")
 	}
 	keys(m, "esc", "down", "enter")
-	wantText(t, m, "[Open Project]", "▸ Clone a git repository", "not built yet")
+	wantText(t, m, "[Open Project › Clone]", "URL of the git repository")
+	keys(m, "esc")
+	wantText(t, m, "[Open Project]", "▸ Clone a git repository")
 }
 
 func TestStartWithOpenProjects(t *testing.T) {
@@ -243,9 +245,20 @@ func TestReopenFails(t *testing.T) {
 	if m.shown != "" {
 		t.Fatalf("shown %q", m.shown)
 	}
-	got := text(m)
-	if !strings.Contains(got, "[Open Project]") || !strings.Contains(got, "▸ alpha") || !strings.Contains(got, "no checkout") {
-		t.Fatalf("after a failed reopen:\n%s", got)
+	// No origin to clone it again from: it can only be removed.
+	wantText(t, m, "[Open Project › alpha]", "no checkout", "▸ remove it from wdx", "  cancel")
+	if strings.Contains(text(m), "clone it again") {
+		t.Fatalf("offered to clone with no origin:\n%s", text(m))
+	}
+	keys(m, "down", "enter") // cancel
+	wantText(t, m, "[Open Project]", "▸ alpha", "no checkout")
+	keys(m, "enter", "enter")
+	wantText(t, m, "[Open Project]", "removed alpha")
+	if strings.Contains(text(m), "closed projects") {
+		t.Fatalf("alpha still listed:\n%s", text(m))
+	}
+	if _, err := h.client().GetProject(context.Background(), "alpha"); err == nil {
+		t.Fatal("alpha was not removed")
 	}
 }
 
@@ -321,11 +334,14 @@ func TestSwitcherReopenFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := h.start(t)
-	keys(m, "alp", "enter")
-	if m.switcher == nil || m.shown != "" {
-		t.Fatalf("switcher %v, shown %q", m.switcher, m.shown)
+	keys(m, "esc", "alt+right", "C-q", "p", "alp", "enter")
+	// The question goes to the project pane, which gets the focus.
+	if m.switcher != nil || m.shown != "" || m.layout.focus != project {
+		t.Fatalf("switcher %v, shown %q, focus %s", m.switcher, m.shown, m.layout.focus)
 	}
-	wantText(t, m, "▸ alpha", "no checkout")
+	wantText(t, m, "[Open Project › alpha]", "no checkout", "▸ remove it from wdx")
+	keys(m, "esc")
+	wantText(t, m, "[Open Project]")
 }
 
 func TestStrip(t *testing.T) {

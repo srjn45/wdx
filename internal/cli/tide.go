@@ -26,10 +26,11 @@ func newTideCmd() *cobra.Command {
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
 			"terminals and C-q opens the menu: o opens a project, p switches projects and\n" +
 			"q quits. Alt+Shift and ← or → switch to the previous or next open project.\n" +
-			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button. For\n" +
-			"now projects open from a local repository or reopen when closed, and the\n" +
-			"agent and terminal panes hold placeholders. tide needs the daemon running,\n" +
-			"runs in the terminal it was started from and has no --json.",
+			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button.\n" +
+			"Projects open from a local repository, are cloned or created, or reopen\n" +
+			"when closed. For now the agent and terminal panes hold placeholders. tide\n" +
+			"needs the daemon running, runs in the terminal it was started from and has\n" +
+			"no --json.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),
@@ -70,7 +71,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	})
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
-	model := tide.New(ctx, tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome})
+	model := tide.New(ctx, tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home)})
 	p := tea.NewProgram(model, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
 		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	log.Info("tide started")

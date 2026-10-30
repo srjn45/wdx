@@ -15,10 +15,12 @@ import (
 	"github.com/srjn45/wdx/internal/style"
 )
 
-// dirBrowser is the directory browser of [Open Project › Local]: the
-// directories under one, the git repositories among them marked, to find
-// a repository to open (docs/TIDE.md).
+// dirBrowser is the directory browser of [Open Project › Local] and
+// [Open Project › Create]: the directories under one, the git repositories
+// among them marked, to find a repository to open or where to create a
+// project (docs/TIDE.md).
 type dirBrowser struct {
+	create   bool // to create a project, rather than open a repository
 	userHome string
 	dir      string     // the directory listed, absolute
 	entries  []dirEntry // its directories, by name
@@ -47,19 +49,31 @@ type dirRead struct {
 	err     error
 }
 
-// openLocal asks tide to open the repository that holds path.
-type openLocal struct{ path string }
-
 // openHere is the item that opens the repository the directory listed is
-// in.
-const openHere = "open this directory"
+// in; createHere the one that creates a project in the directory listed.
+const (
+	openHere   = "open this directory"
+	createHere = "create the project here"
+)
 
-func newDirBrowser(dir, userHome string) (*dirBrowser, tea.Cmd) {
-	b := &dirBrowser{userHome: userHome}
+func newDirBrowser(dir, userHome string, create bool) (*dirBrowser, tea.Cmd) {
+	b := &dirBrowser{userHome: userHome, create: create}
 	return b, b.read(dir, "")
 }
 
-func (b *dirBrowser) title() string { return "Open Project › Local" }
+func (b *dirBrowser) title() string {
+	if b.create {
+		return createTitle
+	}
+	return localTitle
+}
+
+func (b *dirBrowser) hint() string {
+	if b.create {
+		return "type to filter  → into  ← up  enter choose  Esc back"
+	}
+	return "type to filter  → into  ← up  enter open  Esc back"
+}
 
 // read lists dir, then selects the entry named sel.
 func (b *dirBrowser) read(dir, sel string) tea.Cmd {
@@ -98,12 +112,17 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// items returns what can be selected: openHere when the directory is in a
-// repository, then the entries the filter matches, those starting with it
-// first. Hidden directories show only when the filter starts with a dot.
+// items returns what can be selected: createHere, or openHere when the
+// directory is in a repository, then the entries the filter matches, those
+// starting with it first. Hidden directories show only when the filter
+// starts with a dot.
 func (b *dirBrowser) items() []string {
 	var items, prefixed, rest []string
-	if b.inRepo {
+	switch {
+	case b.create && b.readErr == nil:
+		items = append(items, createHere)
+	case b.create:
+	case b.inRepo:
 		items = append(items, openHere)
 	}
 	filter := strings.ToLower(b.filter)
@@ -176,11 +195,13 @@ func (b *dirBrowser) key(msg tea.KeyPressMsg) tea.Cmd {
 		b.selected = 0
 	case key == "end":
 		b.selected = max(last, 0)
+	case key == "enter" && item == createHere:
+		return send(pushScreen{b.nameField()})
 	case key == "enter" && item == openHere:
 		return b.open(b.dir)
-	case key == "enter" && item != "" && b.entry(item).repo:
+	case key == "enter" && !b.create && item != "" && b.entry(item).repo:
 		return b.open(filepath.Join(b.dir, item))
-	case (key == "enter" || key == "right") && item != "" && item != openHere:
+	case (key == "enter" || key == "right") && item != "" && item != openHere && item != createHere:
 		return b.read(filepath.Join(b.dir, item), "")
 	case key == "left" || key == "backspace" && b.filter == "":
 		if parent := filepath.Dir(b.dir); parent != b.dir {
@@ -197,7 +218,20 @@ func (b *dirBrowser) key(msg tea.KeyPressMsg) tea.Cmd {
 
 func (b *dirBrowser) open(path string) tea.Cmd {
 	b.opening = true
-	return send(openLocal{path: path})
+	return send(createProject{req: localRequest(path)})
+}
+
+// nameField asks the name of the project to create in the directory
+// listed.
+func (b *dirBrowser) nameField() *fieldScreen {
+	dir := b.dir
+	return &fieldScreen{
+		heading: createTitle,
+		prompt:  "Name of the project, created in " + tildePath(dir, b.userHome) + ":",
+		empty:   "type a name",
+		working: "creating…",
+		submit:  func(name string) tea.Msg { return createProject{req: newRequest(dir, name)} },
+	}
 }
 
 func (b *dirBrowser) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
@@ -237,8 +271,8 @@ func (b *dirBrowser) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	for i := from; i < min(from+b.rows, len(items)); i++ {
 		text := items[i] + "/"
 		switch {
-		case items[i] == openHere:
-			text = st.Command(openHere)
+		case items[i] == openHere || items[i] == createHere:
+			text = st.Command(items[i])
 		case b.entry(items[i]).repo:
 			text += " " + st.Muted("(git)")
 		}

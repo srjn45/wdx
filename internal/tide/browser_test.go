@@ -123,10 +123,13 @@ func TestOpenLocalFails(t *testing.T) {
 	if m.shown != "" {
 		t.Fatalf("shown %q", m.shown)
 	}
-	wantText(t, m, "[Open Project › Local]", "▸ api/ (git)", "is already")
-	keys(m, "down") // the failure goes with the next key
-	if strings.Contains(text(m), "is already") {
-		t.Fatalf("the failure stayed:\n%s", text(m))
+	// A name taken asks for another.
+	wantText(t, m, "[Open Project › Local]", "is already", "Another name", "> _")
+	keys(m, "api", "enter")
+	wantText(t, m, "> api_", "is already")
+	keys(m, "-2", "enter")
+	if m.shown != "api-2" {
+		t.Fatalf("shown %q:\n%s", m.shown, text(m))
 	}
 }
 
