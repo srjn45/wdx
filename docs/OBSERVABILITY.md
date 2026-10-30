@@ -73,6 +73,12 @@ Lines are stored under `service_name="wdx"`. The body is the whole JSON line; th
 {service_name="wdx"} | json | response_project_name="app"
 ```
 
+Whether the vt is too slow for the output terminals print (docs/VT.md, Speed):
+
+```
+{service_name="wdx"} | msg=~"vt fell behind|vt caught up|history interrupted: the screen fell too far behind"
+```
+
 ## Settings
 
 | Key | Default | |

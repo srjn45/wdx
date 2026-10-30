@@ -1,11 +1,14 @@
 package holder
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/screen"
@@ -150,5 +153,45 @@ func TestHistoryMarksReset(t *testing.T) {
 	got, err := ReadHistory(dir, 0, 10)
 	if want := []string{"1", "2", MarkInterrupted, "a", "b"}; err != nil || !slices.Equal(got.Lines, want) {
 		t.Fatalf("got %q, %v, want %q", got.Lines, err, want)
+	}
+}
+
+// TestLagLogged feeds the vt less than the output holds, then the rest:
+// the holder logs when it falls behind the limit, and once it catches up,
+// how far and for how long, and at what rate it parsed (docs/VT.md).
+func TestLagLogged(t *testing.T) {
+	t.Parallel()
+	var logged bytes.Buffer
+	h := &holder{
+		log:    slog.New(slog.NewJSONHandler(&logged, nil)),
+		screen: screen.New(80, 24, nil),
+		size:   Size{Cols: 80, Rows: 24},
+		spool:  newTestSpool(t, spoolSegment, spoolBacklog),
+		lag:    lag{limit: 100},
+	}
+	defer h.screen.Close()
+	out := []byte(strings.Repeat("x", 300))
+	if err := h.spool.append(out); err != nil {
+		t.Fatal(err)
+	}
+	h.feed(0, out[:50])    // 250 behind: past the limit
+	h.feed(50, out[50:60]) // still behind
+	h.feed(60, out[60:])   // caught up
+	h.feed(300, nil)       // keeping up: nothing logged
+	var lines []map[string]any
+	dec := json.NewDecoder(&logged)
+	for dec.More() {
+		var line map[string]any
+		if err := dec.Decode(&line); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) != 2 || lines[0]["msg"] != "vt fell behind" || lines[0]["lag_bytes"] != 250.0 {
+		t.Fatalf("want the vt behind by 250 bytes, then caught up, got %v", lines)
+	}
+	up := lines[1]
+	if up["msg"] != "vt caught up" || up["max_lag_bytes"] != 250.0 || up["bytes"] != 250.0 || up["duration_ms"] == nil || up["bytes_per_second"].(float64) <= 0 {
+		t.Fatalf("want caught up after parsing 250 bytes, 250 the most behind, got %v", up)
 	}
 }

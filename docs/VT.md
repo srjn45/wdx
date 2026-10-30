@@ -31,7 +31,7 @@ Approved on 2026-10-30, in the order users notice. Each fix is a commit in the f
 
 Later:
 
-- **Speed, deferred.** #7 lives in `charmbracelet/ultraviolet`, a repository of its own: it needs a fork `srjn45/ultraviolet` and a second `replace`, run as above. With #8, which alone gains `screen` little, it takes typical output from about 1.5 MB/s to about 5.5 MB/s, the holder's CPU under heavy output. Taken up when that cost shows, or when upstream takes the fix.
+- **Speed, deferred.** #7 lives in `charmbracelet/ultraviolet`, a repository of its own: it needs a fork `srjn45/ultraviolet` and a second `replace`, run as above. With #8, which alone gains `screen` little, it takes typical output from about 1.5 MB/s to about 5.5 MB/s, the holder's CPU under heavy output. A fork of `ultraviolet` reaches further than the vt's: Bubble Tea draws and reads input with it, and so does tide, so a `replace` changes every screen wdx draws; offering the fix upstream as a pull request comes first. Taken up when that cost shows, or when upstream takes the fix.
 - **Features.** #12 (reflowing history to a new width), #13 and #14, each discussed on its own.
 - **Upstream.** Once the fork's changes are stable, they are offered to `charmbracelet/x` as one or a few pull requests.
 
@@ -50,6 +50,13 @@ Later:
 ## Speed
 
 About 1.5 MB/s of typical output; about 5.5 MB/s with both fixes below (spike).
+
+The holder logs what the speed costs. The shell never waits for the vt, which reads the output from the spool at its own pace; when it falls 8 MiB behind, about 5 s of its work, the holder logs `vt fell behind` (`lag_bytes`), and when it catches up, `vt caught up` with how long it was behind (`duration_ms`), the most (`max_lag_bytes`), what it parsed meanwhile (`bytes`) and its rate on that output (`bytes_per_second`). Meanwhile history comes late and an attach shows a screen from the past. Past the spool's backlog (256 MiB), it skips ahead: `history interrupted: the screen fell too far behind`, and a gap in history. The speed work is due when, in normal use:
+
+- history is interrupted for being too far behind, even once; or
+- `vt fell behind` shows up most weeks, or an episode lasts more than about 10 s.
+
+`docs/OBSERVABILITY.md` has the query.
 
 | # | Cause | Fix | Where |
 |---|---|---|---|

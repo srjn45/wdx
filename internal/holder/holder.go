@@ -106,6 +106,7 @@ type holder struct {
 	size     Size
 	vtPos    int64
 	history  *historyWriter // nil when history is off
+	lag      lag
 	// nextLine is the number the next history line will take: written
 	// with h.screenMu held, read without by hello, which must not wait
 	// for the vt.
@@ -176,6 +177,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		followed: make(chan struct{}),
 		released: make(chan struct{}),
 		size:     startSize,
+		lag:      lag{limit: lagLimit},
 		answers:  make(chan []byte, answerQueue),
 		clients:  map[*client]bool{},
 		left:     make(chan struct{}),
@@ -356,7 +358,9 @@ func (h *holder) feed(from int64, p []byte) {
 		h.screen.Reset(h.size.Cols, h.size.Rows)
 		h.writeHistory(MarkInterrupted)
 	}
+	start := time.Now()
 	lines, reset := h.screen.Write(p)
+	took := time.Since(start)
 	h.writeHistory(lines...)
 	if reset {
 		h.log.Warn("vt reset: it failed on the output")
@@ -364,6 +368,46 @@ func (h *holder) feed(from int64, p []byte) {
 	}
 	h.vtPos = from + int64(len(p))
 	h.spool.consume(h.vtPos)
+	h.lag.fed(h.log, h.spool.position()-h.vtPos, len(p), took)
+}
+
+// lagLimit is how far behind the output the vt falls before the holder
+// logs it: about 5 s of the vt's work at its 1.5 MB/s (docs/VT.md, Speed).
+const lagLimit = 8 << 20
+
+// lag watches how far the vt is behind the output, and logs when it falls
+// behind limit and when it catches up: whether its speed needs work.
+type lag struct {
+	limit int64
+	since time.Time     // zero while the vt keeps up
+	max   int64         // the most it was behind since then
+	bytes int64         // what it parsed since then
+	busy  time.Duration // the time it took
+}
+
+// fed records a piece of n bytes the vt took to parse, leaving it behind
+// bytes behind the output.
+func (l *lag) fed(log *slog.Logger, behind int64, n int, took time.Duration) {
+	if l.since.IsZero() {
+		if behind < l.limit {
+			return
+		}
+		l.since, l.max, l.bytes, l.busy = time.Now(), behind, 0, 0
+		log.Info("vt fell behind", "lag_bytes", behind)
+		return
+	}
+	l.max = max(l.max, behind)
+	l.bytes += int64(n)
+	l.busy += took
+	if behind > 0 {
+		return
+	}
+	log.Info("vt caught up",
+		"duration_ms", time.Since(l.since).Milliseconds(),
+		"max_lag_bytes", l.max,
+		"bytes", l.bytes,
+		"bytes_per_second", int64(float64(l.bytes)/max(l.busy.Seconds(), 1e-9)))
+	l.since = time.Time{}
 }
 
 // writeHistory appends lines to history, when it is on; h.screenMu is
