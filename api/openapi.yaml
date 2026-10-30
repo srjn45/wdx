@@ -660,9 +660,10 @@ components:
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
         already_running, runtime_missing, port_in_use, runtime_failed,
-        terminal_not_running, attach_unsupported, connection_lost and the
-        codes of wdx update (download_failed to restore_required) are
-        reported by the CLI, never by the daemon.
+        terminal_not_running, attach_unsupported, connection_lost, the
+        codes of wdx update (download_failed to restore_required) and of
+        wdx deps install (cancelled to privileges_required) are reported
+        by the CLI, never by the daemon.
       enum:
         - usage
         - internal
@@ -697,6 +698,10 @@ components:
         - no_previous_version
         - restore_required
         - settings_invalid
+        - cancelled
+        - unsupported_system
+        - install_failed
+        - privileges_required
 
     Problem:
       type: object

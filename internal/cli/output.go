@@ -49,6 +49,8 @@ const (
 	resultRolledBack = "rolled_back"
 	resultWritten    = "written"
 	resultUnchanged  = "unchanged"
+	resultInstalled  = "installed"
+	resultReady      = "ready"
 )
 
 // printResult writes r to stdout as JSON or as text.
@@ -105,6 +107,8 @@ func problem(err error) (api.Problem, int) {
 		p = ap
 	} else if e, ok := errors.AsType[*config.Error](err); ok {
 		p = settingsProblem(e)
+	} else if ip, ok := depsProblem(err); ok {
+		p = ip
 	} else if up, ok := updateProblem(err); ok {
 		p = up
 	} else if unavailable(err) {

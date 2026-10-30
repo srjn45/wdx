@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -56,6 +57,9 @@ type Probe struct {
 	// stderr together.
 	Output   func(ctx context.Context, name string, args ...string) ([]byte, error)
 	ReadFile func(path string) ([]byte, error)
+	// Run runs a command to install, with stdin and its output going to
+	// out; sudo may ask for a password on the terminal.
+	Run func(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error
 }
 
 // System is what the machine is, for choosing packages.
@@ -155,7 +159,7 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 	case "clipboard":
 		c = checkClipboard(p)
 	case "container":
-		c = checkContainer(ctx, p)
+		c = checkContainer(ctx, p, "docker", "podman")
 	}
 	c.Dependency = d
 	logging.FromContext(ctx).Info("dependency checked", "name", d.Name, "status", c.Status, "program", c.Program, "version", c.Version, "detail", c.Detail)
@@ -247,9 +251,25 @@ func checkClipboard(p Probe) Check {
 	return c
 }
 
-func checkContainer(ctx context.Context, p Probe) Check {
-	name, path, ok := find(p, "docker", "podman")
+// CheckInstallable checks the dependency the installable name provides;
+// for docker or podman, that program only.
+func CheckInstallable(ctx context.Context, p Probe, name string) Check {
+	d, _ := DependencyOf(name)
+	if name != "docker" && name != "podman" {
+		return CheckOne(ctx, p, d)
+	}
+	c := checkContainer(ctx, p, name)
+	c.Dependency = d
+	logging.FromContext(ctx).Info("dependency checked", "name", name, "status", c.Status, "version", c.Version, "detail", c.Detail)
+	return c
+}
+
+func checkContainer(ctx context.Context, p Probe, programs ...string) Check {
+	name, path, ok := find(p, programs...)
 	if !ok {
+		if len(programs) == 1 {
+			return Check{Status: Missing, Detail: programs[0] + " is not installed"}
+		}
 		return Check{Status: Missing, Detail: "neither docker nor podman is installed"}
 	}
 	c := Check{Status: Ready, Program: name, Path: path}
