@@ -15,6 +15,8 @@ curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | W
 
 There is no stable release yet, so only the dev channel installs. From a clone, `make install` builds and installs the current commit (needs Go).
 
+wdx needs git 2.31 or later for its projects; a clipboard tool (`wl-copy` or `xclip`; macOS has one) for tide's copy, and Docker or Podman for `wdx observe`, are optional. `wdx deps list` shows what is ready, and `wdx deps install --name <dependency>` installs one with apt (Ubuntu, Debian) or brew (macOS); without one, only its features are missing.
+
 ## Quick start
 
 ```sh

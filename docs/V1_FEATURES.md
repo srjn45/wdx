@@ -193,7 +193,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 - [ ] P2 Plugins: custom task types, lifecycle hooks (pre/post spawn, commit, check, teardown)
 - [ ] ? Interactive REPL (`wd repl`) with `/` commands and guided forms
 - [ ] ? First-run tutorial
-- [ ] ? Install missing dependencies
+- [x] ? Install missing dependencies: `wdx deps list` and `wdx deps install --name <dependency>` (git, the clipboard tool, docker or podman) with apt or brew, asking before sudo; a missing one drops only its features (docs/DEPS.md)
 
 ## 18. Distribution, update and data safety
 
