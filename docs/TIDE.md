@@ -160,7 +160,7 @@ A failure (not a git repository, a clone that failed) shows in the screen, which
 
 - tide changes things only through the API's create, update and delete requests.
 - tide reads with get and list requests where they fit: the projects at start, the closed ones for `[Open Project]`, the open ones for the strip and `C-q p`.
-- The current project's detail comes from an event stream the daemon pushes: every change under the project (a terminal started or exited, an agent going idle or waiting for input) reaches tide at once. The stream is designed later, with the project detail screen and the agents; until then tide fetches the project when it needs it.
+- The current project's detail comes from an event stream the daemon pushes: every change under the project (a terminal started or exited, an agent going idle or waiting for input) reaches tide at once. Each event is the whole project, never a delta, so tide replaces what it holds and a reconnect needs no replay. Server-sent events on the daemon's socket, `GET /v1/projects/{project}/events`; designed in docs/TIDE_B2.md.
 - So that switching never waits on the daemon, the strip and `C-q p` use the open projects tide fetched at start and after each change it made, refreshed in the background whenever they show.
 
 ## Focus
@@ -186,7 +186,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 
 ### Shortcut menu (`C-q`)
 
-- A menu of actions with one-letter keys, e.g. `n` new terminal tab, `x` close tab, `a` new agent, `o` open project (`[Open Project]`), `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
+- A menu of actions with one-letter keys, e.g. `t` new terminal, `x` remove the entity in focus (the selected terminal, later an agent; always after a confirmation), `a` new agent, `o` open project (`[Open Project]`), `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
@@ -264,11 +264,11 @@ Supported, though most users will mostly use the keyboard.
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
 - **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
+- **Phase B2, the live project (planned, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane with terminals attaching after a project switch rests, the project detail screen, and how the directory browser moves.
 
 ## Open questions
 
-- The daemon's event stream for a project's detail: its endpoint, events and how a client resumes after missing some.
 - Resizing: whether dividers can move away from 2:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
 - The shortcut menu's actions and letters, and how screens are opened.
 - Rendering performance with several live PTY panes, and color, wide-character and cursor fidelity. To measure in a spike.
