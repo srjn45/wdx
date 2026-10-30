@@ -176,8 +176,8 @@ func TestAttachConsistent(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	const n = 10_000
-	f.startShell(t, "term-00000102", fmt.Sprintf(`i=0; while [ $i -lt %d ]; do echo "line $i"; i=$((i+1)); done; echo done; exec sleep 60`, n))
-	time.Sleep(20 * time.Millisecond) // into the output
+	f.startShell(t, "term-00000102", fmt.Sprintf(`i=0; while [ $i -lt %d ]; do echo "line $i"; i=$((i+1)); [ $i -eq 1000 ] && touch printing; done; echo done; exec sleep 60`, n))
+	waitFile(t, filepath.Join(f.dir, "printing")) // attach into the output
 	c := f.attach(t, "term-00000102", Size{Cols: 80, Rows: 24}, -1)
 	replayed := screen.New(80, 24, nil)
 	defer replayed.Close()
@@ -214,6 +214,18 @@ func TestAttachConsistent(t *testing.T) {
 	}
 	if len(got) != n {
 		t.Fatalf("got %d lines, want %d: %q", len(got), n, got[n:])
+	}
+}
+
+// waitFile waits for the shell to create path.
+func waitFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(waitLimit)
+	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the shell did not create %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -297,13 +309,7 @@ func TestQueriesNobodyReads(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.startShell(t, "term-00000111", `stty raw -echo; i=0; while [ $i -lt 5000 ]; do printf '\033[6n'; i=$((i+1)); done; touch flooded; echo flooded; exec sleep 60`)
-	deadline := time.Now().Add(waitLimit)
-	for _, err := os.Stat(filepath.Join(f.dir, "flooded")); err != nil; _, err = os.Stat(filepath.Join(f.dir, "flooded")) {
-		if time.Now().After(deadline) {
-			t.Fatal("the shell did not finish its queries")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFile(t, filepath.Join(f.dir, "flooded"))
 	c := f.attach(t, "term-00000111", Size{Cols: 80, Rows: 24}, 0)
 	c.waitOutput("flooded")
 }

@@ -20,6 +20,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/sys/unix"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
@@ -38,6 +39,7 @@ type attachRun struct {
 	home   string
 	args   []string
 	master *os.File
+	tty    *os.File // the side attach reads
 	done   chan output
 
 	mu     sync.Mutex
@@ -63,7 +65,7 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 	if err := pty.Setsize(master, cols, rows); err != nil {
 		t.Fatal(err)
 	}
-	a := newAttachRun(t, home, master, cols, rows, args)
+	a := newAttachRun(t, home, master, tty, cols, rows, args)
 	go func() {
 		var stdout, stderr bytes.Buffer
 		env := Env{
@@ -84,12 +86,14 @@ func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachR
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { master.Close() })
-	defer tty.Close() // the command has its own
+	t.Cleanup(func() {
+		master.Close()
+		tty.Close() // the command has its own
+	})
 	if err := pty.Setsize(master, 80, 24); err != nil {
 		t.Fatal(err)
 	}
-	a := newAttachRun(t, home, master, 80, 24, args)
+	a := newAttachRun(t, home, master, tty, 80, 24, args)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(wdxBinary, a.args...)
 	cmd.Dir = dir
@@ -108,11 +112,23 @@ func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachR
 }
 
 // newAttachRun is the calling terminal on master's other side.
-func newAttachRun(t *testing.T, home string, master *os.File, cols, rows int, args []string) *attachRun {
+func newAttachRun(t *testing.T, home string, master, tty *os.File, cols, rows int, args []string) *attachRun {
+	// Its own copy of tty, which attach closes when it ends; Fd would turn
+	// attach's blocking.
+	raw, err := tty.SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fd int
+	if cerr := raw.Control(func(f uintptr) { fd, err = unix.Dup(int(f)) }); cerr != nil || err != nil {
+		t.Fatal(cerr, err)
+	}
+	tty = os.NewFile(uintptr(fd), tty.Name())
+	t.Cleanup(func() { tty.Close() })
 	// The terminal's answers go back to the view.
 	sc := screen.New(cols, rows, func(p []byte) { _, _ = master.Write(p) })
 	sc.Write([]byte(callingText + "\r\n$ "))
-	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, screen: sc, done: make(chan output, 1)}
+	a := &attachRun{t: t, home: home, args: append([]string{"terminal", "attach"}, args...), master: master, tty: tty, screen: sc, done: make(chan output, 1)}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -139,7 +155,17 @@ func (a *attachRun) input(s string) {
 	if _, err := a.master.WriteString(s); err != nil {
 		a.t.Fatal(err)
 	}
-	time.Sleep(20 * time.Millisecond) // keys typed one after another, not as one paste
+	// Keys are typed one after another, not as one paste: the next waits
+	// until attach has read this one.
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+		n, err := unix.IoctlGetInt(int(a.tty.Fd()), unreadInput)
+		if err == nil && n == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			a.t.Fatalf("attach did not read %q: %d bytes unread, %v", s, n, err)
+		}
+	}
 }
 
 // text is what the calling terminal shows, without trailing spaces.
@@ -252,6 +278,8 @@ func TestTerminalAttachSignal(t *testing.T) {
 	}
 }
 
+// TestTerminalAttach attaches, types and detaches: the terminal runs on,
+// and the calling terminal is given back.
 func TestTerminalAttach(t *testing.T) {
 	t.Parallel()
 	home := newHomeWithShell(t, interactiveShell)
@@ -275,19 +303,63 @@ func TestTerminalAttach(t *testing.T) {
 		t.Fatalf("want detached with the terminal running, got exit %d, %+v", exit, v)
 	}
 	a.wantGivenBack("hello")
+}
 
-	// Attaching again shows the screen it left.
+// TestTerminalAttachAgain attaches to a terminal attached before: it shows
+// the screen left.
+func TestTerminalAttachAgain(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	app := newProjectDir(t, home, "app")
+	term := newTerminal(t, home, app, "api")
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	a.waitScreen("for keys") // attached: the view is up
+	a.input("echo hel''lo\r")
+	a.waitScreen("hello")
+	a.input("\x1c")
+	a.input("d")
+	if _, exit := a.wait(); exit != api.ExitOK {
+		t.Fatalf("got exit %d", exit)
+	}
+
 	b := startAttach(t, home, app, "--id", term.Id, "--json")
 	b.waitScreen("hello")
-	b.input("exit 3\r")
-	v, exit = b.wait()
+	b.input("\x1c")
+	b.input("d")
+	if v, exit := b.wait(); exit != api.ExitOK || v.Result != "detached" {
+		t.Fatalf("want detached, got exit %d, %+v", exit, v)
+	}
+}
+
+// TestTerminalAttachExited exits the shell attached to: attach ends with
+// its exit code.
+func TestTerminalAttachExited(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
+
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	a.waitScreen("for keys") // attached: the view is up
+	a.input("echo hel''lo\r")
+	a.waitScreen("hello")
+	a.input("exit 3\r")
+	v, exit := a.wait()
 	if exit != api.ExitOK || v.Result != "exited" || v.Terminal.State != api.TerminalStateExited || v.Terminal.ExitCode == nil || *v.Terminal.ExitCode != 3 {
 		t.Fatalf("want exited with code 3, got exit %d, %+v", exit, v)
 	}
-	b.wantGivenBack("hello")
+	a.wantGivenBack("hello")
+}
 
-	c := startAttach(t, home, app, "--name", "api", "--json")
-	v, exit = c.wait()
+func TestTerminalAttachNotRunning(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
+	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
+
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	v, exit := a.wait()
 	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, api.ExitRejected)
 	wantHint(t, v, "terminal start")
 }
@@ -444,6 +516,8 @@ func TestTerminalAttachConnectionLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Nothing is left to stop the shell, which the holder took with it.
+	t.Cleanup(func() { _ = syscall.Kill(*term.Pid, syscall.SIGKILL) })
 	if err := syscall.Kill(holderPID, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
 	}
@@ -451,27 +525,45 @@ func TestTerminalAttachConnectionLost(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeConnectionLost, api.ExitSystem)
 	wantHint(t, v, "attach again")
 	a.wantGivenBack("$ $")
-	_ = syscall.Kill(*term.Pid, syscall.SIGKILL)
 }
 
-func TestTerminalAttachRefused(t *testing.T) {
+// TestTerminalAttachNoTerminal attaches with no terminal to show it in.
+func TestTerminalAttachNoTerminal(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	newTerminal(t, home, app, "api")
-
-	// No terminal to attach in: TTY is nil.
-	v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api")
+	v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api") // TTY is nil
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
-	v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "web")
+}
+
+func TestTerminalAttachNotFound(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "web")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+}
+
+// TestTerminalAttachPrefixKeyInvalid refuses a prefix key that is no key,
+// and those that are Tab and Enter.
+func TestTerminalAttachPrefixKeyInvalid(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
 	for _, key := range []string{"ctrl-1", "ctrl-i", "ctrl-m"} {
-		v, exit = wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", key)
+		v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", key)
 		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	}
+}
 
+func TestTerminalAttachTooSmall(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
 	small := startAttachSized(t, home, app, 8, 2, "--name", "api", "--json")
-	v, exit = small.wait()
+	v, exit := small.wait()
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 }
 

@@ -124,17 +124,24 @@ func create(t *testing.T, s *Supervisor, projectID, name, dir string) Terminal {
 // waitState waits until the terminal with id is in state and returns it.
 func waitState(t *testing.T, s *Supervisor, id string, state State) Terminal {
 	t.Helper()
+	return waitTerminal(t, s, id, string(state), func(term Terminal) bool { return term.State == state })
+}
+
+// waitTerminal waits until the terminal with id is as ok wants, which what
+// describes, and returns it.
+func waitTerminal(t *testing.T, s *Supervisor, id, what string, ok func(Terminal) bool) Terminal {
+	t.Helper()
 	deadline := time.Now().Add(waitLimit)
 	for {
 		term, err := s.store.Get(context.Background(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if term.State == state {
+		if ok(term) {
 			return term
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("want terminal %s %s, it is %s", id, state, term.State)
+			t.Fatalf("want terminal %s %s, got %+v", id, what, term)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -657,9 +664,10 @@ func TestReconcile(t *testing.T) {
 	waitGone(t, exits.HolderPID)
 	waitState(t, second, killed.ID, StateLost)
 	waitGone(t, stopping.PID)
-	if got := waitState(t, second, stopping.ID, StateStopped); got.PID != 0 {
-		t.Fatalf("want the stop finished, got %+v", got)
-	}
+	// Stopped already: the stop is finished once its end is recorded.
+	waitTerminal(t, second, stopping.ID, "stopped with its shell gone", func(term Terminal) bool {
+		return term.State == StateStopped && term.PID == 0
+	})
 	if got := waitState(t, second, starting.ID, StateRunning); got.PID != starting.PID || got.HolderPID != starting.HolderPID {
 		t.Fatalf("want the started shell adopted, got %+v", got)
 	}
