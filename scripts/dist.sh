@@ -8,7 +8,8 @@
 #   dist/LATEST                      (the same, for a stable version only)
 #
 # A version with a pre-release suffix (0.2.0-dev.3) is a dev release; the
-# installer's channels read these files.
+# installer's channels read these files. DIST sets another directory than
+# dist, PLATFORMS fewer platforms (os/arch, space-separated).
 #
 # Usage: scripts/dist.sh <version> <commit>
 set -eu
@@ -17,13 +18,14 @@ NAME=wdx
 VERSION="${1:?usage: dist.sh <version> <commit>}"
 VERSION="${VERSION#v}"
 COMMIT="${2:-none}"
-PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
+PLATFORMS="${PLATFORMS:-linux/amd64 linux/arm64 darwin/amd64 darwin/arm64}"
+DIST="${DIST:-dist}"
 
 PKG=github.com/srjn45/wdx/internal/identity
 LDFLAGS="-s -w -X $PKG.Version=$VERSION -X $PKG.Commit=$COMMIT"
 
 cd "$(dirname "$0")/.."
-OUT="dist/v$VERSION"
+OUT="$DIST/v$VERSION"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
@@ -47,9 +49,9 @@ else
 	(cd "$OUT" && shasum -a 256 ./*.tar.gz | sed 's| \./| |' > checksums.txt)
 fi
 
-echo "v$VERSION" > dist/LATEST-dev
+echo "v$VERSION" > "$DIST/LATEST-dev"
 case "$VERSION" in
 	*-*) ;;
-	*) echo "v$VERSION" > dist/LATEST ;;
+	*) echo "v$VERSION" > "$DIST/LATEST" ;;
 esac
 echo "release v$VERSION -> $OUT"

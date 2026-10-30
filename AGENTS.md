@@ -49,6 +49,7 @@ internal/style/  colors text output on a terminal with semantic styles
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
+scripts/test-update.sh updates a wdx built from the tree to a release dist.sh builds of it and rolls it back (make test-update, in CI)
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
 .github/workflows/ci.yml  runs make check and the tests on every push to main and every PR; docs/RELEASING.md
 .github/workflows/release.yml  publishes the GitHub Release of every pushed tag, through scripts/publish.sh

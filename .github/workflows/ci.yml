@@ -45,6 +45,7 @@ jobs:
           echo "error: no user systemd to cap the tests' memory" >&2
           exit 1
       - run: make cover
+      - run: make test-update
       - name: Coverage summary
         run: scripts/cover.sh bin/cover.out >>"$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -65,6 +66,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make test
+      - run: make test-update
 
   check:
     runs-on: ubuntu-latest

@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 PKG     := github.com/srjn45/wdx/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build generate test cover lint check tools notices dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-update cover lint check tools notices dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -40,6 +40,11 @@ GO_TEST  = $(TEST_CAP) go test -p 4 -race -shuffle=on
 # Run every test, with the race detector and in shuffled order.
 test:
 	$(GO_TEST) ./...
+
+# Update a wdx built from this tree to a release dist.sh builds of it, and
+# roll it back, in a temporary home.
+test-update:
+	scripts/test-update.sh
 
 # Run the tests once with coverage: bin/cover.out, bin/cover.html and the
 # per-package summary.
