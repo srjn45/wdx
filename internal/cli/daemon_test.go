@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/daemon"
@@ -188,5 +191,30 @@ func TestDaemonServiceFails(t *testing.T) {
 	var v map[string]any
 	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != api.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
 		t.Fatalf("want the service manager's failure, got %+v", out)
+	}
+}
+
+// TestStartRetrying starts a binary still open for writing, as one just
+// installed can be: busy at first, it starts once released.
+func TestStartRetrying(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "busy")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("#!/bin/sh\nexit 0\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command(path).Run(); !errors.Is(err, syscall.ETXTBSY) {
+		t.Skipf("this system does not refuse to run a file open for writing: %v", err)
+	}
+	time.AfterFunc(80*time.Millisecond, func() { f.Close() })
+	c, err := startRetrying(func() *exec.Cmd { return exec.Command(path) })
+	if err != nil {
+		t.Fatalf("still busy: %v", err)
+	}
+	if err := c.Wait(); err != nil {
+		t.Fatal(err)
 	}
 }

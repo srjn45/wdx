@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -118,9 +119,35 @@ func copyBinary(t *testing.T, dest, src string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer out.Close()
 	if _, err := io.Copy(out, in); err != nil {
 		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitRunnable(t, dest)
+}
+
+// waitRunnable runs the binary just written at path until it is not "text
+// file busy": a process forked by another test while the file was open
+// for writing holds it so until it execs (golang/go#22315). Once it ran,
+// nothing can hold it so any more.
+func waitRunnable(t *testing.T, path string) {
+	t.Helper()
+	home := t.TempDir()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		// --help reads no home but its config: an empty one.
+		c := exec.Command(path, "--help")
+		c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
+		err := c.Run()
+		if !errors.Is(err, syscall.ETXTBSY) {
+			return // ran; how it ended is the test's to judge
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s stays busy: %v", path, err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -306,8 +333,8 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary, "0.1.0": wdxBinary})
 	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 	settings := readFile(t, identity.ConfigPath(in.home))
@@ -422,8 +449,8 @@ func updatedAcrossBreaking(t *testing.T) (installation, int) {
 	t.Helper()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 	if _, exit := in.json(t, "update", "--apply"); exit != api.ExitOK {
@@ -487,8 +514,8 @@ func TestUpdateUndoneInstall(t *testing.T) {
 // and serve. readable runs once the update has, before the checks.
 func (in installation) wantUndone(t *testing.T, step string, readable ...func()) {
 	t.Helper()
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 	settings := readFile(t, identity.ConfigPath(in.home))
@@ -519,8 +546,8 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	prev := identity.PreviousDir(in.home)
 	writeFile(t, filepath.Join(prev, "previous.json"), `{"version": "0.0.1", "schema": 1}`)
@@ -554,8 +581,8 @@ func TestUpdateInterrupted(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	download := filepath.Join(in.home, "update-123")
 	replaced := filepath.Join(in.home, "replaced-456")
@@ -636,8 +663,8 @@ func TestUpdateUndoneStopsItsDaemon(t *testing.T) {
 *) echo "broken release"`))
 	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": wrong})
 	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
+	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 

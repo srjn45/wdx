@@ -181,11 +181,14 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 	}
 	defer os.Remove(stderr.Name())
 	defer stderr.Close()
-	c := exec.Command(inv.env.Executable, "daemon", "start", "--foreground")
-	c.Env = append(slices.Clip(inv.env.Environ), identity.Env("HOME")+"="+home)
-	c.Stderr = stderr
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := c.Start(); err != nil {
+	c, err := startRetrying(func() *exec.Cmd {
+		c := exec.Command(inv.env.Executable, "daemon", "start", "--foreground")
+		c.Env = append(slices.Clip(inv.env.Environ), identity.Env("HOME")+"="+home)
+		c.Stderr = stderr
+		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		return c
+	})
+	if err != nil {
 		return api.Daemon{}, false, err
 	}
 	log.Info("daemon process started", "daemon_pid", c.Process.Pid, "executable", inv.env.Executable)
@@ -206,6 +209,21 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 		return api.Daemon{}, false, &hinted{err, "see the log in " + identity.LogsDir(home)}
 	}
 	return d, true, nil
+}
+
+// startRetrying starts the command newCmd makes, again while the binary is
+// "text file busy": wdx update starts the daemon on the binary it has just
+// written, which a process forked meanwhile holds open for writing until it
+// execs (golang.org/issue/22315).
+func startRetrying(newCmd func() *exec.Cmd) (*exec.Cmd, error) {
+	for attempt := 1; ; attempt++ {
+		c := newCmd() // a Cmd cannot be started twice
+		err := c.Start()
+		if !errors.Is(err, syscall.ETXTBSY) || attempt == 5 {
+			return c, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
 }
 
 // waitAnswering waits until the daemon answers, giving up when it exits
