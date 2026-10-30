@@ -1,6 +1,6 @@
 # tide: the wdx Terminal-IDE
 
-Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, and Phase B2, the project followed live with its terminals as tabs, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md and docs/TIDE_B2.md record how they were built). A tab and the agent pane still hold placeholders; the rest is design.
+Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, and Phase B2, the project followed live with its terminals as tabs, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md and docs/TIDE_B2.md record how they were built). A tab and the agent pane still hold placeholders; Phase B3, the selected terminal live in its tab, is planned in docs/TIDE_B3.md; the rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
@@ -266,7 +266,8 @@ Supported, though most users will mostly use the keyboard.
 - **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
-- **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane with terminals attaching after a project switch rests, the project detail screen, and how the directory browser moves.
+- **Phase B3, terminals in the terminal pane (planned, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.
+- **Later:** configurable keys, dragging dividers, termview in the agent pane, the project detail screen, and how the directory browser moves.
 
 ## Open questions
 
