@@ -68,7 +68,8 @@ A Bubble Tea v2 model, `termview.Model`, around a `holder.Session` and a screen 
 - keys and mouse events are encoded by the vt for the program inside (`SendKey`, `SendMouse`, `Paste`), honouring its modes (application cursor keys, mouse reporting, bracketed paste), and the vt's input stream is written to the session; the vt also answers the program's queries (cursor position, colors) on that stream, which the holder leaves to an attached client;
 - `SetSize`, which the CLI calls on a window size message, sets the pane's area and makes it the terminal's size; a `resized` frame from the holder, another client's size, resizes the vt only; a pane that sent a size ignores the sizes told before its own comes back, so stale ones do not undo it;
 - the cursor, its shape and the title come from the vt;
-- scrolling and fetching history as above; the model takes a function that fetches history lines, so it knows nothing of the API.
+- scrolling and fetching history as above; the model takes a function that fetches history lines, so it knows nothing of the API;
+- `NewHistory` makes a pane of history alone, read-only, with no session: tide shows a terminal that is not running with it, its last lines at the bottom (docs/TIDE_B3.md).
 
 The CLI runs it full-window with the status line and the prefix keys; tide runs several in its layout, with keys of its own. The model knows nothing of either.
 
