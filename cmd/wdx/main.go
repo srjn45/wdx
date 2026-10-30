@@ -20,6 +20,8 @@ func main() {
 		ShellEnv:   cli.ShellEnv(os.Environ()),
 		CallerTerm: cli.CallerTerm(os.Environ()),
 	}
+	// Which clipboard tool tide needs depends on the graphical session.
+	env.Deps.Session = cli.Session(os.Environ())
 	cfg, err := config.Load(os.Getenv)
 	if err != nil && !cli.RewritesSettings(os.Args[1:], err) {
 		os.Exit(cli.ConfigError(os.Args[1:], env, err))

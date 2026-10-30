@@ -20,6 +20,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/deps"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/observe"
@@ -82,6 +83,9 @@ type Env struct {
 	// in is (TERM, COLORTERM, TERM_PROGRAM), as KEY=value, for the attach
 	// view to draw for it. Read by main, as ShellEnv is.
 	CallerTerm []string
+	// Deps is how the deps commands look at the machine; main sets the
+	// session, and the parts left nil take the real ones.
+	Deps deps.Probe
 	// Timeouts are how long commands wait; tests shorten or lengthen them.
 	Timeouts Timeouts
 }
@@ -401,7 +405,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	root.RegisterFlagCompletionFunc("color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingsCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingsCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)

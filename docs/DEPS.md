@@ -1,6 +1,6 @@
 # wdx deps: what wdx needs besides itself
 
-Status: designed; not started.
+Status: in progress; steps 1 and 2 are done (see Progress). Built in the worktree `.worktrees/deps`, branch `deps`.
 
 `wdx deps list` shows the programs wdx uses once it is installed, whether each is ready, and which features it enables; `wdx deps install --name <dependency>` installs one, on Ubuntu (and Debian) and macOS for now. A missing dependency drops only the features that need it: the rest of wdx keeps working.
 
@@ -45,9 +45,9 @@ wdx deps install --name git --json --yes  from a script: works when sudo needs n
   "system": {"os": "linux", "distribution": "ubuntu", "package_manager": "apt", "session": "wayland"},
   "dependencies": [
     {"name": "git", "mandatory": true, "features": ["projects", "terminals"],
-     "status": "ready", "version": "2.43.0", "path": "/usr/bin/git", "install": null},
+     "status": "ready", "program": "git", "path": "/usr/bin/git", "version": "2.43.0", "detail": null, "install": null},
     {"name": "clipboard", "mandatory": false, "features": ["tide copy"],
-     "status": "missing", "version": null, "path": null,
+     "status": "missing", "program": null, "path": null, "version": null, "detail": "wl-copy is not installed",
      "install": {"commands": [["sudo", "apt-get", "install", "-y", "wl-clipboard"]], "needs_root": true, "instructions": null}}
   ]
 }
@@ -57,7 +57,7 @@ wdx deps install --name git --json --yes  from a script: works when sudo needs n
 - `install --name` takes `git`, `clipboard`, `docker` or `podman`. A dependency already ready is left alone: result `ready`.
 - `install` results: `installed`, `ready`. Errors: `usage`, `cancelled` (the prompt answered no), `unsupported_system`, `install_failed`, `privileges_required` (root needed and `sudo` cannot ask). Every error carries the commands or instructions to do it by hand in `details.install` (as in `list`), which text mode prints after the reason; `install_failed` also carries the package manager's message.
 - The session (Wayland or X11) comes from `XDG_SESSION_TYPE`, `WAYLAND_DISPLAY` and `DISPLAY`: `main` reads them into `Env`, as it does `NO_COLOR`. The distribution comes from `/etc/os-release`.
-- The check runs in the CLI, on the machine the user is on. git is also run by the daemon, which may have another `PATH` as a service: `deps list` says when the daemon would not find it.
+- The check runs in the CLI, on the machine the user is on. git is also run by the daemon, which may have another `PATH` as a service: saying when the daemon would not find it comes with step 4, where the daemon reports a missing git.
 
 ## Where it shows elsewhere
 
@@ -72,3 +72,9 @@ wdx deps install --name git --json --yes  from a script: works when sudo needs n
 3. **`feat:` `wdx deps install --name`**: the install plans per package manager and dependency, docker's and podman's steps after, the prompt and `--yes`, running `sudo` or handing over the commands, the reason and the commands on every failure; tests replace the command runner, so nothing is installed.
 4. **`feat:` features drop, not wdx**: `dependency_missing` for git in the daemon, tide's copy notice, observe's hint.
 5. **`docs:`** this file marked implemented; the docs of the commands it touched.
+
+## Progress
+
+- Step 1: committed (`8fedae1`).
+- Step 2: committed. `internal/deps` holds the table (`Dependencies`), `Detect` (the OS; on Linux the distribution from `/etc/os-release`, `apt` for Ubuntu, Debian and those `ID_LIKE` them; on macOS `brew` when installed) and the checks; a `Probe` gives them `LookPath`, a program's output and `ReadFile`, which tests replace. `main` reads the session into `Env.Deps.Session` (`XDG_SESSION_TYPE`, `WAYLAND_DISPLAY`, `DISPLAY`). Each dependency in the JSON also has `program` (the one found, as `wl-copy` or `podman`) and `detail` (why it is not ready). docker counts as ready only when `docker info` answers; when it does not, the line saying why (permission denied, the daemon not running) is the detail. Each check is logged (`dependency checked`). Not yet: the daemon's own git, moved to step 4.
+

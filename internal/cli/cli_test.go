@@ -394,6 +394,22 @@ type jsonOutput struct {
 		Dropped []string `json:"dropped"`
 	} `json:"settings"`
 
+	System *struct {
+		OS             string  `json:"os"`
+		Distribution   *string `json:"distribution"`
+		PackageManager *string `json:"package_manager"`
+		Session        *string `json:"session"`
+	} `json:"system"`
+	Dependencies []struct {
+		Name      string   `json:"name"`
+		Mandatory bool     `json:"mandatory"`
+		Features  []string `json:"features"`
+		Status    string   `json:"status"`
+		Program   *string  `json:"program"`
+		Version   *string  `json:"version"`
+		Detail    *string  `json:"detail"`
+	} `json:"dependencies"`
+
 	Runtime     *string    `json:"runtime"`
 	Stack       *jsonStack `json:"stack"`
 	DataRemoved *bool      `json:"data_removed"`
