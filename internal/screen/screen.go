@@ -6,7 +6,6 @@ package screen
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -18,11 +17,9 @@ import (
 type Screen struct {
 	vt    *vt.Emulator
 	input func([]byte)
-	// What the vt has no getter for, tracked through its callbacks and
-	// handlers.
-	modes       map[ansi.Mode]bool // as the output last set them
-	title       string
-	cursorStyle *int // the DECSCUSR parameter, nil until the output sets one
+	// cursorStyle is the DECSCUSR parameter the output last set, nil until
+	// it sets one: the vt has a style either way.
+	cursorStyle *int
 	// scrolled holds the lines harvested from the vt's scrollback during a
 	// write.
 	scrolled []string
@@ -54,16 +51,9 @@ func (s *Screen) Reset(cols, rows int) {
 	e := vt.NewEmulator(cols, rows)
 	e.SetScrollbackSize(scrollbackLines)
 	s.vt = e
-	s.modes = map[ansi.Mode]bool{}
-	s.title = ""
 	s.cursorStyle = nil
 	e.SetCallbacks(vt.Callbacks{
-		EnableMode:  func(m ansi.Mode) { s.modes[m] = true },
-		DisableMode: func(m ansi.Mode) { s.modes[m] = false },
-		Title:       func(t string) { s.title = t },
-		CursorStyle: func(vt.CursorStyle, bool) {
-			// Read back: the callback is given "steady" as its blink.
-			style, blink := e.CursorStyle()
+		CursorStyle: func(style vt.CursorStyle, blink bool) {
 			p := int(style)*2 + 1
 			if !blink {
 				p++
@@ -235,12 +225,12 @@ func (s *Screen) CellAt(x, y int) *uv.Cell {
 
 // Title is the title the output set, "" until it sets one.
 func (s *Screen) Title() string {
-	return s.title
+	return s.vt.Title()
 }
 
-// Mode reports whether the output set mode m.
+// Mode reports whether mode m is set.
 func (s *Screen) Mode(m ansi.Mode) bool {
-	return s.modes[m]
+	return s.vt.Modes()[m].IsSet()
 }
 
 // AltScreen reports whether the alternate screen shows.
@@ -313,11 +303,12 @@ func (s *Screen) Snapshot() []byte {
 		b.WriteString("\x1b[?1049h\x1b[0m\x1b]8;;\x07\x1b[H\x1b[2J")
 		paint(&b, e.AltScreen())
 	}
-	for mode, on := range s.modes {
-		if skipMode(mode) {
+	modes := e.Modes()
+	for mode, setting := range modes {
+		if skipMode(mode) || !setting.IsSet() && !setting.IsReset() {
 			continue
 		}
-		b.WriteString(modeSequence(mode, on))
+		b.WriteString(modeSequence(mode, setting.IsSet()))
 	}
 	r := s.region()
 	if r.Min.Y != 0 || r.Max.Y != e.Height() {
@@ -330,7 +321,7 @@ func (s *Screen) Snapshot() []byte {
 		fmt.Fprintf(&b, "\x1b[%d q", *s.cursorStyle)
 	}
 	var origin uv.Position
-	if s.modes[ansi.ModeOrigin] {
+	if modes[ansi.ModeOrigin].IsSet() {
 		origin = r.Min // the cursor moves within the margins
 	}
 	pen(&b, s.current().Cursor(), origin)
@@ -338,8 +329,8 @@ func (s *Screen) Snapshot() []byte {
 		b.WriteString("\x1b[?25l")
 	}
 	charSets(&b, e)
-	if s.title != "" {
-		b.WriteString(ansi.SetWindowTitle(s.title))
+	if t := e.Title(); t != "" {
+		b.WriteString(ansi.SetWindowTitle(t))
 	}
 	return []byte(b.String())
 }
@@ -383,9 +374,9 @@ func charSets(b *strings.Builder, e *vt.Emulator) {
 	}
 }
 
-// skipMode reports the modes the snapshot does not set from the tracked
-// ones: the alternate screen and the cursor's visibility come from the vt,
-// and a snapshot is a whole frame, never inside a synchronized update.
+// skipMode reports the modes the snapshot does not set as such: it enters
+// the alternate screen and hides the cursor itself, and a snapshot is a
+// whole frame, never inside a synchronized update.
 func skipMode(m ansi.Mode) bool {
 	switch m {
 	case ansi.ModeAltScreen, ansi.ModeSaveCursor, ansi.ModeAltScreenSaveCursor,
@@ -409,11 +400,5 @@ func modeSequence(m ansi.Mode, on bool) string {
 // Close ends the goroutine reading what the vt sends; the screen cannot be
 // used after.
 func (s *Screen) Close() {
-	// Closing the pipe's writer rather than the vt: Close sets a field that
-	// the reading goroutine reads without a lock.
-	if w, ok := s.vt.InputPipe().(io.Closer); ok {
-		_ = w.Close()
-		return
-	}
 	_ = s.vt.Close()
 }

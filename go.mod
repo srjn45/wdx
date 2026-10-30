@@ -79,4 +79,4 @@ require (
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
-replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt v0.0.0-20261030114643-8cd959ad37c6
+replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt v0.0.0-20261030122831-8a7127d0e9bd

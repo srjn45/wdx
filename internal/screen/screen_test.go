@@ -140,12 +140,13 @@ func stateDiffs(a, b *Screen) []string {
 			diffs = append(diffs, fmt.Sprintf("character sets %q G%d vs %q G%d", ga, gla, gb, glb))
 		}
 	}
-	if a.title != b.title {
-		diffs = append(diffs, fmt.Sprintf("title %q vs %q", a.title, b.title))
+	if a.Title() != b.Title() {
+		diffs = append(diffs, fmt.Sprintf("title %q vs %q", a.Title(), b.Title()))
 	}
-	for m, on := range a.modes {
-		if !skipMode(m) && b.modes[m] != on {
-			diffs = append(diffs, fmt.Sprintf("mode %v: %v vs %v", m, on, b.modes[m]))
+	ma, mb := a.vt.Modes(), b.vt.Modes()
+	for m, setting := range ma {
+		if !skipMode(m) && setting.IsSet() != mb[m].IsSet() {
+			diffs = append(diffs, fmt.Sprintf("mode %v: %v vs %v", m, setting, mb[m]))
 		}
 	}
 	return diffs
