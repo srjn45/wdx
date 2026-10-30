@@ -59,6 +59,8 @@ type Options struct {
 	// Ready is told the shell's pid once it runs, or why it did not start,
 	// and then closed.
 	Ready io.WriteCloser
+	// vtDelay holds the vt back at the start, for tests of it falling behind.
+	vtDelay time.Duration
 }
 
 // readyMessage is the one line a holder writes on its ready pipe.
@@ -107,11 +109,16 @@ type holder struct {
 
 	// The vt's side: it follows the spool to vtPos and writes history.
 	screenMu sync.Mutex
-	screen   *screen.Screen
-	size     Size
-	vtPos    int64
-	history  *historyWriter // nil when history is off
-	lag      lag
+	// vtMoved is told when vtPos moves or vtStopped is set.
+	vtMoved sync.Cond
+	// vtStopped is set when the vt stops following the spool.
+	vtStopped bool
+	vtDelay   time.Duration
+	screen    *screen.Screen
+	size      Size
+	vtPos     int64
+	history   *historyWriter // nil when history is off
+	lag       lag
 	// nextLine is the number the next history line will take: written
 	// with h.screenMu held, read without by hello, which must not wait
 	// for the vt.
@@ -187,7 +194,9 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		answers:  make(chan []byte, answerQueue),
 		clients:  map[*client]bool{},
 		left:     make(chan struct{}),
+		vtDelay:  o.vtDelay,
 	}
+	h.vtMoved.L = &h.screenMu
 	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
 		listener.Close()
 		return nil, err
@@ -356,6 +365,13 @@ func (h *holder) output(p []byte) {
 // scrolls off it to history.
 func (h *holder) follow() {
 	defer close(h.followed)
+	defer func() {
+		h.screenMu.Lock()
+		defer h.screenMu.Unlock()
+		h.vtStopped = true
+		h.vtMoved.Broadcast()
+	}()
+	time.Sleep(h.vtDelay)
 	buf := make([]byte, 32<<10)
 	for {
 		wait := h.spool.wait()
@@ -388,6 +404,7 @@ func (h *holder) feed(from int64, p []byte) {
 		h.writeHistory(MarkInterrupted)
 	}
 	h.vtPos = from + int64(len(p))
+	h.vtMoved.Broadcast()
 	h.spool.consume(h.vtPos)
 	h.lag.fed(h.log, h.spool.position()-h.vtPos, len(p), took)
 }
@@ -497,20 +514,31 @@ func (h *holder) wait() {
 }
 
 // keepScreen writes what the shell left on the main screen to history, as
-// a terminal keeps it scrolled back, once the vt has read the last output:
+// a terminal keeps it scrolled back, once the vt has read the shell's output:
 // whoever hears of the exit finds it there, and a shell started again
-// continues below it.
+// continues below it. The vt may take long after a burst of output, and the
+// exit waits for it; history would lose what it had not read.
 func (h *holder) keepScreen() {
+	if h.history == nil {
+		return
+	}
+	start := time.Now()
 	select {
-	case <-h.followed:
+	case <-h.drained:
 	case <-time.After(exitDrain):
-		// A child the shell left behind keeps the PTY open.
+		// A child the shell left behind keeps the PTY open; what it writes
+		// from here on is not the shell's.
 		h.log.Info("screen kept before the output ended")
 	}
+	end := h.spool.position()
 	h.screenMu.Lock()
 	defer h.screenMu.Unlock()
+	for h.vtPos < end && !h.vtStopped {
+		h.vtMoved.Wait()
+	}
 	h.writeHistory(h.screen.Lines()...)
 	h.historyDone = true
+	h.log.Info("screen kept in history", "duration_ms", time.Since(start).Milliseconds())
 }
 
 // exitCode is the shell's exit status, or 128 + the signal that killed it.

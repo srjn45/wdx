@@ -47,11 +47,15 @@ func runHolder(args []string) int {
 	o.Socket = identity.HolderSocket(home, o.ID)
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, identity.Env("HOME")+"=") })
 	o.Ready = os.NewFile(3, "ready")
+	o.vtDelay, _ = time.ParseDuration(os.Getenv(vtDelayVar)) //nolint:forbidigo // as the home above
 	if Run(context.Background(), o) != nil {
 		return 1
 	}
 	return 0
 }
+
+// vtDelayVar is the variable a test sets on a holder for Options.vtDelay.
+const vtDelayVar = "TEST_VT_DELAY"
 
 type fixture struct {
 	home, dir string
@@ -504,6 +508,38 @@ func TestScreenKeptOnExit(t *testing.T) {
 			waitGone(t, s.HolderPID)
 			if again, err := TailHistory(HistoryDir(f.home, id), 10); err != nil || !slices.Equal(again.Lines, tc.want) {
 				t.Fatalf("history after the holder quit: %q, %v, want it unchanged", again.Lines, err)
+			}
+		})
+	}
+}
+
+// TestScreenKeptWithVTBehind: however far the vt is behind when the shell
+// exits, all the shell wrote is in history by the time the exit is heard,
+// with a child holding the PTY open too.
+func TestScreenKeptWithVTBehind(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, id, body string }{
+		{"output ended", "term-00000012", "seq 1 100; echo last; exit 0"},
+		{"child left behind", "term-00000013", "sleep 30 & seq 1 100; echo last; exit 0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			o := f.options(tc.id, f.script(t, tc.body))
+			o.HistoryLines = 1000
+			o.Env = append(o.Env, vtDelayVar+"="+(2*exitDrain).String())
+			s, err := Start(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { killHolder(s) })
+			waitExit(t, f.dial(t, tc.id))
+			got, err := TailHistory(HistoryDir(f.home, tc.id), 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := []string{"100", "last"}; got.Next != 101 || !slices.Equal(got.Lines, want) {
+				t.Fatalf("history when the exit is heard: %d lines ending %q, want 101 ending %q", got.Next, got.Lines, want)
 			}
 		})
 	}

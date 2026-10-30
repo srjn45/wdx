@@ -50,12 +50,13 @@ Later:
 
 ## Speed
 
-About 1.5 MB/s of typical output; about 5.5 MB/s with both fixes below (spike).
+About 1.5 MB/s of typical output; about 5.5 MB/s with both fixes below (spike). Short lines are slower, since each scrolled line costs the same: `seq` reaches about 75,000 lines/s, about 0.6 MB/s (measured once, 2026-10-30).
 
 The holder logs what the speed costs. The shell never waits for the vt, which reads the output from the spool at its own pace; when it falls 8 MiB behind, about 5 s of its work, the holder logs `vt fell behind` (`lag_bytes`), and when it catches up, `vt caught up` with how long it was behind (`duration_ms`), the most (`max_lag_bytes`), what it parsed meanwhile (`bytes`) and its rate on that output (`bytes_per_second`). Meanwhile history comes late and an attach shows a screen from the past. Past the spool's backlog (256 MiB), it skips ahead: `history interrupted: the screen fell too far behind`, and a gap in history. The speed work is due when, in normal use:
 
 - history is interrupted for being too far behind, even once; or
-- `vt fell behind` shows up most weeks, or an episode lasts more than about 10 s.
+- `vt fell behind` shows up most weeks, or an episode lasts more than about 10 s; or
+- a shell's exit waits for the vt long enough to notice: the `duration_ms` of `screen kept in history`, as the exit is told only after it (docs/ATTACH.md).
 
 `docs/OBSERVABILITY.md` has the query.
 
