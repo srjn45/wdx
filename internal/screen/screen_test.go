@@ -196,6 +196,18 @@ func TestScreenHistory(t *testing.T) {
 	}
 }
 
+// TestScreenAltScreenKeepsNothing: output scrolled off the alternate
+// screen holds no memory once it scrolled off (docs/VT.md #1).
+func TestScreenAltScreenKeepsNothing(t *testing.T) {
+	t.Parallel()
+	s := New(10, 3, nil)
+	defer s.Close()
+	s.Write([]byte("\x1b[?1049h" + strings.Repeat("alt\r\n", 50)))
+	if sb := s.vt.AltScreen().Scrollback(); sb != nil && sb.Len() > 0 {
+		t.Fatalf("want nothing kept, got %d lines", sb.Len())
+	}
+}
+
 // TestScreenReset feeds the vt output it fails on: the screen starts again
 // empty, draws what follows in the same write, and keeps working.
 func TestScreenReset(t *testing.T) {
