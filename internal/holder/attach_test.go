@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -417,6 +418,58 @@ func TestAttachAnswersWithoutClients(t *testing.T) {
 			t.Fatalf("got %q, want the screen to answer the cursor position", got)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestAttachLeavesQueriesToTheClient queries the cursor position while a
+// client is attached: its terminal answers, not the holder's screen.
+func TestAttachLeavesQueriesToTheClient(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	answer := filepath.Join(f.home, "answer")
+	f.startShell(t, "term-00000112", fmt.Sprintf(`stty raw -echo; echo ready; while [ ! -f go ]; do sleep 0.01; done; printf '\033[6n'; dd bs=1 count=6 2>/dev/null > %s; exec sleep 60`, answer))
+	c := f.attach(t, "term-00000112", Size{Cols: 80, Rows: 24}, 0)
+	c.waitOutput("ready")
+	if err := os.WriteFile(filepath.Join(f.dir, "go"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.waitOutput("\x1b[6n")
+	c.input("client")
+	deadline := time.Now().Add(waitLimit)
+	for {
+		got, _ := os.ReadFile(answer)
+		if len(got) == 6 {
+			if string(got) != "client" {
+				t.Fatalf("got %q, want only the client's answer", got)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("got %q, want the client's answer", got)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestAttachClientLeavesMidway asks for the whole history and leaves before
+// reading it: the holder serves the next client and the shell runs on.
+func TestAttachClientLeavesMidway(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000113", `i=0; while [ $i -lt 20000 ]; do echo "line $i"; i=$((i+1)); done; echo printed; exec sleep 60`)
+	first := f.attach(t, "term-00000113", Size{Cols: 80, Rows: 24}, -1)
+	first.waitOutput("printed")
+	leaving := f.attach(t, "term-00000113", Size{Cols: 80, Rows: 24}, -1)
+	leaving.conn.Close()
+
+	next := f.attach(t, "term-00000113", Size{Cols: 80, Rows: 24}, 0)
+	next.waitFor("the screen", func(string) bool {
+		next.mu.Lock()
+		defer next.mu.Unlock()
+		return next.snapshot != nil
+	})
+	if err := syscall.Kill(next.hello.PID, 0); err != nil {
+		t.Fatalf("want the shell running: %v", err)
 	}
 }
 
