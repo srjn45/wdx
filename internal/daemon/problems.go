@@ -36,6 +36,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*requestError](err); ok {
 		return api.ErrorCodeUsage, nil
 	}
+	if _, ok := errors.AsType[*git.MissingError](err); ok {
+		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "git"}
+	}
 	if e, ok := errors.AsType[*project.NameTakenError](err); ok {
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "project": projectView(e.Project)}
 	}

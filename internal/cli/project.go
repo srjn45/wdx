@@ -57,7 +57,7 @@ func newProjectCreateCmd(home string) *cobra.Command {
 				"with the conflict under \"conflict\".\n" +
 				`With --json: {"result": ..., "project": {...}, "conflict": {...}}`,
 			resultList: annotation("cloned", "created", "opened", "registered", "removed"),
-			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
 				api.ErrorCodeNameTaken, api.ErrorCodeProjectInUse, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
 			jsonRequires: annotation("open", "cancel"),
 		},
@@ -204,7 +204,7 @@ func newProjectGetCmd() *cobra.Command {
 			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk, \"orphaned\"\n" +
 				"that none is, and \"terminals\" by name.\n" +
 				`With --json: {"project": {...}}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			errorList: codeList(api.ErrorCodeDependencyMissing, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := clientOf(cmd).GetProject(cmd.Context(), ref.path())
@@ -278,7 +278,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 				"and the terminals closing it stopped, started again, under \"started\".\n" +
 				`With --json: {"result": ..., "project": {...}, "dropped": [...], "started": [...]}`,
 			resultList: annotation("cloned", "opened", "registered", "removed"),
-			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
 				api.ErrorCodeNameTaken, api.ErrorCodeNotGitRepo, api.ErrorCodePathExists, api.ErrorCodeProjectInUse, api.ErrorCodeProjectMismatch, api.ErrorCodeDaemonUnavailable),
 			jsonRequires: "git:" + annotation("reclone", "remove"),
 		},

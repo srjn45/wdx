@@ -702,6 +702,7 @@ components:
         - unsupported_system
         - install_failed
         - privileges_required
+        - dependency_missing
 
     Problem:
       type: object

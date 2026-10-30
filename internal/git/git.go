@@ -49,6 +49,26 @@ func RemoteURL(ctx context.Context, dir, remote string) (string, error) {
 	return out, nil
 }
 
+// MissingError is returned when git cannot be run because it is not
+// installed, or not on the PATH of the process running it.
+type MissingError struct {
+	Err error
+}
+
+func (e *MissingError) Error() string {
+	return "git is not installed, or not on the PATH of the process running it"
+}
+
+func (e *MissingError) Unwrap() error { return e.Err }
+
+// missing returns err as a *MissingError when git was not found.
+func missing(err error) error {
+	if errors.Is(err, exec.ErrNotFound) {
+		return &MissingError{Err: err}
+	}
+	return err
+}
+
 // CloneError is returned when git fails to clone URL. Output is what git
 // printed on stderr, which Clone has already written to its progress writer.
 type CloneError struct {
@@ -73,6 +93,10 @@ func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = progress, io.MultiWriter(progress, &stderr)
 	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			log.Error("git could not run", "err", err)
+			return missing(err)
+		}
 		e := &CloneError{URL: url, Output: strings.TrimSpace(stderr.String()), Err: err}
 		log.Error("clone failed", "err", err, "output", e.Output, logging.Duration(start))
 		return e
@@ -129,7 +153,7 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 	}
 	if err != nil {
 		log.Error("git could not run", "err", err, logging.Duration(start))
-		return "", fmt.Errorf("run git: %w", err)
+		return "", missing(fmt.Errorf("run git: %w", err))
 	}
 	out := strings.TrimSpace(stdout.String())
 	log.Info("git ran", "exit", 0, logging.Duration(start))

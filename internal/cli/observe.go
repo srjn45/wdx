@@ -265,7 +265,7 @@ func observeProblem(err error) (api.Problem, bool) {
 	var hint string
 	if _, ok := errors.AsType[*observe.RuntimeMissingError](err); ok {
 		p = api.NewProblem(api.ErrorCodeRuntimeMissing, err.Error())
-		hint = "install Docker or Podman"
+		hint = "run " + identity.Name + " deps install --name docker, or --name podman"
 	} else if e, ok := errors.AsType[*observe.PortInUseError](err); ok {
 		p = api.NewProblem(api.ErrorCodePortInUse, err.Error())
 		p.Details = &map[string]any{"port": e.Port}

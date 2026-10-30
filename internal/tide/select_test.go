@@ -89,3 +89,14 @@ func TestClickSelectsNothing(t *testing.T) {
 		t.Fatal("a lone release did something")
 	}
 }
+
+func TestCopyMissed(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(120, 24)
+	m.Update(copyMissed{})
+	wantText(t, m, "no clipboard tool, the copy may be lost: wdx deps install --name clipboard")
+	keys(m, "x")
+	if strings.Contains(text(m), "no clipboard tool") {
+		t.Fatalf("a key left the notice:\n%s", text(m))
+	}
+}

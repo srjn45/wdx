@@ -1,6 +1,11 @@
 package git
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"os/exec"
+	"testing"
+)
 
 func TestRepoKey(t *testing.T) {
 	t.Parallel()
@@ -29,5 +34,16 @@ func TestRepoKey(t *testing.T) {
 		if got := RepoKey(url); got != want {
 			t.Errorf("RepoKey(%q) = %q, want %q", url, got, want)
 		}
+	}
+}
+
+func TestMissing(t *testing.T) {
+	t.Parallel()
+	err := missing(fmt.Errorf("run git: %w", exec.ErrNotFound))
+	if _, ok := errors.AsType[*MissingError](err); !ok || !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("not found: %v", err)
+	}
+	if _, ok := errors.AsType[*MissingError](missing(errors.New("permission denied"))); ok {
+		t.Fatal("another failure became missing")
 	}
 }

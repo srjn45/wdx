@@ -198,7 +198,7 @@ func TestObserveRuntimeMissing(t *testing.T) {
 	for _, args := range [][]string{{"observe", "start"}, {"observe", "stop"}} {
 		v, exit := wdxJSONWith(t, home, none, args...)
 		wantError(t, v, exit, api.ErrorCodeRuntimeMissing, api.ExitSystem)
-		wantHint(t, v, "install Docker or Podman")
+		wantHint(t, v, "wdx deps install --name docker, or --name podman")
 	}
 	v, exit := wdxJSONWith(t, home, none, "observe", "status")
 	if exit != api.ExitOK || *v.Running || v.Runtime != nil || v.Stack != nil {

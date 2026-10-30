@@ -55,6 +55,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeCancelled:          {http.StatusConflict, ExitRejected, "the question was answered no"},
 	ErrorCodeUnsupportedSystem:  {http.StatusUnprocessableEntity, ExitRejected, "wdx cannot install it on this system: the instructions say how to by hand"},
 	ErrorCodeInstallFailed:      {http.StatusBadGateway, ExitSystem, "the package manager failed"},
+	ErrorCodeDependencyMissing:  {http.StatusServiceUnavailable, ExitSystem, "a program the request needs is not installed: wdx deps list tells which"},
 	ErrorCodePrivilegesRequired: {http.StatusForbidden, ExitRejected, "installing needs root, and sudo cannot ask for the password"},
 }
 

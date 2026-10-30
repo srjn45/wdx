@@ -121,7 +121,21 @@ func problem(err error) (api.Problem, int) {
 	if h, ok := errors.AsType[*hinted](err); ok {
 		p.Hint = &h.hint
 	}
+	if dep, ok := missingDependency(p); ok && p.Hint == nil {
+		hint := "run " + identity.Name + " deps install --name " + dep
+		p.Hint = &hint
+	}
 	return p, api.Codes[p.Code].Exit
+}
+
+// missingDependency returns the dependency a dependency_missing problem
+// names.
+func missingDependency(p api.Problem) (string, bool) {
+	if p.Code != api.ErrorCodeDependencyMissing || p.Details == nil {
+		return "", false
+	}
+	dep, ok := (*p.Details)["dependency"].(string)
+	return dep, ok && dep != ""
 }
 
 // problemCode returns the code of the problem the daemon returned, or "".

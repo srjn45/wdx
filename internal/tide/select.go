@@ -132,10 +132,20 @@ const clipboardTimeout = 2 * time.Second
 // ignore, and the system's own tool, which works locally.
 func (m *Model) copyToClipboard(text string) tea.Cmd {
 	return tea.Batch(tea.SetClipboard(text), func() tea.Msg {
-		systemCopy(m.ctx, m.log, text)
+		if !systemCopy(m.ctx, m.log, text) {
+			return copyMissed{}
+		}
 		return nil
 	})
 }
+
+// copyMissed says no clipboard tool took a copy. OSC 52 may have, but no
+// terminal says whether it did.
+type copyMissed struct{}
+
+// copyMissedNotice is what the status line says then, until the next key
+// or click.
+const copyMissedNotice = "no clipboard tool, the copy may be lost: wdx deps install --name clipboard"
 
 // clipboardTools are the commands that set the clipboard from their input,
 // tried in order.
@@ -147,8 +157,8 @@ func clipboardTools() [][]string {
 }
 
 // systemCopy sets the clipboard with the first tool that is installed and
-// works.
-func systemCopy(ctx context.Context, log *slog.Logger, text string) {
+// works, and reports whether one did.
+func systemCopy(ctx context.Context, log *slog.Logger, text string) bool {
 	for _, tool := range clipboardTools() {
 		if _, err := exec.LookPath(tool[0]); err != nil {
 			continue
@@ -162,9 +172,10 @@ func systemCopy(ctx context.Context, log *slog.Logger, text string) {
 		cancel()
 		if err == nil {
 			log.Info("clipboard set", "tool", tool[0])
-			return
+			return true
 		}
 		log.Info("clipboard tool failed", "tool", tool[0], "err", err)
 	}
 	log.Info("no clipboard tool worked", "tools", len(clipboardTools()))
+	return false
 }

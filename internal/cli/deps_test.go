@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/deps"
 )
 
@@ -236,5 +237,15 @@ func TestDepsInstallFails(t *testing.T) {
 	for _, args := range [][]string{{"--name", "git"}, {"--name", "vim", "--yes"}} {
 		v, exit = wdxJSONWith(t, home, newMachine().env, append([]string{"deps", "install"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
+}
+
+func TestDependencyMissingHint(t *testing.T) {
+	t.Parallel()
+	missing := api.NewProblem(api.ErrorCodeDependencyMissing, "git is not installed")
+	missing.Details = &map[string]any{"dependency": "git"}
+	p, exit := problem(&client.ProblemError{Problem: missing})
+	if exit != api.ExitSystem || p.Hint == nil || *p.Hint != "run wdx deps install --name git" {
+		t.Fatalf("exit %d, %+v", exit, p)
 	}
 }

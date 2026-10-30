@@ -61,6 +61,7 @@ type Model struct {
 	inputs         map[string]*placeholder                                              // what each terminal got, by id, until termview shows them
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
+	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
 	menu           bool                                                                 // the menu is open
 	switcher       *switcherBox                                                         // the project switcher, while it is open
 	strip          int                                                                  // how many times the project strip was shown
@@ -184,7 +185,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
+	case copyMissed:
+		m.statusNotice = copyMissedNotice
 	case tea.MouseClickMsg:
+		m.statusNotice = ""
 		m.click(msg.Mouse())
 	case tea.MouseMotionMsg:
 		m.drag(msg.Mouse())
@@ -332,7 +336,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	m.terminalNotice = ""
+	m.terminalNotice, m.statusNotice = "", ""
 	if m.confirm != nil {
 		return m.confirmKey(name)
 	}

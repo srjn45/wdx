@@ -274,6 +274,9 @@ func (m *Model) statusLine() string {
 	if h, ok := m.top().(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
 	}
+	if m.statusNotice != "" {
+		right = m.statusNotice
+	}
 	switch {
 	case m.menu:
 		state = style.StatusPrefix
