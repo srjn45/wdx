@@ -69,7 +69,9 @@ if [ "$(fork rev-parse HEAD)" != "$(fork rev-parse "origin/$BRANCH")" ]; then
 fi
 
 tip="$(fork rev-parse --short=12 HEAD)"
-version="$(go mod download -json "$FORK_MODULE@$tip" | jq -r .Version)"
+info="$(go mod download -json "$FORK_MODULE@$tip")" ||
+	die "go cannot fetch the fork at $tip: $(echo "$info" | jq -r .Error)"
+version="$(echo "$info" | jq -r .Version)"
 current="$(go list -m -f '{{.Replace.Version}}' "$MODULE")"
 if [ "$version" = "$current" ]; then
 	echo "wdx already uses the fork's $BRANCH ($version)"
