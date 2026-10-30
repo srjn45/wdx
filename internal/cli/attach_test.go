@@ -3,8 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"image/color"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"slices"
@@ -19,6 +22,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
 )
@@ -38,6 +42,7 @@ type attachRun struct {
 
 	mu     sync.Mutex
 	screen *screen.Screen // the calling terminal
+	raw    []byte         // everything written to it
 }
 
 // callingText is on the calling terminal's screen before attaching.
@@ -114,6 +119,7 @@ func newAttachRun(t *testing.T, home string, master *os.File, cols, rows int, ar
 			n, err := master.Read(buf)
 			a.mu.Lock()
 			sc.Write(buf[:n])
+			a.raw = append(a.raw, buf[:n]...)
 			a.mu.Unlock()
 			if err != nil {
 				return
@@ -286,6 +292,53 @@ func TestTerminalAttach(t *testing.T) {
 	wantHint(t, v, "terminal start")
 }
 
+// TestTerminalAttachExitedText attaches in text: the shell's exit ends
+// attach with its code.
+func TestTerminalAttachExitedText(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
+
+	a := startAttach(t, home, app, "--name", "api")
+	a.waitScreen("for keys") // attached: the view is up
+	a.input("exit 3\r")
+	if out := a.waitText(); out.exit != api.ExitOK || out.stdout != "terminal api in app exited with code 3\n" {
+		t.Fatalf("want exited with code 3, got %+v", out)
+	}
+}
+
+// TestTerminalAttachTitle lets the shell set the window title: the calling
+// terminal's is saved before and restored after.
+func TestTerminalAttachTitle(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
+
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	a.waitScreen("for keys") // attached: the view is up
+	a.input("printf '\\033]2;%s\\007' shell-title\r")
+	a.waitFor("the shell's title", func(string) bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.screen.Title() == "shell-title"
+	})
+	a.input("\x1c")
+	a.input("d")
+	if _, exit := a.wait(); exit != api.ExitOK {
+		t.Fatalf("got exit %d", exit)
+	}
+	a.mu.Lock()
+	raw := string(a.raw)
+	a.mu.Unlock()
+	push, pop := strings.Index(raw, titlePush), strings.LastIndex(raw, titlePop)
+	set := strings.Index(raw, "\x1b]2;")
+	if push < 0 || set < push || pop < strings.LastIndex(raw, "\x1b]2;") {
+		t.Fatalf("want the title saved first and restored last, got push at %d, first set at %d, pop at %d", push, set, pop)
+	}
+}
+
 // TestTerminalAttachKeys: the prefix twice sends it once, ? lists the
 // keys, s hides the status line, and --prefix-key changes the prefix;
 // without color the status line is in reverse video.
@@ -420,6 +473,50 @@ func TestTerminalAttachRefused(t *testing.T) {
 	small := startAttachSized(t, home, app, 8, 2, "--name", "api", "--json")
 	v, exit = small.wait()
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+}
+
+// TestTerminalAttachUnsupported attaches to a terminal whose holder speaks
+// the first protocol, which only the daemon may use.
+func TestTerminalAttachUnsupported(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	term := newTerminal(t, home, app, "api")
+	// An old holder in place of the real one, which serves the daemon on;
+	// nothing can reach it to stop it but its shell's end.
+	t.Cleanup(func() { _ = syscall.Kill(-*term.Pid, syscall.SIGKILL) })
+	socket := identity.HolderSocket(home, term.Id)
+	if err := os.Remove(socket); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		hello := []byte(`{"version":1,"terminal_id":"` + term.Id + `"}`)
+		frame := append([]byte{1, 0, 0, 0, byte(len(hello))}, hello...) // a hello frame
+		var head [5]byte                                                // the client's hello: type, then the body's length
+		if _, err := io.ReadFull(c, head[:]); err != nil {
+			return
+		}
+		if _, err := io.CopyN(io.Discard, c, int64(binary.BigEndian.Uint32(head[1:]))); err != nil {
+			return
+		}
+		_, _ = c.Write(frame)
+		_, _ = io.ReadAll(c)
+	}()
+
+	a := startAttach(t, home, app, "--name", "api", "--json")
+	v, exit := a.wait()
+	wantError(t, v, exit, api.ErrorCodeAttachUnsupported, api.ExitRejected)
+	wantHint(t, v, "to restart its shell")
 }
 
 func TestParsePrefixKey(t *testing.T) {
