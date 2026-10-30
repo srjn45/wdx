@@ -20,6 +20,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -578,7 +579,10 @@ func TestDaemonStartGivesUp(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	mute := filepath.Join(t.TempDir(), identity.Name)
 	writeFile(t, mute, "#!/bin/sh\necho $$ >"+pidFile+"\nexec sleep 60\n")
-	out := wdxWith(t, home, func(env *Env) { env.Executable = mute }, "daemon", "start", "--json")
+	out := wdxWith(t, home, func(env *Env) {
+		env.Executable = mute
+		env.Timeouts.Start = time.Second
+	}, "daemon", "start", "--json")
 	if out.exit != api.ExitSystem {
 		t.Fatalf("want start to fail, got %+v", out)
 	}

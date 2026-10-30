@@ -32,15 +32,20 @@ build:
 generate:
 	go generate ./...
 
-# Run every test in parallel, with the race detector and in shuffled order.
+# The tests run four packages at a time and, where systemd-run can set one,
+# under a memory cap: they must leave room for other work on the machine.
+TEST_CAP = $(shell systemd-run --user --scope -q true 2>/dev/null && echo systemd-run --user --scope -q -p MemoryMax=3G -p MemorySwapMax=0)
+GO_TEST  = $(TEST_CAP) go test -p 4 -race -shuffle=on
+
+# Run every test, with the race detector and in shuffled order.
 test:
-	go test -race -shuffle=on ./...
+	$(GO_TEST) ./...
 
 # Run the tests once with coverage: bin/cover.out, bin/cover.html and the
 # per-package summary.
 cover:
 	mkdir -p bin
-	go test -race -shuffle=on -covermode=atomic -coverpkg=./... -coverprofile=bin/cover.out ./...
+	$(GO_TEST) -covermode=atomic -coverpkg=./... -coverprofile=bin/cover.out ./...
 	go tool cover -html=bin/cover.out -o bin/cover.html
 	scripts/cover.sh bin/cover.out
 

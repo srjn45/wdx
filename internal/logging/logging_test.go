@@ -156,7 +156,7 @@ func TestDailyFileDiscardsWhenUnwritable(t *testing.T) {
 func TestConcurrentWriters(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	const writers, lines = 8, 200
+	const writers, lines = 4, 50
 	var wg sync.WaitGroup
 	for range 2 {
 		f := NewDailyFile(dir, 7, time.Now)

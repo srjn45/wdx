@@ -1,6 +1,6 @@
 # Code review, October 2026
 
-A read-only review of the whole codebase (structure, readability, consistency, duplication, completeness, edge cases, tests), before going further. The fixes go in the steps at the end, one at a time; Step 1 is approved and designed, Steps 2 to 5 are proposals still to brainstorm.
+A read-only review of the whole codebase (structure, readability, consistency, duplication, completeness, edge cases, tests), before going further. The fixes go in the steps at the end, one at a time; each was designed with the human before its code.
 
 ## How it was done
 
@@ -180,21 +180,18 @@ Fixes and the feature, each its own commit:
 - `fix!:` an unknown endpoint answers 400 `usage`, not 404 with that code.
 - `feat:` `Terminal` gets `updated_at`, the time of its last state change; the column exists, only the API leaves it out.
 
-## Step 5 proposal: tests and CI
+## Step 5 design: tests and CI
 
-Still to brainstorm, except the test resource items the human approved on 2026-10-29, after `make test` got the session's terminal killed for memory (the update tests peaked at 6 GB, fixed by `3aa4a3e` and `ae486e3`): tests are kept light on memory and CPU, not only fast, since wdx is developed on the machine it runs on.
+Approved on 2026-10-30. The test resource items were approved on 2026-10-29, after `make test` got the session's terminal killed for memory (the update tests peaked at 6 GB, fixed by `3aa4a3e` and `ae486e3`): tests are kept light on memory and CPU, not only fast, since wdx is developed on the machine it runs on.
 
-- A memory budget: CI runs `make test` under a memory cap (about 3 GB), so a regression fails CI instead of killing a machine.
-- `make test` runs fewer packages at once (`-p 4`), leaving CPU for other work.
-- Cleanup that survives a kill: `TestMain` removes stale `wdx-bin*` directories when it starts, making them writable first (a test's read-only directory stays behind otherwise).
-- Look at the slow packages: `logging` 7.3 s (likely sleeps), `cli` 20.8 s, `holder` and `daemon` about 7 s each; measure, then cut waste.
-
-1. Prompts: the cli tests give `Stdin` a PTY, and each prompt gets a test per answer (create o/n/c, open c/r, stop-running y/n, rollback y/N).
-2. The missing tests listed under "Tests" above, in their packages.
-3. Timing: `TestCompletionLoggedAtDebug` flaked once under the full suite (the cli logged no daemon call, the daemon one request: the 500 ms `completionTimeout` ran out under load); replace `TestPaneReset`'s sleep (done in Step 1), the 20 ms per key, `TestAttachConsistent`'s sleep; wait on stopped and PID 0 in `terminal_test.go:426`.
-4. Cleanup: `TestTerminalAttachConnectionLost` kills its shell in `t.Cleanup`; split tests that chain outcomes.
-5. Migrations: a test checks contiguous numbering, STRICT tables and a checksum of every committed migration (append-only).
-6. CI: a `macos-latest` job running `make test` (on main and tags if cost matters); dist.sh run for the host and `wdx update` against its output; the commit range falls back when `before` is unreachable.
+1. **`test:` resources.** `make test` runs at most four packages at once (`-p 4`) and, where `systemd-run` is available, under a 3 GB memory cap without swap; elsewhere (macOS) it runs uncapped. CI's Linux job runs under the same cap, so a regression fails CI instead of killing a machine. Each `TestMain` that builds `wdx-bin*` first removes the ones killed runs left behind, making them writable first. The slow packages (`logging`, `cli`, `holder`, `daemon`) are timed with `-json`, their sleeps and repeated setup cut; timings before and after go here.
+2. **`test:` prompts.** The cli tests give `Stdin` a PTY, and each prompt gets a test per answer: project create o/n/c, open c/r, terminal remove's stop-running y/n, update's rollback y/N.
+3. **`test:` the missing tests**, one commit per package: holder (H1, H2, two clients at different sizes, numbering after a reset, queries suppressed while a client is attached, a client cancelling midway); terminal and daemon (the kill after `stopWait`, `launch`'s holder that does not answer, `Supervisor.Close` during a redial, `project_mismatch`); cli (`attach_unsupported`, `exited` in text output, the title given back after attach); update (undo after the backup or install fails, a failing `keep`, `checksum`, `extract`, the GitHub API branch of `latest()`, its URL made a field).
+4. **`test:` timing and cleanup.** `completionTimeout` becomes a `cli.Env` field tests raise, fixing `TestCompletionLoggedAtDebug` under load; users see no change. The 20 ms after each key in the attach tests and `TestAttachConsistent`'s sleep become waits on the output; `terminal_test.go:426` waits on stopped and PID 0. `TestTerminalAttachConnectionLost` kills its shell in `t.Cleanup`; `TestTerminalAttach` and `TestTerminalAttachRefused` split into one test per outcome.
+5. **`test:` migrations.** A test checks the numbering has no gaps, every table is STRICT, and each committed migration matches a checksum recorded in the test (append-only); a new migration adds its checksum there.
+6. **`ci:` macOS and the commit range.** A `macos-latest` job runs `make test` on every push and PR (the repo is public: its minutes are free). The commit message check, when `github.event.before` is unreachable (a force push, a new branch), checks only the pushed commit.
+7. **`ci:` update end to end.** CI builds a release for the host with `dist.sh` and runs `wdx update` against its output through `BaseURL`, then the rollback.
+8. **`docs:`** this file and AGENTS.md's testing section.
 
 ## After the steps: the vt fork
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -40,6 +42,7 @@ const releaseVersion = "0.2.0"
 
 func TestMain(m *testing.M) {
 	gittest.Isolate()
+	sweep()
 	dir, err := os.MkdirTemp("", "wdx-bin")
 	if err != nil {
 		panic(err)
@@ -56,6 +59,30 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// sweep removes what test runs killed before their cleanup left behind over
+// an hour ago, in any package: the binaries built here, and the homes under
+// /tmp with the daemons still serving them. Directories a test made
+// read-only are made writable first.
+func sweep() {
+	bins, _ := filepath.Glob(filepath.Join(os.TempDir(), "wdx-bin[0-9]*"))
+	homes, _ := filepath.Glob("/tmp/wdx[0-9]*")
+	for _, dir := range append(bins, homes...) {
+		if info, err := os.Stat(dir); err != nil || time.Since(info.ModTime()) < time.Hour {
+			continue
+		}
+		if pid, _ := daemon.Running(dir); pid != 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				_ = os.Chmod(path, 0o700)
+			}
+			return nil
+		})
+		_ = os.RemoveAll(dir)
+	}
 }
 
 // shortHome returns an empty home under /tmp: its socket path must fit the
@@ -165,6 +192,8 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
+	// A daemon slowed down by the other tests still answers completions.
+	env.Timeouts.Completion = 10 * time.Second
 	adjust(&env)
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}

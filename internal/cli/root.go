@@ -79,6 +79,17 @@ type Env struct {
 	// in is (TERM, COLORTERM, TERM_PROGRAM), as KEY=value, for the attach
 	// view to draw for it. Read by main, as ShellEnv is.
 	CallerTerm []string
+	// Timeouts are how long commands wait; tests shorten or lengthen them.
+	Timeouts Timeouts
+}
+
+// Timeouts bound how long commands wait for the daemon; a zero field takes
+// its default.
+type Timeouts struct {
+	// Start is how long a started daemon gets to answer: startTimeout.
+	Start time.Duration
+	// Completion is how long a tab completion waits: completionTimeout.
+	Completion time.Duration
 }
 
 // termVars are the variables that describe the terminal wdx runs in.

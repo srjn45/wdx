@@ -29,6 +29,20 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # A user systemd lets make cap the tests' memory as on a developer's
+      # machine: a test that grows past it fails here instead.
+      - name: Start a user systemd
+        run: |
+          sudo loginctl enable-linger "$USER"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >>"$GITHUB_ENV"
+          for _ in $(seq 50); do
+            systemd-run --user --scope -q true 2>/dev/null && exit 0
+            sleep 0.2
+          done
+          echo "error: no user systemd to cap the tests' memory" >&2
+          exit 1
       - run: make cover
       - name: Coverage summary
         run: scripts/cover.sh bin/cover.out >>"$GITHUB_STEP_SUMMARY"

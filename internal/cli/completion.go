@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ func isCompletion(args []string) bool {
 // daemon does not answer.
 func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
 		defer cancel()
 		list, err := clientOf(cmd).ListProjects(ctx, state)
 		if err != nil {
@@ -57,7 +58,7 @@ func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 // answer.
 func completeTerminals(key string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")

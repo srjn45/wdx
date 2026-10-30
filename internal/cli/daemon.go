@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -208,9 +209,10 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 }
 
 // waitAnswering waits until the daemon answers, giving up when it exits
-// (when exited is not nil) or after startTimeout.
+// (when exited is not nil) or after the start timeout.
 func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) {
-	deadline := time.After(startTimeout)
+	timeout := cmp.Or(invocationOf(cmd).env.Timeouts.Start, startTimeout)
+	deadline := time.After(timeout)
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {
@@ -222,7 +224,7 @@ func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) 
 		case err := <-exited:
 			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("the daemon exited: %w", err)}
 		case <-deadline:
-			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("no answer within %s", startTimeout)}
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("no answer within %s", timeout)}
 		case <-tick.C:
 		}
 	}
