@@ -451,6 +451,42 @@ func TestUpdateUndone(t *testing.T) {
 	writeFile(t, broken, brokenRelease)
 	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": broken})
 	in := install(t, base)
+	in.wantUndone(t, "start")
+}
+
+// TestUpdateUndoneBackUp updates where the installed binary cannot be read
+// to back it up: the daemon starts again on what is there.
+func TestUpdateUndoneBackUp(t *testing.T) {
+	t.Parallel()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	// Run, never read: as an executable only.
+	if err := os.Chmod(in.binary, 0o111); err != nil {
+		t.Fatal(err)
+	}
+	in.wantUndone(t, "back up", func() {
+		if err := os.Chmod(in.binary, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestUpdateUndoneInstall updates to a release that cannot be read once
+// checked: what was backed up is put back.
+func TestUpdateUndoneInstall(t *testing.T) {
+	t.Parallel()
+	unreadable := filepath.Join(t.TempDir(), identity.Name)
+	writeFile(t, unreadable, strings.Replace(brokenRelease, "version) ", `version) chmod 111 "$0"; `, 1))
+	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": unreadable})
+	in := install(t, base)
+	in.wantUndone(t, "install")
+}
+
+// wantUndone starts the daemon, updates, and checks the update failed at
+// step and was undone: the binary, database and settings it found are back
+// and serve. readable runs once the update has, before the checks.
+func (in installation) wantUndone(t *testing.T, step string, readable ...func()) {
+	t.Helper()
 	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
 		t.Fatal("the daemon did not start")
 	}
@@ -458,9 +494,12 @@ func TestUpdateUndone(t *testing.T) {
 	settings := readFile(t, identity.ConfigPath(in.home))
 
 	v, exit := in.json(t, "update", "--apply")
+	for _, f := range readable {
+		f()
+	}
 	wantError(t, v, exit, api.ErrorCodeUpdateFailed, api.ExitSystem)
-	if v.Details["step"] != "start" || v.Details["undone"] != true || v.Details["version"] != identity.Version {
-		t.Fatalf("want the start undone, got %+v", v.Details)
+	if v.Details["step"] != step || v.Details["undone"] != true || v.Details["version"] != identity.Version {
+		t.Fatalf("want the %s undone, got %+v", step, v.Details)
 	}
 	in.wantInstalled(t, wdxBinary)
 	in.wantDaemon(t, identity.Version)
