@@ -56,6 +56,7 @@ scripts/vt-sync.sh rebases the vt fork onto upstream and moves go.mod to it (mak
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
 .github/workflows/ci.yml  runs make check and the tests on every push to main and every PR; docs/RELEASING.md
 .github/workflows/release.yml  publishes the GitHub Release of every pushed tag, through scripts/publish.sh
+.github/workflows/stress.yml  runs the tests over and over nightly (make test-stress), to catch the ones that fail only now and then
 .golangci.yml   the linters make lint runs
 internal/update/  replaces the installed wdx with a release and rolls it back (wdx update); docs/RELEASING.md
 internal/atomicfile/  writes a file whole or not at all: a synced temporary file renamed into place
@@ -167,4 +168,5 @@ The log must tell the story of any run: what was asked, every step taken and why
 - A test that drives processes into a state orders its steps so that only that state can come: to make a terminal lost, kill the holder and wait until it is gone before its shell, or the holder may report the shell's end first. A step another process races with is a flake waiting for a loaded machine.
 - Parallel tests share one process: its environment, working directory and open files. A child forked by one test holds every file another test has open for writing until it execs, so running a binary just written fails with `text file busy` (golang.org/issue/22315): write executables in one small write, and run a copied binary only after `waitRunnable`, as code that starts a binary it has just written retries.
 - Time a test would wait out is injectable: a timeout, a grace period or a timer is an option, a field of `cli.Env.Timeouts` or a function the test replaces (as tide's `tick`), so tests shorten it rather than sleep through it.
+- `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes.
 - Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.

@@ -1,0 +1,46 @@
+# The tests run over and over, nightly: a test that fails only now and then
+# fails here before it fails a push. AGENTS.md says how tests stay
+# deterministic.
+name: Stress
+
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: Times each test runs, at each CPU count
+        default: "3"
+      pkg:
+        description: Packages to run
+        default: ./...
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # As in ci.yml: a user systemd lets make cap the tests' memory.
+      - name: Start a user systemd
+        run: |
+          sudo loginctl enable-linger "$USER"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >>"$GITHUB_ENV"
+          for _ in $(seq 50); do
+            systemd-run --user --scope -q true 2>/dev/null && exit 0
+            sleep 0.2
+          done
+          echo "error: no user systemd to cap the tests' memory" >&2
+          exit 1
+      - run: make test-stress COUNT="$COUNT" PKG="$PKG"
+        env:
+          COUNT: ${{ inputs.count || '3' }}
+          PKG: ${{ inputs.pkg || './...' }}

@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 PKG     := github.com/srjn45/wdx/internal/identity
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
 
-.PHONY: build generate test test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-stress test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -40,6 +40,13 @@ GO_TEST  = $(TEST_CAP) go test -p 4 -race -shuffle=on
 # Run every test, with the race detector and in shuffled order.
 test:
 	$(GO_TEST) ./...
+
+# Run the tests COUNT times over, at 1 and 4 CPUs, to find the ones that fail
+# only now and then; PKG narrows them: make test-stress PKG=./internal/cli COUNT=20.
+COUNT ?= 3
+PKG   ?= ./...
+test-stress:
+	$(GO_TEST) -count=$(COUNT) -cpu=1,4 -timeout=60m $(PKG)
 
 # Update a wdx built from this tree to a release dist.sh builds of it, and
 # roll it back, in a temporary home.
