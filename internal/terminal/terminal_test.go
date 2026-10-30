@@ -592,7 +592,11 @@ func TestSweepSockets(t *testing.T) {
 	p := f.project(t, "warden")
 	live := create(t, s, p, "live", dir(t, ""))
 	lost := create(t, s, p, "lost", dir(t, ""))
-	kill(lost.HolderPID, lost.PID)
+	// The holder goes first, as in TestLost: given the time, it would
+	// report its shell's end, and the terminal would be exited.
+	_ = syscall.Kill(lost.HolderPID, syscall.SIGKILL)
+	waitGone(t, lost.HolderPID)
+	kill(0, lost.PID)
 	waitState(t, s, lost.ID, StateLost)
 	removed := s.socket("term-00000000")
 	if err := os.WriteFile(removed, nil, 0o600); err != nil {
