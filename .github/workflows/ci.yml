@@ -1,6 +1,7 @@
-# The tests and every other check, as make runs them locally. Two jobs, so
-# the checks run beside the tests, the slowest part, and each job is set up
-# once. docs/RELEASING.md: release.yml runs it on a tag before publishing.
+# The tests and every other check, as make runs them locally. The checks
+# run beside the tests, the slowest part, which run on Linux and on macOS,
+# a release target too. docs/RELEASING.md: release.yml runs it on a tag
+# before publishing.
 name: CI
 
 on:
@@ -53,6 +54,18 @@ jobs:
             bin/cover.out
             bin/cover.html
 
+  # launchd, flock, socket path lengths and PTYs differ on macOS; it has no
+  # systemd, so the tests run without a memory cap.
+  test-macos:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make test
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -70,13 +83,27 @@ jobs:
           # The tools are named by version: an older cache lacks only those
           # whose pin changed.
           restore-keys: tools-${{ runner.os }}-
-      - run: make check
+      # The commits of the PR or of the push to main; none on other runs, a
+      # tag's included: they were checked on main. A push whose before is
+      # not in the history, as after a force push, checks its last commit.
+      - name: Choose the commits to check
         env:
-          # The commits of the PR or of the push to main; none on other runs,
-          # a tag's included: they were checked on main.
-          RANGE: >-
-            ${{ github.event_name == 'pull_request'
-              && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha)
-              || github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
-              && format('{0}..{1}', github.event.before, github.sha)
-              || 'HEAD..HEAD' }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          range=HEAD..HEAD
+          if [ "$EVENT" = pull_request ]; then
+            range="$BASE..$HEAD"
+          elif [ "$EVENT" = push ] && [ "${REF#refs/heads/}" != "$REF" ]; then
+            if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              range="$BEFORE..$SHA"
+            else
+              range="$SHA~1..$SHA"
+            fi
+          fi
+          echo "RANGE=$range" >>"$GITHUB_ENV"
+      - run: make check
