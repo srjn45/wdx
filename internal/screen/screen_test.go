@@ -178,6 +178,8 @@ func TestScreenHistory(t *testing.T) {
 		{"alternate screen kept out", "\x1b[?1049h" + numbered(1, 50) + "\x1b[?1049l", nil},
 		{"clear keeps the screen", "one\r\ntwo\x1b[H\x1b[2J\x1b[3J", []string{"one", "two"}},
 		{"scrollback cleared", numbered(1, 5) + "\x1b[3J", lines(1, 3)},
+		{"region below the top kept out", "\x1b[2;3r\x1b[2;1H" + numbered(1, 5), nil},
+		{"deleted lines kept out", "1\r\n2\x1b[H\x1b[2M", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

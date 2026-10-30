@@ -11,7 +11,7 @@ wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped b
 Approved on 2026-10-30, in the order users notice. Each fix is a commit in the fork's branch `wdx` with its test; wdx then moves its `replace` to the fork's new version, runs `make notices`, and removes the fix's workaround in `screen`, in a commit of its own. Each group ships in a dev release.
 
 1. **What an attach shows.** #11: a snapshot paints the main screen, then enters the alternate one, so quitting less or vim after an attach shows the shell's output. #10: the snapshot replays the cursor's pen and link, the character sets and the left and right margins. **Done**: the fork's `02f5ccb` (both screens) and `44d7b55` (the character sets), with #15, found on the way; `screen` reads the margins from the vt (part of #9). The reset tests no longer have an input the vt fails on: `screen.FailOn` makes one.
-2. **History.** #3: lines go to history only when scrolled out of a region at the screen's top, as xterm; never on `DL`.
+2. **History.** #3: lines go to history only when scrolled out of a region at the screen's top, as xterm; never on `DL`. **Done**: the fork's `83b7692`.
 3. **Memory.** #1: the alternate screen has no scrollback.
 4. **Workarounds.** #4, #5, #6; #9's getters, so `screen` stops tracking the modes and title itself. `screen`'s tests stay.
 
@@ -27,7 +27,7 @@ Later:
 |---|---|---|---|---|---|
 | 1 | The alternate screen keeps its own scrollback, up to 10,000 lines, that no API reaches or clears | Enter `CSI ?1049h`, print 20,000 lines, leave: 107 MiB held for good | `NewEmulator` gives the alternate screen no scrollback (`scrs[1].scrollback = nil`; `Screen` already checks for nil) | none: accepted | open |
 | 2 | A bottom or right margin past the screen panics on the next scroll | 80×24: `CSI 1;30r`, `CSI 30;1H`, `CSI S` | Clamp the stored margins to the screen; ignore a top or left margin past it | `feed` recovers, resets the vt, feeds the rest of the piece a byte at a time and reports a gap | fixed in the fork (`68419ef`), used by wdx |
-| 3 | Lines scrolled out of a region that does not start at the top go to scrollback; so do lines deleted by `DL` (`CSI M`) at the region's top | `CSI 2;3r`, `CSI 3;1H`, print lines | Push to scrollback only when scrolling (index, `SU`) a region whose top is the screen's top, as xterm; never on `DL` | none: such lines appear in history | open |
+| 3 | Lines scrolled out of a region that does not start at the top go to scrollback; so do lines deleted by `DL` (`CSI M`) at the region's top | `CSI 2;3r`, `CSI 3;1H`, print lines | Push to scrollback only when scrolling (index, `SU`) a region whose top is the screen's top, as xterm; never on `DL` | none: such lines appeared in history | fixed in the fork (`83b7692`), used by wdx |
 | 4 | The `CursorStyle` callback is given "steady" as its `blink` argument | `CSI 6 q`: the callback says blink | Pass `blink` in the vt's `Screen.setCursorStyle` | the callback reads `CursorStyle()` back | open |
 | 5 | `Close` sets `closed` while `Read` reads it in another goroutine: a data race | Read answers in one goroutine, `Close` in another | Guard `closed` with the pipe, or a mutex or atomic | `close` closes the answer pipe's writer instead of the vt | open |
 | 6 | `SetScrollbackSize(0)` is ignored: the scrollback stays at 10,000 | `SetScrollbackSize(0)`, scroll: lines kept | 0 disables the scrollback | not needed: `screen` empties it after every piece | open |
