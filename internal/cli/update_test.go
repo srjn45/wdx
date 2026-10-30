@@ -206,8 +206,15 @@ func (in installation) run(t *testing.T, args ...string) (jsonOutput, int) {
 // runText runs the installed binary on its own, in text.
 func (in installation) runText(t *testing.T, args ...string) output {
 	t.Helper()
+	return in.runTyped(t, nil, args...)
+}
+
+// runTyped runs the installed binary on its own, in text, reading stdin.
+func (in installation) runTyped(t *testing.T, stdin io.Reader, args ...string) output {
+	t.Helper()
 	c := exec.Command(in.binary, args...)
 	c.Env = append(os.Environ(), identity.Env("HOME")+"="+in.home)
+	c.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
 	_ = c.Run() // the exit code tells
@@ -356,29 +363,10 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 }
 
 // TestUpdateRollbackRestores rolls back across a migration that breaks the
-// previous version, which only the database backup can serve.
+// previous version, restoring the backup only when told to.
 func TestUpdateRollbackRestores(t *testing.T) {
 	t.Parallel()
-	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
-	in := install(t, base)
-	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
-		t.Fatal("the daemon did not start")
-	}
-	newProject(t, in.home, "before")
-	if _, exit := in.json(t, "update", "--apply"); exit != api.ExitOK {
-		t.Fatal("the update failed")
-	}
-	in.newProject(t, "after")
-	// As a migration of the new version that breaks older ones would.
-	conn, err := sql.Open("sqlite", identity.DBPath(in.home))
-	if err != nil {
-		t.Fatal(err)
-	}
-	breaking := db.Known() + 1
-	if _, err := conn.Exec(fmt.Sprintf("PRAGMA user_version = %d; UPDATE schema_readers SET oldest = %d", breaking, breaking)); err != nil {
-		t.Fatal(err)
-	}
-	conn.Close()
+	in, breaking := updatedAcrossBreaking(t)
 
 	v, exit := in.run(t, "update", "--rollback", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeRestoreRequired, api.ExitRejected)
@@ -400,6 +388,59 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	in.wantInstalled(t, wdxBinary)
 	in.wantDaemon(t, identity.Version)
 	in.wantProjects(t, "before")
+}
+
+// TestUpdateRollbackPromptYes restores the backup when asked.
+func TestUpdateRollbackPromptYes(t *testing.T) {
+	t.Parallel()
+	in, _ := updatedAcrossBreaking(t)
+
+	out := in.runTyped(t, typed(t, "y"), "update", "--rollback")
+	if out.exit != api.ExitOK || !strings.Contains(out.stderr, "restore the backup? [y/N]: ") {
+		t.Fatalf("want rolled back, got %+v", out)
+	}
+	in.wantInstalled(t, wdxBinary)
+	in.wantProjects(t, "before")
+}
+
+// TestUpdateRollbackPromptNo answers with Enter, which is no.
+func TestUpdateRollbackPromptNo(t *testing.T) {
+	t.Parallel()
+	in, _ := updatedAcrossBreaking(t)
+
+	out := in.runTyped(t, typed(t, ""), "update", "--rollback")
+	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "[restore_required]") {
+		t.Fatalf("want the rollback refused, got %+v", out)
+	}
+	in.wantInstalled(t, releaseBinary)
+}
+
+// updatedAcrossBreaking updates an installation to a release whose
+// migration breaks the previous version, which only the database backup
+// can then serve, and returns it with that migration's schema.
+func updatedAcrossBreaking(t *testing.T) (installation, int) {
+	t.Helper()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	if _, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+		t.Fatal("the daemon did not start")
+	}
+	newProject(t, in.home, "before")
+	if _, exit := in.json(t, "update", "--apply"); exit != api.ExitOK {
+		t.Fatal("the update failed")
+	}
+	in.newProject(t, "after")
+	// As a migration of the new version that breaks older ones would.
+	conn, err := sql.Open("sqlite", identity.DBPath(in.home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	breaking := db.Known() + 1
+	if _, err := conn.Exec(fmt.Sprintf("PRAGMA user_version = %d; UPDATE schema_readers SET oldest = %d", breaking, breaking)); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	return in, breaking
 }
 
 // TestUpdateUndone updates to a release whose daemon does not start: the
