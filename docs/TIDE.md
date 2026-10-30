@@ -1,6 +1,6 @@
 # tide: the wdx Terminal-IDE
 
-Status: Phase A, the layout skeleton with placeholder panes, is implemented in `internal/tide` (see Phases). The user journey for opening and switching projects is agreed; the rest is design.
+Status: Phase A, the layout skeleton, and Phase B1, opening and switching projects, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md records how B1 was built). The agent and terminal panes still hold placeholders; the rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
@@ -93,10 +93,12 @@ type screen interface {
 }
 ```
 
-- A screen changes the stack through the messages of the commands it returns (`popScreen`), and asks for requests the same way (`reopenProject`): tide sends them and hands a failure back to the screen on top.
+- A screen changes the stack through the messages of the commands it returns (`pushScreen`, `popScreen`), and asks for requests the same way (`reopenProject`, `createProject`): tide sends them, so screens hold no client, and hands a failure back to the screen that asked.
+- A failure that needs an answer (a name taken, a conflict, a missing checkout) also pushes a screen asking for it over the one that asked, so `Esc` goes back to it.
+- A screen may say what its keys do on the status line (`hint()`), while the left pane has the focus.
 
 - A screen draws only inside the rectangle it gets, so it works the same at 2/5 width or zoomed.
-- When a screen finishes, it returns a result message (project created, agent created, ...). The screen below reacts to it, e.g. the project view selects the new agent and the agent pane switches to it.
+- When a screen finishes, it returns a result message (project created, agent created, ...). In B1 a project opened replaces the stack with `[Project: <name>]`; later the screen below will react to results, e.g. the project view selecting a new agent.
 - Opening a screen focuses the left pane. Popping a screen keeps focus there.
 - Adding a screen means adding one type. The layout does not change.
 
@@ -129,7 +131,8 @@ Built to be obvious without help:
 - ↑ / ↓ select. → or `enter` on a directory goes into it; ← or Backspace (with nothing typed) goes up.
 - Typing filters the list; hidden directories show only when the filter starts with `.`.
 - Local: `enter` on a repository opens it; a first entry "open this directory" appears when the current one is inside a repository (the repository root opens, as with the CLI).
-- Create: a first entry "create the project here" asks for its name, then creates `<dir>/<name>`.
+- Create: a first entry "create the project here" asks for its name, then creates `<dir>/<name>`. It starts in `~/.wdx/projects`, or the closest directory above it that exists.
+- Moving with ← / → did not feel natural when tried by hand; how the browser moves is to be looked at again.
 - A directory that cannot be read says so where it is listed.
 - tide reads the directories itself and sends absolute paths, as the CLI does. A remote client (the web IDE) will need the daemon to list them.
 
@@ -207,7 +210,7 @@ Switching focus is the most frequent action, so it is one chord, never a prefix 
 Switching projects is frequent too, so it is one chord.
 
 - `Alt+Shift+←` / `Alt+Shift+→`: the previous or next open project, going round. Projects are in the order of their names, as the daemon lists them, so each keeps its place: only a project opened with an earlier name moves it.
-- Each tap switches at once, so holding Alt+Shift and tapping an arrow feels like Alt+Tab, though terminals send nothing when keys are released (only the kitty keyboard protocol does). The name and titles change at once; the project's terminals attach once the selection has rested for about 200 ms, so tapping past projects stays cheap.
+- Each tap switches at once, so holding Alt+Shift and tapping an arrow feels like Alt+Tab, though terminals send nothing when keys are released (only the kitty keyboard protocol does). The name and titles change at once; the project's terminals will attach once the selection has rested for about 200 ms, so tapping past projects stays cheap (with terminals in the panes, after B1).
 - The first tap shows the project strip, one row just above the status line, over the bottom of the panes:
 
   ```
@@ -258,9 +261,9 @@ Supported, though most users will mostly use the keyboard.
 ## Phases
 
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
-- **Phase B1, projects:** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders.
+- **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
-- **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane, the project detail screen.
+- **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane with terminals attaching after a project switch rests, the project detail screen, and how the directory browser moves.
 
 ## Open questions
 
