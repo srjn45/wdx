@@ -106,9 +106,10 @@ func (s *scrollback) maxOffset() int64 {
 	return max(0, s.next-s.first)
 }
 
-// scroll moves the view by lines, up when positive, within the history.
-func (s *scrollback) scroll(lines int64) {
-	s.offset = min(max(0, s.offset+lines), s.maxOffset())
+// scroll moves the view by lines, up when positive, within the history,
+// down to bottom at the lowest.
+func (s *scrollback) scroll(lines, bottom int64) {
+	s.offset = max(min(max(bottom, s.offset+lines), s.maxOffset()), bottom)
 }
 
 // needed returns a command fetching the page of lines the view nears and
@@ -186,7 +187,7 @@ func (s *scrollback) view(screen []string, cols, rows int) []string {
 // ScrollUp scrolls the view up by lines, into the history; down when
 // negative, back to the live screen at 0.
 func (m *Model) ScrollUp(lines int) tea.Cmd {
-	m.back.scroll(int64(lines))
+	m.back.scroll(int64(lines), m.bottom())
 	return m.fetchNeeded()
 }
 
@@ -196,14 +197,23 @@ func (m *Model) ScrollPage(pages int) tea.Cmd {
 	return m.ScrollUp(pages * max(1, rows-1))
 }
 
-// Live returns to the live screen.
+// Live returns to the live screen, or to the end of history alone.
 func (m *Model) Live() {
-	m.back.offset = 0
+	m.back.offset = m.bottom()
+}
+
+// bottom is the lowest the view goes: the live screen, or for history
+// alone its last lines filling the pane, or all of it when it is shorter.
+func (m *Model) bottom() int64 {
+	if m.session != nil {
+		return 0
+	}
+	return min(int64(m.rows), m.back.maxOffset())
 }
 
 // Scrolled reports whether the view is scrolled back.
 func (m *Model) Scrolled() bool {
-	return m.back.offset > 0
+	return m.back.offset > m.bottom()
 }
 
 // Position is the history line at the top of a scrolled view and the
@@ -219,7 +229,7 @@ func (m *Model) FetchErr() error {
 
 func (m *Model) fetchNeeded() tea.Cmd {
 	if m.back.offset == 0 {
-		return nil
+		return nil // the live screen
 	}
 	_, rows := m.Size()
 	top, _ := m.Position()
@@ -229,5 +239,9 @@ func (m *Model) fetchNeeded() tea.Cmd {
 // scrolledContent is the view scrolled back, as styled lines.
 func (m *Model) scrolledContent() string {
 	cols, rows := m.Size()
-	return strings.Join(m.back.view(strings.Split(m.screen.Render(), "\n"), cols, rows), "\n")
+	var screen []string
+	if m.screen != nil {
+		screen = strings.Split(m.screen.Render(), "\n")
+	}
+	return strings.Join(m.back.view(screen, cols, rows), "\n")
 }

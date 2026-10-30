@@ -28,12 +28,15 @@ const readSize = 32 << 10
 // to attach or resize sets: the screen is drawn at the terminal's size,
 // cropped or padded to the area, until input to the program takes the
 // size back.
+//
+// A pane made by NewHistory has neither session nor screen: it shows a
+// terminal that is not running, from its history, read-only.
 type Model struct {
-	session    *holder.Session
-	screen     *screen.Screen
-	cols, rows int          // the pane's area
-	asked      *holder.Size // the size sent, until the holder tells it back
-	resets     int          // times the vt failed and started again
+	session    *holder.Session // nil for history alone
+	screen     *screen.Screen  // nil for history alone
+	cols, rows int             // the pane's area
+	asked      *holder.Size    // the size sent, until the holder tells it back
+	resets     int             // times the vt failed and started again
 	back       scrollback
 }
 
@@ -63,8 +66,24 @@ func New(s *holder.Session, fetch FetchFunc) *Model {
 	return m
 }
 
-// Init starts reading the session.
+// NewHistory returns a pane showing history alone, read-only, for a
+// terminal that is not running: tail is the end of its history, which the
+// pane shows at its bottom, and fetch fetches what is above. Keys and
+// mouse only scroll it.
+func NewHistory(tail History, cols, rows int, fetch FetchFunc) *Model {
+	m := &Model{cols: cols, rows: rows, back: newScrollback(tail.From+int64(len(tail.Lines)), fetch)}
+	m.back.kept = tail.Lines
+	m.back.first = tail.First
+	m.Live()
+	return m
+}
+
+// Init starts reading the session; a pane of history alone fetches what it
+// shows and does not have.
 func (m *Model) Init() tea.Cmd {
+	if m.session == nil {
+		return m.fetchNeeded()
+	}
 	return m.read
 }
 
@@ -100,7 +119,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			m.back.first = max(m.back.first, min(msg.start+pageLines, m.back.next-int64(len(m.back.kept))))
 		}
 		m.back.fetched(msg)
-		m.back.scroll(0)
+		m.back.scroll(0, m.bottom())
 		if msg.err != nil {
 			return nil // the next scroll tries again
 		}
@@ -108,6 +127,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	case tea.PasteMsg:
+		if m.session == nil {
+			return nil
+		}
 		m.Live()
 		m.takeSize()
 		m.screen.Paste(msg.Content)
@@ -121,11 +143,14 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 // screen, or while scrolled back; any other key returns to the live
 // screen and goes to the program.
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
-	if msg.Mod == 0 && (msg.Code == tea.KeyPgUp || msg.Code == tea.KeyPgDown) && (m.Scrolled() || !m.screen.AltScreen()) {
+	if msg.Mod == 0 && (msg.Code == tea.KeyPgUp || msg.Code == tea.KeyPgDown) && (m.session == nil || m.Scrolled() || !m.screen.AltScreen()) {
 		if msg.Code == tea.KeyPgUp {
 			return m.ScrollPage(1)
 		}
 		return m.ScrollPage(-1)
+	}
+	if m.session == nil {
+		return nil
 	}
 	m.Live()
 	m.takeSize()
@@ -198,7 +223,7 @@ func (m *Model) reset() {
 func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	mouse := msg.Mouse()
 	ev := uv.Mouse{X: mouse.X, Y: mouse.Y, Button: mouse.Button, Mod: mouse.Mod}
-	if m.mouseWanted() {
+	if m.session != nil && m.MouseWanted() {
 		m.takeSize()
 		switch msg.(type) {
 		case tea.MouseClickMsg:
@@ -216,7 +241,7 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if m.Scrolled() || !m.screen.AltScreen() {
+	if m.session == nil || m.Scrolled() || !m.screen.AltScreen() {
 		if wheel.Button == tea.MouseWheelDown {
 			return m.ScrollUp(-wheelLines)
 		}
@@ -236,8 +261,11 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 // wheelLines is how far a turn of the wheel scrolls.
 const wheelLines = 3
 
-// mouseWanted reports whether the program asked for mouse events.
-func (m *Model) mouseWanted() bool {
+// MouseWanted reports whether the program asked for mouse events.
+func (m *Model) MouseWanted() bool {
+	if m.screen == nil {
+		return false
+	}
 	for _, mode := range []ansi.Mode{ansi.ModeMouseX10, ansi.ModeMouseNormal, ansi.ModeMouseHighlight, ansi.ModeMouseButtonEvent, ansi.ModeMouseAnyEvent} {
 		if m.screen.Mode(mode) {
 			return true
@@ -252,6 +280,11 @@ func (m *Model) SetSize(cols, rows int) error {
 		return nil
 	}
 	m.cols, m.rows = cols, rows
+	if m.session == nil {
+		// Kept at the bottom, or on the lines it shows.
+		m.back.scroll(0, m.bottom())
+		return nil
+	}
 	return m.askSize()
 }
 
@@ -262,13 +295,16 @@ func (m *Model) Size() (cols, rows int) {
 
 // TerminalSize is the terminal's size, which another client may have set.
 func (m *Model) TerminalSize() (cols, rows int) {
+	if m.screen == nil {
+		return m.cols, m.rows
+	}
 	return m.screen.Size()
 }
 
 // Content is what the pane shows, as styled lines: the screen, or the
 // history when scrolled back.
 func (m *Model) Content() string {
-	if m.Scrolled() {
+	if m.Scrolled() || m.session == nil {
 		return m.scrolledContent()
 	}
 	return m.fit(m.screen.Render())
@@ -301,6 +337,9 @@ func (m *Model) Text() string {
 // Cursor is where the program's cursor is in the pane, and its shape; nil
 // when the program hid it.
 func (m *Model) Cursor() *tea.Cursor {
+	if m.screen == nil {
+		return nil
+	}
 	sc := m.screen.Cursor()
 	if sc.Hidden || m.Scrolled() || sc.X >= m.cols || sc.Y >= m.rows {
 		return nil
@@ -318,6 +357,9 @@ func (m *Model) Cursor() *tea.Cursor {
 
 // Title is the title the program set, "" until it sets one.
 func (m *Model) Title() string {
+	if m.screen == nil {
+		return ""
+	}
 	return m.screen.Title()
 }
 
@@ -328,5 +370,7 @@ func (m *Model) Resets() int {
 
 // Close stops the pane; the session stays open, for its owner to close.
 func (m *Model) Close() {
-	m.screen.Close()
+	if m.screen != nil {
+		m.screen.Close()
+	}
 }

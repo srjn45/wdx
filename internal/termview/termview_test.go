@@ -400,3 +400,64 @@ func TestPanePageKeysOnAlternateScreen(t *testing.T) {
 		t.Fatal("want no scrolling on the alternate screen")
 	}
 }
+
+// history shows the history of sh's terminal alone, its last rows lines
+// at first, in a pane of 80 × rows.
+func (sh shell) history(rows int) *driver {
+	sh.t.Helper()
+	h, err := holder.TailHistory(holder.HistoryDir(sh.home, sh.id), rows)
+	if err != nil {
+		sh.t.Fatal(err)
+	}
+	d := &driver{t: sh.t, m: NewHistory(History{From: h.From, First: h.First, Lines: h.Lines}, 80, rows, sh.fetch), msgs: make(chan tea.Msg, 16)}
+	d.run(d.m.Init())
+	return d
+}
+
+// TestHistoryPane shows a terminal that exited from its history: its last
+// screen at the bottom, read-only, scrolling up into fetched pages.
+func TestHistoryPane(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, "seq 1 3000; echo last; exit 0")
+	sh.waitHistory(3001) // what scrolled off and the last screen
+	d := sh.history(10)
+	if d.m.Scrolled() || d.m.Cursor() != nil || d.firstLine() != "2992" || !strings.HasSuffix(d.m.Text(), "\nlast") {
+		t.Fatalf("want 2992 to last at the bottom, not scrolled, got:\n%s", d.m.Text())
+	}
+	before := d.m.Text()
+	d.typeText("x\n")
+	d.send(tea.PasteMsg{Content: "y"})
+	if d.m.Text() != before {
+		t.Fatalf("want keys and pastes to do nothing, got:\n%s", d.m.Text())
+	}
+	d.send(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if !d.m.Scrolled() {
+		t.Fatal("want PageUp to scroll back")
+	}
+	d.waitFor("a page up, fetched", func() bool { return d.firstLine() == "2983" })
+	d.run(d.m.ScrollUp(5000))
+	d.waitFor("line 1 at the top", func() bool { return d.firstLine() == "1" })
+	d.send(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	d.run(d.m.ScrollUp(-5000))
+	if d.m.Scrolled() || d.m.Text() != before {
+		t.Fatalf("want scrolling down to stop at the last screen, got:\n%s", d.m.Text())
+	}
+	if err := d.m.SetSize(80, 12); err != nil || d.firstLine() != "2990" {
+		t.Fatalf("want a taller pane to stay at the bottom, got %q, %v", d.firstLine(), err)
+	}
+}
+
+// TestHistoryPaneShort: history shorter than the pane shows from the top.
+func TestHistoryPaneShort(t *testing.T) {
+	t.Parallel()
+	sh := startShell(t, "echo one; echo two; exit 0")
+	sh.waitHistory(2)
+	d := sh.history(10)
+	if d.m.Scrolled() || d.firstLine() != "one" || !strings.HasPrefix(d.m.Text(), "one\ntwo\n") {
+		t.Fatalf("want one and two at the top, got:\n%s", d.m.Text())
+	}
+	d.run(d.m.ScrollUp(3))
+	if d.m.Scrolled() || d.firstLine() != "one" {
+		t.Fatalf("want nothing above to scroll to, got %q", d.firstLine())
+	}
+}
