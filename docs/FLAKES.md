@@ -24,9 +24,10 @@ Never answer a flake by retrying the test: half of those below were bugs in wdx.
 | 2026-10-30 | `TestSweepSockets` | CI | not recorded | kill order | no | c6ac4c0 |
 | 2026-10-30 | `TestUpdateUndoneInstall` | CI | not recorded | shared process | unclear: the fix retries in `wdx update` itself, but only parallel tests were seen to cause it | f53768f |
 | 2026-10-30 | `TestHistoryPane` | local, loaded machine | 3 of 24 | product race | yes: output printed just before an exit was lost from history | 3940847 |
+| 2026-10-31 | `TestOpenGitCloneKilled` | local, loaded machine | once in `make test`; 191 of 300 at `-cpu=1`; 0 of 300 at the default CPUs | product race | likely: cancelled after the clone is moved into place but before it is registered, `cloneAndOpen` returns an error and leaves the checkout, with no project | open |
 
 ## Patterns
 
 - **Kill order:** a test kills processes in an order that lets another outcome come first. Kill so that only the wanted state can come. 2 flakes, none a bug in wdx.
 - **Shared process:** parallel tests share a process's environment, working directory and open files, as with `text file busy` (golang.org/issue/22315). 1 flake.
-- **Product race:** the code itself races or gives up after a fixed time, and a loaded machine shows it. 3 flakes, all bugs in wdx. Suspect this first when a test fails only under load.
+- **Product race:** the code itself races or gives up after a fixed time, and a loaded machine shows it. 4 flakes, 3 of them bugs in wdx and 1 likely. Suspect this first when a test fails only under load.
