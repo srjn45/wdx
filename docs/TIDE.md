@@ -1,6 +1,6 @@
 # tide: the wdx Terminal-IDE
 
-Status: Phase A, the layout skeleton, and Phase B1, opening and switching projects, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md records how B1 was built). The agent and terminal panes still hold placeholders; the rest is design.
+Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, and Phase B2, the project followed live with its terminals as tabs, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md and docs/TIDE_B2.md record how they were built). A tab and the agent pane still hold placeholders; the rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
@@ -190,6 +190,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
+- Built so far: `o` open project, `p` switch project, `t` new terminal (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -264,7 +265,7 @@ Supported, though most users will mostly use the keyboard.
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
 - **Phase B1, projects (implemented):** the whole journey above, with list requests for reading (see Data from the daemon) and no change to the daemon. In tide: starting on `[Open Project]` or the switcher; the screen stack; `[Open Project]` complete, with local, clone, create and reopen, the directory browser and the choice screens; `[Project: <name>]`; the daemon-not-running screen; switching projects with the strip and `Alt+Shift+←/→`, and `C-q p`. The agent and terminal panes stay placeholders. The `C-q` menu has `o` (open project), `p` (switch project) and `q` (quit).
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
-- **Phase B2, the live project (planned, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
+- **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Later:** configurable keys, dragging dividers, termview in the terminal tabs and the agent pane with terminals attaching after a project switch rests, the project detail screen, and how the directory browser moves.
 
 ## Open questions
