@@ -75,7 +75,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	})
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
-	model := tide.New(ctx, tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home)})
+	model := tide.New(ctx, tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home})
 	p := tea.NewProgram(model, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
 		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	log.Info("tide started")

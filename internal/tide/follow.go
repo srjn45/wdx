@@ -219,22 +219,9 @@ func stateMark(st style.Style, state api.TerminalState) string {
 // selected, or why there is none.
 type terminalPane struct{ m *Model }
 
-func (p terminalPane) input(s string) {
-	if t, ok := p.m.selectedTerminal(); ok {
-		p.m.terminalInputs(t.Id).input(s)
-	}
-}
-
-// terminalInputs is the placeholder keeping what the terminal id got,
-// until termview shows the terminal itself.
-func (m *Model) terminalInputs(id string) *placeholder {
-	ph, ok := m.inputs[id]
-	if !ok {
-		ph = &placeholder{}
-		m.inputs[id] = ph
-	}
-	return ph
-}
+// input is nothing: keys, pastes and the mouse reach the terminal as
+// messages (terminalInput).
+func (terminalPane) input(string) {}
 
 func (p terminalPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	m := p.m
@@ -252,20 +239,38 @@ func (p terminalPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		lines = append(lines, st.Failure("the project could not be followed, trying again…"), st.Muted(wrap(f.err.Error(), area.Dx())))
 	case !ok:
 		lines = append(lines, st.Muted("no terminals: ")+st.Command("C-q t")+st.Muted(" creates one"))
+	case m.term != nil && m.term.id == t.Id && m.term.pane != nil:
+		p.drawTerminal(buf, area, st, t, lines)
+		return
 	default:
-		lines = append(lines, stateMark(st, t.State)+" "+st.Name(t.Name)+" "+st.Muted(string(t.State)), st.Muted(tildePath(t.Dir, m.userHome)))
-		switch {
-		case t.ExitCode != nil:
-			lines = append(lines, st.Muted(fmt.Sprintf("exit code %d", *t.ExitCode)))
-		case t.Error != nil:
-			lines = append(lines, st.Failure(wrap(*t.Error, area.Dx())))
-		}
-		ph := m.terminalInputs(t.Id)
-		got := "nothing yet"
-		if len(ph.inputs) > 0 {
-			got = strings.Join(ph.inputs, "  ")
-		}
-		lines = append(lines, st.Muted(fmt.Sprintf("%d×%d", area.Dx(), area.Dy())), st.Muted("got: ")+got)
+		lines = append(lines, p.stateLine(st, t), st.Muted(tildePath(t.Dir, m.userHome)), m.attachState(t))
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
+}
+
+// drawTerminal draws the terminal t shown: the live screen, or under a
+// line saying its state, its history; a notice goes over its top.
+func (p terminalPane) drawTerminal(buf uv.Screen, area uv.Rectangle, st style.Style, t api.Terminal, notice []string) {
+	a := p.m.term
+	screen := area
+	if !a.live {
+		uv.NewStyledString(p.stateLine(st, t)).Draw(buf, uv.Rect(area.Min.X, area.Min.Y, area.Dx(), 1))
+		screen.Min.Y++
+	}
+	uv.NewStyledString(a.pane.Content()).Draw(buf, screen)
+	if len(notice) > 0 {
+		uv.NewStyledString(strings.Join(notice, "\n")).Draw(buf, area)
+	}
+}
+
+// stateLine says the terminal's name and state, and how it ended.
+func (p terminalPane) stateLine(st style.Style, t api.Terminal) string {
+	line := stateMark(st, t.State) + " " + st.Name(t.Name) + " " + st.Muted(string(t.State))
+	switch {
+	case t.ExitCode != nil:
+		line += st.Muted(fmt.Sprintf(" · exit code %d", *t.ExitCode))
+	case t.Error != nil:
+		line += " " + st.Failure(*t.Error)
+	}
+	return line
 }

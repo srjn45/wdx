@@ -15,6 +15,7 @@ func (m *Model) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	view.WindowTitle = "tide"
+	view.Cursor = m.terminalCursor()
 	return view
 }
 
@@ -273,6 +274,13 @@ func (m *Model) statusLine() string {
 	right := m.st.BarMuted("Alt+arrows move  C-] zoom  C-\\ terminal  C-q menu")
 	if h, ok := m.top().(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
+	}
+	if s, ok := m.terminalStatus(); ok {
+		state = style.StatusScrolled
+		if m.term.pane.FetchErr() != nil {
+			state = style.StatusFailed
+		}
+		right = s
 	}
 	if m.statusNotice != "" {
 		right = m.statusNotice

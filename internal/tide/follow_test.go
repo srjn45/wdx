@@ -25,8 +25,11 @@ type program struct {
 // follow starts tide on h, its stream followed, at 80 × 24.
 func (h testHome) follow(t *testing.T) *program {
 	t.Helper()
-	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
-	t.Cleanup(m.unfollow)
+	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
+	t.Cleanup(func() {
+		m.unfollow()
+		m.detach()
+	})
 	p := &program{m: m, msgs: make(chan tea.Msg, 1000)}
 	p.update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	p.do(m.Init())
@@ -258,4 +261,151 @@ func TestRemoveTerminalConfirmed(t *testing.T) {
 	if err != nil || len(list.Terminals) != 0 {
 		t.Fatalf("terminals: %+v, %v", list.Terminals, err)
 	}
+}
+
+// screenText is what the terminal pane's terminal shows, "" while none is
+// attached.
+func screenText(m *Model) string {
+	if m.term == nil || m.term.pane == nil {
+		return ""
+	}
+	return m.term.pane.Text()
+}
+
+// attachedTo reports whether the terminal pane shows the terminal name
+// live, its prompt drawn.
+func attachedTo(name string) func(*Model) bool {
+	return func(m *Model) bool {
+		return m.term != nil && m.term.name == name && m.term.live && strings.Contains(screenText(m), "$")
+	}
+}
+
+func screenHas(s string) func(*Model) bool {
+	return func(m *Model) bool { return strings.Contains(screenText(m), s) }
+}
+
+// typed types s into the focused pane, a key per character.
+func (p *program) typed(s string) {
+	for _, r := range s {
+		if r == '\n' {
+			p.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			continue
+		}
+		p.update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+// openShown starts tide on h and shows the one open project.
+func (h testHome) openShown(t *testing.T) *program {
+	t.Helper()
+	p := h.follow(t)
+	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
+	p.keys("enter")
+	return p
+}
+
+// TestTerminalAttached: the selected tab's terminal is live in the pane,
+// takes the keys, has the pane's size, docked or zoomed, and stays
+// attached while the pane is hidden.
+func TestTerminalAttached(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newTerminal(t, "api", dir, "a-one")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", attachedTo("a-one"))
+	p.keys("alt+down")
+	p.typed("echo he''llo; stty size\n")
+	// 80 × 24: the pane's frame is a quarter of the 23 rows above the
+	// status line, 5, and 80 wide.
+	p.until(t, "the echo at the pane's size", screenHas("hello\n3 78"))
+	if c := p.m.terminalCursor(); c == nil || c.Y < 19 {
+		t.Fatalf("cursor %v, want it in the terminal pane", c)
+	}
+	wantText(t, p.m, "hello")
+
+	p.keys("C-]")
+	p.typed("clear; stty size\n")
+	p.until(t, "the zoomed size", screenHas("21 78"))
+
+	gen := p.m.term.gen
+	p.keys(`C-\`)
+	if p.m.layout.shown(terminal) || p.m.term == nil || p.m.term.gen != gen {
+		t.Fatalf("hidden: %+v, want the terminal still attached", p.m.term)
+	}
+	p.keys(`C-\`)
+	if p.m.term.gen != gen {
+		t.Fatal("shown again, want the same attachment")
+	}
+}
+
+// TestTerminalTabs: switching tabs attaches the terminal selected alone,
+// which shows what it showed.
+func TestTerminalTabs(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newTerminal(t, "api", dir, "a-one")
+	h.newTerminal(t, "api", dir, "b-two")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", attachedTo("a-one"))
+	p.keys("alt+down")
+	p.typed("echo fi''rst\n")
+	p.until(t, "the first echo", screenHas("first"))
+	first := p.m.term
+
+	p.keys("alt+right")
+	if first.pane != nil || first.session != nil {
+		t.Fatal("want a-one detached when b-two is selected")
+	}
+	p.until(t, "b-two attached", attachedTo("b-two"))
+	p.typed("echo sec''ond\n")
+	p.until(t, "the second echo", screenHas("second"))
+
+	p.keys("alt+left")
+	p.until(t, "a-one again, as it was", func(m *Model) bool { return attachedTo("a-one")(m) && screenHas("first")(m) })
+}
+
+// TestTerminalExits: a terminal whose shell exits shows its last screen,
+// read-only, from its history, under its state.
+func TestTerminalExits(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newTerminal(t, "api", dir, "a-one")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", attachedTo("a-one"))
+	p.keys("alt+down")
+	p.typed("echo by''e; exit 3\n")
+	p.until(t, "its last screen", func(m *Model) bool {
+		return m.term != nil && !m.term.live && screenHas("bye")(m)
+	})
+	wantText(t, p.m, "○ a-one exited · exit code 3", "$ echo by''e; exit 3")
+	before := screenText(p.m)
+	p.typed("x\n")
+	if screenText(p.m) != before || p.m.terminalCursor() != nil {
+		t.Fatal("want keys to do nothing, and no cursor, on a terminal not running")
+	}
+}
+
+// TestTerminalRests: after a project switch nothing attaches until it
+// rests.
+func TestTerminalRests(t *testing.T) {
+	t.Parallel()
+	m, _ := newModel(80, 24)
+	if !m.resting || m.term != nil {
+		t.Fatalf("resting %v, attached %+v, want nothing attached yet", m.resting, m.term)
+	}
+	m.Update(rested{rests: m.rests - 1})
+	if m.term != nil {
+		t.Fatal("an earlier switch's rest attached")
+	}
+	m.Update(rested{rests: m.rests})
+	if m.term == nil || m.term.name != "shell" {
+		t.Fatalf("attached %+v, want shell", m.term)
+	}
+	wantText(t, m, "attaching…")
 }

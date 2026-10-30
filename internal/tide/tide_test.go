@@ -65,16 +65,10 @@ func TestKeys(t *testing.T) {
 	m.Update(key(tea.KeyDown, tea.ModAlt))
 	m.Update(key('c', tea.ModCtrl))
 	m.Update(tea.PasteMsg{Content: "hello"})
-	for _, tc := range []struct {
-		got  *placeholder
-		want []string
-	}{
-		{m.agent, []string{"a"}},
-		{m.terminalInputs("term-shell"), []string{"ctrl+c", "paste(5)"}},
-	} {
-		if !slices.Equal(tc.got.inputs, tc.want) {
-			t.Errorf("%s got %v, want %v", tc.got.name, tc.got.inputs, tc.want)
-		}
+	// The terminal pane's keys and pastes go to its terminal
+	// (follow_test.go), not to the agent pane.
+	if !slices.Equal(m.agent.inputs, []string{"a"}) {
+		t.Errorf("agent got %v, want [a]", m.agent.inputs)
 	}
 
 	// In the terminal pane, left and right switch tabs, going round.

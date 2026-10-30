@@ -30,9 +30,9 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-// testShell is the shell of the test terminals: it stays until it is hung
-// up on.
-const testShell = "#!/bin/sh\nexec sleep 60\n"
+// testShell is the shell of the test terminals, interactive with the
+// prompt "$ ": it stays until it is hung up on or told to exit.
+const testShell = "#!/bin/sh\nPS1='$ ' exec /bin/sh\n"
 
 // testHome is a home with the socket a daemon serving it listens on.
 type testHome struct {
@@ -77,7 +77,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"),
-		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"},
+		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
 	})
 	if err != nil {
 		t.Fatal(err)

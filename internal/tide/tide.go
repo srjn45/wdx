@@ -1,8 +1,8 @@
 // Package tide is the terminal IDE, wdx tide: a project pane, an agent pane
 // and a terminal pane in one window, which the keys and the mouse move the
 // focus between, zoom and hide (docs/TIDE.md). It is a client of the
-// daemon, as the cli is. For now its agent and terminal panes hold
-// placeholders.
+// daemon, as the cli is. The terminal pane shows the terminal of the tab
+// selected; for now the agent pane holds a placeholder.
 package tide
 
 import (
@@ -19,6 +19,7 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/termview"
 )
 
 // tide's own keys, as Bubble Tea names them; every other key goes to the
@@ -44,31 +45,35 @@ type Model struct {
 	now    func() time.Time
 	tick   func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd // tea.Tick, which tests replace
 
-	workDir, userHome, projectsDir string // from Options
+	workDir, userHome, projectsDir, home string // from Options
 
-	width, height  int
-	layout         layout
-	projects       *projectList
-	stack          []screen                                                             // the project pane's, the root first
-	shown          string                                                               // the project shown, or "" before one is
-	previous       string                                                               // the project shown before it, which the switcher selects first
-	agent          *placeholder                                                         // the agent pane's
-	tab            int                                                                  // the terminal pane's tab shown, an index into terminals()
-	following      *following                                                           // the stream of the project shown
-	streams        int                                                                  // how many streams were opened, numbering them
-	openStream     func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
-	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
-	inputs         map[string]*placeholder                                              // what each terminal got, by id, until termview shows them
-	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
-	terminalNotice string                                                               // why the last terminal request failed, until the next key
-	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
-	menu           bool                                                                 // the menu is open
-	switcher       *switcherBox                                                         // the project switcher, while it is open
-	strip          int                                                                  // how many times the project strip was shown
-	stripShown     bool                                                                 // the project strip is shown
-	lastClick      click
-	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
-	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
+	width, height   int
+	layout          layout
+	projects        *projectList
+	stack           []screen                                                             // the project pane's, the root first
+	shown           string                                                               // the project shown, or "" before one is
+	previous        string                                                               // the project shown before it, which the switcher selects first
+	agent           *placeholder                                                         // the agent pane's
+	tab             int                                                                  // the terminal pane's tab shown, an index into terminals()
+	following       *following                                                           // the stream of the project shown
+	streams         int                                                                  // how many streams were opened, numbering them
+	openStream      func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
+	selectedTab     map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
+	term            *attachment                                                          // the terminal the terminal pane shows
+	attaches        int                                                                  // how many attachments were made, numbering them
+	rests           int                                                                  // how many project switches rested, numbering them
+	resting         bool                                                                 // a project switched to has not rested yet: nothing attaches
+	mouseToTerminal bool                                                                 // a press went to the program in the terminal pane: its drag and release go too
+	confirm         *confirmBox                                                          // the confirmation of C-q x, while it is open
+	terminalNotice  string                                                               // why the last terminal request failed, until the next key
+	statusNotice    string                                                               // what the status line says in place of the keys, until the next key or click
+	menu            bool                                                                 // the menu is open
+	switcher        *switcherBox                                                         // the project switcher, while it is open
+	strip           int                                                                  // how many times the project strip was shown
+	stripShown      bool                                                                 // the project strip is shown
+	lastClick       click
+	sel             *selection                // text selected with the mouse, while dragged and until the next click or key
+	copy            func(text string) tea.Cmd // puts text on the clipboard; tests replace it
 }
 
 // content is what a pane shows.
@@ -86,6 +91,8 @@ type Options struct {
 	// ProjectsDir is where projects are created by default, where the
 	// directory browser starts to create one.
 	ProjectsDir string
+	// Home is wdx's home, where the terminals' holders listen.
+	Home string
 }
 
 // click is where and when a click on a frame's title happened.
@@ -106,6 +113,7 @@ func New(ctx context.Context, opts Options) *Model {
 		workDir:     opts.WorkDir,
 		userHome:    opts.UserHome,
 		projectsDir: opts.ProjectsDir,
+		home:        opts.Home,
 		now:         time.Now,
 		tick:        tea.Tick,
 		layout:      newLayout(),
@@ -114,7 +122,6 @@ func New(ctx context.Context, opts Options) *Model {
 		agent:       &placeholder{name: "agent"},
 		openStream:  opts.Client.ProjectEvents,
 		selectedTab: map[string]string{},
-		inputs:      map[string]*placeholder{},
 	}
 	// tide starts on the project pane, the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -126,7 +133,16 @@ func New(ctx context.Context, opts Options) *Model {
 
 func (m *Model) Init() tea.Cmd { return m.listProjects() }
 
+// Update handles msg, then attaches the terminal of the tab selected if it
+// is not, and gives it the terminal pane's size.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, cmd := m.update(msg)
+	attach := m.attachSelected()
+	m.syncSize()
+	return m, tea.Batch(cmd, attach)
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -173,6 +189,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.projectEvent(msg)
 	case terminalCreated:
 		m.terminalCreated(msg)
+	case attachedMsg:
+		return m, m.attached(msg)
+	case tailMsg:
+		return m, m.tailFetched(msg)
+	case retryAttach:
+		return m, m.retryAttach(msg)
+	case rested:
+		if msg.rests == m.rests {
+			m.resting = false
+		}
+	case termview.EndedMsg:
+		return m, m.ended(msg)
 	case removed:
 		m.removed(msg)
 	case reopenStream:
@@ -189,19 +217,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusNotice = copyMissedNotice
 	case tea.MouseClickMsg:
 		m.statusNotice = ""
-		m.click(msg.Mouse())
+		return m, m.click(msg)
 	case tea.MouseMotionMsg:
+		if cmd, ok := m.terminalMouse(msg); ok {
+			return m, cmd
+		}
 		m.drag(msg.Mouse())
 	case tea.MouseReleaseMsg:
+		if cmd, ok := m.terminalMouse(msg); ok {
+			return m, cmd
+		}
 		return m, m.release(msg.Mouse())
 	case tea.MouseWheelMsg:
-		m.wheel(msg.Mouse())
+		return m, m.wheel(msg)
 	case tea.PasteMsg:
 		if f, ok := m.top().(*fieldScreen); ok && m.layout.focus == project && m.switcher == nil && !m.menu {
 			f.paste(msg.Content)
 			return m, nil
 		}
+		if m.layout.focus == terminal && m.switcher == nil && !m.menu && m.confirm == nil {
+			return m, m.terminalInput(msg)
+		}
 		m.pane(m.layout.focus).input(fmt.Sprintf("paste(%d)", len(msg.Content)))
+	default:
+		// The terminal pane's own messages: its output, the history it
+		// fetched. Each names its pane, which drops those of another.
+		if a := m.term; a != nil && a.pane != nil {
+			return m, a.pane.Update(msg)
+		}
 	}
 	return m, nil
 }
@@ -230,15 +273,16 @@ func (m *Model) show(name string) tea.Cmd {
 	if name != m.shown && m.shown != "" {
 		m.previous = m.shown
 	}
-	var follow tea.Cmd
+	var follow, rest tea.Cmd
 	if name != m.shown || m.following == nil {
 		m.tab = 0
 		follow = m.follow(name)
+		rest = m.rest()
 	}
 	m.shown, m.switcher = name, nil
 	m.stack = []screen{&projectScreen{name: name}}
 	m.log.Info("project shown", "name", name)
-	return tea.Batch(m.listProjects(), follow)
+	return tea.Batch(m.listProjects(), follow, rest)
 }
 
 // push puts s on top of the project pane's stack.
@@ -332,6 +376,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case "q":
 			m.log.Info("tide quit")
 			m.unfollow() // the daemon ends the stream, and logs it
+			m.detach()
 			return tea.Quit
 		}
 		return nil
@@ -364,6 +409,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case !ok && m.layout.focus == project:
 			return m.projectPaneKey(msg)
+		case !ok && m.layout.focus == terminal:
+			return m.terminalInput(msg)
 		case !ok:
 			m.pane(m.layout.focus).input(name)
 		case m.layout.focus == terminal && (d == left || d == right):
@@ -419,15 +466,28 @@ func (m *Model) switchTab(d direction) {
 }
 
 // click focuses the pane clicked; on a frame's title it may also zoom or
-// switch tabs. A press inside a pane may start a selection.
-func (m *Model) click(mouse tea.Mouse) {
-	if m.menu || mouse.Button != tea.MouseLeft {
-		return
+// switch tabs. A press inside a pane may start a selection, or go to the
+// program in the terminal pane when it asked for the mouse.
+func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
+	mouse := msg.Mouse()
+	if m.menu {
+		return nil
+	}
+	if m.confirm == nil && m.switcher == nil {
+		if cmd, ok := m.terminalMouse(msg); ok {
+			m.sel = nil
+			m.layout.setFocus(terminal)
+			m.changed("click")
+			return cmd
+		}
+	}
+	if mouse.Button != tea.MouseLeft {
+		return nil
 	}
 	m.sel = nil
 	frames, ok := m.frames()
 	if !ok {
-		return
+		return nil
 	}
 	at := uv.Pos(mouse.X, mouse.Y)
 	// A title is on a border the frame above shares: the title wins.
@@ -435,7 +495,7 @@ func (m *Model) click(mouse tea.Mouse) {
 		if f, shown := frames[p]; shown && at.In(f) && at.Y == f.Min.Y {
 			m.layout.setFocus(p)
 			m.clickTitle(p, f, at)
-			return
+			return nil
 		}
 	}
 	for _, p := range panes {
@@ -449,8 +509,9 @@ func (m *Model) click(mouse tea.Mouse) {
 			m.pane(p).input(fmt.Sprintf("click %d,%d", at.X-f.Min.X-1, at.Y-f.Min.Y-1))
 		}
 		m.changed("click")
-		return
+		return nil
 	}
+	return nil
 }
 
 // clickTitle handles a click on p's top border: its zoom button, a tab,
@@ -483,18 +544,22 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 }
 
 // wheel goes to the pane under the pointer, whichever has the focus.
-func (m *Model) wheel(mouse tea.Mouse) {
+func (m *Model) wheel(msg tea.MouseWheelMsg) tea.Cmd {
 	frames, ok := m.frames()
 	if !ok {
-		return
+		return nil
 	}
-	at := uv.Pos(mouse.X, mouse.Y)
+	at := uv.Pos(msg.X, msg.Y)
 	for _, p := range panes {
 		if f, shown := frames[p]; shown && at.In(f.Inset(1)) {
-			m.pane(p).input(mouse.Button.String())
-			return
+			if p == terminal {
+				return m.terminalWheel(msg, f.Inset(1))
+			}
+			m.pane(p).input(msg.Button.String())
+			return nil
 		}
 	}
+	return nil
 }
 
 // frames returns the panes' frames in the window above the status line.
