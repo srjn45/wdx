@@ -128,7 +128,7 @@ func TestStopDuringLongChange(t *testing.T) {
 	deadline := waittest.Deadline(t)
 	for td.terminals(t, nil)[0].State != api.TerminalStateStopped {
 		if time.Now().After(deadline) {
-			t.Fatal("the terminal is not being stopped")
+			t.Fatalf("the terminal is not being stopped: %+v", td.terminals(t, nil)[0])
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -24,7 +25,7 @@ type program struct {
 // follow starts tide on h, its stream followed, at 80 × 24.
 func (h testHome) follow(t *testing.T) *program {
 	t.Helper()
-	m := New(context.Background(), Options{Client: h.client(), Style: style.New(false)})
+	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
 	t.Cleanup(m.unfollow)
 	p := &program{m: m, msgs: make(chan tea.Msg, 1000)}
 	p.update(tea.WindowSizeMsg{Width: 80, Height: 24})

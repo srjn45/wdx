@@ -63,6 +63,7 @@ internal/atomicfile/  writes a file whole or not at all: a synced temporary file
 internal/identity/  the name, version and paths every package agrees on: the home's files, sockets, environment variables
 internal/gittest/  makes git behave the same in every test run, and creates the repositories tests use
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
+internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
@@ -167,6 +168,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - Tests are light on memory and CPU, not only fast: wdx is developed on the machine it runs on. Stream large files rather than reading them whole, and keep loops no larger than the check needs.
 - A test that drives processes into a state orders its steps so that only that state can come: to make a terminal lost, kill the holder and wait until it is gone before its shell, or the holder may report the shell's end first. A step another process races with is a flake waiting for a loaded machine.
 - Parallel tests share one process: its environment, working directory and open files. A child forked by one test holds every file another test has open for writing until it execs, so running a binary just written fails with `text file busy` (golang.org/issue/22315): write executables in one small write, and run a copied binary only after `waitRunnable`, as code that starts a binary it has just written retries.
+- A failure explains itself: every test home calls `logtest.OnFailure`, so a failing test shows what the daemon, the CLI and the holders logged, and a wait that gives up says what it last saw, not only what it waited for.
 - Time a test would wait out is injectable: a timeout, a grace period or a timer is an option, a field of `cli.Env.Timeouts` or a function the test replaces (as tide's `tick`), so tests shorten it rather than sleep through it.
 - `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes.
 - Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.

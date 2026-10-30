@@ -18,7 +18,9 @@ import (
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -46,7 +48,17 @@ func newTestHome(t *testing.T) testHome {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	return testHome{home: t.TempDir(), socket: filepath.Join(dir, "wdx.sock")}
+	home := t.TempDir()
+	logtest.OnFailure(t, home)
+	return testHome{home: home, socket: filepath.Join(dir, "wdx.sock")}
+}
+
+// logger writes to h's log files, as wdx's processes do, labelled process.
+func (h testHome) logger(t *testing.T, process string) *slog.Logger {
+	t.Helper()
+	logs := logging.NewDailyFile(identity.LogsDir(h.home), 7, time.Now)
+	t.Cleanup(func() { logs.Close() })
+	return logging.New(logs, slog.LevelDebug).With("process", process)
 }
 
 // serve runs a daemon on h until the test ends or the function it
@@ -64,7 +76,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
-		Home: h.home, Socket: h.socket, Log: slog.New(slog.DiscardHandler),
+		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"),
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"},
 	})
 	if err != nil {
@@ -115,7 +127,7 @@ func (h testHome) newProject(t *testing.T, name string, state api.ProjectState) 
 // listed.
 func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
-	m := New(context.Background(), Options{Client: h.client(), Style: style.New(false)})
+	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
 	m.tick = noTick
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.

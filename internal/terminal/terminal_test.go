@@ -20,6 +20,7 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -52,6 +53,8 @@ func newFixture(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(home) })
+	// Runs before the home goes, after the holders in it were stopped.
+	logtest.OnFailure(t, home)
 	shell := filepath.Join(home, "shell")
 	if err := os.WriteFile(shell, []byte(shellScript), 0o755); err != nil {
 		t.Fatal(err)

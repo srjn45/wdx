@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"syscall"
@@ -66,19 +67,33 @@ func (td *testDaemon) follow(t *testing.T, ref string) (<-chan event, func()) {
 func waitEvent(t *testing.T, events <-chan event, what string, want func(event) bool) event {
 	t.Helper()
 	timeout := waittest.After(t)
+	last := "none"
 	for {
 		select {
 		case e, ok := <-events:
 			if !ok {
-				t.Fatalf("the stream ended waiting for %s", what)
+				t.Fatalf("the stream ended waiting for %s; the last event: %s", what, last)
 			}
 			if want(e) {
 				return e
 			}
+			last = e.String()
 		case <-timeout:
-			t.Fatalf("no event with %s", what)
+			t.Fatalf("no event with %s; the last one: %s", what, last)
 		}
 	}
+}
+
+// String sums an event up: its name, the project's state and terminals.
+func (e event) String() string {
+	if e.name != "project" {
+		return e.name + " " + e.data
+	}
+	var terms []string
+	for _, term := range terminalsIn(e) {
+		terms = append(terms, term.Name+":"+string(term.State))
+	}
+	return fmt.Sprintf("project %s %s, terminals %v", e.project.Name, e.project.State, terms)
 }
 
 func terminalsIn(e event) []api.Terminal {

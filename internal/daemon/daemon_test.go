@@ -22,6 +22,7 @@ import (
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/telemetry"
 )
 
@@ -57,6 +58,7 @@ func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*Options)) *testDaemon {
 	t.Helper()
 	td := &testDaemon{home: home, socket: socketPath(t)}
+	logtest.OnFailure(t, home) // registered first, so it runs once the daemon stopped
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
 	ctx, cancel := context.WithCancel(context.Background())
 	exe, err := os.Executable()

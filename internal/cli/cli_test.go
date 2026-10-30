@@ -30,6 +30,7 @@ import (
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/service"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -95,6 +96,8 @@ func shortHome(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(home) })
+	// Runs before the home goes, after the daemon and holders in it stopped.
+	logtest.OnFailure(t, home)
 	// Daemons the wdx binary starts read it: they must not send metrics to
 	// the collector wdx observe may be running.
 	if err := os.WriteFile(identity.ConfigPath(home), []byte("otel:\n  endpoint: \"\"\n"), 0o600); err != nil {

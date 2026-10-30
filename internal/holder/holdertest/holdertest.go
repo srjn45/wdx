@@ -5,12 +5,15 @@ package holdertest
 import (
 	"context"
 	"flag"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // RunIfHolder runs a holder and exits when the test binary was started as
@@ -35,7 +38,12 @@ func RunIfHolder() {
 	o.Socket = identity.HolderSocket(o.Home, o.ID)
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, homeVar+"=") })
 	o.Ready = os.NewFile(3, "ready")
-	if holder.Run(context.Background(), o) != nil {
+	// It logs where a holder wdx starts does: the home's log files.
+	logs := logging.NewDailyFile(identity.LogsDir(o.Home), 7, time.Now)
+	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder", "terminal_id", o.ID)
+	err := holder.Run(logging.NewContext(context.Background(), log), o)
+	logs.Close() // os.Exit runs no deferred call
+	if err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
