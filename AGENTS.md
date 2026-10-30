@@ -157,4 +157,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - All state lives in `t.TempDir()`: DB, repos, home. Never touch the network, `~/.wdx` or fixed ports. Unix sockets are the one exception: they, and homes that hold one, go in a fresh directory under `/tmp`, since a path under `t.TempDir()` can exceed the 104 bytes macOS allows.
 - Daemon tests run an in-process daemon and call it through the generated client, checking every request is logged from received to returned.
 - git runs with the user's config ignored (set in each package's `TestMain`).
-- Run tests with `make test` (race detector, shuffled order).
+- Each prompt answer has a test that types it into a PTY given as the command's stdin (`typed`, `answering`): without one, stdin is not a terminal and nothing is asked.
+- Tests wait on what they need (a file the shell creates, a state, the bytes read), never a fixed sleep; a timeout a test must shorten or lengthen is a field of `cli.Env.Timeouts`, not a global.
+- Tests are light on memory and CPU, not only fast: wdx is developed on the machine it runs on. Stream large files rather than reading them whole, and keep loops no larger than the check needs.
+- Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.

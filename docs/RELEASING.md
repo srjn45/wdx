@@ -81,12 +81,17 @@ Tags are annotated, their message holding the release's notes, and are never mov
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to `main`, every pull request, every tag before it is published, weekly and on demand, on Linux:
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, every tag before it is published, weekly and on demand:
 
 ```
-make cover   the tests, as make test runs them, with coverage: bin/cover.html and a summary per package
-make check   golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified go.mod;
-             current notices; govulncheck; go vet for macOS and Linux arm64; the commit messages in RANGE
+make cover         on Linux: the tests, as make test runs them, with coverage: bin/cover.html and a
+                   summary per package; under the same 3 GB memory cap, in a user systemd CI starts
+make test          on macOS, without a memory cap
+make test-update   on both: a wdx built from the tree updated to a release dist.sh builds of it, and
+                   rolled back
+make check         on Linux: golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified
+                   go.mod; current notices; govulncheck; go vet for macOS and Linux arm64; the commit
+                   messages in RANGE
 ```
 
-Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request, and none for a tag, whose commits were checked on `main`. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-release.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
+Locally `make check` reads the commits in `origin/main..HEAD`; CI reads those of the push or pull request, and none for a tag, whose commits were checked on `main`. A push whose previous commit is not in the history, as after a force push, has its last commit checked. The linters are pinned in the `Makefile` and fetched into `bin/` on first use: the Go tools built by `go install`, shellcheck checked against the checksums in `scripts/fetch-release.sh`. The weekly run catches vulnerabilities published since the last push; a fix in the standard library means raising the `go` line of `go.mod`, which the release builds then use.
