@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // interactiveShell is a shell to type into.
@@ -163,7 +164,7 @@ func (a *attachRun) input(s string) {
 	}
 	// Keys are typed one after another, not as one paste: the next waits
 	// until attach has read this one.
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+	for deadline := waittest.Deadline(a.t); ; time.Sleep(time.Millisecond) {
 		n, err := unix.IoctlGetInt(int(a.tty.Fd()), unreadInput)
 		if err == nil && n == 0 {
 			return
@@ -192,7 +193,7 @@ func (a *attachRun) waitScreen(s string) {
 
 func (a *attachRun) waitFor(what string, ok func(text string) bool) {
 	a.t.Helper()
-	if !eventually(func() bool { return ok(a.text()) }) {
+	if !eventually(a.t, func() bool { return ok(a.text()) }) {
 		a.t.Fatalf("no %s on the terminal:\n%s", what, a.text())
 	}
 }
@@ -203,7 +204,7 @@ func (a *attachRun) waitText() output {
 	var out output
 	select {
 	case out = <-a.done:
-	case <-time.After(10 * time.Second):
+	case <-waittest.After(a.t):
 		a.t.Fatalf("%v did not end:\n%s", a.args, a.text())
 	}
 	wantLogged(a.t, a.home, a.args, out)
@@ -226,7 +227,7 @@ func (a *attachRun) wait() (jsonOutput, int) {
 func (a *attachRun) wantBar(bg color.Color) {
 	a.t.Helper()
 	var cell *uv.Cell
-	painted := eventually(func() bool {
+	painted := eventually(a.t, func() bool {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		_, rows := a.screen.Size()
@@ -497,7 +498,7 @@ func TestTerminalAttachScroll(t *testing.T) {
 func waitHistory(t *testing.T, home, dir, name string, lines int64) {
 	t.Helper()
 	var v jsonOutput
-	if !eventually(func() bool {
+	if !eventually(t, func() bool {
 		var exit int
 		v, exit = wdxJSONWith(t, home, in(dir), "terminal", "history", "--name", name, "--tail", "1")
 		return exit == api.ExitOK && v.History.Next >= lines

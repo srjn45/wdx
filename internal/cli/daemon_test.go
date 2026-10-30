@@ -112,7 +112,7 @@ func TestDaemonForeground(t *testing.T) {
 		done <- Run(ctx, []string{"daemon", "start", "--foreground", "--json"}, Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &bytes.Buffer{}, Config: cfg})
 	}()
 
-	if !eventually(func() bool {
+	if !eventually(t, func() bool {
 		v, _ := wdxJSON(t, home, "daemon", "status")
 		return v.Daemon != nil
 	}) {

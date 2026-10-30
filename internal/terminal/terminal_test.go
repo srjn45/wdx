@@ -20,15 +20,13 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
 	os.Exit(m.Run())
 }
-
-// waitLimit bounds every wait for a holder or a shell.
-const waitLimit = 10 * time.Second
 
 // shellScript is the shell of every test terminal: it runs the file run in
 // its dir, if there is one, else stays alive.
@@ -131,7 +129,7 @@ func waitState(t *testing.T, s *Supervisor, id string, state State) Terminal {
 // describes, and returns it.
 func waitTerminal(t *testing.T, s *Supervisor, id, what string, ok func(Terminal) bool) Terminal {
 	t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for {
 		term, err := s.store.Get(context.Background(), id)
 		if err != nil {
@@ -153,7 +151,7 @@ func alive(pid int) bool {
 
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for alive(pid) {
 		if time.Now().After(deadline) {
 			t.Fatalf("process %d is still running", pid)
@@ -437,7 +435,7 @@ func TestStopProjectTogether(t *testing.T) {
 // waitFile waits for path to exist.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := waittest.Deadline(t)
 	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
 		if time.Now().After(deadline) {
 			t.Fatalf("no %s", path)
@@ -532,7 +530,7 @@ func TestCloseDuringRedial(t *testing.T) {
 	var watcher net.Conn
 	select {
 	case watcher = <-redialled:
-	case <-time.After(10 * time.Second):
+	case <-waittest.After(t):
 		t.Fatal("the watcher did not dial again")
 	}
 	defer watcher.Close()
@@ -542,9 +540,7 @@ func TestCloseDuringRedial(t *testing.T) {
 		s.Close()
 		close(closed)
 	}()
-	for s.ctx.Err() == nil {
-		time.Sleep(time.Millisecond)
-	}
+	waittest.For(t, "the supervisor closing", func() bool { return s.ctx.Err() != nil })
 	real, err := net.Dial("unix", moved)
 	if err != nil {
 		t.Fatal(err)
@@ -554,7 +550,7 @@ func TestCloseDuringRedial(t *testing.T) {
 	go func() { _, _ = io.Copy(watcher, real) }()
 	select {
 	case <-closed:
-	case <-time.After(10 * time.Second):
+	case <-waittest.After(t):
 		t.Fatal("Close hangs on the redialled connection")
 	}
 	if !alive(term.HolderPID) {

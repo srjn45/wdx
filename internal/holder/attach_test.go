@@ -21,6 +21,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // testClient attaches to a holder as a client does, frame by frame, and
@@ -109,7 +110,7 @@ func (c *testClient) resize(size Size) {
 // waitFor waits until the output so far satisfies ok.
 func (c *testClient) waitFor(what string, ok func(out string) bool) {
 	c.t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(c.t)
 	for {
 		c.mu.Lock()
 		out := c.output.String()
@@ -133,7 +134,7 @@ func (c *testClient) waitDone() {
 	c.t.Helper()
 	select {
 	case <-c.done:
-	case <-time.After(waitLimit):
+	case <-waittest.After(c.t):
 		c.t.Fatal("the holder did not close the connection")
 	}
 }
@@ -220,7 +221,7 @@ func TestAttachConsistent(t *testing.T) {
 // waitFile waits for the shell to create path.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the shell did not create %s", path)
@@ -273,7 +274,7 @@ func TestHelloDuringFlood(t *testing.T) {
 	f := newFixture(t)
 	f.startShell(t, "term-00000110", "yes | head -c 40000000; exec sleep 60")
 	dir := HistoryDir(f.home, "term-00000110")
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for h, err := TailHistory(dir, 1); err != nil || h.Next == 0; h, err = TailHistory(dir, 1) {
 		if time.Now().After(deadline) {
 			t.Fatal("the vt writes no history")
@@ -392,7 +393,7 @@ func TestAttachSlowClientDropped(t *testing.T) {
 	}
 	// Reads nothing until the shell is done: the holder drops it rather
 	// than hold the shell back.
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for {
 		if _, err := os.Stat(finished); err == nil {
 			break
@@ -402,7 +403,7 @@ func TestAttachSlowClientDropped(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(waitLimit))
+	_ = conn.SetReadDeadline(waittest.Deadline(t))
 	n, err := io.Copy(io.Discard, conn)
 	if err != nil || n >= 30_000_000 {
 		t.Fatalf("read %d bytes, %v; want the connection closed early", n, err)
@@ -414,7 +415,7 @@ func TestAttachAnswersWithoutClients(t *testing.T) {
 	f := newFixture(t)
 	answer := filepath.Join(f.home, "answer")
 	f.startShell(t, "term-00000106", fmt.Sprintf(`stty raw -echo; printf '\033[5;7H\033[6n'; dd bs=1 count=6 2>/dev/null > %s; exec sleep 60`, answer))
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for {
 		got, _ := os.ReadFile(answer)
 		if string(got) == "\x1b[5;7R" {
@@ -441,7 +442,7 @@ func TestAttachLeavesQueriesToTheClient(t *testing.T) {
 	}
 	c.waitOutput("\x1b[6n")
 	c.input("client")
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for {
 		got, _ := os.ReadFile(answer)
 		if len(got) == 6 {
@@ -499,7 +500,7 @@ func TestDaemonVersion1Hello(t *testing.T) {
 	if err := writeFrame(conn, frameStop, stopRequest{GraceMS: 1000}); err != nil {
 		t.Fatal(err)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(waitLimit))
+	_ = conn.SetReadDeadline(waittest.Deadline(t))
 	typ, _, err := readFrame(conn)
 	if err != nil && !errors.Is(err, io.EOF) || typ != frameExited {
 		t.Fatalf("got %d, %v, want exited", typ, err)
@@ -531,7 +532,7 @@ func TestHistoryRelaunched(t *testing.T) {
 	c := f.dial(t, "term-00000109")
 	waitExit(t, c)
 	dir := filepath.Join(identity.TerminalDir(f.home, "term-00000109"), "history")
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for { // the vt writes history at its own pace
 		if h, _ := TailHistory(dir, 1); h.Next >= 6 {
 			break

@@ -14,6 +14,7 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
@@ -507,9 +508,10 @@ func TestOpenGitCloneKilled(t *testing.T) {
 	s := newStore(t)
 	remote := gittest.Bare(t, "app")
 	ctx, cancel := context.WithCancel(context.Background())
+	deadline := waittest.Deadline(t)
 	go func() {
 		defer cancel()
-		for {
+		for time.Now().Before(deadline) {
 			if entries, _ := os.ReadDir(s.projectsDir); len(entries) > 0 {
 				return // git is cloning
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // event is one event of a project stream as the test read it.
@@ -64,7 +65,7 @@ func (td *testDaemon) follow(t *testing.T, ref string) (<-chan event, func()) {
 // may come as one event, so a test waits for a state, not a count.
 func waitEvent(t *testing.T, events <-chan event, what string, want func(event) bool) event {
 	t.Helper()
-	timeout := time.After(10 * time.Second)
+	timeout := waittest.After(t)
 	for {
 		select {
 		case e, ok := <-events:
@@ -139,7 +140,7 @@ func TestStreamProject(t *testing.T) {
 		if ok {
 			t.Fatalf("an event after removed: %+v", e)
 		}
-	case <-time.After(5 * time.Second):
+	case <-waittest.After(t):
 		t.Fatal("the stream did not end after removed")
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // brokenRelease says it is version 0.3.0 and writes the settings, adding a
@@ -135,7 +136,7 @@ func copyBinary(t *testing.T, dest, src string) {
 func waitRunnable(t *testing.T, path string) {
 	t.Helper()
 	home := t.TempDir()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := waittest.Deadline(t)
 	for {
 		// --help reads no home but its config: an empty one.
 		c := exec.Command(path, "--help")

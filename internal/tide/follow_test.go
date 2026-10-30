@@ -5,12 +5,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // program runs tide's commands as Bubble Tea does, each in its own
@@ -64,7 +64,7 @@ func (p *program) keys(names ...string) {
 // until takes the commands' messages until want holds.
 func (p *program) until(t *testing.T, what string, want func(m *Model) bool) {
 	t.Helper()
-	timeout := time.After(10 * time.Second)
+	timeout := waittest.After(t)
 	for !want(p.m) {
 		select {
 		case msg := <-p.msgs:

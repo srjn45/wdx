@@ -17,15 +17,13 @@ import (
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
 	os.Exit(m.Run())
 }
-
-// waitLimit bounds every wait for a holder or its shell.
-const waitLimit = 10 * time.Second
 
 // driver runs a pane as a Bubble Tea program does: commands in goroutines,
 // every Update on the test's goroutine.
@@ -89,7 +87,7 @@ func (sh shell) fetch(from int64, count int) (History, error) {
 // waitHistory waits until the terminal's history holds lines lines.
 func (sh shell) waitHistory(lines int64) {
 	sh.t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(sh.t)
 	for {
 		h, err := holder.TailHistory(holder.HistoryDir(sh.home, sh.id), 1)
 		if err == nil && h.Next >= lines {
@@ -136,7 +134,7 @@ func (d *driver) send(msg tea.Msg) {
 // every 20 ms, for conditions outside the pane.
 func (d *driver) waitFor(what string, ok func() bool) {
 	d.t.Helper()
-	deadline := time.After(waitLimit)
+	deadline := waittest.After(d.t)
 	for !ok() {
 		select {
 		case msg := <-d.msgs:

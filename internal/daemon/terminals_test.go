@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // testShell is the shell of every test terminal: it stays alive until it
@@ -78,9 +79,10 @@ func TestCreateTerminalClientLeaves(t *testing.T) {
 	td := start(t)
 	root := td.create(t, "app").Worktrees[0].Path
 	ctx, cancel := context.WithCancel(context.Background())
+	deadline := waittest.Deadline(t)
 	go func() {
 		defer cancel()
-		for {
+		for time.Now().Before(deadline) {
 			if socks, _ := filepath.Glob(filepath.Join(td.home, "run", "term-*.sock")); len(socks) > 0 {
 				return // the holder is starting
 			}
@@ -91,7 +93,6 @@ func TestCreateTerminalClientLeaves(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Skipf("the create finished before it was cancelled: %v", err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
 	for {
 		terms := td.terminals(t, nil)
 		if len(terms) == 1 && terms[0].State == api.TerminalStateRunning {
@@ -124,7 +125,7 @@ func TestStopDuringLongChange(t *testing.T) {
 		// Cut short by the daemon stopping.
 		_, _ = td.client.UpdateProjectWithResponse(context.Background(), "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)})
 	}()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := waittest.Deadline(t)
 	for td.terminals(t, nil)[0].State != api.TerminalStateStopped {
 		if time.Now().After(deadline) {
 			t.Fatal("the terminal is not being stopped")
@@ -147,7 +148,7 @@ func TestStopDuringLongChange(t *testing.T) {
 // waitFile waits for path to exist.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := waittest.Deadline(t)
 	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
 		if time.Now().After(deadline) {
 			t.Fatalf("no %s", path)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // output collects what a session reads, until it ends.
@@ -47,7 +48,7 @@ func readSession(s *Session) *output {
 
 func (o *output) waitFor(t *testing.T, s string) {
 	t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for {
 		o.mu.Lock()
 		got := o.buf.String()
@@ -66,7 +67,7 @@ func (o *output) wait(t *testing.T) error {
 	t.Helper()
 	select {
 	case <-o.done:
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("the session did not end")
 	}
 	o.mu.Lock()

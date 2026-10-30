@@ -7,10 +7,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // TestScreenSnapshot paints a fresh screen with another's snapshot and
@@ -230,9 +231,6 @@ func TestScreenReset(t *testing.T) {
 	}
 }
 
-// waitLimit bounds every wait for the vt's answers.
-const waitLimit = 10 * time.Second
-
 func TestScreenAnswers(t *testing.T) {
 	t.Parallel()
 	answers := make(chan []byte, 1)
@@ -244,7 +242,7 @@ func TestScreenAnswers(t *testing.T) {
 		if string(got) != "\x1b[5;7R" {
 			t.Fatalf("got %q, want the cursor position", got)
 		}
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("no answer")
 	}
 
@@ -257,7 +255,7 @@ func TestScreenAnswers(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("unanswered queries block the screen")
 	}
 }

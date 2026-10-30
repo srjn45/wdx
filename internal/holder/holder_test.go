@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // TestMain makes the test binary a holder when run as "<binary> holder",
@@ -46,9 +47,6 @@ func runHolder(args []string) int {
 	}
 	return 0
 }
-
-// waitLimit bounds every wait for a holder or its shell.
-const waitLimit = 10 * time.Second
 
 type fixture struct {
 	home, dir string
@@ -122,7 +120,7 @@ func waitExit(t *testing.T, c *Conn) Exit {
 		return e
 	case <-c.Done():
 		t.Fatal("the connection ended before the shell exited")
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("the shell did not exit")
 	}
 	return Exit{}
@@ -131,7 +129,7 @@ func waitExit(t *testing.T, c *Conn) Exit {
 // waitGone waits until process pid no longer exists.
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for syscall.Kill(pid, 0) == nil {
 		if time.Now().After(deadline) {
 			t.Fatalf("process %d is still running", pid)
@@ -209,7 +207,7 @@ func TestStopKillsAfterGrace(t *testing.T) {
 	f.start(t, "term-00000003", f.script(t, "trap '' HUP; touch trapped; while :; do sleep 1; done"))
 	c := f.dial(t, "term-00000003")
 	// A hangup that comes before the trap is set ends the shell.
-	deadline := time.Now().Add(waitLimit)
+	deadline := waittest.Deadline(t)
 	for _, err := os.Stat(filepath.Join(f.dir, "trapped")); err != nil; _, err = os.Stat(filepath.Join(f.dir, "trapped")) {
 		if time.Now().After(deadline) {
 			t.Fatal("the shell did not set its trap")
@@ -254,7 +252,7 @@ func TestReconnectAndRelease(t *testing.T) {
 	second := f.dial(t, "term-00000006")
 	select {
 	case <-first.Done():
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("want the first connection replaced by the second")
 	}
 	if err := second.Stop(5 * time.Second); err != nil {
@@ -302,7 +300,7 @@ func TestHolderGone(t *testing.T) {
 	}
 	select {
 	case <-c.Done():
-	case <-time.After(waitLimit):
+	case <-waittest.After(t):
 		t.Fatal("want the connection ended with the holder")
 	}
 	if _, err := Dial(context.Background(), identity.HolderSocket(f.home, "term-00000008"), "term-00000008"); err == nil {

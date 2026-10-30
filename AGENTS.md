@@ -61,6 +61,7 @@ internal/update/  replaces the installed wdx with a release and rolls it back (w
 internal/atomicfile/  writes a file whole or not at all: a synced temporary file renamed into place
 internal/identity/  the name, version and paths every package agrees on: the home's files, sockets, environment variables
 internal/gittest/  makes git behave the same in every test run, and creates the repositories tests use
+internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
 internal/<domain>/  one package per feature (e.g. project, terminal): types, Store, tests
 ```
 
@@ -161,6 +162,6 @@ The log must tell the story of any run: what was asked, every step taken and why
 - Daemon tests run an in-process daemon and call it through the generated client, checking every request is logged from received to returned.
 - git runs with the user's config ignored (set in each package's `TestMain`).
 - Each prompt answer has a test that types it into a PTY given as the command's stdin (`typed`, `answering`): without one, stdin is not a terminal and nothing is asked.
-- Tests wait on what they need (a file the shell creates, a state, the bytes read), never a fixed sleep; a timeout a test must shorten or lengthen is a field of `cli.Env.Timeouts`, not a global.
+- Tests wait on what they need (a file the shell creates, a state, the bytes read), never a fixed sleep, and until `waittest.Deadline(t)` (what is left of the test binary's `-timeout`), never a fixed limit a busy machine may need more than; a timeout a test must shorten or lengthen is a field of `cli.Env.Timeouts`, not a global.
 - Tests are light on memory and CPU, not only fast: wdx is developed on the machine it runs on. Stream large files rather than reading them whole, and keep loops no larger than the check needs.
 - Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.

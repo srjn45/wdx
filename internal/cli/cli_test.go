@@ -31,6 +31,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/service"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // wdxBinary is wdx built from this tree, which starting the daemon in the
@@ -193,7 +194,7 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
 	// A daemon slowed down by the other tests still answers completions.
-	env.Timeouts.Completion = 10 * time.Second
+	env.Timeouts.Completion = waittest.Limit(t)
 	adjust(&env)
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
@@ -468,10 +469,10 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 	return wdxJSONWith(t, home, func(*Env) {}, args...)
 }
 
-// eventually polls ok until it holds, for up to ten seconds, and reports
+// eventually polls ok until it holds, until t's deadline, and reports
 // whether it did.
-func eventually(ok func() bool) bool {
-	for deadline := time.Now().Add(10 * time.Second); !ok(); time.Sleep(20 * time.Millisecond) {
+func eventually(t *testing.T, ok func() bool) bool {
+	for deadline := waittest.Deadline(t); !ok(); time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			return false
 		}
