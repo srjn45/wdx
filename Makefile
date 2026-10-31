@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 IDENTITY := github.com/srjn45/wdx/internal/identity
 LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-contention test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -55,6 +55,12 @@ test-stress:
 RUNS ?= 3
 test-contention:
 	RUNS=$(RUNS) COUNT=1 PKG="$(PKG)" GO_TEST="$(GO_TEST)" scripts/test-contention.sh
+
+# Run the tests of the test files changed in RANGE or not yet committed TIMES
+# times over on a machine kept busy, before committing.
+TIMES ?= 20
+test-changed:
+	RANGE="$(RANGE)" TIMES=$(TIMES) GO_TEST="$(GO_TEST)" scripts/test-changed.sh
 
 # Update a wdx built from this tree to a release dist.sh builds of it, and
 # roll it back, in a temporary home.

@@ -7,7 +7,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Never start coding until the human explicitly says so.
 - Brainstorm with the human first: work out the complete solution (structure, tables, commands, names, edge cases) and get it approved before writing any code.
 - Work on one feature at a time. Do not add scope the human did not ask for; suggest it instead.
-- Commit only when the human asks. Before committing, run `make check` and `make test`: CI runs both on every push to `main` and every pull request.
+- Commit only when the human asks. Before committing, run `make check`, `make test` and `make test-changed`: CI runs them on every push to `main` and every pull request.
 
 ## Releases
 
@@ -51,7 +51,9 @@ internal/deps/   the programs wdx needs besides itself (git, a clipboard tool, d
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
-scripts/test-contention.sh runs the tests several times at once on a machine kept busy (make test-contention, nightly)
+scripts/test-changed.sh runs the tests of the test files changed many times over on a machine kept busy (make test-changed, before committing and in CI)
+scripts/ci-range.sh prints the commits a CI run is about
+scripts/test-contention.sh runs the tests several times at once on a machine kept busy (make test-contention, in CI and nightly)
 scripts/test-update.sh updates a wdx built from the tree to a release dist.sh builds of it and rolls it back (make test-update, in CI)
 scripts/vt-sync.sh rebases the vt fork onto upstream and moves go.mod to it (make vt-sync); docs/VT.md
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
@@ -174,6 +176,9 @@ The log must tell the story of any run: what was asked, every step taken and why
 - Parallel tests share one process: its environment, working directory and open files. A child forked by one test holds every file another test has open for writing until it execs, so running a binary just written fails with `text file busy` (golang.org/issue/22315): write executables with `runtest.WriteExecutable` and `runtest.CopyExecutable`, which no fork can run during. Code that starts a binary it has just written retries, since another process may hold it there.
 - A failure explains itself: every test home calls `logtest.OnFailure`, so a failing test shows what the daemon, the CLI and the holders logged, and a wait that gives up says what it last saw, not only what it waited for.
 - Time a test would wait out is injectable: a timeout, a grace period or a timer is an option, a field of `cli.Env.Timeouts` or a function the test replaces (as tide's `tick`), so tests shorten it rather than sleep through it.
-- `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes. `make test-contention` runs them `RUNS` times at once on a machine kept busy, as when several agents test at the same time; nightly too, with one more run under wdx's real limits (`WDX_TEST_PRODUCTION_LIMITS=1`), whose failures are what a user on a loaded machine could hit.
+- `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes. `make test-contention` runs them `RUNS` times at once on a machine kept busy, as when several agents test at the same time; in CI too. Nightly, with one more run under wdx's real limits (`WDX_TEST_PRODUCTION_LIMITS=1`), whose failures are what a user on a loaded machine could hit, and a failure opens an issue.
+- `make test-changed` runs the tests of the test files you changed `TIMES` times (20) at 1 and 4 CPUs on a machine kept busy, so that one that fails only now and then is found while you write it. It does not cover a change only to code a test reaches, so run `make test-stress PKG=` on a package whose concurrency you changed.
+- A test for a bug is seen failing without its fix: break the code, watch it fail on what it checks, and put the code back. A test that cannot fail proves nothing.
+- Before a test reads a result, ask what happens if the other process is slow: whether what it reads may not be there yet, or the step it acts during may be over. Wait for the state, or hold the step open.
 - A test seen failing now and then gets a row in `docs/FLAKES.md`, even when it is fixed at once or not understood yet. Read that file first when one fails, and never answer a flake by retrying the test: many have been bugs in wdx.
 - Run tests with `make test`: race detector, shuffled order, four packages at a time, and under a 3 GB memory cap where `systemd-run` can set one, as in CI.

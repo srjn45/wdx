@@ -71,9 +71,6 @@ jobs:
           # The tools are named by version: an older cache lacks only those
           # whose pin changed.
           restore-keys: tools-${{ runner.os }}-
-      # The commits of the PR or of the push to main; none on other runs, a
-      # tag's included: they were checked on main. A push whose before is
-      # not in the history, as after a force push, checks its last commit.
       - name: Choose the commits to check
         env:
           EVENT: ${{ github.event_name }}
@@ -82,16 +79,44 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
-        run: |
-          range=HEAD..HEAD
-          if [ "$EVENT" = pull_request ]; then
-            range="$BASE..$HEAD"
-          elif [ "$EVENT" = push ] && [ "${REF#refs/heads/}" != "$REF" ]; then
-            if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-              range="$BEFORE..$SHA"
-            else
-              range="$SHA~1..$SHA"
-            fi
-          fi
-          echo "RANGE=$range" >>"$GITHUB_ENV"
+        run: echo "RANGE=$(scripts/ci-range.sh)" >>"$GITHUB_ENV"
       - run: make check
+
+  # A test that fails only now and then, or runs that affect each other, are
+  # found where they came in. Not on a tag: its commits were checked on main.
+  contention:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the commits to check
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # A user systemd lets make cap the tests' memory as on a developer's
+      # machine: a test that grows past it fails here instead.
+      - name: Start a user systemd
+        run: |
+          sudo loginctl enable-linger "$USER"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >>"$GITHUB_ENV"
+          for _ in $(seq 50); do
+            systemd-run --user --scope -q true 2>/dev/null && exit 0
+            sleep 0.2
+          done
+          echo "error: no user systemd to cap the tests' memory" >&2
+          exit 1
+      - name: Choose the commits to check
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: echo "RANGE=$(scripts/ci-range.sh)" >>"$GITHUB_ENV"
+      - run: make test-changed
+      - run: make test-contention

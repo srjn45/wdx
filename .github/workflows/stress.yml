@@ -21,6 +21,9 @@ permissions:
 jobs:
   stress:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,7 +54,24 @@ jobs:
       # what fails only here is what a user on a loaded machine could hit. It
       # says so without failing the night's run; such a failure goes in
       # docs/FLAKES.md.
-      - run: make test
+      - id: production-limits
+        run: make test
         continue-on-error: true
         env:
           WDX_TEST_PRODUCTION_LIMITS: "1"
+      # A red run nobody opens finds nothing: one open issue collects them.
+      - name: Open an issue
+        if: github.event_name == 'schedule' && (failure() || steps.production-limits.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="The nightly stress run failed"
+          body="$RUN: add what failed to docs/FLAKES.md, and never answer by retrying it."
+          number="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
