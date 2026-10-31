@@ -379,7 +379,14 @@ func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progre
 		return Opened{}, err
 	}
 	log.Info("clone moved into place", "from", tmp, "path", dest)
-	o, err := s.OpenLocal(ctx, dest, name)
+	return s.openClone(ctx, dest, name)
+}
+
+// openClone opens the clone just moved to dest. A cancel from here on would
+// leave a checkout with no project, so it is not heeded: what is left takes
+// no time.
+func (s *Store) openClone(ctx context.Context, dest, name string) (Opened, error) {
+	o, err := s.OpenLocal(context.WithoutCancel(ctx), dest, name)
 	o.Cloned = err == nil
 	return o, err
 }

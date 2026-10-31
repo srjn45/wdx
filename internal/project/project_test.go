@@ -534,6 +534,26 @@ func TestOpenGitCloneKilled(t *testing.T) {
 	}
 }
 
+// TestOpenGitCancelledOnceCloned cancels once the clone is in place, before
+// its project is registered: it is registered, not left with no project.
+func TestOpenGitCancelledOnceCloned(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	if err := os.MkdirAll(s.projectsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(s.projectsDir, "app")
+	gittest.Git(t, s.projectsDir, "clone", "-q", gittest.Bare(t, "app"), dest)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if o, err := s.openClone(ctx, dest, ""); err != nil || !o.Cloned {
+		t.Fatalf("want the clone registered, got %+v, %v", o, err)
+	}
+	if _, err := s.GetByName(context.Background(), "app"); err != nil {
+		t.Fatalf("no project for the checkout: %v", err)
+	}
+}
+
 // TestOpenGitRemovesCloneLeftovers clones beside what a daemon that died
 // midway through a clone left: the leftover goes.
 func TestOpenGitRemovesCloneLeftovers(t *testing.T) {
