@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install wdx from a release.
 #
-#   curl -fsSL https://github.com/srjn45/wdx/releases/latest/download/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | sh
 #
 # Downloads the archive for this OS/arch, verifies its checksum, installs the
 # binary into ~/.local/bin, the completion of every shell found among bash,
