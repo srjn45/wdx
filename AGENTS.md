@@ -68,7 +68,7 @@ internal/gittest/  makes git behave the same in every test run, and creates the 
 internal/runtest/  gives a test binary a scope of its own: a directory, a clean environment, executables no fork holds busy, and a check at its end that it left nothing behind
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
 internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
-internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md
+internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md; docs/ACA.md lists every place specific to an ACA, in this package or not, and a change to one updates it
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
