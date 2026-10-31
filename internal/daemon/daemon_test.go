@@ -19,6 +19,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
@@ -59,6 +60,7 @@ func startMeasured(t *testing.T, metrics telemetry.Options) *testDaemon {
 // and are removed when the test ends unless the daemon was stopped before.
 func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*Options)) *testDaemon {
 	t.Helper()
+	dbtest.Seed(t, identity.DBPath(home))
 	td := &testDaemon{home: home, socket: socketPath(t)}
 	logtest.OnFailure(t, home) // registered first, so it runs once the daemon stopped
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)

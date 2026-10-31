@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -44,27 +45,46 @@ const releaseVersion = "0.2.0"
 
 func TestMain(m *testing.M) {
 	done := runtest.Start()
-	dir, err := os.MkdirTemp("", "bin")
-	if err != nil {
-		panic(err)
+	// make test-changed runs many processes of these tests, which need only one
+	// build, in a directory it removes.
+	dir := sharedBinaries()
+	shared := dir != ""
+	if !shared {
+		var err error
+		if dir, err = os.MkdirTemp("", "bin"); err != nil {
+			panic(err)
+		}
 	}
 	wdxBinary = filepath.Join(dir, identity.Name)
-	build := func(args ...string) *exec.Cmd {
-		c := exec.Command("go", append(append([]string{"build"}, args...), "../../cmd/wdx")...)
-		c.Env = runtest.OriginalEnviron() // the go command's caches are the machine's
-		return c
-	}
-	if out, err := build("-o", wdxBinary).CombinedOutput(); err != nil {
-		panic(fmt.Sprintf("build wdx: %v\n%s", err, out))
-	}
 	releaseBinary = filepath.Join(dir, "release", identity.Name)
-	ldflags := "-X github.com/srjn45/wdx/internal/identity.Version=" + releaseVersion
-	if out, err := build("-ldflags", ldflags, "-o", releaseBinary).CombinedOutput(); err != nil {
-		panic(fmt.Sprintf("build wdx %s: %v\n%s", releaseVersion, err, out))
+	build := func(path string, args ...string) {
+		if _, err := os.Stat(path); shared && err == nil {
+			return
+		}
+		c := exec.Command("go", append(append([]string{"build", "-o", path}, args...), "../../cmd/wdx")...)
+		c.Env = runtest.OriginalEnviron() // the go command's caches are the machine's
+		if out, err := c.CombinedOutput(); err != nil {
+			panic(fmt.Sprintf("build %s: %v\n%s", path, err, out))
+		}
 	}
+	build(wdxBinary)
+	build(releaseBinary, "-ldflags", "-X github.com/srjn45/wdx/internal/identity.Version="+releaseVersion)
 	code := m.Run()
-	os.RemoveAll(dir)
+	if !shared {
+		os.RemoveAll(dir)
+	}
 	os.Exit(done(code))
+}
+
+// sharedBinaries is the directory make test-changed gives for the wdx binaries,
+// or "".
+func sharedBinaries() string {
+	for _, kv := range runtest.OriginalEnviron() {
+		if dir, ok := strings.CutPrefix(kv, "WDX_TEST_BINARIES="); ok {
+			return dir
+		}
+	}
+	return ""
 }
 
 // shortHome returns an empty home under /tmp: its socket path must fit the
@@ -108,6 +128,7 @@ func newHome(t *testing.T) string {
 func newHomeWithShell(t *testing.T, script string) string {
 	t.Helper()
 	home := shortHome(t)
+	dbtest.Seed(t, identity.DBPath(home))
 	shell := filepath.Join(t.TempDir(), "shell")
 	if err := runtest.WriteExecutable(shell, script); err != nil {
 		t.Fatal(err)

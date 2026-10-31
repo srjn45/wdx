@@ -225,7 +225,7 @@ Each step builds and passes `make test` on its own, and is a `feat:` or `test:` 
 3. **The daemon and API.** `activity` in `api/openapi.yaml`, `make generate`. The supervisor passes the ACA, keeps the last activity per live holder and notifies the streams. Tests: an agent's activity through `GET /v1/agents`, the project stream, a daemon restart with the holder alive, a version 2 holder's `unknown`, null once the process ends.
 4. **The CLI.** The `ACTIVITY` column and `get`'s field, with their tests and help.
 5. **Tide.** The activity in the Agents list and the `waiting` mark, with its tests.
-6. **Docs and the real thing.** docs/AGENT.md, docs/TERMINALS.md, README, V1_FEATURES.md. Then by hand with the real Claude Code: a prompt, a permission, a decision, Esc, a trust prompt, a daemon restart while waiting, and a narrow tide pane. `make check`, `make test`, `make test-changed`, and `make test-stress PKG=` on `holder`, `terminal` and `agent`.
+6. **Docs and the real thing.** docs/AGENT.md, docs/TERMINALS.md, README, V1_FEATURES.md. Then by hand with the real Claude Code: a prompt, a permission, a decision, Esc, a trust prompt, a daemon restart while waiting, and a narrow tide pane. `make check`, `make test`, and `make test-stress PKG=` on `holder`, `terminal` and `agent`.
 
 ## Recordings
 

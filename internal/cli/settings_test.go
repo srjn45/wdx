@@ -15,6 +15,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -271,6 +272,7 @@ func TestSettingSetApplied(t *testing.T) {
 func TestSettingSetNotApplied(t *testing.T) {
 	t.Parallel()
 	home := shortHome(t)
+	dbtest.Seed(t, identity.DBPath(home))
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
 	ctx, stop := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{

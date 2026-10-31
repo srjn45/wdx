@@ -1,54 +1,59 @@
 #!/bin/sh
-# Runs the tests of the test files changed in RANGE or not yet committed TIMES
-# times over, at 1 and 4 CPUs, on a machine kept busy: a test that fails only
-# now and then is found while it is being written. GO_TEST is the command that
-# runs them. Tests run in batches of a process each, as cobra keeps every flag
-# it saw, which in one process adds up to more than the tests' memory cap.
+# Repeats the tests of the test files changed in RANGE or not yet committed that
+# a change can reach (scripts/changedtests) TIMES times over, at 1 and 4 CPUs, on
+# a machine kept busy: a test that fails only now and then is found while it is
+# being written. GO_TEST is the command that runs them.
 set -u
 
-batch=2
-
-changed="$(
-	{
-		git diff --name-only --diff-filter=d "$RANGE"
-		git diff --name-only --diff-filter=d HEAD
-		git ls-files --others --exclude-standard
-	} | grep '_test\.go$' | sort -u
-)"
-if [ -z "$changed" ]; then
-	echo "no test file changed in $RANGE"
+selected="$(go run ./scripts/changedtests "$RANGE")" || exit 1
+if [ -z "$selected" ]; then
+	echo "no test a change in $RANGE can reach"
 	exit 0
 fi
 
-hogs=""
-# shellcheck disable=SC2329 # the trap runs it
-stop_hogs() {
-	for pid in $hogs; do
-		kill "$pid" 2>/dev/null
-	done
-}
-trap stop_hogs EXIT
-for _ in $(seq "$(getconf _NPROCESSORS_ONLN)"); do
-	sh -c 'while :; do :; done' &
-	hogs="$hogs $!"
-done
+# The cli tests' TestMain builds wdx: once is enough for all these runs.
+WDX_TEST_BINARIES="$(mktemp -d)"
+export WDX_TEST_BINARIES
+trap 'rm -rf "$WDX_TEST_BINARIES"' EXIT
 
-batches=$(((TIMES + batch - 1) / batch))
-failed=0
-for dir in $(echo "$changed" | xargs -n1 dirname | sort -u); do
-	# shellcheck disable=SC2086 # the files of this directory, without spaces
-	names="$(echo "$changed" | grep -E "^$dir/[^/]+$" | xargs sed -nE 's/^func (Test[A-Za-z0-9_]*)\(t \*testing\.T\).*/\1/p' | sort -u | paste -sd'|')"
-	if [ -z "$names" ]; then
-		continue
-	fi
-	echo "== ./$dir: $names"
-	i=0
-	while [ "$i" -lt "$batches" ]; do
-		i=$((i + 1))
-		# shellcheck disable=SC2086 # GO_TEST is a list of words
-		$GO_TEST -count="$batch" -cpu=1,4 -timeout=20m -run "^($names)\$" "./$dir" || failed=1
+# Each loop ends when this run does, however it ends.
+keep_busy() {
+	for _ in $(seq "$(getconf _NPROCESSORS_ONLN)"); do
+		sh -c 'while kill -0 "$1" 2>/dev/null; do :; done' hog "$$" &
 	done
-done
+	wait
+}
+# Runs that overlap load each other already: one at a time keeps the machine
+# busy, and the next takes over when it ends.
+if command -v flock >/dev/null; then
+	(
+		flock 9
+		keep_busy
+	) 9>"${TMPDIR:-/tmp}/wdx-test-changed-$(id -u).lock" &
+else
+	keep_busy &
+fi
+
+failed=0
+while read -r dir names; do
+	echo "== ./$dir: $names"
+	# Each batch is a process, whose TestMain and what tests share start again.
+	# The cli's are small, as cobra keeps every flag it saw, which in one process
+	# adds up to more than the tests' memory cap.
+	case "$dir" in
+	internal/cli) batch=2 ;;
+	*) batch=10 ;;
+	esac
+	left="$TIMES"
+	while [ "$left" -gt 0 ]; do
+		count=$((left < batch ? left : batch))
+		left=$((left - count))
+		# shellcheck disable=SC2086 # GO_TEST is a list of words
+		$GO_TEST -count="$count" -cpu=1,4 -timeout=20m -run "^($names)\$" "./$dir" </dev/null || failed=1
+	done
+done <<EOF
+$selected
+EOF
 if [ "$failed" = 1 ]; then
 	echo "a changed test failed: find out why, and never answer by retrying it (docs/FLAKES.md)" >&2
 fi

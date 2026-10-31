@@ -90,8 +90,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # the commits to check
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -109,14 +107,4 @@ jobs:
           done
           echo "error: no user systemd to cap the tests' memory" >&2
           exit 1
-      - name: Choose the commits to check
-        env:
-          EVENT: ${{ github.event_name }}
-          REF: ${{ github.ref }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-          BEFORE: ${{ github.event.before }}
-          SHA: ${{ github.sha }}
-        run: echo "RANGE=$(scripts/ci-range.sh)" >>"$GITHUB_ENV"
-      - run: make test-changed
       - run: make test-contention

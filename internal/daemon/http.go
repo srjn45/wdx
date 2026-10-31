@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -28,6 +29,22 @@ import (
 // handler serves the API: every request is logged, checked against the spec,
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
+	validate, router := validation()
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload}
+	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  badRequest,
+		ResponseErrorHandlerFunc: failed,
+	})
+	routes := api.HandlerWithOptions(strict, api.StdHTTPServerOptions{
+		BaseRouter:       http.NewServeMux(),
+		ErrorHandlerFunc: badRequest,
+	})
+	return d.logRequests(router, validate(d.oneChangeAtATime(routes)))
+}
+
+// validation is what the embedded spec gives: parsed once, as it costs a test
+// process with many daemons much of its time, and only read after that.
+var validation = sync.OnceValues(func() (func(http.Handler) http.Handler, routers.Router) {
 	spec, err := api.GetSpec()
 	if err != nil {
 		panic(fmt.Sprintf("daemon: embedded spec: %v", err))
@@ -39,22 +56,12 @@ func (d *Daemon) handler() http.Handler {
 		SilenceServersWarning: true,
 		ErrorHandlerWithOpts:  invalidRequest,
 	})
-
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload}
-	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  badRequest,
-		ResponseErrorHandlerFunc: failed,
-	})
 	router, err := gorillamux.NewRouter(spec)
 	if err != nil {
 		panic(fmt.Sprintf("daemon: router: %v", err))
 	}
-	routes := api.HandlerWithOptions(strict, api.StdHTTPServerOptions{
-		BaseRouter:       http.NewServeMux(),
-		ErrorHandlerFunc: badRequest,
-	})
-	return d.logRequests(router, validate(d.oneChangeAtATime(routes)))
-}
+	return validate, router
+})
 
 // invalidRequest reports a request the spec does not allow.
 func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {

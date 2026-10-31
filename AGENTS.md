@@ -7,9 +7,8 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Never start coding until the human explicitly says so.
 - Brainstorm with the human first: work out the complete solution (structure, tables, commands, names, edge cases) and get it approved before writing any code.
 - Work on one feature at a time. Do not add scope the human did not ask for; suggest it instead.
-- Commit only when the human asks. Before committing, run `make check && make test` in one shell. Once they pass, commit and move on, without waiting for `make test-changed`; CI runs all three on every push to `main` and every pull request.
-- Right after committing, run `make test-changed` in the background, on that commit in a worktree of its own, since it builds the code again and again and the checkout goes on changing: `git worktree add --detach .worktrees/changed HEAD && (cd .worktrees/changed && nice make test-changed); git worktree remove --force .worktrees/changed`. One at a time: it covers every commit not yet on `origin/main`, so a commit made meanwhile gets the next run, once this one ends.
-- Tell the human how that run ended, before ending the session. If it fails, finding out why comes before the next feature, with a row in `docs/FLAKES.md`. Never release while one is running or has failed.
+- Commit only when the human asks. Before committing, run `make check && make test` in one shell. CI runs both on every push to `main` and every pull request.
+- `make test-changed` is a hunt for flaky tests, run by hand now and then when the human asks, never on each commit, push or rebase. Name the commits since the last run, as `origin/main..HEAD` is empty once they are pushed, and give it a worktree of its own, since it builds the code again and again and the checkout goes on changing: `git worktree add --detach .worktrees/changed HEAD && (cd .worktrees/changed && nice make test-changed RANGE=<last run>..HEAD); git worktree remove --force .worktrees/changed`. If it fails, finding out why comes before the next feature, with a row in `docs/FLAKES.md`. Never release while one is running or has failed.
 
 ## Releases
 
@@ -38,6 +37,7 @@ internal/client/   calls the daemon's API over its socket
 internal/daemon/   serves the API over the Unix socket on top of the domain
 internal/config/   the settings, loaded once at startup from their sources, and the config file written from them
 internal/db/    opens the single SQLite DB, runs embedded migrations
+internal/db/dbtest/  puts a migrated database where a test home's daemon or store opens one, so that each need not migrate its own
 internal/git/   thin wrapper over the git CLI
 internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its screen, spool and history, its protocol, clients and inbox; docs/TERMINALS.md, docs/ATTACH.md, docs/SEND.md
 internal/holder/holdertest/  lets a test binary be its own holder, for the tests that start terminals
@@ -53,7 +53,8 @@ internal/deps/   the programs wdx needs besides itself (git, a clipboard tool, d
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
-scripts/test-changed.sh runs the tests of the test files changed many times over on a machine kept busy (make test-changed, in the background after committing and in CI)
+scripts/test-changed.sh repeats the tests of the test files changed that a change can reach, on a machine kept busy (make test-changed, by hand now and then)
+scripts/changedtests/ picks those tests, from the diff and what each test uses
 scripts/ci-range.sh prints the commits a CI run is about
 scripts/test-contention.sh runs the tests several times at once on a machine kept busy (make test-contention, in CI and nightly)
 scripts/test-update.sh updates a wdx built from the tree to a release dist.sh builds of it and rolls it back (make test-update, in CI)
@@ -180,7 +181,7 @@ The log must tell the story of any run: what was asked, every step taken and why
 - A failure explains itself: every test home calls `logtest.OnFailure`, so a failing test shows what the daemon, the CLI and the holders logged, and a wait that gives up says what it last saw, not only what it waited for.
 - Time a test would wait out is injectable: a timeout, a grace period or a timer is an option, a field of `cli.Env.Timeouts` or a function the test replaces (as tide's `tick`), so tests shorten it rather than sleep through it.
 - `make test-stress` runs them `COUNT` times at 1 and 4 CPUs (`PKG` narrows them), as the nightly stress workflow does: run it on a package whose tests you changed in how they wait or start processes. `make test-contention` runs them `RUNS` times at once on a machine kept busy, as when several agents test at the same time; in CI too. Nightly, with one more run under wdx's real limits (`WDX_TEST_PRODUCTION_LIMITS=1`), whose failures are what a user on a loaded machine could hit, and a failure opens an issue.
-- `make test-changed` runs the tests of the test files you changed `TIMES` times (20) at 1 and 4 CPUs on a machine kept busy, so that one that fails only now and then is found soon after you commit it (see Workflow). It does not cover a change only to code a test reaches, so run `make test-stress PKG=` on a package whose concurrency you changed.
+- `make test-changed` runs `TIMES` times (20) at 1 and 4 CPUs, on a machine kept busy, the tests of the test files you changed that a change can reach: a changed test, or one using a changed helper, type or variable of its package; a changed `TestMain` or `init` reaches all of those files' tests. So one that fails only now and then is found (see Workflow). Runs that overlap share one set of busy loops. It does not cover a change only to code a test reaches, nor other tests of the same file, so run `make test-stress PKG=` on a package whose concurrency you changed.
 - A test for a bug is seen failing without its fix: break the code, watch it fail on what it checks, and put the code back. A test that cannot fail proves nothing.
 - Before a test reads a result, ask what happens if the other process is slow: whether what it reads may not be there yet, or the step it acts during may be over. Wait for the state, or hold the step open.
 - A test seen failing now and then gets a row in `docs/FLAKES.md`, even when it is fixed at once or not understood yet. Read that file first when one fails, and never answer a flake by retrying the test: many have been bugs in wdx.

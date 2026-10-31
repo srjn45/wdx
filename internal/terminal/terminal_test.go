@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/logtest"
@@ -43,7 +44,9 @@ type fixture struct {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	ctx := context.Background()
-	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	path := filepath.Join(t.TempDir(), "test.db")
+	dbtest.Seed(t, path)
+	d, err := db.Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}

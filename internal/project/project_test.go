@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -24,7 +25,9 @@ func TestMain(m *testing.M) {
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	d, err := db.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	path := filepath.Join(t.TempDir(), "test.db")
+	dbtest.Seed(t, path)
+	d, err := db.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
