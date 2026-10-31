@@ -1,0 +1,12 @@
+2.839970 01_idle
+5.545627 02_typing_wrapped
+12.046931 03_working
+21.691763 04_idle_after_story
+23.754295 05_permission
+25.859283 06_after_deny
+77.366367 07_decision
+127.406067 08_after_timeout
+127.406067 09_bg_shell_footer
+129.213440 10_bg_sub_early
+131.752739 11_bg_sub_footer
+162.753802 12_idle_end

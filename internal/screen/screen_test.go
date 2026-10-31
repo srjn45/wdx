@@ -228,6 +228,47 @@ func TestScreenAltScreenKeepsNothing(t *testing.T) {
 	}
 }
 
+// TestScreenText reads what shows as plain text, on either screen: styles,
+// links and trailing spaces gone, wide characters whole.
+func TestScreenText(t *testing.T) {
+	t.Parallel()
+	s := New(20, 5, nil)
+	defer s.Close()
+	s.Write([]byte("\x1b[1;31mred\x1b[0m \x1b]8;;https://example.com\x07link\x1b]8;;\x07\r\n\x1b[41m  \x1b[0m\r\n世界 ok   "))
+	want := []string{"red link", "", "世界 ok"}
+	if got := s.Text(); !slices.Equal(got, want) {
+		t.Errorf("main screen: %q, want %q", got, want)
+	}
+	s.Write([]byte("\x1b[?1049h\x1b[H\x1b[2Jon the \x1b[1malternate\x1b[0m"))
+	want = []string{"on the alternate"}
+	if got := s.Text(); !slices.Equal(got, want) {
+		t.Errorf("alternate screen: %q, want %q", got, want)
+	}
+	s.Write([]byte("\x1b[?1049l"))
+	want = []string{"red link", "", "世界 ok"}
+	if got := s.Text(); !slices.Equal(got, want) {
+		t.Errorf("back on the main screen: %q, want %q", got, want)
+	}
+}
+
+// TestScreenUndimmed blanks dim cells, line for line with what shows, on either
+// screen, and a pen that drops dim ends it.
+func TestScreenUndimmed(t *testing.T) {
+	t.Parallel()
+	s := New(20, 5, nil)
+	defer s.Close()
+	s.Write([]byte("> \x1b[2mdim\x1b[22m typed\r\n\x1b[2mall dim\x1b[0m\r\n\x1b[1;2m世\x1b[0mx"))
+	want := []string{">     typed", "", " x", "", ""}
+	if got := s.Undimmed(); !slices.Equal(got, want) {
+		t.Errorf("main screen: %q, want %q", got, want)
+	}
+	s.Write([]byte("\x1b[?1049h\x1b[H\x1b[2J\x1b[2mdim\x1b[0m alt"))
+	want = []string{"    alt", "", "", "", ""}
+	if got := s.Undimmed(); !slices.Equal(got, want) {
+		t.Errorf("alternate screen: %q, want %q", got, want)
+	}
+}
+
 // TestScreenReset feeds the vt output it fails on: the screen starts again
 // empty, draws what follows in the same write, and keeps working.
 func TestScreenReset(t *testing.T) {

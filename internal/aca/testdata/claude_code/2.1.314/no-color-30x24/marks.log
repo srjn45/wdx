@@ -1,0 +1,13 @@
+4.668 placeholder
+5.950 typed_idle
+7.465 cleared_idle
+22.099 after_turn1
+35.563 no_suggestion
+38.833 prompt
+40.368 working_empty
+41.505 typed_turn
+49.853 idle_after_tool
+54.219 subagent_running
+74.068 tasks_footer
+75.134 typed_after_tasks
+76.694 tasks_cleared

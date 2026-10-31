@@ -23,6 +23,8 @@ Code that names one ACA, or assumes what they all do.
 | The test ACA reports Claude Code's id | `ID()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | Help says "Claude Code for now" | `newAgentCmd`'s `Long`, `internal/cli/agent.go` | the words |
 | The `aca` field's example | `Agent.aca`, `api/openapi.yaml` | nothing; only an example |
+| Reading its activity and draft from its screen, not yet called | `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | its own `ScreenParser`; `AiCodingAgent` gets a method for it with the holder's `watchScreen` |
+| Recordings of its screens | `internal/aca/testdata/claude_code/` | its own recordings |
 
 ## Not landed yet
 
@@ -30,5 +32,3 @@ Move a row up when it reaches `main`.
 
 | What | Where | Status |
 |---|---|---|
-| Reading the activity from the screen | `ActivityParser()`, `internal/aca/activity.go`; docs/AGENT_STATE.md | in progress, worktree `agent-activity-parser` |
-| Recordings of its screens | `internal/aca/testdata/claude_code/` | in progress, same worktree |

@@ -175,6 +175,41 @@ func (s *Screen) Lines() []string {
 	return lines
 }
 
+// Text is the plain text of the lines of the screen that shows, alternate or
+// main, without styles or links and without trailing spaces, up to its last
+// line that is not blank.
+func (s *Screen) Text() []string {
+	lines := s.lines(false)
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// Undimmed is Text with the dim cells blank, line for line: every row of the
+// screen, so an index into Text is one here.
+func (s *Screen) Undimmed() []string {
+	return s.lines(true)
+}
+
+func (s *Screen) lines(blankDim bool) []string {
+	scr := s.current()
+	lines := make([]string, 0, s.vt.Height())
+	line := make(uv.Line, s.vt.Width())
+	for y := range s.vt.Height() {
+		row(line, scr, y)
+		if blankDim {
+			for x := range line {
+				if line[x].Style.Attrs&uv.AttrFaint != 0 {
+					line[x] = uv.EmptyCell
+				}
+			}
+		}
+		lines = append(lines, strings.TrimRight(line.String(), " "))
+	}
+	return lines
+}
+
 // row copies row y of scr into line.
 func row(line uv.Line, scr *vt.Screen, y int) {
 	for x := range line {

@@ -1,0 +1,12 @@
+2.851705 01_idle_nothing_running
+7.453146 02_start_approval_1
+9.629394 03_start_approval_2
+9.629394 04_start_approval_3
+20.893011 05_both_running_idle_box
+25.304367 06_permission_while_bg
+28.961299 07_after_deny_while_bg
+31.808591 08_decision_while_bg
+36.189186 09_decision_answered
+38.885827 10_after_decision
+126.971647 11_bg_ended
+126.971647 12_idle_end
