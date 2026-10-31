@@ -195,3 +195,29 @@ func TestTooSmall(t *testing.T) {
 		t.Fatalf("zoomed at 4×5:\n%s", got)
 	}
 }
+
+// TestCreatedTerminalSelected selects a terminal created here whichever comes
+// first: the answer to the request, or its tab on the stream.
+func TestCreatedTerminalSelected(t *testing.T) {
+	t.Parallel()
+	created := terminalCreated{projectID: "proj-demo", terminal: api.Terminal{Id: "term-api", Name: "api"}}
+	for name, steps := range map[string][]func(*Model){
+		"answer first": {
+			func(m *Model) { m.Update(created) },
+			func(m *Model) { sent(m, "api", "shell", "tests", "server") },
+		},
+		"stream first": {
+			func(m *Model) { sent(m, "api", "shell", "tests", "server") },
+			func(m *Model) { m.Update(created) },
+		},
+	} {
+		m, _ := newModel(80, 24)
+		m.selectTab(1)
+		for _, step := range steps {
+			step(m)
+		}
+		if sel, ok := m.selectedTerminal(); !ok || sel.Id != "term-api" {
+			t.Fatalf("%s: selected %+v", name, sel)
+		}
+	}
+}

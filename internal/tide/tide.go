@@ -57,6 +57,7 @@ type Model struct {
 	streams        int                                                                  // how many streams were opened, numbering them
 	openStream     func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
 	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
+	createdTab     map[string]string                                                    // the terminal created here in each project, selected once the stream brings it
 	agentLists     map[string]*agentList                                                // the Agents list of each project shown, by project id, for the run
 	term           *attachment                                                          // the terminal the terminal pane shows
 	agentTerm      *attachment                                                          // the active agent's terminal, which the agent pane shows
@@ -121,6 +122,7 @@ func New(ctx context.Context, opts Options) *Model {
 		root:        noProjectScreen{},
 		openStream:  opts.Client.ProjectEvents,
 		selectedTab: map[string]string{},
+		createdTab:  map[string]string{},
 		agentLists:  map[string]*agentList{},
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and

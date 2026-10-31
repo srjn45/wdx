@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -170,6 +171,10 @@ func (m *Model) terminals() []api.Terminal {
 func (m *Model) terminalsChanged() {
 	terms := m.terminals()
 	p := m.following.project
+	if created, ok := m.createdTab[p.Id]; ok && slices.ContainsFunc(terms, func(t api.Terminal) bool { return t.Id == created }) {
+		m.selectedTab[p.Id] = created
+		delete(m.createdTab, p.Id)
+	}
 	id := m.selectedTab[p.Id]
 	for i, t := range terms {
 		if t.Id == id {

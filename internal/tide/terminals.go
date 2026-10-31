@@ -75,7 +75,7 @@ func (m *Model) terminalCreated(msg terminalCreated) {
 	}
 	m.log.Info("terminal created", "name", msg.terminal.Name)
 	// Selected by id: the stream may have brought its tab already, or will.
-	m.selectedTab[msg.projectID] = msg.terminal.Id
+	m.createdTab[msg.projectID] = msg.terminal.Id
 	if f := m.following; f != nil && f.project != nil && f.project.Id == msg.projectID {
 		m.terminalsChanged()
 	}
