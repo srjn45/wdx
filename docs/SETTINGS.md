@@ -1,6 +1,6 @@
 # wdx setting: read and change settings from the CLI
 
-Status: implemented, uncommitted (see Plan). Worktree `.worktrees/setting-command`, branch `setting-command`.
+Status: built, in 96f24b5, and released in v0.2.0-dev.163.
 
 `wdx setting list` and `wdx setting get` show the settings by their dotted keys; `wdx setting set` changes one, in `config.yaml` and at once in the running daemon.
 
@@ -75,7 +75,7 @@ Help lists `write` as the command that refreshes the file and `set` as the one t
 
 ## Plan
 
-Every step is done in the worktree; nothing is committed.
+Every step landed in one commit, 96f24b5.
 
 1. **API**: `reloadDaemon`, the `reloaded` result and the `reload_failed` code in `api/openapi.yaml` and `internal/api/codes.go`; `make generate`; `client.ReloadDaemon`.
 2. **Config**: `config.LoadHome`, `config.Lock` on `identity.ConfigLockPath`, `config.Set`; the file's new header.
