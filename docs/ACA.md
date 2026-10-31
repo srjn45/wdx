@@ -29,6 +29,12 @@ Code that names one ACA, or assumes what they all do.
 | The waits of the motion fallback, chosen on recordings of Claude Code, though the code knows no ACA | `StillTime`, `EchoTime`, `ReadMoment`, `internal/screen/motion.go`; docs/AGENT_STATE.md | check them on recordings of it, and make them per ACA if they differ |
 | Recordings of its screens, and the scripts that make them | `internal/aca/testdata/claude_code/` | its own recordings |
 
+## Assumed by generic code, not landed yet
+
+| What | Where | Needed for another ACA |
+|---|---|---|
+| An ACA queues what is typed during a turn, so the `inboxReader` delivers on `working`; still to be checked by hand on Claude Code | docs/SEND.md | an ACA that does not queue needs a way to say to hold while working |
+
 ## Not landed yet
 
 Move a row up when it reaches `main`.

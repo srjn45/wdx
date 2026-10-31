@@ -102,6 +102,12 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*terminal.StartError](err); ok {
 		return api.ErrorCodeStartFailed, map[string]any{"terminal": terminalView(e.Terminal)}
 	}
+	if e, ok := errors.AsType[*terminal.NotRunningError](err); ok {
+		return api.ErrorCodeTerminalNotRunning, map[string]any{"terminal": terminalView(e.Terminal)}
+	}
+	if e, ok := errors.AsType[*terminal.SendError](err); ok {
+		return api.ErrorCodeSendFailed, map[string]any{"terminal": terminalView(e.Terminal)}
+	}
 	if e, ok := errors.AsType[*agent.RunningError](err); ok {
 		return api.ErrorCodeAgentRunning, map[string]any{"agent": agentView(e.Agent)}
 	}

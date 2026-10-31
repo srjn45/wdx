@@ -326,6 +326,37 @@ paths:
               schema: { $ref: "#/components/schemas/TerminalResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/terminals/{terminal}/send:
+    parameters:
+      - $ref: "#/components/parameters/TerminalRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: sendTerminal
+      summary: Queue a message for a running terminal's shell
+      description: |
+        The message goes in the inbox of the terminal's holder, which types it
+        into the shell and presses Enter; it may not have reached the shell
+        when this returns. It is lost if the shell ends first.
+
+        A message that does not reach the holder returns send_failed with the
+        terminal under details.terminal: the holder is too old and the terminal
+        must be restarted, or the message does not fit in 1 MiB.
+
+        Errors: invalid_path, not_found, send_failed, terminal_not_running.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TerminalMessage" }
+      responses:
+        "200":
+          description: The terminal, with result queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/terminals/{terminal}/history:
     parameters:
       - $ref: "#/components/parameters/TerminalRef"
@@ -602,7 +633,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued]
 
     Worktree:
       type: object
@@ -820,6 +851,16 @@ components:
         result: { $ref: "#/components/schemas/Result" }
         terminal: { $ref: "#/components/schemas/Terminal" }
 
+    TerminalMessage:
+      type: object
+      required: [prompt]
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: The text to type; Enter follows it.
+
     TerminalHistory:
       type: object
       required: [from, next, first, lines]
@@ -951,7 +992,7 @@ components:
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
         already_running, runtime_missing, port_in_use, runtime_failed,
-        terminal_not_running, agent_not_running, attach_unsupported,
+        agent_not_running, attach_unsupported,
         connection_lost, the
         codes of wdx update (download_failed to restore_required) and of
         wdx deps install (cancelled to privileges_required) are reported
@@ -975,6 +1016,7 @@ components:
         - terminal_running
         - start_failed
         - terminal_not_running
+        - send_failed
         - agent_running
         - agent_removed
         - branch_exists

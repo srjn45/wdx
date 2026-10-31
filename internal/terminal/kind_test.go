@@ -52,6 +52,9 @@ func TestShellEntriesDoNotFindAnAgentsRow(t *testing.T) {
 	if _, err := s.Start(ctx, row.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Start: %v", err)
 	}
+	if _, err := s.Send(ctx, row.ID, "hello"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Send: %v", err)
+	}
 	if _, err := s.Remove(ctx, row.ID, true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Remove: %v", err)
 	}

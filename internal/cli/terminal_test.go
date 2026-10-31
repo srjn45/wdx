@@ -309,3 +309,109 @@ func TestHolderHidden(t *testing.T) {
 		t.Fatalf("want terminal listed and holder hidden: %s", out.stdout)
 	}
 }
+
+func TestTerminalSend(t *testing.T) {
+	t.Parallel()
+	// The shell ends with what it read in its dir, once it has read two lines.
+	home := newHomeWithShell(t, "#!/bin/sh\nread first\nread second\necho \"$first, $second\" > got\n")
+	app := newProjectDir(t, home, "app")
+	term := newTerminal(t, home, app, "build")
+	const secret = "the-secret-prompt"
+
+	v, exit := wdxJSONWith(t, home, in(app), "terminal", "send", "--name", "build", "--prompt", secret)
+	if exit != api.ExitOK || v.Result != "queued" || v.Terminal.Id != term.Id {
+		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
+	}
+	out := wdx(t, home, "terminal", "send", "--id", term.Id, "--prompt=ls -la")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "queued terminal build in app\n") {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+	got := filepath.Join(app, "got")
+	if !eventually(t, func() bool { b, err := os.ReadFile(got); return err == nil && len(b) > 0 }) {
+		t.Fatal("the shell did not read the messages")
+	}
+	if b, err := os.ReadFile(got); err != nil || string(b) != secret+", ls -la\n" {
+		t.Fatalf("the shell read %q, %v", b, err)
+	}
+
+	// The shell has ended.
+	if !eventually(t, func() bool {
+		v, _ := wdxJSON(t, home, "terminal", "get", "--id", term.Id)
+		return v.Terminal.State == api.TerminalStateExited
+	}) {
+		t.Fatal("the shell did not exit")
+	}
+	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", secret)
+	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, api.ExitRejected)
+	wantHint(t, v, "start its shell with wdx terminal start, or open its project")
+
+	v, exit = wdxJSONWith(t, home, in(app), "terminal", "send", "--name", "nope", "--prompt", secret)
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", "")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id)
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+
+	files, err := filepath.Glob(filepath.Join(home, "logs", "*.log"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no logs: %v", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if logged := string(b); strings.Contains(logged, secret) || strings.Contains(logged, "ls -la") {
+			t.Fatalf("a prompt is logged in %s", f)
+		}
+	}
+}
+
+func TestTerminalSendTooLarge(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	term := newTerminal(t, home, app, "build")
+	v, exit := wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", strings.Repeat("x", 1<<20))
+	wantError(t, v, exit, api.ErrorCodeSendFailed, api.ExitSystem)
+}
+
+// TestTerminalSendDropped leaves messages queued when the shell ends: they are
+// lost, which the holder logs. The last may be dropped from the inbox or fail
+// to be written, whichever comes first once the shell has gone.
+func TestTerminalSendDropped(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, "#!/bin/sh\nstty raw -echo\n: > ready\nexec sleep 60\n")
+	app := newProjectDir(t, home, "app")
+	term := newTerminal(t, home, app, "build")
+	if !eventually(t, func() bool { _, err := os.Stat(filepath.Join(app, "ready")); return err == nil }) {
+		t.Fatal("the shell did not get ready")
+	}
+	// Too much for a program that does not read, so the next stays queued.
+	for _, prompt := range []string{strings.Repeat("x", 512<<10), "next"} {
+		if v, exit := wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", prompt); exit != api.ExitOK {
+			t.Fatalf("want it queued, got exit %d, %+v", exit, v)
+		}
+	}
+	if v, exit := wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("want it removed, got exit %d, %+v", exit, v)
+	}
+	if !eventually(t, func() bool {
+		files, _ := filepath.Glob(filepath.Join(home, "logs", "*.log"))
+		for _, f := range files {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				continue
+			}
+			for line := range strings.Lines(string(b)) {
+				if strings.Contains(line, `"msg":"messages dropped: the shell has ended"`) ||
+					(strings.Contains(line, `"msg":"message not delivered"`) && strings.Contains(line, `"prompt_bytes":4,`)) {
+					return true
+				}
+			}
+		}
+		return false
+	}) {
+		t.Fatal("the dropped message is not logged")
+	}
+}

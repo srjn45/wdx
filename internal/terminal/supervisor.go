@@ -51,6 +51,27 @@ func (e *StartError) Error() string {
 
 func (e *StartError) Unwrap() error { return e.Err }
 
+// NotRunningError is returned when a request needs a terminal's shell running.
+type NotRunningError struct {
+	Terminal Terminal
+}
+
+func (e *NotRunningError) Error() string {
+	return fmt.Sprintf("terminal %s is %s, not running", e.Terminal.Name, e.Terminal.State)
+}
+
+// SendError is returned when a message did not reach a terminal's holder.
+type SendError struct {
+	Terminal Terminal
+	Err      error
+}
+
+func (e *SendError) Error() string {
+	return fmt.Sprintf("message not sent to terminal %s: %v", e.Terminal.Name, e.Err)
+}
+
+func (e *SendError) Unwrap() error { return e.Err }
+
 // Options say how the Supervisor starts holders.
 type Options struct {
 	// Executable is the wdx binary holders run.
@@ -353,6 +374,29 @@ func (s *Supervisor) history(ctx context.Context, kind Kind, id string, from *in
 		return holder.TailHistory(dir, count)
 	}
 	return holder.ReadHistory(dir, *from, count)
+}
+
+// Send puts prompt in the inbox of a running terminal's holder and returns the
+// terminal. An agent's row is not found.
+func (s *Supervisor) Send(ctx context.Context, id, prompt string) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, KindShell, id)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if t.State != StateRunning {
+		return Terminal{}, &NotRunningError{Terminal: t}
+	}
+	s.mu.Lock()
+	w := s.watches[id]
+	s.mu.Unlock()
+	if w == nil {
+		return Terminal{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
+	}
+	if err := w.current().Send(prompt); err != nil {
+		return Terminal{}, &SendError{Terminal: t, Err: err}
+	}
+	logging.FromContext(ctx).Info("message queued", "terminal_id", id, "prompt_bytes", len(prompt))
+	return t, nil
 }
 
 // Sweep deletes what terminals that no longer exist kept on disk: removing

@@ -131,7 +131,7 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
 			"client_version", r.Header.Get(api.VersionHeader),
-			"body", jsonValue(body))
+			"body", requestLogged(operation, body))
 
 		w.Header().Set(api.DebugIDHeader, id)
 		w.Header().Set(api.VersionHeader, identity.Version)
@@ -172,6 +172,19 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// requestLogged is a request's body as logged: a prompt can hold secrets, so
+// it is measured, never logged, even in a body too broken to read.
+func requestLogged(operation string, b []byte) any {
+	if operation != "sendTerminal" {
+		return jsonValue(b)
+	}
+	var r api.TerminalMessage
+	if json.Unmarshal(b, &r) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	return map[string]any{"prompt_bytes": len(r.Prompt)}
 }
 
 // historyLogged is a history response as logged: terminal output can hold

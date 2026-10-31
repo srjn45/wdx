@@ -156,6 +156,9 @@ type holder struct {
 	left       chan struct{} // closed and replaced when a client detaches
 	clientExit []byte        // the exited frame's payload, once the shell ended
 	spoolErr   bool          // a failed append is logged once
+
+	inbox      *inbox
+	readerDone chan struct{} // closed once the inboxReader returns
 }
 
 // answerQueue bounds the vt's answers waiting for a program to read its
@@ -213,6 +216,8 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		answers:      make(chan []byte, answerQueue),
 		clients:      map[*client]bool{},
 		left:         make(chan struct{}),
+		inbox:        newInbox(),
+		readerDone:   make(chan struct{}),
 		vtDelay:      o.vtDelay,
 		screenHold:   o.screenHold,
 		writeTimeout: cmp.Or(o.WriteTimeout, writeTimeout),
@@ -320,6 +325,7 @@ func (h *holder) serve(ctx context.Context) error {
 	defer h.master.Close()
 	go h.read()
 	go h.writeAnswers()
+	go h.inboxReader()
 	go h.follow()
 	go h.wait()
 	go h.exitClients()
@@ -342,6 +348,12 @@ func (h *holder) serve(ctx context.Context) error {
 	}
 	h.mu.Unlock()
 	h.closeClients()
+	// So that a message whose write failed gets its line in the log. A child
+	// the shell left behind can keep that write waiting.
+	select {
+	case <-h.readerDone:
+	case <-time.After(exitDrain):
+	}
 	select {
 	case <-h.followed:
 	case <-time.After(exitDrain):
@@ -551,6 +563,7 @@ func (h *holder) wait() {
 	h.exit = exit
 	h.mu.Unlock()
 	close(h.ended)
+	h.dropMessages()
 	h.sendExit()
 }
 
@@ -677,6 +690,13 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 				continue
 			}
 			go h.stop(time.Duration(req.GraceMS) * time.Millisecond)
+		case frameSend:
+			var req sendRequest
+			if err := json.Unmarshal(body, &req); err != nil {
+				h.log.Warn("bad send request", "err", err)
+				continue
+			}
+			h.queue(req.Prompt)
 		case frameRelease:
 			select {
 			case <-h.ended:

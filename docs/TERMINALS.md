@@ -173,6 +173,7 @@ Frames on the socket: one byte of type, a 4-byte big-endian length, the payload;
 | `exited` | holder → daemon | `{"code": ..., "at": ...}` |
 | `stop` | daemon → holder | `{"grace_ms": 5000}`; answered by `exited` |
 | `release` | daemon → holder | none; the holder exits |
+| `send` | daemon → holder, version 3 | `{"prompt": "..."}`, queued for the shell; docs/SEND.md |
 
 Version 2 adds clients beside the daemon, with `attach`, `history`, `snapshot`, `output`, `input` and `resize`: docs/ATTACH.md.
 
@@ -223,7 +224,9 @@ New codes in `internal/api/codes.go`:
 | `project_in_use` | 409 | 1 | terminals are running in the project |
 | `terminal_running` | 409 | 1 | the terminal is already starting or running |
 | `start_failed` | 500 | 3 | the holder or the shell did not start |
-| `terminal_not_running`, `attach_unsupported`, `connection_lost` | | | attach's, reported by the CLI: docs/ATTACH.md |
+| `attach_unsupported`, `connection_lost` | | | attach's, reported by the CLI: docs/ATTACH.md |
+| `terminal_not_running` | 409 | 1 | the terminal's shell is not running: from send, and from the CLI for attach |
+| `send_failed` | 500 | 3 | the message did not reach the holder: docs/SEND.md |
 
 `not_found`, `name_taken` and `invalid_name` now cover terminals too, so their descriptions no longer say "project": "nothing has this name or id", "something else has this name", "the name is not allowed".
 
@@ -236,6 +239,7 @@ wdx terminal list   [--project-id <id> | --project-name <name> | --all]
 wdx terminal start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx terminal remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]
 wdx terminal attach / history: docs/ATTACH.md
+wdx terminal send   (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text>: docs/SEND.md
 wdx project close  ... [--stop-running | --cancel]
 wdx project remove ... [--stop-running | --cancel]
 ```

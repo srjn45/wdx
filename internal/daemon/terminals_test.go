@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -579,5 +580,68 @@ func TestTerminalsOutliveDaemon(t *testing.T) {
 	list := next.terminals(t, nil)
 	if len(list) != 1 || list[0].State != api.TerminalStateRunning || *list[0].Pid != *term.Pid {
 		t.Fatalf("want %s adopted running, got %+v", term.Name, list)
+	}
+}
+
+func TestSendTerminal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	term := td.createTerminal(t, "", app, "build")
+	const secret = "the-secret-prompt"
+
+	r, err := td.client.SendTerminalWithResponse(ctx, "id:"+term.Id, nil, api.TerminalMessage{Prompt: secret})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultQueued || r.JSON200.Terminal.Id != term.Id {
+		t.Fatalf("want it queued, got %v %s", err, r.Body)
+	}
+	r, err = td.client.SendTerminalWithResponse(ctx, "nope", &api.SendTerminalParams{Dir: optional(app)}, api.TerminalMessage{Prompt: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+	r, err = td.client.SendTerminalWithResponse(ctx, "id:"+term.Id, nil, api.TerminalMessage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusBadRequest, api.ErrorCodeUsage)
+	// Refused by the validator, and still not logged.
+	raw, err := td.client.SendTerminalWithBodyWithResponse(ctx, "id:"+term.Id, nil, "application/json", strings.NewReader(`{"prompt": "`+secret+`", "other": 1`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, raw.ApplicationproblemJSONDefault, http.StatusBadRequest, api.ErrorCodeUsage)
+	r, err = td.client.SendTerminalWithResponse(ctx, "id:"+term.Id, nil, api.TerminalMessage{Prompt: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusInternalServerError, api.ErrorCodeSendFailed)
+	if sent := detail(t, r.ApplicationproblemJSONDefault, "terminal"); sent["id"] != term.Id {
+		t.Fatalf("want the terminal in details, got %v", sent)
+	}
+
+	for _, line := range logLines(t, td.home) {
+		if b, err := json.Marshal(line); err != nil || strings.Contains(string(b), secret) {
+			t.Fatalf("the prompt is logged: %s, %v", b, err)
+		}
+	}
+}
+
+func TestSendTerminalNotRunning(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	term := td.createTerminal(t, "", app, "build")
+	if _, err := td.client.UpdateProjectWithResponse(ctx, "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := td.client.SendTerminalWithResponse(ctx, "id:"+term.Id, nil, api.TerminalMessage{Prompt: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeTerminalNotRunning)
+	if stopped := detail(t, r.ApplicationproblemJSONDefault, "terminal"); stopped["state"] != "stopped" {
+		t.Fatalf("want the stopped terminal in details, got %v", stopped)
 	}
 }

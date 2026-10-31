@@ -39,6 +39,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeTerminalRunning:    {http.StatusConflict, ExitRejected, "the terminal is already starting or running"},
 	ErrorCodeStartFailed:        {http.StatusInternalServerError, ExitSystem, "the holder, the shell or the AI coding agent did not start"},
 	ErrorCodeTerminalNotRunning: {http.StatusConflict, ExitRejected, "the terminal's shell is not running"},
+	ErrorCodeSendFailed:         {http.StatusInternalServerError, ExitSystem, "the message did not reach the terminal's holder"},
 	ErrorCodeAgentRunning:       {http.StatusConflict, ExitRejected, "the agent is already starting or running"},
 	ErrorCodeAgentRemoved:       {http.StatusConflict, ExitRejected, "the agent was removed and stays only for its children"},
 	ErrorCodeAgentNotRunning:    {http.StatusConflict, ExitRejected, "the agent's AI coding agent is not running"},

@@ -11,7 +11,11 @@ import (
 // Version is the protocol version this binary speaks. A holder keeps
 // running the binary it was started from, so a daemon must speak the
 // previous version too.
-const Version = 2
+const Version = 3
+
+// inboxVersion is the first version whose holder takes frameSend. An older
+// one would ignore the frame, so the daemon does not send it.
+const inboxVersion = 3
 
 // drives reports whether this daemon can drive a holder speaking version v.
 // A version up to 2 leaves the daemon's frames as they are, and later ones
@@ -40,6 +44,9 @@ const (
 	frameInput    frameType = 9  // client to holder: raw input for the shell
 	frameResize   frameType = 10 // client to holder: a Size
 	frameResized  frameType = 11 // holder to client: the terminal's new Size, in order with the output
+	// 12 is taken by frameActivity (docs/AGENT_STATE.md), 14 by frameInbox
+	// (docs/SEND.md).
+	frameSend frameType = 13 // daemon to holder: a sendRequest for the inbox
 )
 
 // Roles a connecting side gives in its hello; a hello without one is a
@@ -106,6 +113,10 @@ type Exit struct {
 
 type stopRequest struct {
 	GraceMS int64 `json:"grace_ms"`
+}
+
+type sendRequest struct {
+	Prompt string `json:"prompt"`
 }
 
 func writeFrame(w io.Writer, t frameType, payload any) error {

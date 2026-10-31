@@ -198,7 +198,7 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 ## Out of scope
 
-tide, the web relay, reflow of history, resyncing slow clients, recording with timing, read-only attach, `wdx terminal send` for scripts to type into a terminal.
+tide, the web relay, reflow of history, resyncing slow clients, recording with timing, read-only attach. `wdx terminal send`, for scripts to type into a terminal, came later: docs/SEND.md.
 
 ## Implementation plan
 

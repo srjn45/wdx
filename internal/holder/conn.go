@@ -3,11 +3,19 @@ package holder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 )
+
+// ErrSendUnsupported is a holder that speaks a protocol before the inbox: its
+// terminal was started by an older wdx.
+var ErrSendUnsupported = errors.New("the terminal's holder is too old to take messages; restart the terminal")
+
+// ErrMessageTooLarge is a message that does not fit in a frame.
+var ErrMessageTooLarge = fmt.Errorf("the message does not fit in the %d bytes the holder takes", maxPayload)
 
 // Conn is the daemon's connection to a holder. Nothing polls: the holder
 // pushes the shell's exit, and the connection ending means the holder is
@@ -121,6 +129,26 @@ func (c *Conn) read() {
 // Exited receives the result.
 func (c *Conn) Stop(grace time.Duration) error {
 	return c.write(frameStop, stopRequest{GraceMS: grace.Milliseconds()})
+}
+
+// Send puts prompt in the holder's inbox. The holder delivers it when it can,
+// so nil does not mean the shell has it.
+func (c *Conn) Send(prompt string) error {
+	if c.hello.Version < inboxVersion {
+		return ErrSendUnsupported
+	}
+	body, err := json.Marshal(sendRequest{Prompt: prompt})
+	if err != nil {
+		return err
+	}
+	if len(body) > maxPayload {
+		return ErrMessageTooLarge
+	}
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	// Fails only on a closed connection, which the write reports.
+	_ = c.c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+	return writeRaw(c.c, frameSend, body)
 }
 
 // Release tells the holder the shell's exit is recorded: it quits.

@@ -93,6 +93,17 @@ func (s *server) StartTerminal(ctx context.Context, req api.StartTerminalRequest
 	return api.StartTerminal200JSONResponse{Result: api.ResultStarted, Terminal: terminalView(t)}, nil
 }
 
+func (s *server) SendTerminal(ctx context.Context, req api.SendTerminalRequestObject) (api.SendTerminalResponseObject, error) {
+	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if t, err = s.terminals.Send(ctx, t.ID, req.Body.Prompt); err != nil {
+		return nil, err
+	}
+	return api.SendTerminal200JSONResponse{Result: api.ResultQueued, Terminal: terminalView(t)}, nil
+}
+
 func (s *server) DeleteTerminal(ctx context.Context, req api.DeleteTerminalRequestObject) (api.DeleteTerminalResponseObject, error) {
 	t, err := s.findTerminal(ctx, req.Terminal, req.Params.Project, req.Params.Dir)
 	if err != nil {

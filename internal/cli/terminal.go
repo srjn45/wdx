@@ -27,7 +27,7 @@ func newTerminalCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newTerminalAttachCmd(), newTerminalCreateCmd(), newTerminalGetCmd(), newTerminalHistoryCmd(),
-		newTerminalListCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
+		newTerminalListCmd(), newTerminalSendCmd(), newTerminalStartCmd(), newTerminalRemoveCmd())
 	return cmd
 }
 
@@ -252,6 +252,53 @@ func newTerminalStartCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
+	return cmd
+}
+
+func newTerminalSendCmd() *cobra.Command {
+	var ref terminalRef
+	var prompt string
+	cmd := &cobra.Command{
+		Use:   "send (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text>",
+		Short: "Type a message into a running terminal and press Enter",
+		Long: "The message is queued for the terminal and typed as soon as its shell can\n" +
+			"take it, in the order sent, into whatever is running there. This does not\n" +
+			"wait for it to be typed or to run, and a message still queued when the shell\n" +
+			"ends is lost.",
+		Example: examples(
+			"Run a command in a terminal of the project you are in", identity.Name+" terminal send --name server --prompt make",
+			"By id, as JSON", identity.Name+" terminal send --id term-1a2b3c4d --prompt make --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not sent",
+			outputNote:    "The terminal the message is queued for.\n" + `With --json: {"result": "queued", "terminal": {...}}`,
+			resultList:    "queued",
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeSendFailed,
+				api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if prompt == "" {
+				return &usageError{errors.New("--prompt is empty")}
+			}
+			path, project, dir, err := ref.resolve(cmd)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).SendTerminal(cmd.Context(), path, project, dir, prompt)
+			if problemCode(err) == api.ErrorCodeTerminalNotRunning {
+				return &hinted{err, "start its shell with " + identity.Name + " terminal start, or open its project"}
+			}
+			if err != nil {
+				return ref.notFoundHint(err)
+			}
+			return printResult(cmd, terminalResult(r))
+		},
+	}
+	ref.addFlags(cmd)
+	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to type; Enter follows it")
+	cmd.MarkFlagRequired(promptFlag)
+	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 

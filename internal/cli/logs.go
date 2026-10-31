@@ -3,9 +3,11 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,7 +34,7 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 		settings = append(settings, slog.Group(s.Key, "value", env.Config.Value(s.Key), "from", env.Config.From[s.Key]))
 	}
 	log.Info("command received",
-		"args", args,
+		"args", argsLogged(args),
 		"version", identity.Version,
 		"commit", identity.Commit,
 		"cwd", env.WorkDir,
@@ -41,12 +43,37 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 		slog.Group("settings", settings...))
 }
 
+// promptFlag is the flag whose value is never logged: a prompt can hold
+// secrets.
+const promptFlag = "prompt"
+
+// argsLogged is args with the value of promptFlag measured instead.
+func argsLogged(args []string) []string {
+	logged := slices.Clone(args)
+	for i, arg := range logged {
+		if arg == "--"+promptFlag && i+1 < len(logged) {
+			logged[i+1] = measured(logged[i+1])
+		}
+		if value, ok := strings.CutPrefix(arg, "--"+promptFlag+"="); ok {
+			logged[i] = "--" + promptFlag + "=" + measured(value)
+		}
+	}
+	return logged
+}
+
+func measured(value string) string {
+	return fmt.Sprintf("<%d bytes>", len(value))
+}
+
 // logStarted logs the command cobra resolved and the value of every flag.
 func logStarted(cmd *cobra.Command, args []string) {
 	flags := map[string]string{}
 	set := []string{}
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		flags[f.Name] = f.Value.String()
+		if f.Name == promptFlag {
+			flags[f.Name] = measured(f.Value.String())
+		}
 		if f.Changed {
 			set = append(set, f.Name)
 		}

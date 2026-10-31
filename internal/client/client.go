@@ -331,6 +331,15 @@ func (c *Client) StartTerminal(ctx context.Context, ref, project, dir string) (a
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// SendTerminal queues prompt for the terminal ref names, as StartTerminal does.
+func (c *Client) SendTerminal(ctx context.Context, ref, project, dir, prompt string) (api.TerminalResult, error) {
+	r, err := c.api.SendTerminalWithResponse(ctx, ref, &api.SendTerminalParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.TerminalMessage{Prompt: prompt})
+	if err != nil {
+		return api.TerminalResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // DeleteTerminal removes the terminal ref names, as StartTerminal does; a
 // live one is stopped when stopRunning, and refused otherwise.
 func (c *Client) DeleteTerminal(ctx context.Context, ref, project, dir string, stopRunning bool) (api.TerminalResult, error) {

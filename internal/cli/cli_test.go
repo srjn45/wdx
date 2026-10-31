@@ -283,7 +283,7 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			continue
 		}
 		var received []string
-		if json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, args) {
+		if json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, argsLogged(args)) {
 			id = l.DebugID
 		}
 	}
