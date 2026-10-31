@@ -466,6 +466,10 @@ func (m *Model) menuAction(name string) tea.Cmd {
 			m.confirm = &confirmBox{r: r}
 			m.log.Info("removal asked", "kind", r.kind, "name", r.name)
 		}
+	case `\`, "]", menuKey:
+		if m.programInFocus() {
+			return m.sendToProgram(name)
+		}
 	case "q":
 		m.log.Info("tide quit")
 		m.unfollow() // the daemon ends the stream, and logs it

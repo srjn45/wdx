@@ -349,6 +349,39 @@ func TestTerminalAttached(t *testing.T) {
 	}
 }
 
+// TestMenuSendsKeys: the menu gives the program in focus the ctrl keys tide
+// takes, and offers that only where a program has the keys.
+func TestMenuSendsKeys(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newTerminal(t, "api", dir, "a-one")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", attachedTo("a-one"))
+
+	p.keys("C-q")
+	if got := text(p.m); strings.Contains(got, "send C-") {
+		t.Fatalf("the menu offers to send with the project pane in focus:\n%s", got)
+	}
+	p.keys(`\`) // not offered: only closes the menu
+	if !p.m.layout.shown(terminal) || p.m.layout.focus != project {
+		t.Fatalf("C-q \\ with the project pane in focus left %+v", p.m.layout)
+	}
+
+	p.keys("alt+down")
+	p.typed("stty -isig -icanon -echo -ixon; cat -v\n") // the keys as bytes, not signals
+	p.keys("C-q")
+	wantText(t, p.m, `\  send C-\ to the program`)
+	wantText(t, p.m, "]  send C-] to the program")
+	wantText(t, p.m, "C-q  send C-q to the program")
+	p.keys(`\`, "C-q", "]", "C-q", "C-q")
+	p.until(t, "the three keys in the program", screenHas(`^\^]^Q`))
+	if !p.m.layout.shown(terminal) || p.m.layout.zoomed != none || p.m.menu {
+		t.Fatalf("sending took tide's own action: %+v, menu %v", p.m.layout, p.m.menu)
+	}
+}
+
 // TestTerminalTabs: switching tabs attaches the terminal selected alone,
 // which shows what it showed.
 func TestTerminalTabs(t *testing.T) {

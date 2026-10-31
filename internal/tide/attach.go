@@ -328,6 +328,25 @@ func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
 	return a.pane.Update(msg)
 }
 
+// programInFocus reports whether keys go to a program now: the focused pane
+// has one running, and no popup is over it.
+func (m *Model) programInFocus() bool {
+	a := m.attachedIn(m.layout.focus)
+	return a != nil && a.pane != nil && !a.ended && !m.popupOpen()
+}
+
+// sendToProgram gives the program in focus the ctrl key tide would have taken,
+// named by the menu's letter for it: `C-q \` then d detaches a wdx attach
+// running in the pane.
+func (m *Model) sendToProgram(name string) tea.Cmd {
+	code, ok := map[string]rune{`\`: '\\', "]": ']', menuKey: 'q'}[name]
+	if !ok {
+		return nil
+	}
+	m.log.Info("ctrl key sent to the program", "key", name, "pane", m.layout.focus)
+	return m.paneInput(m.layout.focus, tea.KeyPressMsg{Code: code, Mod: tea.ModCtrl})
+}
+
 // programMouse gives a mouse event to the program in the agent or terminal
 // pane, at the pane's coordinates, when it asked for the mouse: a press inside
 // the pane, and the drag and release that follow it. It reports whether the

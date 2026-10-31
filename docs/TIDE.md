@@ -183,6 +183,8 @@ Constraint: in basic terminals only `Ctrl+letter`, a few `Ctrl+symbol`, plain ke
 | `C-\` | show or hide the terminal pane (focuses it when it opens) |
 | `C-q` | open the shortcut menu |
 
+These keys are lost to the programs in the panes, so the menu sends each on: `C-q \` sends `C-\`, `C-q ]` sends `C-]` and `C-q C-q` sends `C-q` to the program in the focused agent or terminal pane, as tmux's `send-prefix` does. Tide cannot tell what runs in a pane, so `wdx terminal attach` there, whose prefix is `C-\` too, still says `C-\ ? for keys`; it detaches with `C-q \ d`.
+
 These three keys are configurable, since `C-]` and `C-\` are awkward on some non-US keyboard layouts.
 
 ### Shortcut menu (`C-q`)
@@ -191,7 +193,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
-- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `\`, `]` and `C-q` send that ctrl key to the program in focus (agent or terminal pane), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - With the project pane in focus, the menu's letters also work without `C-q`, showing the same popups: nothing there takes typing. In the agent and terminal panes they go to the program, so those keep only `C-q`. `q` quits at once there too, which is safe because terminals and agents keep running.
 - The final list of actions and letters is still to be decided.
 

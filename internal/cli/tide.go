@@ -26,7 +26,8 @@ func newTideCmd() *cobra.Command {
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
 			"terminals and C-q opens the menu: o opens a project, p switches projects, t\n" +
 			"creates a terminal, x removes the terminal of the tab selected after asking,\n" +
-			"and q quits. Alt+Shift and ← or → switch to the previous or next open\n" +
+			"and q quits; \\, ] and C-q send C-\\, C-] and C-q to the program in the focused\n" +
+			"pane, so C-q \\ d detaches a wdx attach running there. Alt+Shift and ← or → switch to the previous or next open\n" +
 			"project.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +

@@ -19,6 +19,39 @@ func TestTideRefused(t *testing.T) {
 	}
 }
 
+// TestTideDetachesAttach runs attach in a tide pane, where tide takes attach's
+// prefix: C-q \\ d gives it to attach and detaches, tide still running.
+func TestTideDetachesAttach(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	dir := newProjectDir(t, home, "app")
+	newTerminal(t, home, dir, "first") // the tab selected, where attach runs
+	other := newTerminal(t, home, dir, "second")
+	run := startInTerminal(t, home, home, 128, 24, []string{"tide"})
+	run.waitScreen("┃ Switch Project")
+	run.input("\r")
+	run.waitScreen("┌ [Project: app]")
+	run.input("\x1b[1;3B") // Alt+↓: the terminal pane
+	run.waitScreen(" app · terminal · first")
+	run.input("\x1d") // C-]: zoomed, room for attach
+	run.waitScreen("zoomed")
+	run.waitScreen("│$") // attached: until then the pane drops what is typed
+	run.input(wdxBinary + " terminal attach --id " + other.Id + "\r")
+	run.waitScreen("C-\\ ? for keys")
+	run.input("\x11") // C-q: the menu
+	run.waitScreen("send C-\\ to the program")
+	run.input("\\")
+	run.waitScreen("C-\\ …") // attach has its prefix
+	run.input("d")
+	run.waitScreen("detached from terminal")
+	run.input("\x11")
+	run.waitScreen("┃ o  open project")
+	run.input("q")
+	if out := run.waitText(); out.exit != api.ExitOK {
+		t.Fatalf("got %+v", out)
+	}
+}
+
 func TestTide(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

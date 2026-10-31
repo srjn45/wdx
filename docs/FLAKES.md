@@ -31,11 +31,12 @@ Never answer a flake by retrying the test: half of those below were bugs in wdx.
 | 2026-10-31 | `TestProjectAndDaemonWorkSeesBothKinds` | local, never failed: took 10 s or 60 s instead of 0.04 s | 8 of 14 | product race | yes: a stop sent as the connection to the holder dropped was lost, so stopping waited out the grace and killed the shell instead of hanging up | 79f8585: the watcher asks again on the connection it dials |
 | 2026-10-31 | `TestUpdateInterrupted` | local, a run of the `cli` tests alone, repeated, on a loaded machine | 1 of 6, likely 1 more whose output was lost | step raced | no: the signal came after the 140 ms switch had ended, as the test read the line late, so there was nothing to hold | 4b7873d: a request in flight holds the switch open until the signal is said to be held |
 | 2026-10-31 | `TestTerminalAttachTitle` | local, `make test-stress`, loaded machine | 1 of 10 runs of it | check too early | no: attach had written the title back, which the test read off the terminal only later | 4b7873d: it waits for those bytes |
+| 2026-10-31 | `TestTideDetachesAttach` | local, loaded machine, while it was being written | 1 of 4 | check too early | no, though keys typed in a tide pane before its terminal is attached are dropped: the test typed once the pane was zoomed, before the shell's prompt showed it attached | it waits for the prompt |
 
 ## Patterns
 
 - **Kill order:** a test kills processes in an order that lets another outcome come first. Kill so that only the wanted state can come. 2 flakes, none a bug in wdx.
 - **Shared process:** parallel tests share a process's environment, working directory and open files, as with `text file busy` (golang.org/issue/22315). 1 flake.
-- **Check too early:** a test reads, once, what another process writes only later. Wait for the state instead, keeping the check as strict. 2 flakes, not bugs in wdx.
+- **Check too early:** a test reads, once, what another process writes only later. Wait for the state instead, keeping the check as strict. 3 flakes, not bugs in wdx.
 - **Step raced:** a test acts during a step of another process that it does not hold, which a loaded machine lets end first. Hold the step open until the test has acted. 1 flake, not a bug in wdx.
 - **Product race:** the code itself races or gives up after a fixed time, and a loaded machine shows it. 6 flakes, all bugs in wdx. Suspect this first when a test fails only under load.

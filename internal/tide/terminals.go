@@ -28,6 +28,12 @@ func (m *Model) menuItems() []menuItem {
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
+	if m.programInFocus() {
+		items = append(items,
+			menuItem{`\`, `send C-\ to the program`, "send"},
+			menuItem{"]", "send C-] to the program", "send"},
+			menuItem{"C-q", "send C-q to the program", "send"})
+	}
 	return append(items, menuItem{"q", "quit", "quit"})
 }
 
