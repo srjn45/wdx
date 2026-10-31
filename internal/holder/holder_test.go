@@ -373,14 +373,14 @@ func TestDialOtherTerminal(t *testing.T) {
 }
 
 // TestDialVersions answers the daemon's hello as a holder of each version
-// would: the daemon drives versions 1 and 2, so that it keeps the holders
-// of the release it was rolled back from.
+// would: the daemon drives versions 1 to 4, so that it keeps the holders of
+// the release it was rolled back from.
 func TestDialVersions(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		version int
 		drives  bool
-	}{{0, false}, {1, true}, {2, true}, {3, false}} {
+	}{{0, false}, {1, true}, {2, true}, {3, true}, {4, true}, {5, false}} {
 		f := newFixture(t)
 		socket := filepath.Join(f.home, "holder.sock")
 		l, err := net.Listen("unix", socket)

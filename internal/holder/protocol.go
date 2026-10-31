@@ -14,11 +14,13 @@ import (
 const Version = 2
 
 // drives reports whether this daemon can drive a holder speaking version v.
-// Version 2 adds attaching clients and leaves the daemon's frames as they
-// are, so a daemon rolled back from the release that brings it keeps the
-// terminals that release started; docs/ATTACH.md.
+// A version up to 2 leaves the daemon's frames as they are, and later ones
+// only add to them, so a daemon rolled back from the release that brings one
+// keeps the terminals that release started. It accepts versions ahead of its
+// own for that, in a release before the one that brings them; docs/ATTACH.md,
+// docs/SEND.md.
 func drives(v int) bool {
-	return v == 1 || v == 2
+	return v >= 1 && v <= 4
 }
 
 // A frame is one byte of type, the payload's length as 4 bytes big-endian,
