@@ -57,7 +57,7 @@ test-contention:
 	RUNS=$(RUNS) COUNT=1 PKG="$(PKG)" GO_TEST="$(GO_TEST)" scripts/test-contention.sh
 
 # Run the tests of the test files changed in RANGE or not yet committed TIMES
-# times over on a machine kept busy, before committing.
+# times over on a machine kept busy, in the background after committing.
 TIMES ?= 20
 test-changed:
 	RANGE="$(RANGE)" TIMES=$(TIMES) GO_TEST="$(GO_TEST)" scripts/test-changed.sh
