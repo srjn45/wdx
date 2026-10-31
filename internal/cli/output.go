@@ -53,6 +53,12 @@ const (
 	resultReady      = "ready"
 )
 
+// What the daemon did with a setting set, besides resultNotRunning.
+const (
+	reloadApplied    = "applied"
+	reloadNotApplied = "not_applied"
+)
+
 // printResult writes r to stdout as JSON or as text.
 func printResult(cmd *cobra.Command, r result) error {
 	invocationOf(cmd).response = r

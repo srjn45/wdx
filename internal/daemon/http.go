@@ -40,7 +40,7 @@ func (d *Daemon) handler() http.Handler {
 		ErrorHandlerWithOpts:  invalidRequest,
 	})
 
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -69,9 +69,13 @@ func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *ht
 	failed(w, r.WithContext(ctx), err)
 }
 
+const reloadPath = "/v1/daemon/reload"
+
 func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		// A reload touches nothing the changes use, and should not wait minutes
+		// for a clone to end.
+		if r.Method != http.MethodGet && r.URL.Path != reloadPath {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			// A change runs to its end when the client leaves: cut short, it
@@ -153,7 +157,7 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				attrs = append(attrs, "code", code)
 				measured = append(measured, attribute.String("code", string(code)))
 			}
-			d.requestDuration.Record(context.Background(), time.Since(start).Seconds(), metric.WithAttributes(measured...))
+			(*d.requestDuration.Load()).Record(context.Background(), time.Since(start).Seconds(), metric.WithAttributes(measured...))
 			if stack != nil {
 				attrs = append(attrs, "stack", string(stack))
 			}

@@ -36,6 +36,13 @@ func NewDailyFile(dir string, retentionDays int, now func() time.Time) *DailyFil
 	return &DailyFile{dir: dir, retentionDays: retentionDays, now: now}
 }
 
+// SetRetentionDays changes the days kept from the next file opened on.
+func (d *DailyFile) SetRetentionDays(days int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.retentionDays = days
+}
+
 func (d *DailyFile) Write(p []byte) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

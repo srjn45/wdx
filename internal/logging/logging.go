@@ -14,7 +14,7 @@ import (
 
 // New returns a logger that writes records at level and above to w as JSON
 // lines, with UTC timestamps and URL credentials redacted.
-func New(w io.Writer, level slog.Level) *slog.Logger {
+func New(w io.Writer, level slog.Leveler) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(&redacting{w}, &slog.HandlerOptions{
 		Level: level,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {

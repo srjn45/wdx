@@ -78,7 +78,7 @@ func TestCompleteStatic(t *testing.T) {
 	}{
 		{[]string{"--color", ""}, []string{"auto", "always", "never"}},
 		{[]string{"project", "c"}, []string{"close\tClose a project", "create\tCreate a project in a new git repository"}},
-		{[]string{"help", "s"}, []string{"settings\tevery setting, its default and where it is read from"}},
+		{[]string{"help", "s"}, []string{"setting\tShow and change the settings", "settings\tevery setting, its default and where it is read from"}},
 		{[]string{"help", "project", "o"}, []string{"open\tOpen a git repository as a project"}},
 		{[]string{"project", "list", ""}, nil},
 	} {

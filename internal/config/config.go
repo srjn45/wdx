@@ -293,6 +293,17 @@ func Load(getenv func(string) string) (Config, error) {
 	return load(settings, getenv)
 }
 
+// LoadHome is Load for a home already known, as when the settings are read
+// again after wdx started: home is the one setting of the environment.
+func LoadHome(home string) (Config, error) {
+	return load(settings, func(name string) string {
+		if name == envVar("home") {
+			return home
+		}
+		return ""
+	})
+}
+
 func load(table []setting, getenv func(string) string) (Config, error) {
 	env := envSource{getenv, table}
 	home, _, ok := env.Lookup("home")

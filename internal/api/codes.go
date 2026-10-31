@@ -57,6 +57,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeNoPreviousVersion:  {http.StatusConflict, ExitRejected, "no previous version is kept to roll back to"},
 	ErrorCodeRestoreRequired:    {http.StatusConflict, ExitRejected, "rolling back needs the database backup, losing the changes since the update"},
 	ErrorCodeSettingsInvalid:    {http.StatusUnprocessableEntity, ExitRejected, "the release does not accept a value the config file sets"},
+	ErrorCodeReloadFailed:       {http.StatusUnprocessableEntity, ExitRejected, "the daemon cannot use the config file and keeps the settings it has"},
 	ErrorCodeCancelled:          {http.StatusConflict, ExitRejected, "the question was answered no"},
 	ErrorCodeUnsupportedSystem:  {http.StatusUnprocessableEntity, ExitRejected, "wdx cannot install it on this system: the instructions say how to by hand"},
 	ErrorCodeInstallFailed:      {http.StatusBadGateway, ExitSystem, "the package manager failed"},

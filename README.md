@@ -46,7 +46,7 @@ wdx update --apply       # install it; any failed step is undone
 wdx update --rollback    # go back to the version the last update replaced
 ```
 
-The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when installing. For a wdx installed before that, run `wdx settings write --set update.channel=dev`. See [docs/RELEASING.md](docs/RELEASING.md).
+The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when installing. For a wdx installed before that, run `wdx setting set --name update.channel --value dev`. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Docs
 

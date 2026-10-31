@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,7 +72,28 @@ type Options struct {
 	// HolderLimits are how long holders and the daemon wait for each other;
 	// the holder package's defaults when zero.
 	HolderLimits holder.Limits
+
+	// Reload reads the settings again when asked to: it applies those of the
+	// process, such as the logs', and returns the ones the daemon applies.
+	// Nil leaves the daemon as it is.
+	Reload func() (Settings, error)
 }
+
+// Settings are the settings the daemon can change while it runs.
+type Settings struct {
+	Metrics              telemetry.Options
+	TerminalShell        string
+	TerminalHistoryLines int64
+}
+
+// ReloadError is settings that could not be read again; the daemon keeps the
+// ones it has.
+type ReloadError struct {
+	Err error
+}
+
+func (e *ReloadError) Error() string { return e.Err.Error() }
+func (e *ReloadError) Unwrap() error { return e.Err }
 
 // Daemon is a daemon listening on its socket.
 type Daemon struct {
@@ -92,8 +114,15 @@ type Daemon struct {
 	abortChanges context.CancelFunc
 	started      time.Time
 
-	stopMetrics     func(context.Context) error
-	requestDuration metric.Float64Histogram
+	// reloading is one reload at a time, and none while the daemon closes.
+	reloading   sync.Mutex
+	stopMetrics func(context.Context) error
+	// stoppingMetrics counts the exporters replaced that are sending their
+	// last metrics.
+	stoppingMetrics sync.WaitGroup
+	// requestDuration is replaced with the exporter while requests record
+	// to it.
+	requestDuration atomic.Pointer[metric.Float64Histogram]
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -143,7 +172,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if err := os.Chmod(opts.Socket, 0o600); err != nil {
 		return nil, err
 	}
-	if err := d.meter(logging.NewContext(ctx, d.log)); err != nil {
+	if err := d.meter(logging.NewContext(ctx, d.log), opts.Metrics); err != nil {
 		return nil, err
 	}
 	if d.db, err = db.Open(logging.NewContext(ctx, d.log), identity.DBPath(opts.Home)); err != nil {
@@ -190,19 +219,60 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	return d, nil
 }
 
-// meter starts sending the metrics and creates the instruments.
-func (d *Daemon) meter(ctx context.Context) error {
-	provider, stop, err := telemetry.Start(ctx, d.opts.Metrics)
+// meter starts sending the metrics to where opts says and creates the
+// instruments; an exporter already running ends once it has sent what it has,
+// without holding up the request that replaced it.
+func (d *Daemon) meter(ctx context.Context, opts telemetry.Options) error {
+	provider, stop, err := telemetry.Start(ctx, opts)
 	if err != nil {
 		return err
 	}
-	d.stopMetrics = stop
-	d.requestDuration, err = provider.Meter("github.com/srjn45/wdx/internal/daemon").Float64Histogram("wdx.request.duration",
+	duration, err := provider.Meter("github.com/srjn45/wdx/internal/daemon").Float64Histogram("wdx.request.duration",
 		metric.WithDescription("how long requests took, by operation, status and error code"),
 		metric.WithUnit("s"),
 		// A clone can take minutes.
 		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120))
-	return err
+	if err != nil {
+		return errors.Join(err, stop(ctx))
+	}
+	d.requestDuration.Store(&duration)
+	if old := d.stopMetrics; old != nil {
+		d.stoppingMetrics.Go(func() {
+			// The last send is bounded by the reader's own timeout.
+			if err := old(context.Background()); err != nil {
+				d.log.Warn("last metrics of the old exporter not sent", "err", err)
+			}
+		})
+	}
+	d.stopMetrics = stop
+	return nil
+}
+
+// reload reads the settings again and applies them. Terminals running keep
+// what they started with.
+func (d *Daemon) reload(ctx context.Context) error {
+	d.reloading.Lock()
+	defer d.reloading.Unlock()
+	log := logging.FromContext(ctx)
+	if d.opts.Reload == nil {
+		log.Info("settings not reloaded", "reason", "this daemon reads none")
+		return nil
+	}
+	s, err := d.opts.Reload()
+	if err != nil {
+		return &ReloadError{err}
+	}
+	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines)
+	if s.Metrics != d.opts.Metrics {
+		// The exporter outlives the request, so it logs as the daemon does.
+		if err := d.meter(logging.NewContext(context.WithoutCancel(ctx), d.log), s.Metrics); err != nil {
+			return err
+		}
+		d.opts.Metrics = s.Metrics
+		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
+	}
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines)
+	return nil
 }
 
 // Info describes the daemon.
@@ -335,12 +405,15 @@ func (d *Daemon) close() {
 	if d.db != nil {
 		d.db.Close()
 	}
+	d.reloading.Lock()
+	defer d.reloading.Unlock()
 	if d.stopMetrics != nil {
 		// The last send is bounded by the reader's own timeout.
 		if err := d.stopMetrics(context.Background()); err != nil {
 			d.log.Warn("last metrics not sent", "err", err)
 		}
 	}
+	d.stoppingMetrics.Wait()
 	if d.lock != nil {
 		// Unlock before closing: a child process forked meanwhile shares the
 		// file until it execs, and closing alone would leave the lock held.

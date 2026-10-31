@@ -29,6 +29,11 @@ func ConfigPath(home string) string {
 	return filepath.Join(home, "config.yaml")
 }
 
+// ConfigLockPath is the file held locked while the config file is rewritten.
+func ConfigLockPath(home string) string {
+	return filepath.Join(home, "config.lock")
+}
+
 // SocketPath is the Unix socket the daemon listens on under home.
 func SocketPath(home string) string {
 	return filepath.Join(home, Name+".sock")

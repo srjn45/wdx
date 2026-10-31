@@ -161,7 +161,7 @@ func TestConcurrentWriters(t *testing.T) {
 	for range 2 {
 		f := NewDailyFile(dir, 7, time.Now)
 		defer f.Close()
-		log := New(f, 0)
+		log := New(f, slog.LevelInfo)
 		for w := range writers {
 			wg.Go(func() {
 				for i := range lines {
@@ -192,7 +192,7 @@ func TestConcurrentWriters(t *testing.T) {
 func TestNewRedactsCredentialsAndUsesUTC(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
-	New(&buf, 0).Info("cloning", "url", "https://user:ghp_secret@github.com/x/y.git", "args", []string{"clone", "https://tok@host/z"})
+	New(&buf, slog.LevelInfo).Info("cloning", "url", "https://user:ghp_secret@github.com/x/y.git", "args", []string{"clone", "https://tok@host/z"})
 	line := buf.String()
 	if strings.Contains(line, "secret") || strings.Contains(line, "tok@") {
 		t.Fatalf("credentials leaked: %s", line)
@@ -214,7 +214,7 @@ func TestFromContext(t *testing.T) {
 	FromContext(context.Background()).Info("discarded")
 
 	var buf bytes.Buffer
-	ctx := NewContext(context.Background(), New(&buf, 0).With("debug_id", NewDebugID()))
+	ctx := NewContext(context.Background(), New(&buf, slog.LevelInfo).With("debug_id", NewDebugID()))
 	FromContext(ctx).Info("kept")
 	if !strings.Contains(buf.String(), `"msg":"kept","debug_id":"dbg-`) {
 		t.Fatalf("unexpected log %s", buf.String())
@@ -245,5 +245,40 @@ func TestQuiet(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Errorf("at %s: got %v, want %v", level, got, want)
 		}
+	}
+}
+
+func TestSetRetentionDays(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	today := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := today
+	f := NewDailyFile(dir, 7, func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	})
+	defer f.Close()
+	old := filepath.Join(dir, filePrefix+today.AddDate(0, 0, -3).Format(time.DateOnly)+fileSuffix)
+	if err := os.WriteFile(old, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatalf("want it kept within 7 days: %v", err)
+	}
+
+	f.SetRetentionDays(2)
+	mu.Lock()
+	now = today.AddDate(0, 0, 1)
+	mu.Unlock()
+	if _, err := f.Write([]byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("want it deleted with 2 days kept, got %v", err)
 	}
 }

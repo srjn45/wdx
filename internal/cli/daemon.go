@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -117,15 +119,27 @@ func runForeground(cmd *cobra.Command) error {
 	defer stop()
 	logs := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
 	defer logs.Close()
-	log := logging.New(logs, cfg.LogLevel).With("pid", os.Getpid(), "process", "daemon")
+	var level slog.LevelVar
+	level.Set(cfg.LogLevel)
+	log := logging.New(logs, &level).With("pid", os.Getpid(), "process", "daemon")
 
+	settings := daemonSettings(cfg)
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home:                 cfg.Home,
 		Log:                  log,
-		Metrics:              telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+		Metrics:              settings.Metrics,
 		ShellEnv:             invocationOf(cmd).env.ShellEnv,
-		TerminalShell:        cfg.TerminalShell,
-		TerminalHistoryLines: cfg.TerminalHistoryLines,
+		TerminalShell:        settings.TerminalShell,
+		TerminalHistoryLines: settings.TerminalHistoryLines,
+		Reload: func() (daemon.Settings, error) {
+			now, err := config.LoadHome(cfg.Home)
+			if err != nil {
+				return daemon.Settings{}, err
+			}
+			level.Set(now.LogLevel)
+			logs.SetRetentionDays(now.LogRetentionDays)
+			return daemonSettings(now), nil
+		},
 	})
 	if err != nil {
 		return err
@@ -141,6 +155,15 @@ func runForeground(cmd *cobra.Command) error {
 		return err
 	}
 	return printResult(cmd, daemonResult{Result: resultStopped, Daemon: &info})
+}
+
+// daemonSettings are the settings of cfg the daemon applies itself.
+func daemonSettings(cfg config.Config) daemon.Settings {
+	return daemon.Settings{
+		Metrics:              telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+		TerminalShell:        cfg.TerminalShell,
+		TerminalHistoryLines: cfg.TerminalHistoryLines,
+	}
 }
 
 // startDaemon starts the daemon in the background unless one is running,

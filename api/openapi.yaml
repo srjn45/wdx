@@ -38,6 +38,23 @@ paths:
               schema: { $ref: "#/components/schemas/Daemon" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/daemon/reload:
+    post:
+      operationId: reloadDaemon
+      summary: Read the settings again and apply them
+      description: |
+        Terminals already running keep their shell and history limit. When the
+        config file cannot be used, the daemon keeps the values it has and
+        fails with reload_failed. It does not wait for other changes in
+        flight, since a clone can take minutes.
+      responses:
+        "200":
+          description: The settings were applied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReloadResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/projects:
     get:
       operationId: listProjects
@@ -576,10 +593,16 @@ components:
       type: string
       enum: [open, closed]
 
+    ReloadResult:
+      type: object
+      required: [result]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded]
 
     Worktree:
       type: object
@@ -972,6 +995,7 @@ components:
         - no_previous_version
         - restore_required
         - settings_invalid
+        - reload_failed
         - cancelled
         - unsupported_system
         - install_failed

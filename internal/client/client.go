@@ -135,6 +135,16 @@ func (c *Client) Daemon(ctx context.Context) (api.Daemon, error) {
 
 // ListProjects lists the projects in state, or every project when state is
 // empty.
+// ReloadDaemon has the daemon read the settings again and apply them.
+func (c *Client) ReloadDaemon(ctx context.Context) error {
+	r, err := c.api.ReloadDaemonWithResponse(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	return err
+}
+
 func (c *Client) ListProjects(ctx context.Context, state api.ProjectState) (api.ProjectList, error) {
 	var params api.ListProjectsParams
 	if state != "" {

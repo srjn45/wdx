@@ -19,12 +19,21 @@ type server struct {
 	self      api.Daemon
 	notices   *notices        // tells the streams about changes
 	stopping  <-chan struct{} // closed when the daemon starts stopping: the streams end
+	reload    func(context.Context) error
 }
 
 var _ api.StrictServerInterface = (*server)(nil)
 
 func (s *server) GetVersion(context.Context, api.GetVersionRequestObject) (api.GetVersionResponseObject, error) {
 	return api.GetVersion200JSONResponse{Name: identity.Name, Version: identity.Version, Commit: identity.Commit}, nil
+}
+
+func (s *server) ReloadDaemon(ctx context.Context, _ api.ReloadDaemonRequestObject) (api.ReloadDaemonResponseObject, error) {
+	// A reload runs to its end when the client leaves, as a change does.
+	if err := s.reload(context.WithoutCancel(ctx)); err != nil {
+		return nil, err
+	}
+	return api.ReloadDaemon200JSONResponse{Result: api.ResultReloaded}, nil
 }
 
 func (s *server) GetDaemon(context.Context, api.GetDaemonRequestObject) (api.GetDaemonResponseObject, error) {

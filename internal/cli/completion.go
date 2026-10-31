@@ -147,6 +147,20 @@ func completeColor(*cobra.Command, []string, string) ([]cobra.Completion, cobra.
 	return modes, cobra.ShellCompDirectiveNoFileComp
 }
 
+// completeSettings completes --name with the settings, those of the config
+// file only when fileOnly: the table lists them, so no daemon is asked.
+func completeSettings(fileOnly bool) cobra.CompletionFunc {
+	return func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		var completions []cobra.Completion
+		for _, s := range config.Settings() {
+			if !fileOnly || s.EnvVar == "" {
+				completions = append(completions, cobra.CompletionWithDesc(s.Key, s.Description))
+			}
+		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
 // completeHelp completes wdx help with the subcommands of the command named
 // so far, and at the root with the topics too, in place of a command of the
 // same name.

@@ -91,9 +91,25 @@ type Supervisor struct {
 	ctx   context.Context // ends with Close; the watchers log with it
 	stop  context.CancelFunc
 
-	mu      sync.Mutex
-	watches map[string]*watch // by terminal id
-	closed  bool              // no more watching: the daemon is stopping
+	mu           sync.Mutex
+	watches      map[string]*watch // by terminal id
+	closed       bool              // no more watching: the daemon is stopping
+	shell        string            // what new terminals run; see Options.Shell
+	historyLines int64             // what terminals start with; see Options.HistoryLines
+}
+
+// Reconfigure changes what terminals get from now on. Those running keep
+// what they started with: their holders and shells have it already.
+func (s *Supervisor) Reconfigure(shell string, historyLines int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.shell, s.historyLines = shell, historyLines
+}
+
+func (s *Supervisor) newTerminals() (shell string, historyLines int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shell, s.historyLines
 }
 
 // watch is a terminal's live connection and the goroutine following it.
@@ -126,7 +142,7 @@ func (w *watch) current() *holder.Conn {
 func NewSupervisor(ctx context.Context, store *Store, o Options) *Supervisor {
 	ctx, stop := context.WithCancel(context.WithoutCancel(ctx))
 	o.StopGrace = cmp.Or(o.StopGrace, DefaultStopGrace)
-	return &Supervisor{store: store, opts: o, ctx: ctx, stop: stop, watches: map[string]*watch{}}
+	return &Supervisor{store: store, opts: o, ctx: ctx, stop: stop, watches: map[string]*watch{}, shell: o.Shell, historyLines: o.HistoryLines}
 }
 
 // Store returns the Store the Supervisor keeps its terminals in.
@@ -170,7 +186,7 @@ func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir strin
 }
 
 func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
-	shell := s.opts.Shell
+	shell, _ := s.newTerminals()
 	if shell == "" {
 		account, err := holder.LookupAccount(ctx)
 		if err != nil {
@@ -217,6 +233,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	var agent AgentLaunch
 	var started holder.Started
 	var err error
+	_, historyLines := s.newTerminals()
 	if t.Kind == KindAgent {
 		agent, err = s.opts.AgentLaunch(ctx, t)
 	}
@@ -224,7 +241,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		started, err = holder.Start(holder.WithLimits(ctx, s.opts.Limits), holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
 			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, Command: agent.Command, Env: s.opts.Env,
-			HistoryLines: s.opts.HistoryLines,
+			HistoryLines: historyLines,
 		})
 	}
 	var conn *holder.Conn

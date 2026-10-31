@@ -422,6 +422,15 @@ type jsonOutput struct {
 	} `json:"update"`
 	Warnings []string `json:"warnings"`
 
+	Setting *struct {
+		Key     string `json:"key"`
+		Value   string `json:"value"`
+		Default string `json:"default"`
+		From    string `json:"from"`
+	} `json:"setting"`
+	Reload          string   `json:"reload"`
+	DroppedSettings []string `json:"dropped_settings"`
+
 	Settings *struct {
 		Path    string   `json:"path"`
 		Added   []string `json:"added"`

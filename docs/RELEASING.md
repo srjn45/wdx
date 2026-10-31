@@ -52,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh 
 
 The script comes from `main` rather than from a release, since GitHub's `releases/latest/download/` answers 404 until there is a stable release.
 
-`WDX_VERSION` installs one release, whatever the channel. `WDX_CHANNEL=dev` also saves `update.channel: dev` in the config file, so `wdx update` goes on following dev; an install without it leaves the setting as it is. `wdx settings write --set update.channel=dev` does the same for a wdx already installed.
+`WDX_VERSION` installs one release, whatever the channel. `WDX_CHANNEL=dev` also saves `update.channel: dev` in the config file, so `wdx update` goes on following dev; an install without it leaves the setting as it is. `wdx setting set --name update.channel --value dev` does the same for a wdx already installed.
 
 ## Updating
 

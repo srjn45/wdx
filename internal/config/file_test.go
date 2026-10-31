@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -195,8 +196,74 @@ func TestRewriteSetInvalid(t *testing.T) {
 	path := filepath.Join(home, "config.yaml")
 	for _, set := range []map[string]string{{"update.channel": "nightly"}, {"no.such": "1"}, {"home": "/elsewhere"}} {
 		var e *Error
-		if _, err := Rewrite(path, set); !errors.As(err, &e) || e.OnlyUnknown() || e.Problems[0].From != "--set" {
-			t.Errorf("%v: want a problem from --set, got %v", set, err)
+		if _, err := Rewrite(path, set); !errors.As(err, &e) || e.OnlyUnknown() || e.Problems[0].From != setSource {
+			t.Errorf("%v: want a problem from --value, got %v", set, err)
+		}
+	}
+}
+
+func TestSet(t *testing.T) {
+	t.Parallel()
+	home, _ := homeWith(t, "color: never\n")
+	r, err := Set(home, "log.level", "debug")
+	if err != nil || !r.Changed {
+		t.Fatalf("want it changed, got %+v: %v", r, err)
+	}
+	c, err := LoadHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Value("log.level") != "debug" || c.Value("color") != "never" {
+		t.Fatalf("want log.level set and color kept, got %s and %s", c.Value("log.level"), c.Value("color"))
+	}
+	if r, err = Set(home, "log.level", "debug"); err != nil || r.Changed {
+		t.Fatalf("want nothing changed the second time, got %+v: %v", r, err)
+	}
+}
+
+func TestSetInvalid(t *testing.T) {
+	t.Parallel()
+	for _, tc := range [][2]string{{"log.level", "loud"}, {"no.such", "1"}, {"home", "/elsewhere"}} {
+		home, _ := homeWith(t, "color: never\n")
+		_, err := Set(home, tc[0], tc[1])
+		if _, ok := errors.AsType[*Error](err); !ok {
+			t.Errorf("%v: want an *Error, got %v", tc, err)
+		}
+		if got, err := os.ReadFile(filepath.Join(home, "config.yaml")); err != nil || string(got) != "color: never\n" {
+			t.Errorf("%v: want the file left alone, got %q: %v", tc, got, err)
+		}
+	}
+}
+
+// Rewriting reads the file and writes it whole, so without the lock a set
+// running at the same time as another loses the other's value.
+func TestSetConcurrently(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"no_input": "true", "color": "never", "log.level": "debug", "log.retention_days": "3",
+		"otel.endpoint": "", "otel.interval_seconds": "5", "update.channel": "dev",
+		"update.base_url": "https://example.com", "terminal.shell": "/bin/sh",
+		"terminal.history_lines": "5", "terminal.history_tail": "5",
+	}
+	for range 5 {
+		home, _ := homeWith(t, "")
+		var wg sync.WaitGroup
+		for key, value := range values {
+			wg.Go(func() {
+				if _, err := Set(home, key, value); err != nil {
+					t.Errorf("%s: %v", key, err)
+				}
+			})
+		}
+		wg.Wait()
+		c, err := LoadHome(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for key, value := range values {
+			if got := c.Value(key); got != value {
+				t.Errorf("%s: want %q kept, got %q", key, value, got)
+			}
 		}
 	}
 }

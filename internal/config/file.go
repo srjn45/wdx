@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 
 	"go.yaml.in/yaml/v3"
 
@@ -25,7 +26,7 @@ const lineWidth = 78
 var droppedHeading = "# No longer read by " + identity.Name + ", kept for reference:"
 
 // setSource is where a problem says a value given to Rewrite came from.
-const setSource = "--set"
+const setSource = "--value"
 
 // Rewritten is a config file written anew from the settings table.
 type Rewritten struct {
@@ -112,6 +113,55 @@ func (r *fileReader) override(set map[string]string) []Problem {
 	return problems
 }
 
+// Set sets the setting key in the config file of home, which it writes anew
+// as Rewrite does. The file is left as it was when Rewrite fails.
+func Set(home, key, value string) (Rewritten, error) {
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return Rewritten{}, err
+	}
+	unlock, err := Lock(home)
+	if err != nil {
+		return Rewritten{}, err
+	}
+	defer unlock()
+	path := identity.ConfigPath(home)
+	r, err := Rewrite(path, map[string]string{key: value})
+	if err != nil {
+		return Rewritten{}, err
+	}
+	if r.Changed {
+		if err := WriteFile(path, r.Content); err != nil {
+			return Rewritten{}, err
+		}
+	}
+	return r, nil
+}
+
+// Lock keeps others from rewriting the config file of home, which must
+// exist, until unlock is called: two rewrites at once would lose one's value.
+func Lock(home string) (unlock func(), err error) {
+	f, err := os.OpenFile(identity.ConfigLockPath(home), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+		if !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() {
+		// Unlock before closing: a child forked meanwhile shares the file
+		// until it execs, and closing alone would leave the lock held.
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
+}
+
 // WriteFile writes content to path, readable by the user only, so that a
 // wdx starting meanwhile reads the old file or the new one.
 func WriteFile(path string, content []byte) error {
@@ -123,10 +173,10 @@ func WriteFile(path string, content []byte) error {
 func render(table []setting, values map[string]*yaml.Node, dropped []string) []byte {
 	var b strings.Builder
 	name := identity.Name
-	b.WriteString("# " + name + " settings, read when " + name + " and its daemon start; after changing them run:\n")
-	b.WriteString("#   " + name + " daemon restart\n")
+	b.WriteString("# " + name + " settings. " + name + " setting set changes one and applies it at once.\n")
+	b.WriteString("# After editing this file by hand run: " + name + " daemon restart\n")
 	b.WriteString("# Every setting is optional; uncomment one to change it. See " + name + " help settings.\n")
-	comment(&b, "# ", name+" update and "+name+" settings write rewrite this file: they keep the values set and add new settings, but not comments of your own.")
+	comment(&b, "# ", name+" update, "+name+" setting set and "+name+" setting write rewrite this file: they keep the values set and add new settings, but not comments of your own.")
 
 	for _, group := range groups(table) {
 		b.WriteString("\n")

@@ -76,7 +76,7 @@ func TestHelpTopicJSON(t *testing.T) {
 func TestHelpUnknown(t *testing.T) {
 	t.Parallel()
 	for args, hint := range map[string]string{
-		"help setings":        "did you mean wdx help settings; see 'wdx --help'",
+		"help setings":        "did you mean wdx help setting; see 'wdx --help'",
 		"help projct":         "did you mean wdx help project; see 'wdx --help'",
 		"help project crate":  "did you mean wdx help project create; see 'wdx --help'",
 		"help bogus":          "see 'wdx --help'",

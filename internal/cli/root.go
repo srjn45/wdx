@@ -405,7 +405,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root := &cobra.Command{
 		Use:           identity.Name,
 		Short:         "Manage AI coding agents across CLIs",
-		Long:          "Every command but daemon, observe, settings and update is served by the daemon; " + identity.Name + " daemon start runs it.",
+		Long:          "Every command but daemon, observe, setting and update is served by the daemon; " + identity.Name + " daemon start runs it.",
 		Args:          noArgs,
 		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 		SilenceUsage:  true,
@@ -417,7 +417,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	root.RegisterFlagCompletionFunc("color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingsCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)

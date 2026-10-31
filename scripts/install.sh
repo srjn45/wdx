@@ -237,8 +237,8 @@ chmod 0700 "$HOME_DIR"
 if wdx settings write --color never >/dev/null; then
 	info "the settings in $HOME_DIR/config.yaml list every setting of this version"
 	if [ "$channel" = dev ]; then
-		# Releases before --set fail here, and WDX_VERSION can install one.
-		if wdx settings write --set update.channel=dev --color never >/dev/null 2>&1; then
+		# Releases before setting set fail here, and WDX_VERSION can install one.
+		if wdx setting set --name update.channel --value dev --color never >/dev/null 2>&1; then
 			info "$NAME update follows the dev channel"
 		else
 			warn "this release cannot save the channel; run: $NAME update --channel dev"

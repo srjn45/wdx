@@ -38,6 +38,7 @@ type testDaemon struct {
 	client       *api.ClientWithResponses
 	http         *http.Client
 	stop         func() // stops the daemon once it has served
+	daemon       *Daemon
 }
 
 // start runs a daemon on a new home until the test ends, and checks then
@@ -84,6 +85,7 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+	td.daemon = d
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(ctx) }()
 	td.stop = sync.OnceFunc(func() {
@@ -628,7 +630,7 @@ func TestConcurrentChanges(t *testing.T) {
 func TestOneDaemonPerHome(t *testing.T) {
 	t.Parallel()
 	td := start(t)
-	_, err := Listen(context.Background(), Options{Home: td.home, Socket: socketPath(t), Log: logging.New(io.Discard, 0)})
+	_, err := Listen(context.Background(), Options{Home: td.home, Socket: socketPath(t), Log: logging.New(io.Discard, slog.LevelInfo)})
 	if running, ok := errors.AsType[*AlreadyRunningError](err); !ok || running.PID != os.Getpid() {
 		t.Fatalf("want already running with pid %d, got %v", os.Getpid(), err)
 	}
@@ -640,7 +642,7 @@ func TestOneDaemonPerHome(t *testing.T) {
 func TestStopReleasesSocketAndLock(t *testing.T) {
 	t.Parallel()
 	home, socket := t.TempDir(), socketPath(t)
-	opts := Options{Home: home, Socket: socket, Log: logging.New(io.Discard, 0)}
+	opts := Options{Home: home, Socket: socket, Log: logging.New(io.Discard, slog.LevelInfo)}
 	// A socket left by a crashed daemon is replaced.
 	if err := os.WriteFile(socket, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -687,7 +689,7 @@ func TestNotRunningAfterStop(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	ctx, stop := context.WithCancel(context.Background())
-	d, err := Listen(ctx, Options{Home: home, Socket: socketPath(t), Log: logging.New(io.Discard, 0)})
+	d, err := Listen(ctx, Options{Home: home, Socket: socketPath(t), Log: logging.New(io.Discard, slog.LevelInfo)})
 	if err != nil {
 		t.Fatal(err)
 	}
