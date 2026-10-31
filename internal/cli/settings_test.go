@@ -52,6 +52,44 @@ func TestSettingsWriteTo(t *testing.T) {
 	}
 }
 
+func TestSettingsWriteSet(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	path := identity.ConfigPath(home)
+	writeFile(t, path, "color: never\nupdate:\n  channel: stable\n")
+
+	v, exit := wdxJSON(t, home, "settings", "write", "--set", "update.channel=dev", "--set", "log.level=debug")
+	if exit != api.ExitOK || v.Result != "written" {
+		t.Fatalf("want written, got exit %d, %+v", exit, v.Settings)
+	}
+	got := readFile(t, path)
+	for _, want := range []string{"\ncolor: never\n", "  channel: dev\n", "  level: debug\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q, got\n%s", want, got)
+		}
+	}
+
+	v, exit = wdxJSON(t, home, "settings", "write", "--set", "update.channel=dev")
+	if exit != api.ExitOK || v.Result != "unchanged" {
+		t.Fatalf("want unchanged once it is set, got exit %d, %+v", exit, v.Settings)
+	}
+}
+
+func TestSettingsWriteSetInvalid(t *testing.T) {
+	t.Parallel()
+	for _, set := range []string{"update.channel=nightly", "no.such=1", "home=/tmp/elsewhere", "update.channel", "=dev"} {
+		home := t.TempDir()
+		path := identity.ConfigPath(home)
+		writeFile(t, path, "color: never\n")
+
+		v, exit := wdxJSON(t, home, "settings", "write", "--set", set)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		if got := readFile(t, path); got != "color: never\n" {
+			t.Errorf("--set %s: want the file left alone, got %q", set, got)
+		}
+	}
+}
+
 func TestSettingsWriteInvalid(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()

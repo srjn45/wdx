@@ -31,8 +31,9 @@ func newSettingsCmd() *cobra.Command {
 
 func newSettingsWriteCmd() *cobra.Command {
 	var to string
+	var set []string
 	cmd := &cobra.Command{
-		Use:   "write [--to <path>]",
+		Use:   "write [--to <path>] [--set <key=value>]",
 		Short: "Write the config file anew, listing every setting of this version",
 		Long: "Each setting is listed with its description: the values set are kept as\n" +
 			"written, the others are commented with their defaults. Keys no setting has\n" +
@@ -41,6 +42,7 @@ func newSettingsWriteCmd() *cobra.Command {
 		Example: examples(
 			"Add the settings of this version to the config file", identity.Name+" settings write",
 			"Write the result to another file, leaving the config file alone", identity.Name+" settings write --to /tmp/config.yaml",
+			"Change a setting as well", identity.Name+" settings write --set update.channel=dev",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -56,7 +58,11 @@ func newSettingsWriteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r, err := config.Rewrite(path)
+			values, err := settingValues(set)
+			if err != nil {
+				return err
+			}
+			r, err := config.Rewrite(path, values)
 			if err != nil {
 				return err
 			}
@@ -78,8 +84,23 @@ func newSettingsWriteCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "write it to `path` instead of the config file")
+	cmd.Flags().StringArrayVar(&set, "set", nil, "set a setting to a value, given as `key=value`; repeat it for more")
 	cmd.RegisterFlagCompletionFunc("to", completeFiles)
+	cmd.RegisterFlagCompletionFunc("set", cobra.NoFileCompletions)
 	return cmd
+}
+
+// settingValues returns the key=value pairs of --set by key.
+func settingValues(pairs []string) (map[string]string, error) {
+	values := map[string]string{}
+	for _, pair := range pairs {
+		key, value, ok := strings.Cut(pair, "=")
+		if !ok || key == "" {
+			return nil, &usageError{fmt.Errorf("--set %q: want key=value", pair)}
+		}
+		values[key] = value
+	}
+	return values, nil
 }
 
 // RewritesSettings is true when args run settings write and err names only

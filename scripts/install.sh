@@ -12,7 +12,8 @@
 #
 # Env:
 #   WDX_CHANNEL        stable (default) installs the latest stable release;
-#                      dev the latest release of either kind
+#                      dev the latest release of either kind, and saves dev
+#                      as the channel wdx update follows
 #   WDX_VERSION        release to install (e.g. 0.1.0), whatever the channel
 #   WDX_DOWNLOAD_BASE  where releases live; default: GitHub Releases.
 #                      Local builds use file://<repo>/dist (see `make install`).
@@ -235,6 +236,14 @@ mkdir -p "$HOME_DIR"
 chmod 0700 "$HOME_DIR"
 if wdx settings write --color never >/dev/null; then
 	info "the settings in $HOME_DIR/config.yaml list every setting of this version"
+	if [ "$channel" = dev ]; then
+		# Releases before --set fail here, and WDX_VERSION can install one.
+		if wdx settings write --set update.channel=dev --color never >/dev/null 2>&1; then
+			info "$NAME update follows the dev channel"
+		else
+			warn "this release cannot save the channel; run: $NAME update --channel dev"
+		fi
+	fi
 else
 	warn "could not write the settings in $HOME_DIR/config.yaml; fix the problems above, then run: $NAME settings write"
 fi

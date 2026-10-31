@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -23,6 +24,9 @@ const lineWidth = 78
 // holds, commented, the keys no setting has.
 var droppedHeading = "# No longer read by " + identity.Name + ", kept for reference:"
 
+// setSource is where a problem says a value given to Rewrite came from.
+const setSource = "--set"
+
 // Rewritten is a config file written anew from the settings table.
 type Rewritten struct {
 	Content []byte
@@ -39,15 +43,16 @@ type Rewritten struct {
 // its description, in the order of the table; the values the file sets,
 // as it wrote them; the defaults of the others, commented; and the keys no
 // setting has, commented at the end with those an earlier rewrite put
-// there. Comments of the file's own are not kept. A missing file gives
-// every setting commented. It fails with an *Error when the file cannot be
-// read or parsed or a value it sets is invalid; keys no setting has are no
-// error.
-func Rewrite(path string) (Rewritten, error) {
-	return rewrite(settings, path)
+// there. The values of set, by key, replace those of the file. Comments of
+// the file's own are not kept. A missing file gives every setting commented.
+// It fails with an *Error when the file cannot be read or parsed, a value it
+// sets is invalid or set holds what cannot be set; keys the file has that no
+// setting has are no error.
+func Rewrite(path string, set map[string]string) (Rewritten, error) {
+	return rewrite(settings, path, set)
 }
 
-func rewrite(table []setting, path string) (Rewritten, error) {
+func rewrite(table []setting, path string, set map[string]string) (Rewritten, error) {
 	old, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		if pe, ok := errors.AsType[*fs.PathError](err); ok {
@@ -57,6 +62,7 @@ func rewrite(table []setting, path string) (Rewritten, error) {
 	}
 	r, problems := parseFile(path, old, table)
 	problems = slices.DeleteFunc(problems, func(p Problem) bool { return p.Reason == unknownSetting })
+	problems = append(problems, r.override(set)...)
 	if _, err := resolve(table, []Source{r.values}); err != nil {
 		if e, ok := errors.AsType[*Error](err); ok {
 			problems = append(problems, e.Problems...)
@@ -88,6 +94,22 @@ func rewrite(table []setting, path string) (Rewritten, error) {
 		Added:   added,
 		Dropped: append([]string{}, dropped...),
 	}, nil
+}
+
+// override replaces the values read with those of set, which resolve then
+// checks as it does the file's.
+func (r *fileReader) override(set map[string]string) []Problem {
+	var problems []Problem
+	for _, key := range slices.Sorted(maps.Keys(set)) {
+		value := set[key]
+		if !slices.ContainsFunc(r.table, func(s setting) bool { return s.key == key && !s.fromEnv }) {
+			problems = append(problems, Problem{Key: key, From: setSource, Value: &value, Reason: "not a setting of the config file"})
+			continue
+		}
+		r.values[key] = fileValue{value, setSource}
+		r.nodes[key] = plain(value)
+	}
+	return problems
 }
 
 // WriteFile writes content to path, readable by the user only, so that a

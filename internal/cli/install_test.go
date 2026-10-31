@@ -146,10 +146,10 @@ func TestInstallCompletionsShellsMissing(t *testing.T) {
 	}
 }
 
-// TestInstallLaunchd installs as on macOS, from a release in a directory:
-// the agent's plist lets the daemon stop in its own time.
-func TestInstallLaunchd(t *testing.T) {
-	t.Parallel()
+// installRelease runs install.sh with the variables of env, as on macOS, from
+// a release in a directory, for a new user whose home it returns.
+func installRelease(t *testing.T, env ...string) string {
+	t.Helper()
 	home := runtest.Dir(t)
 	wdxHome := filepath.Join(home, ".wdx")
 	t.Cleanup(func() {
@@ -169,19 +169,46 @@ func TestInstallLaunchd(t *testing.T) {
 	stub(t, stubs, "launchctl", "exit 0")
 
 	cmd := exec.Command("sh", "../../scripts/install.sh")
-	cmd.Env = []string{
+	cmd.Env = append([]string{
 		"HOME=" + home,
 		"PATH=" + stubs + ":/usr/bin:/bin",
 		"WDX_DOWNLOAD_BASE=file://" + releases,
 		"WDX_VERSION=" + releaseVersion,
-	}
+	}, env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("install.sh: %v\n%s", err, out)
 	}
+	return home
+}
+
+// TestInstallLaunchd checks that the agent's plist lets the daemon stop in
+// its own time.
+func TestInstallLaunchd(t *testing.T) {
+	t.Parallel()
+	home := installRelease(t)
 	plist := readFile(t, filepath.Join(home, "Library/LaunchAgents/com.github.srjn45.wdx.plist"))
 	for _, want := range []string{"<key>AbandonProcessGroup</key>\n\t<true/>", "<key>ExitTimeOut</key>\n\t<integer>60</integer>"} {
 		if !strings.Contains(plist, want) {
 			t.Errorf("want %q in the plist, got\n%s", want, plist)
+		}
+	}
+}
+
+// TestInstallSavesChannel checks that wdx update goes on following the channel
+// wdx was installed from.
+func TestInstallSavesChannel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		env  []string
+		want string
+	}{
+		{[]string{"WDX_CHANNEL=dev"}, "\n  channel: dev\n"},
+		{nil, "\n#   channel: stable\n"},
+		{[]string{"WDX_CHANNEL=stable"}, "\n#   channel: stable\n"},
+	} {
+		home := installRelease(t, tc.env...)
+		if got := readFile(t, identity.ConfigPath(filepath.Join(home, ".wdx"))); !strings.Contains(got, tc.want) {
+			t.Errorf("%v: want %q in the config file, got\n%s", tc.env, tc.want, got)
 		}
 	}
 }

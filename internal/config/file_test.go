@@ -14,7 +14,7 @@ import (
 func rewriteOf(t *testing.T, content string) (Rewritten, env) {
 	t.Helper()
 	home, e := homeWith(t, content)
-	r, err := Rewrite(filepath.Join(home, "config.yaml"))
+	r, err := Rewrite(filepath.Join(home, "config.yaml"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestRewriteMissingFile(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	path := filepath.Join(home, "config.yaml")
-	r, err := Rewrite(path)
+	r, err := Rewrite(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestRewriteIsStable(t *testing.T) {
 	t.Parallel()
 	first, e := rewriteOf(t, "log:\n  level: warn\nold: 1\n")
 	path := filepath.Join(e["WDX_HOME"], "config.yaml")
-	second, err := Rewrite(path)
+	second, err := Rewrite(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestRewriteDropsUnknown(t *testing.T) {
 	if err := os.WriteFile(path, append([]byte("other: z\n"), r.Content...), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Rewrite(path)
+	again, err := Rewrite(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestRewriteInvalid(t *testing.T) {
 	} {
 		home, _ := homeWith(t, content)
 		path := filepath.Join(home, "config.yaml")
-		if _, err := Rewrite(path); !errors.As(err, new(*Error)) {
+		if _, err := Rewrite(path, nil); !errors.As(err, new(*Error)) {
 			t.Errorf("%s: want *Error, got %v", name, err)
 		}
 		if b, _ := os.ReadFile(path); string(b) != content {
@@ -166,5 +166,37 @@ func TestOnlyUnknown(t *testing.T) {
 	}
 	if e, _ := loadErr(t, "old: 1\ncolor: loud\n"); e.OnlyUnknown() {
 		t.Fatalf("want an invalid value among them, got %v", e)
+	}
+}
+
+func TestRewriteSet(t *testing.T) {
+	t.Parallel()
+	home, e := homeWith(t, "update:\n  channel: stable\n")
+	path := filepath.Join(home, "config.yaml")
+	r, err := Rewrite(path, map[string]string{"update.channel": "dev", "terminal.shell": "/bin/my: shell"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(path, r.Content); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(e.getenv)
+	if err != nil {
+		t.Fatalf("want the file to load, got %v\n%s", err, r.Content)
+	}
+	if c.UpdateChannel != "dev" || c.Value("terminal.shell") != "/bin/my: shell" {
+		t.Fatalf("want the values set read back, got %q, %q\n%s", c.UpdateChannel, c.Value("terminal.shell"), r.Content)
+	}
+}
+
+func TestRewriteSetInvalid(t *testing.T) {
+	t.Parallel()
+	home, _ := homeWith(t, "")
+	path := filepath.Join(home, "config.yaml")
+	for _, set := range []map[string]string{{"update.channel": "nightly"}, {"no.such": "1"}, {"home": "/elsewhere"}} {
+		var e *Error
+		if _, err := Rewrite(path, set); !errors.As(err, &e) || e.OnlyUnknown() || e.Problems[0].From != "--set" {
+			t.Errorf("%v: want a problem from --set, got %v", set, err)
+		}
 	}
 }

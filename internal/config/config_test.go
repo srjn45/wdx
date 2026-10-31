@@ -248,7 +248,7 @@ func TestSettingsDescribed(t *testing.T) {
 // uncommented, it sets every setting the file can hold to its default.
 func TestTemplate(t *testing.T) {
 	t.Parallel()
-	r, err := Rewrite(filepath.Join(t.TempDir(), "config.yaml"))
+	r, err := Rewrite(filepath.Join(t.TempDir(), "config.yaml"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
