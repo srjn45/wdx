@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -14,6 +15,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/termview"
+	"github.com/srjn45/wdx/internal/tide"
 )
 
 // attachView is the window of wdx terminal attach and wdx agent attach: the
@@ -29,7 +31,17 @@ type attachView struct {
 	pending       bool // the prefix was pressed
 	help          bool // the list of keys is shown
 	ended         *termview.EndedMsg
+
+	ctx       context.Context
+	versionOf func(ctx context.Context) (string, error) // asks the daemon its version; nil asks nothing
+	daemon    string                                    // what it last answered, "" when it did not
 }
+
+// The messages of asking the daemon its version.
+type (
+	daemonVersionMsg   struct{ version string }
+	checkDaemonVersion struct{}
+)
 
 func newAttachView(pane *termview.Model, t attachTarget, prefix prefixKey, st style.Style) *attachView {
 	cols, rows := pane.Size()
@@ -65,7 +77,19 @@ func runAttachView(ctx context.Context, tty *os.File, env Env, v *attachView) (a
 }
 
 func (v *attachView) Init() tea.Cmd {
-	return v.pane.Init()
+	return tea.Batch(v.pane.Init(), v.checkDaemon())
+}
+
+// checkDaemon asks the daemon its version. An attached view talks to the
+// holder, so nothing else would tell it the daemon was updated.
+func (v *attachView) checkDaemon() tea.Cmd {
+	if v.versionOf == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		version, _ := v.versionOf(v.ctx) // no answer: it shows only this version
+		return daemonVersionMsg{version}
+	}
 }
 
 func (v *attachView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -76,6 +100,11 @@ func (v *attachView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case termview.EndedMsg:
 		v.ended = &msg
 		return v, tea.Quit
+	case daemonVersionMsg:
+		v.daemon = msg.version
+		return v, tea.Tick(tide.VersionCheckEvery, func(time.Time) tea.Msg { return checkDaemonVersion{} })
+	case checkDaemonVersion:
+		return v, v.checkDaemon()
 	case tea.KeyPressMsg:
 		return v, v.key(msg)
 	case tea.MouseMsg:
@@ -176,15 +205,10 @@ func (v *attachView) statusLine() string {
 		state = style.StatusScrolled
 		top, lines := v.pane.Position()
 		right = fmt.Sprintf("history %d of %d · PgDn or %s ] down · any key: back", top+1, lines, v.prefix.label)
-	default:
+	case !style.VersionsDiffer(v.daemon):
 		right = st.BarMuted(v.prefix.label + " ? for keys")
 	}
-	right += " "
-	line := left + " " + right
-	if gap := v.width - ansi.StringWidth(left) - ansi.StringWidth(right); gap >= 1 {
-		line = left + strings.Repeat(" ", gap) + right
-	}
-	return st.Bar(ansi.Truncate(line, v.width, ""), state)
+	return st.Bar(style.BarLine(v.width, left, right, st.BarVersion(v.daemon)), state)
 }
 
 // helpContent lists the keys over the pane.

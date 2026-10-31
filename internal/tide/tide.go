@@ -78,6 +78,12 @@ type Model struct {
 	lastClick      click
 	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
 	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
+
+	executable    string                                    // from Options
+	versionOf     func(ctx context.Context) (string, error) // from Options
+	daemonVersion string                                    // what the daemon last answered, "" when it did not
+	resume        *Resume                                   // what to show first, until the projects are listed
+	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
 }
 
 // content is what a pane shows.
@@ -96,6 +102,13 @@ type Options struct {
 	ProjectsDir string
 	// Home is wdx's home, where the terminals' holders listen.
 	Home string
+	// Executable is the binary C-q r runs; "" offers no reload.
+	Executable string
+	// DaemonVersion asks the daemon its version, which the status line
+	// shows when it differs; nil asks nothing.
+	DaemonVersion func(ctx context.Context) (string, error)
+	// Resume is what the run before showed, when it reloaded.
+	Resume *Resume
 }
 
 // click is where and when a click on a frame's title happened.
@@ -126,6 +139,9 @@ func New(ctx context.Context, opts Options) *Model {
 		selectedTab: map[string]string{},
 		createdTab:  map[string]string{},
 		agentLists:  map[string]*agentList{},
+		executable:  opts.Executable,
+		versionOf:   opts.DaemonVersion,
+		resume:      opts.Resume,
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -135,7 +151,7 @@ func New(ctx context.Context, opts Options) *Model {
 	return m
 }
 
-func (m *Model) Init() tea.Cmd { return m.listProjects() }
+func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemonVersion()) }
 
 // Update handles msg, then attaches the terminal of the tab selected and the
 // active agent if they are not, and gives them their panes' sizes.
@@ -152,7 +168,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.sel = nil // the panes move
 	case projectsListed:
-		m.listed(msg)
+		return m, m.listed(msg)
+	case daemonVersionMsg:
+		m.daemonVersion = msg.version
+		return m, m.tick(VersionCheckEvery, func(time.Time) tea.Msg { return checkDaemonVersion{} })
+	case checkDaemonVersion:
+		return m, m.checkDaemonVersion()
 	case popScreen:
 		if n := len(m.opening); n > 0 {
 			m.log.Debug("screen popped", "screen", m.opening[n-1].title())
@@ -469,6 +490,10 @@ func (m *Model) menuAction(name string) tea.Cmd {
 	case `\`, "]", menuKey:
 		if m.programInFocus() {
 			return m.sendToProgram(name)
+		}
+	case "r":
+		if m.menuOffers("r") {
+			return m.startReload()
 		}
 	case "q":
 		m.log.Info("tide quit")

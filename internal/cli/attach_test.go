@@ -25,6 +25,8 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/termview"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -88,6 +90,13 @@ func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []stri
 // own as a user does, so that a signal reaches it alone.
 func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachRun, *os.Process) {
 	t.Helper()
+	return startBinaryInTerminal(t, home, dir, 80, 24, append([]string{"terminal", "attach"}, args...))
+}
+
+// startBinaryInTerminal runs the wdx binary with args in a terminal of its
+// own of cols × rows.
+func startBinaryInTerminal(t *testing.T, home, dir string, cols, rows int, args []string) (*attachRun, *os.Process) {
+	t.Helper()
 	master, tty, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -96,10 +105,10 @@ func startAttachBinary(t *testing.T, home, dir string, args ...string) (*attachR
 		master.Close()
 		tty.Close() // the command has its own
 	})
-	if err := pty.Setsize(master, 80, 24); err != nil {
+	if err := pty.Setsize(master, cols, rows); err != nil {
 		t.Fatal(err)
 	}
-	a := newAttachRun(t, home, master, tty, 80, 24, append([]string{"terminal", "attach"}, args...))
+	a := newAttachRun(t, home, master, tty, cols, rows, args)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(wdxBinary, a.args...)
 	cmd.Dir = dir
@@ -673,5 +682,33 @@ func TestTerminalHistory(t *testing.T) {
 		if out.exit != api.ExitOK || out.stdout != tc.want {
 			t.Fatalf("%v: got exit %d, %q, want %q", tc.args, out.exit, out.stdout, tc.want)
 		}
+	}
+}
+
+// The status line names the version running, and the daemon's only when it is
+// another, in place of the keys. The daemon in the test is of this version.
+func TestTerminalAttachVersion(t *testing.T) {
+	t.Parallel()
+	home := newHomeWithShell(t, interactiveShell)
+	app := newProjectDir(t, home, "app")
+	newTerminal(t, home, app, "api")
+	a := startInTerminal(t, home, app, 80, 24, []string{"terminal", "attach", "--name", "api"})
+	a.waitScreen("C-\\ ? for keys  [wdx " + identity.Version + "]")
+	a.input("\x1c" + "d")
+	if out := a.waitText(); out.exit != api.ExitOK {
+		t.Fatalf("got %+v", out)
+	}
+	// It asks all the time, so it must not fill the logs.
+	for _, l := range logLines(t, home, a.args) {
+		if l.Level != "DEBUG" && strings.Contains(l.Msg, "daemon called") && strings.Contains(string(l.Path), "/version") {
+			t.Fatalf("the version check logged at %s: %+v", l.Level, l)
+		}
+	}
+
+	v := &attachView{target: attachTarget{name: "api", project: "app"}, prefix: prefixKey{label: `C-\`}, st: style.New(false), width: 80, height: 24, status: true, daemon: "9.9.9"}
+	v.pane = termview.NewHistory(termview.History{}, 80, 23, nil)
+	line := v.statusLine()
+	if want := "[wdx " + identity.Version + " · daemon 9.9.9]"; !strings.Contains(line, want) || strings.Contains(line, "for keys") {
+		t.Fatalf("status line %q, want %q and no keys", line, want)
 	}
 }

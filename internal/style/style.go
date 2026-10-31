@@ -9,6 +9,10 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // Style colors text, or returns it unchanged when off.
@@ -121,6 +125,40 @@ func (s Style) BarName(text string) string { return s.within(text, bold, "22") }
 
 // BarMuted styles details that matter less inside a Bar.
 func (s Style) BarMuted(text string) string { return s.within(text, dim, "22") }
+
+// VersionsDiffer reports whether daemon, the version the daemon answered
+// with, is not the version running here; "" is a daemon that did not answer.
+func VersionsDiffer(daemon string) bool {
+	return daemon != "" && daemon != identity.Version
+}
+
+// BarVersion names the version running here inside a Bar, and the daemon's
+// when it is another.
+func (s Style) BarVersion(daemon string) string {
+	text := identity.Name + " " + identity.Version
+	if VersionsDiffer(daemon) {
+		text += " · daemon " + daemon
+	}
+	return s.BarName("[" + text + "]")
+}
+
+// BarLine lays out a status line width cells wide: left, then right at its
+// end, with version after right. The version is the first to go when they do
+// not all fit; after it what does not fit is cut at the end.
+func BarLine(width int, left, right, version string) string {
+	if sep := "  "; ansi.StringWidth(left)+ansi.StringWidth(right)+len(sep)+ansi.StringWidth(version)+2 <= width {
+		if right == "" {
+			sep = ""
+		}
+		right += sep + version
+	}
+	right += " "
+	line := left + " " + right
+	if gap := width - ansi.StringWidth(left) - ansi.StringWidth(right); gap >= 1 {
+		line = left + strings.Repeat(" ", gap) + right
+	}
+	return ansi.Truncate(line, width, "")
+}
 
 // within styles text with on, ending with off rather than a reset.
 func (s Style) within(text, on, off string) string {

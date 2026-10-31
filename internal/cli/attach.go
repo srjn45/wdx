@@ -291,6 +291,7 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 		return termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err
 	}
 	view := newAttachView(termview.New(session, fetch), t, prefix, viewStyle(cmd))
+	view.ctx, view.versionOf = ctx, daemonVersionCheck(cmd)
 	defer view.pane.Close()
 	// A signal detaches, giving the window back as it was; the command ends
 	// as after C-\ d.

@@ -34,6 +34,9 @@ func (m *Model) menuItems() []menuItem {
 			menuItem{"]", "send C-] to the program", "send"},
 			menuItem{"C-q", "send C-q to the program", "send"})
 	}
+	if m.executable != "" && m.projects.loaded {
+		items = append(items, menuItem{"r", "reload tide", "reload"})
+	}
 	return append(items, menuItem{"q", "quit", "quit"})
 }
 

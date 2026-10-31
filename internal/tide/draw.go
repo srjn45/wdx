@@ -386,10 +386,10 @@ func (m *Model) statusLine() string {
 		state = style.StatusPrefix
 		right = "open project: Esc goes back"
 	}
-	right += " "
-	line := left + " " + right
-	if gap := m.width - ansi.StringWidth(left) - ansi.StringWidth(right); gap >= 1 {
-		line = left + strings.Repeat(" ", gap) + right
+	// Versions that differ matter more than the keys, but not than what the
+	// bar is saying now.
+	if state == style.StatusLive && m.statusNotice == "" && style.VersionsDiffer(m.daemonVersion) {
+		right = ""
 	}
-	return m.st.Bar(ansi.Truncate(line, m.width, ""), state)
+	return m.st.Bar(style.BarLine(m.width, left, right, m.st.BarVersion(m.daemonVersion)), state)
 }

@@ -54,19 +54,22 @@ func (m *Model) listProjects() tea.Cmd {
 }
 
 // listed takes the projects listed. The first list decides where tide
-// starts: on the switcher when any project is open, on [Open Project]
-// otherwise.
-func (m *Model) listed(msg projectsListed) {
+// starts: where the run before it was when it reloaded, on the switcher when
+// any project is open, on [Open Project] otherwise.
+func (m *Model) listed(msg projectsListed) tea.Cmd {
 	l := m.projects
 	first := !l.loaded
 	l.listing, l.err = false, msg.err
 	if msg.err != nil {
 		m.log.Info("projects not listed", "err", msg.err)
-		return
+		return nil
 	}
 	l.projects, l.loaded = msg.projects, true
 	if !first {
-		return
+		return nil
+	}
+	if cmd, ok := m.resumed(); ok {
+		return cmd
 	}
 	start := "open project"
 	if len(l.open()) > 0 {
@@ -76,6 +79,7 @@ func (m *Model) listed(msg projectsListed) {
 		m.push(&openProjectScreen{projects: l})
 	}
 	m.log.Info("tide starts", "on", start, "projects", len(l.projects), "open", len(l.open()))
+	return nil
 }
 
 // reopenProject asks tide to open the closed project name.

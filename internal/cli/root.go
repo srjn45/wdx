@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -90,6 +91,9 @@ type Env struct {
 	// Deps is how the deps commands look at the machine; main sets the
 	// session, and the parts left nil take the real ones.
 	Deps deps.Probe
+	// Exec replaces this process with the program at argv[0], as syscall.Exec
+	// does, for C-q r in tide; nil offers no reload.
+	Exec func(argv, environ []string) error
 	// Timeouts are how long commands wait; tests shorten or lengthen them.
 	Timeouts Timeouts
 }
@@ -172,6 +176,9 @@ func Run(ctx context.Context, args []string, env Env) int {
 	}
 	if err == nil {
 		logReturned(log, cmd, start, api.ExitOK, "", inv.response, nil)
+		if inv.replaceWith != nil {
+			return replaceProcess(log, inv.replaceWith, env)
+		}
 		return api.ExitOK
 	}
 	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
@@ -188,6 +195,15 @@ func Run(ctx context.Context, args []string, env Env) int {
 	asJSON := wantsJSON(cmd, args)
 	printError(env, asJSON, style.New(!asJSON && colorOn(cmd, env, env.Stderr)), p, cmd.Annotations[failurePrefix])
 	return exit
+}
+
+// replaceProcess runs argv in place of this process, after the command has
+// logged its return. It comes back only when that failed.
+func replaceProcess(log *slog.Logger, argv []string, env Env) int {
+	err := env.Exec(argv, env.Environ)
+	log.Error("process not replaced", "executable", argv[0], "err", err)
+	fmt.Fprintf(env.Stderr, "%s could not run %s: %v\n", identity.Name+":", argv[0], err)
+	return api.ExitSystem
 }
 
 // ConfigError reports the settings that failed to load, before any command
@@ -297,6 +313,9 @@ type invocation struct {
 	quiet    bool // the shell asks for completions; the daemon logs at debug
 	response any  // what the command printed
 	client   *client.Client
+	// replaceWith is the command line to run in place of this process once
+	// the command has returned and logged it.
+	replaceWith []string
 }
 
 type invocationKey struct{}

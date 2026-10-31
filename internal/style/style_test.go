@@ -3,6 +3,8 @@ package style
 import (
 	"bytes"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 func TestActiveRowKeepsItsTint(t *testing.T) {
@@ -76,5 +78,42 @@ func TestTable(t *testing.T) {
 		if got != want {
 			t.Errorf("on=%v: got\n%s\nwant\n%s", on, got, want)
 		}
+	}
+}
+
+func TestBarLine(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name                 string
+		width                int
+		left, right, version string
+		want                 string
+	}{
+		{"all fit", 30, "left", "keys", "[v]", "left                keys  [v] "},
+		{"version goes first", 12, "left", "keys", "[version]", "left   keys "},
+		{"no keys: version alone at the end", 20, "left", "", "[v]", "left            [v] "},
+		{"cut at the end when nothing fits", 6, "left", "keys", "[v]", "left k"},
+	} {
+		if got := BarLine(c.width, c.left, c.right, c.version); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBarVersion(t *testing.T) {
+	t.Parallel()
+	running := identity.Version
+	plain := New(false)
+	if got, want := plain.BarVersion(""), "[wdx "+running+"]"; got != want {
+		t.Errorf("no answer: %q, want %q", got, want)
+	}
+	if got, want := plain.BarVersion(running), "[wdx "+running+"]"; got != want {
+		t.Errorf("the same version: %q, want %q", got, want)
+	}
+	if got, want := plain.BarVersion("9.9.9"), "[wdx "+running+" · daemon 9.9.9]"; got != want {
+		t.Errorf("another version: %q, want %q", got, want)
+	}
+	if got, want := New(true).BarVersion(""), "\x1b[1m[wdx "+running+"]\x1b[22m"; got != want {
+		t.Errorf("colored: %q, want bold %q", got, want)
 	}
 }

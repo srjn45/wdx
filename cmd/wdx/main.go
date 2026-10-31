@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"syscall"
 
 	"github.com/srjn45/wdx/internal/cli"
 	"github.com/srjn45/wdx/internal/config"
@@ -32,6 +33,7 @@ func main() {
 	// Without it only the terminal commands that rely on it fail.
 	env.WorkDir, _ = os.Getwd()
 	env.TTY = func() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDWR, 0) }
+	env.Exec = func(argv, environ []string) error { return syscall.Exec(argv[0], argv, environ) }
 	// Without it tide shows paths in full.
 	env.UserHome, _ = os.UserHomeDir()
 	// The service runs the daemon for the default home only.

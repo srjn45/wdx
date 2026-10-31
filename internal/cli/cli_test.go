@@ -215,6 +215,7 @@ type logLine struct {
 	Process  string          `json:"process"`
 	Pid      int             `json:"pid"`
 	Args     json.RawMessage `json:"args"` // a command's arguments, or SQL's
+	Path     string          `json:"path"`
 	Exit     *int            `json:"exit"`
 	Code     string          `json:"code"`
 	Response json.RawMessage `json:"response"`
@@ -248,7 +249,9 @@ func logLines(t *testing.T, home string, args []string) []logLine {
 // CLI says it made and the daemon says it served under it.
 func runLogged(lines []logLine, id string) (run []logLine, called, served int) {
 	for _, l := range lines {
-		if l.DebugID != id {
+		// A view's version check logs at debug level on both sides, where a
+		// cli's log level may not reach while the daemon's does.
+		if l.DebugID != id || l.Level == "DEBUG" && l.Path == "/v1/version" {
 			continue
 		}
 		switch {
