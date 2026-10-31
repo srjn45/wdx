@@ -17,9 +17,6 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// readyTimeout is how long a holder has to start the shell.
-const readyTimeout = 5 * time.Second
-
 // StartOptions say what holder to start.
 type StartOptions struct {
 	// Executable is the wdx binary, run as "<Executable> holder".
@@ -50,6 +47,7 @@ type Started struct {
 // process, and waits until its shell runs.
 func Start(ctx context.Context, o StartOptions) (Started, error) {
 	log := logging.FromContext(ctx)
+	limits := limitsOf(ctx)
 	ready, readyW, err := os.Pipe()
 	if err != nil {
 		return Started{}, err
@@ -59,6 +57,11 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 		"--history-lines", strconv.FormatInt(o.HistoryLines, 10)}
 	if o.AgentID != "" {
 		args = append(args, "--agent-id", o.AgentID)
+	}
+	// Only when a test changed it: a daemon updated while it ran may start a
+	// binary of another version, which may not know the flag.
+	if limits.Write != writeTimeout {
+		args = append(args, "--write-timeout", limits.Write.String())
 	}
 	for _, word := range o.Command {
 		args = append(args, "--command="+word)
@@ -76,7 +79,7 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 	// Reaps the holder should it exit while this process runs.
 	go func() { _ = cmd.Wait() }()
 
-	if err := ready.SetReadDeadline(time.Now().Add(readyTimeout)); err != nil {
+	if err := ready.SetReadDeadline(time.Now().Add(limits.Ready)); err != nil {
 		_ = cmd.Process.Kill()
 		return Started{}, fmt.Errorf("wait for the holder: %w", err)
 	}
@@ -85,7 +88,7 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 	switch {
 	case errors.Is(err, os.ErrDeadlineExceeded):
 		_ = cmd.Process.Kill() // it may have just exited
-		return Started{}, fmt.Errorf("the holder did not start the shell within %s", readyTimeout)
+		return Started{}, fmt.Errorf("the holder did not start the shell within %s", limits.Ready)
 	case errors.Is(err, io.EOF):
 		return Started{}, errors.New("the holder exited before starting the shell")
 	case err != nil:

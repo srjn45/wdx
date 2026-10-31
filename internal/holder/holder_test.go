@@ -15,6 +15,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logtest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "holder" {
 		os.Exit(runHolder(os.Args[2:]))
 	}
-	os.Exit(m.Run())
+	os.Exit(runtest.Main(m))
 }
 
 func runHolder(args []string) int {
@@ -39,6 +40,7 @@ func runHolder(args []string) int {
 		return nil
 	})
 	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
+	flags.DurationVar(&o.WriteTimeout, "write-timeout", 0, "")
 	if flags.Parse(args) != nil {
 		return 2
 	}
@@ -48,14 +50,29 @@ func runHolder(args []string) int {
 	o.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, identity.Env("HOME")+"=") })
 	o.Ready = os.NewFile(3, "ready")
 	o.vtDelay, _ = time.ParseDuration(os.Getenv(vtDelayVar)) //nolint:forbidigo // as the home above
+	o.screenHold = os.Getenv(screenHoldVar)                  //nolint:forbidigo // as the home above
 	if Run(context.Background(), o) != nil {
 		return 1
 	}
 	return 0
 }
 
+// limited is a context whose limits a loaded machine does not reach: a test
+// fails on what it checks, or at its deadline, not because a process was held
+// back.
+func limited(t *testing.T) context.Context {
+	if runtest.ProductionLimits() {
+		return context.Background()
+	}
+	limit := waittest.Limit(t)
+	return WithLimits(context.Background(), Limits{Ready: limit, Dial: limit, Write: limit})
+}
+
 // vtDelayVar is the variable a test sets on a holder for Options.vtDelay.
 const vtDelayVar = "TEST_VT_DELAY"
+
+// screenHoldVar is the variable a test sets on a holder for Options.screenHold.
+const screenHoldVar = "TEST_SCREEN_HOLD"
 
 type fixture struct {
 	home, dir string
@@ -65,11 +82,7 @@ type fixture struct {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	// Sockets live under home: a path in t.TempDir can be too long for one.
-	home, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	// Runs before the home goes, after the holders in it were stopped.
 	logtest.OnFailure(t, home)
 	exe, err := os.Executable()
@@ -83,7 +96,7 @@ func newFixture(t *testing.T) fixture {
 func (f fixture) script(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(f.home, "shell-"+strings.ReplaceAll(t.Name(), "/", "-"))
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	if err := runtest.WriteExecutable(path, "#!/bin/sh\n"+body+"\n"); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -100,7 +113,7 @@ func (f fixture) options(id, shell string) StartOptions {
 // left when it ends.
 func (f fixture) start(t *testing.T, id, shell string) Started {
 	t.Helper()
-	s, err := Start(context.Background(), f.options(id, shell))
+	s, err := Start(limited(t), f.options(id, shell))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +129,7 @@ func killHolder(s Started) {
 
 func (f fixture) dial(t *testing.T, id string) *Conn {
 	t.Helper()
-	c, err := Dial(context.Background(), identity.HolderSocket(f.home, id), id)
+	c, err := Dial(limited(t), identity.HolderSocket(f.home, id), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,12 +153,8 @@ func waitExit(t *testing.T, c *Conn) Exit {
 // waitGone waits until process pid no longer exists.
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for syscall.Kill(pid, 0) == nil {
-		if time.Now().After(deadline) {
-			t.Fatalf("process %d is still running", pid)
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !waittest.Until(t, func() bool { return !runtest.Alive(pid) }) {
+		t.Fatalf("process %d is still running", pid)
 	}
 }
 
@@ -218,13 +227,7 @@ func TestStopKillsAfterGrace(t *testing.T) {
 	f.start(t, "term-00000003", f.script(t, "trap '' HUP; touch trapped; while :; do sleep 1; done"))
 	c := f.dial(t, "term-00000003")
 	// A hangup that comes before the trap is set ends the shell.
-	deadline := waittest.Deadline(t)
-	for _, err := os.Stat(filepath.Join(f.dir, "trapped")); err != nil; _, err = os.Stat(filepath.Join(f.dir, "trapped")) {
-		if time.Now().After(deadline) {
-			t.Fatal("the shell did not set its trap")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFile(t, filepath.Join(f.dir, "trapped"))
 	if err := c.Stop(100 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
@@ -247,9 +250,9 @@ func TestExitBySignal(t *testing.T) {
 func TestCommandReplacesTheShell(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	o := f.options("term-00000020", "/bin/sh")
+	o := f.options("term-00000020", runtest.LoginShell(t))
 	o.Command = []string{"/bin/sh", "-c", "exit 7"}
-	s, err := Start(context.Background(), o)
+	s, err := Start(limited(t), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,9 +267,9 @@ func TestCommandWords(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	got := filepath.Join(f.dir, "got")
-	o := f.options("term-00000021", "/bin/sh")
+	o := f.options("term-00000021", runtest.LoginShell(t))
 	o.Command = []string{"/bin/sh", "-c", `printf %s "$1" > "$2"`, "sh", `it's $HOME and two  spaces`, got}
-	s, err := Start(context.Background(), o)
+	s, err := Start(limited(t), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +358,7 @@ func TestHolderGone(t *testing.T) {
 	case <-waittest.After(t):
 		t.Fatal("want the connection ended with the holder")
 	}
-	if _, err := Dial(context.Background(), identity.HolderSocket(f.home, "term-00000008"), "term-00000008"); err == nil {
+	if _, err := Dial(limited(t), identity.HolderSocket(f.home, "term-00000008"), "term-00000008"); err == nil {
 		t.Fatal("want no holder to answer")
 	}
 }
@@ -364,7 +367,7 @@ func TestDialOtherTerminal(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.start(t, "term-00000009", f.script(t, "exec sleep 60"))
-	if _, err := Dial(context.Background(), identity.HolderSocket(f.home, "term-00000009"), "term-0000000a"); err == nil || !strings.Contains(err.Error(), "runs terminal term-00000009") {
+	if _, err := Dial(limited(t), identity.HolderSocket(f.home, "term-00000009"), "term-0000000a"); err == nil || !strings.Contains(err.Error(), "runs terminal term-00000009") {
 		t.Fatalf("want the other terminal refused, got %v", err)
 	}
 }
@@ -397,7 +400,7 @@ func TestDialVersions(t *testing.T) {
 			_ = writeFrame(c, frameHello, Hello{Version: tc.version, TerminalID: "term-0000000b"})
 			_, _, _ = readFrame(c) // until the daemon closes
 		}()
-		c, err := Dial(context.Background(), socket, "term-0000000b")
+		c, err := Dial(limited(t), socket, "term-0000000b")
 		if tc.drives {
 			if err != nil {
 				t.Fatalf("version %d: %v", tc.version, err)
@@ -426,7 +429,7 @@ func TestStartFails(t *testing.T) {
 	} {
 		o := f.options("term-0000000b", "/bin/sh")
 		tc.edit(&o)
-		if _, err := Start(context.Background(), o); err == nil || !strings.Contains(err.Error(), tc.error) {
+		if _, err := Start(limited(t), o); err == nil || !strings.Contains(err.Error(), tc.error) {
 			t.Errorf("%s: want an error naming %q, got %v", tc.name, tc.error, err)
 		}
 	}
@@ -488,7 +491,7 @@ func TestScreenKeptOnExit(t *testing.T) {
 			id := tc.id
 			o := f.options(id, f.script(t, tc.body))
 			o.HistoryLines = 1000
-			s, err := Start(context.Background(), o)
+			s, err := Start(limited(t), o)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -528,7 +531,7 @@ func TestScreenKeptWithVTBehind(t *testing.T) {
 			o := f.options(tc.id, f.script(t, tc.body))
 			o.HistoryLines = 1000
 			o.Env = append(o.Env, vtDelayVar+"="+(2*exitDrain).String())
-			s, err := Start(context.Background(), o)
+			s, err := Start(limited(t), o)
 			if err != nil {
 				t.Fatal(err)
 			}

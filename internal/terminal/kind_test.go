@@ -5,10 +5,11 @@ import (
 	"errors"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
+	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -16,7 +17,7 @@ import (
 func agentFixture(t *testing.T) (fixture, *Supervisor, string) {
 	t.Helper()
 	f := newFixture(t)
-	f.opts.Shell = "/bin/sh"
+	f.opts.Shell = runtest.LoginShell(t)
 	f.opts.AgentLaunch = func(context.Context, Terminal) (AgentLaunch, error) {
 		return AgentLaunch{Command: []string{"sleep", "60"}}, nil
 	}
@@ -127,7 +128,7 @@ func TestAgentLaunchFailureLeavesItFailed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
-	f.opts.Shell = "/bin/sh"
+	f.opts.Shell = runtest.LoginShell(t)
 	f.opts.AgentLaunch = func(context.Context, Terminal) (AgentLaunch, error) { return AgentLaunch{}, errors.New("unknown ACA") }
 	s := f.supervisor(t)
 	_, err := s.CreateAgent(ctx, f.project(t, "app"), "helper", t.TempDir(), noLink)
@@ -146,7 +147,7 @@ func TestAgentLaunchAskedAtEachLaunch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
-	f.opts.Shell = "/bin/sh"
+	f.opts.Shell = runtest.LoginShell(t)
 	var asked []string
 	f.opts.AgentLaunch = func(_ context.Context, row Terminal) (AgentLaunch, error) {
 		asked = append(asked, row.ID)
@@ -211,7 +212,7 @@ func TestProjectAndDaemonWorkSeesBothKinds(t *testing.T) {
 	if err != nil || got.State != StateRunning {
 		t.Fatalf("after reconciling: %+v, %v", got, err)
 	}
-	conn, err := holder.Dial(ctx, next.socket(row.ID), row.ID)
+	conn, err := holder.Dial(holder.WithLimits(ctx, holdertest.Limits(t)), next.socket(row.ID), row.ID)
 	if err != nil {
 		t.Fatalf("the holder is gone: %v", err)
 	}
@@ -223,15 +224,12 @@ func TestProjectAndDaemonWorkSeesBothKinds(t *testing.T) {
 
 func waitRowState(t *testing.T, s *Supervisor, id string, want State) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for {
-		got, err := s.store.row(context.Background(), id)
-		if err == nil && got.State == want {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("row %s: %+v, %v; want %s", id, got, err, want)
-		}
-		time.Sleep(10 * time.Millisecond)
+	var got Terminal
+	var err error
+	if !waittest.Until(t, func() bool {
+		got, err = s.store.row(context.Background(), id)
+		return err == nil && got.State == want
+	}) {
+		t.Fatalf("row %s: %+v, %v; want %s", id, got, err, want)
 	}
 }

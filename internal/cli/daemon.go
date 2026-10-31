@@ -229,8 +229,12 @@ func startRetrying(newCmd func() *exec.Cmd) (*exec.Cmd, error) {
 // waitAnswering waits until the daemon answers, giving up when it exits
 // (when exited is not nil) or after the start timeout.
 func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) {
-	timeout := cmp.Or(invocationOf(cmd).env.Timeouts.Start, startTimeout)
-	deadline := time.After(timeout)
+	timeouts := invocationOf(cmd).env.Timeouts
+	timeout := cmp.Or(timeouts.Start, startTimeout)
+	deadline := timeouts.StartExpired
+	if deadline == nil {
+		deadline = time.After(timeout)
+	}
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {

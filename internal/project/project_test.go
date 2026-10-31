@@ -9,17 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
-	gittest.Isolate()
-	m.Run()
+	os.Exit(runtest.Main(m))
 }
 
 func newStore(t *testing.T) *Store {
@@ -506,24 +505,30 @@ func TestOpenGitCloneFailureLeavesNothing(t *testing.T) {
 func TestOpenGitCloneKilled(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
-	remote := gittest.Bare(t, "app")
+	// A remote that never answers, as a hung ssh: the clone is always under
+	// way when it is killed. Its helper ends when git does.
+	dir := t.TempDir()
+	cloning := filepath.Join(dir, "cloning")
+	script := filepath.Join(dir, "remote.sh")
+	if err := os.WriteFile(script, []byte("touch "+cloning+"\ncat >/dev/null\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	deadline := waittest.Deadline(t)
+	defer cancel()
 	go func() {
 		defer cancel()
-		for time.Now().Before(deadline) {
-			if entries, _ := os.ReadDir(s.projectsDir); len(entries) > 0 {
-				return // git is cloning
-			}
-			time.Sleep(100 * time.Microsecond)
-		}
+		waittest.Until(t, func() bool {
+			_, err := os.Stat(cloning)
+			return err == nil
+		})
 	}()
-	if _, err := s.OpenGit(ctx, remote, "", io.Discard); err == nil {
-		t.Skip("the clone finished before it was killed")
+	if _, err := s.OpenGit(ctx, "ext::sh "+script, "app", io.Discard); err == nil {
+		t.Fatal("the clone of a remote that never answers succeeded")
 	}
 	if entries, _ := os.ReadDir(s.projectsDir); len(entries) > 0 {
 		t.Fatalf("the killed clone left %s", entries[0].Name())
 	}
+	remote := gittest.Bare(t, "app")
 	if o, err := s.OpenGit(context.Background(), remote, "", io.Discard); err != nil || !o.Cloned {
 		t.Fatalf("want a fresh clone, got %+v, %v", o, err)
 	}

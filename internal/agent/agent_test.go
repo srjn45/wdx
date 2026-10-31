@@ -15,13 +15,14 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
-	os.Exit(m.Run())
+	os.Exit(runtest.Main(m))
 }
 
 type fixture struct {
@@ -44,11 +45,7 @@ func newFixture(t *testing.T, script string) fixture {
 	}
 	t.Cleanup(func() { d.Close() })
 	// Holder sockets live under home: a path in t.TempDir can be too long.
-	home, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +56,8 @@ func newFixture(t *testing.T, script string) fixture {
 	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Script: script}
 	store := NewStore(d)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
-		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: "/bin/sh",
+		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: runtest.LoginShell(t),
+		StopReport: holdertest.Patience(t), Limits: holdertest.Limits(t),
 		AgentLaunch: Launches(store, []aca.AiCodingAgent{test}),
 	})
 	agents := NewManager(store, terminals, test)

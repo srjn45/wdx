@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -164,14 +163,13 @@ func (a *attachRun) input(s string) {
 	}
 	// Keys are typed one after another, not as one paste: the next waits
 	// until attach has read this one.
-	for deadline := waittest.Deadline(a.t); ; time.Sleep(time.Millisecond) {
-		n, err := unix.IoctlGetInt(int(a.tty.Fd()), unreadInput)
-		if err == nil && n == 0 {
-			return
-		}
-		if time.Now().After(deadline) {
-			a.t.Fatalf("attach did not read %q: %d bytes unread, %v", s, n, err)
-		}
+	var n int
+	var err error
+	if !eventually(a.t, func() bool {
+		n, err = unix.IoctlGetInt(int(a.tty.Fd()), unreadInput)
+		return err == nil && n == 0
+	}) {
+		a.t.Fatalf("attach did not read %q: %d bytes unread, %v", s, n, err)
 	}
 }
 
@@ -408,9 +406,14 @@ func TestTerminalAttachTitle(t *testing.T) {
 	if _, exit := a.wait(); exit != api.ExitOK {
 		t.Fatalf("got exit %d", exit)
 	}
-	a.mu.Lock()
-	raw := string(a.raw)
-	a.mu.Unlock()
+	// Attach has written all it writes, which this test may not have read yet.
+	var raw string
+	eventually(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		raw = string(a.raw)
+		return strings.Contains(raw, titlePop)
+	})
 	push, pop := strings.Index(raw, titlePush), strings.LastIndex(raw, titlePop)
 	set := strings.Index(raw, "\x1b]2;")
 	if push < 0 || set < push || pop < strings.LastIndex(raw, "\x1b]2;") {

@@ -9,11 +9,14 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // RunIfHolder runs a holder and exits when the test binary was started as
@@ -35,6 +38,7 @@ func RunIfHolder() {
 		return nil
 	})
 	flags.Int64Var(&o.HistoryLines, "history-lines", 0, "")
+	flags.DurationVar(&o.WriteTimeout, "write-timeout", 0, "")
 	if flags.Parse(os.Args[2:]) != nil {
 		os.Exit(2)
 	}
@@ -52,4 +56,20 @@ func RunIfHolder() {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// Limits are limits a loaded machine does not reach: a test fails on what it
+// checks, or at its deadline, not because a process was held back.
+func Limits(t *testing.T) holder.Limits {
+	limit := Patience(t)
+	return holder.Limits{Ready: limit, Dial: limit, Write: limit}
+}
+
+// Patience is such a limit for any other wait on a process; 0, wdx's own
+// limit, in a run that keeps those.
+func Patience(t *testing.T) time.Duration {
+	if runtest.ProductionLimits() {
+		return 0
+	}
+	return waittest.Limit(t)
 }

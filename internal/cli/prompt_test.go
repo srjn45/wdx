@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/pty"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // typed returns a terminal for a command's stdin, with answers already
@@ -135,7 +135,7 @@ func TestTerminalRemovePromptYes(t *testing.T) {
 	if out.exit != api.ExitOK || !strings.Contains(out.stderr, "stop it and remove it? [y/n]: ") || !strings.HasPrefix(out.stdout, "removed terminal build from app") {
 		t.Fatalf("want build removed, got %+v", out)
 	}
-	if syscall.Kill(*term.Pid, 0) == nil {
+	if runtest.Alive(*term.Pid) {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
 }

@@ -65,6 +65,12 @@ type Options struct {
 	// StopGrace is how long a shell has to end after it is hung up on;
 	// DefaultStopGrace when 0.
 	StopGrace time.Duration
+	// StopReport is how long past the grace stopping waits for the holder to
+	// report; stopReport when 0.
+	StopReport time.Duration
+	// Limits are how long holders and the supervisor wait for each other; the
+	// holder package's defaults when zero.
+	Limits holder.Limits
 	// AgentLaunch is what a row of KindAgent runs, asked at each launch,
 	// since an AI coding agent may start differently the second time.
 	AgentLaunch func(ctx context.Context, t Terminal) (AgentLaunch, error)
@@ -135,7 +141,7 @@ func (s *Supervisor) Close() {
 
 // StopWait bounds how long stopping a terminal takes.
 func (s *Supervisor) StopWait() time.Duration {
-	return s.opts.StopGrace + stopReport
+	return s.opts.StopGrace + cmp.Or(s.opts.StopReport, stopReport)
 }
 
 // Create adds a terminal named name, or a generated codename when name is
@@ -203,7 +209,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		agent, err = s.opts.AgentLaunch(ctx, t)
 	}
 	if err == nil {
-		started, err = holder.Start(ctx, holder.StartOptions{
+		started, err = holder.Start(holder.WithLimits(ctx, s.opts.Limits), holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
 			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, Command: agent.Command, Env: s.opts.Env,
 			HistoryLines: s.opts.HistoryLines,
@@ -211,7 +217,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	}
 	var conn *holder.Conn
 	if err == nil {
-		if conn, err = holder.Dial(ctx, s.socket(t.ID), t.ID); err != nil {
+		if conn, err = holder.Dial(holder.WithLimits(ctx, s.opts.Limits), s.socket(t.ID), t.ID); err != nil {
 			log.Error("holder started but does not answer, killing it", "terminal_id", t.ID, "holder_pid", started.HolderPID, "err", err)
 			kill(started.HolderPID, started.PID)
 			err = fmt.Errorf("the holder did not answer: %w", err)
@@ -481,7 +487,7 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 		// Nothing watches it, as after a launch that failed once its holder
 		// started: the holder may still run. One that does not answer is
 		// gone; its pids are never killed, as they may be another's now.
-		conn, err := holder.Dial(ctx, s.socket(t.ID), t.ID)
+		conn, err := holder.Dial(holder.WithLimits(ctx, s.opts.Limits), s.socket(t.ID), t.ID)
 		if err != nil {
 			log.Info("terminal has no holder to stop", "terminal_id", t.ID, "err", err)
 			_, err := s.store.ended(ctx, t.ID, time.Now())
@@ -531,7 +537,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		return err
 	}
 	for _, t := range list {
-		conn, err := holder.Dial(ctx, s.socket(t.ID), t.ID)
+		conn, err := holder.Dial(holder.WithLimits(ctx, s.opts.Limits), s.socket(t.ID), t.ID)
 		if err != nil {
 			log.Info("holder does not answer", "terminal_id", t.ID, "state", t.State, "err", err)
 			switch t.State {
@@ -607,7 +613,7 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 					return // the daemon is stopping; the holder runs on
 				}
 				log.Info("holder connection dropped, dialling again")
-				next, err := holder.Dial(ctx, s.socket(id), id)
+				next, err := holder.Dial(holder.WithLimits(ctx, s.opts.Limits), s.socket(id), id)
 				if err != nil && ctx.Err() != nil {
 					return // the daemon stopped meanwhile; the next one dials it
 				}

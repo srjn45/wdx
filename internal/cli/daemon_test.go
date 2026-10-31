@@ -12,7 +12,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/daemon"
@@ -209,10 +208,18 @@ func TestStartRetrying(t *testing.T) {
 	if err := exec.Command(path).Run(); !errors.Is(err, syscall.ETXTBSY) {
 		t.Skipf("this system does not refuse to run a file open for writing: %v", err)
 	}
-	time.AfterFunc(80*time.Millisecond, func() { f.Close() })
-	c, err := startRetrying(func() *exec.Cmd { return exec.Command(path) })
-	if err != nil {
-		t.Fatalf("still busy: %v", err)
+	attempts := 0
+	c, err := startRetrying(func() *exec.Cmd {
+		if attempts++; attempts == 2 {
+			// Held so that no parallel test's fork still holds the file.
+			syscall.ForkLock.RLock()
+			f.Close()
+			syscall.ForkLock.RUnlock()
+		}
+		return exec.Command(path)
+	})
+	if err != nil || attempts != 2 {
+		t.Fatalf("still busy after %d attempts: %v", attempts, err)
 	}
 	if err := c.Wait(); err != nil {
 		t.Fatal(err)

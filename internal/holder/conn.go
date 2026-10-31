@@ -9,24 +9,22 @@ import (
 	"time"
 )
 
-// dialTimeout bounds a dial and the hello that follows, unless ctx ends
-// sooner.
-const dialTimeout = 5 * time.Second
-
 // Conn is the daemon's connection to a holder. Nothing polls: the holder
 // pushes the shell's exit, and the connection ending means the holder is
 // gone or replaced it with a newer one.
 type Conn struct {
-	c      net.Conn
-	hello  Hello
-	exited chan Exit
-	done   chan struct{}
-	wmu    sync.Mutex
+	c            net.Conn
+	writeTimeout time.Duration
+	hello        Hello
+	exited       chan Exit
+	done         chan struct{}
+	wmu          sync.Mutex
 }
 
 // Dial connects to the holder of terminal id listening on socket.
 func Dial(ctx context.Context, socket, id string) (*Conn, error) {
-	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	limits := limitsOf(ctx)
+	ctx, cancel := context.WithTimeout(ctx, limits.Dial)
 	defer cancel()
 	c, err := dial(ctx, socket)
 	if err != nil {
@@ -44,7 +42,7 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 		return nil, err
 	}
 	_ = c.SetDeadline(time.Time{})
-	conn := &Conn{c: c, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{})}
+	conn := &Conn{c: c, writeTimeout: limits.Write, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{})}
 	if hello.Exited != nil {
 		conn.exited <- *hello.Exited
 	}
@@ -141,6 +139,6 @@ func (c *Conn) write(t frameType, payload any) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 	// Fails only on a closed connection, which the write reports.
-	_ = c.c.SetWriteDeadline(time.Now().Add(writeTimeout))
+	_ = c.c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 	return writeFrame(c.c, t, payload)
 }

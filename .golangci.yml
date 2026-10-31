@@ -103,6 +103,10 @@ linters:
           msg: tests run in parallel; pass settings in through cli.Env
         - pattern: ^log\.
           msg: log with logging.FromContext(ctx)
+        - pattern: ^time\.Sleep$
+          msg: tests wait on what they need with waittest, never a fixed time
+        - pattern: ^time\.Since$
+          msg: a test's outcome never depends on how long something took
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -122,9 +126,13 @@ linters:
         text: only main (and tests )?reads? the
       # Tests and their helpers pass the test process's environment on to
       # the processes they start, and set it up for git.
-      - path: (_test\.go$|^internal/gittest/|^internal/holder/holdertest/)
+      - path: (_test\.go$|^internal/gittest/|^internal/holder/holdertest/|^internal/runtest/)
         linters: [forbidigo]
         text: only main and tests read the whole environment
+      # Only tests are held to these: code waits and measures as it must.
+      - path-except: _test\.go$
+        linters: [forbidigo]
+        text: (never a fixed time|how long something took)
       # The tests' request helpers read and close the body themselves.
       - path: _test\.go$
         linters: [bodyclose]

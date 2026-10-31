@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -322,7 +323,7 @@ func TestRemoveAgent(t *testing.T) {
 	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultRemoved || r.JSON200.Agent.Id != a.Id {
 		t.Fatalf("remove: %v %s", err, r.Body)
 	}
-	if syscall.Kill(*a.Pid, 0) == nil {
+	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want agent process %d gone", *a.Pid)
 	}
 	if got := td.agents(t, nil); len(got) != 0 {
@@ -390,7 +391,7 @@ func TestCloseAndOpenProjectWithAgents(t *testing.T) {
 	if s := u.JSON200.Stopped; s == nil || len(*s) != 1 || (*s)[0].Id != shell.Id {
 		t.Fatalf("stopped terminals: %+v", s)
 	}
-	if syscall.Kill(*a.Pid, 0) == nil {
+	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want agent process %d gone", *a.Pid)
 	}
 

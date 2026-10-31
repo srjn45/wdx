@@ -12,6 +12,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/observe"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // fakeRuntimeScript answers like Docker or Podman for the commands the
@@ -53,9 +54,9 @@ type fakeRuntime struct {
 
 func newFakeRuntime(t *testing.T, name string) *fakeRuntime {
 	t.Helper()
-	f := &fakeRuntime{name: name, state: t.TempDir(), ports: observe.Ports{Grafana: freePort(t), OTLP: freePort(t)}}
+	f := &fakeRuntime{name: name, state: t.TempDir(), ports: fakePorts}
 	script := fmt.Sprintf(fakeRuntimeScript, f.state, observe.Container, identity.Name+".logs")
-	if err := os.WriteFile(filepath.Join(f.state, name), []byte(script), 0o700); err != nil {
+	if err := runtest.WriteExecutable(filepath.Join(f.state, name), script); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -63,6 +64,9 @@ func newFakeRuntime(t *testing.T, name string) *fakeRuntime {
 
 func (f *fakeRuntime) env(env *Env) {
 	env.ObservePorts = f.ports
+	// The fake runtime listens on nothing, so whether these are free says
+	// nothing, and another test or test run may be using them.
+	env.ObservePortCheck = func(int) error { return nil }
 	env.LookPath = func(file string) (string, error) {
 		if file == f.name {
 			return filepath.Join(f.state, f.name), nil
@@ -87,15 +91,9 @@ func (f *fakeRuntime) write(t *testing.T, name, content string) {
 	}
 }
 
-func freePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
-}
+// fakePorts are the ports the fake runtime is told to publish: nothing ever
+// listens on them.
+var fakePorts = observe.Ports{Grafana: 33000, OTLP: 34318}
 
 func TestObserveStartAndStop(t *testing.T) {
 	t.Parallel()
@@ -210,15 +208,20 @@ func TestObservePortInUse(t *testing.T) {
 	t.Parallel()
 	home := shortHome(t)
 	f := newFakeRuntime(t, "docker")
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", f.ports.OTLP))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer l.Close()
+	taken := l.Addr().(*net.TCPAddr).Port
+	f.ports = observe.Ports{Grafana: taken, OTLP: taken}
 
-	v, exit := wdxJSONWith(t, home, f.env, "observe", "start")
+	v, exit := wdxJSONWith(t, home, func(env *Env) {
+		f.env(env)
+		env.ObservePortCheck = nil // this is what is tested: the real one
+	}, "observe", "start")
 	wantError(t, v, exit, api.ErrorCodePortInUse, api.ExitRejected)
-	if port, _ := v.Details["port"].(float64); int(port) != f.ports.OTLP {
+	if port, _ := v.Details["port"].(float64); int(port) != taken {
 		t.Fatalf("want the port in details, got %+v", v.Details)
 	}
 	if f.read(t, "run") != "" {

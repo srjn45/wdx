@@ -19,18 +19,18 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/daemon"
-	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/style"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
-	gittest.Isolate()
-	m.Run()
+	os.Exit(runtest.Main(m))
 }
 
 // testShell is the shell of the test terminals, interactive with the
@@ -42,15 +42,22 @@ type testHome struct {
 	home, socket string
 }
 
+// removeAgents removes agents and all under them, children first: a list holds
+// the top level only, and a parent with children would stay as a tombstone.
+func removeAgents(ctx context.Context, c *client.Client, agents []api.Agent) {
+	for _, a := range agents {
+		if a.Children != nil {
+			removeAgents(ctx, c, *a.Children)
+		}
+		_, _ = c.DeleteAgent(ctx, "id:"+a.Id, "", "", true)
+	}
+}
+
 // newTestHome returns a home no daemon serves yet.
 func newTestHome(t *testing.T) testHome {
 	t.Helper()
 	// A socket under t.TempDir() can be longer than macOS allows.
-	dir, err := os.MkdirTemp("/tmp", "tide")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := runtest.Dir(t)
 	home := t.TempDir()
 	logtest.OnFailure(t, home)
 	return testHome{home: home, socket: filepath.Join(dir, "wdx.sock")}
@@ -70,7 +77,7 @@ func (h testHome) logger(t *testing.T, process string) *slog.Logger {
 func (h testHome) serve(t *testing.T) (stop func()) {
 	t.Helper()
 	shell := filepath.Join(t.TempDir(), "shell")
-	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+	if err := runtest.WriteExecutable(shell, testShell); err != nil {
 		t.Fatal(err)
 	}
 	exe, err := os.Executable()
@@ -81,7 +88,8 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"),
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
-		ACA: &acatest.ACA{},
+		ACA:        &acatest.ACA{},
+		StopReport: holdertest.Patience(t), HolderLimits: holdertest.Limits(t),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,9 +104,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 			}
 		}
 		if list, err := c.ListAgents(bg, "", ""); err == nil {
-			for _, a := range list.Agents {
-				_, _ = c.DeleteAgent(bg, "id:"+a.Id, "", "", true)
-			}
+			removeAgents(bg, c, list.Agents)
 		}
 		cancel()
 		if err := <-served; err != nil {
@@ -136,7 +142,7 @@ func (h testHome) newProject(t *testing.T, name string, state api.ProjectState) 
 // listed.
 func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
-	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
 	m.tick = noTick
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.

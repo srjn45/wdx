@@ -17,12 +17,13 @@ import (
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
-	os.Exit(m.Run())
+	os.Exit(runtest.Main(m))
 }
 
 // driver runs a pane as a Bubble Tea program does: commands in goroutines,
@@ -50,13 +51,9 @@ type shell struct {
 func startShell(t *testing.T, script string) shell {
 	t.Helper()
 	// Sockets live under home: a path in t.TempDir can be too long for one.
-	home, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	path := filepath.Join(home, "shell")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+	if err := runtest.WriteExecutable(path, "#!/bin/sh\n"+script+"\n"); err != nil {
 		t.Fatal(err)
 	}
 	exe, err := os.Executable()
@@ -64,7 +61,7 @@ func startShell(t *testing.T, script string) shell {
 		t.Fatal(err)
 	}
 	sh := shell{t: t, home: home, id: "term-0000a001"}
-	started, err := holder.Start(context.Background(), holder.StartOptions{
+	started, err := holder.Start(holder.WithLimits(context.Background(), holdertest.Limits(t)), holder.StartOptions{
 		Executable: exe, Home: home, ID: sh.id, Project: "wdx", Dir: t.TempDir(), Shell: path,
 		Env: []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}, HistoryLines: 100_000,
 	})
@@ -87,16 +84,13 @@ func (sh shell) fetch(from int64, count int) (History, error) {
 // waitHistory waits until the terminal's history holds lines lines.
 func (sh shell) waitHistory(lines int64) {
 	sh.t.Helper()
-	deadline := waittest.Deadline(sh.t)
-	for {
-		h, err := holder.TailHistory(holder.HistoryDir(sh.home, sh.id), 1)
-		if err == nil && h.Next >= lines {
-			return
-		}
-		if time.Now().After(deadline) {
-			sh.t.Fatalf("history stays at %d lines", h.Next)
-		}
-		time.Sleep(20 * time.Millisecond)
+	var h holder.History
+	if !waittest.Until(sh.t, func() bool {
+		var err error
+		h, err = holder.TailHistory(holder.HistoryDir(sh.home, sh.id), 1)
+		return err == nil && h.Next >= lines
+	}) {
+		sh.t.Fatalf("history stays at %d lines", h.Next)
 	}
 }
 
@@ -109,7 +103,7 @@ func (sh shell) attach() *driver {
 func (sh shell) attachFetching(fetch FetchFunc) *driver {
 	t := sh.t
 	t.Helper()
-	s, err := holder.Attach(context.Background(), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 80, Rows: 24}, 0)
+	s, err := holder.Attach(holder.WithLimits(context.Background(), holdertest.Limits(sh.t)), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 80, Rows: 24}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +222,7 @@ func TestPaneFollowsTerminalSize(t *testing.T) {
 	sh := startShell(t, interactive)
 	d := sh.attach()
 	d.waitText("$")
-	other, err := holder.Attach(context.Background(), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 100, Rows: 30}, 0)
+	other, err := holder.Attach(holder.WithLimits(context.Background(), holdertest.Limits(sh.t)), identity.HolderSocket(sh.home, sh.id), sh.id, holder.Size{Cols: 100, Rows: 30}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

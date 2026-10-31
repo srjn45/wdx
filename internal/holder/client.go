@@ -35,20 +35,22 @@ type Session struct {
 	size    Size
 	exit    *Exit
 
-	wmu sync.Mutex
+	writeTimeout time.Duration
+	wmu          sync.Mutex
 }
 
 // Attach attaches to the holder of terminal id listening on socket, at
 // size, after history lines of history: all of it when negative. The
 // terminal takes size, as the latest client to attach.
 func Attach(ctx context.Context, socket, id string, size Size, history int) (*Session, error) {
-	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	limits := limitsOf(ctx)
+	ctx, cancel := context.WithTimeout(ctx, limits.Dial)
 	defer cancel()
 	c, err := dial(ctx, socket)
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{conn: c}
+	s := &Session{conn: c, writeTimeout: limits.Write}
 	if err := s.attach(id, size, history); err != nil {
 		c.Close()
 		return nil, err
@@ -170,7 +172,7 @@ func (s *Session) write(t frameType, body []byte) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	// Fails only on a closed connection, which the write reports.
-	_ = s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 	return writeRaw(s.conn, t, body)
 }
 

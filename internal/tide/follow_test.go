@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/holder"
+	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -25,7 +27,7 @@ type program struct {
 // follow starts tide on h, its stream followed, at 128 × 24.
 func (h testHome) follow(t *testing.T) *program {
 	t.Helper()
-	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
 	t.Cleanup(func() {
 		m.unfollow()
 		m.detachAll()

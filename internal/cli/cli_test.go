@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -16,7 +15,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -28,10 +26,11 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
-	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/service"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -44,59 +43,35 @@ var wdxBinary, releaseBinary string
 const releaseVersion = "0.2.0"
 
 func TestMain(m *testing.M) {
-	gittest.Isolate()
-	sweep()
-	dir, err := os.MkdirTemp("", "wdx-bin")
+	done := runtest.Start()
+	dir, err := os.MkdirTemp("", "bin")
 	if err != nil {
 		panic(err)
 	}
 	wdxBinary = filepath.Join(dir, identity.Name)
-	if out, err := exec.Command("go", "build", "-o", wdxBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
+	build := func(args ...string) *exec.Cmd {
+		c := exec.Command("go", append(append([]string{"build"}, args...), "../../cmd/wdx")...)
+		c.Env = runtest.OriginalEnviron() // the go command's caches are the machine's
+		return c
+	}
+	if out, err := build("-o", wdxBinary).CombinedOutput(); err != nil {
 		panic(fmt.Sprintf("build wdx: %v\n%s", err, out))
 	}
 	releaseBinary = filepath.Join(dir, "release", identity.Name)
 	ldflags := "-X github.com/srjn45/wdx/internal/identity.Version=" + releaseVersion
-	if out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", releaseBinary, "../../cmd/wdx").CombinedOutput(); err != nil {
+	if out, err := build("-ldflags", ldflags, "-o", releaseBinary).CombinedOutput(); err != nil {
 		panic(fmt.Sprintf("build wdx %s: %v\n%s", releaseVersion, err, out))
 	}
 	code := m.Run()
 	os.RemoveAll(dir)
-	os.Exit(code)
-}
-
-// sweep removes what test runs killed before their cleanup left behind over
-// an hour ago, in any package: the binaries built here, and the homes under
-// /tmp with the daemons still serving them. Directories a test made
-// read-only are made writable first.
-func sweep() {
-	bins, _ := filepath.Glob(filepath.Join(os.TempDir(), "wdx-bin[0-9]*"))
-	homes, _ := filepath.Glob("/tmp/wdx[0-9]*")
-	for _, dir := range append(bins, homes...) {
-		if info, err := os.Stat(dir); err != nil || time.Since(info.ModTime()) < time.Hour {
-			continue
-		}
-		if pid, _ := daemon.Running(dir); pid != 0 {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
-		}
-		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err == nil && d.IsDir() {
-				_ = os.Chmod(path, 0o700)
-			}
-			return nil
-		})
-		_ = os.RemoveAll(dir)
-	}
+	os.Exit(done(code))
 }
 
 // shortHome returns an empty home under /tmp: its socket path must fit the
 // 104 bytes macOS allows, which a path under t.TempDir() may exceed.
 func shortHome(t *testing.T) string {
 	t.Helper()
-	home, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	// Runs before the home goes, after the daemon and holders in it stopped.
 	logtest.OnFailure(t, home)
 	// Daemons the wdx binary starts read it: they must not send metrics to
@@ -119,7 +94,7 @@ func testConfig(home string) config.Config {
 // testShell is the shell of every test terminal: it stays alive until it
 // is hung up on. Given a command, as an agent's holder gives it, it runs it
 // as a login shell does, skipping the -l and -i.
-const testShell = "#!/bin/sh\nif [ \"$3\" = -c ]; then exec /bin/sh -c \"$4\"; fi\nexec sleep 60\n"
+const testShell = runtest.LoginShellScript
 
 // newHome returns a home with a daemon serving it in this process until the
 // test ends. Its terminals run testShell in holders of the wdx binary, and
@@ -134,7 +109,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 	t.Helper()
 	home := shortHome(t)
 	shell := filepath.Join(t.TempDir(), "shell")
-	if err := os.WriteFile(shell, []byte(script), 0o755); err != nil {
+	if err := runtest.WriteExecutable(shell, script); err != nil {
 		t.Fatal(err)
 	}
 	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
@@ -144,7 +119,8 @@ func newHomeWithShell(t *testing.T, script string) string {
 		Home: home, Log: log,
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
-		ACA:                  &acatest.ACA{Launches: launchesPath(home)},
+		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),
+		ACA: &acatest.ACA{Launches: launchesPath(home)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -168,15 +144,24 @@ func launchesPath(home string) string {
 	return filepath.Join(home, "test-launches")
 }
 
+// removeAgents removes agents and all under them, children first: a list holds
+// the top level only, and a parent with children would stay as a tombstone.
+func removeAgents(ctx context.Context, c *client.Client, agents []api.Agent) {
+	for _, a := range agents {
+		if a.Children != nil {
+			removeAgents(ctx, c, *a.Children)
+		}
+		_, _ = c.DeleteAgent(ctx, "id:"+a.Id, "", "", true) // the daemon logs a failure, and the test fails on a leftover holder
+	}
+}
+
 // removeTerminals removes every terminal and agent in home, stopping the live
 // ones, so no holder outlives the test.
 func removeTerminals(home string) {
 	ctx := context.Background()
 	c := client.New(client.Options{Socket: identity.SocketPath(home), DebugID: logging.NewDebugID()})
 	if agents, err := c.ListAgents(ctx, "", ""); err == nil {
-		for _, a := range agents.Agents {
-			_, _ = c.DeleteAgent(ctx, "id:"+a.Id, "", "", true) // as for terminals below
-		}
+		removeAgents(ctx, c, agents.Agents)
 	}
 	list, err := c.ListTerminals(ctx, "", "")
 	if err != nil {
@@ -210,8 +195,11 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
-	// A daemon slowed down by the other tests still answers completions.
+	// A machine slowed down by other tests slows a run rather than fails it.
 	env.Timeouts.Completion = waittest.Limit(t)
+	limit := holdertest.Patience(t)
+	env.Timeouts.Start, env.Timeouts.AttachExit = limit, limit
+	env.Timeouts.Holder = holdertest.Limits(t)
 	adjust(&env)
 	exit := Run(context.Background(), args, env)
 	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
@@ -232,15 +220,9 @@ type logLine struct {
 	Response json.RawMessage `json:"response"`
 }
 
-// wantLogged checks that the run that produced out is logged in home from the
-// command line it received to the response it returned, with the daemon's
-// lines for its requests under the same debug id, and that every line in the
-// log is a JSON object tagged with a debug id and a process.
-func wantLogged(t *testing.T, home string, args []string, out output) {
+// logLines reads the lines logged in home.
+func logLines(t *testing.T, home string, args []string) []logLine {
 	t.Helper()
-	if info, err := os.Stat(home); err != nil || !info.IsDir() {
-		return // nowhere to log: the run must still work, which its test checks
-	}
 	files, err := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("%v: no log file in %s", args, home)
@@ -259,7 +241,39 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			lines = append(lines, l)
 		}
 	}
+	return lines
+}
 
+// runLogged returns the CLI's lines of the run id, and how many requests the
+// CLI says it made and the daemon says it served under it.
+func runLogged(lines []logLine, id string) (run []logLine, called, served int) {
+	for _, l := range lines {
+		if l.DebugID != id {
+			continue
+		}
+		switch {
+		case l.Process == "cli":
+			run = append(run, l)
+			if l.Msg == "daemon called" {
+				called++
+			}
+		case l.Msg == "request returned":
+			served++
+		}
+	}
+	return run, called, served
+}
+
+// wantLogged checks that the run that produced out is logged in home from the
+// command line it received to the response it returned, with the daemon's
+// lines for its requests under the same debug id, and that every line in the
+// log is a JSON object tagged with a debug id and a process.
+func wantLogged(t *testing.T, home string, args []string, out output) {
+	t.Helper()
+	if info, err := os.Stat(home); err != nil || !info.IsDir() {
+		return // nowhere to log: the run must still work, which its test checks
+	}
+	lines := logLines(t, home, args)
 	// Runs of the same command line in one home are sequential, so the last
 	// one received is this one; a daemon started in the home runs others.
 	pid := cmp.Or(out.pid, os.Getpid())
@@ -274,20 +288,15 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 		}
 	}
 	var run []logLine
-	called, served := 0, 0
-	for _, l := range lines {
-		if l.DebugID != id {
-			continue
-		}
-		switch {
-		case l.Process == "cli":
-			run = append(run, l)
-			if l.Msg == "daemon called" {
-				called++
-			}
-		case l.Msg == "request returned":
-			served++
-		}
+	var called, served int
+	// A daemon learns that a client has left, as tide leaves its stream, only
+	// after the client has gone, and logs that request's end then.
+	eventually(t, func() bool {
+		run, called, served = runLogged(logLines(t, home, args), id)
+		return called == served
+	})
+	if len(run) == 0 {
+		t.Fatalf("%v: nothing logged under %q", args, id)
 	}
 	first, last := run[0], run[len(run)-1]
 	if first.Msg != "command received" || last.Msg != "command returned" {
@@ -494,14 +503,7 @@ func wdxJSON(t *testing.T, home string, args ...string) (jsonOutput, int) {
 
 // eventually polls ok until it holds, until t's deadline, and reports
 // whether it did.
-func eventually(t *testing.T, ok func() bool) bool {
-	for deadline := waittest.Deadline(t); !ok(); time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			return false
-		}
-	}
-	return true
-}
+func eventually(t *testing.T, ok func() bool) bool { return waittest.Until(t, ok) }
 
 func wdxJSONWith(t *testing.T, home string, adjust func(*Env), args ...string) (jsonOutput, int) {
 	t.Helper()

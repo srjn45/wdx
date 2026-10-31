@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -235,7 +235,7 @@ func TestAgentRemove(t *testing.T) {
 	if exit != api.ExitOK || v.Result != "removed" || v.Agent.Id != a.Id {
 		t.Fatalf("want helper removed, got exit %d, %+v", exit, v)
 	}
-	if syscall.Kill(*a.Pid, 0) == nil {
+	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want process %d gone", *a.Pid)
 	}
 	v, exit = wdxJSON(t, home, "agent", "remove", "--id", a.Id, "--cancel")
@@ -325,7 +325,7 @@ func TestProjectCloseAndRemoveWithAgents(t *testing.T) {
 	if exit != api.ExitOK || v.Result != "closed" || len(v.StoppedAgents) != 1 || v.StoppedAgents[0].Id != a.Id || v.StoppedAgents[0].State != api.AgentStateStopped {
 		t.Fatalf("want app closed with helper stopped, got exit %d, %+v", exit, v)
 	}
-	if syscall.Kill(*a.Pid, 0) == nil {
+	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want process %d gone", *a.Pid)
 	}
 	v, exit = wdxJSON(t, home, "project", "open", "--local", app)

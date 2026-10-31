@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // in runs a command with dir as the working directory.
@@ -223,7 +223,7 @@ func TestTerminalRemove(t *testing.T) {
 	if exit != api.ExitOK || v.Result != "removed" || v.Terminal.Id != term.Id {
 		t.Fatalf("want build removed, got exit %d, %+v", exit, v)
 	}
-	if syscall.Kill(*term.Pid, 0) == nil {
+	if runtest.Alive(*term.Pid) {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
 	v, exit = wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--cancel")

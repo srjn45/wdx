@@ -21,12 +21,13 @@ import (
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/logtest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
-	os.Exit(m.Run())
+	os.Exit(runtest.Main(m))
 }
 
 // shellScript is the shell of every test terminal: it runs the file run in
@@ -48,22 +49,21 @@ func newFixture(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { d.Close() })
 	// Holder sockets live under home: a path in t.TempDir can be too long.
-	home, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	// Runs before the home goes, after the holders in it were stopped.
 	logtest.OnFailure(t, home)
 	shell := filepath.Join(home, "shell")
-	if err := os.WriteFile(shell, []byte(shellScript), 0o755); err != nil {
+	if err := runtest.WriteExecutable(shell, shellScript); err != nil {
 		t.Fatal(err)
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{db: d, home: home, opts: Options{Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: shell}}
+	return fixture{db: d, home: home, opts: Options{
+		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: shell,
+		StopReport: holdertest.Patience(t), Limits: holdertest.Limits(t),
+	}}
 }
 
 // supervisor returns a Supervisor that removes every terminal it can when
@@ -132,34 +132,27 @@ func waitState(t *testing.T, s *Supervisor, id string, state State) Terminal {
 // describes, and returns it.
 func waitTerminal(t *testing.T, s *Supervisor, id, what string, ok func(Terminal) bool) Terminal {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for {
-		term, err := s.store.Get(context.Background(), id)
-		if err != nil {
+	var term Terminal
+	if !waittest.Until(t, func() bool {
+		var err error
+		if term, err = s.store.Get(context.Background(), id); err != nil {
 			t.Fatal(err)
 		}
-		if ok(term) {
-			return term
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("want terminal %s %s, got %+v", id, what, term)
-		}
-		time.Sleep(20 * time.Millisecond)
+		return ok(term)
+	}) {
+		t.Fatalf("want terminal %s %s, got %+v", id, what, term)
 	}
+	return term
 }
 
 func alive(pid int) bool {
-	return pid > 0 && syscall.Kill(pid, 0) == nil
+	return pid > 0 && runtest.Alive(pid)
 }
 
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for alive(pid) {
-		if time.Now().After(deadline) {
-			t.Fatalf("process %d is still running", pid)
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !waittest.Until(t, func() bool { return !alive(pid) }) {
+		t.Fatalf("process %d is still running", pid)
 	}
 }
 
@@ -282,10 +275,11 @@ func TestCreateHolderDoesNotAnswer(t *testing.T) {
 	pidFile := filepath.Join(f.home, "holder.pid")
 	mute := filepath.Join(f.home, "mute")
 	script := fmt.Sprintf("#!/bin/sh\necho $$ >%s\necho \"{\\\"pid\\\": $$}\" >&3\nexec sleep 60\n", pidFile)
-	if err := os.WriteFile(mute, []byte(script), 0o755); err != nil {
+	if err := runtest.WriteExecutable(mute, script); err != nil {
 		t.Fatal(err)
 	}
 	f.opts.Executable = mute
+	f.opts.Limits.Dial = 100 * time.Millisecond // nothing will answer
 	s := f.supervisor(t)
 
 	_, err := s.Create(context.Background(), f.project(t, "warden"), "", dir(t, ""))
@@ -310,7 +304,7 @@ func TestCreateHolderDoesNotAnswer(t *testing.T) {
 func TestStopKillsHolderThatDoesNotReport(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.opts.StopGrace = 100 * time.Millisecond
+	f.opts.StopGrace, f.opts.StopReport = 100*time.Millisecond, 100*time.Millisecond
 	s := f.supervisor(t)
 	term := create(t, s, f.project(t, "warden"), "", dir(t, ""))
 	if err := syscall.Kill(term.HolderPID, syscall.SIGSTOP); err != nil {
@@ -408,42 +402,65 @@ func TestStopAndStartProject(t *testing.T) {
 }
 
 // TestStopProjectTogether stops a project whose shells ignore the hangup:
-// they are killed after one grace, not one after another.
+// each is hung up on while the others still run, not one after another's
+// grace. Each shell notes the hangup and ends only when told to, so that the
+// grace, long enough never to pass here, is never waited out.
 func TestStopProjectTogether(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	const grace = time.Second
-	f.opts.StopGrace = grace
+	f.opts.StopGrace = time.Minute
 	s := f.supervisor(t)
 	p := f.project(t, "warden")
 	var dirs []string
+	var terms []Terminal
 	for _, name := range []string{"a", "b", "c"} {
-		d := dir(t, "trap '' HUP; touch trapped")
-		create(t, s, p, name, d)
+		d := dir(t, "trap 'touch hungup' HUP; touch trapped; until [ -f quit ]; do sleep 0.01; done; exit 0")
+		terms = append(terms, create(t, s, p, name, d))
 		dirs = append(dirs, d)
 	}
 	for _, d := range dirs {
 		waitFile(t, filepath.Join(d, "trapped")) // a hangup before the trap ends the shell at once
 	}
-	start := time.Now()
-	stopped, err := s.StopProject(context.Background(), p)
-	if err != nil || len(stopped) != 3 {
-		t.Fatalf("want 3 stopped, got %+v, %v", stopped, err)
+	type result struct {
+		stopped []Terminal
+		err     error
 	}
-	if took := time.Since(start); took > 2*grace {
-		t.Fatalf("stopping took %v, more than one grace of %v each", took, grace)
+	done := make(chan result, 1)
+	go func() {
+		stopped, err := s.StopProject(context.Background(), p)
+		done <- result{stopped, err}
+	}()
+	for _, d := range dirs {
+		waitFile(t, filepath.Join(d, "hungup"))
+	}
+	for _, term := range terms {
+		if !runtest.Alive(term.PID) {
+			t.Fatalf("shell %s ended before the last was hung up on", term.Name)
+		}
+	}
+	for _, d := range dirs {
+		if err := os.WriteFile(filepath.Join(d, "quit"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case r := <-done:
+		if r.err != nil || len(r.stopped) != 3 {
+			t.Fatalf("want 3 stopped, got %+v, %v", r.stopped, r.err)
+		}
+	case <-waittest.After(t):
+		t.Fatal("the project did not stop")
 	}
 }
 
 // waitFile waits for path to exist.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
-		if time.Now().After(deadline) {
-			t.Fatalf("no %s", path)
-		}
-		time.Sleep(10 * time.Millisecond)
+	if !waittest.Until(t, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	}) {
+		t.Fatalf("no %s", path)
 	}
 }
 
@@ -525,7 +542,7 @@ func TestCloseDuringRedial(t *testing.T) {
 		}
 	}()
 	// A second daemon's connection drops the watcher's.
-	other, err := holder.Dial(context.Background(), moved, term.ID)
+	other, err := holder.Dial(holder.WithLimits(context.Background(), holdertest.Limits(t)), moved, term.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ package holder
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,10 +33,6 @@ import (
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
 )
-
-// writeTimeout bounds a write to the daemon, so one that stopped reading
-// cannot stall the holder.
-const writeTimeout = 5 * time.Second
 
 // Options say what a holder runs.
 type Options struct {
@@ -62,8 +59,15 @@ type Options struct {
 	// Ready is told the shell's pid once it runs, or why it did not start,
 	// and then closed.
 	Ready io.WriteCloser
+	// WriteTimeout bounds a write to a peer and the wait for its first frame;
+	// writeTimeout when 0.
+	WriteTimeout time.Duration
 	// vtDelay holds the vt back at the start, for tests of it falling behind.
 	vtDelay time.Duration
+	// screenHold, for tests of what must not wait for the vt, holds the screen
+	// from the start, as the vt does for each chunk, until this file exists;
+	// the file with ".held" added says it is held.
+	screenHold string
 }
 
 // readyMessage is the one line a holder writes on its ready pipe.
@@ -115,13 +119,15 @@ type holder struct {
 	// vtMoved is told when vtPos moves or vtStopped is set.
 	vtMoved sync.Cond
 	// vtStopped is set when the vt stops following the spool.
-	vtStopped bool
-	vtDelay   time.Duration
-	screen    *screen.Screen
-	size      Size
-	vtPos     int64
-	history   *historyWriter // nil when history is off
-	lag       lag
+	vtStopped    bool
+	vtDelay      time.Duration
+	screenHold   string
+	writeTimeout time.Duration
+	screen       *screen.Screen
+	size         Size
+	vtPos        int64
+	history      *historyWriter // nil when history is off
+	lag          lag
 	// nextLine is the number the next history line will take: written
 	// with h.screenMu held, read without by hello, which must not wait
 	// for the vt.
@@ -187,20 +193,22 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		cmd.Env = append(cmd.Env, identity.Env("AGENT_ID")+"="+o.AgentID)
 	}
 	h := &holder{
-		id:       o.ID,
-		log:      log,
-		listener: listener,
-		cmd:      cmd,
-		ended:    make(chan struct{}),
-		drained:  make(chan struct{}),
-		followed: make(chan struct{}),
-		released: make(chan struct{}),
-		size:     startSize,
-		lag:      lag{limit: lagLimit},
-		answers:  make(chan []byte, answerQueue),
-		clients:  map[*client]bool{},
-		left:     make(chan struct{}),
-		vtDelay:  o.vtDelay,
+		id:           o.ID,
+		log:          log,
+		listener:     listener,
+		cmd:          cmd,
+		ended:        make(chan struct{}),
+		drained:      make(chan struct{}),
+		followed:     make(chan struct{}),
+		released:     make(chan struct{}),
+		size:         startSize,
+		lag:          lag{limit: lagLimit},
+		answers:      make(chan []byte, answerQueue),
+		clients:      map[*client]bool{},
+		left:         make(chan struct{}),
+		vtDelay:      o.vtDelay,
+		screenHold:   o.screenHold,
+		writeTimeout: cmp.Or(o.WriteTimeout, writeTimeout),
 	}
 	h.vtMoved.L = &h.screenMu
 	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
@@ -378,6 +386,7 @@ func (h *holder) follow() {
 		h.vtMoved.Broadcast()
 	}()
 	time.Sleep(h.vtDelay)
+	h.holdScreen()
 	buf := make([]byte, 32<<10)
 	for {
 		wait := h.spool.wait()
@@ -390,6 +399,18 @@ func (h *holder) follow() {
 			return // the spool is finished and read
 		}
 		<-wait
+	}
+}
+
+func (h *holder) holdScreen() {
+	if h.screenHold == "" {
+		return
+	}
+	h.screenMu.Lock()
+	defer h.screenMu.Unlock()
+	_ = os.WriteFile(h.screenHold+".held", nil, 0o600)
+	for _, err := os.Stat(h.screenHold); err != nil; _, err = os.Stat(h.screenHold) {
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -569,7 +590,7 @@ func (h *holder) sendExit() {
 // write sends a frame to c; h.mu must be held.
 func (h *holder) write(c net.Conn, t frameType, payload any) error {
 	// Fails only on a closed connection, which the write reports.
-	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
+	_ = c.SetWriteDeadline(time.Now().Add(h.writeTimeout))
 	return writeFrame(c, t, payload)
 }
 
@@ -592,7 +613,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 		return
 	}
 	// Fails only on a closed connection, which the read reports.
-	_ = c.SetReadDeadline(time.Now().Add(writeTimeout))
+	_ = c.SetReadDeadline(time.Now().Add(h.writeTimeout))
 	t, body, err := readFrame(c)
 	var hello Hello
 	if err == nil && t == frameHello {

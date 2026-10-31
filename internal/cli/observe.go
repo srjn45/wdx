@@ -71,7 +71,12 @@ func findStack(cmd *cobra.Command) (*observe.Stack, error) {
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
-	return observe.Find(cmd.Context(), lookPath, env.Config.Home, ports)
+	s, err := observe.Find(cmd.Context(), lookPath, env.Config.Home, ports)
+	if err != nil {
+		return nil, err
+	}
+	s.PortCheck = env.ObservePortCheck
+	return s, nil
 }
 
 // stackState returns the stack's container, or nil when there is none.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -274,7 +275,7 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	}
 	size.Rows-- // the status line's
 
-	session, err := holder.Attach(ctx, identity.HolderSocket(env.Config.Home, t.holderID), t.holderID, size, 0)
+	session, err := holder.Attach(holder.WithLimits(ctx, env.Timeouts.Holder), identity.HolderSocket(env.Config.Home, t.holderID), t.holderID, size, 0)
 	if errors.Is(err, holder.ErrAttachUnsupported) {
 		return &attachUnsupportedError{t}
 	}
@@ -302,7 +303,7 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	}
 	log.Info("attach ended", "terminal_id", t.holderID, "result", ended, "vt_resets", view.pane.Resets())
 	if ended == api.ResultExited {
-		t = waitRecorded(ctx, t, session.Exit())
+		t = waitRecorded(ctx, cmp.Or(env.Timeouts.AttachExit, attachExitWait), t, session.Exit())
 	} else if got, err := t.reread(ctx); err == nil {
 		t = got
 	}
@@ -319,8 +320,8 @@ func viewStyle(cmd *cobra.Command) style.Style {
 
 // waitRecorded returns the target once the daemon has recorded the exit the
 // session saw, or with that exit if it takes too long.
-func waitRecorded(ctx context.Context, t attachTarget, exit *holder.Exit) attachTarget {
-	deadline := time.Now().Add(attachExitWait)
+func waitRecorded(ctx context.Context, wait time.Duration, t attachTarget, exit *holder.Exit) attachTarget {
+	deadline := time.Now().Add(wait)
 	for {
 		got, err := t.reread(ctx)
 		if err == nil && !got.running {

@@ -47,13 +47,23 @@ func After(t deadliner) <-chan time.Time { return time.After(Limit(t)) }
 // the deadline comes first.
 func For(t *testing.T, what string, done func() bool) {
 	t.Helper()
+	if !Until(t, done) {
+		t.Fatalf("waited until the deadline for %s", what)
+	}
+}
+
+// Until checks done until it holds, and reports whether it did before the
+// deadline. It fails nothing, so a goroutine can call it, and a test can say
+// what it last saw.
+func Until(t deadliner, done func() bool) bool {
 	deadline := Deadline(t)
 	for !done() {
 		if time.Now().After(deadline) {
-			t.Fatalf("waited until the deadline for %s", what)
+			return false
 		}
 		time.Sleep(poll)
 	}
+	return true
 }
 
 func later(a, b time.Time) time.Time {

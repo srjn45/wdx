@@ -44,3 +44,14 @@ jobs:
         env:
           COUNT: ${{ inputs.count || '3' }}
           PKG: ${{ inputs.pkg || './...' }}
+      - run: make test-contention PKG="$PKG"
+        env:
+          PKG: ${{ inputs.pkg || './...' }}
+      # With wdx's real limits on how long its processes wait for each other:
+      # what fails only here is what a user on a loaded machine could hit. It
+      # says so without failing the night's run; such a failure goes in
+      # docs/FLAKES.md.
+      - run: make test
+        continue-on-error: true
+        env:
+          WDX_TEST_PRODUCTION_LIMITS: "1"

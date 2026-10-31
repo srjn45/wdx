@@ -25,6 +25,7 @@ import (
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
@@ -64,6 +65,12 @@ type Options struct {
 	// StopGrace is how long a shell has to end after it is hung up on;
 	// terminal.DefaultStopGrace when 0.
 	StopGrace time.Duration
+	// StopReport is how long past the grace stopping waits for a holder to
+	// report; the terminal package's default when 0.
+	StopReport time.Duration
+	// HolderLimits are how long holders and the daemon wait for each other;
+	// the holder package's defaults when zero.
+	HolderLimits holder.Limits
 }
 
 // Daemon is a daemon listening on its socket.
@@ -164,6 +171,8 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Shell:        opts.TerminalShell,
 		HistoryLines: opts.TerminalHistoryLines,
 		StopGrace:    opts.StopGrace,
+		StopReport:   opts.StopReport,
+		Limits:       opts.HolderLimits,
 		AgentLaunch:  agent.Launches(agents, []aca.AiCodingAgent{opts.ACA}),
 	})
 	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)

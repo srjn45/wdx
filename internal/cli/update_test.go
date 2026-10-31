@@ -9,9 +9,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
-	"github.com/srjn45/wdx/internal/waittest"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // brokenRelease says it is version 0.3.0 and writes the settings, adding a
@@ -111,44 +111,8 @@ func writeArchive(t *testing.T, path, binary string) string {
 // copyBinary copies the binary src to dest, file to file.
 func copyBinary(t *testing.T, dest, src string) {
 	t.Helper()
-	in, err := os.Open(src)
-	if err != nil {
+	if err := runtest.CopyExecutable(dest, src); err != nil {
 		t.Fatal(err)
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		t.Fatal(err)
-	}
-	if err := out.Close(); err != nil {
-		t.Fatal(err)
-	}
-	waitRunnable(t, dest)
-}
-
-// waitRunnable runs the binary just written at path until it is not "text
-// file busy": a process forked by another test while the file was open
-// for writing holds it so until it execs (golang/go#22315). Once it ran,
-// nothing can hold it so any more.
-func waitRunnable(t *testing.T, path string) {
-	t.Helper()
-	home := t.TempDir()
-	deadline := waittest.Deadline(t)
-	for {
-		// --help reads no home but its config: an empty one.
-		c := exec.Command(path, "--help")
-		c.Env = append(os.Environ(), identity.Env("HOME")+"="+home)
-		err := c.Run()
-		if !errors.Is(err, syscall.ETXTBSY) {
-			return // ran; how it ended is the test's to judge
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%s stays busy: %v", path, err)
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -181,7 +145,7 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+	if err := runtest.WriteExecutable(path, content); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -486,6 +450,9 @@ func TestUpdateUndone(t *testing.T) {
 // to back it up: the daemon starts again on what is there.
 func TestUpdateUndoneBackUp(t *testing.T) {
 	t.Parallel()
+	if os.Getuid() == 0 {
+		t.Skip("root reads and writes whatever its permissions say")
+	}
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
 	// Run, never read: as an executable only.
@@ -545,6 +512,9 @@ func (in installation) wantUndone(t *testing.T, step string, readable ...func())
 // is kept for a rollback all the same.
 func TestUpdateKeepsPrevious(t *testing.T) {
 	t.Parallel()
+	if os.Getuid() == 0 {
+		t.Skip("root reads and writes whatever its permissions say")
+	}
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
 	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
@@ -590,6 +560,19 @@ func TestUpdateInterrupted(t *testing.T) {
 	writeFile(t, filepath.Join(download, "wdx"), "")
 	writeFile(t, filepath.Join(replaced, "wdx"), "")
 
+	// A request whose body never ends keeps the daemon from stopping, as
+	// requests in flight finish first, so that the switch is under way when
+	// the signal comes, however late this test gets to send it. It ends once
+	// the signal is said to be held.
+	inFlight, err := net.Dial("unix", identity.SocketPath(in.home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inFlight.Close()
+	if _, err := fmt.Fprint(inFlight, "POST /v1/projects HTTP/1.1\r\nHost: wdx\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"); err != nil {
+		t.Fatal(err)
+	}
+
 	c := exec.Command(in.binary, "update", "--apply")
 	c.Env = append(os.Environ(), identity.Env("HOME")+"="+in.home)
 	var stdout bytes.Buffer
@@ -609,6 +592,9 @@ func TestUpdateInterrupted(t *testing.T) {
 			if err := c.Process.Signal(syscall.SIGTERM); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if strings.Contains(lines.Text(), "the switch finishes first") {
+			inFlight.Close()
 		}
 	}
 	if err := c.Wait(); err != nil || !strings.Contains(stdout.String(), "updated") {
@@ -687,9 +673,18 @@ func TestDaemonStartGivesUp(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	mute := filepath.Join(t.TempDir(), identity.Name)
 	writeFile(t, mute, "#!/bin/sh\necho $$ >"+pidFile+"\nexec sleep 60\n")
+	// It gives up only once the daemon has run, however long that takes.
+	expired := make(chan time.Time)
+	go func() {
+		defer close(expired)
+		eventually(t, func() bool {
+			_, err := os.Stat(pidFile)
+			return err == nil
+		})
+	}()
 	out := wdxWith(t, home, func(env *Env) {
 		env.Executable = mute
-		env.Timeouts.Start = time.Second
+		env.Timeouts.StartExpired = expired
 	}, "daemon", "start", "--json")
 	if out.exit != api.ExitSystem {
 		t.Fatalf("want start to fail, got %+v", out)
@@ -698,7 +693,7 @@ func TestDaemonStartGivesUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if syscall.Kill(pid, 0) == nil {
+	if runtest.Alive(pid) {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		t.Fatalf("want the daemon that did not answer killed, pid %d runs", pid)
 	}

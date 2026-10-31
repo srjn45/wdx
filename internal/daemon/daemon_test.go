@@ -24,13 +24,13 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
-	gittest.Isolate()
-	m.Run()
+	os.Exit(runtest.Main(m))
 }
 
 type testDaemon struct {
@@ -67,7 +67,7 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 		t.Fatal(err)
 	}
 	shell := filepath.Join(t.TempDir(), "shell")
-	if err := os.WriteFile(shell, []byte(testShell), 0o755); err != nil {
+	if err := runtest.WriteExecutable(shell, testShell); err != nil {
 		t.Fatal(err)
 	}
 	o := Options{
@@ -75,6 +75,8 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 		Executable: exe, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		ACA: &acatest.ACA{Launches: filepath.Join(home, "test-launches")},
 	}
+	// A machine slowed down by other tests slows them rather than fails them.
+	o.StopReport, o.HolderLimits = holdertest.Patience(t), holdertest.Limits(t)
 	if adjust != nil {
 		adjust(&o)
 	}
@@ -120,11 +122,7 @@ func socketPath(t *testing.T) string {
 // hold those of terminals' holders.
 func shortDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := runtest.Dir(t)
 	return dir
 }
 
@@ -668,12 +666,13 @@ func TestStopReleasesSocketAndLock(t *testing.T) {
 
 func TestDaemonInfoAndRunning(t *testing.T) {
 	t.Parallel()
+	before := time.Now().Truncate(time.Second)
 	td := start(t)
 	r, err := td.client.GetDaemonWithResponse(context.Background())
 	if err != nil || r.JSON200 == nil {
 		t.Fatalf("get daemon: %v %s", err, r.Body)
 	}
-	if d := r.JSON200; d.Pid != os.Getpid() || d.Home != td.home || d.Socket != td.socket || d.Version != identity.Version || time.Since(d.StartedAt) > time.Minute {
+	if d := r.JSON200; d.Pid != os.Getpid() || d.Home != td.home || d.Socket != td.socket || d.Version != identity.Version || d.StartedAt.Before(before) {
 		t.Fatalf("unexpected daemon %+v", d)
 	}
 	if pid, err := Running(td.home); err != nil || pid != os.Getpid() {

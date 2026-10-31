@@ -13,17 +13,16 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/runtest"
 )
+
+func TestMain(m *testing.M) { os.Exit(runtest.Main(m)) }
 
 // serve answers on a new socket with handler until the test ends, and
 // returns the socket.
 func serve(t *testing.T, handler http.HandlerFunc) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "wdx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := runtest.Dir(t)
 	socket := filepath.Join(dir, "wdx.sock")
 	l, err := net.Listen("unix", socket)
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 func newHolderCmd() *cobra.Command {
 	var o holder.Options
 	cmd := &cobra.Command{
-		Use:    "holder --id <id> --project <name> --dir <dir> --shell <path> [--command <word>]... [--history-lines <lines>]",
+		Use:    "holder --id <id> --project <name> --dir <dir> --shell <path> [--command <word>]... [--history-lines <lines>] [--write-timeout <duration>]",
 		Short:  "Hold a terminal's PTY and shell; the daemon runs it",
 		Hidden: true,
 		Args:   cobra.NoArgs,
@@ -39,6 +39,7 @@ func newHolderCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.AgentID, "agent-id", "", "`id` of the agent the terminal runs, if any")
 	cmd.Flags().StringArrayVar(&o.Command, "command", nil, "`word` of the command to run through the shell, in place of a shell to type in; one flag per word")
 	cmd.Flags().Int64Var(&o.HistoryLines, "history-lines", 0, "`lines` of history kept; 0 keeps none")
+	cmd.Flags().DurationVar(&o.WriteTimeout, "write-timeout", 0, "`duration` a write to a peer may take; 0 for the default")
 	for _, name := range strings.Fields("id project dir shell") {
 		cmd.MarkFlagRequired(name)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/deps"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/observe"
@@ -60,6 +61,9 @@ type Env struct {
 	// ObservePorts are the ports of the observability stack;
 	// observe.DefaultPorts when zero.
 	ObservePorts observe.Ports
+	// ObservePortCheck replaces trying a port of the stack before starting
+	// it, for tests whose fake runtime listens on nothing.
+	ObservePortCheck func(port int) error
 	// NoColor is true when the terminal asks for no color: NO_COLOR is set
 	// or TERM is dumb. It turns off color mode auto only.
 	NoColor bool
@@ -95,8 +99,16 @@ type Env struct {
 type Timeouts struct {
 	// Start is how long a started daemon gets to answer: startTimeout.
 	Start time.Duration
+	// StartExpired, when set, is what ends that time instead: a test gives
+	// up at the moment it needs to rather than after a time it must guess.
+	StartExpired <-chan time.Time
 	// Completion is how long a tab completion waits: completionTimeout.
 	Completion time.Duration
+	// AttachExit is how long attach waits for the daemon to record an exit:
+	// attachExitWait.
+	AttachExit time.Duration
+	// Holder are how long attach and a terminal's holder wait for each other.
+	Holder holder.Limits
 }
 
 // termVars are the variables that describe the terminal wdx runs in.

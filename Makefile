@@ -19,10 +19,10 @@ SHELLCHECK            := bin/shellcheck-$(SHELLCHECK_VERSION)
 # The commits make check reads; CI sets it to those of the push or PR.
 RANGE ?= origin/main..HEAD
 
-PKG     := github.com/srjn45/wdx/internal/identity
-LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT)
+IDENTITY := github.com/srjn45/wdx/internal/identity
+LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-stress test-contention test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
 
 # Build for this machine only.
 build:
@@ -45,8 +45,16 @@ test:
 # only now and then; PKG narrows them: make test-stress PKG=./internal/cli COUNT=20.
 COUNT ?= 3
 PKG   ?= ./...
+# Each time is a process of its own: cobra keeps every flag it ever saw, which
+# in one process adds up to more than the tests' memory cap.
 test-stress:
-	$(GO_TEST) -count=$(COUNT) -cpu=1,4 -timeout=60m $(PKG)
+	@failed=0; for i in $$(seq $(COUNT)); do echo "== $$i of $(COUNT)"; $(GO_TEST) -count=1 -cpu=1,4 -timeout=60m $(PKG) || failed=1; done; exit $$failed
+
+# Run the tests RUNS times at once on a machine kept busy, as when several
+# agents test at the same time; PKG narrows them.
+RUNS ?= 3
+test-contention:
+	RUNS=$(RUNS) COUNT=1 PKG="$(PKG)" GO_TEST="$(GO_TEST)" scripts/test-contention.sh
 
 # Update a wdx built from this tree to a release dist.sh builds of it, and
 # roll it back, in a temporary home.

@@ -34,5 +34,5 @@ func TestDeadline(t *testing.T) {
 func TestFor(t *testing.T) {
 	t.Parallel()
 	start := time.Now()
-	For(t, "a moment", func() bool { return time.Since(start) > 30*time.Millisecond })
+	For(t, "a moment", func() bool { return time.Since(start) > 30*time.Millisecond }) //nolint:forbidigo // the time passing is what it waits for
 }

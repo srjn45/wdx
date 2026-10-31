@@ -28,12 +28,24 @@ func Isolate() {
 		"GIT_AUTHOR_EMAIL":    "test@example.com",
 		"GIT_COMMITTER_NAME":  "test",
 		"GIT_COMMITTER_EMAIL": "test@example.com",
+		"GIT_CONFIG_COUNT":    "6",
 		// Not covered by GIT_CONFIG_GLOBAL: these default to files under ~/.config/git.
-		"GIT_CONFIG_COUNT":   "2",
 		"GIT_CONFIG_KEY_0":   "core.excludesFile",
 		"GIT_CONFIG_VALUE_0": os.DevNull,
 		"GIT_CONFIG_KEY_1":   "core.attributesFile",
 		"GIT_CONFIG_VALUE_1": os.DevNull,
+		// Git's own default changes between versions.
+		"GIT_CONFIG_KEY_2":   "init.defaultBranch",
+		"GIT_CONFIG_VALUE_2": "main",
+		// Git works on in the background after a commit or a clone, in a
+		// repository a test may be removing by then.
+		"GIT_CONFIG_KEY_3":   "maintenance.auto",
+		"GIT_CONFIG_VALUE_3": "false",
+		"GIT_CONFIG_KEY_4":   "gc.auto",
+		"GIT_CONFIG_VALUE_4": "0",
+		// Lets a test's remote be a script, to hold a clone under way.
+		"GIT_CONFIG_KEY_5":   "protocol.ext.allow",
+		"GIT_CONFIG_VALUE_5": "always",
 	} {
 		os.Setenv(key, value)
 	}

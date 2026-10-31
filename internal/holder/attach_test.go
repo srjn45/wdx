@@ -2,7 +2,6 @@ package holder
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -110,18 +108,14 @@ func (c *testClient) resize(size Size) {
 // waitFor waits until the output so far satisfies ok.
 func (c *testClient) waitFor(what string, ok func(out string) bool) {
 	c.t.Helper()
-	deadline := waittest.Deadline(c.t)
-	for {
+	var out string
+	if !waittest.Until(c.t, func() bool {
 		c.mu.Lock()
-		out := c.output.String()
+		out = c.output.String()
 		c.mu.Unlock()
-		if ok(out) {
-			return
-		}
-		if time.Now().After(deadline) {
-			c.t.Fatalf("no %s in the output: %q", what, out)
-		}
-		time.Sleep(20 * time.Millisecond)
+		return ok(out)
+	}) {
+		c.t.Fatalf("no %s in the output: %q", what, out)
 	}
 }
 
@@ -144,7 +138,7 @@ func (f fixture) startShell(t *testing.T, id, body string) {
 	t.Helper()
 	o := f.options(id, f.script(t, body))
 	o.HistoryLines = 100_000
-	s, err := Start(context.Background(), o)
+	s, err := Start(limited(t), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,12 +215,11 @@ func TestAttachConsistent(t *testing.T) {
 // waitFile waits for the shell to create path.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the shell did not create %s", path)
-		}
-		time.Sleep(10 * time.Millisecond)
+	if !waittest.Until(t, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	}) {
+		t.Fatalf("the shell did not create %s", path)
 	}
 }
 
@@ -267,39 +260,36 @@ func TestAttachLatestSizeWins(t *testing.T) {
 	}
 }
 
-// TestHelloDuringFlood greets the holder while its vt works through a
-// flood of output: hello answers without waiting for the vt.
-func TestHelloDuringFlood(t *testing.T) {
+// TestHelloWhileTheScreenIsBusy greets the holder while the screen is held,
+// as the vt holds it for each chunk of a flood of output: a hello that waited
+// for it would let the daemon's dial time out and mark the terminal lost.
+func TestHelloWhileTheScreenIsBusy(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.startShell(t, "term-00000110", "yes | head -c 40000000; exec sleep 60")
-	dir := HistoryDir(f.home, "term-00000110")
-	deadline := waittest.Deadline(t)
-	for h, err := TailHistory(dir, 1); err != nil || h.Next == 0; h, err = TailHistory(dir, 1) {
-		if time.Now().After(deadline) {
-			t.Fatal("the vt writes no history")
-		}
-		time.Sleep(20 * time.Millisecond)
+	release := filepath.Join(f.home, "release")
+	o := f.options("term-00000110", f.script(t, "exec sleep 60"))
+	o.Env = append(o.Env, screenHoldVar+"="+release)
+	s, err := Start(limited(t), o)
+	if err != nil {
+		t.Fatal(err)
 	}
-	var slowest time.Duration
-	for range 10 {
-		start := time.Now()
-		conn, err := net.Dial("unix", identity.HolderSocket(f.home, "term-00000110"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := writeFrame(conn, frameHello, Hello{Version: Version, Role: roleClient}); err != nil {
-			t.Fatal(err)
-		}
-		if typ, _, err := readFrame(conn); err != nil || typ != frameHello {
-			t.Fatalf("no hello: %d %v", typ, err)
-		}
-		conn.Close()
-		slowest = max(slowest, time.Since(start))
+	t.Cleanup(func() {
+		_ = os.WriteFile(release, nil, 0o600)
+		killHolder(s)
+	})
+	waitFile(t, release+".held")
+
+	conn, err := net.Dial("unix", identity.HolderSocket(f.home, "term-00000110"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("slowest hello: %v", slowest)
-	if slowest > 100*time.Millisecond {
-		t.Fatalf("a hello took %v: it waits for the vt", slowest)
+	defer conn.Close()
+	_ = conn.SetDeadline(waittest.Deadline(t))
+	if err := writeFrame(conn, frameHello, Hello{Version: Version, Role: roleClient}); err != nil {
+		t.Fatal(err)
+	}
+	if typ, _, err := readFrame(conn); err != nil || typ != frameHello {
+		t.Fatalf("no hello: %d %v", typ, err)
 	}
 }
 
@@ -393,16 +383,7 @@ func TestAttachSlowClientDropped(t *testing.T) {
 	}
 	// Reads nothing until the shell is done: the holder drops it rather
 	// than hold the shell back.
-	deadline := waittest.Deadline(t)
-	for {
-		if _, err := os.Stat(finished); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the shell was held back by a client that does not read")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitFile(t, finished)
 	_ = conn.SetReadDeadline(waittest.Deadline(t))
 	n, err := io.Copy(io.Discard, conn)
 	if err != nil || n >= 30_000_000 {
@@ -415,16 +396,12 @@ func TestAttachAnswersWithoutClients(t *testing.T) {
 	f := newFixture(t)
 	answer := filepath.Join(f.home, "answer")
 	f.startShell(t, "term-00000106", fmt.Sprintf(`stty raw -echo; printf '\033[5;7H\033[6n'; dd bs=1 count=6 2>/dev/null > %s; exec sleep 60`, answer))
-	deadline := waittest.Deadline(t)
-	for {
-		got, _ := os.ReadFile(answer)
-		if string(got) == "\x1b[5;7R" {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("got %q, want the screen to answer the cursor position", got)
-		}
-		time.Sleep(20 * time.Millisecond)
+	var got []byte
+	if !waittest.Until(t, func() bool {
+		got, _ = os.ReadFile(answer)
+		return string(got) == "\x1b[5;7R"
+	}) {
+		t.Fatalf("got %q, want the screen to answer the cursor position", got)
 	}
 }
 
@@ -442,19 +419,15 @@ func TestAttachLeavesQueriesToTheClient(t *testing.T) {
 	}
 	c.waitOutput("\x1b[6n")
 	c.input("client")
-	deadline := waittest.Deadline(t)
-	for {
-		got, _ := os.ReadFile(answer)
-		if len(got) == 6 {
-			if string(got) != "client" {
-				t.Fatalf("got %q, want only the client's answer", got)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("got %q, want the client's answer", got)
-		}
-		time.Sleep(20 * time.Millisecond)
+	var got []byte
+	if !waittest.Until(t, func() bool {
+		got, _ = os.ReadFile(answer)
+		return len(got) == 6
+	}) {
+		t.Fatalf("got %q, want the client's answer", got)
+	}
+	if string(got) != "client" {
+		t.Fatalf("got %q, want only the client's answer", got)
 	}
 }
 
@@ -532,15 +505,12 @@ func TestHistoryRelaunched(t *testing.T) {
 	c := f.dial(t, "term-00000109")
 	waitExit(t, c)
 	dir := filepath.Join(identity.TerminalDir(f.home, "term-00000109"), "history")
-	deadline := waittest.Deadline(t)
-	for { // the vt writes history at its own pace
-		if h, _ := TailHistory(dir, 1); h.Next >= 6 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("no history written")
-		}
-		time.Sleep(20 * time.Millisecond)
+	// The vt writes history at its own pace.
+	if !waittest.Until(t, func() bool {
+		h, _ := TailHistory(dir, 1)
+		return h.Next >= 6
+	}) {
+		t.Fatal("no history written")
 	}
 	if err := c.Release(); err != nil {
 		t.Fatal(err)

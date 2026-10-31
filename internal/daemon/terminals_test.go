@@ -16,6 +16,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -24,16 +25,25 @@ import (
 // testShell is the shell of every test terminal: it stays alive until it
 // is hung up on. Given a command, as an agent's holder gives it, it runs it
 // as a login shell does, skipping the -l and -i.
-const testShell = "#!/bin/sh\nif [ \"$3\" = -c ]; then exec /bin/sh -c \"$4\"; fi\nexec sleep 60\n"
+const testShell = runtest.LoginShellScript
+
+// removeAgents removes agents and all under them, children first: a list holds
+// the top level only, and a parent with children would stay as a tombstone.
+func (td *testDaemon) removeAgents(ctx context.Context, agents []api.Agent) {
+	for _, a := range agents {
+		if a.Children != nil {
+			td.removeAgents(ctx, *a.Children)
+		}
+		_, _ = td.client.DeleteAgentWithResponse(ctx, "id:"+a.Id, &api.DeleteAgentParams{StopRunning: optional(true)})
+	}
+}
 
 // removeTerminals removes every terminal and agent, stopping the live ones,
 // so no holder outlives the test; it does nothing once the daemon is stopped.
 func (td *testDaemon) removeTerminals() {
 	ctx := context.Background()
 	if agents, err := td.client.ListAgentsWithResponse(ctx, nil); err == nil && agents.JSON200 != nil {
-		for _, a := range agents.JSON200.Agents {
-			_, _ = td.client.DeleteAgentWithResponse(ctx, "id:"+a.Id, &api.DeleteAgentParams{StopRunning: optional(true)})
-		}
+		td.removeAgents(ctx, agents.JSON200.Agents)
 	}
 	l, err := td.client.ListTerminalsWithResponse(ctx, nil)
 	if err != nil || l.JSON200 == nil {
@@ -79,25 +89,38 @@ func detail(t *testing.T, p *api.Problem, key string) map[string]any {
 }
 
 // TestCreateTerminalClientLeaves cancels a create while its holder starts,
-// as Ctrl-C on the command does: the terminal still ends up running.
+// as Ctrl-C on the command does: the terminal still ends up running. The
+// holder waits to be told, so the create is always under way when it goes.
 func TestCreateTerminalClientLeaves(t *testing.T) {
 	t.Parallel()
-	td := start(t)
+	dir := t.TempDir()
+	starting, proceed := filepath.Join(dir, "starting"), filepath.Join(dir, "proceed")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(dir, "holder")
+	script := fmt.Sprintf("#!/bin/sh\ntouch %s\nuntil [ -f %s ]; do sleep 0.01; done\nexec %s \"$@\"\n", starting, proceed, exe)
+	if err := runtest.WriteExecutable(wrapper, script); err != nil {
+		t.Fatal(err)
+	}
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.Executable = wrapper })
 	root := td.create(t, "app").Worktrees[0].Path
 	ctx, cancel := context.WithCancel(context.Background())
-	deadline := waittest.Deadline(t)
+	defer cancel()
 	go func() {
 		defer cancel()
-		for time.Now().Before(deadline) {
-			if socks, _ := filepath.Glob(filepath.Join(td.home, "run", "term-*.sock")); len(socks) > 0 {
-				return // the holder is starting
-			}
-			time.Sleep(time.Millisecond)
-		}
+		waittest.Until(t, func() bool {
+			_, err := os.Stat(starting)
+			return err == nil
+		})
 	}()
-	_, err := td.client.CreateTerminalWithResponse(ctx, api.CreateTerminal{Project: optional("app"), Dir: root, Name: optional("api")})
+	_, err = td.client.CreateTerminalWithResponse(ctx, api.CreateTerminal{Project: optional("app"), Dir: root, Name: optional("api")})
 	if !errors.Is(err, context.Canceled) {
-		t.Skipf("the create finished before it was cancelled: %v", err)
+		t.Fatalf("want the create cancelled, got %v", err)
+	}
+	if err := os.WriteFile(proceed, nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	td.waitProject(t, "app", "the terminal running", func(e event) bool {
 		terms := terminalsIn(e)
@@ -112,7 +135,7 @@ func TestCreateTerminalClientLeaves(t *testing.T) {
 func TestStopDuringLongChange(t *testing.T) {
 	t.Parallel()
 	shell := filepath.Join(t.TempDir(), "shell")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\ntrap '' HUP\ntouch trapped\nwhile :; do sleep 1; done\n"), 0o755); err != nil {
+	if err := runtest.WriteExecutable(shell, "#!/bin/sh\ntrap '' HUP\ntouch trapped\nwhile :; do sleep 1; done\n"); err != nil {
 		t.Fatal(err)
 	}
 	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
@@ -145,12 +168,11 @@ func TestStopDuringLongChange(t *testing.T) {
 // waitFile waits for path to exist.
 func waitFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
-		if time.Now().After(deadline) {
-			t.Fatalf("no %s", path)
-		}
-		time.Sleep(10 * time.Millisecond)
+	if !waittest.Until(t, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	}) {
+		t.Fatalf("no %s", path)
 	}
 }
 
@@ -347,7 +369,7 @@ func TestRemoveTerminal(t *testing.T) {
 	if list := td.terminals(t, nil); len(list) != 0 {
 		t.Fatalf("want no terminal left, got %+v", list)
 	}
-	if syscall.Kill(*term.Pid, 0) == nil {
+	if runtest.Alive(*term.Pid) {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
 	wantNoTerminalDir(t, td.home, term.Id)
@@ -495,7 +517,7 @@ func TestCloseAndOpenProjectWithTerminals(t *testing.T) {
 	if stopped := (*u.JSON200.Stopped)[0]; len(*u.JSON200.Stopped) != 1 || stopped.Id != term.Id || stopped.State != api.TerminalStateStopped || stopped.Pid != nil {
 		t.Fatalf("want build stopped, got %+v", *u.JSON200.Stopped)
 	}
-	if syscall.Kill(*term.Pid, 0) == nil {
+	if runtest.Alive(*term.Pid) {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
 

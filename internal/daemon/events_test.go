@@ -9,9 +9,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -203,19 +203,21 @@ func TestStreamUnknownProject(t *testing.T) {
 
 func TestStreamEndsWhenDaemonStops(t *testing.T) {
 	t.Parallel()
-	td := start(t)
+	// Shutdown waits for the requests in flight, a stream among them, so a
+	// stream that held it back would hold it past the test's deadline.
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ShutdownTimeout = 2 * waittest.Limit(t) })
 	td.create(t, "api")
 	events, _ := td.follow(t, "api")
 	waitEvent(t, events, "the project", func(e event) bool { return e.name == "project" })
 
-	stopped := time.Now()
-	td.stop()
-	if _, ok := <-events; ok {
-		t.Fatal("an event after the daemon stopped")
-	}
-	// Shutdown waits for the requests in flight, a stream among them.
-	if waited := time.Since(stopped); waited > 5*time.Second {
-		t.Fatalf("the daemon took %s to stop with a stream open", waited)
+	go td.stop()
+	select {
+	case _, ok := <-events:
+		if ok {
+			t.Fatal("an event after the daemon stopped")
+		}
+	case <-waittest.After(t):
+		t.Fatal("the daemon did not stop with a stream open")
 	}
 }
 

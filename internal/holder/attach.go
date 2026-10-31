@@ -106,7 +106,7 @@ func (h *holder) serveClient(conn *net.UnixConn) {
 	// stay attached for days, and one that stops reading is dropped by
 	// its queue instead.
 	_ = conn.SetWriteDeadline(time.Time{})
-	_ = conn.SetReadDeadline(time.Now().Add(writeTimeout))
+	_ = conn.SetReadDeadline(time.Now().Add(h.writeTimeout))
 	t, body, err := readFrame(conn)
 	var req attachRequest
 	if err == nil && t == frameAttach {

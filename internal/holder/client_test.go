@@ -48,18 +48,14 @@ func readSession(s *Session) *output {
 
 func (o *output) waitFor(t *testing.T, s string) {
 	t.Helper()
-	deadline := waittest.Deadline(t)
-	for {
+	var got string
+	if !waittest.Until(t, func() bool {
 		o.mu.Lock()
-		got := o.buf.String()
-		o.mu.Unlock()
-		if strings.Contains(got, s) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("no %q in %q", s, got)
-		}
-		time.Sleep(20 * time.Millisecond)
+		defer o.mu.Unlock()
+		got = o.buf.String()
+		return strings.Contains(got, s)
+	}) {
+		t.Fatalf("no %q in %q", s, got)
 	}
 }
 
@@ -77,7 +73,7 @@ func (o *output) wait(t *testing.T) error {
 
 func (f fixture) session(t *testing.T, id string, size Size, history int) *Session {
 	t.Helper()
-	s, err := Attach(context.Background(), identity.HolderSocket(f.home, id), id, size, history)
+	s, err := Attach(limited(t), identity.HolderSocket(f.home, id), id, size, history)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,10 +117,16 @@ func TestSession(t *testing.T) {
 func TestSessionOutlivesWriteTimeout(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.startShell(t, "term-00000207", interactiveShell)
+	const short = 2 * time.Second
+	limit := waittest.Limit(t)
+	started, err := Start(WithLimits(context.Background(), Limits{Ready: limit, Dial: limit, Write: short}), f.options("term-00000207", f.script(t, interactiveShell)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { killHolder(started) })
 	s := f.session(t, "term-00000207", Size{Cols: 80, Rows: 24}, 0)
 	out := readSession(s)
-	time.Sleep(writeTimeout + time.Second)
+	time.Sleep(short + 100*time.Millisecond) //nolint:forbidigo // outliving a timeout is what is tested
 	if _, err := s.Write([]byte("echo la''ter\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +158,7 @@ func TestSessionConnectionLost(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	o := f.options("term-00000203", f.script(t, "exec sleep 60"))
-	started, err := Start(context.Background(), o)
+	started, err := Start(limited(t), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +178,7 @@ func TestSessionRefused(t *testing.T) {
 	f := newFixture(t)
 	f.startShell(t, "term-00000204", "exec sleep 60")
 	socket := identity.HolderSocket(f.home, "term-00000204")
-	if _, err := Attach(context.Background(), socket, "term-00000205", Size{Cols: 80, Rows: 24}, 0); err == nil || !strings.Contains(err.Error(), "runs terminal term-00000204") {
+	if _, err := Attach(limited(t), socket, "term-00000205", Size{Cols: 80, Rows: 24}, 0); err == nil || !strings.Contains(err.Error(), "runs terminal term-00000204") {
 		t.Fatalf("got %v, want the other terminal refused", err)
 	}
 
@@ -198,7 +200,7 @@ func TestSessionRefused(t *testing.T) {
 		}
 		_, _, _ = readFrame(c)
 	}()
-	if _, err := Attach(context.Background(), old, "term-00000206", Size{Cols: 80, Rows: 24}, 0); !errors.Is(err, ErrAttachUnsupported) {
+	if _, err := Attach(limited(t), old, "term-00000206", Size{Cols: 80, Rows: 24}, 0); !errors.Is(err, ErrAttachUnsupported) {
 		t.Fatalf("got %v, want attach unsupported", err)
 	}
 }

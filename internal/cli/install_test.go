@@ -12,6 +12,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // installer runs scripts/install.sh with args for a user whose home is home
@@ -34,7 +35,7 @@ func installer(t *testing.T, home, stubs string, args ...string) string {
 // stub writes an executable named name to dir that runs script.
 func stub(t *testing.T, dir, name, script string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+	if err := runtest.WriteExecutable(filepath.Join(dir, name), "#!/bin/sh\n"+script+"\n"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -149,11 +150,7 @@ func TestInstallCompletionsShellsMissing(t *testing.T) {
 // the agent's plist lets the daemon stop in its own time.
 func TestInstallLaunchd(t *testing.T) {
 	t.Parallel()
-	home, err := os.MkdirTemp("/tmp", "wdx") // holds the daemon's socket
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	home := runtest.Dir(t)
 	wdxHome := filepath.Join(home, ".wdx")
 	t.Cleanup(func() {
 		if pid, _ := daemon.Running(wdxHome); pid != 0 {

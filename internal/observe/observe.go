@@ -96,6 +96,9 @@ type Stack struct {
 	path    string
 	home    string
 	ports   Ports
+	// PortCheck, when set, says whether a port can be listened on instead of
+	// trying it, for tests whose fake runtime listens on nothing.
+	PortCheck func(port int) error
 }
 
 // Find returns the stack run by Docker, else Podman, as lookPath finds them.
@@ -142,6 +145,17 @@ func (s *Stack) State(ctx context.Context) (*State, error) {
 	return &State{Status: fields[0], Image: fields[1], Logs: fields[2]}, nil
 }
 
+func (s *Stack) checkPort(port int) error {
+	if s.PortCheck != nil {
+		return s.PortCheck(port)
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		return err
+	}
+	return l.Close()
+}
+
 // Start runs the stack and waits until it is ready, pulling the image first
 // when the runtime does not have it, with the pull's output going to
 // progress. A container left stopped is replaced.
@@ -151,12 +165,10 @@ func (s *Stack) Start(ctx context.Context, progress io.Writer) error {
 		return err
 	}
 	for _, port := range []int{s.ports.Grafana, s.ports.OTLP} {
-		l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
-		if err != nil {
+		if err := s.checkPort(port); err != nil {
 			log.Info("port in use", "port", port, "err", err)
 			return &PortInUseError{Port: port}
 		}
-		l.Close()
 	}
 	dir, err := s.writeFiles(ctx)
 	if err != nil {
