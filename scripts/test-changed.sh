@@ -6,7 +6,7 @@
 # it saw, which in one process adds up to more than the tests' memory cap.
 set -u
 
-batch=5
+batch=2
 
 changed="$(
 	{
