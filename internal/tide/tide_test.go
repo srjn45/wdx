@@ -111,7 +111,7 @@ func TestMenu(t *testing.T) {
 
 func TestClicks(t *testing.T) {
 	t.Parallel()
-	m, now := newModel(100, 41) // panes in 100 × 40: project 0-40, agent 40-99, terminal from row 30
+	m, now := newModel(100, 41) // panes in 100 × 40: project 0-25, agent 25-99, terminal from row 30
 	m.Update(clickAt(60, 5))
 	if m.layout.focus != agent {
 		t.Fatalf("focus %s", m.layout.focus)
@@ -161,13 +161,13 @@ func TestRender(t *testing.T) {
 	m, _ := newModel(40, 11)
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
-	want := `┌ [Project:─[⤢]─┬ agent ───────────[⤢]─┐
-│ Agents      0 │no agents: C-q a creat│
-│ no agents: C-q│                      │
-│               │                      │
-│               │                      │
-│               │                      │
-│               │                      │
+	want := `┌ [Pr─[⤢]─┬ agent ─────────────────[⤢]─┐
+│ Agents0 │no agents: C-q a creates one│
+│ no agent│                            │
+│         │                            │
+│         │                            │
+│         │                            │
+│         │                            │
 ├ [● shell] [● tests] [● server] ──[⤢]─┤
 │● shell running                       │
 └──────────────────────────────────────┘

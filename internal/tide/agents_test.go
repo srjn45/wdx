@@ -131,7 +131,7 @@ func TestAgentsNoneRunning(t *testing.T) {
 
 func TestAgentsEmpty(t *testing.T) {
 	t.Parallel()
-	m := newAgentsModel(100, 41)
+	m := newAgentsModel(128, 41)
 	wantRow(t, m, " Agents", "0")
 	wantText(t, m, " no agents: C-q a creates one")
 	m.Update(keyMsgs("down")[0])
@@ -279,9 +279,9 @@ func TestAgentAttached(t *testing.T) {
 
 	p.keys("alt+right")
 	p.typed("echo he''llo; stty size\n")
-	// 80 × 24: the agent pane's frame is 48 wide and, above the terminal
+	// 128 × 24: the agent pane's frame is 96 wide and, above the terminal
 	// pane's 5 rows sharing a border, 19 high.
-	p.until(t, "the echo at the pane's size", agentScreenHas("hello\n17 46"))
+	p.until(t, "the echo at the pane's size", agentScreenHas("hello\n17 94"))
 	if c := p.m.paneCursor(); c == nil || c.X < 32 {
 		t.Fatalf("cursor %v, want it in the agent pane", c)
 	}
@@ -291,7 +291,7 @@ func TestAgentAttached(t *testing.T) {
 	}
 	p.keys("C-]")
 	p.typed("clear; stty size\n")
-	p.until(t, "the zoomed size", agentScreenHas("21 78"))
+	p.until(t, "the zoomed size", agentScreenHas("21 126"))
 	p.keys("C-]")
 
 	// Enter in the list attaches b-two and leaves a-one, which keeps running.
@@ -304,7 +304,7 @@ func TestAgentAttached(t *testing.T) {
 		t.Fatal("want the terminal pane left as it was")
 	}
 	p.keys("up", "enter")
-	p.until(t, "a-one again, as it was", func(m *Model) bool { return agentAttached("a-one")(m) && agentScreenHas("21 78")(m) })
+	p.until(t, "a-one again, as it was", func(m *Model) bool { return agentAttached("a-one")(m) && agentScreenHas("21 126")(m) })
 }
 
 // TestAgentExits: an agent that ends shows its last screen, read-only, from

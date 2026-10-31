@@ -17,10 +17,10 @@ tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in
 Three fixed panes. No general split tree.
 
 ```
-┌ project ──────────┬ claude: auth-fix ──────────┐
-│                   │                            │
-│       2/5         │           3/5              │
-│                   │                            │
+┌ project ───┬ claude: auth-fix ─────────────────┐
+│            │                                   │
+│    1/4     │                3/4                │
+│            │                                   │
 ├ [shell] [tests] [server] ──────────────────────┤
 │ $ _                                    1/4     │
 └────────────────────────────────────────────────┘
@@ -28,13 +28,13 @@ Three fixed panes. No general split tree.
 
 ### Left pane: multipurpose
 
-- 2/5 of the width.
+- 1/4 of the width.
 - Shows the project view, `[Project: <name>]`, or `[No Project]` while none is shown (see User journey).
 - Opening or creating a project happens in a popup over the window. Later screens, such as agent detail, are still to be placed.
 
 ### Right pane: agent
 
-- 3/5 of the width.
+- 3/4 of the width.
 - Shows one agent at a time: the one made active in the project view.
 - The agent's name is on the pane's frame line.
 - Live agent PTY.
@@ -54,8 +54,8 @@ Three fixed panes. No general split tree.
 
 | Pane | Modes |
 |---|---|
-| Project (left) | normal (2/5 width), zoomed (full screen) |
-| Agent (right) | normal (3/5 width), zoomed (full screen) |
+| Project (left) | normal (1/4 width), zoomed (full screen) |
+| Agent (right) | normal (3/4 width), zoomed (full screen) |
 | Terminal (bottom) | hidden, docked (1/4 height), zoomed (full screen) |
 
 The top row takes the full height when the terminal pane is hidden, and 3/4 when it is docked.
@@ -74,11 +74,11 @@ zoomed       pane // none, project, agent or terminal
 
 ### Sizing
 
-- Cells are whole numbers. Project width = ⌊2/5 · width⌋, and the agent pane takes the rest. Terminal height = ⌊1/4 · height⌋ but at least 3 rows (its borders and a line), and the top row takes the rest. Sizes are of frames, borders included; neighbours share the border line between them.
+- Cells are whole numbers. Project width = ⌊1/4 · width⌋, and the agent pane takes the rest. Terminal height = ⌊1/4 · height⌋ but at least 3 rows (its borders and a line), and the top row takes the rest. Sizes are of frames, borders included; neighbours share the border line between them.
 - A PTY pane that changes size resizes its PTY, so the program inside redraws to fit.
 - The status line takes the last row; the ratios share the rows above it.
 - Neighbouring panes share one border line, as in the drawing above; the border around the focused pane is highlighted.
-- Small screens just get cramped for now. No automatic zoom. No size is ever negative and a pane with no room is not drawn; when a shown pane would have no cell inside its frame, tide shows only "window too small": below 5 × 5 cells for the panes above the status line, 3 × 3 when one is zoomed.
+- Small screens just get cramped for now. No automatic zoom. No size is ever negative and a pane with no room is not drawn; when a shown pane would have no cell inside its frame, tide shows only "window too small": below 8 × 5 cells for the panes above the status line, 3 × 3 when one is zoomed.
 
 ## Screens
 
@@ -95,7 +95,7 @@ type screen interface {
 - A failure that needs an answer (a name taken, a conflict, a missing checkout) also pushes a screen asking for it over the one that asked, so `Esc` goes back to it.
 - A screen may say what its keys do on the status line (`hint()`), while the left pane has the focus.
 
-- A screen draws only inside the rectangle it gets, so it works the same at 2/5 width or zoomed.
+- A screen draws only inside the rectangle it gets, so it works the same at 1/4 width or zoomed.
 - When a screen finishes, it returns a result message (project created, agent created, ...). In B1 a project opened replaces the stack with `[Project: <name>]`; later the screen below will react to results, e.g. the project view selecting a new agent.
 - A project popup takes the keys, the pastes and the clicks while it is open, and changes neither the focus nor the zoom: closing it returns to the pane that had the focus.
 - Adding a screen means adding one type. The layout does not change.
@@ -283,7 +283,7 @@ Supported, though most users will mostly use the keyboard.
 
 ## Open questions
 
-- Resizing: whether dividers can move away from 2:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
+- Resizing: whether dividers can move away from 1:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
 - The shortcut menu's actions and letters, and how screens are opened.
 - Rendering performance with several live PTY panes, and color, wide-character and cursor fidelity. To measure in a spike.
 - Possible later: richer keys (kitty keyboard protocol) in modern terminals such as Ghostty, kitty, iTerm2 and WezTerm.

@@ -19,25 +19,25 @@ func TestFrames(t *testing.T) {
 		want          map[pane]uv.Rectangle
 	}{
 		{"docked", docked, 100, 40, map[pane]uv.Rectangle{
-			project: uv.Rect(0, 0, 41, 31), agent: uv.Rect(40, 0, 60, 31), terminal: uv.Rect(0, 30, 100, 10),
+			project: uv.Rect(0, 0, 26, 31), agent: uv.Rect(25, 0, 75, 31), terminal: uv.Rect(0, 30, 100, 10),
 		}},
 		{"docked, odd size", docked, 81, 23, map[pane]uv.Rectangle{
-			project: uv.Rect(0, 0, 33, 19), agent: uv.Rect(32, 0, 49, 19), terminal: uv.Rect(0, 18, 81, 5),
+			project: uv.Rect(0, 0, 21, 19), agent: uv.Rect(20, 0, 61, 19), terminal: uv.Rect(0, 18, 81, 5),
 		}},
 		{"the terminal's minimum rows", docked, 20, 8, map[pane]uv.Rectangle{
-			project: uv.Rect(0, 0, 9, 6), agent: uv.Rect(8, 0, 12, 6), terminal: uv.Rect(0, 5, 20, 3),
+			project: uv.Rect(0, 0, 6, 6), agent: uv.Rect(5, 0, 15, 6), terminal: uv.Rect(0, 5, 20, 3),
 		}},
-		{"smallest docked", docked, 5, 5, map[pane]uv.Rectangle{
-			project: uv.Rect(0, 0, 3, 3), agent: uv.Rect(2, 0, 3, 3), terminal: uv.Rect(0, 2, 5, 3),
+		{"smallest docked", docked, 8, 5, map[pane]uv.Rectangle{
+			project: uv.Rect(0, 0, 3, 3), agent: uv.Rect(2, 0, 6, 3), terminal: uv.Rect(0, 2, 8, 3),
 		}},
 		{"hidden", hidden, 100, 40, map[pane]uv.Rectangle{
-			project: uv.Rect(0, 0, 41, 40), agent: uv.Rect(40, 0, 60, 40),
+			project: uv.Rect(0, 0, 26, 40), agent: uv.Rect(25, 0, 75, 40),
 		}},
 		{"zoomed", zoomed, 100, 40, map[pane]uv.Rectangle{terminal: uv.Rect(0, 0, 100, 40)}},
 		{"smallest zoomed", zoomed, 3, 3, map[pane]uv.Rectangle{terminal: uv.Rect(0, 0, 3, 3)}},
-		{"too narrow", docked, 4, 40, nil},
+		{"too narrow", docked, 7, 40, nil},
 		{"too short", docked, 100, 4, nil},
-		{"hidden, short", hidden, 100, 3, map[pane]uv.Rectangle{project: uv.Rect(0, 0, 41, 3), agent: uv.Rect(40, 0, 60, 3)}},
+		{"hidden, short", hidden, 100, 3, map[pane]uv.Rectangle{project: uv.Rect(0, 0, 26, 3), agent: uv.Rect(25, 0, 75, 3)}},
 		{"too small to zoom", zoomed, 2, 40, nil},
 		{"empty", docked, 0, 0, nil},
 	} {
@@ -147,8 +147,8 @@ func checkLayout(l layout, width, height int) string {
 		return "the last top pane is not a top pane"
 	}
 	frames, ok := l.frames(width, height)
-	// Side by side, the top panes need 5 columns; over the terminal, 5 rows.
-	leastWidth, leastHeight := 5, minFrame
+	// Side by side, the top panes need 8 columns; over the terminal, 5 rows.
+	leastWidth, leastHeight := 8, minFrame
 	if l.terminalOpen {
 		leastHeight = 5
 	}

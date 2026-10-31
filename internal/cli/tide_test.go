@@ -27,7 +27,7 @@ func TestTide(t *testing.T) {
 	if _, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != api.ExitOK {
 		t.Fatalf("close: exit %d", exit)
 	}
-	run := startInTerminal(t, home, home, 80, 24, []string{"tide"})
+	run := startInTerminal(t, home, home, 128, 24, []string{"tide"}) // wide enough for the project pane's title
 	run.waitScreen("┃ Open Project")
 	run.input("\x1b[B\x1b[B\x1b[B\r") // ↓ ↓ ↓ enter: reopen app
 	run.waitScreen("┌ [Project: app]")

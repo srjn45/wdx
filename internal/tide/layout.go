@@ -140,7 +140,7 @@ func (l layout) frames(width, height int) (frames map[pane]uv.Rectangle, ok bool
 			top = height - rows + 1
 			frames[terminal] = uv.Rect(0, top-1, width, rows)
 		}
-		split := width * 2 / 5
+		split := width / 4
 		frames[project] = uv.Rect(0, 0, split+1, top)
 		frames[agent] = uv.Rect(split, 0, width-split, top)
 	}

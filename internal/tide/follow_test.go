@@ -22,7 +22,7 @@ type program struct {
 	msgs chan tea.Msg
 }
 
-// follow starts tide on h, its stream followed, at 80 × 24.
+// follow starts tide on h, its stream followed, at 128 × 24.
 func (h testHome) follow(t *testing.T) *program {
 	t.Helper()
 	m := New(logging.NewContext(context.Background(), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
@@ -31,7 +31,8 @@ func (h testHome) follow(t *testing.T) *program {
 		m.detachAll()
 	})
 	p := &program{m: m, msgs: make(chan tea.Msg, 1000)}
-	p.update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	// Wide enough for the project pane's lines: 31 cells inside its borders.
+	p.update(tea.WindowSizeMsg{Width: 128, Height: 24})
 	p.do(m.Init())
 	return p
 }
@@ -323,9 +324,9 @@ func TestTerminalAttached(t *testing.T) {
 	p.until(t, "a-one attached", attachedTo("a-one"))
 	p.keys("alt+down")
 	p.typed("echo he''llo; stty size\n")
-	// 80 × 24: the pane's frame is a quarter of the 23 rows above the
-	// status line, 5, and 80 wide.
-	p.until(t, "the echo at the pane's size", screenHas("hello\n3 78"))
+	// 128 × 24: the pane's frame is a quarter of the 23 rows above the
+	// status line, 5, and 128 wide.
+	p.until(t, "the echo at the pane's size", screenHas("hello\n3 126"))
 	if c := p.m.paneCursor(); c == nil || c.Y < 19 {
 		t.Fatalf("cursor %v, want it in the terminal pane", c)
 	}
@@ -333,7 +334,7 @@ func TestTerminalAttached(t *testing.T) {
 
 	p.keys("C-]")
 	p.typed("clear; stty size\n")
-	p.until(t, "the zoomed size", screenHas("21 78"))
+	p.until(t, "the zoomed size", screenHas("21 126"))
 
 	gen := p.m.term.gen
 	p.keys(`C-\`)

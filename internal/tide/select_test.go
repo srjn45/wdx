@@ -49,7 +49,7 @@ func TestSelect(t *testing.T) {
 		t.Fatal("the selection is not highlighted inside the pane only")
 	}
 	releaseAt(m, in.Max.X+20, frames[terminal].Min.Y+2)
-	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], " Agents                      0\n no agents: C-q a creates one\n") {
+	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], " Agents          0\n no agents: C-q a c\n") {
 		t.Fatalf("copied %q", *copied)
 	}
 	if strings.Count((*copied)[0], "no agents") != 1 || strings.Contains((*copied)[0], "shell") {
