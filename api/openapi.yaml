@@ -379,11 +379,20 @@ paths:
         of that agent: it belongs to the parent's project and starts in the
         parent's dir, whatever dir is.
 
+        With worktree, it starts in that worktree of the project instead:
+        "main" is the clone, any other name matches the base name of a
+        worktree's path. A name that matches none creates the worktree in
+        <project root>/.worktrees/<name>, on a new branch of that name from the
+        HEAD of where it would otherwise start, and excludes .worktrees from
+        git unless git already ignores it. A worktree created stays when the
+        agent then fails, and the next request finds it.
+
         An agent that does not start is left failed and returns start_failed
         with the agent under details.agent.
 
-        Errors: agent_removed, invalid_name, invalid_path, name_taken,
-        not_found, project_closed, start_failed.
+        Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+        name_taken, not_found, path_exists, project_closed, start_failed,
+        worktree_failed.
       requestBody:
         required: true
         content:
@@ -836,7 +845,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, terminal_id, aca, session_id, dir, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, terminal_id, aca, session_id, dir, worktree, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -851,6 +860,7 @@ components:
         aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
         session_id: { type: string, description: "The AI coding agent's session, which it goes on with when started again." }
         dir: { type: string, description: "Where it starts, now and on every relaunch." }
+        worktree: { type: string, nullable: true, description: "The name of the project's worktree holding dir, main for the clone; null when none does." }
         state: { $ref: "#/components/schemas/AgentState" }
         pid: { type: integer, nullable: true, description: "The AI coding agent's, while it has one." }
         exit_code:
@@ -884,6 +894,9 @@ components:
       properties:
         result: { $ref: "#/components/schemas/Result" }
         agent: { $ref: "#/components/schemas/Agent" }
+        worktree_created:
+          type: boolean
+          description: True when creating the agent created its worktree; left out otherwise.
 
     CreateAgent:
       type: object
@@ -905,6 +918,10 @@ components:
           type: string
           nullable: true
           description: The agent to create it under, by "id:" and its id, or its name in the project named by project or holding dir; by default it has no parent.
+        worktree:
+          type: string
+          nullable: true
+          description: The worktree to start in, created when there is none of that name; see createAgent.
 
     ErrorCode:
       type: string
@@ -937,6 +954,8 @@ components:
         - terminal_not_running
         - agent_running
         - agent_removed
+        - branch_exists
+        - worktree_failed
         - agent_not_running
         - attach_unsupported
         - connection_lost

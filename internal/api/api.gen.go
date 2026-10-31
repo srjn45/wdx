@@ -100,6 +100,7 @@ const (
 	ErrorCodeAgentRunning       ErrorCode = "agent_running"
 	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
 	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
+	ErrorCodeBranchExists       ErrorCode = "branch_exists"
 	ErrorCodeCancelled          ErrorCode = "cancelled"
 	ErrorCodeCheckoutMissing    ErrorCode = "checkout_missing"
 	ErrorCodeChecksumMismatch   ErrorCode = "checksum_mismatch"
@@ -136,6 +137,7 @@ const (
 	ErrorCodeUpdateFailed       ErrorCode = "update_failed"
 	ErrorCodeUpdateRunning      ErrorCode = "update_running"
 	ErrorCodeUsage              ErrorCode = "usage"
+	ErrorCodeWorktreeFailed     ErrorCode = "worktree_failed"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -150,6 +152,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeAlreadyRunning:
 		return true
 	case ErrorCodeAttachUnsupported:
+		return true
+	case ErrorCodeBranchExists:
 		return true
 	case ErrorCodeCancelled:
 		return true
@@ -222,6 +226,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeUpdateRunning:
 		return true
 	case ErrorCodeUsage:
+		return true
+	case ErrorCodeWorktreeFailed:
 		return true
 	default:
 		return false
@@ -409,6 +415,9 @@ type Agent struct {
 
 	// UpdatedAt When its state last changed.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Worktree The name of the project's worktree holding dir, main for the clone; null when none does.
+	Worktree *string `json:"worktree"`
 }
 
 // AgentEnvelope defines model for AgentEnvelope.
@@ -427,6 +436,9 @@ type AgentResult struct {
 
 	// Result The most significant thing that happened.
 	Result Result `json:"result"`
+
+	// WorktreeCreated True when creating the agent created its worktree; left out otherwise.
+	WorktreeCreated *bool `json:"worktree_created,omitempty"`
 }
 
 // AgentState Whether its process is alive, not what its AI coding agent is doing.
@@ -450,6 +462,9 @@ type CreateAgent struct {
 
 	// Project The project's name, or "id:" and its id; by default the one whose worktree holds dir.
 	Project *string `json:"project,omitempty"`
+
+	// Worktree The worktree to start in, created when there is none of that name; see createAgent.
+	Worktree *string `json:"worktree,omitempty"`
 }
 
 // CreateProject defines model for CreateProject.
@@ -1132,11 +1147,20 @@ type ClientInterface interface {
 	// of that agent: it belongs to the parent's project and starts in the
 	// parent's dir, whatever dir is.
 	//
+	// With worktree, it starts in that worktree of the project instead:
+	// "main" is the clone, any other name matches the base name of a
+	// worktree's path. A name that matches none creates the worktree in
+	// <project root>/.worktrees/<name>, on a new branch of that name from the
+	// HEAD of where it would otherwise start, and excludes .worktrees from
+	// git unless git already ignores it. A worktree created stays when the
+	// agent then fails, and the next request finds it.
+	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-	// not_found, project_closed, start_failed.
+	// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+	// name_taken, not_found, path_exists, project_closed, start_failed,
+	// worktree_failed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1151,11 +1175,20 @@ type ClientInterface interface {
 	// of that agent: it belongs to the parent's project and starts in the
 	// parent's dir, whatever dir is.
 	//
+	// With worktree, it starts in that worktree of the project instead:
+	// "main" is the clone, any other name matches the base name of a
+	// worktree's path. A name that matches none creates the worktree in
+	// <project root>/.worktrees/<name>, on a new branch of that name from the
+	// HEAD of where it would otherwise start, and excludes .worktrees from
+	// git unless git already ignores it. A worktree created stays when the
+	// agent then fails, and the next request finds it.
+	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-	// not_found, project_closed, start_failed.
+	// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+	// name_taken, not_found, path_exists, project_closed, start_failed,
+	// worktree_failed.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1488,11 +1521,20 @@ func (c *Client) ListAgents(ctx context.Context, params *ListAgentsParams, reqEd
 // of that agent: it belongs to the parent's project and starts in the
 // parent's dir, whatever dir is.
 //
+// With worktree, it starts in that worktree of the project instead:
+// "main" is the clone, any other name matches the base name of a
+// worktree's path. A name that matches none creates the worktree in
+// <project root>/.worktrees/<name>, on a new branch of that name from the
+// HEAD of where it would otherwise start, and excludes .worktrees from
+// git unless git already ignores it. A worktree created stays when the
+// agent then fails, and the next request finds it.
+//
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-// not_found, project_closed, start_failed.
+// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+// name_taken, not_found, path_exists, project_closed, start_failed,
+// worktree_failed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1517,11 +1559,20 @@ func (c *Client) CreateAgentWithBody(ctx context.Context, contentType string, bo
 // of that agent: it belongs to the parent's project and starts in the
 // parent's dir, whatever dir is.
 //
+// With worktree, it starts in that worktree of the project instead:
+// "main" is the clone, any other name matches the base name of a
+// worktree's path. A name that matches none creates the worktree in
+// <project root>/.worktrees/<name>, on a new branch of that name from the
+// HEAD of where it would otherwise start, and excludes .worktrees from
+// git unless git already ignores it. A worktree created stays when the
+// agent then fails, and the next request finds it.
+//
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-// not_found, project_closed, start_failed.
+// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+// name_taken, not_found, path_exists, project_closed, start_failed,
+// worktree_failed.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3369,11 +3420,20 @@ type ClientWithResponsesInterface interface {
 	// of that agent: it belongs to the parent's project and starts in the
 	// parent's dir, whatever dir is.
 	//
+	// With worktree, it starts in that worktree of the project instead:
+	// "main" is the clone, any other name matches the base name of a
+	// worktree's path. A name that matches none creates the worktree in
+	// <project root>/.worktrees/<name>, on a new branch of that name from the
+	// HEAD of where it would otherwise start, and excludes .worktrees from
+	// git unless git already ignores it. A worktree created stays when the
+	// agent then fails, and the next request finds it.
+	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-	// not_found, project_closed, start_failed.
+	// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+	// name_taken, not_found, path_exists, project_closed, start_failed,
+	// worktree_failed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3388,11 +3448,20 @@ type ClientWithResponsesInterface interface {
 	// of that agent: it belongs to the parent's project and starts in the
 	// parent's dir, whatever dir is.
 	//
+	// With worktree, it starts in that worktree of the project instead:
+	// "main" is the clone, any other name matches the base name of a
+	// worktree's path. A name that matches none creates the worktree in
+	// <project root>/.worktrees/<name>, on a new branch of that name from the
+	// HEAD of where it would otherwise start, and excludes .worktrees from
+	// git unless git already ignores it. A worktree created stays when the
+	// agent then fails, and the next request finds it.
+	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-	// not_found, project_closed, start_failed.
+	// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+	// name_taken, not_found, path_exists, project_closed, start_failed,
+	// worktree_failed.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4763,11 +4832,20 @@ func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, params
 // of that agent: it belongs to the parent's project and starts in the
 // parent's dir, whatever dir is.
 //
+// With worktree, it starts in that worktree of the project instead:
+// "main" is the clone, any other name matches the base name of a
+// worktree's path. A name that matches none creates the worktree in
+// <project root>/.worktrees/<name>, on a new branch of that name from the
+// HEAD of where it would otherwise start, and excludes .worktrees from
+// git unless git already ignores it. A worktree created stays when the
+// agent then fails, and the next request finds it.
+//
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-// not_found, project_closed, start_failed.
+// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+// name_taken, not_found, path_exists, project_closed, start_failed,
+// worktree_failed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -4788,11 +4866,20 @@ func (c *ClientWithResponses) CreateAgentWithBodyWithResponse(ctx context.Contex
 // of that agent: it belongs to the parent's project and starts in the
 // parent's dir, whatever dir is.
 //
+// With worktree, it starts in that worktree of the project instead:
+// "main" is the clone, any other name matches the base name of a
+// worktree's path. A name that matches none creates the worktree in
+// <project root>/.worktrees/<name>, on a new branch of that name from the
+// HEAD of where it would otherwise start, and excludes .worktrees from
+// git unless git already ignores it. A worktree created stays when the
+// agent then fails, and the next request finds it.
+//
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: agent_removed, invalid_name, invalid_path, name_taken,
-// not_found, project_closed, start_failed.
+// Errors: agent_removed, branch_exists, invalid_name, invalid_path,
+// name_taken, not_found, path_exists, project_closed, start_failed,
+// worktree_failed.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -8619,114 +8706,119 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"5DyqzKoVtT0Er8FaR5R3AaqAnr7/vwAAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

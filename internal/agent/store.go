@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
@@ -21,6 +22,7 @@ type Agent struct {
 	ACA       string    // which AI coding agent it runs: aca.AiCodingAgent's ID
 	SessionID string    // the AI coding agent's session, which it goes on with
 	ParentID  string    // the agent it was created under, or "" at the top level
+	Worktree  string    // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
 	RemovedAt time.Time // when it was removed, keeping it as a tombstone; zero otherwise
 	Terminal  terminal.Terminal
 }
@@ -76,11 +78,20 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Agent, erro
 	return list[0], nil
 }
 
+// worktreeOfDir finds the deepest worktree of an agent's project holding its
+// dir, since the project's .worktrees is inside its clone: "main" for a clone,
+// else its path. An agent has no column for it: its dir already tells.
+const worktreeOfDir = `
+	SELECT CASE WHEN w.git_common_dir = w.path || '/.git' THEN 'main' ELSE w.path END
+	FROM project_worktrees w
+	WHERE w.project_id = t.project_id AND (t.dir = w.path OR substr(t.dir, 1, length(w.path) + 1) = w.path || '/')
+	ORDER BY length(w.path) DESC LIMIT 1`
+
 // query returns the agents matching where, a constant condition on a, the
 // agents, t, their terminal rows, and p, their projects.
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, `+terminal.Columns+`
+		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, (`+worktreeOfDir+`), `+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
 		JOIN projects p ON p.id = t.project_id
@@ -95,10 +106,14 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent sql.NullString
 		var removed sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed); err != nil {
+		var worktree sql.NullString
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree); err != nil {
 			return nil, err
 		}
 		a.ParentID = parent.String
+		if worktree.Valid {
+			a.Worktree = filepath.Base(worktree.String)
+		}
 		if removed.Valid {
 			a.RemovedAt = time.UnixMilli(removed.Int64)
 		}

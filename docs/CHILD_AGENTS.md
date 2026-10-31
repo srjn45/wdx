@@ -1,6 +1,6 @@
 # Child agents
 
-Status: step 1 implemented; step 2 designed, not built.
+Status: implemented.
 
 An agent can be created under another agent of its project. Top-level agents have no parent.
 
@@ -82,7 +82,7 @@ For now, the facts the row already holds: final state, exit code, times, dir, AC
 
 ## Step 2: an agent's worktree
 
-Not built before step 1. An agent's worktree is the project worktree holding its dir, derived rather than stored, and shown as `worktree` in the JSON and in `agent get`.
+An agent's worktree is the project worktree holding its dir, derived rather than stored (the deepest one, since `.worktrees` is inside the clone), and shown as `worktree` in the JSON and in `agent get`, `main` for the clone and `null` when none holds it.
 
 ```
 wdx agent create --worktree <name> ...
@@ -90,12 +90,14 @@ wdx agent create --worktree <name> ...
 
 - Without the flag, a child runs in its parent's dir; a top-level agent follows today's rule, the working directory's checkout or else the clone.
 - `main` names the clone. Other names match a project worktree by the base name of its path.
-- A name that does not exist creates the worktree and registers it with the project.
+- A name that does not exist creates the worktree and registers it with the project; `worktree_created: true` in the result says so. A directory already at its place is adopted if it is a worktree of the repository, else `path_exists`.
+- A name is one path segment that git accepts as a branch, else `invalid_name`. git failing, as in a repository with no commit yet, is `worktree_failed` with what git said.
+- A worktree created stays when the agent then fails, its name taken for example; the next request finds it.
 - A new worktree always goes in `<project root>/.worktrees/<name>`. `.worktrees` is added to the repository's `.git/info/exclude` unless git already ignores it.
-- A new worktree always gets a new branch named like it, so there is one name to keep track of. It starts from the HEAD of the checkout the agent would otherwise run in, so a child builds on its parent's commits. A branch of that name that already exists is an error; `main` cannot be created.
+- A new worktree always gets a new branch named like it, so there is one name to keep track of. It starts from the HEAD of the checkout the agent would otherwise run in, so a child builds on its parent's commits. A branch of that name that already exists is `branch_exists`, 409; `main` is never created.
 - Removing an agent never removes its worktree: it may hold work not landed.
 - Two agents may share a worktree, as they share a checkout today.
-- `C-q c` opens a popup asking for an optional worktree name; left empty, the child runs in its parent's worktree. Until this step, `C-q c` creates the child at once in its parent's dir.
+- `C-q c` opens a popup asking for an optional worktree name; left empty, the child runs in its parent's worktree.
 
 ## Later
 

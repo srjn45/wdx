@@ -105,6 +105,69 @@ func Clone(ctx context.Context, url, dest string, progress io.Writer) error {
 	return nil
 }
 
+// WorktreeError is returned when git could not add a worktree.
+type WorktreeError struct {
+	Path   string
+	Output string // what git said
+	Err    error
+}
+
+func (e *WorktreeError) Error() string {
+	return fmt.Sprintf("git worktree add %s failed: %s", e.Path, e.Output)
+}
+
+func (e *WorktreeError) Unwrap() error { return e.Err }
+
+// AddWorktree adds a worktree at path on a new branch, from the HEAD of the
+// checkout holding dir.
+func AddWorktree(ctx context.Context, dir, path, branch string) error {
+	log := logging.FromContext(ctx).With("dir", dir, "path", path, "branch", branch)
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "worktree", "add", "-b", branch, "--", path, "HEAD")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if _, ok := errors.AsType[*exec.ExitError](err); !ok {
+			log.Error("git could not run", "err", err)
+			return missing(fmt.Errorf("run git: %w", err))
+		}
+		e := &WorktreeError{Path: path, Output: strings.TrimSpace(stderr.String()), Err: err}
+		log.Error("worktree not added", "err", err, "output", e.Output, logging.Duration(start))
+		return e
+	}
+	log.Info("worktree added", logging.Duration(start))
+	return nil
+}
+
+// BranchExists reports whether the repository holding dir has a local branch
+// named branch.
+func BranchExists(ctx context.Context, dir, branch string) (bool, error) {
+	return answered(run(ctx, dir, "show-ref", "--verify", "--quiet", "refs/heads/"+branch))
+}
+
+// ValidBranch reports whether name can be a branch's name.
+func ValidBranch(ctx context.Context, dir, name string) (bool, error) {
+	return answered(run(ctx, dir, "check-ref-format", "--branch", name))
+}
+
+// Ignored reports whether git ignores path, relative to dir; a trailing slash
+// asks about a directory, which need not exist.
+func Ignored(ctx context.Context, dir, path string) (bool, error) {
+	return answered(run(ctx, dir, "check-ignore", "--quiet", path))
+}
+
+// answered is a yes or no git gave by its exit code: 0 or 1 in the commands
+// that ask, or 128 from those that reject what they are given.
+func answered(_ string, err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return false, nil
+	}
+	return false, err
+}
+
 // Init creates an empty git repository in dir.
 func Init(ctx context.Context, dir string) error {
 	if _, err := run(ctx, dir, "init", "-q"); err != nil {

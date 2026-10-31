@@ -373,8 +373,9 @@ type jsonStack struct {
 }
 
 type jsonOutput struct {
-	Result  string `json:"result"`
-	Dropped []struct {
+	WorktreeCreated *bool  `json:"worktree_created"`
+	Result          string `json:"result"`
+	Dropped         []struct {
 		Path string `json:"path"`
 	} `json:"dropped"`
 	Project  *jsonProject `json:"project"`

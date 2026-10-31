@@ -32,6 +32,8 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodePathExists:         {http.StatusConflict, ExitRejected, "the directory to clone into already exists"},
 	ErrorCodeProjectMismatch:    {http.StatusConflict, ExitRejected, "the repository is a worktree of one project but has the origin of another"},
 	ErrorCodeCloneFailed:        {http.StatusBadGateway, ExitRejected, "git clone failed"},
+	ErrorCodeBranchExists:       {http.StatusConflict, ExitRejected, "a new worktree's branch already exists"},
+	ErrorCodeWorktreeFailed:     {http.StatusUnprocessableEntity, ExitRejected, "git could not add the worktree"},
 	ErrorCodeProjectClosed:      {http.StatusConflict, ExitRejected, "the project is closed"},
 	ErrorCodeProjectInUse:       {http.StatusConflict, ExitRejected, "terminals or agents are running in the project"},
 	ErrorCodeTerminalRunning:    {http.StatusConflict, ExitRejected, "the terminal is already starting or running"},

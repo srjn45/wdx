@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -959,4 +960,150 @@ func TestGetByPath(t *testing.T) {
 	if !o.Holds(filepath.Join(inner, "src")) || o.Holds(outer+"-sibling") {
 		t.Error("want outer to hold what is below it, and only that")
 	}
+}
+
+func TestWorktreeNamed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gittest.Repo(t, "app")
+	opened, err := s.OpenLocal(ctx, repo, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := opened.Project
+
+	// main is the clone; nothing is created.
+	if path, created, err := s.WorktreeNamed(ctx, p, "main", repo); err != nil || created || path != repo {
+		t.Fatalf("main: %q, %v, %v", path, created, err)
+	}
+
+	// A new name makes the worktree, its branch and the exclude, and records it.
+	want := filepath.Join(repo, ".worktrees", "fix")
+	path, created, err := s.WorktreeNamed(ctx, p, "fix", repo)
+	if err != nil || !created || path != want {
+		t.Fatalf("new: %q, %v, %v", path, created, err)
+	}
+	if got := gitOutput(t, want, "rev-parse", "--abbrev-ref", "HEAD"); got != "fix" {
+		t.Fatalf("branch %q", got)
+	}
+	if got := gitOutput(t, want, "rev-parse", "HEAD"); got != gitOutput(t, repo, "rev-parse", "HEAD") {
+		t.Fatalf("starts at %q", got)
+	}
+	if got := gitOutput(t, repo, "status", "--porcelain"); got != "" {
+		t.Fatalf("status shows %q", got)
+	}
+	if p, err = s.GetByID(ctx, p.ID); err != nil || !p.Holds(want) || len(p.Worktrees) != 2 {
+		t.Fatalf("project: %+v, %v", p, err)
+	}
+
+	// Asked again, it is found, and the exclude is not repeated.
+	if path, created, err := s.WorktreeNamed(ctx, p, "fix", repo); err != nil || created || path != want {
+		t.Fatalf("again: %q, %v, %v", path, created, err)
+	}
+	if _, _, err := s.WorktreeNamed(ctx, p, "other", repo); err != nil {
+		t.Fatal(err)
+	}
+	exclude, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	if err != nil || strings.Count(string(exclude), ".worktrees/") != 1 {
+		t.Fatalf("exclude: %q, %v", exclude, err)
+	}
+
+	// It starts from the HEAD of the checkout given, not the clone's.
+	gittest.Git(t, want, "commit", "--allow-empty", "-m", "ahead")
+	nested, _, err := s.WorktreeNamed(ctx, p, "nested", want)
+	if err != nil || gitOutput(t, nested, "rev-parse", "HEAD") != gitOutput(t, want, "rev-parse", "HEAD") {
+		t.Fatalf("nested: %q, %v", nested, err)
+	}
+	if nested != filepath.Join(repo, ".worktrees", "nested") {
+		t.Fatalf("nested in %s", nested)
+	}
+}
+
+func TestWorktreeNamedRefuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gittest.Repo(t, "app")
+	opened, err := s.OpenLocal(ctx, repo, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := opened.Project
+
+	for _, name := range []string{"", "a/b", "a:b", "a b", "-x", "a..b"} {
+		if _, _, err := s.WorktreeNamed(ctx, p, name, repo); !isType[*InvalidWorktreeNameError](err) {
+			t.Errorf("name %q: %v", name, err)
+		}
+	}
+	gittest.Git(t, repo, "branch", "taken")
+	if _, _, err := s.WorktreeNamed(ctx, p, "taken", repo); !isType[*BranchExistsError](err) {
+		t.Errorf("branch taken: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".worktrees", "plain"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.WorktreeNamed(ctx, p, "plain", repo); !isType[*PathExistsError](err) {
+		t.Errorf("a directory in its place: %v", err)
+	}
+
+	// A worktree made with git, not known yet, is adopted.
+	made := filepath.Join(repo, ".worktrees", "made")
+	gittest.Git(t, repo, "worktree", "add", "-b", "made", made)
+	path, created, err := s.WorktreeNamed(ctx, p, "made", repo)
+	if err != nil || created || path != made {
+		t.Fatalf("adopted: %q, %v, %v", path, created, err)
+	}
+
+	// git refusing says why: a repository with no commit has no HEAD to start from.
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, empty, "init", "-q")
+	e, err := s.OpenLocal(ctx, empty, "empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = s.WorktreeNamed(ctx, e.Project, "x", empty)
+	if werr, ok := errors.AsType[*git.WorktreeError](err); !ok || werr.Output == "" {
+		t.Errorf("no commit: %v", err)
+	}
+}
+
+// TestWorktreesAlreadyIgnored: a repository that ignores .worktrees is left as
+// it is.
+func TestWorktreesAlreadyIgnored(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newStore(t)
+	repo := gittest.Repo(t, "app")
+	if err := os.WriteFile(filepath.Join(repo, ".git", "info", "exclude"), []byte(".worktrees"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := s.OpenLocal(ctx, repo, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.WorktreeNamed(ctx, opened.Project, "fix", repo); err != nil {
+		t.Fatal(err)
+	}
+	exclude, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	if err != nil || string(exclude) != ".worktrees" {
+		t.Fatalf("exclude: %q, %v", exclude, err)
+	}
+}
+
+func isType[E error](err error) bool {
+	_, ok := errors.AsType[E](err)
+	return ok
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
 }

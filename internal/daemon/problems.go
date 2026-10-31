@@ -60,6 +60,15 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*project.InvalidPathError](err); ok {
 		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}
 	}
+	if e, ok := errors.AsType[*project.InvalidWorktreeNameError](err); ok {
+		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
+	}
+	if e, ok := errors.AsType[*project.BranchExistsError](err); ok {
+		return api.ErrorCodeBranchExists, map[string]any{"branch": e.Branch}
+	}
+	if e, ok := errors.AsType[*git.WorktreeError](err); ok {
+		return api.ErrorCodeWorktreeFailed, map[string]any{"path": e.Path, "output": e.Output}
+	}
 	if e, ok := errors.AsType[*project.PathExistsError](err); ok {
 		return api.ErrorCodePathExists, map[string]any{"path": e.Path}
 	}

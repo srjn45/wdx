@@ -48,13 +48,16 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 		if p, err = s.projects.GetByID(ctx, parent.Terminal.ProjectID); err != nil {
 			return nil, err
 		}
+		if parent.Tombstone() {
+			return nil, &agent.RemovedError{Agent: parent}
+		}
 		dir, parentID = parent.Terminal.Dir, parent.ID
 		logging.FromContext(ctx).Info("starting in the parent's dir", "parent_agent_id", parentID, "dir", dir)
 	} else {
 		if p, err = s.projectOf(ctx, b.Project, &b.Dir); err != nil {
 			return nil, err
 		}
-		dir = b.Dir
+		dir = p.InWorktree(b.Dir)
 		if !p.Holds(dir) {
 			dir = p.ClonePath()
 			logging.FromContext(ctx).Info("dir outside the project, using its clone path", "project_id", p.ID, "path", b.Dir, "dir", dir)
@@ -63,11 +66,21 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 	if p.State == project.StateClosed {
 		return nil, &projectClosedError{project: p}
 	}
+	var worktreeCreated *bool
+	if b.Worktree != nil {
+		var created bool
+		if dir, created, err = s.projects.WorktreeNamed(ctx, p, *b.Worktree, dir); err != nil {
+			return nil, err
+		}
+		if created {
+			worktreeCreated = &created
+		}
+	}
 	a, err := s.agents.Create(ctx, p.ID, deref(b.Name), dir, parentID)
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateAgent201JSONResponse{Result: api.ResultCreated, Agent: agentView(a)}, nil
+	return api.CreateAgent201JSONResponse{Result: api.ResultCreated, Agent: agentView(a), WorktreeCreated: worktreeCreated}, nil
 }
 
 func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {
@@ -241,6 +254,9 @@ func agentView(a agent.Agent) api.Agent {
 	}
 	if a.ParentID != "" {
 		v.ParentAgentId = &a.ParentID
+	}
+	if a.Worktree != "" {
+		v.Worktree = &a.Worktree
 	}
 	if a.Tombstone() {
 		v.State = api.AgentStateRemoved

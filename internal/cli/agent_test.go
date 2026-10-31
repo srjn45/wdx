@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -543,4 +544,80 @@ func TestAgentRemoveParent(t *testing.T) {
 	if exit != api.ExitOK || len(v.Agents) != 0 {
 		t.Fatalf("list: exit %d, %+v", exit, v.Agents)
 	}
+}
+
+func TestAgentCreateWorktree(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	repo := gittest.Repo(t, "app")
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != api.ExitOK {
+		t.Fatalf("open: exit %d, %+v", exit, v)
+	}
+	path := filepath.Join(repo, ".worktrees", "fix")
+
+	// The default is the checkout you are in, main for the clone.
+	parent := newAgent(t, home, repo, "parent")
+	if parent.Worktree == nil || *parent.Worktree != "main" {
+		t.Fatalf("worktree %v", parent.Worktree)
+	}
+
+	// A new name creates it; a child with no flag stays in its parent's.
+	v, exit := wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "in-fix", "--parent-name", "parent", "--worktree", "fix")
+	if exit != api.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated == nil || !*v.WorktreeCreated {
+		t.Fatalf("new: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "kid", "--parent-name", "in-fix")
+	if exit != api.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated != nil {
+		t.Fatalf("child: exit %d, %+v", exit, v)
+	}
+	// Run inside it, with no flag, an agent stays there.
+	v, exit = wdxJSONWith(t, home, in(path), "agent", "create", "--name", "here")
+	if exit != api.ExitOK || *v.Agent.Worktree != "fix" {
+		t.Fatalf("here: exit %d, %+v", exit, v)
+	}
+	// main is the clone, from anywhere in the project.
+	v, exit = wdxJSONWith(t, home, in(path), "agent", "create", "--name", "back", "--worktree", "main")
+	if exit != api.ExitOK || v.Agent.Dir != repo || *v.Agent.Worktree != "main" {
+		t.Fatalf("main: exit %d, %+v", exit, v)
+	}
+
+	// Text says what happened.
+	out := wdxWith(t, home, in(repo), "agent", "create", "--name", "txt", "--worktree", "text-one")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "text-one (new)") {
+		t.Fatalf("text: %+v", out)
+	}
+	out = wdxWith(t, home, in(repo), "agent", "get", "--name", "txt")
+	if !strings.Contains(out.stdout, "worktree text-one") {
+		t.Fatalf("get: %+v", out)
+	}
+
+	gittest.Git(t, repo, "branch", "taken")
+	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "taken")
+	wantError(t, v, exit, api.ErrorCodeBranchExists, api.ExitRejected)
+	wantHint(t, v, "a new worktree gets a new branch")
+	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "a/b")
+	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	if err := os.MkdirAll(filepath.Join(repo, ".worktrees", "plain"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "plain")
+	wantError(t, v, exit, api.ErrorCodePathExists, api.ExitRejected)
+
+	// Removing the agent leaves the worktree.
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "remove", "--name", "here", "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("remove: exit %d, %+v", exit, v)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAgentCreateWorktreeNoCommit: a repository with nothing committed has no
+// HEAD to start a worktree from.
+func TestAgentCreateWorktreeNoCommit(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--worktree", "fix")
+	wantError(t, v, exit, api.ErrorCodeWorktreeFailed, api.ExitRejected)
 }

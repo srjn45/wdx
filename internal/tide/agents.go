@@ -303,10 +303,58 @@ func (m *Model) childParent() (api.Agent, bool) {
 	return a, ok && a.State != api.AgentStateRemoved
 }
 
-// createChild creates a child of parent, as createAgent does an agent.
-func (m *Model) createChild(parent api.Agent) tea.Cmd {
+// childBox asks C-q c for the worktree of a new child: empty, it is the
+// parent's.
+type childBox struct {
+	parent   api.Agent
+	worktree string
+}
+
+// childKey takes a key while the box is open.
+func (m *Model) childKey(msg tea.KeyPressMsg) tea.Cmd {
+	c := m.child
+	switch name := msg.String(); {
+	case name == "esc":
+		m.child = nil
+	case name == "enter":
+		m.child = nil
+		return m.createChild(c.parent, strings.TrimSpace(c.worktree))
+	case name == "backspace" && c.worktree != "":
+		r := []rune(c.worktree)
+		c.worktree = string(r[:len(r)-1])
+	case typed(msg):
+		c.worktree += msg.Text
+	}
+	return nil
+}
+
+// childPopup is what the box shows.
+func (m *Model) childPopup() popup {
+	c, st := m.child, m.st
+	in := "its worktree"
+	if c.parent.Worktree != nil {
+		in = *c.parent.Worktree
+	}
+	return popup{
+		title: "New child of " + c.parent.Name,
+		body: []string{
+			"Worktree, created if it is new:", "",
+			"> " + c.worktree + "_", "",
+			st.Muted("Empty: the parent's, " + in),
+		},
+		footer: st.Command("Enter") + " create  " + st.Command("Esc") + " cancel",
+	}
+}
+
+// createChild creates a child of parent in worktree, or in parent's dir when
+// it is "", as createAgent does an agent.
+func (m *Model) createChild(parent api.Agent, worktree string) tea.Cmd {
 	ref := "id:" + parent.Id
-	return m.sendCreateAgent(api.CreateAgent{Parent: &ref, Dir: parent.Dir})
+	body := api.CreateAgent{Parent: &ref, Dir: parent.Dir}
+	if worktree != "" {
+		body.Worktree = &worktree
+	}
+	return m.sendCreateAgent(body)
 }
 
 func (m *Model) sendCreateAgent(body api.CreateAgent) tea.Cmd {
@@ -316,7 +364,7 @@ func (m *Model) sendCreateAgent(body api.CreateAgent) tea.Cmd {
 		m.layout.zoomed = agent
 	}
 	m.changed("agent pane")
-	m.log.Info("agent requested", "project", p.Name, "dir", body.Dir, "parent", body.Parent)
+	m.log.Info("agent requested", "project", p.Name, "dir", body.Dir, "parent", body.Parent, "worktree", body.Worktree)
 	ref, id := "id:"+p.Id, p.Id
 	body.Project = &ref
 	return func() tea.Msg {

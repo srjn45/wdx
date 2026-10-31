@@ -32,9 +32,9 @@ func newAgentCmd() *cobra.Command {
 
 func newAgentCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, parentID, parentName string
+	var name, parentID, parentName, worktree string
 	cmd := &cobra.Command{
-		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>]",
+		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>]",
 		Short: "Create an agent and start its AI coding agent",
 		Long: "Without a project flag, the agent belongs to the project the working\n" +
 			"directory is in, and starts there. With one, it starts in the working\n" +
@@ -44,21 +44,28 @@ func newAgentCreateCmd() *cobra.Command {
 			"names are unique within a project, among agents and terminals.\n\n" +
 			"With a parent flag it is a child of that agent: it belongs to the parent's\n" +
 			"project and starts in the parent's dir. Without one it is at the top level,\n" +
-			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".",
+			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".\n\n" +
+			"With --worktree it starts in that worktree of the project instead: main is\n" +
+			"the clone, and any other name matches the last part of a worktree's path. A\n" +
+			"name that matches none creates the worktree in <project root>/.worktrees/<name>,\n" +
+			"on a new branch of that name from the HEAD of where it would otherwise start.\n" +
+			"Removing the agent leaves the worktree.",
 		Example: examples(
 			"Create an agent in the project you are in", identity.Name+" agent create",
 			"Name it and pick the project", identity.Name+" agent create --project-name app --name reviewer",
 			"Create a child of an agent", identity.Name+" agent create --parent-name reviewer",
 			"Create a child by the parent's id, as JSON", identity.Name+" agent create --parent-id agent-1a2b3c4d --json",
+			"Create a child in a worktree of its own", identity.Name+" agent create --parent-name reviewer --worktree fix-login",
 			"As JSON", identity.Name+" agent create --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not created",
-			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}`,
+			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}, and "worktree_created": true when its worktree is new`,
 			resultList:    "created",
-			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound,
-				api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed, api.ErrorCodeDaemonUnavailable),
+			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+				api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
+				api.ErrorCodeWorktreeFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := workDir(cmd)
@@ -69,7 +76,7 @@ func newAgentCreateCmd() *cobra.Command {
 			if parentID != "" {
 				parent = "id:" + parentID
 			}
-			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent)})
+			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree)})
 			if err != nil {
 				if parentID == "" {
 					err = outsideHint(err, scope, "")
@@ -87,6 +94,8 @@ func newAgentCreateCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("parent-id", "parent-name")
 	cmd.RegisterFlagCompletionFunc("parent-id", completeParents("id"))
 	cmd.RegisterFlagCompletionFunc("parent-name", completeParents("name"))
+	cmd.Flags().StringVar(&worktree, "worktree", "", "`name` of the worktree to start in, created when there is none (default: the parent's, else the one you are in, else main)")
+	cmd.RegisterFlagCompletionFunc("worktree", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -365,7 +374,11 @@ func agentTarget(cmd *cobra.Command, a api.Agent) attachTarget {
 func agentHint(err error) error {
 	switch problemCode(err) {
 	case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-		return &hinted{err, "choose another --name"}
+		return &hinted{err, "choose another --name or --worktree"}
+	case api.ErrorCodeBranchExists:
+		return &hinted{err, "a new worktree gets a new branch: choose another --worktree, or delete the branch"}
+	case api.ErrorCodePathExists:
+		return &hinted{err, "something else is in the worktree's place: choose another --worktree"}
 	case api.ErrorCodeProjectClosed:
 		return &hinted{err, "open the project first with " + identity.Name + " project open"}
 	case api.ErrorCodeAgentRemoved:
@@ -388,8 +401,12 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 		in = "from"
 	}
 	fmt.Fprintf(w, "%s agent %s %s %s\n", st.Success(string(r.Result)), st.Name(a.Name), in, st.Name(a.ProjectName))
+	onWorktree := a.Worktree != nil && *a.Worktree != "main"
 	width := 4
-	if a.ParentAgentId != nil {
+	switch {
+	case onWorktree:
+		width = 8
+	case a.ParentAgentId != nil:
 		width = 6
 	}
 	field := fieldPrinter(w, st, width)
@@ -398,6 +415,13 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 	}
 	if a.RemovedAt != nil {
 		field("kept", "as removed until its children are gone")
+	}
+	if onWorktree {
+		created := ""
+		if r.WorktreeCreated != nil {
+			created = " " + st.Muted("(new)")
+		}
+		field("worktree", st.Name(*a.Worktree)+created)
 	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)
@@ -485,6 +509,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 			names = append(names, st.Name(c.Name))
 		}
 		field("children", strings.Join(names, ", "))
+	}
+	if a.Worktree != nil {
+		field("worktree", st.Name(*a.Worktree))
 	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)

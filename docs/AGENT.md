@@ -4,7 +4,7 @@ Status: implemented. Checked against the real Claude Code 2.1.314 (see Tests).
 
 An agent is an AI coding agent (an ACA: Claude Code for now, Codex, Cursor, Antigravity later) running in a terminal of a project. It has everything a terminal has, its holder included: it outlives the daemon and the window that showed it, and you attach to it and detach from it the same way. On top it knows which ACA it runs and which session of that ACA is its own.
 
-Child agents and tombstones are in docs/CHILD_AGENTS.md. Not in this step: what the ACA is doing (idle, busy, needs input and the like), choosing a model, an initial prompt, a worktree per agent, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
+Child agents and tombstones are in docs/CHILD_AGENTS.md. Not in this step: what the ACA is doing (idle, busy, needs input and the like), choosing a model, an initial prompt, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
 
 ## Architecture
 
@@ -109,7 +109,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 
 ```json
 {"id": "agent-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "wdx",
- "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx",
+ "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx", "worktree": "main",
  "state": "running", "pid": 4242, "exit_code": null, "error": null,
  "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null, "removed_at": null}
 ```
@@ -129,13 +129,15 @@ New codes in `internal/api/codes.go`:
 | `agent_running` | 409 | 1 | the agent is already starting or running |
 | `agent_not_running` | | 1 | attach's, reported by the CLI, as `terminal_not_running` |
 | `agent_removed` | 409 | 1 | the agent is a tombstone, kept only for its children |
+| `branch_exists` | 409 | 1 | a new worktree's branch already exists |
+| `worktree_failed` | 422 | 1 | git could not add the worktree |
 
 `start_failed` carries the row under `details.agent`.
 
 ## CLI
 
 ```
-wdx agent create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>]
+wdx agent create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>]
 wdx agent list   [--project-id <id> | --project-name <name> | --all]
 wdx agent get    (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]

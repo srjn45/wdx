@@ -10,6 +10,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -65,6 +66,7 @@ type Model struct {
 	rests          int                                                                  // how many project switches rested, numbering them
 	resting        bool                                                                 // a project switched to has not rested yet: nothing attaches
 	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
+	child          *childBox                                                            // the worktree C-q c asks for, while it does
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
 	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
@@ -235,6 +237,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		return m, m.wheel(msg)
 	case tea.PasteMsg:
+		if m.child != nil && !m.menu {
+			m.child.worktree += strings.Join(strings.Fields(msg.Content), "")
+			return m, nil
+		}
 		if f, ok := m.openTop().(*fieldScreen); ok && !m.menu && m.confirm == nil {
 			f.paste(msg.Content)
 			return m, nil
@@ -401,7 +407,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case "c":
 			if a, ok := m.childParent(); ok {
 				m.switcher, m.opening = nil, nil
-				return m.createChild(a)
+				m.child = &childBox{parent: a}
+				m.log.Info("child asked", "parent", a.Name)
 			}
 		case "x":
 			if r, ok := m.removable(); ok {
@@ -417,6 +424,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	m.terminalNotice, m.statusNotice = "", ""
+	if m.child != nil {
+		return m.childKey(msg)
+	}
 	if m.confirm != nil {
 		return m.confirmKey(name)
 	}
@@ -502,7 +512,7 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() {
+	if m.menu || m.popupOpen() || m.child != nil {
 		return nil
 	}
 	if m.confirm == nil {

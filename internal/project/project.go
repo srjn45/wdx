@@ -66,6 +66,18 @@ func (p Project) Holds(path string) bool {
 	return slices.ContainsFunc(p.Worktrees, func(w Worktree) bool { return within(w.Path, forms) })
 }
 
+// InWorktree returns path as it is in one of the project's worktrees, its
+// symlinks resolved if that is what it takes; path itself when it is in none.
+func (p Project) InWorktree(path string) string {
+	forms := pathForms(path)
+	for _, form := range forms {
+		if slices.ContainsFunc(p.Worktrees, func(w Worktree) bool { return within(w.Path, []string{form}) }) {
+			return form
+		}
+	}
+	return path
+}
+
 // Opened is the result of opening a project.
 type Opened struct {
 	Project

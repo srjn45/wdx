@@ -55,6 +55,26 @@ func (e *InvalidNameError) Error() string {
 	return fmt.Sprintf("invalid project name %q: %s", e.Name, e.Reason)
 }
 
+// InvalidWorktreeNameError is returned for a worktree name that cannot be used.
+type InvalidWorktreeNameError struct {
+	Name   string
+	Reason string
+}
+
+func (e *InvalidWorktreeNameError) Error() string {
+	return fmt.Sprintf("invalid worktree name %q: %s", e.Name, e.Reason)
+}
+
+// BranchExistsError is returned when a new worktree's branch exists: a new
+// worktree always gets a new branch of its own name.
+type BranchExistsError struct {
+	Branch string
+}
+
+func (e *BranchExistsError) Error() string {
+	return fmt.Sprintf("branch %s already exists", e.Branch)
+}
+
 // InvalidPathError is returned for a path that cannot be used as asked.
 type InvalidPathError struct {
 	Path   string

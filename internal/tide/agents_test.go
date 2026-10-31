@@ -3,6 +3,7 @@ package tide
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -606,6 +608,13 @@ func TestNewChildAgent(t *testing.T) {
 	p.keys("C-q")
 	wantText(t, p.m, "c  new child of parent", "c child")
 	p.keys("c")
+	wantText(t, p.m, "New child of parent", "Empty: the parent's, main")
+	// Esc asks again next time, and creates nothing.
+	p.keys("esc")
+	if p.m.child != nil || len(p.m.agents()) != 1 {
+		t.Fatalf("Esc: box %v, agents %v", p.m.child, p.m.agents())
+	}
+	p.keys("C-q", "c", "enter")
 	if p.m.layout.focus != agent {
 		t.Fatalf("focus %s", p.m.layout.focus)
 	}
@@ -633,4 +642,37 @@ func TestNewChildAgent(t *testing.T) {
 	// It goes with its last child.
 	p.keys("down", "C-q", "x", "y")
 	p.until(t, "both gone", func(m *Model) bool { return m.confirm == nil && len(m.agents()) == 0 })
+}
+
+// TestNewChildAgentWorktree: the popup's worktree is created, and the child
+// starts there.
+func TestNewChildAgentWorktree(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	repo := gittest.Repo(t, "app")
+	var source api.Source
+	_ = source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: repo})
+	if _, err := h.client().CreateProject(context.Background(), api.CreateProject{Source: source}); err != nil {
+		t.Fatal(err)
+	}
+	h.newAgent(t, "app", repo, "parent")
+	p := h.openShown(t)
+	p.until(t, "parent attached", agentAttached("parent"))
+
+	p.keys("C-q", "c", "f", "i", "x", "x", "backspace", "enter")
+	p.until(t, "the child active", func(m *Model) bool {
+		a, ok := m.activeAgent()
+		return ok && a.ParentAgentId != nil
+	})
+	child, _ := p.m.activeAgent()
+	want := filepath.Join(repo, ".worktrees", "fix")
+	if child.Dir != want || child.Worktree == nil || *child.Worktree != "fix" {
+		t.Fatalf("child: %s in %v", child.Dir, child.Worktree)
+	}
+
+	// A failure shows on the status line, and creates nothing.
+	gittest.Git(t, repo, "branch", "taken")
+	p.keys("alt+left", "C-q", "c", "t", "a", "k", "e", "n", "enter")
+	p.until(t, "the failure", func(m *Model) bool { return strings.Contains(m.statusNotice, "taken") })
 }
