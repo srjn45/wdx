@@ -113,6 +113,8 @@ type Timeouts struct {
 	AttachExit time.Duration
 	// Holder are how long attach and a terminal's holder wait for each other.
 	Holder holder.Limits
+	// ProjectStrip is how long tide shows the project strip after a switch.
+	ProjectStrip time.Duration
 }
 
 // termVars are the variables that describe the terminal wdx runs in.

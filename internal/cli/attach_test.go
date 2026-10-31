@@ -80,6 +80,7 @@ func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []stri
 			Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary,
 			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, CallerTerm: []string{"TERM=xterm-256color"},
 		}
+		env.Timeouts.ProjectStrip = waittest.Limit(t) // a test polling late still sees it; the next key hides it
 		exit := Run(context.Background(), a.args, env)
 		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
 	}()

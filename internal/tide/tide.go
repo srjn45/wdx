@@ -84,6 +84,7 @@ type Model struct {
 	daemonVersion string                                    // what the daemon last answered, "" when it did not
 	resume        *Resume                                   // what to show first, until the projects are listed
 	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
+	stripLinger   time.Duration                             // from Options
 }
 
 // content is what a pane shows.
@@ -109,6 +110,9 @@ type Options struct {
 	DaemonVersion func(ctx context.Context) (string, error)
 	// Resume is what the run before showed, when it reloaded.
 	Resume *Resume
+	// StripLinger is how long the project strip stays after the last switch;
+	// zero is a second.
+	StripLinger time.Duration
 }
 
 // click is where and when a click on a frame's title happened.
@@ -142,6 +146,7 @@ func New(ctx context.Context, opts Options) *Model {
 		executable:  opts.Executable,
 		versionOf:   opts.DaemonVersion,
 		resume:      opts.Resume,
+		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.

@@ -176,8 +176,8 @@ func (s *switcherBox) popup(m *Model) popup {
 	}
 }
 
-// stripLinger is how long the project strip stays after the last switch.
-const stripLinger = time.Second
+// defaultStripLinger is how long the project strip stays after the last switch.
+const defaultStripLinger = time.Second
 
 // hideStrip hides the project strip, unless a switch since showed it again.
 type hideStrip struct{ shown int }
@@ -209,7 +209,7 @@ func (m *Model) step(by int) tea.Cmd {
 	m.strip++
 	m.stripShown = true
 	shown := m.strip
-	hide := m.tick(stripLinger, func(time.Time) tea.Msg { return hideStrip{shown: shown} })
+	hide := m.tick(m.stripLinger, func(time.Time) tea.Msg { return hideStrip{shown: shown} })
 	if open[i] == m.shown {
 		return hide
 	}
