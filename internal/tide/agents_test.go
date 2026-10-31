@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -371,6 +372,94 @@ func TestNewAgent(t *testing.T) {
 	under, _ := p.m.cursorAgent()
 	if under.Id != active.Id {
 		t.Fatalf("cursor on %s, active %s", under.Name, active.Name)
+	}
+}
+
+// TestProjectPaneLetters: with the project pane in focus a menu letter acts
+// without the menu, showing the same popups; a popup open takes the letters.
+func TestProjectPaneLetters(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41, demoTree()...)
+	press := func(name string) tea.Cmd {
+		_, cmd := m.Update(keyMsgs(name)[0])
+		return cmd
+	}
+
+	press("x")
+	wantText(t, m, "Remove a-parent?")
+	keys(m, "esc")
+
+	press("c")
+	wantText(t, m, "New child of a-parent")
+	press("a")
+	if m.child == nil || m.child.worktree != "a" {
+		t.Fatalf("a in the worktree box: %+v", m.child)
+	}
+	keys(m, "esc")
+
+	press("o")
+	wantText(t, m, "┃ Open Project")
+	if cmd := press("q"); cmd != nil || !m.popupOpen() {
+		t.Fatalf("q in Open Project: popup open %v, cmd %v", m.popupOpen(), cmd)
+	}
+	keys(m, "esc")
+
+	press("p")
+	wantText(t, m, "┃ Switch Project")
+	press("q")
+	wantText(t, m, "> q_")
+	keys(m, "esc")
+
+	// This project has no checkout, so the menu offers neither; they do nothing.
+	for _, name := range []string{"a", "t"} {
+		if cmd := press(name); cmd != nil || m.layout.focus != project {
+			t.Fatalf("%s: focus %s, cmd %v", name, m.layout.focus, cmd)
+		}
+	}
+
+	cmd := press("q")
+	if cmd == nil {
+		t.Fatal("q did not quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("q returned %T", cmd())
+	}
+}
+
+// TestProjectPaneNewAgentAndTerminal: a and t create as C-q a and C-q t do,
+// moving the focus; the letters they take here reach the programs in the other
+// panes, which keep only C-q.
+func TestProjectPaneNewAgentAndTerminal(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "no agents", func(m *Model) bool { return strings.Contains(text(m), "no agents: C-q a") })
+
+	p.keys("a")
+	if p.m.layout.focus != agent {
+		t.Fatalf("focus %s", p.m.layout.focus)
+	}
+	p.until(t, "the agent active", func(m *Model) bool {
+		_, ok := m.activeAgent()
+		return ok
+	})
+	active, _ := p.m.activeAgent()
+	p.until(t, "it attached", agentAttached(active.Name))
+	p.typed("echo acto''pqx\n")
+	p.until(t, "the letters in the agent", agentScreenHas("actopqx"))
+
+	p.keys("alt+left", "t")
+	if p.m.layout.focus != terminal {
+		t.Fatalf("focus %s", p.m.layout.focus)
+	}
+	p.until(t, "a tab", func(m *Model) bool { return len(tabs(m)) == 1 })
+	p.until(t, "it attached", attachedTo(tabs(p.m)[0]))
+	p.typed("echo acto''pqx\n")
+	p.until(t, "the letters in the terminal", screenHas("actopqx"))
+	if len(p.m.agents()) != 1 || len(tabs(p.m)) != 1 || p.m.confirm != nil || p.m.child != nil || p.m.popupOpen() {
+		t.Fatalf("a letter acted in a pane:\n%s", text(p.m))
 	}
 }
 

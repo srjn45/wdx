@@ -96,9 +96,6 @@ func TestMenu(t *testing.T) {
 	if m.menu || strings.Contains(text(m), "quit") {
 		t.Fatalf("Esc left the menu open:\n%s", text(m))
 	}
-	if _, cmd := m.Update(key('q', 0)); cmd != nil { // without the menu, q is the pane's
-		t.Fatal("q without the menu quit")
-	}
 	m.Update(key('q', tea.ModCtrl))
 	_, cmd := m.Update(key('q', 0))
 	if cmd == nil {

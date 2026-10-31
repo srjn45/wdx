@@ -388,40 +388,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	m.sel = nil
 	if m.menu {
 		m.menu = false
-		switch name {
-		case "o":
-			m.switcher = nil
-			return m.openProject()
-		case "p":
-			return m.openSwitcher()
-		case "t":
-			if _, ok := m.checkoutDir(); ok {
-				m.switcher, m.opening = nil, nil
-				return m.createTerminal()
-			}
-		case "a":
-			if _, ok := m.checkoutDir(); ok {
-				m.switcher, m.opening = nil, nil
-				return m.createAgent()
-			}
-		case "c":
-			if a, ok := m.childParent(); ok {
-				m.switcher, m.opening = nil, nil
-				m.child = &childBox{parent: a}
-				m.log.Info("child asked", "parent", a.Name)
-			}
-		case "x":
-			if r, ok := m.removable(); ok {
-				m.confirm = &confirmBox{r: r}
-				m.log.Info("removal asked", "kind", r.kind, "name", r.name)
-			}
-		case "q":
-			m.log.Info("tide quit")
-			m.unfollow() // the daemon ends the stream, and logs it
-			m.detachAll()
-			return tea.Quit
-		}
-		return nil
+		return m.menuAction(name)
 	}
 	m.terminalNotice, m.statusNotice = "", ""
 	if m.child != nil {
@@ -455,6 +422,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	default:
 		d, ok := focusKeys[name]
 		switch {
+		case !ok && m.layout.focus == project && m.menuOffers(name):
+			return m.menuAction(name)
 		case !ok && m.layout.focus == project:
 			return m.projectPaneKey(msg)
 		case !ok:
@@ -464,6 +433,44 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case m.layout.move(d):
 			m.changed("move")
 		}
+	}
+	return nil
+}
+
+// menuAction does what a letter of the C-q menu does, if it applies now.
+func (m *Model) menuAction(name string) tea.Cmd {
+	switch name {
+	case "o":
+		m.switcher = nil
+		return m.openProject()
+	case "p":
+		return m.openSwitcher()
+	case "t":
+		if _, ok := m.checkoutDir(); ok {
+			m.switcher, m.opening = nil, nil
+			return m.createTerminal()
+		}
+	case "a":
+		if _, ok := m.checkoutDir(); ok {
+			m.switcher, m.opening = nil, nil
+			return m.createAgent()
+		}
+	case "c":
+		if a, ok := m.childParent(); ok {
+			m.switcher, m.opening = nil, nil
+			m.child = &childBox{parent: a}
+			m.log.Info("child asked", "parent", a.Name)
+		}
+	case "x":
+		if r, ok := m.removable(); ok {
+			m.confirm = &confirmBox{r: r}
+			m.log.Info("removal asked", "kind", r.kind, "name", r.name)
+		}
+	case "q":
+		m.log.Info("tide quit")
+		m.unfollow() // the daemon ends the stream, and logs it
+		m.detachAll()
+		return tea.Quit
 	}
 	return nil
 }

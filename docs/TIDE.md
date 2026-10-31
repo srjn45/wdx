@@ -192,6 +192,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
 - Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- With the project pane in focus, the menu's letters also work without `C-q`, showing the same popups: nothing there takes typing. In the agent and terminal panes they go to the program, so those keep only `C-q`. `q` quits at once there too, which is safe because terminals and agents keep running.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -256,7 +257,7 @@ Switching projects is frequent too, so it is one chord.
 
 ### Panes without a PTY
 
-The project pane and its screens use plain keys for their own navigation (`j` / `k`, `enter`, `n`, ...). tide's shortcuts work there too, so navigation is the same in every pane.
+The project pane and its screens use plain keys for their own navigation (`j` / `k`, `enter`, `n`, ...). tide's shortcuts work there too, so navigation is the same in every pane, and the `C-q` menu's letters work without `C-q`.
 
 ## Mouse
 

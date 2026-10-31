@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -28,6 +29,13 @@ func (m *Model) menuItems() []menuItem {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
 	return append(items, menuItem{"q", "quit", "quit"})
+}
+
+// menuOffers reports whether the menu has a line for the key now. With the
+// project pane in focus such a key acts without the menu: nothing there takes
+// typing, as the programs in the other panes do.
+func (m *Model) menuOffers(name string) bool {
+	return slices.ContainsFunc(m.menuItems(), func(it menuItem) bool { return it.key == name })
 }
 
 // checkoutDir is where C-q t creates a terminal and C-q a an agent: the first
