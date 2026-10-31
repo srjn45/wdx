@@ -1,0 +1,21 @@
+import sys,time
+from rec import *
+name=sys.argv[1]; cols=int(sys.argv[2]); rows=int(sys.argv[3]); env=sys.argv[4] if len(sys.argv)>4 else ''
+r=Rec(name,cols=cols,rows=rows,env=env)
+r.trust(); time.sleep(2); r.mark('idle'); time.sleep(2); r.snap('idle')
+r.mark('typing'); r.tmux('send-keys','-t','r','-l','a long line typed into the box that does not fit in one row of this narrow pane at all, so it wraps'); time.sleep(1.5); r.snap('typing_wrapped'); r.keys('C-u'); time.sleep(1); r.mark('idle2'); time.sleep(1)
+r.mark('working'); r.say("Write a 150 word story about a lighthouse. No tools.")
+time.sleep(2.5); r.snap('working'); r.turn_over(60); r.mark('idle3'); time.sleep(2); r.snap('idle_after_story')
+r.mark('turn_to_permission'); r.say("Run this exact command with Bash: touch a.txt")
+if r.wait('Esc to cancel',45,where=3): r.mark('permission'); time.sleep(2); r.snap('permission'); r.keys('Escape'); r.mark('after_deny'); time.sleep(3); r.snap('after_deny')
+r.turn_over(30)
+r.mark('turn_to_decision'); r.say("Use AskUserQuestion once: red or blue? Nothing else.")
+if r.wait('Esc to cancel',45,where=3): r.mark('decision'); time.sleep(2); r.snap('decision'); r.keys('Escape'); r.mark('after_decision'); time.sleep(3); r.snap('after_decision')
+r.turn_over(30)
+r.mark('turn_to_bg'); r.say("Bash with run_in_background true: ping -c 25 127.0.0.1 . Then end your turn with one word.")
+if r.wait('Esc to cancel',45,where=3): r.snap('bg_approval'); r.keys('Enter')
+r.turn_over(30); r.mark('bg_shell'); time.sleep(3); r.snap('bg_shell_footer')
+r.mark('turn_to_sub'); r.say("Agent with run_in_background true, subagent_type general-purpose, prompt: Say done. Then end your turn with one word.")
+time.sleep(1.5); r.snap('bg_sub_early'); r.turn_over(30); r.mark('bg_sub'); time.sleep(1); r.snap('bg_sub_footer')
+r.mark('wait_end'); time.sleep(25); r.turn_over(30); r.mark('idle_end'); time.sleep(4); r.snap('idle_end')
+r.end()

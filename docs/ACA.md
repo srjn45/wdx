@@ -24,7 +24,7 @@ Code that names one ACA, or assumes what they all do.
 | Help says "Claude Code for now" | `newAgentCmd`'s `Long`, `internal/cli/agent.go` | the words |
 | The `aca` field's example | `Agent.aca`, `api/openapi.yaml` | nothing; only an example |
 | Reading its activity and draft from its screen, not yet called | `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | its own `ScreenParser`; `AiCodingAgent` gets a method for it with the holder's `watchScreen` |
-| Recordings of its screens | `internal/aca/testdata/claude_code/` | its own recordings |
+| Recordings of its screens, and the scripts that make them | `internal/aca/testdata/claude_code/` | its own recordings |
 
 ## Not landed yet
 

@@ -1,0 +1,16 @@
+import sys,time
+from rec import *
+r=Rec(sys.argv[1],args='--safe-mode --model haiku --permission-mode auto')
+r.trust(); time.sleep(2); r.mark('idle'); time.sleep(1)
+r.mark('working'); r.say("Write a 300 word story about a lighthouse. No tools.")
+r.wait('esc to interrupt',20); time.sleep(1)
+r.mark('typing_while_working'); r.tmux('send-keys','-t','r','-l','abc'); time.sleep(1.2); r.snap('typing_while_working'); r.keys('C-u'); time.sleep(.5); r.snap('cleared_while_working')
+r.turn_over(60); r.mark('idle'); time.sleep(2)
+r.mark('turn_bg'); r.say("Bash with run_in_background true: ping -c 25 127.0.0.1 . Then end your turn with one word.")
+r.turn_over(30); r.mark('shell_running'); time.sleep(2); r.snap('shell_running')
+r.mark('typing_while_shell'); r.tmux('send-keys','-t','r','-l','abc'); time.sleep(1.2); r.snap('typing_while_shell'); r.keys('C-u'); time.sleep(.5)
+r.mark('turn_sub'); r.say("Agent with run_in_background true, subagent_type general-purpose, prompt: Run ping -c 15 127.0.0.1 with Bash then say done. Then end your turn with one word.")
+r.turn_over(30); r.mark('sub_running'); time.sleep(2); r.snap('sub_running')
+r.mark('typing_while_sub'); r.tmux('send-keys','-t','r','-l','abc'); time.sleep(1.2); r.snap('typing_while_sub'); r.keys('C-u'); time.sleep(1)
+r.mark('wait_end'); time.sleep(30); r.turn_over(30); r.mark('idle_end'); time.sleep(3); r.snap('idle_end')
+r.end()

@@ -207,7 +207,7 @@ Each step builds and passes `make test` on its own, and is a `feat:` or `test:` 
 
 Real Claude Code 2.1.314 sessions, at widths from 30 to 120 and in both renderers, are in `internal/aca/testdata/claude_code/2.1.314/`: 29 recordings, 2.3 MB. Each holds `raw.out` and `raw.timing`, with input times where a test needs them, and some a `marks.log` of what was done when. The tests replay them through the screen in CI, which needs no real ACA.
 
-They ran in tmux with Haiku and tiny prompts, in `--safe-mode`, which keeps the login and drops CLAUDE.md, settings and plugins, apart from `prompts`, which quotes nothing private. Paths and session ids are masked at the same length, so the layout holds; a mask can leave a character changed, as `re-exable`. Claude's `sleep` was blocked by the human's settings in an early attempt, so they use `ping`.
+They ran in tmux with Haiku and tiny prompts, in `--safe-mode`, which keeps the login and drops CLAUDE.md, settings and plugins, apart from `prompts`, which quotes nothing private. Paths and session ids are masked at the same length, so the layout holds; a mask can leave a character changed, as `re-exable`. Claude's `sleep` was blocked by the human's settings in an early attempt, so they use `ping`. The scripts are in `internal/aca/testdata/claude_code/record/`.
 
 | Screen | Last line | Moves? |
 |---|---|---|
