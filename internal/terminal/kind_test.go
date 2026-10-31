@@ -17,8 +17,8 @@ func agentFixture(t *testing.T) (fixture, *Supervisor, string) {
 	t.Helper()
 	f := newFixture(t)
 	f.opts.Shell = "/bin/sh"
-	f.opts.AgentCommand = func(context.Context, Terminal) ([]string, error) {
-		return []string{"sleep", "60"}, nil
+	f.opts.AgentLaunch = func(context.Context, Terminal) (AgentLaunch, error) {
+		return AgentLaunch{Command: []string{"sleep", "60"}}, nil
 	}
 	return f, f.supervisor(t), f.project(t, "app")
 }
@@ -123,12 +123,12 @@ func TestLinkFailureLeavesNoRow(t *testing.T) {
 	}
 }
 
-func TestAgentCommandFailureLeavesItFailed(t *testing.T) {
+func TestAgentLaunchFailureLeavesItFailed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
 	f.opts.Shell = "/bin/sh"
-	f.opts.AgentCommand = func(context.Context, Terminal) ([]string, error) { return nil, errors.New("unknown ACA") }
+	f.opts.AgentLaunch = func(context.Context, Terminal) (AgentLaunch, error) { return AgentLaunch{}, errors.New("unknown ACA") }
 	s := f.supervisor(t)
 	_, err := s.CreateAgent(ctx, f.project(t, "app"), "helper", t.TempDir(), noLink)
 	serr, ok := errors.AsType[*StartError](err)
@@ -140,17 +140,17 @@ func TestAgentCommandFailureLeavesItFailed(t *testing.T) {
 	}
 }
 
-// TestAgentCommandAskedAtEachLaunch: an AI CLI may start differently the
+// TestAgentLaunchAskedAtEachLaunch: an AI CLI may start differently the
 // second time.
-func TestAgentCommandAskedAtEachLaunch(t *testing.T) {
+func TestAgentLaunchAskedAtEachLaunch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
 	f.opts.Shell = "/bin/sh"
 	var asked []string
-	f.opts.AgentCommand = func(_ context.Context, row Terminal) ([]string, error) {
+	f.opts.AgentLaunch = func(_ context.Context, row Terminal) (AgentLaunch, error) {
 		asked = append(asked, row.ID)
-		return []string{"/bin/sh", "-c", "exit 3"}, nil
+		return AgentLaunch{Command: []string{"/bin/sh", "-c", "exit 3"}}, nil
 	}
 	s := f.supervisor(t)
 	row, err := s.CreateAgent(ctx, f.project(t, "app"), "helper", t.TempDir(), noLink)

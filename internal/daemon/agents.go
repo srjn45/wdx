@@ -29,7 +29,7 @@ func (s *server) ListAgents(ctx context.Context, req api.ListAgentsRequestObject
 	if err != nil {
 		return nil, err
 	}
-	return api.ListAgents200JSONResponse{Agents: agentViews(list)}, nil
+	return api.ListAgents200JSONResponse{Agents: agentTree(list)}, nil
 }
 
 func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObject) (api.CreateAgentResponseObject, error) {
@@ -37,19 +37,33 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 	if err := absolute(b.Dir); err != nil {
 		return nil, err
 	}
-	p, err := s.projectOf(ctx, b.Project, &b.Dir)
-	if err != nil {
-		return nil, err
-	}
-	dir := b.Dir
-	if !p.Holds(dir) {
-		dir = p.ClonePath()
-		logging.FromContext(ctx).Info("dir outside the project, using its clone path", "project_id", p.ID, "path", b.Dir, "dir", dir)
+	var p project.Project
+	var dir, parentID string
+	var err error
+	if b.Parent != nil {
+		parent, err := s.findParent(ctx, *b.Parent, b.Project, b.Dir)
+		if err != nil {
+			return nil, err
+		}
+		if p, err = s.projects.GetByID(ctx, parent.Terminal.ProjectID); err != nil {
+			return nil, err
+		}
+		dir, parentID = parent.Terminal.Dir, parent.ID
+		logging.FromContext(ctx).Info("starting in the parent's dir", "parent_agent_id", parentID, "dir", dir)
+	} else {
+		if p, err = s.projectOf(ctx, b.Project, &b.Dir); err != nil {
+			return nil, err
+		}
+		dir = b.Dir
+		if !p.Holds(dir) {
+			dir = p.ClonePath()
+			logging.FromContext(ctx).Info("dir outside the project, using its clone path", "project_id", p.ID, "path", b.Dir, "dir", dir)
+		}
 	}
 	if p.State == project.StateClosed {
 		return nil, &projectClosedError{project: p}
 	}
-	a, err := s.agents.Create(ctx, p.ID, deref(b.Name), dir)
+	a, err := s.agents.Create(ctx, p.ID, deref(b.Name), dir, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +75,11 @@ func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (a
 	if err != nil {
 		return nil, err
 	}
-	return api.GetAgent200JSONResponse{Agent: agentView(a)}, nil
+	list, err := s.agents.Store().List(ctx, a.Terminal.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetAgent200JSONResponse{Agent: agentNode(a, childrenOf(list))}, nil
 }
 
 func (s *server) StartAgent(ctx context.Context, req api.StartAgentRequestObject) (api.StartAgentResponseObject, error) {
@@ -145,6 +163,47 @@ func (s *server) findAgent(ctx context.Context, ref string, projectRef, dir *str
 	return a, err
 }
 
+// findParent returns the agent ref names as a new agent's parent: an id needs
+// no project, and is checked against one when given; a name is looked up in
+// the project given, or else the one holding dir.
+func (s *server) findParent(ctx context.Context, ref string, projectRef *string, dir string) (agent.Agent, error) {
+	if projectRef != nil || strings.HasPrefix(ref, idPrefix) {
+		return s.findAgent(ctx, ref, projectRef, nil)
+	}
+	return s.findAgent(ctx, ref, nil, &dir)
+}
+
+// childrenOf returns the agents in list by the id of their parent, "" for
+// those at the top level, keeping their order.
+func childrenOf(list []agent.Agent) map[string][]agent.Agent {
+	children := map[string][]agent.Agent{}
+	for _, a := range list {
+		children[a.ParentID] = append(children[a.ParentID], a)
+	}
+	return children
+}
+
+// agentTree is the agents in list at the top level, with their children.
+func agentTree(list []agent.Agent) []api.Agent {
+	children := childrenOf(list)
+	views := make([]api.Agent, 0, len(children[""]))
+	for _, a := range children[""] {
+		views = append(views, agentNode(a, children))
+	}
+	return views
+}
+
+// agentNode is a with its children, as childrenOf returned them.
+func agentNode(a agent.Agent, children map[string][]agent.Agent) api.Agent {
+	v := agentView(a)
+	nodes := make([]api.Agent, 0, len(children[a.ID]))
+	for _, c := range children[a.ID] {
+		nodes = append(nodes, agentNode(c, children))
+	}
+	v.Children = &nodes
+	return v
+}
+
 func agentViews(list []agent.Agent) []api.Agent {
 	views := make([]api.Agent, 0, len(list))
 	for _, a := range list {
@@ -179,6 +238,13 @@ func agentView(a agent.Agent) api.Agent {
 		UpdatedAt:   t.UpdatedAt.UTC(),
 		StartedAt:   optionalTime(t.StartedAt),
 		EndedAt:     optionalTime(t.EndedAt),
+	}
+	if a.ParentID != "" {
+		v.ParentAgentId = &a.ParentID
+	}
+	if a.Tombstone() {
+		v.State = api.AgentStateRemoved
+		v.RemovedAt = optionalTime(a.RemovedAt)
 	}
 	if t.PID != 0 {
 		v.Pid = &t.PID

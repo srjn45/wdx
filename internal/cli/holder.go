@@ -36,6 +36,7 @@ func newHolderCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.Project, "project", "", "`name` of its project")
 	cmd.Flags().StringVar(&o.Dir, "dir", "", "`dir` the shell starts in")
 	cmd.Flags().StringVar(&o.Shell, "shell", "", "`path` of the shell")
+	cmd.Flags().StringVar(&o.AgentID, "agent-id", "", "`id` of the agent the terminal runs, if any")
 	cmd.Flags().StringArrayVar(&o.Command, "command", nil, "`word` of the command to run through the shell, in place of a shell to type in; one flag per word")
 	cmd.Flags().Int64Var(&o.HistoryLines, "history-lines", 0, "`lines` of history kept; 0 keeps none")
 	for _, name := range strings.Fields("id project dir shell") {

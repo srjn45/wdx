@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,19 +32,24 @@ func newAgentCmd() *cobra.Command {
 
 func newAgentCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name string
+	var name, parentID, parentName string
 	cmd := &cobra.Command{
-		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>]",
+		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>]",
 		Short: "Create an agent and start its AI coding agent",
 		Long: "Without a project flag, the agent belongs to the project the working\n" +
 			"directory is in, and starts there. With one, it starts in the working\n" +
 			"directory when that is in the project, else in the project's clone path.\n" +
 			"It runs through your login shell, which finds the program.\n\n" +
 			"Agents get a generated name such as swift-falcon unless --name is given;\n" +
-			"names are unique within a project, among agents and terminals.",
+			"names are unique within a project, among agents and terminals.\n\n" +
+			"With a parent flag it is a child of that agent: it belongs to the parent's\n" +
+			"project and starts in the parent's dir. Without one it is at the top level,\n" +
+			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".",
 		Example: examples(
 			"Create an agent in the project you are in", identity.Name+" agent create",
 			"Name it and pick the project", identity.Name+" agent create --project-name app --name reviewer",
+			"Create a child of an agent", identity.Name+" agent create --parent-name reviewer",
+			"Create a child by the parent's id, as JSON", identity.Name+" agent create --parent-id agent-1a2b3c4d --json",
 			"As JSON", identity.Name+" agent create --json",
 		),
 		Args: cobra.NoArgs,
@@ -51,17 +57,24 @@ func newAgentCreateCmd() *cobra.Command {
 			failurePrefix: "not created",
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}`,
 			resultList:    "created",
-			errorList: codeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed,
-				api.ErrorCodeStartFailed, api.ErrorCodeDaemonUnavailable),
+			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound,
+				api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := workDir(cmd)
 			if err != nil {
 				return err
 			}
-			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name)})
+			parent := parentName
+			if parentID != "" {
+				parent = "id:" + parentID
+			}
+			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent)})
 			if err != nil {
-				return agentHint(outsideHint(err, scope, ""))
+				if parentID == "" {
+					err = outsideHint(err, scope, "")
+				}
+				return agentHint(err)
 			}
 			return printResult(cmd, agentResult(r))
 		},
@@ -69,6 +82,11 @@ func newAgentCreateCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the agent (default: a generated one)")
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&parentID, "parent-id", "", "`id` of the agent to create it under")
+	cmd.Flags().StringVar(&parentName, "parent-name", "", "`name` of the agent to create it under (case-insensitive)")
+	cmd.MarkFlagsMutuallyExclusive("parent-id", "parent-name")
+	cmd.RegisterFlagCompletionFunc("parent-id", completeParents("id"))
+	cmd.RegisterFlagCompletionFunc("parent-name", completeParents("name"))
 	return cmd
 }
 
@@ -79,15 +97,17 @@ func newAgentListCmd() *cobra.Command {
 		Use:   "list [--project-id <id> | --project-name <name> | --all]",
 		Short: "List agents",
 		Long: "Without a flag, the agents of the project the working directory is in.\n" +
-			"Every state is listed: an agent stays until it is removed.",
+			"Every state is listed: an agent stays until it is removed. Children are\n" +
+			"indented under their parents, and a removed agent stays as long as it has\n" +
+			"children.",
 		Example: examples(
 			"The agents of the project you are in", identity.Name+" agent list",
 			"Every project's, as JSON", identity.Name+" agent list --all --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The agents by project, then name; an empty list when there are none.\n" +
-				`With --json: {"agents": [...]}`,
+			outputNote: "The agents by project, then name, each with its children; an empty list when there are none.\n" +
+				`With --json: {"agents": [...]}, the children of each under "children"`,
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -199,7 +219,7 @@ func newAgentStartCmd() *cobra.Command {
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "started", "agent": {...}}`,
 			resultList:    "started",
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
-				api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -228,7 +248,9 @@ func newAgentRemoveCmd() *cobra.Command {
 		Long: "If it is running, you are asked whether to stop it, which interrupts what\n" +
 			"it is doing; --stop-running and --cancel answer in advance, and with --json\n" +
 			"one of them is required. What the AI coding agent keeps of its session stays\n" +
-			"on disk.",
+			"on disk.\n\n" +
+			"An agent with children stays in the list as removed, its children untouched,\n" +
+			"until the last of them is removed.",
 		Example: examples(
 			"Remove an agent of the project you are in", identity.Name+" agent remove --name reviewer",
 			"From a script: stop it if it is running", identity.Name+" agent remove --id agent-1a2b3c4d --stop-running --json",
@@ -238,7 +260,7 @@ func newAgentRemoveCmd() *cobra.Command {
 			failurePrefix: "not removed",
 			outputNote:    "The removed agent, as it was before.\n" + `With --json: {"result": "removed", "agent": {...}}`,
 			resultList:    "removed",
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
+			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
 			jsonRequires:  annotation("stop-running", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -257,7 +279,7 @@ func newAgentRemoveCmd() *cobra.Command {
 				r, err = clientOf(cmd).DeleteAgent(cmd.Context(), path, project, dir, true)
 			}
 			if err != nil {
-				return ref.notFoundHint(err)
+				return agentHint(ref.notFoundHint(err))
 			}
 			return printResult(cmd, agentResult(r))
 		},
@@ -346,6 +368,8 @@ func agentHint(err error) error {
 		return &hinted{err, "choose another --name"}
 	case api.ErrorCodeProjectClosed:
 		return &hinted{err, "open the project first with " + identity.Name + " project open"}
+	case api.ErrorCodeAgentRemoved:
+		return &hinted{err, "it goes when its last child is removed; see them with " + identity.Name + " agent get"}
 	case api.ErrorCodeAgentRunning:
 		return &hinted{err, "it is already running; attach to it with " + identity.Name + " agent attach"}
 	case api.ErrorCodeStartFailed:
@@ -364,7 +388,17 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 		in = "from"
 	}
 	fmt.Fprintf(w, "%s agent %s %s %s\n", st.Success(string(r.Result)), st.Name(a.Name), in, st.Name(a.ProjectName))
-	field := fieldPrinter(w, st, 4)
+	width := 4
+	if a.ParentAgentId != nil {
+		width = 6
+	}
+	field := fieldPrinter(w, st, width)
+	if a.ParentAgentId != nil {
+		field("parent", st.Muted(*a.ParentAgentId))
+	}
+	if a.RemovedAt != nil {
+		field("kept", "as removed until its children are gone")
+	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)
 	field("id", a.Id)
@@ -388,14 +422,47 @@ func (l agentList) text(w io.Writer, st style.Style) {
 		heading = append([]string{st.Heading("PROJECT")}, heading...)
 	}
 	table.Row(heading...)
-	for _, a := range l.Agents {
-		row := []string{st.Name(a.Name), agentStateText(st, a), a.Aca, a.Dir, st.Muted(a.Id)}
+	for _, r := range agentTreeRows(l.Agents) {
+		a := r.agent
+		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), a.Aca, a.Dir, st.Muted(a.Id)}
 		if l.all {
 			row = append([]string{st.Name(a.ProjectName)}, row...)
 		}
 		table.Row(row...)
 	}
 	table.Write(w)
+}
+
+// agentTreeRow is a line of a tree of agents: the guide drawn before its name.
+type agentTreeRow struct {
+	agent api.Agent
+	guide string
+}
+
+// agentTreeRows returns the agents at the top level in list and their
+// children, each before its children.
+func agentTreeRows(list []api.Agent) []agentTreeRow {
+	return agentChildRows(list, "", false)
+}
+
+// agentChildRows returns the rows of list, children of the same parent when
+// nested, whose guides start with lead.
+func agentChildRows(list []api.Agent, lead string, nested bool) []agentTreeRow {
+	var rows []agentTreeRow
+	for i, a := range list {
+		guide, next := "", ""
+		if nested {
+			guide, next = lead+"├ ", lead+"│ "
+			if i == len(list)-1 {
+				guide, next = lead+"└ ", lead+"  "
+			}
+		}
+		rows = append(rows, agentTreeRow{a, guide})
+		if a.Children != nil {
+			rows = append(rows, agentChildRows(*a.Children, next, true)...)
+		}
+	}
+	return rows
 }
 
 // agentDetail is one agent, in any state.
@@ -408,6 +475,16 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	field("state", agentStateText(st, a))
 	if a.Error != nil {
 		field("error", st.Failure(*a.Error))
+	}
+	if a.ParentAgentId != nil {
+		field("parent", st.Muted(*a.ParentAgentId))
+	}
+	if a.Children != nil && len(*a.Children) > 0 {
+		names := make([]string, 0, len(*a.Children))
+		for _, c := range *a.Children {
+			names = append(names, st.Name(c.Name))
+		}
+		field("children", strings.Join(names, ", "))
 	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)
@@ -422,6 +499,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	}
 	if a.EndedAt != nil {
 		field("ended", a.EndedAt.Local().Format(time.DateTime))
+	}
+	if a.RemovedAt != nil {
+		field("removed", a.RemovedAt.Local().Format(time.DateTime))
 	}
 }
 

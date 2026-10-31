@@ -63,7 +63,7 @@ Design A, chosen by the human in a preview, with its default colors:
 
 ## For child agents
 
-Not built in B4; agreed for the step after it.
+Not built in B4; agreed for the step after it, and built with it (docs/CHILD_AGENTS.md).
 
 ### Moving through the tree
 

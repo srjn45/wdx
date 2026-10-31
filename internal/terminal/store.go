@@ -349,6 +349,29 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 	return n > 0, err
 }
 
+// tombstone ends the row with id for good, keeping it: one left stopped
+// becomes exited, or opening its project would relaunch it. linked runs in the
+// same transaction.
+func (s *Store) tombstone(ctx context.Context, id string, linked func(ctx context.Context, tx db.Execer) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := db.Exec(ctx, tx, "UPDATE terminals SET state = ?, updated_at = ? WHERE id = ? AND state = ?", StateExited, time.Now().UnixMilli(), id, StateStopped); err != nil {
+		return err
+	}
+	if err := linked(ctx, tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("terminal kept as a tombstone", "terminal_id", id)
+	s.changed()
+	return nil
+}
+
 // remove deletes the terminal with id.
 func (s *Store) remove(ctx context.Context, id string) error {
 	if _, err := db.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ?", id); err != nil {

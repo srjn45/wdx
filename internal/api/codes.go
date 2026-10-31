@@ -38,6 +38,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeStartFailed:        {http.StatusInternalServerError, ExitSystem, "the holder, the shell or the AI coding agent did not start"},
 	ErrorCodeTerminalNotRunning: {http.StatusConflict, ExitRejected, "the terminal's shell is not running"},
 	ErrorCodeAgentRunning:       {http.StatusConflict, ExitRejected, "the agent is already starting or running"},
+	ErrorCodeAgentRemoved:       {http.StatusConflict, ExitRejected, "the agent was removed and stays only for its children"},
 	ErrorCodeAgentNotRunning:    {http.StatusConflict, ExitRejected, "the agent's AI coding agent is not running"},
 	ErrorCodeAttachUnsupported:  {http.StatusConflict, ExitRejected, "the terminal was started by a wdx too old to attach to"},
 	ErrorCodeConnectionLost:     {http.StatusServiceUnavailable, ExitSystem, "the connection to the terminal ended before its shell did"},

@@ -43,6 +43,9 @@ type Options struct {
 	Project string // the project's name, for WDX_PROJECT
 	Dir     string
 	Shell   string
+	// AgentID is the agent's the terminal runs, if any, for WDX_AGENT_ID: what
+	// it passes to create a child of itself.
+	AgentID string
 	// Command, when given, is run through the shell in place of a shell to
 	// type in: the shell starts only to read the user's profile and rc, and
 	// the command's end is the terminal's.
@@ -180,6 +183,9 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		identity.Env("PROJECT") + "=" + o.Project,
 		identity.Env("HOME") + "=" + o.Home,
 	}, o.Env...)
+	if o.AgentID != "" {
+		cmd.Env = append(cmd.Env, identity.Env("AGENT_ID")+"="+o.AgentID)
+	}
 	h := &holder{
 		id:       o.ID,
 		log:      log,

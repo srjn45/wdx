@@ -29,6 +29,7 @@ func RunIfHolder() {
 	flags.StringVar(&o.Project, "project", "", "")
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
+	flags.StringVar(&o.AgentID, "agent-id", "", "")
 	flags.Func("command", "", func(word string) error {
 		o.Command = append(o.Command, word)
 		return nil

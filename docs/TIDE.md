@@ -191,7 +191,7 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
-- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -278,7 +278,7 @@ Supported, though most users will mostly use the keyboard.
 - A tide run logs every request it sends under its one debug id, so a whole session traces as one.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Phase B3, terminals in the terminal pane (implemented, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.
-- **Phase B4, the Agents list (implemented, docs/TIDE_B4.md):** the project pane lists the project's agents; `Enter` or a click makes one active, live in the agent pane through termview; `C-q a` creates an agent and `C-q x` removes one. The list is linear; child agents come next.
+- **Phase B4, the Agents list (implemented, docs/TIDE_B4.md):** the project pane lists the project's agents; `Enter` or a click makes one active, live in the agent pane through termview; `C-q a` creates an agent and `C-q x` removes one. The list is linear; child agents came next (docs/CHILD_AGENTS.md).
 - **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves.
 
 ## Open questions

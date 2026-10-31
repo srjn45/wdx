@@ -29,6 +29,8 @@ type StartOptions struct {
 	Project    string
 	Dir        string
 	Shell      string
+	// AgentID is the agent's the terminal runs, if any; see Options.AgentID.
+	AgentID string
 	// Command, when given, runs through the shell; see Options.Command.
 	Command []string
 	// HistoryLines bounds the terminal's history; 0 keeps none.
@@ -55,6 +57,9 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 	defer ready.Close()
 	args := []string{"holder", "--id", o.ID, "--project", o.Project, "--dir", o.Dir, "--shell", o.Shell,
 		"--history-lines", strconv.FormatInt(o.HistoryLines, 10)}
+	if o.AgentID != "" {
+		args = append(args, "--agent-id", o.AgentID)
+	}
 	for _, word := range o.Command {
 		args = append(args, "--command="+word)
 	}

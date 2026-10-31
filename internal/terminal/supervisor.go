@@ -65,9 +65,15 @@ type Options struct {
 	// StopGrace is how long a shell has to end after it is hung up on;
 	// DefaultStopGrace when 0.
 	StopGrace time.Duration
-	// AgentCommand is what a row of KindAgent runs, asked at each launch,
+	// AgentLaunch is what a row of KindAgent runs, asked at each launch,
 	// since an AI coding agent may start differently the second time.
-	AgentCommand func(ctx context.Context, t Terminal) ([]string, error)
+	AgentLaunch func(ctx context.Context, t Terminal) (AgentLaunch, error)
+}
+
+// AgentLaunch is how to run a row of KindAgent.
+type AgentLaunch struct {
+	AgentID string
+	Command []string
 }
 
 // Supervisor starts terminals' holders, watches them and stops them. It
@@ -190,16 +196,16 @@ func (s *Supervisor) start(ctx context.Context, kind Kind, id string) (Terminal,
 // launch starts the holder of t, which is starting.
 func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	log := logging.FromContext(ctx)
-	var command []string
+	var agent AgentLaunch
 	var started holder.Started
 	var err error
 	if t.Kind == KindAgent {
-		command, err = s.opts.AgentCommand(ctx, t)
+		agent, err = s.opts.AgentLaunch(ctx, t)
 	}
 	if err == nil {
 		started, err = holder.Start(ctx, holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
-			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, Command: command, Env: s.opts.Env,
+			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, Command: agent.Command, Env: s.opts.Env,
 			HistoryLines: s.opts.HistoryLines,
 		})
 	}
@@ -242,7 +248,37 @@ func (s *Supervisor) RemoveAgent(ctx context.Context, id string, stopRunning boo
 	return s.remove(ctx, KindAgent, id, stopRunning)
 }
 
+// TombstoneAgent ends an agent's row for good but keeps it, with its history:
+// stopped when it was live, and failing with a *RunningError unless
+// stopRunning, as RemoveAgent. linked marks what points at the row, in the
+// transaction that ends it. A terminal's is not found.
+func (s *Supervisor) TombstoneAgent(ctx context.Context, id string, stopRunning bool, linked func(ctx context.Context, tx db.Execer) error) (Terminal, error) {
+	if _, err := s.stopForRemoval(ctx, KindAgent, id, stopRunning); err != nil {
+		return Terminal{}, err
+	}
+	if err := s.store.tombstone(ctx, id, linked); err != nil {
+		return Terminal{}, err
+	}
+	return s.store.row(ctx, id)
+}
+
 func (s *Supervisor) remove(ctx context.Context, kind Kind, id string, stopRunning bool) (Terminal, error) {
+	t, err := s.stopForRemoval(ctx, kind, id, stopRunning)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if err := s.store.remove(ctx, id); err != nil {
+		return Terminal{}, err
+	}
+	if err := s.Sweep(ctx); err != nil {
+		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
+	}
+	return t, nil
+}
+
+// stopForRemoval returns the row with id, its process gone: a live one fails
+// with a *RunningError unless stopRunning.
+func (s *Supervisor) stopForRemoval(ctx context.Context, kind Kind, id string, stopRunning bool) (Terminal, error) {
 	t, err := s.store.ofKind(ctx, kind, id)
 	if err != nil {
 		return Terminal{}, err
@@ -254,15 +290,7 @@ func (s *Supervisor) remove(ctx context.Context, kind Kind, id string, stopRunni
 		if err := s.stopOne(ctx, t); err != nil {
 			return Terminal{}, err
 		}
-		if t, err = s.store.row(ctx, id); err != nil {
-			return Terminal{}, err
-		}
-	}
-	if err := s.store.remove(ctx, id); err != nil {
-		return Terminal{}, err
-	}
-	if err := s.Sweep(ctx); err != nil {
-		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
+		return s.store.row(ctx, id)
 	}
 	return t, nil
 }

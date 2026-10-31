@@ -24,6 +24,16 @@ func (e *RunningError) Error() string {
 	return fmt.Sprintf("agent %s is %s", e.Agent.Terminal.Name, e.Agent.Terminal.State)
 }
 
+// RemovedError is returned when an agent is a tombstone and the request needs
+// a live one.
+type RemovedError struct {
+	Agent Agent
+}
+
+func (e *RemovedError) Error() string {
+	return fmt.Sprintf("agent %s was removed and stays only for its children", e.Agent.Terminal.Name)
+}
+
 // StartError is returned when an agent's holder or AI coding agent did not
 // start; the agent is then failed.
 type StartError struct {
@@ -37,14 +47,14 @@ func (e *StartError) Error() string {
 
 func (e *StartError) Unwrap() error { return e.Err }
 
-// Commands returns what the terminals' supervisor asks at each launch of an
-// agent's row: the command of its AI coding agent, among acas, for its
-// session. The supervisor needs it before a Manager can exist.
-func Commands(store *Store, acas []aca.AiCodingAgent) func(context.Context, terminal.Terminal) ([]string, error) {
-	return func(ctx context.Context, t terminal.Terminal) ([]string, error) {
+// Launches returns what the terminals' supervisor asks at each launch of an
+// agent's row: the agent's id and the command of its AI coding agent, among
+// acas, for its session. The supervisor needs it before a Manager can exist.
+func Launches(store *Store, acas []aca.AiCodingAgent) func(context.Context, terminal.Terminal) (terminal.AgentLaunch, error) {
+	return func(ctx context.Context, t terminal.Terminal) (terminal.AgentLaunch, error) {
 		a, err := store.GetByTerminal(ctx, t.ID)
 		if err != nil {
-			return nil, err
+			return terminal.AgentLaunch{}, err
 		}
 		for _, candidate := range acas {
 			if candidate.ID() != a.ACA {
@@ -52,16 +62,16 @@ func Commands(store *Store, acas []aca.AiCodingAgent) func(context.Context, term
 			}
 			account, err := holder.LookupAccount(ctx)
 			if err != nil {
-				return nil, err
+				return terminal.AgentLaunch{}, err
 			}
 			command, err := candidate.Command(aca.Launch{Dir: t.Dir, SessionID: a.SessionID, UserHome: account.Home})
 			if err != nil {
-				return nil, err
+				return terminal.AgentLaunch{}, err
 			}
 			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "command", command)
-			return command, nil
+			return terminal.AgentLaunch{AgentID: a.ID, Command: command}, nil
 		}
-		return nil, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+		return terminal.AgentLaunch{}, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
 	}
 }
 
@@ -85,10 +95,23 @@ func (m *Manager) Store() *Store {
 }
 
 // Create adds an agent named name, or a generated codename when name is
-// empty, to the project, and starts its AI coding agent in dir in a new
-// session. One that does not start leaves the agent failed and returns a
-// *StartError.
-func (m *Manager) Create(ctx context.Context, projectID, name, dir string) (Agent, error) {
+// empty, to the project, under the agent with parentID unless it is "", and
+// starts its AI coding agent in dir in a new session. A parent that is not in
+// the project is not found, and a tombstone returns a *RemovedError. One that
+// does not start leaves the agent failed and returns a *StartError.
+func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID string) (Agent, error) {
+	if parentID != "" {
+		parent, err := m.store.Get(ctx, parentID)
+		if err != nil {
+			return Agent{}, err
+		}
+		if parent.Terminal.ProjectID != projectID {
+			return Agent{}, fmt.Errorf("%w: %q is not in the project", ErrNotFound, parentID)
+		}
+		if parent.Tombstone() {
+			return Agent{}, &RemovedError{Agent: parent}
+		}
+	}
 	id, err := db.NewID("agent")
 	if err != nil {
 		return Agent{}, err
@@ -98,7 +121,7 @@ func (m *Manager) Create(ctx context.Context, projectID, name, dir string) (Agen
 		return Agent{}, err
 	}
 	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx db.Execer, terminalID string) error {
-		return m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID)
+		return m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID)
 	})
 	if err != nil {
 		return Agent{}, m.agentError(ctx, err)
@@ -107,11 +130,14 @@ func (m *Manager) Create(ctx context.Context, projectID, name, dir string) (Agen
 }
 
 // Start starts an agent whose AI coding agent ended, in the same session; a
-// live agent fails with a *RunningError.
+// live agent fails with a *RunningError and a tombstone with a *RemovedError.
 func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
 		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
 	}
 	t, err := m.terminals.StartAgent(ctx, a.Terminal.ID)
 	if err != nil {
@@ -124,10 +150,31 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 // Remove deletes an agent and returns it as it was last, stopped when it was
 // live. A live one fails with a *RunningError unless stopRunning. What the AI
 // coding agent keeps of the session stays on disk.
+//
+// One with children stays as a tombstone, and goes with its last child, as
+// tombstones above it then may. A tombstone that has children returns a
+// *RemovedError; one left without any, by a daemon that died between the two
+// deletions, is deleted.
 func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agent, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
 		return Agent{}, err
+	}
+	children, err := m.store.children(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if children > 0 {
+		if a.Tombstone() {
+			return Agent{}, &RemovedError{Agent: a}
+		}
+		_, err := m.terminals.TombstoneAgent(ctx, a.Terminal.ID, stopRunning, func(ctx context.Context, tx db.Execer) error {
+			return m.store.markRemoved(ctx, tx, id)
+		})
+		if err != nil {
+			return Agent{}, m.agentError(ctx, err)
+		}
+		return m.store.Get(ctx, id)
 	}
 	t, err := m.terminals.RemoveAgent(ctx, a.Terminal.ID, stopRunning)
 	if err != nil {
@@ -135,7 +182,34 @@ func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agen
 	}
 	a.Terminal = t
 	logging.FromContext(ctx).Info("agent removed", "agent_id", a.ID)
+	if err := m.removeEmptyTombstones(ctx, a.ParentID); err != nil {
+		logging.FromContext(ctx).Error("tombstones not removed", "agent_id", a.ID, "err", err)
+	}
 	return a, nil
+}
+
+// removeEmptyTombstones deletes the agent with id if it is a tombstone with no
+// children left, and goes on up the tree.
+func (m *Manager) removeEmptyTombstones(ctx context.Context, id string) error {
+	for id != "" {
+		a, err := m.store.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		children, err := m.store.children(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !a.Tombstone() || children > 0 {
+			return nil
+		}
+		if _, err := m.terminals.RemoveAgent(ctx, a.Terminal.ID, false); err != nil {
+			return err
+		}
+		logging.FromContext(ctx).Info("tombstone removed", "agent_id", id)
+		id = a.ParentID
+	}
+	return nil
 }
 
 // History reads count lines of the agent's history from line from on, or its

@@ -78,7 +78,7 @@ internal/<domain>/  one package per feature (e.g. project, terminal, agent): typ
 - One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file.
 - Migrations live in `internal/db/migrations`, are numbered, and are append-only: never edit a committed migration.
 - Prefer migrations that only add (a table, an index, a column that is nullable or has a default): the previous version keeps working on the database, so `wdx update --rollback` keeps the data. A migration that changes or removes what older binaries use starts with the line `-- breaks-older: true`; rolling back across it restores the database backup taken at the update.
-- Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE, user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
+- Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE (`agents.parent_agent_id` uses SET NULL, and its migration says why), user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
 
 ## API
 

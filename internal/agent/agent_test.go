@@ -14,6 +14,7 @@ import (
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -30,6 +31,7 @@ type fixture struct {
 	agents    *Manager
 	project   string
 	dir       string
+	home      string
 }
 
 // newFixture returns agents that run script, on real holders.
@@ -58,7 +60,7 @@ func newFixture(t *testing.T, script string) fixture {
 	store := NewStore(d)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
 		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: "/bin/sh",
-		AgentCommand: Commands(store, []aca.AiCodingAgent{test}),
+		AgentLaunch: Launches(store, []aca.AiCodingAgent{test}),
 	})
 	agents := NewManager(store, terminals, test)
 	t.Cleanup(func() {
@@ -68,12 +70,12 @@ func newFixture(t *testing.T, script string) fixture {
 		}
 		terminals.Close()
 	})
-	return fixture{db: d, aca: test, terminals: terminals, agents: agents, project: "proj-app", dir: t.TempDir()}
+	return fixture{db: d, aca: test, terminals: terminals, agents: agents, project: "proj-app", dir: t.TempDir(), home: home}
 }
 
 func (f fixture) create(t *testing.T, name string) Agent {
 	t.Helper()
-	a, err := f.agents.Create(context.Background(), f.project, name, f.dir)
+	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,3 +284,180 @@ func TestStopAndRelaunchWithTheProject(t *testing.T) {
 		t.Fatalf("sessions = %q", sessions)
 	}
 }
+
+func (f fixture) createChild(t *testing.T, name, parentID string) Agent {
+	t.Helper()
+	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func (f fixture) gone(t *testing.T, id string) {
+	t.Helper()
+	if a, err := f.agents.Store().Get(context.Background(), id); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("agent %s: %+v, %v, want it gone", id, a, err)
+	}
+}
+
+func TestCreateChild(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	parent := f.create(t, "parent")
+	child := f.createChild(t, "child", parent.ID)
+	if parent.ParentID != "" || child.ParentID != parent.ID {
+		t.Fatalf("parents: %q, %q", parent.ParentID, child.ParentID)
+	}
+	if _, err := f.agents.Create(ctx, f.project, "x", f.dir, "agent-none"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown parent: %v", err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-lib', 'lib', 'open', 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Create(ctx, "proj-lib", "x", f.dir, parent.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("parent of another project: %v", err)
+	}
+}
+
+// TestTombstone follows a parent removed before its children: it stays with
+// its history while they run on, refuses what needs a live agent, and goes
+// with its last child, up the tree.
+func TestTombstone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	top := f.create(t, "top")
+	middle := f.createChild(t, "middle", top.ID)
+	leaf := f.createChild(t, "leaf", middle.ID)
+	kept := identity.TerminalDir(f.home, top.Terminal.ID)
+
+	if _, err := f.agents.Remove(ctx, top.ID, false); !isRunning(err) {
+		t.Fatalf("remove live parent: %v", err)
+	}
+	got, err := f.agents.Remove(ctx, top.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Tombstone() || got.Terminal.State != terminal.StateExited || got.Terminal.PID != 0 {
+		t.Fatalf("tombstone: %+v", got)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Fatalf("what it keeps on disk: %v", err)
+	}
+	if a, err := f.agents.Store().Get(ctx, middle.ID); err != nil || a.Terminal.State != terminal.StateRunning {
+		t.Fatalf("its child: %+v, %v", a, err)
+	}
+
+	for what, err := range map[string]error{
+		"start":  second(f.agents.Start(ctx, top.ID)),
+		"remove": second(f.agents.Remove(ctx, top.ID, true)),
+		"child":  second(f.agents.Create(ctx, f.project, "x", f.dir, top.ID)),
+	} {
+		if _, ok := errors.AsType[*RemovedError](err); !ok {
+			t.Errorf("%s of a tombstone: %v", what, err)
+		}
+	}
+	// The name stays taken.
+	if _, err := f.agents.Create(ctx, f.project, "top", f.dir, ""); err == nil {
+		t.Fatal("want the name taken")
+	}
+
+	if _, err := f.agents.Remove(ctx, middle.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.agents.Store().Get(ctx, top.ID); err != nil || !a.Tombstone() {
+		t.Fatalf("top with a tombstone under it: %+v, %v", a, err)
+	}
+	if _, err := f.agents.Remove(ctx, leaf.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.gone(t, leaf.ID)
+	f.gone(t, middle.ID)
+	f.gone(t, top.ID)
+	if _, err := os.Stat(kept); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("what it kept on disk stayed: %v", err)
+	}
+}
+
+// TestRemoveChildKeepsLiveParent: only a tombstone goes with its last child.
+func TestRemoveChildKeepsLiveParent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	parent := f.create(t, "parent")
+	child := f.createChild(t, "child", parent.ID)
+	if _, err := f.agents.Remove(ctx, child.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.agents.Store().Get(ctx, parent.ID); err != nil || a.Tombstone() || a.Terminal.State != terminal.StateRunning {
+		t.Fatalf("parent: %+v, %v", a, err)
+	}
+}
+
+// TestTombstoneOfStoppedAgentIsNotRelaunched: an agent stopped with its
+// project, removed, stays down when the project opens; its child comes back.
+func TestTombstoneOfStoppedAgentIsNotRelaunched(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	parent := f.create(t, "parent")
+	child := f.createChild(t, "child", parent.ID)
+	if _, err := f.terminals.StopProject(ctx, f.project); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.agents.Remove(ctx, parent.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Terminal.State != terminal.StateExited {
+		t.Fatalf("state %s", got.Terminal.State)
+	}
+	started, err := f.terminals.StartProject(ctx, f.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(started) != 1 || started[0].ID != child.Terminal.ID {
+		t.Fatalf("started %+v", started)
+	}
+}
+
+// TestEmptyTombstoneCanBeRemoved: a daemon that died between deleting a child
+// and its tombstone leaves one no child would ever take away.
+func TestEmptyTombstoneCanBeRemoved(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "left")
+	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	b := f.create(t, "over")
+	if _, err := f.db.Exec("UPDATE agents SET removed_at = 1 WHERE id = ?", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Remove(ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.gone(t, b.ID)
+}
+
+// TestAgentIDInEnvironment: what an agent passes to create a child of itself.
+func TestAgentIDInEnvironment(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, `printf %s "$WDX_AGENT_ID" > agent-id; exec sleep 1000`)
+	a := f.create(t, "helper")
+	path := filepath.Join(f.dir, "agent-id")
+	waittest.For(t, "the id written", func() bool {
+		data, err := os.ReadFile(path)
+		return err == nil && string(data) == a.ID
+	})
+}
+
+func isRunning(err error) bool {
+	_, ok := errors.AsType[*RunningError](err)
+	return ok
+}
+
+func second[T any](_ T, err error) error { return err }

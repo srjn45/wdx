@@ -396,6 +396,11 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 				m.switcher, m.opening = nil, nil
 				return m.createAgent()
 			}
+		case "c":
+			if a, ok := m.childParent(); ok {
+				m.switcher, m.opening = nil, nil
+				return m.createChild(a)
+			}
 		case "x":
 			if r, ok := m.removable(); ok {
 				m.confirm = &confirmBox{r: r}
@@ -532,7 +537,7 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 		if at.In(f.Inset(1)) {
 			m.press(f.Inset(1), at)
 			if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
-				s.click(at.Y - f.Min.Y - 1)
+				s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2)
 			}
 		}
 		m.changed("click")

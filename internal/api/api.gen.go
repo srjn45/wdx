@@ -29,6 +29,7 @@ const (
 	AgentStateExited   AgentState = "exited"
 	AgentStateFailed   AgentState = "failed"
 	AgentStateLost     AgentState = "lost"
+	AgentStateRemoved  AgentState = "removed"
 	AgentStateRunning  AgentState = "running"
 	AgentStateStarting AgentState = "starting"
 	AgentStateStopped  AgentState = "stopped"
@@ -42,6 +43,8 @@ func (e AgentState) Valid() bool {
 	case AgentStateFailed:
 		return true
 	case AgentStateLost:
+		return true
+	case AgentStateRemoved:
 		return true
 	case AgentStateRunning:
 		return true
@@ -93,6 +96,7 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAgentNotRunning    ErrorCode = "agent_not_running"
+	ErrorCodeAgentRemoved       ErrorCode = "agent_removed"
 	ErrorCodeAgentRunning       ErrorCode = "agent_running"
 	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
 	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
@@ -138,6 +142,8 @@ const (
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCodeAgentNotRunning:
+		return true
+	case ErrorCodeAgentRemoved:
 		return true
 	case ErrorCodeAgentRunning:
 		return true
@@ -357,7 +363,10 @@ func (e TerminalState) Valid() bool {
 // Agent defines model for Agent.
 type Agent struct {
 	// Aca Which AI coding agent it runs, as claude_code.
-	Aca       string    `json:"aca"`
+	Aca string `json:"aca"`
+
+	// Children The agents created under it, by name, with their children; set by listAgents, getAgent and getProject only.
+	Children  *[]Agent  `json:"children,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 
 	// Dir Where it starts, now and on every relaunch.
@@ -372,10 +381,16 @@ type Agent struct {
 	Id       string `json:"id"`
 	Name     string `json:"name"`
 
+	// ParentAgentId The agent it was created under; null at the top level.
+	ParentAgentId *string `json:"parent_agent_id"`
+
 	// Pid The AI coding agent's, while it has one.
 	Pid         *int   `json:"pid"`
 	ProjectId   string `json:"project_id"`
 	ProjectName string `json:"project_name"`
+
+	// RemovedAt When it was removed
+	RemovedAt *time.Time `json:"removed_at"`
 
 	// SessionId The AI coding agent's session, which it goes on with when started again.
 	SessionId string     `json:"session_id"`
@@ -385,7 +400,8 @@ type Agent struct {
 	// starting: its holder is being started; running: its AI coding agent
 	// is alive; exited: it ended by itself; stopped: closing its project
 	// stopped it; failed: it did not start; lost: its holder is gone and
-	// nobody stopped it.
+	// nobody stopped it; removed: it is a tombstone, kept until its children
+	// are gone.
 	State AgentState `json:"state"`
 
 	// TerminalId What holds its process, which attaching dials; no terminal path accepts it.
@@ -417,7 +433,8 @@ type AgentResult struct {
 // starting: its holder is being started; running: its AI coding agent
 // is alive; exited: it ended by itself; stopped: closing its project
 // stopped it; failed: it did not start; lost: its holder is gone and
-// nobody stopped it.
+// nobody stopped it; removed: it is a tombstone, kept until its children
+// are gone.
 type AgentState string
 
 // CreateAgent defines model for CreateAgent.
@@ -427,6 +444,9 @@ type CreateAgent struct {
 
 	// Name A generated adjective-noun codename by default.
 	Name *string `json:"name,omitempty"`
+
+	// Parent The agent to create it under, by "id:" and its id, or its name in the project named by project or holding dir; by default it has no parent.
+	Parent *string `json:"parent,omitempty"`
 
 	// Project The project's name, or "id:" and its id; by default the one whose worktree holds dir.
 	Project *string `json:"project,omitempty"`
@@ -543,7 +563,7 @@ type Problem struct {
 
 // Project defines model for Project.
 type Project struct {
-	// Agents The project's agents by name, in every state; set by getProject only.
+	// Agents The project's agents with no parent by name, in every state, with their children; set by getProject only.
 	Agents    *[]Agent  `json:"agents,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Id        string    `json:"id"`
@@ -1092,11 +1112,12 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// ListAgents List agents by project name, then name
+	// ListAgents List agents as trees, by project name, then name
 	//
 	// The agents of the project named by project, or of the project whose
 	// worktree holds dir, or of every project without either; every state
-	// is listed.
+	// is listed. The top level has the agents with no parent, the rest are
+	// in their parents' children.
 	//
 	// Errors: invalid_path, not_found.
 	//
@@ -1107,13 +1128,15 @@ type ClientInterface interface {
 	//
 	// Without project, the agent belongs to the project whose worktree
 	// holds dir, and starts there. With it, in dir when dir is in the
-	// project, else in the project's clone path.
+	// project, else in the project's clone path. With parent, it is a child
+	// of that agent: it belongs to the parent's project and starts in the
+	// parent's dir, whatever dir is.
 	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: invalid_name, invalid_path, name_taken, not_found,
-	// project_closed, start_failed.
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found, project_closed, start_failed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1124,13 +1147,15 @@ type ClientInterface interface {
 	//
 	// Without project, the agent belongs to the project whose worktree
 	// holds dir, and starts there. With it, in dir when dir is in the
-	// project, else in the project's clone path.
+	// project, else in the project's clone path. With parent, it is a child
+	// of that agent: it belongs to the parent's project and starts in the
+	// parent's dir, whatever dir is.
 	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: invalid_name, invalid_path, name_taken, not_found,
-	// project_closed, start_failed.
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found, project_closed, start_failed.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1140,10 +1165,13 @@ type ClientInterface interface {
 	// DeleteAgent Delete an agent
 	//
 	// An agent starting or running refuses it with agent_running unless
-	// stop_running is true. What the AI coding agent keeps of its session
+	// stop_running is true. One with children stays as a tombstone, with
+	// state removed, until its last child is removed, and it is then
+	// deleted; removing a tombstone that has children refuses it with
+	// agent_removed. What the AI coding agent keeps of its session
 	// stays on disk.
 	//
-	// Errors: agent_running, invalid_path, not_found.
+	// Errors: agent_removed, agent_running, invalid_path, not_found.
 	//
 	// Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
 	DeleteAgent(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1172,7 +1200,7 @@ type ClientInterface interface {
 	// is left failed and returns start_failed with the agent under
 	// details.agent.
 	//
-	// Errors: agent_running, invalid_path, not_found, project_closed,
+	// Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
 	// start_failed.
 	//
 	// Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
@@ -1430,11 +1458,12 @@ type ClientInterface interface {
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// ListAgents List agents by project name, then name
+// ListAgents List agents as trees, by project name, then name
 //
 // The agents of the project named by project, or of the project whose
 // worktree holds dir, or of every project without either; every state
-// is listed.
+// is listed. The top level has the agents with no parent, the rest are
+// in their parents' children.
 //
 // Errors: invalid_path, not_found.
 //
@@ -1455,13 +1484,15 @@ func (c *Client) ListAgents(ctx context.Context, params *ListAgentsParams, reqEd
 //
 // Without project, the agent belongs to the project whose worktree
 // holds dir, and starts there. With it, in dir when dir is in the
-// project, else in the project's clone path.
+// project, else in the project's clone path. With parent, it is a child
+// of that agent: it belongs to the parent's project and starts in the
+// parent's dir, whatever dir is.
 //
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: invalid_name, invalid_path, name_taken, not_found,
-// project_closed, start_failed.
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found, project_closed, start_failed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1482,13 +1513,15 @@ func (c *Client) CreateAgentWithBody(ctx context.Context, contentType string, bo
 //
 // Without project, the agent belongs to the project whose worktree
 // holds dir, and starts there. With it, in dir when dir is in the
-// project, else in the project's clone path.
+// project, else in the project's clone path. With parent, it is a child
+// of that agent: it belongs to the parent's project and starts in the
+// parent's dir, whatever dir is.
 //
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: invalid_name, invalid_path, name_taken, not_found,
-// project_closed, start_failed.
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found, project_closed, start_failed.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1508,10 +1541,13 @@ func (c *Client) CreateAgent(ctx context.Context, body CreateAgentJSONRequestBod
 // DeleteAgent Delete an agent
 //
 // An agent starting or running refuses it with agent_running unless
-// stop_running is true. What the AI coding agent keeps of its session
+// stop_running is true. One with children stays as a tombstone, with
+// state removed, until its last child is removed, and it is then
+// deleted; removing a tombstone that has children refuses it with
+// agent_removed. What the AI coding agent keeps of its session
 // stays on disk.
 //
-// Errors: agent_running, invalid_path, not_found.
+// Errors: agent_removed, agent_running, invalid_path, not_found.
 //
 // Corresponds with DELETE /v1/agents/{agent} (the `DeleteAgent` operationId).
 func (c *Client) DeleteAgent(ctx context.Context, agent AgentRef, params *DeleteAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1570,7 +1606,7 @@ func (c *Client) GetAgentHistory(ctx context.Context, agent AgentRef, params *Ge
 // is left failed and returns start_failed with the agent under
 // details.agent.
 //
-// Errors: agent_running, invalid_path, not_found, project_closed,
+// Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
 // start_failed.
 //
 // Corresponds with POST /v1/agents/{agent}/start (the `StartAgent` operationId).
@@ -3311,11 +3347,12 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// ListAgentsWithResponse List agents by project name, then name
+	// ListAgentsWithResponse List agents as trees, by project name, then name
 	//
 	// The agents of the project named by project, or of the project whose
 	// worktree holds dir, or of every project without either; every state
-	// is listed.
+	// is listed. The top level has the agents with no parent, the rest are
+	// in their parents' children.
 	//
 	// Errors: invalid_path, not_found.
 	//
@@ -3328,13 +3365,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Without project, the agent belongs to the project whose worktree
 	// holds dir, and starts there. With it, in dir when dir is in the
-	// project, else in the project's clone path.
+	// project, else in the project's clone path. With parent, it is a child
+	// of that agent: it belongs to the parent's project and starts in the
+	// parent's dir, whatever dir is.
 	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: invalid_name, invalid_path, name_taken, not_found,
-	// project_closed, start_failed.
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found, project_closed, start_failed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3345,13 +3384,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Without project, the agent belongs to the project whose worktree
 	// holds dir, and starts there. With it, in dir when dir is in the
-	// project, else in the project's clone path.
+	// project, else in the project's clone path. With parent, it is a child
+	// of that agent: it belongs to the parent's project and starts in the
+	// parent's dir, whatever dir is.
 	//
 	// An agent that does not start is left failed and returns start_failed
 	// with the agent under details.agent.
 	//
-	// Errors: invalid_name, invalid_path, name_taken, not_found,
-	// project_closed, start_failed.
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found, project_closed, start_failed.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3361,10 +3402,13 @@ type ClientWithResponsesInterface interface {
 	// DeleteAgentWithResponse Delete an agent
 	//
 	// An agent starting or running refuses it with agent_running unless
-	// stop_running is true. What the AI coding agent keeps of its session
+	// stop_running is true. One with children stays as a tombstone, with
+	// state removed, until its last child is removed, and it is then
+	// deleted; removing a tombstone that has children refuses it with
+	// agent_removed. What the AI coding agent keeps of its session
 	// stays on disk.
 	//
-	// Errors: agent_running, invalid_path, not_found.
+	// Errors: agent_removed, agent_running, invalid_path, not_found.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3399,7 +3443,7 @@ type ClientWithResponsesInterface interface {
 	// is left failed and returns start_failed with the agent under
 	// details.agent.
 	//
-	// Errors: agent_running, invalid_path, not_found, project_closed,
+	// Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
 	// start_failed.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4691,11 +4735,12 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
-// ListAgentsWithResponse List agents by project name, then name
+// ListAgentsWithResponse List agents as trees, by project name, then name
 //
 // The agents of the project named by project, or of the project whose
 // worktree holds dir, or of every project without either; every state
-// is listed.
+// is listed. The top level has the agents with no parent, the rest are
+// in their parents' children.
 //
 // Errors: invalid_path, not_found.
 //
@@ -4714,13 +4759,15 @@ func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, params
 //
 // Without project, the agent belongs to the project whose worktree
 // holds dir, and starts there. With it, in dir when dir is in the
-// project, else in the project's clone path.
+// project, else in the project's clone path. With parent, it is a child
+// of that agent: it belongs to the parent's project and starts in the
+// parent's dir, whatever dir is.
 //
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: invalid_name, invalid_path, name_taken, not_found,
-// project_closed, start_failed.
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found, project_closed, start_failed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -4737,13 +4784,15 @@ func (c *ClientWithResponses) CreateAgentWithBodyWithResponse(ctx context.Contex
 //
 // Without project, the agent belongs to the project whose worktree
 // holds dir, and starts there. With it, in dir when dir is in the
-// project, else in the project's clone path.
+// project, else in the project's clone path. With parent, it is a child
+// of that agent: it belongs to the parent's project and starts in the
+// parent's dir, whatever dir is.
 //
 // An agent that does not start is left failed and returns start_failed
 // with the agent under details.agent.
 //
-// Errors: invalid_name, invalid_path, name_taken, not_found,
-// project_closed, start_failed.
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found, project_closed, start_failed.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -4759,10 +4808,13 @@ func (c *ClientWithResponses) CreateAgentWithResponse(ctx context.Context, body 
 // DeleteAgentWithResponse Delete an agent
 //
 // An agent starting or running refuses it with agent_running unless
-// stop_running is true. What the AI coding agent keeps of its session
+// stop_running is true. One with children stays as a tombstone, with
+// state removed, until its last child is removed, and it is then
+// deleted; removing a tombstone that has children refuses it with
+// agent_removed. What the AI coding agent keeps of its session
 // stays on disk.
 //
-// Errors: agent_running, invalid_path, not_found.
+// Errors: agent_removed, agent_running, invalid_path, not_found.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -4815,7 +4867,7 @@ func (c *ClientWithResponses) GetAgentHistoryWithResponse(ctx context.Context, a
 // is left failed and returns start_failed with the agent under
 // details.agent.
 //
-// Errors: agent_running, invalid_path, not_found, project_closed,
+// Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
 // start_failed.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -5907,7 +5959,7 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// ListAgents List agents by project name, then name
+	// ListAgents List agents as trees, by project name, then name
 	// (GET /v1/agents)
 	ListAgents(w http.ResponseWriter, r *http.Request, params ListAgentsParams)
 	// CreateAgent Create an agent and start its AI coding agent
@@ -7885,7 +7937,7 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// ListAgents List agents by project name, then name
+	// ListAgents List agents as trees, by project name, then name
 	// (GET /v1/agents)
 	ListAgents(ctx context.Context, request ListAgentsRequestObject) (ListAgentsResponseObject, error)
 	// CreateAgent Create an agent and start its AI coding agent
@@ -8567,108 +8619,114 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7F3dk9s2kv9XULyrilPHmbGTvS/Nky/Z3LnKtUnZ2fXDcksFkS0JOxSgJUBpdK7536+68UGQBCXNjMbr",
-	"28pLIksk0Gj0F37djfmclWqzVRKk0dnsc7blDd+AgYb+9XYF0nyAJX6uQJeN2BqhZDbLikxUsyJjXFbM",
-	"rIFxfPIbzUSVM66ZkExUM/ry6g3/bvF9+bsqZ6phwmgm+QYK+arkGq6E1CC1MGIH3zKjVmDW0LC9MGu2",
-	"bdRfoTT4ViWanGkhS6CXNeMNFLKV4m8tMCXrA70hJOP+retCZnkmkNQtN+ssz/DFbJYRTVmeNfC3VjRQ",
-	"ZTPTtJBnulzDhuNCN0K+B7ky62z2Js/MYYuvadMIucoeHvLsFztDki2/rsFT8I1dKBuvkxgRMxCZ0mMc",
-	"DhH4dp1eiJvmWUv5aNT2Qysl/nu0FvyR9tZAsxGS15qIJQZqZtbc4DYwbXhjhFzhoho7FhNSG+AVU0vW",
-	"wLLVQq7CKv7WQnPolqGN2s7de1lMewVL3tYmmy15rSFQv1CqBi6J/F8dYT+KZkz+W8n4Qqu6NcCQc8ha",
-	"JQFpMr1d2qvmzjQA+pbBfVm3FeggRRNEV6LJHsNnT6gTnXPkZkJIIhor0UzR18nG42k8S929SAw1Hr//",
-	"yhTek/oMRXnAV/VWSQ1kFn9p1KKGDX4slTRoUGafM77d1qLkyLGbrX3iX/6qkX2fo5n+uUH+Zv9009nd",
-	"G/urvvHj0oxjAUHyQRu25KKG6pp2zb0ajDXZ8EZtoTHCEstLPt7PT2tRrtnbd6xUFSosKTUTBjVY036W",
-	"NW8rmJeqApSyAUvyrGyAG6jmnKZcqmaDn7KKG7gyYgOpd6qUnn5aQwM4NRkSnTOp9iRnSjLYQXNgDdS8",
-	"leU6SQfI6jgVsq1rvqjBb/p4hKZRCbp+Jilbg3T8vmX79QHprETFpHL0Xp81w70wxMljs+BDOMub7/4j",
-	"qJkWK8lrtlQNma47UddQscWBcffTkemFNLCCBucXFU48IssqSOKHrX1hLIEDgflG52y/FjVt35prJPI8",
-	"ipzSzico8z9PUqhBa6Hk/GxCmXuDCC7XSPBKAVJsbQ9tAe0ooIvjQialzT3xLHnThhs4ZQpImT/Skw95",
-	"sGHJ9X5CT7xWdaXJ2G4bVYLWfqHcGF6ukROV4LW+ZVIF6239Ii9L2KJzMcklt9sqUvSR7kqalNbEaq4N",
-	"K9dcroCilnOswkNslv+MouoEsyckA5HocyQnG9cTity7aOKglehYD73W9+xYb629vY7MzF/CCtSCfOxD",
-	"bi3v7+UOarWFhAX2hvnkho/YYV+dnPO90GZiPvokDGz0mTOHOXjT8EOaEj1NygfQFK09Z/HkZt0oxx53",
-	"cw1JdC/np7j20SvgSJgpFomUiAnNeC12kJPF36Om4c8jx6lZpTDILaQPh2f0IKolDqnZAvBxJ1O3PlKe",
-	"pYYrpJ/21nkFfIyRCKLxF0ZDvbxlGDpv8ceyVprCbhMiVySEfmXC3DoPNht5r1tWK22GpK7Q13BZFVKq",
-	"haoOrBvKRlkg2w0y3K8VQ6sQwVuKSX/oLbQDNH2WZzhbtC+dkfmBtDBEMLyqBO4KRcxBmNxBoC9fyZji",
-	"bT/w97EFE/KWaQBWdtMlbZ73O4NR2QokNJxcRIVcFju4kqqVuH1Ap73FgbmDy1mRwfYCB4JuSooZcPP2",
-	"a6UhHGycc3DnhRM0DXQK2ZtSJLth0XnmEVuW5u4HNytFO1q1Dcb+sL9lCrVyLzTQ8hrYKi2Mag64ICjp",
-	"k2rYHz+8Z4kdGHFcyXmp5LIWlmwvymoLKNkllyXUSRFVcr4RGvVsXq6hvFNtb4AGylpJoFPGRu0gOYZd",
-	"1inz9tE+NdwK9/L0bvgT3OU1iGLRNdR1WpH8xL/p0pN06UcOG3tM7G9MqTYbYZLx71pNBManYvpxKK5V",
-	"eQfpWc6Idkfv7KDRwq7mODdcIOefz/1yfbBGSwzk9YhJMfH3GM/9kDxjfTS4R4wiPpKuWybxZOlDVUKu",
-	"oNVQXbOK9mLeSr7jgvY2LySvG+DVwcNUOXpvXL83CDnbqsbMhZy3GrpfrdvLCxmCValMNwj5+sFXFKzP",
-	"W6nbLQ5Jb5dKStQPJefoP3OUTPy2wuPLku2re2bjVvaqUntZK165qZlRrAFtVANzz/pv7dl6WUh8sYKt",
-	"JrSO1zV7Za2fe3HbiJ2oYQU6frexFhhJK+TiQFryw/t3ueOo+8ZysR8stJqvgCAaA43FY3DtS9VKH/PP",
-	"Db8jM4xTzOFeaKNRMJy59ex2b66EmeODNOaO16LyhwP/TwcE+X/yZtVuLPqLv3QT+LPFRugNNyW+Q8Z8",
-	"HgIX/wRGWr0v7J7HB5IIy0SJ7cZISYEPVkf/HjwzkgvSl55c4JlnJLz4bl94bawWSy+uphPf6PdA+UCs",
-	"/JbodhOzjOLHeafPViijed0XYRCp5tsGdkK1OnptKLB0sDMYZuq528ngqO04EVvm+qANbGjTSajjLRzJ",
-	"My4NthhXy/IQ2JFy3P8tzMfgux/hW+1AXZSwEun4t23qsd36AWUQA5vrk8dm+tUOkzKO71XJ6yctgFTo",
-	"VHwtGWcrYaLYLBkJDJlRI1UJdqTXRpSkFvcH2L/E0rro0igX5wwDUIyCivb16+9LdFb0CW6cZdCnAtEh",
-	"NyTsz+RFigkRJD1Kg1jHxzVzD7EfwXBRa/bqw08/sP/83b/++7fXWT4KPqqTgWrncwmvXrSrJED1k5CV",
-	"drwjBPsbzWq1YrWQoJO8qYjACahrjyfufaPkipm10Axt1ZFR9LRY2KBtHCzueN0C+sWdqndQ5Uy35RoZ",
-	"iGvwpwc8cEdpoolQsNuhtZBmYkVGsUoxvlCtcSjcWSBiq9MRnRGmhqmpaAUVsA1wqY8KZv/ttpGzfXU/",
-	"I2GaBYR6Ij+QVmFLWCA+7HOeOVCOeNRtXCRUEzLvA/4pAOzYQcAlMhcHdyQQPt9AoCGebwz+uALzi09M",
-	"yZos23NgtadlTh6L4KtGrAQF4SclSTXbNZdQTQNiMkqb+liMoDElWSX03TFWDbO2Z8LfbpgRAH5yU7tc",
-	"9UvtazhlJ7a2j5Wft7Uh/Xw2YPvJvXESs43BdCcRHSTezTsNgh/Rumm4OzqHn7HFI6L960fmTsPe3vGe",
-	"zUcvZO1mw5vDSW6G8Y9Q9oGwn4mkVMUNRz3SpgG++SXIrAWMKpRSi0cm15XOlaVpPGExp7D6GBg7K0+d",
-	"Z1VjQd7kgjtj4R5jCyh5a5G8Ax0mpWK1kitovDE5Ww+ntSB/tAg+NvEQ0Ij0ujsjpLZABTFRxUlIZ2Ng",
-	"IaTF1ih9Brxcswb/a9NnzzZHATI54g+dF3x5Qif9oc8TnGClT3IQWLNRuyG1bpgLMY7GOodxlybrvGxc",
-	"SHWdYS1DumuIdVssI3UcHVjGsaH4ukKYJ4UUz/HV81K10qSi76d4YDfa49xwZ8PHorlR2lCBiFiKkkuM",
-	"+q1YcsPWfLsFaQXSC4Sbl8CXldAGLDZCGBh+UPRGJzI+x1F1sKyL2tEidDnAlGh1R/VKIN2og8bW32z4",
-	"dusqEVfCTO1jB8XkDkGYeDAGPXI6Xk882AEID8H3Hv7gqseQfsr+wM/LbPbn4zIWj3T8yZi4U892K374",
-	"S1Sodxm1PFKTNcz6/FaalS7N4o5LXXnW2XVQF6vMIgr+jvVYOP0pnNAdIenZv291lVehCWfwtRQ5uRom",
-	"4u2XqmXyrJk+35nI/pwXYA3RIP/Dsfn/R2ijUrHHUjR6wu/JdrPAk4SVM1VXoA2hjOwOtqa3WUKaf/td",
-	"llKFZaM25wxPdNjRheywzDNmoGfTU9BPHmkMZXpVA3v8ZpPbYkWzBtEw0CXfWgRO26IJc6jBFunXQt7p",
-	"Xsw5AfN1Ma+E++NsRZLwIbvmfSOMAcn2oq6Z4Xdw1uIHkkC8dlPnbmc9f84QjmkZXXfSc46IemEb0ueH",
-	"OUZLGozoAVbPPI9MqM9xFk2d8R970H22toejyllqP1Gb95SqOuuUQyldIbtaOv/jRUrqAj2ogjTsVI1d",
-	"IcdFduyL1dj9kRzC00q2nnTC6rX2jN0qWjLrUu2xIiceDDqOntJmlOgU6tVREX0pIfxTV7tydiXOZEj0",
-	"7EKYFIUB9HrJI7lPjCbCQNCQzmLZTEGcIXhigiAVKrk6jmiJY97gi0Iu1UQ/wC/vvN+mshcqlMiZhmYH",
-	"FVM7R/sfpbhntuJonNjdV/fX+Nt1IQv5NnTjbPiBaZAV4+xTdX/1Iyza1dW7iq2Bo6q/qharK1L0N9+x",
-	"NdyzSqyE0d8yo9ia76CQXcEMZUWFYa2siCBuqCjNZk5t/xGDcq3AxgeiipOqhdxzyquuoLIjXLO3RNJ7",
-	"tbp6DzuoPU1qySixRmeEwfRUXOTXxo17sMbXczJ2aGjaBjSD+xK2Bmz7F8Yfhi8YmoUakPP6tpBcHmz5",
-	"pk2pokiIlVQNVMREyh9Tb9eR1LQNeTgagEUNrKBcYZHdEgpZSNQB6rlitdBGh6SkRkaWXLIGTNtItgAt",
-	"8FsqQ7I1f64QydpblzTNOvFAoYn0cpbt3hASsAXJtyKbZd9fv77+3okn6eDN7s1NBxmuwByHXHuNiJSs",
-	"Il/kvqAaxcEzVItYyHExon/YnsrD48KsURNB4B7cxmkwqjFHjvW2Ysbi0ikqercFWpZHgdfvqmyW4dtv",
-	"7WrzXt/wBEjSPXIz7IecQkASr/womuzhL4OGvO9evz7SjPe4JryusWKiDc9u37WtMHA9qukhA41RZ1+e",
-	"aY+qZjhLlIaOJYGq/CR9JMurUmeeT25/g8SETmy2gFrJlUYrMxKgUMxq4xEnQKgSrroXpQWuGXloYQj8",
-	"r0RjsRD8ILTLBxQyTA21Bp8l6NKxBCHS6d9aTenII9tWoSELcRKOWsPStzcSPVZ3NYsr6Qrpz0BuLGst",
-	"Xc3ANX2XFGmfDe4JeKg6jIQ9D8uad5FJR0BKF6KGAtdnCtr8l6oOFxPLuEPioe8lTdPCw0gj3lxWI0LP",
-	"zbROuNOpDfhdyVR1CT2xa2fcS08Q1VT3DL3bWeKbz/T/B6s9NaROF0EsU0EmRZbWnVhPFNdrslbWoLU9",
-	"GoQvhWa4J9cslNwMG4buALbkAegsYvvWqHfoEIKmngz3Js0fY6Xtmr1kPs5Mx9cDvLzNPS5hPkmekDT3",
-	"0yUk7UfiVpA0HDHpxk+5y9E2rMB01uEluRgwkWOaeglWeaUh94CBnvbnvscJWbhj5BFBwJPjhqRpuInQ",
-	"ouRuv9V4chmARbkPzixmRx5Nl42iHIBaLuNrUQqpywZAnhNq3TJ0ZFbAl43aMGpaaG2XIbfxayEJ8k3p",
-	"uxc0D2mNtuN8XDO6awJJmrpswoF4nYyOUMCNkGLTbrLZ6xQiOCTpPfGTlm7XLym6pc+vQ0yL/7xlb16/",
-	"fm3jEowjVmIH8kyqfc41ugOC31sqcdDXEdVvzqGa0FvuOBdfJUJ0o8eiGfskSzoSEdlTdLoCySeS+ZJG",
-	"ewqMnTA8DiG/RNQsbeeLt9LfaLb2Ovn/3hZRCDK8iekro3zqPPKTarogjQyiBSpzH9OrhlmQQptr9rOE",
-	"1DnAnkzPOAiw1DmgkNMHgfOCqJwNgn/X030k+qffv4x7f3QY7rDxSyjeRwq5wwbbs+QwsiVIvasX4xvw",
-	"8W0IzKvQ7+i87ciDuY7IF2SmmyHBx3d4GG9FbQXBXqWxVhuLGVls8BLM/LWD3TQ0rmxMaDdD4FVc1Jrk",
-	"Vi20x1T1KWdPFQ2hP4W2SGhfFj2AjtBB8YV2Fanpm7tsPvrsu42i5MCLOqa4SnhCUTwTLobi+AHzEKDY",
-	"JG2oss6Zpg41X5c+jerYPu9r9OVsK8o7be+dsIVbelbIKyZhP/M9SVwy2GzNYdCBxbiHsNG+OQjbfkHX",
-	"cdEX7BUVZjgG6EIyZtR0S5PrHd1SPcQ1e0uVMdrYy2VCtxTB1mTQcbxEc5jFj4QRvBb/CxU+sq15Sedl",
-	"sHaD+r/xGM3vQOIwygL03TQWgxoOnbOov58VBNYWGZFsV4fEeRn36aPYwcQdPg5ZKkJddJHd4iB+h4Xp",
-	"Py60Gwadlh3Kh+lXjErVZpZ5gzaytarJgBJMxnyKxybyLXpOMBotAMMedifVXsYj/FUJGacqacaVMNF8",
-	"MSZs2WDrESm2tjCdQJYYhdNMisBYhMSSXtSslUQXudyfXTmxp9XPvuHNHUEpSFdOZeH21qKuVDxUhBfS",
-	"ISFug1wxsp6+k7BL2vp0ak4Yt5ArSrNswo46r+i6/4tBpXSROVGUqpfOwqiEJGx4EUQhC38BRJG53UIq",
-	"6CIpN4VFKYrMwRWakFV7R1NYTCGj1Wgj6noAQ/UuynMdu7exQA57pSma8lLZi4aGT+Ys7nnuwiPfNZ0X",
-	"8jFIqu/OzlnUax0hq75Zfth7nbOo+Xsaav2ld/vly4CtXYfKGXDrxd3XdKQX292g1tzW8IO9ddGjZVSL",
-	"OBJX8nqXRIhPk9wj1EHDuNW+3DhYoYsCxvGVkmQJR67IFkmOwq2bz+7TUdz4J1FDwGtdO4thRrXUGMF+",
-	"DTZqGlcupMeV+4rhgGWWwpW92cDfyBpuCmlRG1v65dKgsbUjY1hkPQOQOPHYuadh5E7rvlIg+aQgxlBy",
-	"yF29MJgcpBC3h8LsqB4/StSJ03jzcYQ5Noovy+BTYE+ftYWvHMFQTNr2IR8Y5xiluRbUIsN/dd7Qe2fv",
-	"lZm+zNnrbZRjR6tgbQ8l+txlkKheLjvTRSao4HFIgr+m4pDH407RldKErtCNGqn7ICi8sQaGImySI58w",
-	"Yu9MZxOSPbF0qdsZFzhHt2T69BcyZui9jxuplDHCQClYoxB7xc1Wzkj5ANJGiP3O41HP4G0fT6UwrZDD",
-	"ACeOz4lXZ4SUhfQxpa/PmzSxxwPKvJAk9r0+OmKv7aI7Hpk9ylS3vTq/lwmQ+rWEX1uANLZAPidNWu6j",
-	"gQvFGjhmZ+TzEGuE+N9lMWBkUY6EHTfUDDxdR/QRmh00V5ogN3qUvTJwb+x7V7bF+FvbnqJJXcL9FbWg",
-	"OyYp2XzNfg0pH3qT1Dc6LnIdF+35U7Iwt4XkSwONg41sP4TTBmHYq3gMy+vYyvLuTqwuGKQxXDmvgSiK",
-	"RWuk6HqpDa9Qa77t1Z4gydoBkjVYnvv7qDiroDY8Z1ox7paO4V/NSzxPuws9bR3VNfuBVmHPkdBdTr7h",
-	"B7YAO4drqiF1RX0OTCsy+jgL1cKZL1wbuEy6LN1o6ga/LmSAPKLVhHWHQd03o0Fdv3khwV+xYnfe7ms0",
-	"5FLVtdqHYme6tZ140oC9nd1WJAhj37SjMF5rxWjovSfTY5boZ9LhZBohj1reT8cnI0nuG4fE/eyJjii7",
-	"hNF1/1ZbLqH5PxFPY9WPxNDqhREbsMdykqxnRgbT1qJ3icTzYo8kJvlhylV695hoeaa6UN9XLkwhKwV9",
-	"kTkBOPTcXgcipOTLgS+TAvbm63A+l3M5Mj5X0CwxVkXpswUv7wjQs04nVOIFr9PrUZmsVo0uM7hgwept",
-	"olqVYjhbq9qlxZ9RnBrO3/9Q9am9vqMJ+Qt7drH8Ru9encsUqoYI4PG1qlR2g0cAbWxr6V74GzTduWxw",
-	"Wy1d2FrITxHQkvfuhU4VuKb+Wkwny/rcmldHS6rktQa+G5jURNa7n4Du0t7hlX4FrP/671QE+2v/7628",
-	"DDQbdZt90VLYQXfdCfV78YLYTgT6JbG2ZXhk528++4/Hy2G7Yc8piB3efFrIs7HLTlPpCHKOsc9H803D",
-	"lZEofqV45Xny5AHLtFy9BGJpombUixXA9izDCzP0FEAZjORF4MRuY55Xfxb/Da4vWIKWMhAni2Jd2Z8H",
-	"DI5VwUZ/LczWweaFtEWnUPm6zqXL8EfP1mIJOeNlo7SOwToLoxSSLId1+XewNazdUgjhd9YtYG4LD203",
-	"S6+gNre9d7a4tu6qTmkRvihW5qHydFhmWmvXvUd1n1S16+Z6a99ZwFK5e1SGlxH4yIMbHIKbDlV46erg",
-	"Yc/7bwXCvxUI/6MWCMfW5EIlwl+TiX5irfCXXsLRcuEu1jxRMOz/aIP/Y3g+jSQXh9RtDT7Q7ACoyIV8",
-	"hQezU1XIvdPXeUEwvfElg66nnIouX5/Mlg3otT9X9GXMYgpkhlGGqFg5nJOiGxumCpP/FP+Zgpdhpp9i",
-	"gov2AO9IdW5js3GliA6cR5VZtKK2TvASrHVE+RCgCtXTD/8XAAD//w==",
+	"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",
+	"5DyqzKoVtT0Er8FaR5R3AaqAnr7/vwAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -77,8 +77,8 @@ func (s *server) detail(ctx context.Context, p project.Project) (api.Project, er
 	if err != nil {
 		return api.Project{}, err
 	}
-	agentList := agentViews(agents)
-	v.Agents = &agentList
+	tree := agentTree(agents)
+	v.Agents = &tree
 	return v, nil
 }
 

@@ -93,6 +93,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*agent.RunningError](err); ok {
 		return api.ErrorCodeAgentRunning, map[string]any{"agent": agentView(e.Agent)}
 	}
+	if e, ok := errors.AsType[*agent.RemovedError](err); ok {
+		return api.ErrorCodeAgentRemoved, map[string]any{"agent": agentView(e.Agent)}
+	}
 	if e, ok := errors.AsType[*agent.StartError](err); ok {
 		return api.ErrorCodeStartFailed, map[string]any{"agent": agentView(e.Agent)}
 	}

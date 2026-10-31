@@ -444,3 +444,103 @@ func TestAgentAttachText(t *testing.T) {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
+
+func TestAgentCreateChild(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	lib := newProjectDir(t, home, "lib")
+	parent := newAgent(t, home, app, "parent")
+
+	v, exit := wdxJSONWith(t, home, in(lib), "agent", "create", "--parent-id", parent.Id, "--name", "by-id")
+	if exit != api.ExitOK || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
+		t.Fatalf("by id: exit %d, %+v", exit, v.Agent)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "PARENT", "--name", "by-name")
+	if exit != api.ExitOK || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
+		t.Fatalf("by name: exit %d, %+v", exit, v.Agent)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "by-name", "--name", "deep")
+	if exit != api.ExitOK {
+		t.Fatalf("deep: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", "agent-none")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(lib), "agent", "create", "--parent-name", "parent")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", parent.Id, "--parent-name", "parent")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+
+	// The list nests the children, in JSON and as a tree in text.
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "list")
+	if exit != api.ExitOK || len(v.Agents) != 1 || v.Agents[0].Children == nil || len(*v.Agents[0].Children) != 2 {
+		t.Fatalf("list: exit %d, %+v", exit, v.Agents)
+	}
+	out := wdxWith(t, home, in(app), "agent", "list")
+	for _, want := range []string{"\nparent ", "\n├ by-id ", "\n└ by-name ", "\n  └ deep "} {
+		if !strings.Contains(out.stdout, want) {
+			t.Errorf("list: no %q in:\n%s", want, out.stdout)
+		}
+	}
+	out = wdxWith(t, home, in(app), "agent", "get", "--name", "parent")
+	if !strings.Contains(out.stdout, "by-id, by-name") {
+		t.Errorf("get: %s", out.stdout)
+	}
+	out = wdxWith(t, home, in(app), "agent", "create", "--parent-id", parent.Id, "--name", "text")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "parent "+parent.Id) {
+		t.Errorf("create: %+v", out)
+	}
+	out = wdxWith(t, home, in(app), "project", "get", "--name", "app")
+	if !strings.Contains(out.stdout, "└ deep") {
+		t.Errorf("project get: %s", out.stdout)
+	}
+}
+
+func TestAgentRemoveParent(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	parent := newAgent(t, home, app, "parent")
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != api.ExitOK {
+		t.Fatalf("create: exit %d, %+v", exit, v)
+	}
+
+	out := wdxWith(t, home, in(app), "agent", "remove", "--name", "parent", "--stop-running")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "until its children are gone") {
+		t.Fatalf("remove: %+v", out)
+	}
+	got, exit := wdxJSON(t, home, "agent", "get", "--id", parent.Id)
+	if exit != api.ExitOK || got.Agent.State != api.AgentStateRemoved || got.Agent.RemovedAt == nil {
+		t.Fatalf("get: exit %d, %+v", exit, got.Agent)
+	}
+	out = wdxWith(t, home, in(app), "agent", "get", "--name", "parent")
+	if !strings.Contains(out.stdout, "removed") {
+		t.Fatalf("get: %+v", out)
+	}
+
+	for _, args := range [][]string{
+		{"agent", "start", "--name", "parent"},
+		{"agent", "remove", "--name", "parent", "--stop-running"},
+		{"agent", "create", "--parent-name", "parent"},
+	} {
+		v, exit := wdxJSONWith(t, home, in(app), args...)
+		wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+		wantHint(t, v, "it goes when its last child is removed")
+	}
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "attach", "--name", "parent")
+	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, api.ExitRejected)
+
+	// A parent cannot be a tombstone: completions leave it out.
+	out = wdxWith(t, home, in(app), "__complete", "agent", "create", "--parent-name", "")
+	if strings.Contains(out.stdout, "parent\t") || !strings.Contains(out.stdout, "child\t") {
+		t.Fatalf("completions: %q", out.stdout)
+	}
+
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "child", "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("remove child: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "list")
+	if exit != api.ExitOK || len(v.Agents) != 0 {
+		t.Fatalf("list: exit %d, %+v", exit, v.Agents)
+	}
+}

@@ -21,6 +21,9 @@ func (m *Model) menuItems() []menuItem {
 	if _, ok := m.checkoutDir(); ok {
 		items = append(items, menuItem{"t", "new terminal", "terminal"}, menuItem{"a", "new agent", "agent"})
 	}
+	if a, ok := m.childParent(); ok {
+		items = append(items, menuItem{"c", "new child of " + a.Name, "child"})
+	}
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
@@ -97,33 +100,39 @@ func (m *Model) focusTerminalPane() {
 type removal struct {
 	kind, id, name string
 	running        bool // removing it stops what runs
+	hasChildren    bool // it stays as a tombstone
 }
 
 // removable returns what C-q x would remove now.
 func (m *Model) removable() (removal, bool) {
-	switch m.layout.focus {
-	case terminal:
+	if m.layout.focus == terminal {
 		t, ok := m.selectedTerminal()
 		if !ok {
 			return removal{}, false
 		}
 		running := t.State == api.TerminalStateRunning || t.State == api.TerminalStateStarting
 		return removal{kind: "terminal", id: t.Id, name: t.Name, running: running}, true
-	case agent:
-		a, ok := m.activeAgent()
-		return agentRemoval(a), ok
-	case project:
-		if _, ok := m.root.(*projectScreen); ok {
-			a, ok := m.cursorAgent()
-			return agentRemoval(a), ok
-		}
 	}
-	return removal{}, false
+	a, ok := m.focusedAgent()
+	if !ok || a.State == api.AgentStateRemoved {
+		return removal{}, false
+	}
+	running := a.State == api.AgentStateRunning || a.State == api.AgentStateStarting
+	return removal{kind: "agent", id: a.Id, name: a.Name, running: running, hasChildren: len(childrenOf(a)) > 0}, true
 }
 
-func agentRemoval(a api.Agent) removal {
-	running := a.State == api.AgentStateRunning || a.State == api.AgentStateStarting
-	return removal{kind: "agent", id: a.Id, name: a.Name, running: running}
+// focusedAgent returns the agent in focus: the active one in the agent pane,
+// the one under the cursor in the list.
+func (m *Model) focusedAgent() (api.Agent, bool) {
+	switch m.layout.focus {
+	case agent:
+		return m.activeAgent()
+	case project:
+		if _, ok := m.root.(*projectScreen); ok {
+			return m.cursorAgent()
+		}
+	}
+	return api.Agent{}, false
 }
 
 // confirmBox asks before C-q x removes: removing cannot be undone.
@@ -189,6 +198,9 @@ func (m *Model) confirmPopup() popup {
 		body = append(body, "It is running: it is stopped.")
 	} else if c.r.running {
 		body = append(body, "It is running: its shell is stopped.")
+	}
+	if c.r.hasChildren {
+		body = append(body, "It stays as removed until its children are gone.")
 	}
 	if c.busy {
 		body = append(body, "", st.Muted("removing…"))

@@ -351,11 +351,12 @@ paths:
   /v1/agents:
     get:
       operationId: listAgents
-      summary: List agents by project name, then name
+      summary: List agents as trees, by project name, then name
       description: |
         The agents of the project named by project, or of the project whose
         worktree holds dir, or of every project without either; every state
-        is listed.
+        is listed. The top level has the agents with no parent, the rest are
+        in their parents' children.
 
         Errors: invalid_path, not_found.
       parameters:
@@ -374,13 +375,15 @@ paths:
       description: |
         Without project, the agent belongs to the project whose worktree
         holds dir, and starts there. With it, in dir when dir is in the
-        project, else in the project's clone path.
+        project, else in the project's clone path. With parent, it is a child
+        of that agent: it belongs to the parent's project and starts in the
+        parent's dir, whatever dir is.
 
         An agent that does not start is left failed and returns start_failed
         with the agent under details.agent.
 
-        Errors: invalid_name, invalid_path, name_taken, not_found,
-        project_closed, start_failed.
+        Errors: agent_removed, invalid_name, invalid_path, name_taken,
+        not_found, project_closed, start_failed.
       requestBody:
         required: true
         content:
@@ -415,10 +418,13 @@ paths:
       summary: Delete an agent
       description: |
         An agent starting or running refuses it with agent_running unless
-        stop_running is true. What the AI coding agent keeps of its session
+        stop_running is true. One with children stays as a tombstone, with
+        state removed, until its last child is removed, and it is then
+        deleted; removing a tombstone that has children refuses it with
+        agent_removed. What the AI coding agent keeps of its session
         stays on disk.
 
-        Errors: agent_running, invalid_path, not_found.
+        Errors: agent_removed, agent_running, invalid_path, not_found.
       parameters:
         - $ref: "#/components/parameters/StopRunning"
       responses:
@@ -442,7 +448,7 @@ paths:
         is left failed and returns start_failed with the agent under
         details.agent.
 
-        Errors: agent_running, invalid_path, not_found, project_closed,
+        Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
         start_failed.
       responses:
         "200":
@@ -598,7 +604,7 @@ components:
         agents:
           type: array
           items: { $ref: "#/components/schemas/Agent" }
-          description: The project's agents by name, in every state; set by getProject only.
+          description: The project's agents with no parent by name, in every state, with their children; set by getProject only.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -824,17 +830,23 @@ components:
         starting: its holder is being started; running: its AI coding agent
         is alive; exited: it ended by itself; stopped: closing its project
         stopped it; failed: it did not start; lost: its holder is gone and
-        nobody stopped it.
-      enum: [starting, running, exited, stopped, failed, lost]
+        nobody stopped it; removed: it is a tombstone, kept until its children
+        are gone.
+      enum: [starting, running, exited, stopped, failed, lost, removed]
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, terminal_id, aca, session_id, dir, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at]
+      required: [id, name, project_id, project_name, parent_agent_id, terminal_id, aca, session_id, dir, state, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
+        parent_agent_id: { type: string, nullable: true, description: "The agent it was created under; null at the top level." }
+        children:
+          type: array
+          description: The agents created under it, by name, with their children; set by listAgents, getAgent and getProject only.
+          items: { $ref: "#/components/schemas/Agent" }
         terminal_id: { type: string, description: "What holds its process, which attaching dials; no terminal path accepts it." }
         aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
         session_id: { type: string, description: "The AI coding agent's session, which it goes on with when started again." }
@@ -850,6 +862,7 @@ components:
         updated_at: { type: string, format: date-time, description: When its state last changed. }
         started_at: { type: string, format: date-time, nullable: true }
         ended_at: { type: string, format: date-time, nullable: true }
+        removed_at: { type: string, format: date-time, nullable: true, description: When it was removed, if it is a tombstone. }
 
     AgentList:
       type: object
@@ -888,6 +901,10 @@ components:
           type: string
           nullable: true
           description: A generated adjective-noun codename by default.
+        parent:
+          type: string
+          nullable: true
+          description: The agent to create it under, by "id:" and its id, or its name in the project named by project or holding dir; by default it has no parent.
 
     ErrorCode:
       type: string
@@ -919,6 +936,7 @@ components:
         - start_failed
         - terminal_not_running
         - agent_running
+        - agent_removed
         - agent_not_running
         - attach_unsupported
         - connection_lost

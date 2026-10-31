@@ -88,6 +88,16 @@ func completeTerminals(key string) cobra.CompletionFunc {
 // the project the command line names, else of the one the working directory
 // is in. It offers nothing when the daemon does not answer.
 func completeAgents(key string) cobra.CompletionFunc {
+	return completeAgentsWhere(key, func(api.Agent) bool { return true })
+}
+
+// completeParents is completeAgents for an agent to create another under,
+// which a removed one cannot be.
+func completeParents(key string) cobra.CompletionFunc {
+	return completeAgentsWhere(key, func(a api.Agent) bool { return a.State != api.AgentStateRemoved })
+}
+
+func completeAgentsWhere(key string, keep func(api.Agent) bool) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
 		defer cancel()
@@ -104,7 +114,10 @@ func completeAgents(key string) cobra.CompletionFunc {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		var completions []cobra.Completion
-		for _, a := range list.Agents {
+		for _, a := range api.FlattenAgents(list.Agents) {
+			if !keep(a) {
+				continue
+			}
 			if key == "id" {
 				completions = append(completions, cobra.CompletionWithDesc(a.Id, fmt.Sprintf("%s in %s", a.Name, a.ProjectName)))
 			} else {

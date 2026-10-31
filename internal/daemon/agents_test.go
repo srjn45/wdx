@@ -462,3 +462,92 @@ func TestAgentsOutliveDaemon(t *testing.T) {
 		t.Fatalf("want %s adopted running, got %+v", a.Name, list)
 	}
 }
+
+func TestChildAgents(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	lib := td.create(t, "lib").Worktrees[0].Path
+	parent := td.createAgent(t, "", app, "parent")
+
+	child := func(body api.CreateAgent) (*api.CreateAgentResponse, error) {
+		return td.client.CreateAgentWithResponse(ctx, body)
+	}
+	// An id needs no project, and the parent's project and dir win over dir.
+	byID := "id:" + parent.Id
+	r, err := child(api.CreateAgent{Dir: lib, Parent: &byID, Name: optional("by-id")})
+	if err != nil || r.JSON201 == nil {
+		t.Fatalf("by id: %v %s", err, r.Body)
+	}
+	if a := r.JSON201.Agent; a.ProjectName != "app" || a.Dir != app || a.ParentAgentId == nil || *a.ParentAgentId != parent.Id {
+		t.Fatalf("by id: %+v", a)
+	}
+	// A name is looked up in the project holding dir.
+	byName := "parent"
+	r, err = child(api.CreateAgent{Dir: app, Parent: &byName, Name: optional("by-name")})
+	if err != nil || r.JSON201 == nil {
+		t.Fatalf("by name: %v %s", err, r.Body)
+	}
+	r, err = child(api.CreateAgent{Dir: lib, Parent: &byName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+	r, err = child(api.CreateAgent{Dir: app, Project: optional("lib"), Parent: &byID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+
+	// Lists nest; results stay flat.
+	list := td.agents(t, &api.ListAgentsParams{Project: optional("app")})
+	if len(list) != 1 || list[0].Id != parent.Id || list[0].Children == nil || len(*list[0].Children) != 2 ||
+		(*list[0].Children)[0].Name != "by-id" || (*list[0].Children)[0].Children == nil {
+		t.Fatalf("list: %+v", list)
+	}
+	got, err := td.client.GetAgentWithResponse(ctx, "id:"+parent.Id, nil)
+	if err != nil || got.JSON200 == nil || got.JSON200.Agent.Children == nil || len(*got.JSON200.Agent.Children) != 2 {
+		t.Fatalf("get: %v %s", err, got.Body)
+	}
+	p, err := td.client.GetProjectWithResponse(ctx, "app")
+	if err != nil || p.JSON200 == nil || p.JSON200.Project.Agents == nil || len(*p.JSON200.Project.Agents) != 1 ||
+		len(api.FlattenAgents(*p.JSON200.Project.Agents)) != 3 {
+		t.Fatalf("project: %v %s", err, p.Body)
+	}
+
+	// A removed parent stays, as removed, and refuses what needs a live one.
+	stop := true
+	d, err := td.client.DeleteAgentWithResponse(ctx, "id:"+parent.Id, &api.DeleteAgentParams{StopRunning: &stop})
+	if err != nil || d.JSON200 == nil {
+		t.Fatalf("remove: %v %s", err, d.Body)
+	}
+	if a := d.JSON200.Agent; a.State != api.AgentStateRemoved || a.RemovedAt == nil {
+		t.Fatalf("removed: %+v", a)
+	}
+	d, err = td.client.DeleteAgentWithResponse(ctx, "id:"+parent.Id, &api.DeleteAgentParams{StopRunning: &stop})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, d.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentRemoved)
+	s, err := td.client.StartAgentWithResponse(ctx, "id:"+parent.Id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, s.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentRemoved)
+	r, err = child(api.CreateAgent{Dir: app, Parent: &byID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentRemoved)
+
+	// It goes with its last child.
+	for _, name := range []string{"by-id", "by-name"} {
+		if d, err := td.client.DeleteAgentWithResponse(ctx, name, &api.DeleteAgentParams{Project: optional("app"), StopRunning: &stop}); err != nil || d.JSON200 == nil {
+			t.Fatalf("remove %s: %v %s", name, err, d.Body)
+		}
+	}
+	if list := td.agents(t, &api.ListAgentsParams{Project: optional("app")}); len(list) != 0 {
+		t.Fatalf("list: %+v", list)
+	}
+}

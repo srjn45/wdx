@@ -593,8 +593,9 @@ func agents(field func(name, value string), st style.Style, list []api.Agent) {
 		return
 	}
 	var table style.Table
-	for _, a := range list {
-		table.Row(st.Name(a.Name), agentStateText(st, a), a.Dir, st.Muted(a.Id))
+	for _, r := range agentTreeRows(list) {
+		a := r.agent
+		table.Row(st.Muted(r.guide)+st.Name(a.Name), agentStateText(st, a), a.Dir, st.Muted(a.Id))
 	}
 	var b strings.Builder
 	table.Write(&b)

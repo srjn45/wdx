@@ -164,7 +164,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Shell:        opts.TerminalShell,
 		HistoryLines: opts.TerminalHistoryLines,
 		StopGrace:    opts.StopGrace,
-		AgentCommand: agent.Commands(agents, []aca.AiCodingAgent{opts.ACA}),
+		AgentLaunch:  agent.Launches(agents, []aca.AiCodingAgent{opts.ACA}),
 	})
 	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)
 	if err := d.terminals.Reconcile(logged); err != nil {

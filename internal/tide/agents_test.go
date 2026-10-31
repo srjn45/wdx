@@ -17,11 +17,19 @@ import (
 // sentAgents makes m get the project demo from its stream, with agents, whose
 // ids are agent-<name>.
 func sentAgents(m *Model, agents ...api.Agent) {
-	for i := range agents {
-		agents[i].Id, agents[i].TerminalId = "agent-"+agents[i].Name, "term-"+agents[i].Name
-		agents[i].Dir = "/work/demo"
-	}
+	identify(agents, nil)
 	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &agents}}})
+}
+
+// identify gives agents, children of parent, what the daemon's would have.
+func identify(agents []api.Agent, parent *string) {
+	for i := range agents {
+		a := &agents[i]
+		a.Id, a.TerminalId, a.Dir, a.ParentAgentId = "agent-"+a.Name, "term-"+a.Name, "/work/demo", parent
+		if a.Children != nil {
+			identify(*a.Children, &a.Id)
+		}
+	}
 }
 
 // newAgentsModel returns newModel's window with agents as they first came.
@@ -219,13 +227,13 @@ func TestAgentRow(t *testing.T) {
 		{20, "  ○ a-rather-lon… ◂ "},
 	}
 	for _, tt := range tests {
-		got := agentRow(st, a, false, true, tt.width)
+		got := agentRow(st, agentListRow{agent: a}, false, true, tt.width)
 		if got != tt.want {
 			t.Errorf("width %d: %q, want %q", tt.width, got, tt.want)
 		}
 	}
 	for _, width := range []int{1, 5, 8, 20, 50, 100} {
-		if got := agentRow(st, a, true, false, width); width >= 20 && ansi.StringWidth(got) != width {
+		if got := agentRow(st, agentListRow{agent: a}, true, false, width); width >= 20 && ansi.StringWidth(got) != width {
 			t.Errorf("width %d: %q is %d wide", width, got, ansi.StringWidth(got))
 		}
 	}
@@ -438,4 +446,191 @@ func TestAgentsSwitchProject(t *testing.T) {
 	if under.Name != "a-two" {
 		t.Fatalf("cursor on %s", under.Name)
 	}
+}
+
+// parentOf gives children to an agent.
+func parentOf(a api.Agent, children ...api.Agent) api.Agent {
+	a.Children = &children
+	return a
+}
+
+// demoTree is a parent with a child that has children, and an agent with none.
+func demoTree() []api.Agent {
+	return []api.Agent{
+		parentOf(running("a-parent"),
+			running("b-child"),
+			parentOf(running("c-middle"), running("d-deep"), exited("e-deep", 0)),
+		),
+		running("f-alone"),
+	}
+}
+
+func TestAgentsTree(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41, demoTree()...)
+
+	wantRow(t, m, " Agents", "6")
+	wantRow(t, m, "a-parent", "│▸ − ● a-parent")
+	wantRow(t, m, "b-child", "│    ├ ● b-child")
+	wantRow(t, m, "c-middle", "│    └ − ● c-middle")
+	wantRow(t, m, "d-deep", "│        ├ ● d-deep")
+	wantRow(t, m, "e-deep", "│        └ ○ e-deep")
+	wantRow(t, m, "f-alone", "│    ● f-alone")
+	wantText(t, m, "←→ fold")
+
+	// ↓ walks the rows in order.
+	keys(m, "down", "down", "down")
+	wantRow(t, m, "d-deep", "│▸       ├ ● d-deep")
+
+	// ← moves to the parent, and only closes the row the cursor is on.
+	keys(m, "left")
+	wantRow(t, m, "c-middle", "│▸   └ − ● c-middle")
+	keys(m, "left")
+	wantRow(t, m, "c-middle", "│▸   └ + ● c-middle")
+	wantRow(t, m, "c-middle", "2 below")
+	if strings.Contains(text(m), "d-deep") {
+		t.Fatalf("closed still shows children:\n%s", text(m))
+	}
+	// → opens it, the cursor staying; on an open parent it does nothing.
+	keys(m, "right")
+	wantRow(t, m, "c-middle", "│▸   └ − ● c-middle")
+	keys(m, "right")
+	wantRow(t, m, "d-deep", "d-deep")
+
+	// A closed parent's own closed row moves to its parent on ←.
+	keys(m, "left", "left")
+	wantRow(t, m, "a-parent", "│▸ − ● a-parent")
+	// On a top-level row with no children, nothing moves.
+	keys(m, "down", "down", "down")
+	wantRow(t, m, "f-alone", "│▸   ● f-alone")
+	keys(m, "left")
+	wantRow(t, m, "f-alone", "│▸   ● f-alone")
+
+	// Reopening a parent restores what was open inside it.
+	keys(m, "up", "up", "up", "left")
+	wantRow(t, m, "a-parent", "│▸ + ● a-parent")
+	wantRow(t, m, "a-parent", "4 below")
+	keys(m, "right")
+	wantRow(t, m, "c-middle", "+ ● c-middle")
+}
+
+// TestAgentsFoldedActive: the nearest parent shown carries the active mark.
+func TestAgentsFoldedActive(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41, demoTree()...)
+	keys(m, "down", "down", "down", "enter")
+	wantRow(t, m, "d-deep", "◂")
+	keys(m, "left", "left")
+	wantRow(t, m, "c-middle", "◂")
+	keys(m, "left", "left")
+	wantRow(t, m, "a-parent", "◂")
+	wantText(t, m, " d-deep ─")
+	keys(m, "right")
+	wantRow(t, m, "c-middle", "◂")
+	if strings.Contains(row(t, m, "a-parent"), "◂") {
+		t.Fatalf("two active:\n%s", text(m))
+	}
+}
+
+func TestAgentsFoldClick(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41, demoTree()...)
+	keys(m, "down", "down", "down")
+	// The cursor is under c-middle, row 4 of the pane below its heading: its
+	// mark is after the frame, the pointer and the guide.
+	m.Update(clickAt(1+2+4, 1+1+2))
+	wantRow(t, m, "c-middle", "│▸   └ + ● c-middle")
+	if m.list().active != "agent-a-parent" {
+		t.Fatalf("a click on the mark made %s active", m.list().active)
+	}
+	m.Update(clickAt(1+2+4, 1+1+2))
+	wantRow(t, m, "c-middle", "− ● c-middle")
+	// Elsewhere on a row, it moves the cursor and makes it active.
+	m.Update(clickAt(1+12, 1+1+2))
+	wantRow(t, m, "c-middle", "◂")
+}
+
+// TestAgentsTombstoneRow: muted, with its own mark; no count, no C-q x or C-q c.
+func TestAgentsTombstoneRow(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41,
+		parentOf(api.Agent{Name: "a-gone", State: api.AgentStateRemoved}, running("b-child")),
+	)
+	wantRow(t, m, " Agents", "1")
+	keys(m, "up")
+	wantRow(t, m, "a-gone", "│▸ − † a-gone")
+	wantRow(t, m, "a-gone", "removed")
+	keys(m, "C-q")
+	if t1 := text(m); strings.Contains(t1, "remove a-gone") || strings.Contains(t1, "new child") {
+		t.Fatalf("menu on a tombstone:\n%s", t1)
+	}
+	keys(m, "esc", "down", "C-q")
+	wantText(t, m, "c  new child of b-child", "x  remove b-child")
+}
+
+// TestAgentsDeepRow: past where a name would get under its room, the guide
+// gives way to the level.
+func TestAgentsDeepRow(t *testing.T) {
+	t.Parallel()
+	st := style.New(false)
+	r := agentListRow{agent: running("swift-falcon"), depth: 3, guide: "  │   │   ├ "}
+	if got := agentRow(st, r, false, false, 50); !strings.Contains(got, "  │   │   ├ ● swift-falcon") {
+		t.Errorf("wide: %q", got)
+	}
+	got := agentRow(st, r, false, false, 24)
+	if !strings.Contains(got, "⋯3 ├ ● swift-falcon") || ansi.StringWidth(got) != 24 {
+		t.Errorf("narrow: %q, %d wide", got, ansi.StringWidth(got))
+	}
+}
+
+func TestAgentsSwitchProjectKeepsFold(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(128, 41, demoTree()...)
+	keys(m, "left")
+	wantRow(t, m, "a-parent", "+ ● a-parent")
+	sentAgents(m, demoTree()...)
+	wantRow(t, m, "a-parent", "+ ● a-parent")
+}
+
+// TestNewChildAgent: C-q c creates a child of the agent under the cursor, opens
+// its parent, and makes it active; removing the parent keeps it in the tree.
+func TestNewChildAgent(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	parent := h.newAgent(t, "api", dir, "parent")
+	p := h.openShown(t)
+	p.until(t, "parent attached", agentAttached("parent"))
+
+	p.keys("C-q")
+	wantText(t, p.m, "c  new child of parent", "c child")
+	p.keys("c")
+	if p.m.layout.focus != agent {
+		t.Fatalf("focus %s", p.m.layout.focus)
+	}
+	p.until(t, "the child active", func(m *Model) bool {
+		a, ok := m.activeAgent()
+		return ok && a.ParentAgentId != nil
+	})
+	child, _ := p.m.activeAgent()
+	if under, _ := p.m.cursorAgent(); under.Id != child.Id {
+		t.Fatalf("cursor on %s, child %s", under.Name, child.Name)
+	}
+	if child.Dir != parent.Dir {
+		t.Fatalf("child in %s, want %s", child.Dir, parent.Dir)
+	}
+
+	p.keys("alt+left", "up", "C-q", "x")
+	wantText(t, p.m, "It stays as removed until its children are gone.")
+	p.keys("y")
+	p.until(t, "the parent a tombstone", func(m *Model) bool {
+		return m.confirm == nil && strings.Contains(row(t, m, "parent"), "† parent")
+	})
+	p.keys("enter")
+	p.until(t, "its last screen", func(m *Model) bool { return m.agentTerm != nil && m.agentTerm.name == "parent" && !m.agentTerm.live })
+
+	// It goes with its last child.
+	p.keys("down", "C-q", "x", "y")
+	p.until(t, "both gone", func(m *Model) bool { return m.confirm == nil && len(m.agents()) == 0 })
 }
