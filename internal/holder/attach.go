@@ -294,6 +294,7 @@ func (h *holder) readClient(c *client) string {
 		}
 		switch t {
 		case frameInput:
+			h.watch.inputFrame(body)
 			// A closed PTY takes no input; the exited frame tells the client.
 			_, _ = h.master.Write(body)
 		case frameResize:
@@ -332,6 +333,7 @@ func (h *holder) resizeLocked(size Size) bool {
 	}
 	h.size = size
 	h.log.Info("terminal resized", "cols", size.Cols, "rows", size.Rows)
+	h.watch.resized()
 	// Encoding a Size cannot fail.
 	body, _ := json.Marshal(size)
 	h.clientsMu.Lock()

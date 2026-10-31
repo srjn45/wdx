@@ -79,6 +79,9 @@ type Options struct {
 // AgentLaunch is how to run a row of KindAgent.
 type AgentLaunch struct {
 	AgentID string
+	// ACA is the id of its AI coding agent, which the holder reads the screen
+	// as.
+	ACA     string
 	Command []string
 }
 
@@ -240,7 +243,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	if err == nil {
 		started, err = holder.Start(holder.WithLimits(ctx, s.opts.Limits), holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
-			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, Command: agent.Command, Env: s.opts.Env,
+			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, ACA: agent.ACA, Command: agent.Command, Env: s.opts.Env,
 			HistoryLines: historyLines,
 		})
 	}

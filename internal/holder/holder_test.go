@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -51,7 +53,15 @@ func runHolder(args []string) int {
 	o.Ready = os.NewFile(3, "ready")
 	o.vtDelay, _ = time.ParseDuration(os.Getenv(vtDelayVar)) //nolint:forbidigo // as the home above
 	o.screenHold = os.Getenv(screenHoldVar)                  //nolint:forbidigo // as the home above
-	if Run(context.Background(), o) != nil {
+	if dir := os.Getenv(parserDirVar); dir != "" {           //nolint:forbidigo // as the home above
+		o.ParseScreen = testParser(dir)
+	}
+	o.watchTimes.rules.Still, _ = time.ParseDuration(os.Getenv(stillVar)) //nolint:forbidigo // as the home above
+	// It logs where a holder wdx starts does: the home's log files.
+	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
+	defer logs.Close()
+	log := logging.New(logs, slog.LevelDebug).With("process", "holder", "terminal_id", o.ID)
+	if Run(logging.NewContext(context.Background(), log), o) != nil {
 		return 1
 	}
 	return 0

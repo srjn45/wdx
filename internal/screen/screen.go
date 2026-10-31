@@ -192,17 +192,24 @@ func (s *Screen) Undimmed() []string {
 	return s.lines(true)
 }
 
+// lines reads the cells where they are, not through a copy of each as uv.Line
+// does: this runs under the holder's screen lock, on every read of a program
+// that keeps moving.
 func (s *Screen) lines(blankDim bool) []string {
 	scr := s.current()
+	width := s.vt.Width()
 	lines := make([]string, 0, s.vt.Height())
-	line := make(uv.Line, s.vt.Width())
+	var line strings.Builder
 	for y := range s.vt.Height() {
-		row(line, scr, y)
-		if blankDim {
-			for x := range line {
-				if line[x].Style.Attrs&uv.AttrFaint != 0 {
-					line[x] = uv.EmptyCell
-				}
+		line.Reset()
+		for x := range width {
+			c := scr.CellAt(x, y)
+			switch {
+			case c == nil:
+			case blankDim && c.Style.Attrs&uv.AttrFaint != 0:
+				line.WriteByte(' ')
+			default:
+				line.WriteString(c.Content)
 			}
 		}
 		lines = append(lines, strings.TrimRight(line.String(), " "))

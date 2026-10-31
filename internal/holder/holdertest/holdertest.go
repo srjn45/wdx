@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -33,6 +34,8 @@ func RunIfHolder() {
 	flags.StringVar(&o.Dir, "dir", "", "")
 	flags.StringVar(&o.Shell, "shell", "", "")
 	flags.StringVar(&o.AgentID, "agent-id", "", "")
+	var acaID string
+	flags.StringVar(&acaID, "aca", "", "")
 	flags.Func("command", "", func(word string) error {
 		o.Command = append(o.Command, word)
 		return nil
@@ -50,6 +53,9 @@ func RunIfHolder() {
 	// It logs where a holder wdx starts does: the home's log files.
 	logs := logging.NewDailyFile(identity.LogsDir(o.Home), 7, time.Now)
 	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder", "terminal_id", o.ID)
+	if known, ok := aca.ByID(acaID); ok {
+		o.ParseScreen = known.ScreenParser().Parse
+	}
 	err := holder.Run(logging.NewContext(context.Background(), log), o)
 	logs.Close() // os.Exit runs no deferred call
 	if err != nil {

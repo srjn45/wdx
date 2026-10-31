@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // ClaudeCode is Anthropic's Claude Code CLI.
@@ -27,6 +29,9 @@ func (ClaudeCode) Command(l Launch) ([]string, error) {
 	return []string{"claude", "--session-id", l.SessionID}, nil
 }
 
+// ScreenParser implements AiCodingAgent.
+func (ClaudeCode) ScreenParser() ScreenParser { return ClaudeCodeScreenParser{} }
+
 // ClaudeCodeScreenParser reads Claude Code's state from the bottom of its
 // screen, since its replies can hold any of the words it looks for. See
 // docs/AGENT_STATE.md.
@@ -44,34 +49,34 @@ var (
 )
 
 // Parse implements ScreenParser.
-func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) ScreenState {
+func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
 	if len(lines) == 0 {
-		return ScreenState{Activity: ActivityUnknown}
+		return screen.ScreenState{Activity: screen.ActivityUnknown}
 	}
 	tail := claudeCodeTail(lines)
 	if strings.Contains(strings.Join(tail[max(0, len(tail)-2):], " "), "Esc to cancel") {
-		return ScreenState{Activity: ActivityWaiting}
+		return screen.ScreenState{Activity: screen.ActivityWaiting}
 	}
 	box, ok := claudeCodeInputBox(lines)
 	if !ok {
 		// A multi-line draft's footer has this too, under the box's rule, even
 		// when the box's top has scrolled away. Plan approval has no such rule.
 		if len(tail) == min(len(lines), claudeCodeTailLines) && strings.Contains(strings.Join(tail, " "), "ctrl+g to edit in") {
-			return ScreenState{Activity: ActivityWaiting}
+			return screen.ScreenState{Activity: screen.ActivityWaiting}
 		}
-		return ScreenState{Activity: ActivityUnknown}
+		return screen.ScreenState{Activity: screen.ActivityUnknown}
 	}
-	state := ScreenState{Activity: ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed)}
+	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed)}
 	switch {
 	case strings.Contains(box.footer, "esc to interrupt"),
 		claudeCodeBackgroundWork.MatchString(box.footer),
 		box.subagentRow:
-		state.Activity = ActivityWorking
+		state.Activity = screen.ActivityWorking
 	case claudeCodeAtRest.MatchString(box.footer):
-		state.Activity = ActivityIdle
+		state.Activity = screen.ActivityIdle
 	}
 	return state
 }

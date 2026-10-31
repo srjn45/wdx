@@ -11,6 +11,7 @@ An ACA cannot compile without these.
 | Its id in the database and the API | `ID()`, `internal/aca/claudecode.go` | `claude_code` |
 | The command that starts or resumes a session | `Command()`, `internal/aca/claudecode.go` | `claude --session-id <id>`, or `claude --resume <id>` once a transcript exists |
 | Where it keeps transcripts | `Command()`, `internal/aca/claudecode.go` | `~/.claude/projects/*/<id>.jsonl`; a `CLAUDE_CONFIG_DIR` set in the user's rc file is not seen |
+| Reading its activity and draft from its screen | `ScreenParser()`, `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | the footer rules; its fixes reach a running agent when it is relaunched |
 
 ## Outside `AiCodingAgent`
 
@@ -23,7 +24,9 @@ Code that names one ACA, or assumes what they all do.
 | The test ACA reports Claude Code's id | `ID()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | Help says "Claude Code for now" | `newAgentCmd`'s `Long`, `internal/cli/agent.go` | the words |
 | The `aca` field's example | `Agent.aca`, `api/openapi.yaml` | nothing; only an example |
-| Reading its activity and draft from its screen, not yet called | `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | its own `ScreenParser`; `AiCodingAgent` gets a method for it with the holder's `watchScreen` |
+| Every ACA a holder knows, by id | `ByID`, `internal/aca/aca.go`, called by the hidden `wdx holder` command in `internal/cli/holder.go`: a holder is its own process, told `--aca <id>` | add it to `ByID` as well as to the daemon's list; `agent.Launches` keeps its own, through which tests hand in theirs |
+| The test ACA's parser is Claude Code's, as a holder goes by the id | `ScreenParser()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
+| The waits of the motion fallback, chosen on recordings of Claude Code, though the code knows no ACA | `StillTime`, `EchoTime`, `ReadMoment`, `internal/screen/motion.go`; docs/AGENT_STATE.md | check them on recordings of it, and make them per ACA if they differ |
 | Recordings of its screens, and the scripts that make them | `internal/aca/testdata/claude_code/` | its own recordings |
 
 ## Not landed yet

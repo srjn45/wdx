@@ -48,8 +48,8 @@ func (e *StartError) Error() string {
 func (e *StartError) Unwrap() error { return e.Err }
 
 // Launches returns what the terminals' supervisor asks at each launch of an
-// agent's row: the agent's id and the command of its AI coding agent, among
-// acas, for its session. The supervisor needs it before a Manager can exist.
+// agent's row: the agent's id, and the id and command of its AI coding agent,
+// among acas, for its session. The supervisor needs it before a Manager can exist.
 func Launches(store *Store, acas []aca.AiCodingAgent) func(context.Context, terminal.Terminal) (terminal.AgentLaunch, error) {
 	return func(ctx context.Context, t terminal.Terminal) (terminal.AgentLaunch, error) {
 		a, err := store.GetByTerminal(ctx, t.ID)
@@ -69,7 +69,7 @@ func Launches(store *Store, acas []aca.AiCodingAgent) func(context.Context, term
 				return terminal.AgentLaunch{}, err
 			}
 			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "command", command)
-			return terminal.AgentLaunch{AgentID: a.ID, Command: command}, nil
+			return terminal.AgentLaunch{AgentID: a.ID, ACA: a.ACA, Command: command}, nil
 		}
 		return terminal.AgentLaunch{}, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
 	}

@@ -26,6 +26,10 @@ type ACA struct {
 // ID implements aca.AiCodingAgent.
 func (a *ACA) ID() string { return aca.ClaudeCode{}.ID() }
 
+// ScreenParser implements aca.AiCodingAgent: Claude Code's, as a holder goes by
+// the id.
+func (a *ACA) ScreenParser() aca.ScreenParser { return aca.ClaudeCodeScreenParser{} }
+
 // Command implements aca.AiCodingAgent.
 func (a *ACA) Command(l aca.Launch) ([]string, error) {
 	if a.Launches != "" {

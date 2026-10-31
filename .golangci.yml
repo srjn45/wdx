@@ -30,6 +30,12 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/agent
               desc: the cli calls the daemon's API, never the domain
+        # The holder stays free of ACA code: it is given a parser, by the cli.
+        holder-without-aca:
+          files: ["**/internal/holder/*.go", "!$test"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/aca
+              desc: the holder is given a function to read the screen with; docs/AGENT_STATE.md
         vt-in-screen-only:
           files:
             - "$all"

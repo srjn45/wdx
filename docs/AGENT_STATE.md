@@ -1,6 +1,6 @@
 # Agent activity
 
-Status: step 1 is built: `ScreenParser` and `ClaudeCodeScreenParser`, tested on recordings, which only parse the screen and produce the latest `ScreenState`. Nothing calls them yet, so nothing shows to a user. Step 2, sharing state with the daemon, and how `wdx agent send` uses it are deferred, to discuss later.
+Status: steps 1 and 2 are built. `ScreenParser` and `ClaudeCodeScreenParser` read the screen, and the holder's `watchScreen` keeps the latest `ScreenState` and logs each change, on a terminal running an ACA. It tells nobody yet, so nothing shows to a user. Sharing state with the daemon, and how `wdx agent send` uses it, are deferred, to discuss later.
 
 What an agent's ACA is doing right now. It is not the terminal's `state`, which stays whether the process is alive (docs/AGENT.md). Later features build on it: auto-approve, switching ACA or resuming at a limit, autopilot. None of those is in this step.
 
@@ -79,7 +79,7 @@ Chosen by the human on 2026-10-31 for unreadable footers only, and tested on tim
 - Moving means the rendered text differs, not that bytes arrived.
 - A change within an echo of 150 ms after input is the user's own, not motion. Half of inputs change the screen within 57 ms; 60 ms gives false `working`, 300 ms delays turn starts.
 - Input holds the last answer for the still time, since keystrokes hide the screen's own motion.
-- `watchScreen` owns this, generic and with no Claude knowledge. `Parse` stays pure: `Activity: unknown` with `InputBox: true` says "an input box whose footer does not say", and it never leaves the holder. Until step 2 the fallback exists only as `followMotion` in the tests.
+- `watchScreen` owns this, generic and with no Claude knowledge. `Parse` stays pure: `Activity: unknown` with `InputBox: true` says "an input box whose footer does not say", and it never leaves the holder. The fallback is `screen.Motion`, which has no clock of its own, so the tests run it on the recordings' times and the holder on real ones.
 - The still time is 3 s, which is what the tests use.
 
 The results, against true turn times taken from each session's own transcript (9 sessions at normal settings, one machine, Haiku, 2.1.314, under tmux, not a real holder):
@@ -101,13 +101,13 @@ Known wrong answers, all on unreadable footers:
 - A stall past the still time during a turn reads `idle`.
 - Typing within the still time of any screen change reads `working` until it is up, as right after startup. A change more than the echo after input counts as motion, as `Press Ctrl-C again to exit` going away. Neither is a false `idle`.
 
-Not shown by the recordings: a resize or attach redraw moving the screen, a stall longer than recorded, a forced slow API wait, a loaded machine, a real holder. The recordings do not prove two rules, which only unit tests fail on: bytes are not motion, and input holds the answer. In fullscreen mode Claude turns on any-motion mouse tracking, so step 2 must decide whether a viewer's mouse movement counts as input.
+Not shown by the recordings: a resize or attach redraw moving the screen, a stall longer than recorded, a forced slow API wait, a loaded machine. A real holder: see Step 2 findings. The recordings do not prove two rules, which only unit tests fail on: bytes are not motion, and input holds the answer. In fullscreen mode Claude turns on any-motion mouse tracking; a viewer's mouse movement does not count as input (see Step 2 decisions).
 
 The true turn times are frozen as data in the test; transcripts are not kept.
 
 ### What `wdx agent send` needs
 
-`wdx agent send` delivers on `idle` (docs/SEND.md), so the human asked that no open prompt ever reads `idle`. A throwaway check on all 24 recordings, at still times of 3 s and 4 s: at each of the 127 moments whose last three lines show a prompt's footer, the parser read `waiting`, and none read `idle`. That check uses the same footer words as the parser, so it cannot see a prompt whose footer is not recognized. Such a prompt without an input box reads `unknown`, which holds. One with something like a box would read `idle`: at 40 columns a decision's `❯ 1. Red` between two rules already looks like one, and only its footer saves it. At narrower widths, or for plan approval at 40 and prompts not recorded, that is untested. Step 2 should make a box whose line is a numbered option not count as a box.
+`wdx agent send` delivers on `idle` (docs/SEND.md), so the human asked that no open prompt ever reads `idle`. A throwaway check on all 24 recordings, at still times of 3 s and 4 s: at each of the 127 moments whose last three lines show a prompt's footer, the parser read `waiting`, and none read `idle`. That check uses the same footer words as the parser, so it cannot see a prompt whose footer is not recognized. Such a prompt without an input box reads `unknown`, which holds. One with something like a box would read `idle`: at 40 columns a decision's `❯ 1. Red` between two rules already looks like one, and only its footer saves it. At narrower widths, or for plan approval at 40 and prompts not recorded, that is untested. A box whose line is a numbered option does not count as a box, since step 1.
 
 **Conflict with docs/SEND.md, to settle when `wdx agent send` is discussed.** It says an ACA's text in its box reads `unknown`, so a message is not submitted along with what a human is typing. With the fallback, a still draft reads `idle`, so `agent send` would deliver into the draft. Agreed with the human: the public `activity` stays `idle`, and the parser also reports text in the box, whatever the activity, since a human can type during a turn too. `watchScreen` reads it along with the activity, and the sender holds while it is there. docs/SEND.md already plans for the parser to tell the sender more than the public `activity`.
 
@@ -126,23 +126,22 @@ For later, when `wdx agent send` is discussed: in bash mode with text the box ha
 
 Not recorded: vim mode, `#` and other input modes, image pastes, a running turn in bash mode, a real holder.
 
-The parser costs 317 µs and 52 KB per read at 120x40, since the screen is read twice.
+A read and parse costs about 340 µs and 25 KB at 120x40 on a machine kept busy, a third of the 1 ms it cost under the same load before `Screen.lines` stopped copying each cell, and most of it under the holder's screen lock.
 
 Other facts:
 
 - **Two renderers.** The human's `"tui": "fullscreen"` setting puts Claude on the alternate screen from startup to exit, so `Screen.Lines()` would return nil for the whole session. `"tui": "default"` never enters it, its footer shares a row with `◐ medium · /effort`, and notices can sit below it. Parsers receive `Screen.Text()`, plain text of whichever screen shows, and `Screen.Undimmed()`, the same rows with dim cells blank.
 - **The moment is 50 ms.** Below it a blank screen at startup, 18-30 ms long, shows as flicker. From 100 ms real prompts can go missing, though the driver answered those unnaturally fast. Half-drawn frames appear only when a chunk is cut mid-frame, never across a recorded chunk boundary. Not measured on a loaded machine.
-- **Parsing costs nothing that matters,** about 0.1% of a core at the 1.4-7.3 reads a second seen while working, measured before the second read below doubled it.
+- **Parsing costs nothing that matters,** about 0.1% of a core at the 1.4-7.3 reads a second seen while working.
 - **Recording without private content.** `--safe-mode` keeps the login and drops CLAUDE.md, settings and plugins. Fixtures have paths and session ids masked at the same length. The banner's plan name, `Haiku 5.5 · Claude Max`, stays.
-- **Not recorded:** a foreground subagent (Haiku backgrounded it twice), MCP input, login, a network retry, a limit, plan approval and a shell at 40 columns, and anything under a real holder. Step 2 must re-check under the holder that Claude does not use synchronized output, since the holder's vt answers terminal queries that nothing answered in these recordings.
-- `~/.local/bin/claude` has moved to 2.1.316 since. The recordings used 2.1.314 directly, and only the idle footer was compared.
+- **Not recorded:** a foreground subagent (Haiku backgrounded it twice), MCP input, login, a network retry, a limit, plan approval and a shell at 40 columns. Under a real holder: see Step 2 findings.
 
 ## Where it lives
 
 The holder owns it, as it owns the truth about the process (docs/TERMINALS.md):
 
 ```
-PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► frameActivity ─► daemon
+PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► log (and, later, the daemon)
                                             │ calls
                   ScreenParser.Parse(lines, undimmed)
 ```
@@ -153,11 +152,10 @@ PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► frame
 - `agent.Launches` keeps its list of ACAs, through which tests hand in their own; it is not moved onto `aca.ByID`.
 - `watchScreen` runs apart from the vt, told over a channel of capacity 1 each time the screen changes. The vt's send never blocks: when a signal is already pending it is enough, since the goroutine reads the latest lines when it wakes. It never holds up the PTY or the vt.
 - After a signal it waits a moment before reading, so that it reads a finished redraw: Claude does not use synchronized output, so half-drawn screens do reach the vt. This limits the rate rather than waiting for quiet, so a screen that never stops is still read. The moment is a field tests can shorten; its value comes from replaying the recordings.
-- The holder pushes a frame only when the activity changes, as it pushes `exited`, and nothing polls. `Hello` carries the current one, so a daemon that restarts learns it on connecting.
-- The daemon keeps the last one of each live holder in memory and tells the stream. No table or migration: it dies with the process.
-- A panic in a parser is recovered and gives `unknown`: the holder owns the agent's PTY, and a parser must never take it down.
-- Protocol version 3. A running holder of version 2 keeps working and its agents show `unknown` until relaunched.
-- Changes are logged at info as the activity's name. The screen's text never leaves the holder, so this step has nothing secret to keep out of the logs.
+- Nothing polls: one timer, armed only for a read that is due or while the answer depends on the still time.
+- A panic in a parser is recovered and gives `unknown`, logged once and without its value, which could hold the screen's text: the holder owns the agent's PTY, and a parser must never take it down. A moving screen stays `unknown` then, not `working`, as nothing can say what it shows. A hung parser only delays the state, and the holder quits without it.
+- Later, with the daemon: the holder pushes a frame only when the activity changes, as it pushes `exited`, and `Hello` carries the current one, so a daemon that restarts learns it on connecting. The daemon keeps the last one of each live holder in memory and tells the stream, with no table or migration. A running holder of an older version keeps working, and its agents show `unknown` until relaunched.
+- Changes are logged at info as their values (`activity`, `input_box`, `draft`), at debug what the parser itself read, and a counted input with no content. The screen's text never leaves the holder.
 
 A parser fixed in a wdx release reaches a running agent only when it is relaunched, since a holder keeps its binary. That matches the ACA: a running ACA keeps its wording until relaunched too, and the relaunch starts a holder of the current wdx.
 
@@ -192,12 +190,38 @@ Known limits at the end of this step:
 - An agent at a token limit probably shows `idle`, since its turn ended and its input box is back. Not recorded yet, and `limited` is the next step's.
 - Claude rewording its footer gives `unknown`, not a wrong activity, until a wdx release fixes the parser.
 
+## Step 2 decisions
+
+Decided by the human on 2026-10-31. The plan's step 2 below is narrowed to this.
+
+- **The holder reads the screen and keeps the latest `ScreenState`. It tells nobody yet.** Each change is logged, values only, never the screen's text. No frame and no protocol change, so it cannot clash with docs/SEND.md's frames.
+- **Syncing state to the daemon must still be built: nothing outside the holder sees activity until then.** Steps 3 to 5 depend on it, as does `wdx agent list` showing anything; see Sharing state, later.
+- **Mouse movement is not input.** Claude Code's fullscreen mode gets every mouse move, so counting them would freeze the answer whenever a mouse crosses a pane.
+- **What counts as input** to the fallback, decided in the holder from each raw input frame (`isInput`, `internal/holder/watch.go`): anything but a frame made only of mouse movement, in the SGR or X10 encoding. Bit 32 of a report's button code is motion, with or without a button held, so a drag is movement too, and bit 64 a wheel. A frame with a key among the moves is input. So is a resize. The vt's answers to queries (`h.answer`) go to the PTY without passing it. An attached client's terminal answers instead, in input frames, and those do count, holding the answer for the still time; under a real holder Claude queried only at startup, so that costs nothing. A report cut at a frame's end counts as input too, the safe side.
+- **Scrolling.** Where the program did not ask for the mouse, the wheel scrolls the viewer's own history (`internal/termview`), which never reaches the holder. Where it did, as fullscreen Claude Code does, the wheel is forwarded, and Claude Code redraws. A wheel or click there counts as input, so it holds the answer instead of reading as motion. A readable footer is unaffected either way.
+
+## Step 2 findings
+
+On a real `wdx holder`, with no daemon, in a throwaway home, on 2026-10-31: 8 sessions at 120x40, 60x24 and 40x24, each 80x24 until its first attach as any terminal is, in `--safe-mode` with Haiku, some at the same time; `record/holdercheck` drove them, and the states are the holder's own log. Nothing was attached at startup, so the holder's vt answered what Claude asked.
+
+- **Synchronized output: none,** on 2.1.314 or 2.1.316. No `\x1b[?2026h` or `$p` in any session's whole output. Claude asked for device attributes and the version (`\x1b[c`, `\x1b[>0q`) and kitty flags (`\x1b[?u`), which the vt answered, and only at startup. So half-drawn screens can still reach the vt and the moment is still needed. **The moment of 50 ms holds:** every logged read made sense, with no false reading between two real ones. That is the only evidence: the output under a holder has no chunk times, so it was not swept again as it was under tmux, and the load was at most three sessions at once.
+- **The parser read every state right,** on both versions: trust, idle, working, a Bash permission (`Esc to cancel · Tab to amend`), a file permission, a radio decision, Esc at each back to idle, Esc in a turn, a draft at idle and in a turn, and `draft` going again on Ctrl-U. Not reached: Esc at trust, which quits Claude; plan approval, a checkbox and background work, which were not driven this time. The narrow sessions (`esc to interrupt…` at 40 columns) still read `working`.
+- **2.1.316 against 2.1.314: the same footers,** all six of those seen: `⏸ manual mode on`, `... · esc to interrupt · ← 1 agent`, `... · ? for shortcuts · ← 1 agent`, `Enter to confirm · Esc to cancel`, `Enter to select · ↑/↓ to navigate · Esc to cancel`, `Esc to cancel · Tab to amend`. The rule table needs no change.
+- **Scrolling fullscreen Claude holds up** (2.1.316, `--settings '{"tui":"fullscreen"}'`, which turns on 1003 and 1006 mouse modes, on the alternate screen). The footer and the box stayed on screen through 16 single wheels and 5 in a frame, with `Jump to bottom (ctrl+End) ↓` added above them, and the parser kept reading `idle`. Each redraw was 1 or 2 chunks of about 370 bytes, and ended 2.8 to 34.2 ms after the wheel, with three sessions running: well within the echo of 150 ms, read 50 ms later. A wheel at the bottom sends nothing. A mouse move sent nothing but the first, 44 bytes that left the text as it was.
+- **A wheel holds a still draft's answer, as designed.** With a draft at idle, whose footer does not say, 2 s of mouse moves and 20 wheels 100 ms apart logged no change: it stayed `idle`.
+- **Known wrong answers seen again,** as listed under The motion fallback: a key typed within the still time of any change reads `working` until it is up, and one hint clearing above a draft (`Ctrl+Y`, `/effort`) reads `working` for the still time. Both only on the unreadable footers, as a draft's is.
+
+Found on the way:
+
+- **A client that types and leaves at once can lose what it typed.** Input frames are read until the connection closes, but the writer fails on the same closed connection while sending the snapshot, and its `disconnect` closes the holder's side before the frame is read. In 4 of 147 attach, write, close cycles with no pause, the holder logged no input, and where it showed the keys never reached the program: an Enter, and two Escs that left a prompt open. No client does that today, as a viewer stays attached. It matters to anything that sends and leaves. Older than this step, and not changed by it.
+- **`DISABLE_AUTOUPDATER=1` does not reach a terminal,** as only a fixed list of variables does (docs/TERMINALS.md). The first run of 2.1.314 updated itself, wrote `✔ Update installed · /restart to apply` beside the footer, and rewrote `~/.local/bin/claude` to the 2.1.316 it already pointed to. `record/holdercheck` now puts it in the command through `env`. A real agent runs Claude's updater like any other Claude.
+
 ## Plan
 
 Each step builds and passes `make test` on its own, and is a `feat:` or `test:` commit. Adding a field and a column breaks nothing, so no `!`.
 
 1. **Prove the rule, before touching the holder. Done.** The parser, tested on recordings: every recorded screen gives its activity, and replaying the raw output chunk by chunk through `internal/screen` gives the right sequence.
-2. **The holder.** `--aca`, `AiCodingAgent.ScreenParser()`, `aca.ByID`, `watchScreen`, with the fallback moved out of the tests, `frameActivity` or the state frame, `Hello.Activity`, protocol version 3, `Conn.Activity()`. Tests run the real parser against a test command that prints real footers, so no real ACA is needed: a change is pushed, a repeat is not, a reconnect is told the current one, a parser panic gives `unknown` and the terminal lives on, output keeps flowing while the parser is held up. The `cli -> aca` direction in AGENTS.md. Re-check Claude Code 2.1.316, and decide whether a viewer's mouse movement counts as input.
+2. **The holder. Done, without what tells anyone** (Step 2 decisions): `--aca`, `AiCodingAgent.ScreenParser()`, `aca.ByID`, `watchScreen`, the fallback moved out of the tests into `screen.Motion`. Tests run the real parser against a test command that prints real footers, so no real ACA is needed. The `cli -> aca` direction in AGENTS.md. Claude Code 2.1.316 re-checked. Still to build, before step 3: `frameActivity` or the state frame, `Hello.Activity`, a protocol version, `Conn.Activity()`, with their tests: a change is pushed, a repeat is not, a reconnect is told the current one.
 3. **The daemon and API.** `activity` in `api/openapi.yaml`, `make generate`. The supervisor passes the ACA, keeps the last activity per live holder and notifies the streams. Tests: an agent's activity through `GET /v1/agents`, the project stream, a daemon restart with the holder alive, a version 2 holder's `unknown`, null once the process ends.
 4. **The CLI.** The `ACTIVITY` column and `get`'s field, with their tests and help.
 5. **Tide.** The activity in the Agents list and the `waiting` mark, with its tests.
@@ -207,7 +231,7 @@ Each step builds and passes `make test` on its own, and is a `feat:` or `test:` 
 
 Real Claude Code 2.1.314 sessions, at widths from 30 to 120 and in both renderers, are in `internal/aca/testdata/claude_code/2.1.314/`: 29 recordings, 2.3 MB. Each holds `raw.out` and `raw.timing`, with input times where a test needs them, and some a `marks.log` of what was done when. The tests replay them through the screen in CI, which needs no real ACA.
 
-They ran in tmux with Haiku and tiny prompts, in `--safe-mode`, which keeps the login and drops CLAUDE.md, settings and plugins, apart from `prompts`, which quotes nothing private. Paths and session ids are masked at the same length, so the layout holds; a mask can leave a character changed, as `re-exable`. Claude's `sleep` was blocked by the human's settings in an early attempt, so they use `ping`. The scripts are in `internal/aca/testdata/claude_code/record/`.
+They ran in tmux with Haiku and tiny prompts, in `--safe-mode`, which keeps the login and drops CLAUDE.md, settings and plugins, apart from `prompts`, which quotes nothing private. Paths and session ids are masked at the same length, so the layout holds; a mask can leave a character changed, as `re-exable`. Claude's `sleep` was blocked by the human's settings in an early attempt, so they use `ping`. The scripts are in `internal/aca/testdata/claude_code/record/`. The tests replay each recording at most once per test binary and share what it read, so a `-count` costs little.
 
 | Screen | Last line | Moves? |
 |---|---|---|

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,24 +18,24 @@ import (
 )
 
 const (
-	working = aca.ActivityWorking
-	idle    = aca.ActivityIdle
-	waiting = aca.ActivityWaiting
-	unknown = aca.ActivityUnknown
+	working = screen.ActivityWorking
+	idle    = screen.ActivityIdle
+	waiting = screen.ActivityWaiting
+	unknown = screen.ActivityUnknown
 )
 
 // moment is how long watchScreen waits after a screen change before it reads.
-// The replays set it: a shorter wait sees the blank screen Claude Code starts
-// from, a longer one starts to miss short prompts. docs/AGENT_STATE.md.
-const moment = 50 * time.Millisecond
+// The replays are its proof: a shorter wait sees the blank screen Claude Code
+// starts from, a longer one starts to miss short prompts. docs/AGENT_STATE.md.
+const moment = screen.ReadMoment
 
 // inputBox stands in the tables for an unknown activity with an input box.
-const inputBox aca.Activity = "unknown, with an input box"
+const inputBox screen.Activity = "unknown, with an input box"
 
 var _ aca.ScreenParser = aca.ClaudeCodeScreenParser{}
 
 // reading is what the rule table says of the lines.
-func reading(lines []string) aca.Activity {
+func reading(lines []string) screen.Activity {
 	state := aca.ClaudeCodeScreenParser{}.Parse(lines, nil)
 	if state.Activity == unknown && state.InputBox {
 		return inputBox
@@ -46,19 +47,18 @@ func reading(lines []string) aca.Activity {
 // testdata/claude_code/2.1.314. The classic- ones ran with
 // CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1; the others use the alternate screen.
 type claudeCodeRecording struct {
-	dir        string
-	cols, rows int
+	dir string
 	// screens gives what the rule table reads at every step in marks.log: a
 	// moment in seconds when the screen had settled, and the step's name.
-	screens map[string]aca.Activity
+	screens map[string]screen.Activity
 	// sequence is the readings a replay gives, repeats dropped.
-	sequence []aca.Activity
+	sequence []screen.Activity
 }
 
 var claudeCodeRecordings = []claudeCodeRecording{
 	{
-		dir: "prompts", cols: 120, rows: 40,
-		screens: map[string]aca.Activity{
+		dir: "prompts",
+		screens: map[string]screen.Activity{
 			"01_trust": waiting, "02_idle_start": idle, "03_typing": inputBox,
 			"04_permission_bash": waiting, "05_permission_bash_moved": waiting, "06_after_deny": idle,
 			"08_permission_write": waiting, "10_permission_ping": waiting, "11_working_tool": working,
@@ -66,84 +66,84 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"17_decision_checkbox": waiting, "18_decision_checkbox_ticked": waiting, "19_after_checkbox_esc": idle,
 			"21_working_stream": working, "22_after_stream_interrupt": idle, "24_idle_end": idle,
 		},
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, idle, inputBox, working, waiting, idle, inputBox, working, waiting,
 			idle, inputBox, working, waiting, working, idle, inputBox, working, waiting, working, idle, inputBox,
 			working, waiting, idle, inputBox, working, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "background-auto-80x24", cols: 80, rows: 24,
+		dir:     "background-auto-80x24",
 		screens: backgroundAutoScreens,
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, idle, inputBox, working, inputBox, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "background-prompts", cols: 120, rows: 40,
+		dir: "background-prompts",
 		screens: backgroundPromptScreens("03_start_approval_2", "04_start_approval_3", "05_both_running_idle_box",
 			"06_permission_while_bg", "07_after_deny_while_bg", "08_decision_while_bg", "09_decision_answered",
 			"10_after_decision", "11_bg_ended", "12_idle_end"),
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
 			working, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "background-prompts-60x24", cols: 60, rows: 24,
+		dir: "background-prompts-60x24",
 		screens: backgroundPromptScreens("03_start_approval_2", "04_start_approval_3", "05_both_running_idle_box",
 			"06_permission_while_bg", "07_after_deny_while_bg", "08_decision_while_bg", "09_decision_answered",
 			"10_after_decision", "11_bg_ended", "12_idle_end"),
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
 			working, inputBox, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "classic-background-prompts", cols: 120, rows: 40,
+		dir: "classic-background-prompts",
 		screens: backgroundPromptScreens("03_start_approval_2", "", "04_both_running_idle_box",
 			"05_permission_while_bg", "06_after_deny_while_bg", "07_decision_while_bg", "08_decision_answered",
 			"09_after_decision", "10_bg_ended", "11_idle_end"),
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
 			working, idle, inputBox,
 		},
 	},
 	{
-		dir: "two-shells", cols: 120, rows: 40,
-		screens: map[string]aca.Activity{
+		dir: "two-shells",
+		screens: map[string]screen.Activity{
 			"01_approval_1": waiting, "02_approval_2": waiting, "03_two_shells": working,
 			"04_shells_ended": idle, "05_idle_after_shells": idle,
 			"06_fg1_backgrounded": working, "07_fg1_approval_1": waiting, "08_fg1_approval_2": waiting,
 			"09_fg1_after": working, "10_fg2_backgrounded": inputBox, "11_fg2_approval_1": waiting, "12_fg2_after": working,
 		},
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, idle, inputBox, working,
 			waiting, working, idle, inputBox, working, waiting, working, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "plan", cols: 120, rows: 40,
+		dir:     "plan",
 		screens: planScreens,
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, unknown,
 		},
 	},
 	{
-		dir: "classic-plan", cols: 120, rows: 40,
+		dir:     "classic-plan",
 		screens: planScreens,
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox,
 		},
 	},
 	{
-		dir: "narrow-40x24", cols: 40, rows: 24,
-		screens: map[string]aca.Activity{
+		dir: "narrow-40x24",
+		screens: map[string]screen.Activity{
 			"01_idle": idle, "02_typing_wrapped": inputBox, "03_working": working, "04_idle_after_story": idle,
 			"05_permission": waiting, "06_after_deny": idle, "07_decision": waiting, "08_after_timeout": idle,
 			"09_bg_shell_footer": idle, "10_bg_sub_early": working, "11_bg_sub_footer": working, "12_idle_end": inputBox,
 		},
-		sequence: []aca.Activity{
+		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, idle, inputBox, working, waiting, idle, inputBox, working,
 			waiting, working, idle, inputBox, working, inputBox, unknown,
 		},
@@ -151,12 +151,12 @@ var claudeCodeRecordings = []claudeCodeRecording{
 }
 
 var (
-	backgroundAutoScreens = map[string]aca.Activity{
+	backgroundAutoScreens = map[string]screen.Activity{
 		"01_idle_nothing_running": idle, "02_bg_shell_after_turn": working, "03_bg_shell_ended": idle,
 		"04_after_bg_shell": idle, "05_bg_subagent_after_turn": working, "06_bg_subagent_ended": idle,
 		"07_after_bg_subagent": idle,
 	}
-	planScreens = map[string]aca.Activity{
+	planScreens = map[string]screen.Activity{
 		"01_idle_plan_mode": idle, "02_working_plan_mode": working, "03_plan_approval": waiting,
 		"04_after_plan_esc": idle, "05_idle_end": idle,
 	}
@@ -164,8 +164,8 @@ var (
 
 // backgroundPromptScreens names the screens of a session with a shell and a
 // subagent in the background, whose prompts differ in number by the session.
-func backgroundPromptScreens(approval2, approval3, running, permission, afterDeny, decision, answered, afterDecision, ended, end string) map[string]aca.Activity {
-	screens := map[string]aca.Activity{
+func backgroundPromptScreens(approval2, approval3, running, permission, afterDeny, decision, answered, afterDecision, ended, end string) map[string]screen.Activity {
+	screens := map[string]screen.Activity{
 		"01_idle_nothing_running": idle, "02_start_approval_1": waiting, approval2: waiting,
 		running: working, permission: waiting, afterDeny: working, decision: waiting, answered: working,
 		afterDecision: working, ended: idle, end: idle,
@@ -181,47 +181,39 @@ func TestClaudeCodeActivityOnRecordedScreens(t *testing.T) {
 	for _, rec := range claudeCodeRecordings {
 		t.Run(rec.dir, func(t *testing.T) {
 			t.Parallel()
-			chunks, _ := readRecording(t, rec.dir)
-			s := screen.New(rec.cols, rec.rows, nil)
-			defer s.Close()
-			steps := readMarks(t, rec.dir)
+			steps := replayed(t, rec.dir).steps
 			if len(steps) != len(rec.screens) {
 				t.Errorf("%d steps in marks.log, %d in the table", len(steps), len(rec.screens))
 			}
 			for _, step := range steps {
-				for len(chunks) > 0 && chunks[0].at <= step.at {
-					s.Write(chunks[0].data)
-					chunks = chunks[1:]
-				}
 				want, ok := rec.screens[step.name]
 				if !ok {
 					t.Errorf("%s: not in the table", step.name)
 					continue
 				}
-				lines := s.Text()
-				if got := reading(lines); got != want {
-					t.Errorf("%s: %s, want %s; bottom of the screen:\n%s", step.name, got, want, bottom(lines))
+				if got := reading(step.lines); got != want {
+					t.Errorf("%s: %s, want %s; bottom of the screen:\n%s", step.name, got, want, bottom(step.lines))
 				}
 			}
 		})
 	}
 }
 
-// TestClaudeCodeActivityReplay feeds each recording through the screen as the
-// holder would, chunk by chunk at its recorded times, reading a moment after
-// each change: the activities come in the right order, with no false flicker.
+// TestClaudeCodeActivityReplay reads each recording as the holder would, a moment
+// after each change: the activities come in the right order, with no false
+// flicker.
 func TestClaudeCodeActivityReplay(t *testing.T) {
 	t.Parallel()
 	for _, rec := range claudeCodeRecordings {
 		t.Run(rec.dir, func(t *testing.T) {
 			t.Parallel()
-			var got []aca.Activity
-			replay(t, rec, func(_ time.Duration, lines []string) {
-				a := reading(lines)
+			var got []screen.Activity
+			for _, m := range replayed(t, rec.dir).moments {
+				a := reading(m.lines)
 				if len(got) == 0 || got[len(got)-1] != a {
 					got = append(got, a)
 				}
-			})
+			}
 			if !slices.Equal(got, rec.sequence) {
 				t.Errorf("activities:\n got %v\nwant %v", got, rec.sequence)
 			}
@@ -239,7 +231,7 @@ func TestClaudeCodeActivityCutOffFooters(t *testing.T) {
 		dir    string
 		at     time.Duration
 		footer string
-		want   aca.Activity
+		want   screen.Activity
 	}{
 		{"background-auto-80x24", 89 * time.Second, "⏵⏵ auto mode on (shift+tab to cycle) · /tasks to see subagents · esc to int…", inputBox},
 		{"background-prompts-60x24", 112 * time.Second, "⏸ manual mode on · ? for shortcuts · ← 1 agent · ↓ to m…", working},
@@ -253,12 +245,11 @@ func TestClaudeCodeActivityCutOffFooters(t *testing.T) {
 		t.Run(c.dir, func(t *testing.T) {
 			t.Parallel()
 			var seen []string
-			cols, rows := recordingSize(c.dir)
-			replay(t, claudeCodeRecording{dir: c.dir, cols: cols, rows: rows}, func(at time.Duration, lines []string) {
-				if at <= c.at {
-					seen = lines
+			for _, m := range replayed(t, c.dir).moments {
+				if m.at <= c.at {
+					seen = m.lines
 				}
-			})
+			}
 			if !slices.ContainsFunc(seen, func(l string) bool { return strings.TrimSpace(l) == c.footer }) {
 				t.Fatalf("footer %q not on the screen at %s:\n%s", c.footer, c.at, bottom(seen))
 			}
@@ -282,7 +273,7 @@ func TestClaudeCodeActivityFalseMatches(t *testing.T) {
 	cases := []struct {
 		name  string
 		lines []string
-		want  aca.Activity
+		want  screen.Activity
 	}{
 		{"no screen", nil, unknown},
 		{"blank screen", []string{"", "  "}, unknown},
@@ -334,7 +325,10 @@ func TestClaudeCodeActivityFalseMatches(t *testing.T) {
 }
 
 func BenchmarkClaudeCodeScreen(b *testing.B) {
-	chunks, _ := readRecording(b, "background-prompts")
+	chunks, _, err := readRecording("background-prompts")
+	if err != nil {
+		b.Fatal(err)
+	}
 	s := screen.New(120, 40, nil)
 	defer s.Close()
 	for _, c := range chunks[:len(chunks)/2] {
@@ -381,15 +375,14 @@ type recordedChunk struct {
 // readRecording reads what script(1) logged: raw.out, the bytes, and
 // raw.timing, a line per read with the seconds since the last and its length.
 // The recordings with input times mark each line O, output, or I, input.
-func readRecording(tb testing.TB, dir string) (chunks []recordedChunk, inputs []time.Duration) {
-	tb.Helper()
+func readRecording(dir string) (chunks []recordedChunk, inputs []time.Duration, err error) {
 	raw, err := os.ReadFile(filepath.Join(recordingDir(dir), "raw.out"))
 	if err != nil {
-		tb.Fatal(err)
+		return nil, nil, err
 	}
 	timing, err := os.ReadFile(filepath.Join(recordingDir(dir), "raw.timing"))
 	if err != nil {
-		tb.Fatal(err)
+		return nil, nil, err
 	}
 	var at time.Duration
 	lines := bufio.NewScanner(bytes.NewReader(timing))
@@ -400,15 +393,15 @@ func readRecording(tb testing.TB, dir string) (chunks []recordedChunk, inputs []
 			kind, fields = fields[0], fields[1:]
 		}
 		if len(fields) != 2 {
-			tb.Fatalf("timing line %q", lines.Text())
+			return nil, nil, fmt.Errorf("timing line %q", lines.Text())
 		}
 		delay, err := strconv.ParseFloat(fields[0], 64)
 		if err != nil {
-			tb.Fatal(err)
+			return nil, nil, err
 		}
 		n, err := strconv.Atoi(fields[1])
 		if err != nil {
-			tb.Fatal(err)
+			return nil, nil, err
 		}
 		at += time.Duration(delay * float64(time.Second))
 		if kind == "I" {
@@ -419,27 +412,104 @@ func readRecording(tb testing.TB, dir string) (chunks []recordedChunk, inputs []
 		raw = raw[n:]
 	}
 	if len(raw) != 0 {
-		tb.Fatalf("%d bytes of %s have no timing", len(raw), dir)
+		return nil, nil, fmt.Errorf("%d bytes of %s have no timing", len(raw), dir)
 	}
-	return chunks, inputs
+	return chunks, inputs, nil
 }
 
-// replay writes a recording to a screen in order, and calls read as
-// watchScreen would: a moment after a change, with what has arrived by then.
-// The clock is the recording's, so a run takes no time and depends on none.
-func replay(t *testing.T, rec claudeCodeRecording, read func(at time.Duration, lines []string)) {
-	t.Helper()
-	chunks, _ := readRecording(t, rec.dir)
-	s := screen.New(rec.cols, rec.rows, nil)
-	defer s.Close()
-	for i := 0; i < len(chunks); {
-		at := chunks[i].at + moment
-		for i < len(chunks) && chunks[i].at <= at {
-			if _, reset := s.Write(chunks[i].data); reset {
-				t.Fatalf("the vt reset at %s", chunks[i].at)
-			}
-			i++
-		}
-		read(at, s.Text())
+// screenRead is what a read of the screen gives at one time.
+type screenRead struct {
+	at              time.Duration
+	lines, undimmed []string
+}
+
+// markedRead is the screen at a step of a recording's marks.log.
+type markedRead struct {
+	screenRead
+	name string
+}
+
+// replayedRecording is what one replay of a recording gives every test: the
+// reads watchScreen would make, a moment after each change with what has arrived
+// by then, and the screen at each marked step. The clock is the recording's, so
+// a replay depends on no time. Tests only read it.
+type replayedRecording struct {
+	inputs  []time.Duration
+	moments []screenRead
+	steps   []markedRead
+	err     error
+}
+
+// replays holds a func() *replayedRecording per recording. Feeding the vt is
+// what these tests spend their time on, so each recording is replayed at most
+// once per test binary, however many tests read it and with whatever -count.
+var replays sync.Map
+
+// replayed is the replay of the recording in dir.
+func replayed(tb testing.TB, dir string) *replayedRecording {
+	tb.Helper()
+	once, _ := replays.LoadOrStore(dir, sync.OnceValue(func() *replayedRecording { return replayRecording(dir) }))
+	rep := once.(func() *replayedRecording)()
+	if rep.err != nil {
+		tb.Fatal(rep.err)
 	}
+	return rep
+}
+
+func replayRecording(dir string) *replayedRecording {
+	rep := &replayedRecording{}
+	chunks, inputs, err := readRecording(dir)
+	if err != nil {
+		rep.err = err
+		return rep
+	}
+	rep.inputs = inputs
+	steps, err := readMarks(dir)
+	if err != nil {
+		rep.err = err
+		return rep
+	}
+	cols, rows := recordingSize(dir)
+	s := screen.New(cols, rows, nil)
+	defer s.Close()
+	// Most of a recording's lines stay from one read to the next.
+	seen := map[string]string{}
+	read := func(at time.Duration) screenRead {
+		lines, undimmed := s.Text(), s.Undimmed()
+		for _, l := range [][]string{lines, undimmed} {
+			for i, line := range l {
+				if kept, ok := seen[line]; ok {
+					l[i] = kept
+				} else {
+					seen[line] = line
+				}
+			}
+		}
+		return screenRead{at, lines, undimmed}
+	}
+	due := time.Duration(-1) // when the next read is due; -1 is none
+	for _, chunk := range chunks {
+		if due >= 0 && chunk.at > due {
+			rep.moments = append(rep.moments, read(due))
+			due = -1
+		}
+		for len(steps) > 0 && steps[0].at < chunk.at {
+			rep.steps = append(rep.steps, markedRead{read(steps[0].at), steps[0].name})
+			steps = steps[1:]
+		}
+		if due < 0 {
+			due = chunk.at + moment
+		}
+		if _, reset := s.Write(chunk.data); reset {
+			rep.err = fmt.Errorf("the vt reset at %s", chunk.at)
+			return rep
+		}
+	}
+	if due >= 0 {
+		rep.moments = append(rep.moments, read(due))
+	}
+	for _, step := range steps {
+		rep.steps = append(rep.steps, markedRead{read(step.at), step.name})
+	}
+	return rep
 }

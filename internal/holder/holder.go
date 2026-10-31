@@ -49,6 +49,9 @@ type Options struct {
 	Command []string
 	// HistoryLines bounds the terminal's history; 0 keeps none.
 	HistoryLines int64
+	// ParseScreen, when given, reads what the program in the terminal is doing
+	// from its screen; see watchScreen.
+	ParseScreen ParseScreen
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
 	// reaches the daemon that owns it.
 	Home   string
@@ -68,6 +71,8 @@ type Options struct {
 	// from the start, as the vt does for each chunk, until this file exists;
 	// the file with ".held" added says it is held.
 	screenHold string
+	// watchTimes are watchScreen's waits, when tests shorten them.
+	watchTimes watchTimes
 }
 
 // readyMessage is the one line a holder writes on its ready pipe.
@@ -124,6 +129,8 @@ type holder struct {
 	screenHold   string
 	writeTimeout time.Duration
 	screen       *screen.Screen
+	screenClosed bool
+	watch        *screenWatch // nil when nothing reads the screen
 	size         Size
 	vtPos        int64
 	history      *historyWriter // nil when history is off
@@ -211,6 +218,9 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		writeTimeout: cmp.Or(o.WriteTimeout, writeTimeout),
 	}
 	h.vtMoved.L = &h.screenMu
+	if o.ParseScreen != nil {
+		h.watch = newScreenWatch(log, o.ParseScreen, h.readScreen, o.watchTimes)
+	}
 	if err := h.open(identity.TerminalDir(o.Home, o.ID), o.HistoryLines); err != nil {
 		listener.Close()
 		return nil, err
@@ -314,6 +324,7 @@ func (h *holder) serve(ctx context.Context) error {
 	go h.wait()
 	go h.exitClients()
 	go h.accept(ctx)
+	h.watch.start(h.followed)
 
 	select {
 	case <-h.released:
@@ -335,8 +346,10 @@ func (h *holder) serve(ctx context.Context) error {
 	case <-h.followed:
 	case <-time.After(exitDrain):
 	}
+	h.watch.stop()
 	h.spool.close()
 	h.screenMu.Lock()
+	h.screenClosed = true
 	h.screen.Close()
 	if h.history != nil {
 		h.history.close()
@@ -434,6 +447,7 @@ func (h *holder) feed(from int64, p []byte) {
 	h.vtMoved.Broadcast()
 	h.spool.consume(h.vtPos)
 	h.lag.fed(h.log, h.spool.position()-h.vtPos, len(p), took)
+	h.watch.screenChanged()
 }
 
 // lagLimit is how far behind the output the vt falls before the holder

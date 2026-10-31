@@ -28,6 +28,9 @@ type StartOptions struct {
 	Shell      string
 	// AgentID is the agent's the terminal runs, if any; see Options.AgentID.
 	AgentID string
+	// ACA is the id of the AI coding agent it runs, if any, whose parser reads
+	// its screen.
+	ACA string
 	// Command, when given, runs through the shell; see Options.Command.
 	Command []string
 	// HistoryLines bounds the terminal's history; 0 keeps none.
@@ -57,6 +60,9 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 		"--history-lines", strconv.FormatInt(o.HistoryLines, 10)}
 	if o.AgentID != "" {
 		args = append(args, "--agent-id", o.AgentID)
+	}
+	if o.ACA != "" {
+		args = append(args, "--aca", o.ACA)
 	}
 	// Only when a test changed it: a daemon updated while it ran may start a
 	// binary of another version, which may not know the flag.

@@ -10,6 +10,19 @@ type AiCodingAgent interface {
 	// resumes it. It runs through the user's login shell, which finds the
 	// program.
 	Command(Launch) ([]string, error)
+	// ScreenParser reads what it is doing from its screen.
+	ScreenParser() ScreenParser
+}
+
+// ByID is the AI coding agent named id, for what cannot be handed one: the
+// holder is a process of its own, told an id. docs/AGENT_STATE.md.
+func ByID(id string) (AiCodingAgent, bool) {
+	for _, known := range []AiCodingAgent{ClaudeCode{}} {
+		if known.ID() == id {
+			return known, true
+		}
+	}
+	return nil, false
 }
 
 // Launch is one start of an agent.

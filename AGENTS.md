@@ -41,7 +41,7 @@ internal/holder/   the process that owns a terminal's PTY and shell (wdx holder)
 internal/holder/holdertest/  lets a test binary be its own holder, for the tests that start terminals
 internal/pty/   opens pseudo-terminals and starts commands in them
 internal/termview/  the Bubble Tea pane that shows an attached terminal; docs/ATTACH_VIEW.md
-internal/screen/  a terminal's screen kept by a headless vt, for the holder and termview; the only user of the vt; docs/VT.md
+internal/screen/  a terminal's screen kept by a headless vt, for the holder and termview, and what is read from it over time (`ScreenState`, the motion fallback); the only user of the vt; docs/VT.md, docs/AGENT_STATE.md
 internal/tide/   the terminal IDE (wdx tide), a client of the daemon as the cli is: its panes' layout, focus and zoom, keys and mouse, the projects; docs/TIDE.md
 internal/logging/  JSON-line logs in daily files; the logger travels in the context
 internal/service/  finds the daemon installed as a systemd or launchd service
@@ -72,7 +72,7 @@ internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgen
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/holder -> pty/screen, agent -> aca/terminal, and cli/daemon -> telemetry; every package may use identity; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> aca, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/holder -> pty/screen, agent -> aca/terminal, aca -> screen, and cli/daemon -> telemetry; every package may use identity; config, db and update -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt, the holder never uses aca.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
