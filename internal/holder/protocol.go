@@ -11,11 +11,16 @@ import (
 // Version is the protocol version this binary speaks. A holder keeps
 // running the binary it was started from, so a daemon must speak the
 // previous version too.
-const Version = 3
+const Version = 4
 
 // inboxVersion is the first version whose holder takes frameSend. An older
 // one would ignore the frame, so the daemon does not send it.
 const inboxVersion = 3
+
+// agentInboxVersion is the first version whose holder delivers to an ACA as it
+// must, and knows instant messages. An older one would type the message in with
+// no look at the screen.
+const agentInboxVersion = 4
 
 // drives reports whether this daemon can drive a holder speaking version v.
 // A version up to 2 leaves the daemon's frames as they are, and later ones
@@ -116,7 +121,8 @@ type stopRequest struct {
 }
 
 type sendRequest struct {
-	Prompt string `json:"prompt"`
+	Prompt  string `json:"prompt"`
+	Instant bool   `json:"instant,omitempty"`
 }
 
 func writeFrame(w io.Writer, t frameType, payload any) error {

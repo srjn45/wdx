@@ -2,9 +2,11 @@ package aca
 
 import (
 	"fmt"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/srjn45/wdx/internal/screen"
 )
@@ -28,6 +30,32 @@ func (ClaudeCode) Command(l Launch) ([]string, error) {
 	}
 	return []string{"claude", "--session-id", l.SessionID}, nil
 }
+
+// Bracketed paste keeps a message's newlines content, not Enter.
+const (
+	claudeCodePasteStart = "\x1b[200~"
+	claudeCodePasteEnd   = "\x1b[201~"
+	// claudeCodePasteSettle is the wait before Enter, which can be dropped while
+	// a paste settles.
+	claudeCodePasteSettle = 150 * time.Millisecond
+)
+
+// Deliver implements AiCodingAgent. A paste-end marker in the message is taken
+// out, or the rest would be typed as keys.
+func (ClaudeCode) Deliver(w io.Writer, message string) error {
+	for strings.Contains(message, claudeCodePasteEnd) {
+		message = strings.ReplaceAll(message, claudeCodePasteEnd, "")
+	}
+	if _, err := io.WriteString(w, claudeCodePasteStart+message+claudeCodePasteEnd); err != nil {
+		return err
+	}
+	time.Sleep(claudeCodePasteSettle)
+	_, err := io.WriteString(w, "\r")
+	return err
+}
+
+// Interrupt implements AiCodingAgent.
+func (ClaudeCode) Interrupt() []byte { return []byte("\x1b") }
 
 // ScreenParser implements AiCodingAgent.
 func (ClaudeCode) ScreenParser() ScreenParser { return ClaudeCodeScreenParser{} }
@@ -69,9 +97,10 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 		}
 		return screen.ScreenState{Activity: screen.ActivityUnknown}
 	}
-	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed)}
+	inTurn := strings.Contains(box.footer, "esc to interrupt")
+	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed), InTurn: inTurn}
 	switch {
-	case strings.Contains(box.footer, "esc to interrupt"),
+	case inTurn,
 		claudeCodeBackgroundWork.MatchString(box.footer),
 		box.subagentRow:
 		state.Activity = screen.ActivityWorking
@@ -106,12 +135,18 @@ type claudeCodeBox struct {
 	footer string
 	// subagentRow is a ◯ row in the panel, which a cut-off footer cannot hide.
 	subagentRow bool
+	// bashMode is a box whose first line starts with !.
+	bashMode bool
 }
 
 // hasDraft looks for text that is not dim in the box: Claude dims what it puts
 // there itself, a placeholder or a suggestion. Without color nothing is dim, so
-// a footer that only shows with no text in the box overrules it.
+// a footer that only shows with no text in the box overrules it. In bash mode a
+// message would run as a shell command, so even the ! alone counts.
 func (b claudeCodeBox) hasDraft(undimmed []string) bool {
+	if b.bashMode {
+		return true
+	}
 	if claudeCodeNoDraft.MatchString(b.footer) {
 		return false
 	}
@@ -148,7 +183,7 @@ func claudeCodeInputBox(lines []string) (claudeCodeBox, bool) {
 	if opening < 0 || !hasPrompt {
 		return claudeCodeBox{}, false
 	}
-	box := claudeCodeBox{first: opening + 1, last: closing - 1}
+	box := claudeCodeBox{first: opening + 1, last: closing - 1, bashMode: strings.HasPrefix(lines[opening+1], "!")}
 	var footer []string
 	inFooter := true
 	for _, line := range lines[closing+1:] {

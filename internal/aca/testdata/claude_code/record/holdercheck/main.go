@@ -2,7 +2,7 @@
 // writes what the holder logged to $REAL_BASE/<name>.log. It uses a little quota.
 // See ../README.md.
 //
-//	holdercheck states|fullscreen|wheeldraft <name> <wdx binary> <claude binary> <cols>x<rows> [claude flag]...
+//	holdercheck states|fullscreen|wheeldraft|send <name> <wdx binary> <claude binary> <cols>x<rows> [claude flag]...
 package main
 
 import (
@@ -447,6 +447,119 @@ func wheelDraft(r *run) {
 	r.finish()
 }
 
+// send gives Claude messages in each state docs/SEND.md says something about, and
+// marks what the holder did with them. The screens say whether Claude took them.
+func send(r *run) {
+	message := func(text string, instant bool) {
+		check(r.conn.SendAgent(text, instant))
+		r.mark("queued %q instant %v", text, instant)
+	}
+	waitDelivered := func(n int, limit time.Duration) {
+		deadline := time.Now().Add(limit)
+		for time.Now().Before(deadline) {
+			if len(r.logs("message delivered")) >= n {
+				r.mark("%d delivered", n)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		r.mark("TIMEOUT waiting for %d delivered, %d so far", n, len(r.logs("message delivered")))
+	}
+	settle := func(what string) {
+		r.expect("idle after "+what, 90*time.Second, activity("idle"))
+		time.Sleep(2 * time.Second)
+		r.snap(what, 14)
+	}
+	longTurn := func() {
+		r.keys("Write a 300 word story about a lighthouse. No tools.")
+		time.Sleep(500 * time.Millisecond)
+		r.keys("\r")
+		r.expect("working", 15*time.Second, activity("working"))
+		time.Sleep(2 * time.Second)
+		r.snap("in the turn", 6)
+	}
+
+	r.mark("startup: held through the trust prompt")
+	message("Reply with only the word STARTUP. No tools.", false)
+	r.trust()
+	waitDelivered(1, 30*time.Second)
+	settle("startup message")
+
+	r.mark("idle, several lines")
+	message("Reply with only the word MULTI.\nNo tools.\nThat is all.", false)
+	waitDelivered(2, 30*time.Second)
+	settle("multi-line message")
+
+	r.mark("general during a turn: the assumption that Claude queues it")
+	longTurn()
+	message("Reply with only the word BRAVO. No tools.", false)
+	waitDelivered(3, 30*time.Second)
+	time.Sleep(time.Second)
+	r.snap("general just delivered in the turn", 10)
+	settle("general during a turn")
+
+	r.mark("instant during a turn")
+	longTurn()
+	message("Reply with only the word CHARLIE. No tools.", true)
+	waitDelivered(4, 30*time.Second)
+	time.Sleep(time.Second)
+	r.snap("instant just delivered", 10)
+	settle("instant during a turn")
+
+	r.mark("general, then instant, in one turn: what Esc does to the queued one")
+	longTurn()
+	message("Reply with only the word DELTA. No tools.", false)
+	waitDelivered(5, 30*time.Second)
+	time.Sleep(time.Second)
+	message("Reply with only the word ECHO. No tools.", true)
+	time.Sleep(3 * time.Second)
+	r.snap("after the interrupt with one queued", 12)
+	waitDelivered(6, 30*time.Second)
+	settle("general then instant")
+	if last := r.states(); len(last) > 0 && last[len(last)-1].draft {
+		r.mark("a draft is left in the box: clearing it")
+		r.keys("\x15")
+		settle("draft cleared")
+	}
+
+	r.mark("draft: held until it is cleared")
+	r.slow("hello", 200*time.Millisecond)
+	r.expect("draft", 5*time.Second, func(s state) bool { return s.draft })
+	n := len(r.logs("message delivered"))
+	message("Reply with only the word FOXTROT. No tools.", false)
+	time.Sleep(3 * time.Second)
+	r.snap("held behind the draft", 6)
+	if got := len(r.logs("message delivered")); got != n {
+		r.mark("WRONG: delivered behind a draft")
+	}
+	r.keys("\x15")
+	waitDelivered(n+1, 30*time.Second)
+	settle("after the draft")
+
+	r.mark("permission prompt: held, instant too")
+	r.keys("Run this with Bash, exactly: ping -c 1 127.0.0.1")
+	time.Sleep(500 * time.Millisecond)
+	r.keys("\r")
+	r.expect("permission prompt", 60*time.Second, activity("waiting"))
+	n = len(r.logs("message delivered"))
+	message("Reply with only the word GOLF. No tools.", true)
+	time.Sleep(3 * time.Second)
+	r.snap("held at the prompt", 10)
+	if got := len(r.logs("message delivered")); got != n {
+		r.mark("WRONG: delivered at a prompt")
+	}
+	r.keys("\x1b")
+	waitDelivered(n+1, 30*time.Second)
+	settle("after the prompt")
+
+	for _, l := range r.logs("") {
+		if msg, _ := l["msg"].(string); strings.HasPrefix(msg, "message ") || msg == "turn interrupted" || msg == "turn not interrupted" {
+			r.mark("log %v %s reason=%v instant=%v", l["time"], msg, l["reason"], l["instant"])
+		}
+	}
+	r.finish()
+}
+
 func main() {
 	scenario, name, wdx, claude := os.Args[1], os.Args[2], os.Args[3], os.Args[4]
 	var cols, rows int
@@ -460,5 +573,7 @@ func main() {
 		fullscreen(r)
 	case "wheeldraft":
 		wheelDraft(r)
+	case "send":
+		send(r)
 	}
 }

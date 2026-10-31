@@ -52,6 +52,11 @@ type Options struct {
 	// ParseScreen, when given, reads what the program in the terminal is doing
 	// from its screen; see watchScreen.
 	ParseScreen ParseScreen
+	// Deliver, when given, puts a message into the program in place of typing it
+	// and pressing Enter, and Interrupt stops its turn. They come from the cli,
+	// as ParseScreen does.
+	Deliver   func(w io.Writer, message string) error
+	Interrupt []byte
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
 	// reaches the daemon that owns it.
 	Home   string
@@ -158,6 +163,8 @@ type holder struct {
 	spoolErr   bool          // a failed append is logged once
 
 	inbox      *inbox
+	deliverTo  func(w io.Writer, message string) error
+	interrupt  []byte
 	readerDone chan struct{} // closed once the inboxReader returns
 }
 
@@ -217,12 +224,17 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		clients:      map[*client]bool{},
 		left:         make(chan struct{}),
 		inbox:        newInbox(),
+		deliverTo:    o.Deliver,
+		interrupt:    o.Interrupt,
 		readerDone:   make(chan struct{}),
 		vtDelay:      o.vtDelay,
 		screenHold:   o.screenHold,
 		writeTimeout: cmp.Or(o.WriteTimeout, writeTimeout),
 	}
 	h.vtMoved.L = &h.screenMu
+	if h.deliverTo == nil {
+		h.deliverTo = typeMessage
+	}
 	if o.ParseScreen != nil {
 		h.watch = newScreenWatch(log, o.ParseScreen, h.readScreen, o.watchTimes)
 	}
@@ -696,7 +708,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 				h.log.Warn("bad send request", "err", err)
 				continue
 			}
-			h.queue(req.Prompt)
+			h.queue(message{text: req.Prompt, instant: req.Instant})
 		case frameRelease:
 			select {
 			case <-h.ended:

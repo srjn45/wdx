@@ -26,6 +26,21 @@ func agentFixture(t *testing.T) (fixture, *Supervisor, string) {
 
 func noLink(context.Context, db.Execer, string) error { return nil }
 
+// TestSendAgentOnlyFindsAnAgentsRow: a shell's row must not take a message for
+// an ACA, whose delivering is another.
+func TestSendAgentOnlyFindsAnAgentsRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	_, s, p := agentFixture(t)
+	row, err := s.Create(ctx, p, "shell", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SendAgent(ctx, row.ID, "hello", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SendAgent: %v", err)
+	}
+}
+
 func TestShellEntriesDoNotFindAnAgentsRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

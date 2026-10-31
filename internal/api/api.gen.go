@@ -442,6 +442,15 @@ type AgentList struct {
 	Agents []Agent `json:"agents"`
 }
 
+// AgentMessage defines model for AgentMessage.
+type AgentMessage struct {
+	// Instant Go first, and interrupt the agent's turn if it is in one.
+	Instant *bool `json:"instant,omitempty"`
+
+	// Prompt The text to give the agent; it is submitted.
+	Prompt string `json:"prompt"`
+}
+
 // AgentResult defines model for AgentResult.
 type AgentResult struct {
 	Agent Agent `json:"agent"`
@@ -850,6 +859,15 @@ type GetAgentHistoryParams struct {
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
 
+// SendAgentParams defines parameters for SendAgent.
+type SendAgentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // StartAgentParams defines parameters for StartAgent.
 type StartAgentParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -939,6 +957,9 @@ type StartTerminalParams struct {
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgent
+
+// SendAgentJSONRequestBody defines body for SendAgent for application/json ContentType.
+type SendAgentJSONRequestBody = AgentMessage
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProject
@@ -1262,6 +1283,50 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
 	GetAgentHistory(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendAgentWithBody Queue a message for a running agent
+	//
+	// The message goes in the inbox of the agent's holder, which delivers it
+	// once its screen allows: never while text is in its input box or a prompt
+	// is open, nor on a screen it cannot read. It may not have reached the
+	// agent when this returns, and is lost if the agent ends first.
+	//
+	// With instant it goes before the general messages and, when the agent is
+	// in a turn, its turn is interrupted first.
+	//
+	// A message that does not reach the holder returns send_failed with the
+	// agent under details.agent: the holder is too old and the agent must be
+	// restarted, or the message does not fit in 1 MiB.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+	// send_failed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+	SendAgentWithBody(ctx context.Context, agent AgentRef, params *SendAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendAgent Queue a message for a running agent
+	//
+	// The message goes in the inbox of the agent's holder, which delivers it
+	// once its screen allows: never while text is in its input box or a prompt
+	// is open, nor on a screen it cannot read. It may not have reached the
+	// agent when this returns, and is lost if the agent ends first.
+	//
+	// With instant it goes before the general messages and, when the agent is
+	// in a turn, its turn is interrupted first.
+	//
+	// A message that does not reach the holder returns send_failed with the
+	// agent under details.agent: the holder is too old and the agent must be
+	// restarted, or the message does not fit in 1 MiB.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+	// send_failed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+	SendAgent(ctx context.Context, agent AgentRef, params *SendAgentParams, body SendAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartAgent Start an agent whose AI coding agent ended, in the same session
 	//
@@ -1721,6 +1786,70 @@ func (c *Client) GetAgent(ctx context.Context, agent AgentRef, params *GetAgentP
 // Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
 func (c *Client) GetAgentHistory(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentHistoryRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendAgentWithBody Queue a message for a running agent
+//
+// The message goes in the inbox of the agent's holder, which delivers it
+// once its screen allows: never while text is in its input box or a prompt
+// is open, nor on a screen it cannot read. It may not have reached the
+// agent when this returns, and is lost if the agent ends first.
+//
+// With instant it goes before the general messages and, when the agent is
+// in a turn, its turn is interrupted first.
+//
+// A message that does not reach the holder returns send_failed with the
+// agent under details.agent: the holder is too old and the agent must be
+// restarted, or the message does not fit in 1 MiB.
+//
+// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+// send_failed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+func (c *Client) SendAgentWithBody(ctx context.Context, agent AgentRef, params *SendAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendAgentRequestWithBody(c.Server, agent, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendAgent Queue a message for a running agent
+//
+// The message goes in the inbox of the agent's holder, which delivers it
+// once its screen allows: never while text is in its input box or a prompt
+// is open, nor on a screen it cannot read. It may not have reached the
+// agent when this returns, and is lost if the agent ends first.
+//
+// With instant it goes before the general messages and, when the agent is
+// in a turn, its turn is interrupted first.
+//
+// A message that does not reach the holder returns send_failed with the
+// agent under details.agent: the holder is too old and the agent must be
+// restarted, or the message does not fit in 1 MiB.
+//
+// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+// send_failed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+func (c *Client) SendAgent(ctx context.Context, agent AgentRef, params *SendAgentParams, body SendAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendAgentRequest(c.Server, agent, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2627,6 +2756,92 @@ func NewGetAgentHistoryRequest(server string, agent AgentRef, params *GetAgentHi
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSendAgentRequest calls the generic SendAgent builder with application/json body
+func NewSendAgentRequest(server string, agent AgentRef, params *SendAgentParams, body SendAgentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendAgentRequestWithBody(server, agent, params, "application/json", bodyReader)
+}
+
+// NewSendAgentRequestWithBody constructs an http.Request for the SendAgent method, with any body, and a specified content type
+func NewSendAgentRequestWithBody(server string, agent AgentRef, params *SendAgentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s/send", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -3773,6 +3988,50 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/agents/{agent}/history (the `GetAgentHistory` operationId).
 	GetAgentHistoryWithResponse(ctx context.Context, agent AgentRef, params *GetAgentHistoryParams, reqEditors ...RequestEditorFn) (*GetAgentHistoryResponse, error)
 
+	// SendAgentWithBodyWithResponse Queue a message for a running agent
+	//
+	// The message goes in the inbox of the agent's holder, which delivers it
+	// once its screen allows: never while text is in its input box or a prompt
+	// is open, nor on a screen it cannot read. It may not have reached the
+	// agent when this returns, and is lost if the agent ends first.
+	//
+	// With instant it goes before the general messages and, when the agent is
+	// in a turn, its turn is interrupted first.
+	//
+	// A message that does not reach the holder returns send_failed with the
+	// agent under details.agent: the holder is too old and the agent must be
+	// restarted, or the message does not fit in 1 MiB.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+	// send_failed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+	SendAgentWithBodyWithResponse(ctx context.Context, agent AgentRef, params *SendAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendAgentResponse, error)
+
+	// SendAgentWithResponse Queue a message for a running agent
+	//
+	// The message goes in the inbox of the agent's holder, which delivers it
+	// once its screen allows: never while text is in its input box or a prompt
+	// is open, nor on a screen it cannot read. It may not have reached the
+	// agent when this returns, and is lost if the agent ends first.
+	//
+	// With instant it goes before the general messages and, when the agent is
+	// in a turn, its turn is interrupted first.
+	//
+	// A message that does not reach the holder returns send_failed with the
+	// agent under details.agent: the holder is too old and the agent must be
+	// restarted, or the message does not fit in 1 MiB.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+	// send_failed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+	SendAgentWithResponse(ctx context.Context, agent AgentRef, params *SendAgentParams, body SendAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*SendAgentResponse, error)
+
 	// StartAgentWithResponse Start an agent whose AI coding agent ended, in the same session
 	//
 	// For an agent that exited, failed or was lost. One that does not start
@@ -4343,6 +4602,54 @@ func (r GetAgentHistoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAgentHistoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SendAgentResponse) GetJSON200() *AgentResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SendAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SendAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendAgentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5357,6 +5664,62 @@ func (c *ClientWithResponses) GetAgentHistoryWithResponse(ctx context.Context, a
 	return ParseGetAgentHistoryResponse(rsp)
 }
 
+// SendAgentWithBodyWithResponse Queue a message for a running agent
+//
+// The message goes in the inbox of the agent's holder, which delivers it
+// once its screen allows: never while text is in its input box or a prompt
+// is open, nor on a screen it cannot read. It may not have reached the
+// agent when this returns, and is lost if the agent ends first.
+//
+// With instant it goes before the general messages and, when the agent is
+// in a turn, its turn is interrupted first.
+//
+// A message that does not reach the holder returns send_failed with the
+// agent under details.agent: the holder is too old and the agent must be
+// restarted, or the message does not fit in 1 MiB.
+//
+// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+// send_failed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+func (c *ClientWithResponses) SendAgentWithBodyWithResponse(ctx context.Context, agent AgentRef, params *SendAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendAgentResponse, error) {
+	rsp, err := c.SendAgentWithBody(ctx, agent, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendAgentResponse(rsp)
+}
+
+// SendAgentWithResponse Queue a message for a running agent
+//
+// The message goes in the inbox of the agent's holder, which delivers it
+// once its screen allows: never while text is in its input box or a prompt
+// is open, nor on a screen it cannot read. It may not have reached the
+// agent when this returns, and is lost if the agent ends first.
+//
+// With instant it goes before the general messages and, when the agent is
+// in a turn, its turn is interrupted first.
+//
+// A message that does not reach the holder returns send_failed with the
+// agent under details.agent: the holder is too old and the agent must be
+// restarted, or the message does not fit in 1 MiB.
+//
+// Errors: agent_not_running, agent_removed, invalid_path, not_found,
+// send_failed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/agents/{agent}/send (the `SendAgent` operationId).
+func (c *ClientWithResponses) SendAgentWithResponse(ctx context.Context, agent AgentRef, params *SendAgentParams, body SendAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*SendAgentResponse, error) {
+	rsp, err := c.SendAgent(ctx, agent, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendAgentResponse(rsp)
+}
+
 // StartAgentWithResponse Start an agent whose AI coding agent ended, in the same session
 //
 // For an agent that exited, failed or was lost. One that does not start
@@ -5989,6 +6352,39 @@ func ParseGetAgentHistoryResponse(rsp *http.Response) (*GetAgentHistoryResponse,
 	return response, nil
 }
 
+// ParseSendAgentResponse parses an HTTP response from a SendAgentWithResponse call
+func ParseSendAgentResponse(rsp *http.Response) (*SendAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStartAgentResponse parses an HTTP response from a StartAgentWithResponse call
 func ParseStartAgentResponse(rsp *http.Response) (*StartAgentResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6600,6 +6996,9 @@ type ServerInterface interface {
 	// GetAgentHistory Lines of an agent's history, in any state
 	// (GET /v1/agents/{agent}/history)
 	GetAgentHistory(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentHistoryParams)
+	// SendAgent Queue a message for a running agent
+	// (POST /v1/agents/{agent}/send)
+	SendAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params SendAgentParams)
 	// StartAgent Start an agent whose AI coding agent ended, in the same session
 	// (POST /v1/agents/{agent}/start)
 	StartAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params StartAgentParams)
@@ -6933,6 +7332,61 @@ func (siw *ServerInterfaceWrapper) GetAgentHistory(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgentHistory(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendAgent operation middleware
+func (siw *ServerInterfaceWrapper) SendAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendAgentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendAgent(w, r, agent, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7761,6 +8215,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.DeleteAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/start", wrapper.StartAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/send", wrapper.SendAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/history", wrapper.GetAgentHistory)
 
 	return m
@@ -7955,6 +8410,47 @@ type GetAgentHistorydefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetAgentHistorydefaultApplicationProblemPlusJSONResponse) VisitGetAgentHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendAgentRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params SendAgentParams
+	Body   *SendAgentJSONRequestBody
+}
+
+type SendAgentResponseObject interface {
+	VisitSendAgentResponse(w http.ResponseWriter) error
+}
+
+type SendAgent200JSONResponse AgentResult
+
+func (response SendAgent200JSONResponse) VisitSendAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SendAgentdefaultApplicationProblemPlusJSONResponse) VisitSendAgentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8734,6 +9230,9 @@ type StrictServerInterface interface {
 	// GetAgentHistory Lines of an agent's history, in any state
 	// (GET /v1/agents/{agent}/history)
 	GetAgentHistory(ctx context.Context, request GetAgentHistoryRequestObject) (GetAgentHistoryResponseObject, error)
+	// SendAgent Queue a message for a running agent
+	// (POST /v1/agents/{agent}/send)
+	SendAgent(ctx context.Context, request SendAgentRequestObject) (SendAgentResponseObject, error)
 	// StartAgent Start an agent whose AI coding agent ended, in the same session
 	// (POST /v1/agents/{agent}/start)
 	StartAgent(ctx context.Context, request StartAgentRequestObject) (StartAgentResponseObject, error)
@@ -8960,6 +9459,40 @@ func (sh *strictHandler) GetAgentHistory(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentHistoryResponseObject); ok {
 		if err := validResponse.VisitGetAgentHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendAgent operation middleware
+func (sh *strictHandler) SendAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params SendAgentParams) {
+	var request SendAgentRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	var body SendAgentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendAgent(ctx, request.(SendAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendAgentResponseObject); ok {
+		if err := validResponse.VisitSendAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -9465,126 +9998,130 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7H1tk9s20uBfQfGuyk4dPWMne28zn/zk5dlUeTc5O7v+sNyagsiWhDUFKAQ48lzK//2p7gZAkAIlzYzG",
+	"8W7tl2QsgkCj0d3od/5W1GazNRq0s8XVb8VWdnIDDjr61+sVaPcWlvh3A7bu1NYpo4uroipUc1UVQupG",
+	"uDUIiSOfWaGaUkgrlBaquaIfX7ySXy++qf/QlMJ0QjkrtNxApZ/X0sILpS1oq5y6ha+EMytwa+jETrm1",
+	"2HbmH1A7fKtRXSms0jXQy1bIDirda/VrD8Lo9o7eUFrI8NZFpYuyUAjqVrp1URb4YnFVEExFWXTwa686",
+	"aIor1/VQFrZew0biRjdKvwG9cuvi6lVZuLstvmZdp/Sq+PSpLH7mFbJo+WUNAYJnvFGxv09CRIpARMoI",
+	"cThFxNtFfiN+mUdt5Z0z27e91vjvvb3gQzpbB91GadlaApYQaIVbS4fHIKyTnVN6hZvqeC6htHUgG2GW",
+	"ooNlb5VexV382kN3N2zDOrO98e8VKewNLGXfuuJqKVsLEfqFMS1ITeD/4gH7TnX74L/WQi6saXsHAjGH",
+	"qDUaECY3OqWd6T64DsBeC/hYt30DNlLRDNCN6or74DkA6knnFLqZIZIExkZ1c/ANtHF/GE9i90ASU47H",
+	"378whg+gPoJRPuGrdmu0BRKLP3dm0cIG/6yNdihQrn4r5Hbbqloixi63POJ//MMi+n5LVvrvHeK3+G+X",
+	"g9y95Kf2MsxLK+4TCIIP1omlVC00F3Rq/tUorEmGd2YLnVMMrKzl/nm+X6t6LV7/KGrTIMMSUwvlkIMt",
+	"nWfdyr6Bm9o0gFQ2QUlZ1GvVNh3oPC17IVF3IB00otcNICmUYnHnqZtO3K1BdSJMdS0sOBzRKutoN7YU",
+	"K+A/ifRW4H4ORKLbOyJ/Bxt7DLGMmk9xG7Lr5B3tggG8kYS4pek2+FfRSAcvnNpAbudNTtq8X0MHiEAS",
+	"h7YU2uwIZKMF3EJ3JzpoZa/rdRaboJvDUOi+beWihUC6+zN0ncnA9RPxyhq0p5prsVvfIZyNaoQ2Ht6L",
+	"k1b4qBzRw6FVcBCu8urr/xOFhVUrLVuxNB0J4A+qbaHBc5b+0YHllXawgg7XVw0uvAcWs3nmwVZ2oN0N",
+	"keINvzxDqIiPnZyQ67VAkIR0LPDMVrRwC+1JqNrOLTfhuGe2FLu1aoly1tIifk5Dhpd6NzNICY9nkdPB",
+	"xtxGktujZR1Q4scVZZ4s1RIHKiukcGazsI42cIXwn4AmC9Yqo29OxpbwbxDW6jWuvTKAaGN5QiRIFA2o",
+	"qEils9zmRzyK36yTDk6SO+9oJAoffxNl9/se9am1aRtLV+a2MzVYGzYqnZP1GjHRKNnaa6FNvINZu5F1",
+	"DVtUEVx2y/22SQRd9rytoD2JVlon6rXUKyDd8zSpGLSo/EmSJjyredG+eXNdKTZSaRIWOLhujQbPinS6",
+	"GkVIY8CewIif0iv/byhAvLgY8c+EW/YFx/jkSrpRR8RbeoUw4iCQB0uCVHQGQT26ekbHMyLP5GYY8ezf",
+	"417NgjS9TyXf/9/rW2jNFjJ6QFAPTrgoJ4jjV2fXfKOsm1mP/nrMFZ2DxM6D8iewVq5o97JpFFIgad0R",
+	"Lm9MjEFFc0XqDGf8pxFL1VlXsgauHXRdv3Uji9f1nRZRDrKRkbBgtFdo0c12Rvl38NEJZ8RK3cIw/bWf",
+	"1faLjXKO+fGYIp/iyy85i6+3YMnGegyxkHLsZzk03K+VyIobzwMZlHQ9ML/TEJQNESnxmkaRFaa6Fi0s",
+	"nTC9EwYtip2y2VOY4MdDXh4j8XdB2u9JTjJfEolNl2GrbqEk9WqHYh0f7+naVjQG7eJKBwv6igaiLMQp",
+	"rVgADvfS4DoY11e56Sodlr32KhgOEyQ8UNNSzkK7vBZobW/xYd0aS5a6i8YuAkJPhXLXXl282lMVr0Vr",
+	"rJuCukKpLHVTaW0WprkT6VRebl3tqwql+ABbJ3rtVEszBlOg0rIDmpXtOtD9Bs8roAqlYfQZ8IZJcNKi",
+	"eGcR9EVZILCD6EwOeLi5viVyitbTPeRG1hJ4PXY6BItAKLJvwFMvLZe9qYPKNplVrEBDR3QvGzwudQsv",
+	"tOk10gHQ/bq4E95pcpqSStfcIbXYGQ8tboOUYjLgcq6rxNJHGZjc8/QbEWFi3ycX/nUCd1CDtREM3Wkb",
+	"OYNXJYEBYUdy3q2NhbGOEp0uR2E6rA7FSZ1h8hBKl1GukdxzbFBaVnhIdZKMyywZ3U8TQsLNyTpmhcRL",
+	"dQ9myNPtW78qKXTW9F0NQsPuepDShO8OtsYqZ7o7xDDU9JfpxF/evhEZ2t5Dt9E3tdHLVjHYQVyYLaD0",
+	"qKWuoc0yv9E3G2VRFN7Ua6g/mH40QQekgEYJkp2Dt3Xs+nvHo6ZH4V+eP43glzu/bCLbfA1tmxdRYeHf",
+	"WUp9ccx9Ii99J2HDzr/xwdRms1Eua5SvzYy1Pu/jGNn/iX/AmvoD5Fc5wfrde+cWOqt4N4ex4U2oML4M",
+	"2w2WEG0xgjcCJofE79FY+jbrc3rn8IwEmVNEXddCwy10wXSleAT0FpoL0dBZ3PRa3kpFZ1tWWrYdyOYu",
+	"BB9KVLBw/0EglGJrOnej9E1vYXjKqgW+T/ahNm6Ygc30m17bfosv07jaaI2cYPQNaiMl0iD+2oBFub5r",
+	"Pgo2/8Tzxux0a2TjF8HroQPrTAc3AclfsVdxWWl8sYGtpWiLbFvxnOWcf3HbqVvVwgps+m7HshZBq/Ti",
+	"jvjh2zc/lh53/hfG11j16smwKonIOvan496XptfBrr5x8gMJXFziBj4q6yySgBesAbH+zZVyNziQ5ryV",
+	"rWqCAR7+6R354Z+yW/Ubjt7hk2GBYL9vlN1IV+M7JLZvohoYRqDaO/qBTzc18ZNYFNLmMEcckRw5+QF0",
+	"Mwxiohie+n9HL9qik7pOQI+m0GSG8Rr7dEWcNaKroiz2yRzfHZM5a84pnSM2BkJPnkeQJmQZjtT2mxTl",
+	"ZAzcDJzPRJ2s63+Ik2hzs+3gVpneJq9NCZ5Q7FDptzeeEmjUBKBA+rjOgKYbe2cdbIiIiElSktjjD9wq",
+	"bNFo0vVdRE/uyv9P5d7FW/8etzJPNOgXK+Wy8/dduy/xvkWaRpUocyNPxDA95WlyYvWNqWX7oA0QSx6z",
+	"ebSQYqVcotVldYgpMlqEKoOO/N4Iktzm/gy7p9jaoJcOZtFEdUX9qepfvvymxmuO/oJLL2nsMRV2ig0N",
+	"uxNxkUNCEqLcC4vzlSmt8IPEd+Ckaq14/vaHb8X//cP//N9fXRTlntrSHFVxh9ua4peLfpV1df+gdGM9",
+	"7iii+cyK1qxEqzS7dfdDbgTgjNN8h6bqrjPkI1JWoOw6MIudJwtW9/bVzFvZ9oD37K1pb6Ephe3rNSKQ",
+	"PNTe7kBzNkkbmFEihxNaK+1mduSMaIyQC9M7788/KRzR27wu6JRrYW4p2kEDYgNS24OEOX677/TVrvl4",
+	"RcR0FWN9M/HiPAszYBH4eM5l4X3lhKPh4BKimqH5YCrMuaIPmRA+Zk2BpOiAGALWKgRyybV/OID9RcSp",
+	"7xsvNZ1aKVLxj1Kb6bZrqaGZ94jqJNUm6H/kGzVaNMp+OISqfc/5ScE2P81euO3owQ/5TTOH/ehzjTZ8",
+	"5mjHkbn7BdtOD6+8D/6oYxGWNEjmKWKIZg3rzsevDnDmfHAqsfJPOOJcmIN+P7B2PkgVLueT8RiIrN9s",
+	"ZHd3FJtx/gOQvfXGQZZKG+kk8pF1HcjNz5FmvUWBVMoOwOy+8ukBeRiPSNW5SFHqdjspt6ksmo7d9NkN",
+	"D8LCDxMLqGXPfsI7MmC1Ea3RK+iCMDmZD+e5oLw3Cd4/7OV9HXMBwCCEzBZ0CHgFl3lIHkLlw7vXOVgP",
+	"sl6LDv/LwcFHi6PokDlwZ/qb8ukBnb0PQ6TnCCpDlItcQRtzO4XWT3MmxNFcpyDu3GCdFjuPsc4TpGWM",
+	"d0496ew/yZmsE8m4Lyi+LBXmQSrFY+7qm9r02uU09IfcwH62+13Db8lpMifJ7yfO8sSVXzXMu88QG2Md",
+	"JQGqpaqlRnuEmUE6sZbbLWhmg0CGIWEAF18p64C9NuTtwz8MvTEQ6hD5HcQv2xMoh9LYMTuU6M9fe+hn",
+	"iHxwLDQK94LSwHHe5UZutz6PfqXcHPoGx1Hp/R0zA1MXTUnOgJmBg7vjU9QC7v7sc58RfopywU/L4upv",
+	"h482nenwyBS4Y2OHHX/6e5Jmfh4BcSAXdxrd+ndKbj4lV3osDWm5Jyeh3jsjdy7RkyD4/ZJhafljXk1v",
+	"zNLY3zerNLDQzLV09uTOB6ZR+iIZwu1TJETm7pqAmnlL0yXy5zRVb+q7Cg8Orf9HZZ3JaUGUTjiTI9tv",
+	"FmjTMJ2ZtgHryCdKSVKjw1La/a8/FDlWWHZmc8r0BAfPrvTgeT1hBRqbX4IeBb9oTE9uOtjhL5uRzwxs",
+	"LbfsL7ScHOLuWuASs1bpD3ak/c44JQftW8PHw2hFkHAQ73nXKedAi51qW+HkBzhp8xNKIFz7pUt/sgE/",
+	"JxDHPI2uB+o5hUQDsU3hC9McgiXvFhm5zh5pGc2wz2EUPSyP95QEW1zyWnyvHXRiadrW7ELO/Jnyaoc6",
+	"unOo2eXjBVa0+06SXDOZrg/JUWW9IiamVnrITA0Pz5KgGuFBKULTzmWsVno/ZVXsZayeI+U0Zzz8he60",
+	"h2XXPchcHdXW7msGKIxZK2BrqSQcTEp+H1LneyTpmveSI8K/DmlGJydNzWp1j85ZykH4PsnrfDL/RohE",
+	"ZzRZsJAPG3LYJQ23PDDaktP2fCJOssV93OCLSi/NTCnXzz8G1YPylihTpRQWultohLn1sP9Fq4+Ck8P2",
+	"I+m75uMFPruodKVfx3LYjbwTFnQjpHjffHzxHSz61YsfG7EGiaz+vFmsXhCjv/parOGjaNRKOfsVXgZr",
+	"eQuVHjKeKAwdcp2Z9FVz7UPVXAAsoF4bYBVHNWkUu9I7SYHsVSghvBCvCaQ3ZvXiDdxCG2AyS0GRTDJz",
+	"JstTdljYm3R+INUeliTsUND0HVgBH2vYOuD6ayqYkguBYqEFxLy9rrTUd5xpyzFsqlBZadNBQ0ikgD0V",
+	"Vx/IBWCtTaIAWLQgKgrOVsU1uXQrjTxARc9UtmtjFBivVVFLLTqgEpkFWIW/Uh7ZUE+jZcvy1kepi4E8",
+	"kGgSvrwqbl+RM2MLWm5VcVV8c/Hy4htPnsSDl7evLgf/6wrcYf/18mCeOqWTTsZQ2mil9/NGw2B2LMTh",
+	"yq2RE0HhGVynMUWq2ECMQXMhfkkrTCNRZAPSZaBGxzXx7GRXnX9sn8VodHLCVyJNqaPKFE7cY9THI/yx",
+	"Ka6Kofqaa+FiP5AZ99Ew5HLa52DON5R55TvVFZ/+Pim0//rlywNF9vcrrh9K1WbK6xndF5wp4ntP5KeM",
+	"MCYV+2Vhg+e7wFXC6eFZdgC2TCsgOMjsqJ4RLx8U7SZnF773BBRJcqiCWkBr9MqSTjul0JjYzAqPp1Dk",
+	"OZ/pTdUFF4JUAOUoVNOojv1F+AdXspEoiktDa6e1Hc8sF2iSh8RPF8g0FPsQOVY6VDAQ8FQKNN0Avfcs",
+	"anspuBGWMIb2s1tLR1mrDDHRO4EQdl+Oym94/ci6E872qsxVpatiI5WuCgQ/lqAi9oIopTR2ynr098BC",
+	"2qHEVQ7iATdDiHnNTwmA8CJlSPCNyrNEyJSuNF9+MapmjPOX4EWMwV/yGGquQc9KvO6l0LATnGY6KhsR",
+	"aK4yGv/4/evvKPU4NC3Ymb5tkpIMwhkTTGw3MixMM1V6RRdlC9ZSsp/PM/X3CxlV4vWwqVDcYp28s7HE",
+	"xWdRMyvgxWbL6KMkaz32vKCcMdLNK/1ahwIl3FxjCJsuVNJYLgX0KdQ4G99AVqQJvZUOzgg/F9/5PtXo",
+	"gn4bSdBRJm8pRom8pUgzmMuxtK30kBudiN5SJEnMpRhnKJcjWMuBpPwvObmdVAT5Xidg3X+Y5u5sIjSt",
+	"lPs0VhRd18OnPen96rzSO8ae5uW39zGxzRuI7hwynfcuZCC9KJ1y5Zj07qCMXP5G///E8r2FnIEdaTpn",
+	"Z5FxxRoVK2NplrlnQraO448ovLoeLsRPGviloBd4FpSTSkwcQ7WoDkSk8qEy0zuOVdvg1HEAl9l4Uakr",
+	"zdtrrofAdrJIiOsNdZ7TnYWqCj//hYhJitP62Q8AW1LhyJnAtfgE/l20eg6x7wiD5X3UI95hYLP76Udp",
+	"v62nV3YOs0vIIMqwTcD+GdjmO8JWZBucMauWH9NT944h9AUqnhqL0U17SOycA1VBApA2htqGDX6c+xFZ",
+	"bNp3D+37wQp7Vs5dJg7s7Gm/tmIFbuK/LoNKxmEEkhW27gyFJc1ymXZdqLStOzjNxrkWeKUzgZMORPVi",
+	"vfb6KdmjlaYoVI7fA6EFL/vecZweakmatyFIc93bfFxhoNG9wMRGabXpN8XVy1yQYgrSG8InbZ33r8la",
+	"pb9fRhsV/3ktXr18+TI0WnHUjUKfCHVISEmaqsmPDCVO+jKB+tUpUFNASXrMpb35CG68d2jFMciaXBwE",
+	"9hycPsP8gWA+pdCeiw/NCB4ftDuHuaq5FDFI6WdWrANP/tPLIgu6mXY2/cIAn7P+KUOKI2Hc58pb30ov",
+	"zMcgXuKJUWQjNIxqoFW30KFiVWmja2A9iYSmkBT2uvI1n5xzQfExNvupbFpveydomY6bLG623GXEbNmM",
+	"6dja9FOyrw9lBlqBF+JH9sviD2t5CyHzM7X5vA1I2iTZZ16btBSvESrZngC0/kiQDla+79oTm4AtYGl8",
+	"3g9XobcBeRRVLqPRGTuwkPdMUgcfdq1yLx87dPqBJln1dTyMsd1Je6OJfXQp2ptDaWgMfYfdZ8zNq3QO",
+	"1KiNEaZtxj12xaa3TizIR+zDbiTNXUIrEbIlquZavBJ/Uv+R0YbHtctjBXnmMi0rnewqd1/i46c0Qkd9",
+	"nk6yQl/+zlYo5xOeQ1L/P5xJyHjQnL8VTL5Dpucl0co/qRz8Abc58vlw/LUMTh7TCY69WMcGb8YxxA73",
+	"EzxDIucYQsv2RM/QaablnsfH94E6xFn4/PMYPfemcS+KzkHk78irEs+bHdpT858SB4YSA7mB4ASIDNDE",
+	"BhzeBtnT632LjidEpl8hg8cfnRWLXrVMCNzrcW02HBnjCOg5kPnLEFy00PlKA2X9ChNcXXISNEmJvEIy",
+	"dAL33t4gez4AbH0gilMwcBteiRSt2ih3Id5Hp29t9FKtxBIVD682LED05PhMwqHs43FJBS57j6jRGHmL",
+	"Aw0mzQBI94isv5PKcedZct1z5qMlF/uyVau1C22mpY9k1FJTQpjYKN07sDlG5PWennpG+fozvBh6I4gd",
+	"dCBorfOw4VuQPlc4rEANVbkH/HbbUqeQTaSgtJIuy2+tsiH3wB4zoil5ORbOK68m+lrMSYgViUourC+D",
+	"y7eY59TTk5twJ0k0T2rwpaWJM8cbkHC2sGSYsIyGP3NtjO6UwlLrjFAMOx+c5NZVF2gji62qP1judsh1",
+	"G/aq0i+Eht1VaJYgtYDN1t1NWkMIGVI98Ib0Ua5paEs8pxxsjwBbaSGcme+14JvkbMkwuRCvKQneOt9x",
+	"LrRxoPQOEhM4X6ZrBZsCyinZqv8PDQ7ZtrKGQZT5hneWRIbGabwqPizDNtV06lIkLctERUkNVUEg8+4Q",
+	"uElscqSxpK0HvDFRxWLMqrjGScIJKzceHk0u1IJ4quD+eiGoKuWKkTfpbxG69vlob4wHErJZvqIMpQ2Y",
+	"pZDigzY7nc7wD+Pty6Fr/wvETLJemjvBaOAiKLJyWEaTVeMMLjNLAvskFHu09prgIh3uJ1/DGGANq29k",
+	"94HuGzZ3m85sre9QGepTYxkqGtgUcPAH5Csg7fzHM4bkxpB2WFIuiNIrSkfaxBP1epVvaFZNyjOrwpOi",
+	"NqO0L1RzicKmve0qXYWedlXhTwuhGER75SumqsKHASwlCLBXIW6m0slurFNtO4lVjb7o4FsLXacEOW0K",
+	"Rep5oMqRej0dWYq0udOgYIf2UCWa9bPRWDENxoY2VON4bMx7iP2/pk2mSpF0uZqPx/48+kzL00Rkh7L4",
+	"z2oNjyvDMxdYKncjW0t2IXm3RYhCUdnRHrnSrXfOMPJxkEeA+vgxHnWoNoxS6KxR5bQ3KknCvauI66H2",
+	"1K3L3/xfB4PLP6gWYljU19A74UxP1dhiUOvng8+VDsHnMWOEFJBc8DmIDXxG0nBTaY6GcJWHTxdMpR0J",
+	"w6oYCYCMzcxrz4dnB677QgO0RwkxDdHGFKwnDtKOUq9IzU7KcZN0LXU8jns4cpsKxadF8LEgyhi1Vciw",
+	"RlVMc8+CIZmsin1vqgL/NdyG4XYOtzLaTGcJCSe5qCgVWPaQmey/d6E4y2usmSCDpyoJubYzesj94znJ",
+	"t8/IXUet/3KN6ki9YQFDGjbRUcjLQAs9yoRsIx6y8E/40ljyIZCQScJpJPcRUjlhhIpSlEZR90o7PHgh",
+	"FRRI1hDH7Y72GpVcj+OUpKZVeqrgpPo54eoElbLSQacMdSyzIvawQllWmsh+1LxDudi647Bmdi9R3Y/q",
+	"YZ5GQRrX3HxpCtK+BAqJa8TlQRs4k66Bcw5Cvoy6RtT/fXYA7EmUA2rHJXUgms+3fwfdLXQvLDltaah4",
+	"7uCj4/decF+jrziSYYldYmO9VtGXDSini3PkWXmgN0N2bryybFrcEqxk5a4rLZcOOu82Ygdg/CCZeJ7O",
+	"wbhOpaysdKxjjcogzeHL3hwkWixKI0Mx1Y1skGu+GqVQ05c8vEu7BcZ5aLwrRQOtk6WwhlyRuHVU/1pZ",
+	"oz3tPyPB9QYX4lvvxiQwh6/obeSdWACv4evniV2RnyPSqoL+vIpVdUUo8JhcmfRVP2epBdVFpaPLI9lN",
+	"3Hec1P+yN6lvclVpCL0f+eT5XJMpuSYzFgXSxwUIJx3wZwTZKawcv8mzCNlaw0HiGOQNXm+8Z/LqZD7G",
+	"kvTZOq6f7FHyWDhkPiSY8eDyFva+jsTccg7O/4FwmrJ+QobMF05tgM1yoqxHagbz0mLUue5xukfWJ/l2",
+	"7qoM12OmzxLVT4VmVspVmj4vNbroDjscZpK686EDmmuWwF59GZfP+a4cndoVoZQp+qooHruQ9Qdy6PGl",
+	"EwtK4q0zKkefrepKOqidsbDrOlPVRToc13QN6WaPqLaK9ve/VMHVqMXADP3FMztbfGPUzPM89VZRA7h/",
+	"yRWls6IJYB13kdmpkG7j7bLJBzjoGxQ+wSkCMapiytRp5T5rPNCyPaF0i9ObGJZcUU0L8nYiUjNpFOMU",
+	"hiGPIr4yTnoKP2dZ5xTXbchIOlQ7M++Z/WX8YeCncc0mXRk+a73MpAvFEfZ78qqZgQTGdTPcHWhPzl/+",
+	"Fv48XDMzTHtK1cz0Ew+VPtl3OXDqkA54RNiXe+vNuysTUvxC/ZWn0VNwWObp6ik8li7pO3O2wpKRZHhi",
+	"hB5zUEYheRZ34nAwj8vrTj8W/xlTu3MC4mixiU+nDw6DQ9UlyWftOa+5rDQXc0AT6iXCl2mTsa1aQilk",
+	"3RlrU2cdu1EqTZKDr3z+3uGWVIhwsn4DN5zQz1XUo0KVkntUcNFKO1RzcG2vLzbRZazomJZvtNZ3uaB6",
+	"CqqG8Wu95neS1Olp37GgeUiHU0g3eBWeuupm2t7q34U3/y68+VctvEmlyZlKb74kEf2wGpzPvYNHleGk",
+	"BziqxEFK5jIccnEMbWmRk7YdWFRRqR8dfe15rmqGX6r0XtUMRYgmRTOxuZo9f/nKEWPuWBFLGFdpX8gi",
+	"HlPHMqt7J7AninhS8DJXuvLEVuG0weFnjkg9xiz8XGUsqRJ21Dx8aF3LlyJbqLRlMGOPFLeET1xSQruG",
+	"4MCmLzlmGiYGETT4thPt9Av0+RwrkRk3RTnJvqY3Pqc99xDOOn/xjFh2YNfBZTGmMXZXkoaHNESVNJHH",
+	"kqaJc1Uzf00/1fg0yAxLzGCRfYMeVK+RbjY+y9nH/ZBlFr1qWb8+B2o9UOHCb2Jpz6f/CgAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

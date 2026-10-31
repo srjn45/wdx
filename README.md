@@ -56,7 +56,7 @@ The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when 
 - [docs/RELEASING.md](docs/RELEASING.md): versions, channels, releasing and updating
 - [docs/TERMINALS.md](docs/TERMINALS.md): terminals and the holder process that keeps each shell running
 - [docs/AGENT.md](docs/AGENT.md): agents, which run an AI coding agent on the same process machinery; [docs/CHILD_AGENTS.md](docs/CHILD_AGENTS.md): child agents
-- [docs/SEND.md](docs/SEND.md): sending a message to a terminal (`wdx terminal send`)
+- [docs/SEND.md](docs/SEND.md): sending a message to a terminal or an agent (`wdx terminal send`, `wdx agent send`)
 - [docs/ATTACH.md](docs/ATTACH.md): attaching to a terminal (`wdx terminal attach`) and its history; [docs/VT.md](docs/VT.md): the terminal emulator it uses and what to fix in it
 - [docs/TIDE.md](docs/TIDE.md): the terminal IDE (`wdx tide`), what is built and what comes next
 - [AGENTS.md](AGENTS.md): how the code is organized, for people and AI agents working on it

@@ -4,6 +4,7 @@ package acatest
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -29,6 +30,14 @@ func (a *ACA) ID() string { return aca.ClaudeCode{}.ID() }
 // ScreenParser implements aca.AiCodingAgent: Claude Code's, as a holder goes by
 // the id.
 func (a *ACA) ScreenParser() aca.ScreenParser { return aca.ClaudeCodeScreenParser{} }
+
+// Deliver implements aca.AiCodingAgent: Claude Code's, as a holder goes by the
+// id.
+func (a *ACA) Deliver(w io.Writer, message string) error { return aca.ClaudeCode{}.Deliver(w, message) }
+
+// Interrupt implements aca.AiCodingAgent: Claude Code's, as a holder goes by the
+// id.
+func (a *ACA) Interrupt() []byte { return aca.ClaudeCode{}.Interrupt() }
 
 // Command implements aca.AiCodingAgent.
 func (a *ACA) Command(l aca.Launch) ([]string, error) {

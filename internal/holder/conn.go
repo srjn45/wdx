@@ -14,6 +14,10 @@ import (
 // terminal was started by an older wdx.
 var ErrSendUnsupported = errors.New("the terminal's holder is too old to take messages; restart the terminal")
 
+// ErrAgentSendUnsupported is an agent's holder that speaks a protocol before it
+// delivers to an ACA: it was started by an older wdx.
+var ErrAgentSendUnsupported = errors.New("the agent's holder is too old to take messages; close and open its project to restart it")
+
 // ErrMessageTooLarge is a message that does not fit in a frame.
 var ErrMessageTooLarge = fmt.Errorf("the message does not fit in the %d bytes the holder takes", maxPayload)
 
@@ -137,7 +141,20 @@ func (c *Conn) Send(prompt string) error {
 	if c.hello.Version < inboxVersion {
 		return ErrSendUnsupported
 	}
-	body, err := json.Marshal(sendRequest{Prompt: prompt})
+	return c.send(sendRequest{Prompt: prompt})
+}
+
+// SendAgent is Send for a terminal running an ACA, for whom instant says the
+// message may interrupt its turn.
+func (c *Conn) SendAgent(prompt string, instant bool) error {
+	if c.hello.Version < agentInboxVersion {
+		return ErrAgentSendUnsupported
+	}
+	return c.send(sendRequest{Prompt: prompt, Instant: instant})
+}
+
+func (c *Conn) send(req sendRequest) error {
+	body, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}

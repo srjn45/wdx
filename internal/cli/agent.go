@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -26,7 +27,7 @@ func newAgentCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentStartCmd())
+	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentSendCmd(), newAgentStartCmd())
 	return cmd
 }
 
@@ -243,6 +244,60 @@ func newAgentStartCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
+	return cmd
+}
+
+func newAgentSendCmd() *cobra.Command {
+	var ref agentRef
+	var prompt string
+	var instant bool
+	cmd := &cobra.Command{
+		Use:   "send (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [--instant]",
+		Short: "Give a running agent a message, submitted once it can take it",
+		Long: "The message is queued for the agent, in the order sent. It waits while text\n" +
+			"is in the agent's input box, a prompt is open or its screen cannot be read,\n" +
+			"for as long as that lasts. During a turn it goes in, for the agent to take\n" +
+			"up after it. This does not wait for it to go in or for a reply, and a message\n" +
+			"still queued when the agent ends is lost.\n\n" +
+			"--instant goes before the other messages, and interrupts the agent's turn\n" +
+			"first. It waits as they do, and in a pane too narrow to show that a turn is\n" +
+			"running it does not interrupt.",
+		Example: examples(
+			"Give an agent of the project you are in a task", identity.Name+" agent send --name reviewer --prompt summarize",
+			"Stop what it is doing and give it this instead", identity.Name+" agent send --name reviewer --prompt stop --instant",
+			"By id, as JSON", identity.Name+" agent send --id agent-1a2b3c4d --prompt summarize --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not sent",
+			outputNote:    "The agent the message is queued for.\n" + `With --json: {"result": "queued", "agent": {...}}`,
+			resultList:    "queued",
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAgentRemoved,
+				api.ErrorCodeSendFailed, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if prompt == "" {
+				return &usageError{errors.New("--prompt is empty")}
+			}
+			path, project, dir, err := ref.resolve(cmd)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).SendAgent(cmd.Context(), path, project, dir, prompt, instant)
+			if problemCode(err) == api.ErrorCodeAgentNotRunning {
+				return &hinted{err, "start it with " + identity.Name + " agent start, or open its project"}
+			}
+			if err != nil {
+				return agentHint(ref.notFoundHint(err))
+			}
+			return printResult(cmd, agentResult(r))
+		},
+	}
+	ref.addFlags(cmd)
+	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to give it; it is submitted")
+	cmd.Flags().BoolVar(&instant, "instant", false, "go before other messages, and interrupt its turn")
+	cmd.MarkFlagRequired(promptFlag)
+	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 

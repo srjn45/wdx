@@ -47,6 +47,28 @@ func (e *StartError) Error() string {
 
 func (e *StartError) Unwrap() error { return e.Err }
 
+// NotRunningError is returned when a request needs an agent's AI coding agent
+// running.
+type NotRunningError struct {
+	Agent Agent
+}
+
+func (e *NotRunningError) Error() string {
+	return fmt.Sprintf("agent %s is %s, not running", e.Agent.Terminal.Name, e.Agent.Terminal.State)
+}
+
+// SendError is returned when a message did not reach an agent's holder.
+type SendError struct {
+	Agent Agent
+	Err   error
+}
+
+func (e *SendError) Error() string {
+	return fmt.Sprintf("message not sent to agent %s: %v", e.Agent.Terminal.Name, e.Err)
+}
+
+func (e *SendError) Unwrap() error { return e.Err }
+
 // Launches returns what the terminals' supervisor asks at each launch of an
 // agent's row: the agent's id, and the id and command of its AI coding agent,
 // among acas, for its session. The supervisor needs it before a Manager can exist.
@@ -212,6 +234,25 @@ func (m *Manager) removeEmptyTombstones(ctx context.Context, id string) error {
 	return nil
 }
 
+// Send queues a message for a running agent; instant says it may interrupt the
+// agent's turn. A tombstone fails with a *RemovedError, one not running with a
+// *NotRunningError and one whose holder does not take it with a *SendError.
+func (m *Manager) Send(ctx context.Context, id, prompt string, instant bool) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
+	}
+	t, err := m.terminals.SendAgent(ctx, a.Terminal.ID, prompt, instant)
+	if err != nil {
+		return Agent{}, m.agentError(ctx, err)
+	}
+	a.Terminal = t
+	return a, nil
+}
+
 // History reads count lines of the agent's history from line from on, or its
 // last count lines when from is nil.
 func (m *Manager) History(ctx context.Context, id string, from *int64, count int) (holder.History, error) {
@@ -247,6 +288,20 @@ func (m *Manager) agentError(ctx context.Context, err error) error {
 			return gerr
 		}
 		return &StartError{Agent: a, Err: e.Err}
+	}
+	if e, ok := errors.AsType[*terminal.NotRunningError](err); ok {
+		a, gerr := m.withTerminal(ctx, e.Terminal)
+		if gerr != nil {
+			return gerr
+		}
+		return &NotRunningError{Agent: a}
+	}
+	if e, ok := errors.AsType[*terminal.SendError](err); ok {
+		a, gerr := m.withTerminal(ctx, e.Terminal)
+		if gerr != nil {
+			return gerr
+		}
+		return &SendError{Agent: a, Err: e.Err}
 	}
 	return err
 }

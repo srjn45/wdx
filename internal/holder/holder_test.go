@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
@@ -55,6 +56,8 @@ func runHolder(args []string) int {
 	o.screenHold = os.Getenv(screenHoldVar)                  //nolint:forbidigo // as the home above
 	if dir := os.Getenv(parserDirVar); dir != "" {           //nolint:forbidigo // as the home above
 		o.ParseScreen = testParser(dir)
+		o.Deliver = aca.ClaudeCode{}.Deliver
+		o.Interrupt = aca.ClaudeCode{}.Interrupt()
 	}
 	o.watchTimes.rules.Still, _ = time.ParseDuration(os.Getenv(stillVar)) //nolint:forbidigo // as the home above
 	// It logs where a holder wdx starts does: the home's log files.

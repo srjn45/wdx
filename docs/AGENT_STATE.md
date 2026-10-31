@@ -122,7 +122,7 @@ Known failures, kept as such in the tests:
 
 **The footer veto, decided by the human.** When the box's footer matches `? for shortcuts`, `← <n> ag` or `← for agents`, `Draft` is false whatever the styling says, as Claude drops those words while the box holds text. No recording has text that is not dim above one of them, footer and text change in the same chunk, and a test keeps checking it on the color recordings. A bare footer says nothing the other way: many moments have one with no draft.
 
-For later, when `wdx agent send` is discussed: in bash mode with text the box has a draft, but with only `!` it has none, and a message delivered there may run as a shell command. Untested.
+In bash mode the box has a draft even with only `!`, decided by the human for `wdx agent send`: a message delivered there would run as a shell command.
 
 Not recorded: vim mode, `#` and other input modes, image pastes, a running turn in bash mode, a real holder.
 

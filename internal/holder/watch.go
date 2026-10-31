@@ -57,6 +57,8 @@ type screenWatch struct {
 	// lastInput is when the last input was sent, as time since begun; 0 is none.
 	lastInput atomic.Int64
 	latest    atomic.Pointer[screen.ScreenState]
+	// published is told after latest changes, for the inboxReader.
+	published chan struct{}
 	panicked  atomic.Bool // a panic in the parser is logged once
 
 	quit  chan struct{} // closed to stop the goroutine
@@ -66,7 +68,7 @@ type screenWatch struct {
 func newScreenWatch(log *slog.Logger, parse ParseScreen, read func() (lines, undimmed []string, ok bool), times watchTimes) *screenWatch {
 	w := &screenWatch{
 		log: log, parse: parse, read: read, times: times.orDefaults(),
-		changed: make(chan struct{}, 1), inputs: make(chan struct{}, 1),
+		changed: make(chan struct{}, 1), inputs: make(chan struct{}, 1), published: make(chan struct{}, 1),
 		quit: make(chan struct{}), ended: make(chan struct{}),
 	}
 	begun := time.Now()
@@ -147,6 +149,15 @@ func wake(c chan struct{}) {
 	}
 }
 
+// stateChanged tells when the state changed; nil, which never tells, when
+// nothing reads the screen.
+func (w *screenWatch) stateChanged() <-chan struct{} {
+	if w == nil {
+		return nil
+	}
+	return w.published
+}
+
 // state is the latest state read.
 func (w *screenWatch) state() screen.ScreenState { return *w.latest.Load() }
 
@@ -209,7 +220,7 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 			if !failed {
 				if state != parsed {
 					parsed = state
-					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft)
+					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn)
 				}
 				motion.Screen(now, !slices.Equal(lines, previous), state)
 				previous = lines
@@ -253,7 +264,8 @@ func (w *screenWatch) publish(state screen.ScreenState) {
 		return
 	}
 	w.latest.Store(&state)
-	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft)
+	wake(w.published)
+	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn)
 }
 
 // isInput reports whether a frame of a client's input is what the fallback

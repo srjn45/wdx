@@ -283,6 +283,7 @@ func TestTerminalCommandsDoNotSeeAgents(t *testing.T) {
 		{"terminal", "remove", "--id", a.TerminalId, "--stop-running"},
 		{"terminal", "history", "--id", a.TerminalId},
 		{"terminal", "attach", "--id", a.TerminalId},
+		{"terminal", "send", "--id", a.TerminalId, "--prompt", "hello"},
 		{"terminal", "get", "--name", "helper", "--project-name", "app"},
 		{"terminal", "start", "--name", "helper", "--project-name", "app"},
 		{"terminal", "remove", "--name", "helper", "--project-name", "app", "--stop-running"},
@@ -620,4 +621,93 @@ func TestAgentCreateWorktreeNoCommit(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--worktree", "fix")
 	wantError(t, v, exit, api.ErrorCodeWorktreeFailed, api.ExitRejected)
+}
+
+// claudeAtRest is a run file for the test ACA: a program drawing Claude Code's
+// idle screen, which the holder goes by, and recording its input in got.
+const claudeAtRest = `stty raw -echo
+printf '────────────\r\n❯ \r\n────────────\r\n  ⏸ manual mode on · ? for shortcuts · ← 1 agent'
+exec cat > got
+`
+
+func TestAgentSend(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(claudeAtRest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := newAgent(t, home, app, "helper")
+	const secret = "the-secret-prompt"
+
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "send", "--name", "helper", "--prompt", secret)
+	if exit != api.ExitOK || v.Result != "queued" || v.Agent.Id != a.Id {
+		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
+	}
+	out := wdx(t, home, "agent", "send", "--id", a.Id, "--instant", "--prompt=line one\nline two")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "queued agent helper in app\n") {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+	// Its parser and its way of delivering, not typing. The second is instant, so
+	// may go first if it came while the first was still queued.
+	first, second := "\x1b[200~"+secret+"\x1b[201~\r", "\x1b[200~line one\nline two\x1b[201~\r"
+	got := filepath.Join(app, "got")
+	var read []byte
+	if !eventually(t, func() bool {
+		read, _ = os.ReadFile(got)
+		return string(read) == first+second || string(read) == second+first
+	}) {
+		t.Fatalf("the agent read %q", read)
+	}
+
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "send", "--name", "nope", "--prompt", secret)
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", "")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id)
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", strings.Repeat("x", 1<<20))
+	wantError(t, v, exit, api.ErrorCodeSendFailed, api.ExitSystem)
+
+	files, err := filepath.Glob(filepath.Join(home, "logs", "*.log"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no logs: %v", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if logged := string(b); strings.Contains(logged, secret) || strings.Contains(logged, "line one") {
+			t.Fatalf("a prompt is logged in %s", f)
+		}
+	}
+}
+
+func TestAgentSendNotRunning(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte("exit 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := newExitedAgent(t, home, app, "helper")
+	v, exit := wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", "hello")
+	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, api.ExitRejected)
+	wantHint(t, v, "start it with wdx agent start, or open its project")
+}
+
+func TestAgentSendRemoved(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	parent := newAgent(t, home, app, "parent")
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != api.ExitOK {
+		t.Fatalf("create: exit %d, %+v", exit, v)
+	}
+	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("remove: exit %d, %+v", exit, v)
+	}
+	v, exit := wdxJSON(t, home, "agent", "send", "--id", parent.Id, "--prompt", "hello")
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
 }

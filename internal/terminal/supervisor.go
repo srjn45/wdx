@@ -379,7 +379,17 @@ func (s *Supervisor) history(ctx context.Context, kind Kind, id string, from *in
 // Send puts prompt in the inbox of a running terminal's holder and returns the
 // terminal. An agent's row is not found.
 func (s *Supervisor) Send(ctx context.Context, id, prompt string) (Terminal, error) {
-	t, err := s.store.ofKind(ctx, KindShell, id)
+	return s.send(ctx, KindShell, id, prompt, false)
+}
+
+// SendAgent is Send for an agent's row; instant says the message may interrupt
+// its turn.
+func (s *Supervisor) SendAgent(ctx context.Context, id, prompt string, instant bool) (Terminal, error) {
+	return s.send(ctx, KindAgent, id, prompt, instant)
+}
+
+func (s *Supervisor) send(ctx context.Context, kind Kind, id, prompt string, instant bool) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, kind, id)
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -392,10 +402,16 @@ func (s *Supervisor) Send(ctx context.Context, id, prompt string) (Terminal, err
 	if w == nil {
 		return Terminal{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
 	}
-	if err := w.current().Send(prompt); err != nil {
+	conn := w.current()
+	if kind == KindAgent {
+		err = conn.SendAgent(prompt, instant)
+	} else {
+		err = conn.Send(prompt)
+	}
+	if err != nil {
 		return Terminal{}, &SendError{Terminal: t, Err: err}
 	}
-	logging.FromContext(ctx).Info("message queued", "terminal_id", id, "prompt_bytes", len(prompt))
+	logging.FromContext(ctx).Info("message queued", "terminal_id", id, "prompt_bytes", len(prompt), "instant", instant)
 	return t, nil
 }
 

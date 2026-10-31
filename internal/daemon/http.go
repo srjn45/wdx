@@ -177,14 +177,18 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 // requestLogged is a request's body as logged: a prompt can hold secrets, so
 // it is measured, never logged, even in a body too broken to read.
 func requestLogged(operation string, b []byte) any {
-	if operation != "sendTerminal" {
+	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)
 	}
-	var r api.TerminalMessage
+	var r api.AgentMessage
 	if json.Unmarshal(b, &r) != nil {
 		return map[string]any{"body_bytes": len(b)}
 	}
-	return map[string]any{"prompt_bytes": len(r.Prompt)}
+	logged := map[string]any{"prompt_bytes": len(r.Prompt)}
+	if r.Instant != nil {
+		logged["instant"] = *r.Instant
+	}
+	return logged
 }
 
 // historyLogged is a history response as logged: terminal output can hold

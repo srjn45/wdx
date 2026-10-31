@@ -12,5 +12,7 @@ Each run leaves a trust entry for its directory in `~/.claude.json`.
 
 `holdercheck/` is a Go program, since it uses the holder's client: it runs one `wdx holder` in a home under `$REAL_BASE`, sends keys as an attaching client does, and writes the states the holder logged and what the output asked of the terminal; docs/AGENT_STATE.md, Step 2 findings. `$REAL_BASE` must be a short path, as a holder's socket lives under it; a symlink will do. It removes the session folder of its own directory, and leaves a trust entry too. Its client attaches, types and leaves at once, which can lose the keys, as those findings say.
 
+Its `send` scenario gives Claude messages in each state docs/SEND.md says something about; its `Checked on the real thing` came from it.
+
     CGO_ENABLED=0 go build -o /some/dir/wdx ./cmd/wdx
     REAL_BASE=/tmp/x go run ./internal/aca/testdata/claude_code/record/holdercheck states s316 /some/dir/wdx ~/.local/share/claude/versions/2.1.316 120x40

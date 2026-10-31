@@ -263,6 +263,20 @@ func (c *Client) StartAgent(ctx context.Context, ref, project, dir string) (api.
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// SendAgent queues a message for the agent ref names, as StartAgent does;
+// instant says it may interrupt the agent's turn.
+func (c *Client) SendAgent(ctx context.Context, ref, project, dir, prompt string, instant bool) (api.AgentResult, error) {
+	message := api.AgentMessage{Prompt: prompt}
+	if instant {
+		message.Instant = &instant
+	}
+	r, err := c.api.SendAgentWithResponse(ctx, ref, &api.SendAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, message)
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // DeleteAgent removes the agent ref names, as StartAgent does; a live one is
 // refused unless stopRunning.
 func (c *Client) DeleteAgent(ctx context.Context, ref, project, dir string, stopRunning bool) (api.AgentResult, error) {

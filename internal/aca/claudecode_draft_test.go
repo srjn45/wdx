@@ -56,9 +56,10 @@ var draftAtStep = map[string]bool{
 	"tasks_footer": false, "tasks_cleared": false,
 	"prompt_over_draft": false, "draft_after_turn_cleared": false, "cleared_turn": false, "shell_running": false,
 	"cleared_shell": false, "subagent_running": false, "cleared_subagent": false, "idle_end": false,
-	// Bash mode with nothing typed after its !: no text, though not an
-	// ordinary box either.
-	"bash_alone": false,
+
+	// Bash mode with nothing typed after its !: a message there would run as a
+	// shell command.
+	"bash_alone": true,
 
 	"typed_idle": true, "typed_dim_words": true, "over_suggestion": true, "tab_accepted": true, "tab_accepted_extended": true,
 	"right_accepted": true, "multi_line": true, "long_draft": true, "wrapped_draft": true, "pasted_draft": true,
@@ -175,7 +176,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "bash mode, nothing typed",
 			lines:    []string{rule, "! ", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "! ", rule, ""},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
 		},
 		{
 			name:     "bash mode, typed",
@@ -283,4 +284,29 @@ func readMarks(dir string) ([]recordedStep, error) {
 		steps = append(steps, recordedStep{seconds(sec), name})
 	}
 	return steps, nil
+}
+
+func TestClaudeCodeInTurn(t *testing.T) {
+	t.Parallel()
+	const rule = "────────────"
+	for _, c := range []struct {
+		name, footer string
+		activity     screen.Activity
+		want         bool
+	}{
+		{"a turn", "  ⏸ manual mode on · esc to interrupt · ← 1 agent", screen.ActivityWorking, true},
+		{"a turn with a shell running", "  ⏸ manual mode on · 1 shell · esc to interrupt", screen.ActivityWorking, true},
+		{"only a shell", "  ⏸ manual mode on · 1 shell · ← 1 agent", screen.ActivityWorking, false},
+		{"at rest", "  ⏸ manual mode on · ? for shortcuts · ← 1 agent", screen.ActivityIdle, false},
+		{"cut off before it says", "  ⏵⏵ auto mode on (shift+tab to cycle) · /tasks to see subagents · esc to int…", screen.ActivityUnknown, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			lines := []string{rule, "❯ ", rule, c.footer}
+			got := aca.ClaudeCodeScreenParser{}.Parse(lines, lines)
+			if got.InTurn != c.want || got.Activity != c.activity {
+				t.Fatalf("got %+v, want activity %s, in turn %v", got, c.activity, c.want)
+			}
+		})
+	}
 }

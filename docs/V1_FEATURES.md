@@ -23,7 +23,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 - [~] P0 Attach / detach a live session (native terminal attach, with screen snapshot on attach): terminals, full-window as tmux's, with their whole history to scroll through (docs/ATTACH.md, docs/ATTACH_VIEW.md); and agents (docs/AGENT.md)
 - [x] P0 Plain terminal sessions (`kind=terminal`, `$SHELL`, no AI CLI): `wdx terminal`, `wdx terminal attach` and `history`
 - [~] P0 Session output tail / recent output: `wdx terminal history` prints what scrolled off a terminal's screen; still to do, the screen of a running terminal after it, so that the latest output is in it too (history gets the screen only when the shell exits)
-- [~] P0 Send text into a session: `wdx terminal send`; still to do, `wdx agent send` (docs/SEND.md)
+- [x] P0 Send text into a session: `wdx terminal send`, `wdx agent send` (docs/SEND.md)
 - [ ] P1 PTY observability: runtime status, `warden_pty_*` metrics, decision trace
 - [~] P1 Bounded child cleanup (TERM → KILL grace, process-group kill, reap timeouts): terminals are hung up on, then killed with their process groups after 5 s
 - [ ] P1 PTY event journal and stream

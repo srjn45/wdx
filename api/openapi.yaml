@@ -515,6 +515,42 @@ paths:
               schema: { $ref: "#/components/schemas/AgentResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/agents/{agent}/send:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: sendAgent
+      summary: Queue a message for a running agent
+      description: |
+        The message goes in the inbox of the agent's holder, which delivers it
+        once its screen allows: never while text is in its input box or a prompt
+        is open, nor on a screen it cannot read. It may not have reached the
+        agent when this returns, and is lost if the agent ends first.
+
+        With instant it goes before the general messages and, when the agent is
+        in a turn, its turn is interrupted first.
+
+        A message that does not reach the holder returns send_failed with the
+        agent under details.agent: the holder is too old and the agent must be
+        restarted, or the message does not fit in 1 MiB.
+
+        Errors: agent_not_running, agent_removed, invalid_path, not_found,
+        send_failed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentMessage" }
+      responses:
+        "200":
+          description: The agent, with result queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/agents/{agent}/history:
     parameters:
       - $ref: "#/components/parameters/AgentRef"
@@ -951,6 +987,19 @@ components:
       required: [agent]
       properties:
         agent: { $ref: "#/components/schemas/Agent" }
+
+    AgentMessage:
+      type: object
+      required: [prompt]
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: The text to give the agent; it is submitted.
+        instant:
+          type: boolean
+          description: Go first, and interrupt the agent's turn if it is in one.
 
     AgentResult:
       type: object

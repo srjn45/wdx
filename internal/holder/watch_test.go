@@ -65,6 +65,8 @@ idle() { draw "$1" '  ⏸ manual mode on · ? for shortcuts · ← 1 agent'; }
 working() { draw "$1" '  ⏸ manual mode on · esc to interrupt · ← 1 agent'; }
 waiting() { printf '\033[2J\033[H%s\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n\r\n Esc to cancel · Tab to amend' "$1"; }
 cutoff() { draw "$1" '  ⏸ manual mode on · /tasks to see su…'; }
+background() { draw "$1" '  ⏸ manual mode on · 1 shell · ← 1 agent'; }
+drafted() { printf '\033[2J\033[H%s\r\n%s\r\n❯ typed\r\n%s\r\n%s' "$1" "$rule" "$rule" '  ⏸ manual mode on'; }
 wait_for() { until [ -f "$1" ]; do sleep 0.01; done; }
 stty raw -echo
 `

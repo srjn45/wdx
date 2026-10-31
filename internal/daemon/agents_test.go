@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -550,5 +551,61 @@ func TestChildAgents(t *testing.T) {
 	}
 	if list := td.agents(t, &api.ListAgentsParams{Project: optional("app")}); len(list) != 0 {
 		t.Fatalf("list: %+v", list)
+	}
+}
+
+func TestSendAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	const secret = "the-secret-prompt"
+
+	r, err := td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, api.AgentMessage{Prompt: secret, Instant: optional(true)})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultQueued || r.JSON200.Agent.Id != a.Id {
+		t.Fatalf("want it queued, got %v %s", err, r.Body)
+	}
+	r, err = td.client.SendAgentWithResponse(ctx, "nope", &api.SendAgentParams{Dir: optional(app)}, api.AgentMessage{Prompt: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+	r, err = td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, api.AgentMessage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusBadRequest, api.ErrorCodeUsage)
+	r, err = td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, api.AgentMessage{Prompt: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusInternalServerError, api.ErrorCodeSendFailed)
+	if sent := detail(t, r.ApplicationproblemJSONDefault, "agent"); sent["id"] != a.Id {
+		t.Fatalf("want the agent in details, got %v", sent)
+	}
+	for _, line := range logLines(t, td.home) {
+		if b, err := json.Marshal(line); err != nil || strings.Contains(string(b), secret) {
+			t.Fatalf("the prompt is logged: %s, %v", b, err)
+		}
+	}
+}
+
+func TestSendAgentNotRunning(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte("exit 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createExitedAgent(t, app, "helper")
+	r, err := td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, api.AgentMessage{Prompt: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentNotRunning)
+	if stopped := detail(t, r.ApplicationproblemJSONDefault, "agent"); stopped["id"] != a.Id {
+		t.Fatalf("want the agent in details, got %v", stopped)
 	}
 }

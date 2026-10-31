@@ -2,6 +2,8 @@
 // Claude Code for now, Codex and others later. See docs/AGENT.md.
 package aca
 
+import "io"
+
 // AiCodingAgent is one AI CLI wdx can run in an agent.
 type AiCodingAgent interface {
 	// ID names it in the database and the API, as "claude_code".
@@ -12,6 +14,12 @@ type AiCodingAgent interface {
 	Command(Launch) ([]string, error)
 	// ScreenParser reads what it is doing from its screen.
 	ScreenParser() ScreenParser
+	// Deliver puts one message into its input box on w, its terminal's input,
+	// and submits it. Everything a message needs waits here, and the holder runs
+	// it apart from what must not wait.
+	Deliver(w io.Writer, message string) error
+	// Interrupt is the input that stops its turn.
+	Interrupt() []byte
 }
 
 // ByID is the AI coding agent named id, for what cannot be handed one: the

@@ -113,6 +113,17 @@ func (s *server) StartAgent(ctx context.Context, req api.StartAgentRequestObject
 	return api.StartAgent200JSONResponse{Result: api.ResultStarted, Agent: agentView(a)}, nil
 }
 
+func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) (api.SendAgentResponseObject, error) {
+	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if a, err = s.agents.Send(ctx, a.ID, req.Body.Prompt, deref(req.Body.Instant)); err != nil {
+		return nil, err
+	}
+	return api.SendAgent200JSONResponse{Result: api.ResultQueued, Agent: agentView(a)}, nil
+}
+
 func (s *server) DeleteAgent(ctx context.Context, req api.DeleteAgentRequestObject) (api.DeleteAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {

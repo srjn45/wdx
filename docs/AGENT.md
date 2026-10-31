@@ -142,6 +142,7 @@ wdx agent list   [--project-id <id> | --project-name <name> | --all]
 wdx agent get    (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
+wdx agent send   (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [--instant]: docs/SEND.md
 wdx agent remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]
 ```
 

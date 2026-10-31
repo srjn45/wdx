@@ -55,6 +55,8 @@ func RunIfHolder() {
 	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder", "terminal_id", o.ID)
 	if known, ok := aca.ByID(acaID); ok {
 		o.ParseScreen = known.ScreenParser().Parse
+		o.Deliver = known.Deliver
+		o.Interrupt = known.Interrupt()
 	}
 	err := holder.Run(logging.NewContext(context.Background(), log), o)
 	logs.Close() // os.Exit runs no deferred call
