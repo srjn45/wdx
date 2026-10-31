@@ -513,6 +513,72 @@ func TestCreateAfterClose(t *testing.T) {
 	}
 }
 
+// TestStopDuringRedial stops a terminal while its connection to the holder has
+// dropped and the watcher dials again: the stop is not lost with it. The
+// redial is held until the stop was tried on the dropped connection.
+func TestStopDuringRedial(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	term := create(t, s, f.project(t, "warden"), "api", dir(t, ""))
+	// The release may not get through the proxy below before it closes.
+	t.Cleanup(func() { kill(term.HolderPID, term.PID) })
+
+	socket := s.socket(term.ID)
+	moved := socket + ".moved"
+	if err := os.Rename(socket, moved); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	redialled := make(chan net.Conn, 1)
+	go func() {
+		if c, err := l.Accept(); err == nil {
+			redialled <- c
+		}
+	}()
+	// A second daemon's connection drops the watcher's.
+	other, err := holder.Dial(holder.WithLimits(context.Background(), holdertest.Limits(t)), moved, term.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	var watcher net.Conn
+	select {
+	case watcher = <-redialled:
+	case <-waittest.After(t):
+		t.Fatal("the watcher did not dial again")
+	}
+	defer watcher.Close()
+
+	removed := make(chan error, 1)
+	go func() {
+		_, err := s.Remove(context.Background(), term.ID, true)
+		removed <- err
+	}()
+	waitTerminal(t, s, term.ID, "stopping", func(got Terminal) bool { return got.State == StateStopped })
+
+	real, err := net.Dial("unix", moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer real.Close()
+	go func() { _, _ = io.Copy(real, watcher) }()
+	go func() { _, _ = io.Copy(watcher, real) }()
+	select {
+	case err := <-removed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-waittest.After(t):
+		t.Fatal("the stop was lost with the connection")
+	}
+	waitGone(t, term.PID)
+}
+
 // TestCloseDuringRedial closes the Supervisor while a watcher dials its
 // holder again, the dial answering only after the close began: Close
 // returns, and the holder is left running for the next daemon.

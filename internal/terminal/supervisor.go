@@ -100,7 +100,19 @@ type Supervisor struct {
 type watch struct {
 	mu   sync.Mutex
 	conn *holder.Conn
-	done chan struct{} // closed once the watcher returns
+	// stopping is set once the holder is asked to stop: a connection dropping
+	// may lose that, so that the watcher asks again on the next one.
+	stopping bool
+	grace    time.Duration
+	done     chan struct{} // closed once the watcher returns
+}
+
+// stop asks the holder to stop the shell, now and on any later connection.
+func (w *watch) stop(grace time.Duration) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stopping, w.grace = true, grace
+	return w.conn.Stop(grace)
 }
 
 func (w *watch) current() *holder.Conn {
@@ -499,7 +511,7 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 		}
 	}
 	log.Info("stopping terminal", "terminal_id", t.ID, "grace_ms", s.opts.StopGrace.Milliseconds())
-	if err := w.current().Stop(s.opts.StopGrace); err != nil {
+	if err := w.stop(s.opts.StopGrace); err != nil {
 		log.Info("stop not sent", "terminal_id", t.ID, "err", err)
 	}
 	return w, nil
@@ -631,6 +643,12 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 					return
 				}
 				w.conn = next
+				if w.stopping {
+					log.Info("asking the holder to stop again, on the new connection")
+					if err := next.Stop(w.grace); err != nil {
+						log.Info("stop not sent", "err", err)
+					}
+				}
 				w.mu.Unlock()
 			}
 		}
