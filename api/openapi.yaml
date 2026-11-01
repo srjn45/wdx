@@ -317,6 +317,30 @@ paths:
               schema: { $ref: "#/components/schemas/WorktreeList" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/worktrees/{worktree}:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    delete:
+      operationId: removeWorktree
+      summary: Remove a worktree that landed
+      description: |
+        Only one with nothing ahead of its base and nothing uncommitted, or one
+        whose directory is already gone, where only git's entry goes. Its branch
+        goes too if it is merged. Agents running there are told where to go on, and
+        do not hold it up. Terminals running there are left as they are.
+
+        Errors: invalid_path, not_found, usage, worktree_is_clone,
+        worktree_not_landed, worktree_not_removed.
+      responses:
+        "200":
+          description: What went, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeRemoved" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/worktrees/{worktree}/diff:
     parameters:
       - $ref: "#/components/parameters/WorktreeRef"
@@ -1324,6 +1348,20 @@ components:
           description: M changed, A added, D deleted.
         verified: { type: boolean, description: "A human marked it verified, and it has not changed since." }
 
+    WorktreeRemoved:
+      type: object
+      required: [result, worktree, path, branch_deleted, branch_kept, notified]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        worktree: { type: string }
+        path: { type: string }
+        branch_deleted: { type: string, nullable: true, description: The branch that went with it. }
+        branch_kept: { type: string, nullable: true, description: "Its branch, when git would not delete it or it is the default branch." }
+        notified:
+          type: array
+          description: The names of the agents told where to go on.
+          items: { type: string }
+
     WorktreeFileMark:
       type: object
       required: [worktree, path, verified]
@@ -1790,6 +1828,9 @@ components:
         - agent_removed
         - branch_exists
         - worktree_failed
+        - worktree_is_clone
+        - worktree_not_landed
+        - worktree_not_removed
         - agent_not_running
         - attach_unsupported
         - connection_lost

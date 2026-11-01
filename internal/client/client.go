@@ -346,6 +346,15 @@ func (c *Client) ListWorktrees(ctx context.Context, ref, dir string) (api.Worktr
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// RemoveWorktree removes the worktree name, which must have landed.
+func (c *Client) RemoveWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeRemoved, error) {
+	r, err := c.api.RemoveWorktreeWithResponse(ctx, name, &api.RemoveWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeRemoved{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeDiff returns what the worktree name has committed since it left its base.
 func (c *Client) WorktreeDiff(ctx context.Context, name, ref, dir string) (api.WorktreeDiff, error) {
 	r, err := c.api.GetWorktreeDiffWithResponse(ctx, name, &api.GetWorktreeDiffParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})

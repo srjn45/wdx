@@ -33,7 +33,7 @@ The worktree row shows the commits ahead of the base with their added and remove
 
 The menu's `f`, or plain `f` in the list, reads every worktree again.
 
-Removing a stale worktree is not part of this: it shows `missing`, for `git worktree remove` or a later feature.
+A stale worktree shows `missing`, and removing it is under "Landing and removing" below.
 
 ## The file diff
 
@@ -253,12 +253,60 @@ A click makes a line current, and the wheel scrolls with the current line stayin
 
 A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` and `p` went unnoticed in the status line's hint. It lists only what can act now, and says where the current line is: `change 2 of 5 · line 120 of 900`, or `· file 1 of 3`. What does not fit goes, the least needed first, and `?` stays.
 
-## Next: agreed with the human, not built (2026-11-01)
+## Landing and removing: agreed with the human (2026-11-01)
 
-The order below is agreed; "proposed" marks what is not.
+"Proposed" marks what came from the AI and the human let stand. Three commits: removing, which is built, then landing by rebase with its check, and landing by PR, which are not. So only `wdx worktree remove` and `C-q x` exist; `L` does not yet, and a PR that merged does not count as landed yet.
 
-The bar will list `L` on a worktree's tab while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has no `L`.
+Landing and removing are the one place wdx writes to a repository. They run only when asked for, so they take git's locks like any command the user types, and the lock rule above still holds for everything that runs by itself. wdx never stashes and never uses `--force`.
 
-### Then
+### Landing
 
-`wdx agent create --prompt`, then landing. Landing differs by project: rebasing onto main, a PR on the remote, a local merge. Proposed: a method saved per project, starting with `rebase` and `pr`.
+`L` is in the bar of a worktree's tab while it shows the commits against the base, with nothing uncommitted and something ahead; `commit first` otherwise. A file diff has no `L`, and the main checkout has none. wdx does the git steps. An agent is only asked to rebase.
+
+`L` is refused while an agent in the worktree is working, as a rebase would change files under it. An idle or waiting agent does not stop it. Which agent is in a worktree is the best guess described above.
+
+If the base has moved on, wdx first tries the rebase itself, as part of landing (agreed). A conflict aborts it, leaves everything as it was, lists the files and offers to send the rebase to an agent: a box like `C`'s, with `Rebase <branch> onto <base> in <path>`, the agent chosen as for `C`. Once it is done and the agent has stopped, `L` starts again; nothing lands by itself.
+
+Proposed:
+
+- `L` opens a box with the method, the commits and lines, how many files are verified and how many comments are not sent, for information only. Nothing depends on those.
+- A base that is not a local branch, as `origin/main` with no `main`, cannot land by rebase: only by PR.
+- The first `L` in a project asks for its method, its check command and whether to push, saved on the project: `land_method`, `land_check`, `land_push`, nullable columns. `m` in the box changes them.
+
+The `rebase` method, once the worktree sits on the base:
+
+1. Runs the check, if there is one, in a wdx terminal named `land-<name>`, since it can take many minutes and requests run one at a time. Its exit code decides, its output stays to read, and the worktree's row says `landing: check`.
+2. Moves the base to the commit that was checked, not to whatever the branch holds by then, with no merge commit. `git merge --ff-only` in the checkout that has the base, `git update-ref` with the old value when none has it. Local changes that overlap make git refuse, and nothing has moved.
+3. If the base moved during the check, it stops and says so; `L` starts again, with a rebase.
+4. Pushes only if the project asked for that.
+5. Offers to remove the worktree.
+
+An agent working in the base's checkout gets a warning, not a refusal: the fast-forward keeps its uncommitted changes, and an agent always working there would block landing for good.
+
+The `pr` method pushes the branch and runs `gh pr create`; `gh` becomes an optional program in `wdx deps`. The row shows `PR #12 open`. `gh pr view` says when it merged, as a squash merge leaves the commits looking unlanded, and it runs only on `f` or when the tab opens, since nothing that runs by itself uses the network.
+
+### Removing
+
+`C-q x` on a worktree's row, and `wdx worktree remove --name`. Only a landed worktree can be removed: nothing ahead of its base and nothing uncommitted, or a PR that `gh` says merged. Anything else, including a worktree whose base or commits are not known, is refused, and the main checkout too. So a worktree given up on stays until removed with `git worktree remove --force` by hand (agreed): deleting commits is the mistake that cannot be undone.
+
+Removing is not held up by what runs there:
+
+- Each running agent in the worktree gets a message through its inbox (docs/SEND.md), saying the worktree is gone and to carry on in the project's clone. It goes once git has removed it, so that a refusal by git never sends an agent away from a worktree still there. An agent that cannot be told is logged and fails nothing.
+- The confirmation lists those agents and the terminals there. Terminals are left running, in a directory that no longer exists.
+- An agent whose `dir` is the worktree keeps it, so `agent restart`, when built, has to cope with a directory that is gone.
+
+Then, proposed:
+
+- `git worktree remove`, without `--force`, run from the repository's git directory, so a file written since the check makes git refuse. Ignored files such as `.env` go with the directory: git does not count them.
+- The branch goes with `git branch -d`, which refuses what is not merged (agreed), so a commit made since the check keeps it. A squash-merged branch is kept too, as is the default branch, and the result says so. git judges "merged" by the clone's `HEAD`, so a clone on another branch can keep it as well.
+- A worktree in the project's records but listed by no repository only loses that record. wdx's records of a removed worktree go in any case, as otherwise it would come back as `missing`.
+- A `missing` worktree can always be cleared: only git's entry goes, as its files are already gone, and the branch follows the same rule. This replaces the note in the left pane section.
+- Verified marks and comments go by the existing rule for a worktree git no longer lists.
+
+### The CLI and the API
+
+Proposed:
+
+- `wdx worktree land --name [--method rebase|pr]`, which waits for the check and returns `landed`, `pr_created`, or a code: `agent_working`, `not_committed`, `needs_rebase`, `check_failed`, `base_moved`.
+- `wdx worktree remove --name`, which returns `removed` with what became of the branch and who was told, or `worktree_not_landed`, `worktree_is_clone`, `worktree_not_removed`. It asks nothing, as only what landed can go.
+- `POST /v1/worktrees/{worktree}/land` starts it and returns, so that a long check does not hold up the daemon's other changes; `DELETE /v1/worktrees/{worktree}` removes.

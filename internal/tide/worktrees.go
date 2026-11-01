@@ -253,6 +253,93 @@ func worktreeSummary(w api.WorktreeStatus) string {
 	return s
 }
 
+// removableWorktree returns the worktree under the cursor, if it landed or its
+// directory is gone: C-q x removes nothing else, and the clone never.
+func (m *Model) removableWorktree() (removal, bool) {
+	l, rows := m.list(), m.worktreeRows()
+	if m.layout.focus != project || l == nil || !l.onWorktrees || l.worktreeRow >= len(rows) {
+		return removal{}, false
+	}
+	r := rows[l.worktreeRow]
+	w := r.worktree
+	if r.file != nil || w.Name == "main" {
+		return removal{}, false
+	}
+	if s := worktreeSummary(w); s != "landed" && s != "missing" {
+		return removal{}, false
+	}
+	return removal{kind: "worktree", name: w.Name, worktree: &worktreeRemoval{
+		missing:   w.Missing,
+		agents:    m.agentsIn(w.Name),
+		terminals: m.terminalsIn(w.Path),
+	}}, true
+}
+
+// terminalsIn names the running terminals that started in the worktree at path.
+func (m *Model) terminalsIn(path string) []string {
+	var names []string
+	for _, t := range m.terminals() {
+		if t.State == api.TerminalStateRunning && (t.Dir == path || strings.HasPrefix(t.Dir, path+"/")) {
+			names = append(names, t.Name)
+		}
+	}
+	return names
+}
+
+// lines is what the confirmation says of a worktree's removal.
+func (r *worktreeRemoval) lines() []string {
+	var lines []string
+	if r.missing {
+		lines = append(lines, "Its directory is gone: only git's entry for it goes.")
+	} else {
+		lines = append(lines, "Its branch goes too, if git says it is merged.", "Ignored files go with its directory.")
+	}
+	if len(r.agents) > 0 {
+		lines = append(lines, "Told to work from the clone: "+strings.Join(r.agents, ", "))
+	}
+	if len(r.terminals) > 0 {
+		lines = append(lines, "Left running, with no directory: "+strings.Join(r.terminals, ", "))
+	}
+	return lines
+}
+
+// removeWorktree asks the daemon to remove the worktree r names.
+func (m *Model) removeWorktree(r removal) tea.Cmd {
+	f := m.following
+	if f == nil || f.project == nil || m.client == nil {
+		m.confirm = nil
+		return nil
+	}
+	ref := "id:" + f.project.Id
+	return func() tea.Msg {
+		answer, err := m.client.RemoveWorktree(m.ctx, r.name, ref, "")
+		msg := removed{r: r, err: err, told: answer.Notified}
+		if answer.BranchKept != nil {
+			msg.branch = *answer.BranchKept
+		}
+		return msg
+	}
+}
+
+// worktreeRemoved closes the tabs of the worktree that went, as nothing is left for
+// them to show, and says what is worth knowing.
+func (m *Model) worktreeRemoved(msg removed) {
+	if l := m.list(); l != nil {
+		for _, tab := range slices.Clone(l.tabs) {
+			if name, _ := diffTabOf(tab); isDiffTab(tab) && name == msg.r.name {
+				m.closeTab(tab, "worktree removed")
+			}
+		}
+	}
+	m.statusNotice = "removed " + msg.r.name
+	if msg.branch != "" {
+		m.statusNotice += ", branch " + msg.branch + " kept"
+	}
+	if len(msg.told) > 0 {
+		m.statusNotice += ", told " + strings.Join(msg.told, ", ")
+	}
+}
+
 // worktreeHolding names the worktree dir is in: the deepest, since worktrees are
 // often inside the clone. It goes by the path, as an agent's own worktree field
 // knows only those wdx registered, and every worktree git lists counts here.

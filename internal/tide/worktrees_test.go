@@ -1108,6 +1108,86 @@ func TestCommitSent(t *testing.T) {
 	}
 }
 
+func TestRemovableWorktree(t *testing.T) {
+	t.Parallel()
+	main := "main"
+	m := worktreesModel(
+		api.WorktreeStatus{Name: "main", Path: "/r", Ahead: aheadBy(0), Base: &main},
+		api.WorktreeStatus{Name: "landed-one", Path: "/r/l", Ahead: aheadBy(0), Base: &main},
+		api.WorktreeStatus{Name: "ahead", Path: "/r/a", Ahead: aheadBy(1), Base: &main},
+		api.WorktreeStatus{Name: "dirty", Path: "/r/d", Ahead: aheadBy(0), Base: &main, Files: []api.WorktreeFile{changed("f", api.WorktreeFileStatusM)}},
+		api.WorktreeStatus{Name: "gone", Path: "/r/g", Missing: true},
+	)
+	for i, want := range []bool{false, true, false, false, true} {
+		m.moveToWorktree(i)
+		r, ok := m.removable()
+		if ok != want || (ok && r.kind != "worktree") {
+			t.Errorf("row %d: %+v, %v", i, r, ok)
+		}
+	}
+	m.moveToWorktree(1)
+	wantLine := func(r removal, want string) {
+		t.Helper()
+		if !slices.ContainsFunc(r.worktree.lines(), func(l string) bool { return strings.Contains(l, want) }) {
+			t.Errorf("no %q in %q", want, r.worktree.lines())
+		}
+	}
+	r, _ := m.removable()
+	wantLine(r, "Its branch goes too")
+	m.moveToWorktree(4)
+	r, _ = m.removable()
+	wantLine(r, "only git's entry")
+	r.worktree.agents, r.worktree.terminals = []string{"swift"}, []string{"shell"}
+	wantLine(r, "Told to work from the clone: swift")
+	wantLine(r, "Left running, with no directory: shell")
+}
+
+func TestRemoveWorktreeInATide(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	gittest.Git(t, dir, "branch", "-M", "main")
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	row := func(m *Model) int {
+		return slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.worktree.Name == "work" })
+	}
+	p.until(t, "the worktree, landed", func(m *Model) bool {
+		i := row(m)
+		return i >= 0 && worktreeSummary(m.worktreeRows()[i].worktree) == "landed"
+	})
+	m := p.m
+	m.moveToWorktree(row(m))
+	p.keys("enter")
+	if len(m.list().tabs) != 1 {
+		t.Fatalf("tabs: %v", m.list().tabs)
+	}
+	p.keys("alt+left", "C-q")
+	wantText(t, m, "x  remove work")
+	p.keys("x")
+	wantText(t, m, "Remove worktree", "Remove work?", "Its branch goes too")
+	p.keys("n")
+	if _, err := os.Stat(work); err != nil || m.confirm != nil {
+		t.Fatalf("n: %v, %+v", err, m.confirm)
+	}
+	p.keys("C-q", "x", "y")
+	p.until(t, "the answer and the row gone", func(m *Model) bool { return m.confirm == nil && row(m) < 0 })
+	if _, err := os.Stat(work); !os.IsNotExist(err) {
+		t.Errorf("the directory: %v", err)
+	}
+	if len(m.list().tabs) != 0 {
+		t.Errorf("its tab stayed: %v", m.list().tabs)
+	}
+	if !strings.Contains(m.statusNotice, "removed work") {
+		t.Errorf("notice: %q", m.statusNotice)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

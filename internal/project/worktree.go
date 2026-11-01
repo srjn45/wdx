@@ -152,6 +152,16 @@ func (s *Store) recordWorktree(ctx context.Context, projectID, path string) (str
 	return root, nil
 }
 
+// ForgetWorktree removes the project's record of the checkout at path, if it has one:
+// a worktree wdx did not make has none.
+func (s *Store) ForgetWorktree(ctx context.Context, projectID, path string) error {
+	if _, err := db.Exec(ctx, s.db, "DELETE FROM project_worktrees WHERE project_id = ? AND path = ?", projectID, path); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("worktree forgotten", "project_id", projectID, "path", path)
+	return nil
+}
+
 // excludeWorktrees makes git ignore .worktrees in the repository at root,
 // unless it already does, in a file of the repository's own that is not
 // tracked.

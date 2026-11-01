@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -16,13 +17,13 @@ import (
 func newWorktreeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worktree",
-		Short: "Read a project's worktrees: what is uncommitted, and what a PR would show",
-		Long: "These commands only read, so they can run beside any git command: they\n" +
-			"take no lock on the repository. wdx agent create --worktree creates a worktree.",
+		Short: "Read a project's worktrees, what is uncommitted and what a PR would show, and remove those that landed",
+		Long: "All but remove only read, so they can run beside any git command: they take\n" +
+			"no lock on the repository. wdx agent create --worktree creates a worktree.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeListCmd())
+	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeListCmd(), newWorktreeRemoveCmd())
 	return cmd
 }
 
@@ -161,6 +162,62 @@ func newWorktreeCommentsCmd() *cobra.Command {
 	cmd.MarkFlagRequired("name")
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
 	return cmd
+}
+
+func newWorktreeRemoveCmd() *cobra.Command {
+	var scope projectScope
+	var name string
+	cmd := &cobra.Command{
+		Use:   "remove --name <worktree> [--project-id <id> | --project-name <name>]",
+		Short: "Remove a worktree that landed, with its branch",
+		Long: "Only one with nothing ahead of its base and nothing uncommitted, so no\n" +
+			"commit can be lost and nothing is asked; ignored files go with its directory.\n" +
+			"One whose directory is gone can always be removed: only git's entry goes.\n" +
+			"The branch goes with it if git says it is merged. Agents running there are\n" +
+			"sent where to go on, and terminals running there are left as they are.",
+		Example: examples(
+			"Remove a worktree that landed", identity.Name+" worktree remove --name auth-fix",
+			"As JSON", identity.Name+" worktree remove --name auth-fix --project-name app --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "What went, and who was told.\n" + `With --json: {"result": "removed", "worktree": "...", ...}`,
+			resultList: "removed",
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeWorktreeIsClone,
+				api.ErrorCodeWorktreeNotLanded, api.ErrorCodeWorktreeNotRemoved, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ref, dir, err := worktreeScopeOf(cmd, scope)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).RemoveWorktree(cmd.Context(), name, ref, dir)
+			if err != nil {
+				return outsideHint(err, scope, "")
+			}
+			return printResult(cmd, worktreeRemoved(r))
+		},
+	}
+	scope.addFlags(cmd)
+	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
+	cmd.MarkFlagRequired("name")
+	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	return cmd
+}
+
+type worktreeRemoved api.WorktreeRemoved
+
+func (r worktreeRemoved) text(w io.Writer, st style.Style) {
+	fmt.Fprintln(w, st.Success("removed")+" worktree "+st.Name(r.Worktree))
+	if r.BranchDeleted != nil {
+		fmt.Fprintln(w, "branch "+st.Name(*r.BranchDeleted)+" deleted")
+	}
+	if r.BranchKept != nil {
+		fmt.Fprintln(w, "branch "+st.Name(*r.BranchKept)+" kept")
+	}
+	if len(r.Notified) > 0 {
+		fmt.Fprintln(w, "told: "+strings.Join(r.Notified, ", "))
+	}
 }
 
 type worktreeComments api.WorktreeCommentList

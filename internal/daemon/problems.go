@@ -133,6 +133,12 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*agent.StartError](err); ok {
 		return api.ErrorCodeStartFailed, map[string]any{"agent": agentView(e.Agent)}
 	}
+	if _, ok := errors.AsType[*worktree.NotLandedError](err); ok {
+		return api.ErrorCodeWorktreeNotLanded, nil
+	}
+	if _, ok := errors.AsType[*git.WorktreeRemoveError](err); ok {
+		return api.ErrorCodeWorktreeNotRemoved, nil
+	}
 	if e, ok := errors.AsType[*projectClosedError](err); ok {
 		return api.ErrorCodeProjectClosed, map[string]any{"project": projectView(e.project)}
 	}
@@ -146,6 +152,8 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	switch {
 	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound):
 		return api.ErrorCodeNotFound, nil
+	case errors.Is(err, worktree.ErrIsClone):
+		return api.ErrorCodeWorktreeIsClone, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil
 	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):

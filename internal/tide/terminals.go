@@ -151,6 +151,14 @@ type removal struct {
 	kind, id, name string
 	running        bool // removing it stops what runs
 	hasChildren    bool // it stays as a tombstone
+	worktree       *worktreeRemoval
+}
+
+// worktreeRemoval is what removing a worktree touches, for the confirmation to say.
+type worktreeRemoval struct {
+	missing   bool
+	agents    []string
+	terminals []string
 }
 
 // removable returns what C-q x would remove now.
@@ -162,6 +170,9 @@ func (m *Model) removable() (removal, bool) {
 		}
 		running := t.State == api.TerminalStateRunning || t.State == api.TerminalStateStarting
 		return removal{kind: "terminal", id: t.Id, name: t.Name, running: running}, true
+	}
+	if r, ok := m.removableWorktree(); ok {
+		return r, true
 	}
 	a, ok := m.focusedAgent()
 	if !ok || a.State == api.AgentStateRemoved {
@@ -194,8 +205,10 @@ type confirmBox struct {
 
 // removed is the answer to a removal.
 type removed struct {
-	r   removal
-	err error
+	r      removal
+	err    error
+	branch string // the worktree's branch that stayed
+	told   []string
 }
 
 // confirmKey takes a key while the confirmation is open: y removes, n or
@@ -214,6 +227,9 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 			return m.closeProject(r, true)
 		}
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
+		if r.worktree != nil {
+			return m.removeWorktree(r)
+		}
 		return func() tea.Msg {
 			var err error
 			if r.kind == "agent" {
@@ -234,7 +250,7 @@ func (m *Model) removed(msg removed) {
 	m.confirm = nil
 	if msg.err != nil {
 		m.log.Info("not removed", "kind", msg.r.kind, "name", msg.r.name, "err", msg.err)
-		if msg.r.kind == "agent" {
+		if msg.r.kind != "terminal" {
 			m.statusNotice = msg.err.Error()
 		} else {
 			m.terminalNotice = msg.err.Error()
@@ -243,6 +259,9 @@ func (m *Model) removed(msg removed) {
 	}
 	// Its tab or row goes with the stream's next event.
 	m.log.Info("removed", "kind", msg.r.kind, "name", msg.r.name)
+	if msg.r.worktree != nil {
+		m.worktreeRemoved(msg)
+	}
 }
 
 // confirmPopup is what the confirmation shows.
@@ -252,6 +271,9 @@ func (m *Model) confirmPopup() popup {
 		return m.closePopup()
 	}
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
+	if c.r.worktree != nil {
+		body = append(body, c.r.worktree.lines()...)
+	}
 	if c.r.running && c.r.kind == "agent" {
 		body = append(body, "It is running: it is stopped.")
 	} else if c.r.running {

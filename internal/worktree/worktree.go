@@ -1,7 +1,8 @@
 // Package worktree reads what git knows of a project's checkouts: every one
 // `git worktree list` gives, the files with uncommitted changes and the commits
-// ahead of a base. It only reads, with the reads of internal/git, so that it can
-// run beside any git command of a human or an agent (docs/TIDE_WORKTREES.md).
+// ahead of a base. It reads with the reads of internal/git, so that it can run
+// beside any git command of a human or an agent (docs/TIDE_WORKTREES.md). The one
+// thing it writes is the removal of a worktree that landed, when asked to.
 package worktree
 
 import (
@@ -50,6 +51,8 @@ type Status struct {
 	Committed []CommittedFile
 	// Comments are its comments not sent yet.
 	Comments []Comment
+	// repository is the git directory that lists it; "" when none does.
+	repository string
 }
 
 // CommittedFile is a file a checkout's commits changed.
@@ -122,7 +125,7 @@ func List(ctx context.Context, c Checkouts) ([]Status, error) {
 			return nil, err
 		}
 		for _, o := range checkouts {
-			list = append(list, Status{Path: o.Path, Branch: o.Branch, Head: o.Head, Missing: o.Prunable || !isDir(o.Path)})
+			list = append(list, Status{Path: o.Path, Branch: o.Branch, Head: o.Head, Missing: o.Prunable || !isDir(o.Path), repository: common})
 		}
 	}
 	for _, path := range c.Paths {

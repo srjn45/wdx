@@ -139,6 +139,48 @@ func AddWorktree(ctx context.Context, dir, path, branch string) error {
 	return nil
 }
 
+// WorktreeRemoveError is returned when git would not remove a worktree: it has
+// changes, is locked, holds submodules or is a repository's main checkout.
+type WorktreeRemoveError struct {
+	Path   string
+	Output string // what git said
+	Err    error
+}
+
+func (e *WorktreeRemoveError) Error() string {
+	return fmt.Sprintf("git worktree remove %s failed: %s", e.Path, e.Output)
+}
+
+func (e *WorktreeRemoveError) Unwrap() error { return e.Err }
+
+// RemoveWorktree removes the worktree at path, or git's entry for it when its
+// directory is gone, never by force. dir is in the same repository, and outside the
+// worktree.
+func RemoveWorktree(ctx context.Context, dir, path string) error {
+	log := logging.FromContext(ctx).With("dir", dir, "path", path)
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--", path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if _, ok := errors.AsType[*exec.ExitError](err); !ok {
+			log.Error("git could not run", "err", err)
+			return missing(fmt.Errorf("run git: %w", err))
+		}
+		e := &WorktreeRemoveError{Path: path, Output: strings.TrimSpace(stderr.String()), Err: err}
+		log.Error("worktree not removed", "err", err, "output", e.Output, logging.Duration(start))
+		return e
+	}
+	log.Info("worktree removed", logging.Duration(start))
+	return nil
+}
+
+// DeleteBranch deletes a merged branch, and reports false when git refuses: it is
+// not merged, or a checkout has it.
+func DeleteBranch(ctx context.Context, dir, branch string) (bool, error) {
+	return answered(run(ctx, dir, "branch", "-d", "--", branch))
+}
+
 // BranchExists reports whether the repository holding dir has a local branch
 // named branch.
 func BranchExists(ctx context.Context, dir, branch string) (bool, error) {

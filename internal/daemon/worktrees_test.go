@@ -413,3 +413,61 @@ func TestWorktreeContentsAreNotLogged(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveWorktree(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeIn(t, dir, "file", "one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+	ctx := t.Context()
+	project := "api"
+	created, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Project: &project, Dir: dir, Name: optional("worker"), Worktree: optional("work")})
+	if err != nil || created.JSON201 == nil {
+		t.Fatalf("create: %v, %s", err, created.Body)
+	}
+	a := created.JSON201.Agent
+	work := a.Dir
+	writeIn(t, work, "more", "committed\n")
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "work")
+	elsewhere := td.createAgent(t, "api", dir, "elsewhere")
+
+	params := &api.RemoveWorktreeParams{Project: &project}
+	refused := func(name string, code api.ErrorCode) {
+		t.Helper()
+		r, err := td.client.RemoveWorktreeWithResponse(ctx, name, params)
+		if err != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != code {
+			t.Fatalf("%s: want %s: %v, %s", name, code, err, r.Body)
+		}
+	}
+	refused("work", api.ErrorCodeWorktreeNotLanded)
+	refused("main", api.ErrorCodeWorktreeIsClone)
+	refused("nope", api.ErrorCodeNotFound)
+	if _, err := os.Stat(work); err != nil {
+		t.Fatalf("a refusal removed it: %v", err)
+	}
+
+	gittest.Git(t, dir, "merge", "-q", "--ff-only", "work")
+	r, err := td.client.RemoveWorktreeWithResponse(ctx, "work", params)
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("remove: %v, %s", err, r.Body)
+	}
+	got := r.JSON200
+	if got.Result != api.ResultRemoved || got.Worktree != "work" || got.Path != work || got.BranchDeleted == nil || *got.BranchDeleted != "work" || got.BranchKept != nil {
+		t.Errorf("answer: %s", r.Body)
+	}
+	if len(got.Notified) != 1 || got.Notified[0] != a.Name {
+		t.Errorf("told %v, want only %s and not %s", got.Notified, a.Name, elsewhere.Name)
+	}
+	if _, err := os.Stat(work); !os.IsNotExist(err) {
+		t.Errorf("the directory: %v", err)
+	}
+	list, err := td.client.ListWorktreesWithResponse(ctx, &api.ListWorktreesParams{Project: &project})
+	if err != nil || list.JSON200 == nil || len(list.JSON200.Worktrees) != 1 {
+		t.Errorf("list: %v, %s", err, list.Body)
+	}
+}

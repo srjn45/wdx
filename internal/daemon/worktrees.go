@@ -61,18 +61,22 @@ func (d *Daemon) startTracker() {
 func workingAgents(list []agent.Agent) []worktree.Agent {
 	agents := make([]worktree.Agent, 0, len(list))
 	for _, a := range list {
-		dir := a.CurrentDir
-		if dir == "" {
-			dir = a.Terminal.Dir
-		}
 		agents = append(agents, worktree.Agent{
 			ID:  a.ID,
-			Dir: dir,
+			Dir: workingDir(a),
 			Working: a.Terminal.State == terminal.StateRunning &&
 				a.Activity == string(screen.ActivityWorking),
 		})
 	}
 	return agents
+}
+
+// workingDir is where the agent last said it works, else where it started.
+func workingDir(a agent.Agent) string {
+	if a.CurrentDir != "" {
+		return a.CurrentDir
+	}
+	return a.Terminal.Dir
 }
 
 func checkoutsOf(p project.Project) worktree.Checkouts {
@@ -121,6 +125,61 @@ func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequest
 		return nil, err
 	}
 	return api.ListWorktrees200JSONResponse{Worktrees: worktreeStatusViews(list)}, nil
+}
+
+// RemoveWorktree removes a worktree that landed. Its agents are told once it is
+// gone, so that a refusal by git never sends them away from a worktree still there.
+func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeRequestObject) (api.RemoveWorktreeResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	w, err := worktree.Removable(ctx, c, req.Worktree)
+	if err != nil {
+		return nil, err
+	}
+	r, err := worktree.Remove(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.projects.ForgetWorktree(ctx, p.ID, w.Path); err != nil {
+		return nil, err
+	}
+	notified, err := s.tellRemoved(ctx, p.ID, w, c.Clone)
+	if err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, "")
+	return api.RemoveWorktree200JSONResponse{
+		Result:        api.ResultRemoved,
+		Worktree:      w.Name,
+		Path:          w.Path,
+		BranchDeleted: textOrNull(r.BranchDeleted),
+		BranchKept:    textOrNull(r.BranchKept),
+		Notified:      notified,
+	}, nil
+}
+
+// tellRemoved sends the agents running in the worktree where to go on, and returns
+// who was told. The worktree is gone by now, so one that cannot be told is logged and
+// fails nothing.
+func (s *server) tellRemoved(ctx context.Context, projectID string, w worktree.Status, clone string) ([]string, error) {
+	list, err := s.agents.Store().List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	notified := []string{}
+	for _, a := range list {
+		if a.Terminal.State != terminal.StateRunning || !w.Holds(workingDir(a)) {
+			continue
+		}
+		if _, _, err := s.agents.Send(ctx, a.ID, worktree.RemovedMessage(w, clone), false); err != nil {
+			logging.FromContext(ctx).Error("agent not told of the removal", "agent_id", a.ID, "worktree", w.Name, "err", err)
+			continue
+		}
+		notified = append(notified, a.Terminal.Name)
+	}
+	return notified, nil
 }
 
 func (s *server) GetWorktreeDiff(ctx context.Context, req api.GetWorktreeDiffRequestObject) (api.GetWorktreeDiffResponseObject, error) {

@@ -182,3 +182,63 @@ func TestMessageCommands(t *testing.T) {
 		t.Errorf("text failure: %+v", out)
 	}
 }
+
+func TestWorktreeRemove(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+
+	// With a file changed and a commit ahead, nothing goes.
+	v, exit := wdxWorktree(t, home, app, "remove", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeNotLanded {
+		t.Fatalf("not landed: exit %d, %+v", exit, v)
+	}
+	if _, err := os.Stat(work); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxWorktree(t, home, app, "remove", "--name", "main")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
+		t.Fatalf("the clone: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxWorktree(t, home, app, "remove", "--name", "nope")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+		t.Fatalf("unknown: exit %d, %+v", exit, v)
+	}
+
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	gittest.Git(t, app, "merge", "-q", "--ff-only", "work")
+	out := wdxWith(t, home, in(app), "worktree", "remove", "--name", "work")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "removed worktree work") || !strings.Contains(out.stdout, "branch work deleted") {
+		t.Fatalf("removed: %+v", out)
+	}
+	if _, err := os.Stat(work); !os.IsNotExist(err) {
+		t.Errorf("the directory: %v", err)
+	}
+}
+
+// A worktree wdx made is in the project's records too, which must not bring it back
+// as missing.
+func TestWorktreeRemoveForgetsWhatWdxMade(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	repo := gittest.Repo(t, "app")
+	gittest.Git(t, repo, "branch", "-M", "main")
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != api.ExitOK {
+		t.Fatalf("open: exit %d, %+v", exit, v)
+	}
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "fixer", "--worktree", "fix"); exit != api.ExitOK {
+		t.Fatalf("agent: exit %d, %+v", exit, v)
+	}
+	out := wdxWith(t, home, in(repo), "worktree", "remove", "--name", "fix", "--json")
+	var r api.WorktreeRemoved
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+		t.Fatalf("remove: %+v, %v", out, err)
+	}
+	if r.Result != api.ResultRemoved || len(r.Notified) != 1 || r.Notified[0] != "fixer" {
+		t.Errorf("answer: %+v", r)
+	}
+	v, exit := wdxWorktree(t, home, repo, "list")
+	if exit != api.ExitOK || len(v.Worktrees) != 1 || v.Worktrees[0].Name != "main" {
+		t.Errorf("list: exit %d, %+v", exit, v.Worktrees)
+	}
+}

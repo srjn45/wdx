@@ -44,6 +44,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Mark a file verified | none, only the API | `v` | By design | It says a person looked at the file, so an agent or a script should not be saying it |
 | See a worktree's comments | `worktree comments` | under their lines | Same | |
 | Write a comment and send a review | none, only the API | `c`, `e`, `d`, `s` | Later (CLI) | For now it is a person's review. An agent reviewing another would need a command |
+| Remove a worktree that landed | `worktree remove` | `C-q x` on its row | By design | tide confirms, listing who is affected. The CLI asks nothing, as only what landed can go and a script must not stop at a question |
 | Read the worktrees again | not needed | `C-q f`, `f` in the list | By design | Each command reads anew |
 
 ## Agents

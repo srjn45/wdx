@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/runtest"
 )
@@ -177,4 +178,160 @@ func TestDiffs(t *testing.T) {
 func isInvalidPath(err error) bool {
 	_, ok := errors.AsType[*InvalidPathError](err)
 	return ok
+}
+
+func TestRemovable(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	ahead := linked(t, dir, "ahead")
+	commit(t, ahead, "more", "a\n")
+	dirty := linked(t, dir, "dirty")
+	write(t, dirty, "fresh", "new\n")
+	gone := linked(t, dir, "gone")
+	commit(t, gone, "kept", "a\n")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	clean := linked(t, dir, "clean")
+	lost := filepath.Join(t.TempDir(), "lost")
+	c := Checkouts{Clone: dir, Paths: []string{dir, lost}}
+
+	for _, name := range []string{"ahead", "dirty"} {
+		if _, err := Removable(t.Context(), c, name); !isNotLanded(err) {
+			t.Errorf("%s: want not landed, got %v", name, err)
+		}
+	}
+	if _, err := Removable(t.Context(), c, "main"); !errors.Is(err, ErrIsClone) {
+		t.Errorf("the clone: %v", err)
+	}
+	if _, err := Removable(t.Context(), c, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown: %v", err)
+	}
+	for name, path := range map[string]string{"clean": clean, "gone": gone, "lost": lost} {
+		if s, err := Removable(t.Context(), c, name); err != nil || s.Path != path {
+			t.Errorf("%s: %+v, %v", name, s, err)
+		}
+	}
+}
+
+func isNotLanded(err error) bool {
+	_, ok := errors.AsType[*NotLandedError](err)
+	return ok
+}
+
+func TestRemove(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	clean := linked(t, dir, "clean")
+	c := Checkouts{Clone: dir, Paths: []string{dir}}
+	s, err := Removable(t.Context(), c, "clean")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Remove(t.Context(), s)
+	if err != nil || r.BranchDeleted != "clean" || r.BranchKept != "" {
+		t.Fatalf("removed: %+v, %v", r, err)
+	}
+	if isDir(clean) {
+		t.Error("the directory stayed")
+	}
+	if ok, err := git.BranchExists(t.Context(), dir, "clean"); err != nil || ok {
+		t.Errorf("the branch stayed: %v, %v", ok, err)
+	}
+	if list, err := List(t.Context(), c); err != nil || len(list) != 1 {
+		t.Errorf("listed: %+v, %v", list, err)
+	}
+}
+
+// What happens after the check is git's to refuse, so nothing can be lost to a race.
+func TestRemoveLosesNothingWrittenAfterTheCheck(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	c := Checkouts{Clone: dir, Paths: []string{dir}}
+
+	late := linked(t, dir, "late")
+	s, err := Removable(t.Context(), c, "late")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, late, "fresh", "written since\n")
+	if _, err := Remove(t.Context(), s); err == nil {
+		t.Error("a file written since did not stop it")
+	} else if _, ok := errors.AsType[*git.WorktreeRemoveError](err); !ok {
+		t.Errorf("err: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(late, "fresh")); err != nil {
+		t.Errorf("the file went: %v", err)
+	}
+
+	committed := linked(t, dir, "committed")
+	if s, err = Removable(t.Context(), c, "committed"); err != nil {
+		t.Fatal(err)
+	}
+	commit(t, committed, "more", "committed since\n")
+	r, err := Remove(t.Context(), s)
+	if err != nil || r.BranchKept != "committed" || r.BranchDeleted != "" {
+		t.Fatalf("a commit made since: %+v, %v", r, err)
+	}
+	gittest.Git(t, dir, "cat-file", "-e", "committed:more") // the commit is still there
+}
+
+func TestRemoveKeepsWhatMustStay(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	c := Checkouts{Clone: dir, Paths: []string{dir}}
+
+	// A directory gone with commits on its branch: only git's entry goes.
+	gone := linked(t, dir, "gone")
+	commit(t, gone, "kept", "a\n")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Removable(t.Context(), c, "gone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Remove(t.Context(), s)
+	if err != nil || r.BranchKept != "gone" {
+		t.Fatalf("gone: %+v, %v", r, err)
+	}
+	if list, err := List(t.Context(), c); err != nil || len(list) != 1 {
+		t.Errorf("git's entry stayed: %+v, %v", list, err)
+	}
+	gittest.Git(t, dir, "cat-file", "-e", "gone:kept") // and so did its commits
+
+	// The default branch, which the clone left and a linked checkout has.
+	gittest.Git(t, dir, "switch", "-qc", "side")
+	onMain := filepath.Join(t.TempDir(), "on-main")
+	gittest.Git(t, dir, "worktree", "add", "-q", onMain, "main")
+	r, err = Remove(t.Context(), Status{Name: "on-main", Path: onMain, Branch: "main", repository: filepath.Join(dir, ".git")})
+	if err != nil || r.BranchKept != "main" {
+		t.Fatalf("default branch: %+v, %v", r, err)
+	}
+	gittest.Git(t, dir, "rev-parse", "--verify", "refs/heads/main")
+
+	// A record no repository lists has nothing for git to do.
+	if r, err = Remove(t.Context(), Status{Name: "lost", Path: filepath.Join(t.TempDir(), "lost")}); err != nil || r != (Removal{}) {
+		t.Errorf("record only: %+v, %v", r, err)
+	}
+}
+
+func TestRemovedMessage(t *testing.T) {
+	t.Parallel()
+	got := RemovedMessage(Status{Name: "auth", Path: "/r/auth", Base: "main"}, "/r")
+	for _, want := range []string{"auth", "/r/auth", "at /r, on main"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in %q", want, got)
+		}
+	}
+}
+
+func TestHolds(t *testing.T) {
+	t.Parallel()
+	s := Status{Path: "/r/auth"}
+	for dir, want := range map[string]bool{"/r/auth": true, "/r/auth/x": true, "/r/auth-2": false, "/r": false} {
+		if s.Holds(dir) != want {
+			t.Errorf("%s: want %v", dir, want)
+		}
+	}
 }
