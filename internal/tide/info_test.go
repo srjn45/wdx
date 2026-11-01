@@ -198,18 +198,18 @@ func TestInfoEdit(t *testing.T) {
 
 	// A value not changed sends nothing.
 	keys(m, "enter")
-	if _, cmd := m.Update(keyMsgs("enter")[0]); cmd != nil && m.info.edit != nil {
-		t.Fatalf("an unchanged name: edit %+v", m.info.edit)
+	if _, cmd := m.Update(keyMsgs("enter")[0]); cmd != nil && m.values.edit != nil {
+		t.Fatalf("an unchanged name: edit %+v", m.values.edit)
 	}
-	if m.info.edit != nil {
-		t.Fatalf("an unchanged name stays in editing: %+v", m.info.edit)
+	if m.values.edit != nil {
+		t.Fatalf("an unchanged name stays in editing: %+v", m.values.edit)
 	}
 
 	// A paste takes only what a terminal does not act on.
 	keys(m, "enter")
 	m.Update(tea.PasteMsg{Content: "-2\n\x1b[2J"})
-	if m.info.edit.text != "swift-falcon-2[2J" {
-		t.Fatalf("pasted %q", m.info.edit.text)
+	if m.values.edit.text != "swift-falcon-2[2J" {
+		t.Fatalf("pasted %q", m.values.edit.text)
 	}
 }
 
@@ -220,8 +220,8 @@ func TestInfoEditRefused(t *testing.T) {
 	m.client = client.New(client.Options{Socket: "/nonexistent/wdx.sock"})
 	keys(m, "i", "enter", "backspace")
 	_, cmd := m.Update(keyMsgs("enter")[0])
-	if m.info.edit == nil || !m.info.edit.busy || !strings.Contains(text(m), "saving…") {
-		t.Fatalf("not saving: %+v", m.info.edit)
+	if m.values.edit == nil || !m.values.edit.busy || !strings.Contains(text(m), "saving…") {
+		t.Fatalf("not saving: %+v", m.values.edit)
 	}
 	keys(m, "x") // ignored while it is sent
 	msg := drain(cmd)
@@ -230,8 +230,8 @@ func TestInfoEditRefused(t *testing.T) {
 		t.Fatalf("answer %#v", msg)
 	}
 	m.Update(saved)
-	if m.info.edit == nil || m.info.edit.busy || m.info.edit.text != "swift-falco" {
-		t.Fatalf("after the refusal: %+v", m.info.edit)
+	if m.values.edit == nil || m.values.edit.busy || m.values.edit.text != "swift-falco" {
+		t.Fatalf("after the refusal: %+v", m.values.edit)
 	}
 	if got := text(m); !strings.Contains(got, "✗ ") || !strings.Contains(got, "not answering") {
 		t.Fatalf("no reason:\n%s", got)
@@ -239,8 +239,8 @@ func TestInfoEditRefused(t *testing.T) {
 
 	keys(m, "esc")
 	m.Update(saved)
-	if m.info.edit != nil {
-		t.Fatalf("a late answer: %+v", m.info.edit)
+	if m.values.edit != nil {
+		t.Fatalf("a late answer: %+v", m.values.edit)
 	}
 }
 
@@ -272,8 +272,8 @@ func TestInfoLeavingEndsTheEdit(t *testing.T) {
 			m := infoModel()
 			keys(m, "i", "enter", "x")
 			leave(m)
-			if m.info.edit != nil {
-				t.Fatalf("still editing: %+v", m.info.edit)
+			if m.values.edit != nil {
+				t.Fatalf("still editing: %+v", m.values.edit)
 			}
 		})
 	}
@@ -288,11 +288,11 @@ func TestInfoClick(t *testing.T) {
 
 	// A click on a read-only row edits nothing; one on the name does.
 	m.Update(clickAt(area.Min.X+5, area.Min.Y+1))
-	if m.info.edit != nil {
-		t.Fatalf("a click on id: %+v", m.info.edit)
+	if m.values.edit != nil {
+		t.Fatalf("a click on id: %+v", m.values.edit)
 	}
 	m.Update(clickAt(area.Min.X+5, area.Min.Y))
-	if m.info.edit == nil {
+	if m.values.edit == nil {
 		t.Fatal("a click on the name does not edit it")
 	}
 
@@ -317,7 +317,7 @@ func TestInfoTombstone(t *testing.T) {
 	keys(m, "up", "i")
 	wantInfoOf(t, m, "parent")
 	keys(m, "enter")
-	if m.info.edit != nil || strings.Contains(text(m), "Enter rename") {
+	if m.values.edit != nil || strings.Contains(text(m), "Enter rename") {
 		t.Fatalf("a tombstone's name can be edited:\n%s", text(m))
 	}
 }
@@ -333,8 +333,8 @@ func TestInfoClosesWithItsAgent(t *testing.T) {
 			t.Fatalf("tabs %v", m.list().tabs)
 		}
 	}
-	if m.info.edit != nil {
-		t.Fatalf("still editing: %+v", m.info.edit)
+	if m.values.edit != nil {
+		t.Fatalf("still editing: %+v", m.values.edit)
 	}
 }
 
@@ -358,8 +358,8 @@ func TestInfoScrolls(t *testing.T) {
 	frames, _ := m.frames()
 	f := frames[agent].Inset(1)
 	m.Update(tea.MouseWheelMsg{X: f.Min.X, Y: f.Min.Y, Button: tea.MouseWheelUp})
-	if m.info.offset == 0 {
-		t.Fatalf("offset %d", m.info.offset)
+	if m.values.offset == 0 {
+		t.Fatalf("offset %d", m.values.offset)
 	}
 	keys(m, "enter")
 	if !strings.Contains(text(m), "name:") {
@@ -446,7 +446,7 @@ func TestInfoLive(t *testing.T) {
 	}
 	p.keys("b-two", "enter")
 	p.until(t, "the name refused", func(m *Model) bool {
-		return m.info.edit != nil && strings.Contains(m.info.edit.err, "already used")
+		return m.values.edit != nil && strings.Contains(m.values.edit.err, "already used")
 	})
 
 	for range "b-two" {
@@ -455,7 +455,7 @@ func TestInfoLive(t *testing.T) {
 	p.keys("c-three", "enter")
 	p.until(t, "the new name shown", func(m *Model) bool {
 		a, ok := m.activeAgent()
-		return ok && a.Name == "c-three" && m.info.edit == nil
+		return ok && a.Name == "c-three" && m.values.edit == nil
 	})
 	if a, _ := p.m.activeAgent(); a.State != api.AgentStateRunning {
 		t.Fatalf("after the rename: %+v", a)

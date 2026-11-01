@@ -55,6 +55,50 @@ paths:
               schema: { $ref: "#/components/schemas/ReloadResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/settings:
+    get:
+      operationId: listSettings
+      summary: Every setting, with its value in the config file now
+      description: "Errors: reload_failed, when the config file cannot be used."
+      responses:
+        "200":
+          description: The settings, in the order of their table.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/settings/{setting}:
+    parameters:
+      - name: setting
+        in: path
+        required: true
+        description: The setting's dotted key, such as log.level.
+        schema: { type: string }
+    patch:
+      operationId: updateSetting
+      summary: Change a setting and apply it at once
+      description: |
+        The value is checked, saved in the config file, then applied as
+        reloadDaemon applies it, even when it is what the file has. The file is
+        written anew, so comments of its own are not kept. It does not wait for
+        other changes in flight, since a clone can take minutes.
+
+        Errors: invalid_setting, not_found, reload_failed, when the value was
+        saved but the daemon cannot apply the file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSetting" }
+      responses:
+        "200":
+          description: The setting, with result updated, or unchanged when the file already had it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/projects:
     get:
       operationId: listProjects
@@ -684,6 +728,44 @@ components:
       type: string
       enum: [open, closed]
 
+    Setting:
+      type: object
+      required: [key, value, default, description, from, choices, editable]
+      properties:
+        key: { type: string, description: "Its dotted key, such as log.level." }
+        value: { type: string }
+        default: { type: string }
+        description: { type: string }
+        from: { type: string, description: "Where the value comes from: the default, the file and line, or the variable." }
+        choices:
+          type: array
+          nullable: true
+          description: The values to choose among, when it takes a fixed set; null when it takes any text or number.
+          items: { type: string }
+        editable: { type: boolean, description: "False when it is not read from the config file, so it cannot be set here." }
+
+    SettingList:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          type: array
+          items: { $ref: "#/components/schemas/Setting" }
+
+    UpdateSetting:
+      type: object
+      required: [value]
+      additionalProperties: false
+      properties:
+        value: { type: string, description: "Its new value; empty for the settings that take that." }
+
+    SettingResult:
+      type: object
+      required: [result, setting]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        setting: { $ref: "#/components/schemas/Setting" }
+
     ReloadResult:
       type: object
       required: [result]
@@ -693,7 +775,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged]
 
     Worktree:
       type: object
@@ -1129,6 +1211,7 @@ components:
         - restore_required
         - settings_invalid
         - reload_failed
+        - invalid_setting
         - cancelled
         - unsupported_system
         - install_failed

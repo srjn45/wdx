@@ -40,6 +40,12 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*ReloadError](err); ok {
 		return api.ErrorCodeReloadFailed, nil
 	}
+	if e, ok := errors.AsType[*UnknownSettingError](err); ok {
+		return api.ErrorCodeNotFound, map[string]any{"setting": e.Key}
+	}
+	if e, ok := errors.AsType[*InvalidSettingError](err); ok {
+		return api.ErrorCodeInvalidSetting, map[string]any{"setting": e.Key}
+	}
 	if _, ok := errors.AsType[*git.MissingError](err); ok {
 		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "git"}
 	}

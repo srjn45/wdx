@@ -25,6 +25,9 @@ const (
 	valueKeyGap = 3
 	// valueWheelStep is how many lines a turn of the wheel scrolls.
 	valueWheelStep = 3
+
+	choicePrevious = "←"
+	choiceNext     = "→"
 )
 
 // valueRow is a row of a value pane.
@@ -33,6 +36,9 @@ type valueRow struct {
 	values []string // one line each; none shows as empty
 	gap    bool     // a blank line comes before it
 	verb   string   // what the hint calls editing it
+	note   string   // what the pane says of it while it is under the cursor
+	// choices are the values its arrows step through; nil takes any text.
+	choices []string
 	// save sends what was typed, and its answer is a valueSaved; nil is read-only.
 	save func(text string) tea.Cmd
 }
@@ -49,6 +55,9 @@ type valueEdit struct {
 	text string
 	busy bool   // the value was sent
 	err  string // why the last one was refused
+	// choice says it is a step of a choice: text is what was sent, and the row
+	// shows its value until the answer comes.
+	choice bool
 }
 
 // valuePane is what a value pane remembers between draws.
@@ -58,6 +67,10 @@ type valuePane struct {
 	cursor int    // the row under the cursor, when it is editable
 	reveal bool   // the next draw scrolls the cursor into view
 	edit   *valueEdit
+	// failed is why the last step of a choice was refused, on the row failedRow,
+	// until the next key.
+	failed    string
+	failedRow int
 }
 
 // cursorRow returns the row under the cursor: the first editable one when it is
@@ -92,16 +105,33 @@ func (p *valuePane) update(rows []valueRow, msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	p.failed = ""
 	i := p.cursorRow(rows)
+	choice := i >= 0 && rows[i].choices != nil
 	switch name := key.String(); {
+	case choice && (name == "left" || name == "h"):
+		return p.stepChoice(rows, i, -1)
+	case choice && (name == "right" || name == "l"):
+		return p.stepChoice(rows, i, 1)
 	case slices.Contains(upKeys, name):
 		p.step(rows, i, -1)
 	case slices.Contains(downKeys, name):
 		p.step(rows, i, 1)
-	case name == "enter" && i >= 0:
+	case name == "enter" && i >= 0 && !choice:
 		p.begin(rows, i)
 	}
 	return nil
+}
+
+// stepChoice sends the value next to the row i's, going round at the ends. Its
+// row keeps its value until the answer comes, and keys wait for that.
+func (p *valuePane) stepChoice(rows []valueRow, i, by int) tea.Cmd {
+	r := rows[i]
+	at := slices.Index(r.choices, strings.Join(r.values, ""))
+	next := r.choices[(max(at, 0)+by+len(r.choices))%len(r.choices)]
+	p.cursor, p.reveal, p.failed = i, true, ""
+	p.edit = &valueEdit{row: i, text: next, busy: true, choice: true}
+	return r.save(next)
 }
 
 // step moves the cursor to the next editable row in direction by, or scrolls
@@ -167,6 +197,11 @@ func (p *valuePane) saved(msg valueSaved) {
 		p.edit = nil
 		return
 	}
+	if p.edit.choice {
+		p.failed, p.failedRow = msg.err.Error(), p.edit.row
+		p.edit = nil
+		return
+	}
 	p.edit.busy, p.edit.err = false, msg.err.Error()
 }
 
@@ -201,19 +236,39 @@ func (p *valuePane) lines(rows []valueRow, width int, focused bool, st style.Sty
 			lines = append(lines, valueLine{row: i, text: lead + v})
 			lead = continued
 		}
-		if e := p.edit; e != nil && e.row == i && e.err != "" {
-			for _, l := range wrapValue("✗ "+e.err, room) {
-				lines = append(lines, valueLine{row: i, text: continued + st.Failure(l)})
-			}
+		for _, l := range p.failureLines(i, room) {
+			lines = append(lines, valueLine{row: i, text: continued + st.Failure(l)})
 		}
 	}
 	return lines
 }
 
+// failureLines is why the row i's value was refused, if it was.
+func (p *valuePane) failureLines(i, room int) []string {
+	reason := ""
+	switch {
+	case p.edit != nil && p.edit.row == i:
+		reason = p.edit.err
+	case p.failed != "" && p.failedRow == i:
+		reason = p.failed
+	}
+	if reason == "" {
+		return nil
+	}
+	return wrapValue("✗ "+reason, room)
+}
+
 // valueLines is what the row i shows after its key: its value, or what is typed.
 func (p *valuePane) valueLines(r valueRow, i, room int, current bool, st style.Style) []string {
-	if e := p.edit; e != nil && e.row == i {
+	if e := p.edit; e != nil && e.row == i && !e.choice {
 		return wrapValue(ansi.Strip(e.text)+"_", room)
+	}
+	if r.choices != nil && r.save != nil {
+		value := ansi.Strip(strings.Join(r.values, ""))
+		if current {
+			value = st.Name(value)
+		}
+		return []string{st.Muted(choicePrevious+" ") + value + st.Muted(" "+choiceNext)}
 	}
 	if len(r.values) == 0 {
 		return []string{st.Muted(valueEmpty)}
@@ -243,25 +298,37 @@ func (p *valuePane) hint(rows []valueRow, st style.Style) string {
 		}
 		return st.Command("Enter") + " save  " + st.Command("Esc") + " cancel"
 	}
-	if i := p.cursorRow(rows); i >= 0 {
-		return st.Command("Enter") + " " + rows[i].verb
+	i := p.cursorRow(rows)
+	switch {
+	case i < 0:
+		return ""
+	case rows[i].choices != nil:
+		return st.Command("←→") + " change"
 	}
-	return ""
+	return st.Command("Enter") + " " + rows[i].verb
 }
 
-// bodyRows is how many of the height's lines the rows get, the hint taking one.
-func (p *valuePane) bodyRows(rows []valueRow, height int, st style.Style) int {
-	if p.hint(rows, st) != "" {
-		height--
+// footer is what the pane's last lines say: the note of the row under the cursor,
+// then the keys.
+func (p *valuePane) footer(rows []valueRow, width int, st style.Style) []string {
+	var lines []string
+	if i := p.cursorRow(rows); i >= 0 && rows[i].note != "" {
+		for _, l := range wrapValue(rows[i].note, max(width-1, 1)) {
+			lines = append(lines, " "+st.Muted(l))
+		}
 	}
-	return max(height, 0)
+	if hint := p.hint(rows, st); hint != "" {
+		lines = append(lines, " "+hint)
+	}
+	return lines
 }
 
 // draw shows rows in area.
 func (p *valuePane) draw(buf uv.Screen, area uv.Rectangle, rows []valueRow, focused bool, st style.Style) {
 	p.dropStaleEdit(rows)
 	lines := p.lines(rows, area.Dx(), focused, st)
-	body := p.bodyRows(rows, area.Dy(), st)
+	footer := p.footer(rows, area.Dx(), st)
+	body := max(area.Dy()-len(footer), 0)
 	if p.reveal || p.edit != nil {
 		p.show(lines, p.shownRow(rows), body)
 		p.reveal = false
@@ -272,8 +339,8 @@ func (p *valuePane) draw(buf uv.Screen, area uv.Rectangle, rows []valueRow, focu
 		shown = append(shown, l.text)
 	}
 	uv.NewStyledString(strings.Join(shown, "\n")).Draw(buf, uv.Rect(area.Min.X, area.Min.Y, area.Dx(), body))
-	if hint := p.hint(rows, st); hint != "" {
-		uv.NewStyledString(" "+hint).Draw(buf, uv.Rect(area.Min.X, area.Max.Y-1, area.Dx(), 1))
+	if len(footer) > 0 && body > 0 {
+		uv.NewStyledString(strings.Join(footer, "\n")).Draw(buf, uv.Rect(area.Min.X, area.Max.Y-len(footer), area.Dx(), len(footer)))
 	}
 }
 
@@ -299,19 +366,35 @@ func (p *valuePane) show(lines []valueLine, row, body int) {
 	p.offset = min(p.offset, first)
 }
 
-// click takes a click at the row of the area of the height and width given: on
-// an editable row it starts editing it.
-func (p *valuePane) click(rows []valueRow, row, width, height int, st style.Style) {
+// click takes a click at the column and row of the area of the width and height
+// given: on an open row it starts editing it, on a choice's arrow it steps it, and
+// on the rest of a choice it puts the cursor there.
+func (p *valuePane) click(rows []valueRow, col, row, width, height int, st style.Style) tea.Cmd {
 	lines := p.lines(rows, width, false, st)
 	at := p.offset + row
-	if row >= p.bodyRows(rows, height, st) || at >= len(lines) {
-		return
+	if row >= height-len(p.footer(rows, width, st)) || at >= len(lines) {
+		return nil
 	}
 	i := lines[at].row
-	if i < 0 || rows[i].save == nil || (p.edit != nil && p.edit.row == i) {
-		return
+	if i < 0 || rows[i].save == nil || (p.edit != nil && (p.edit.row == i || p.edit.busy)) {
+		return nil
 	}
-	p.begin(rows, i)
+	if rows[i].choices == nil {
+		p.begin(rows, i)
+		return nil
+	}
+	p.edit, p.failed, p.cursor = nil, "", i
+	start := valueIndent + valueKeyGap
+	for _, r := range rows {
+		start = max(start, valueIndent+valueKeyGap+ansi.StringWidth(r.key))
+	}
+	switch col {
+	case start:
+		return p.stepChoice(rows, i, -1)
+	case start + ansi.StringWidth(strings.Join(rows[i].values, "")) + 3: // past "← ", the value and a space
+		return p.stepChoice(rows, i, 1)
+	}
+	return nil
 }
 
 // wheel scrolls by a turn of the wheel; the next draw keeps it in range.

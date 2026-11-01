@@ -269,3 +269,37 @@ func TestTemplate(t *testing.T) {
 		}
 	}
 }
+
+// A choice the panes offer must be a value the setting takes.
+func TestChoicesAreAccepted(t *testing.T) {
+	t.Parallel()
+	offered := 0
+	for _, s := range settings {
+		for _, choice := range s.choices {
+			offered++
+			c := Default()
+			if err := s.set(&c, choice); err != nil {
+				t.Errorf("%s: %v", s.key, err)
+			}
+			if got := s.get(c); got != choice {
+				t.Errorf("%s: %q reads as %q", s.key, choice, got)
+			}
+		}
+	}
+	if offered == 0 {
+		t.Fatal("no setting offers a choice")
+	}
+	got := map[string][]string{}
+	for _, s := range Settings() {
+		if s.Choices != nil {
+			got[s.Key] = s.Choices
+		}
+	}
+	want := map[string][]string{
+		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
+		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("choices %v", got)
+	}
+}

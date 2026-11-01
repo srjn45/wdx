@@ -21,6 +21,8 @@ const (
 	tabHiddenRight = "→"
 	// tabFrame is what a tab takes besides its name: "[● (-)]".
 	tabFrame = 7
+	// tabMark is what the mark takes of that: itself and the space after it.
+	tabMark = 2
 	// tabArrow is what an arrow takes: itself and the line beside it.
 	tabArrow = 2
 )
@@ -78,6 +80,9 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 	}
 	for _, tab := range slices.Clone(l.tabs) {
 		id := tabAgent(tab)
+		if tab == settingsTab {
+			continue
+		}
 		if agentIndex(agents, id) < 0 || (tombstones[id] && l.tombstones != nil && !l.tombstones[id]) {
 			m.closeTab(tab, "agent removed")
 		}
@@ -91,18 +96,32 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 	}
 }
 
-// agentTab is an open tab with the agent it is of.
+// agentTab is an open tab with the agent it is of, if any.
 type agentTab struct {
 	tab   string
 	agent api.Agent
 }
 
+// marked reports whether it shows a state mark: the settings have no state.
+func (t agentTab) marked() bool { return t.tab != settingsTab }
+
 // title is what the strip calls it.
 func (t agentTab) title() string {
-	if isInfoTab(t.tab) {
+	switch {
+	case !t.marked():
+		return settingsTab
+	case isInfoTab(t.tab):
 		return infoLabel + t.agent.Name
 	}
 	return t.agent.Name
+}
+
+// frame is what it takes besides its title.
+func (t agentTab) frame() int {
+	if t.marked() {
+		return tabFrame
+	}
+	return tabFrame - tabMark
 }
 
 // openTabs returns the open tabs, in their order.
@@ -113,7 +132,9 @@ func (m *Model) openTabs() []agentTab {
 	}
 	var tabs []agentTab
 	for _, tab := range l.tabs {
-		if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
+		if tab == settingsTab {
+			tabs = append(tabs, agentTab{tab: tab})
+		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
 			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})
 		}
 	}
@@ -209,7 +230,7 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 	widths := make([]int, len(tabs))
 	current := 0
 	for i, t := range tabs {
-		widths[i] = ansi.StringWidth(t.title()) + tabFrame
+		widths[i] = ansi.StringWidth(t.title()) + t.frame()
 		if t.tab == l.active {
 			current = i
 		}
@@ -243,11 +264,14 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 		}
 		name := t.title()
 		if widths[i] > room {
-			name = ansi.Truncate(name, max(room-tabFrame, 0), "…")
+			name = ansi.Truncate(name, max(room-t.frame(), 0), "…")
 		}
 		put(label{tab: i}, styled("["), 1)
-		put(label{tab: i}, agentMark(m.st, t.agent), 1)
-		put(label{tab: i}, styled(" "+name), 1+ansi.StringWidth(name))
+		if t.marked() {
+			put(label{tab: i}, agentMark(m.st, t.agent), 1)
+			name = " " + name
+		}
+		put(label{tab: i}, styled(name), ansi.StringWidth(name))
 		put(label{tab: i, closes: true}, styled(tabClose), ansi.StringWidth(tabClose))
 		put(label{tab: i}, styled("]"), 1)
 		if i < last {

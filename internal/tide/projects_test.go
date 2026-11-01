@@ -90,6 +90,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
 		ACA:        &acatest.ACA{},
 		StopReport: holdertest.Patience(t), HolderLimits: holdertest.Limits(t),
+		SettingStore: &testSettings{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -518,6 +519,7 @@ func TestPopupFrame(t *testing.T) {
 		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
 		"  ┃  ┃ o  open project   ┃  ┃  ",
 		"  ┃  ┃ p  switch project ┃  ┃  ",
+		"  ┃  ┃ s  settings       ┃  ┃  ",
 		"  ┃  ┃ q  quit           ┃  ┃  ",
 		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
 		"  ┃  ┃ Esc close         ┃  ┃  ",
@@ -527,7 +529,7 @@ func TestPopupFrame(t *testing.T) {
 		"                               ",
 	}
 	got := strings.Split(ansi.Strip(m.render()), "\n")
-	const x, y = 14, 4 // the middle of the 60 × 23 above the status line
+	const x, y = 14, 3 // the middle of the 60 × 23 above the status line
 	for i, w := range want {
 		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
 			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))

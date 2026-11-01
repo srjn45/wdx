@@ -104,7 +104,7 @@ func yesNo(b bool) string {
 // renameAgent is what saves the name of the agent with id.
 func (m *Model) renameAgent(id string) func(string) tea.Cmd {
 	return func(name string) tea.Cmd {
-		owner := m.info.owner
+		owner := m.values.owner
 		m.log.Info("agent rename asked", "agent_id", id, "name", name)
 		return func() tea.Msg {
 			_, err := m.client.RenameAgent(m.ctx, "id:"+id, "", "", name)
@@ -113,40 +113,49 @@ func (m *Model) renameAgent(id string) func(string) tea.Cmd {
 	}
 }
 
-// infoSync keeps the pane's memory to the tab shown; leaving the tab or the pane
-// ends an edit.
-func (m *Model) infoSync() {
+// valuesSync keeps the pane's memory to the tab shown: leaving the tab or the pane
+// ends an edit, and the settings are read when their tab comes to show.
+func (m *Model) valuesSync() tea.Cmd {
 	tab := ""
-	if l := m.list(); l != nil && isInfoTab(l.active) {
+	if l := m.list(); l != nil && (isInfoTab(l.active) || l.active == settingsTab) {
 		tab = l.active
 	}
-	if tab != m.info.owner {
-		m.info = valuePane{owner: tab}
+	var cmd tea.Cmd
+	if tab != m.values.owner {
+		m.values = valuePane{owner: tab}
+		if tab == settingsTab {
+			cmd = m.listSettings()
+		}
 	}
 	if m.layout.focus != agent {
-		m.info.edit = nil
+		m.values.edit = nil
 	}
+	return cmd
 }
 
-// infoInput gives a key or a paste to the info shown.
-func (m *Model) infoInput(msg tea.Msg) tea.Cmd {
-	a, ok := m.activeAgent()
+// valueRows returns the rows the agent pane shows, when it shows a value pane.
+func (m *Model) valueRows() ([]valueRow, bool) {
+	if m.settingsShown() {
+		return m.settingRows(), true
+	}
+	if a, ok := m.activeAgent(); ok && m.infoShown() {
+		return m.infoRows(a), true
+	}
+	return nil, false
+}
+
+// valueClick takes a click at the column and row of the pane's area.
+func (m *Model) valueClick(col, row int, area uv.Rectangle) tea.Cmd {
+	rows, ok := m.valueRows()
 	if !ok {
 		return nil
 	}
-	return m.info.update(m.infoRows(a), msg)
-}
-
-// infoClick takes a click at the row of the pane's area.
-func (m *Model) infoClick(row int, area uv.Rectangle) {
-	if a, ok := m.activeAgent(); ok {
-		m.info.click(m.infoRows(a), row, area.Dx(), area.Dy(), m.st)
-	}
+	return m.values.click(rows, col, row, area.Dx(), area.Dy(), m.st)
 }
 
 // drawInfo draws a's info in area.
 func (m *Model) drawInfo(buf uv.Screen, area uv.Rectangle, st style.Style, a api.Agent) {
-	m.info.draw(buf, area, m.infoRows(a), m.layout.focus == agent, st)
+	m.values.draw(buf, area, m.infoRows(a), m.layout.focus == agent, st)
 }
 
 // valueSavedMsg logs and takes the answer to a save.
@@ -154,5 +163,5 @@ func (m *Model) valueSavedMsg(msg valueSaved) {
 	if msg.err != nil {
 		m.log.Info("value not saved", "owner", msg.owner, "err", msg.err)
 	}
-	m.info.saved(msg)
+	m.values.saved(msg)
 }

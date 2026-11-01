@@ -141,7 +141,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
 		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),
-		ACA: &acatest.ACA{Launches: launchesPath(home)},
+		ACA: &acatest.ACA{Launches: launchesPath(home)}, SettingStore: settingStore{home: home},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -113,3 +113,88 @@ func TestReloadMovesMetrics(t *testing.T) {
 		t.Errorf("want what came after it sent to the new collector, got %v", got)
 	}
 }
+
+// fakeSettings takes any value but "bad" and has one setting.
+type fakeSettings struct{ value string }
+
+func (f *fakeSettings) List() ([]api.Setting, error) {
+	return []api.Setting{{Key: "a.b", Value: f.value, Editable: true}}, nil
+}
+
+func (f *fakeSettings) Set(key, value string) (api.Setting, bool, error) {
+	if key != "a.b" {
+		return api.Setting{}, false, &UnknownSettingError{Key: key}
+	}
+	if value == "bad" {
+		return api.Setting{}, false, &InvalidSettingError{Key: key, Err: errors.New("bad is bad")}
+	}
+	changed := value != f.value
+	f.value = value
+	return api.Setting{Key: key, Value: value, Editable: true}, changed, nil
+}
+
+func TestSettings(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	reloads := 0
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.SettingStore = &fakeSettings{value: "one"}
+		o.Reload = func() (Settings, error) {
+			reloads++
+			if reloads == 3 {
+				return Settings{}, errors.New("cannot read it")
+			}
+			return Settings{TerminalHistoryLines: 1}, nil
+		}
+	})
+	list, err := td.client.ListSettingsWithResponse(ctx)
+	if err != nil || list.JSON200 == nil || len(list.JSON200.Settings) != 1 || list.JSON200.Settings[0].Value != "one" {
+		t.Fatalf("list: %v %s", err, list.Body)
+	}
+	set := func(key, value string) *api.UpdateSettingResponse {
+		t.Helper()
+		r, err := td.client.UpdateSettingWithResponse(ctx, key, api.UpdateSetting{Value: value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	if r := set("a.b", "two"); r.JSON200 == nil || r.JSON200.Result != api.ResultUpdated || r.JSON200.Setting.Value != "two" || reloads != 1 {
+		t.Fatalf("updated: %s, %d reloads", r.Body, reloads)
+	}
+	// Unchanged, it reloads all the same: that recovers from a reload that failed.
+	if r := set("a.b", "two"); r.JSON200 == nil || r.JSON200.Result != api.ResultUnchanged || reloads != 2 {
+		t.Fatalf("unchanged: %s, %d reloads", r.Body, reloads)
+	}
+	wantProblem(t, set("a.b", "three").ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeReloadFailed)
+	wantProblem(t, set("a.b", "bad").ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidSetting)
+	wantProblem(t, set("no.such", "x").ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+}
+
+// A setting does not wait for a change in flight, which a clone can make last
+// minutes: if it did, this would never return.
+func TestSettingDoesNotWaitForChanges(t *testing.T) {
+	t.Parallel()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.SettingStore = &fakeSettings{} })
+	td.daemon.changes.Lock()
+	defer td.daemon.changes.Unlock()
+	r, err := td.client.UpdateSettingWithResponse(context.Background(), "a.b", api.UpdateSetting{Value: "x"})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("%v %s", err, r.Body)
+	}
+}
+
+func TestSettingsWithoutAStore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	list, err := td.client.ListSettingsWithResponse(ctx)
+	if err != nil || list.JSON200 == nil || len(list.JSON200.Settings) != 0 {
+		t.Fatalf("list: %v %s", err, list.Body)
+	}
+	r, err := td.client.UpdateSettingWithResponse(ctx, "a.b", api.UpdateSetting{Value: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+}

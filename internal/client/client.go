@@ -300,6 +300,24 @@ func (c *Client) DeleteAgent(ctx context.Context, ref, project, dir string, stop
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// ListSettings returns every setting.
+func (c *Client) ListSettings(ctx context.Context) (api.SettingList, error) {
+	r, err := c.api.ListSettingsWithResponse(ctx)
+	if err != nil {
+		return api.SettingList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// SetSetting changes the setting key, and the daemon applies it.
+func (c *Client) SetSetting(ctx context.Context, key, value string) (api.SettingResult, error) {
+	r, err := c.api.UpdateSettingWithResponse(ctx, key, api.UpdateSetting{Value: value})
+	if err != nil {
+		return api.SettingResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // ListTerminals lists the terminals of the project named by project, or of
 // the one holding dir, or of every project when both are empty.
 func (c *Client) ListTerminals(ctx context.Context, project, dir string) (api.TerminalList, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db/dbtest"
@@ -131,7 +133,7 @@ func TestSettingList(t *testing.T) {
 
 	out := wdxWith(t, home, withFileConfig(t, home), "setting", "list", "--json")
 	var v struct {
-		Settings []settingValue `json:"settings"`
+		Settings []api.Setting `json:"settings"`
 	}
 	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != api.ExitOK {
 		t.Fatalf("want the settings, got %+v: %v", out, err)
@@ -139,7 +141,7 @@ func TestSettingList(t *testing.T) {
 	if len(v.Settings) != len(config.Settings()) {
 		t.Fatalf("want every setting, got %+v", v.Settings)
 	}
-	byKey := map[string]settingValue{}
+	byKey := map[string]api.Setting{}
 	for _, s := range v.Settings {
 		byKey[s.Key] = s
 	}
@@ -379,5 +381,53 @@ func TestCompleteSettings(t *testing.T) {
 	got = keys("setting", "set", "--name", "")
 	if !slices.Contains(got, "log.level") || slices.Contains(got, "home") {
 		t.Errorf("want the settings that can be set for set, got %v", got)
+	}
+}
+
+// The daemon's settings are the config file's, through the store the cli gives it.
+func TestSettingsAPI(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	ctx := context.Background()
+	c := client.New(client.Options{Socket: identity.SocketPath(home), DebugID: logging.NewDebugID()})
+
+	list, err := c.ListSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]api.Setting{}
+	for _, s := range list.Settings {
+		byKey[s.Key] = s
+	}
+	if len(byKey) != len(config.Settings()) || byKey["home"].Editable || !byKey["log.level"].Editable || byKey["log.retention_days"].Choices != nil ||
+		byKey["log.level"].Choices == nil || !slices.Contains(*byKey["log.level"].Choices, "debug") || byKey["log.level"].From == "" {
+		t.Fatalf("settings: %+v", byKey)
+	}
+
+	r, err := c.SetSetting(ctx, "log.level", "debug")
+	if err != nil || r.Result != api.ResultUpdated || r.Setting.Value != "debug" {
+		t.Fatalf("set: %+v, %v", r, err)
+	}
+	data, err := os.ReadFile(identity.ConfigPath(home))
+	if err != nil || !strings.Contains(string(data), "level: debug") {
+		t.Fatalf("the file: %s, %v", data, err)
+	}
+	if r, err = c.SetSetting(ctx, "log.level", "debug"); err != nil || r.Result != api.ResultUnchanged {
+		t.Fatalf("set again: %+v, %v", r, err)
+	}
+
+	wantCode := func(key, value string, code api.ErrorCode) {
+		t.Helper()
+		_, err := c.SetSetting(ctx, key, value)
+		if e, ok := errors.AsType[*client.ProblemError](err); !ok || e.Problem.Code != code {
+			t.Errorf("%s=%s: want %s, got %v", key, value, code, err)
+		}
+	}
+	wantCode("log.level", "loud", api.ErrorCodeInvalidSetting)
+	wantCode("log.retention_days", "soon", api.ErrorCodeInvalidSetting)
+	wantCode("home", "/tmp", api.ErrorCodeInvalidSetting)
+	wantCode("no.such", "x", api.ErrorCodeNotFound)
+	if _, err := c.SetSetting(ctx, "log.retention_days", "soon"); err == nil || err.Error() != `"soon" is not a whole number of at least 1` {
+		t.Errorf("the reason: %v", err)
 	}
 }

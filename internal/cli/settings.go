@@ -14,6 +14,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -44,11 +45,11 @@ func newSettingListCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "Each setting's key, value and where the value comes from.\n" +
-				`With --json: {"settings": [{"key": ..., "value": ..., "default": ..., "description": ..., "from": ...}, ...]}`,
+				`With --json: {"settings": [{"key": ..., "value": ..., "default": ..., "description": ..., "from": ..., "choices": ..., "editable": ...}, ...]}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := invocationOf(cmd).env.Config
-			list := settingList{Settings: []settingValue{}}
+			list := settingList{Settings: []api.Setting{}}
 			for _, s := range config.Settings() {
 				list.Settings = append(list.Settings, viewOf(cfg, s))
 			}
@@ -68,7 +69,7 @@ func newSettingGetCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The setting's value, default, description and where the value comes from.\n" +
-				`With --json: {"setting": {"key": ..., "value": ..., "default": ..., "description": ..., "from": ...}}`,
+				`With --json: {"setting": {"key": ..., "value": ..., "default": ..., "description": ..., "from": ..., "choices": ..., "editable": ...}}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := findSetting(name)
@@ -237,17 +238,62 @@ func findSetting(key string) (config.Setting, error) {
 	return config.Setting{}, &hinted{&usageError{fmt.Errorf("no setting is named %q", key)}, "see every setting with " + identity.Name + " setting list"}
 }
 
-// settingValue is a setting as the commands show it.
-type settingValue struct {
-	Key         string `json:"key"`
-	Value       string `json:"value"`
-	Default     string `json:"default"`
-	Description string `json:"description"`
-	From        string `json:"from"`
+// viewOf is s as the commands and the API show it.
+func viewOf(cfg config.Config, s config.Setting) api.Setting {
+	v := api.Setting{Key: s.Key, Value: cfg.Value(s.Key), Default: s.Default, Description: s.Description, From: cfg.From[s.Key], Editable: s.EnvVar == ""}
+	if s.Choices != nil {
+		v.Choices = &s.Choices
+	}
+	return v
 }
 
-func viewOf(cfg config.Config, s config.Setting) settingValue {
-	return settingValue{Key: s.Key, Value: cfg.Value(s.Key), Default: s.Default, Description: s.Description, From: cfg.From[s.Key]}
+// settingStore is the settings in the config file of a home, for the daemon.
+type settingStore struct{ home string }
+
+func (s settingStore) List() ([]api.Setting, error) {
+	cfg, err := config.LoadHome(s.home)
+	if err != nil {
+		return nil, err
+	}
+	list := []api.Setting{}
+	for _, setting := range config.Settings() {
+		list = append(list, viewOf(cfg, setting))
+	}
+	return list, nil
+}
+
+func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
+	list := config.Settings()
+	i := slices.IndexFunc(list, func(setting config.Setting) bool { return setting.Key == key })
+	if i < 0 {
+		return api.Setting{}, false, &daemon.UnknownSettingError{Key: key}
+	}
+	if list[i].EnvVar != "" {
+		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: fmt.Errorf("%s is read from %s, not the config file", key, list[i].EnvVar)}
+	}
+	r, err := config.Set(s.home, key, value)
+	if e, invalid := errors.AsType[*config.Error](err); invalid {
+		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: settingRefusal(e, key)}
+	}
+	if err != nil {
+		return api.Setting{}, false, err
+	}
+	cfg, err := config.LoadHome(s.home)
+	if err != nil {
+		return api.Setting{}, false, err
+	}
+	return viewOf(cfg, list[i]), r.Changed, nil
+}
+
+// settingRefusal is why the setting key was refused: only that, when its own value
+// is what was wrong, for a row that already names it.
+func settingRefusal(e *config.Error, key string) error {
+	for _, p := range e.Problems {
+		if p.Key == key && p.Value != nil {
+			return errors.New(p.Reason)
+		}
+	}
+	return e
 }
 
 // shown is a value as text shows it, where an empty one would not show.
@@ -256,7 +302,7 @@ func shown(value string) string {
 }
 
 type settingList struct {
-	Settings []settingValue `json:"settings"`
+	Settings []api.Setting `json:"settings"`
 }
 
 func (l settingList) text(w io.Writer, st style.Style) {
@@ -268,7 +314,7 @@ func (l settingList) text(w io.Writer, st style.Style) {
 }
 
 type settingEnvelope struct {
-	Setting settingValue `json:"setting"`
+	Setting api.Setting `json:"setting"`
 }
 
 func (e settingEnvelope) text(w io.Writer, st style.Style) {
@@ -282,8 +328,8 @@ func (e settingEnvelope) text(w io.Writer, st style.Style) {
 
 // settingSetResult is what setting set did.
 type settingSetResult struct {
-	Result  string       `json:"result"`
-	Setting settingValue `json:"setting"`
+	Result  string      `json:"result"`
+	Setting api.Setting `json:"setting"`
 	// Reload is what the daemon did: reloadApplied, resultNotRunning or
 	// reloadNotApplied.
 	Reload string `json:"reload"`

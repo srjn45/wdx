@@ -77,7 +77,36 @@ type Options struct {
 	// process, such as the logs', and returns the ones the daemon applies.
 	// Nil leaves the daemon as it is.
 	Reload func() (Settings, error)
+	// SettingStore lists and changes the settings for the API. Nil has none.
+	SettingStore SettingStore
 }
+
+// SettingStore is the settings as the cli keeps them: the daemon may not read the
+// config file itself.
+type SettingStore interface {
+	// List returns every setting as the config file has it now.
+	List() ([]api.Setting, error)
+	// Set saves value for the setting key, and reports whether the file changed. It
+	// fails with an *UnknownSettingError or an *InvalidSettingError.
+	Set(key, value string) (api.Setting, bool, error)
+}
+
+// UnknownSettingError is a key no setting has.
+type UnknownSettingError struct {
+	Key string
+}
+
+func (e *UnknownSettingError) Error() string { return "no setting is named " + strconv.Quote(e.Key) }
+
+// InvalidSettingError is a value the setting cannot take, or a setting that
+// cannot be set.
+type InvalidSettingError struct {
+	Key string
+	Err error
+}
+
+func (e *InvalidSettingError) Error() string { return e.Err.Error() }
+func (e *InvalidSettingError) Unwrap() error { return e.Err }
 
 // Settings are the settings the daemon can change while it runs.
 type Settings struct {

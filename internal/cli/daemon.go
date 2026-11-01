@@ -131,6 +131,7 @@ func runForeground(cmd *cobra.Command) error {
 		ShellEnv:             invocationOf(cmd).env.ShellEnv,
 		TerminalShell:        settings.TerminalShell,
 		TerminalHistoryLines: settings.TerminalHistoryLines,
+		SettingStore:         settingStore{home: cfg.Home},
 		Reload: func() (daemon.Settings, error) {
 			now, err := config.LoadHome(cfg.Home)
 			if err != nil {

@@ -50,9 +50,9 @@ type Resume struct {
 	LastTop      string `json:"last_top"`
 	TerminalOpen bool   `json:"terminal_open"`
 	Terminal     string `json:"terminal,omitempty"` // the id of the tab selected
-	Agent        string `json:"agent,omitempty"`    // the tab current: an agent's id, or "info:" and its id
-	// Tabs are the tabs open, as Agent is. A release that does not know an info
-	// tab drops it, as it does a tab whose agent is gone.
+	Agent        string `json:"agent,omitempty"`    // the tab current: an agent's id, "info:" and its id, or settings
+	// Tabs are the tabs open, as Agent is. A release that does not know one
+	// drops it, as it does a tab whose agent is gone.
 	Tabs []string `json:"tabs,omitempty"`
 }
 
@@ -96,7 +96,7 @@ func (m *Model) startReload() tea.Cmd {
 	if f := m.following; f != nil && f.project != nil {
 		r.ProjectID = f.project.Id
 		r.Terminal = m.selectedTab[f.project.Id]
-		if _, ok := m.activeAgent(); ok {
+		if _, ok := m.activeAgent(); ok || m.settingsShown() {
 			r.Agent = m.list().active
 		}
 		r.Tabs = m.list().tabs

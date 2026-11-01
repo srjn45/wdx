@@ -177,6 +177,10 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 // its first running agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
+	if l.created == settingsTab {
+		l.openTab(settingsTab)
+		l.created = ""
+	}
 	if i := agentIndex(agents, tabAgent(l.created)); i >= 0 {
 		l.openTab(l.created)
 		l.cursor = agents[i].Id
@@ -626,6 +630,9 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	active, ok := m.activeAgent()
 	switch {
 	case !following:
+	case m.settingsShown():
+		m.drawSettings(buf, area, st)
+		return
 	case ok && m.infoShown():
 		m.drawInfo(buf, area, st, active)
 		return

@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -90,7 +91,9 @@ type Model struct {
 	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
 	stripLinger   time.Duration                             // from Options
 
-	info valuePane // the agent info shown, if any
+	values      valuePane     // the agent info or the settings shown, if any
+	settings    []api.Setting // what the daemon last said, while a settings tab reads them
+	settingsErr string        // why it could not read them
 }
 
 // content is what a pane shows.
@@ -169,10 +172,10 @@ func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemo
 // active agent if they are not, and gives them their panes' sizes.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
-	m.infoSync()
+	values := m.valuesSync()
 	attach := m.attachSelected()
 	m.syncSize()
-	return m, tea.Batch(cmd, attach)
+	return m, tea.Batch(cmd, values, attach)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -249,6 +252,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.removed(msg)
 	case valueSaved:
 		m.valueSavedMsg(msg)
+	case settingsListed:
+		m.settingsListed(msg)
+	case settingSaved:
+		m.settingSaved(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -517,9 +524,14 @@ func (m *Model) menuAction(name string) tea.Cmd {
 			m.switcher, m.opening = nil, nil
 			m.openInfo(a)
 		}
+	case settingsKey:
+		if m.settingsOffered() {
+			m.switcher, m.opening = nil, nil
+			m.openSettings()
+		}
 	case closeTabKey:
-		if _, ok := m.closableTab(); ok {
-			m.closeTab(m.list().active, "asked")
+		if t, ok := m.closableTab(); ok {
+			m.closeTab(t.tab, "asked")
 		}
 	case "r":
 		if m.menuOffers("r") {
@@ -612,17 +624,18 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 			continue
 		}
 		m.layout.setFocus(p)
+		var cmd tea.Cmd
 		if at.In(f.Inset(1)) {
 			m.press(f.Inset(1), at)
 			if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
 				s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2)
 			}
-			if p == agent && m.infoShown() && m.confirm == nil {
-				m.infoClick(at.Y-f.Min.Y-1, f.Inset(1))
+			if p == agent && m.confirm == nil {
+				cmd = m.valueClick(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Inset(1))
 			}
 		}
 		m.changed("click")
-		return nil
+		return cmd
 	}
 	return nil
 }

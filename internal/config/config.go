@@ -97,9 +97,10 @@ func envVar(key string) string {
 type setting struct {
 	key         string
 	description string
-	fromEnv     bool   // read from the environment instead of the config file
-	required    bool   // has no default; Load fails when no source sets it
-	def         string // parsed by set like any other value
+	fromEnv     bool     // read from the environment instead of the config file
+	required    bool     // has no default; Load fails when no source sets it
+	def         string   // parsed by set like any other value
+	choices     []string // the values to choose among, which set accepts; nil when it takes any
 	set         func(c *Config, value string) error
 	get         func(c Config) string
 }
@@ -109,6 +110,14 @@ var logLevels = []string{"debug", "info", "warn", "error"}
 // UpdateChannels are the release channels wdx update follows: stable
 // releases only, or every release.
 var UpdateChannels = []string{"stable", "dev"}
+
+func colorChoices() []string {
+	choices := make([]string, 0, len(ColorModes))
+	for _, m := range ColorModes {
+		choices = append(choices, string(m))
+	}
+	return choices
+}
 
 var settings = []setting{
 	{
@@ -124,6 +133,7 @@ var settings = []setting{
 		key:         "no_input",
 		description: "never prompt, as --no-input does: true or false",
 		def:         "false",
+		choices:     []string{"true", "false"},
 		set: func(c *Config, v string) (err error) {
 			if c.NoInput, err = strconv.ParseBool(v); err != nil {
 				return fmt.Errorf("%q is not true or false", v)
@@ -136,6 +146,7 @@ var settings = []setting{
 		key:         "color",
 		description: "color text output: auto (only on a terminal, unless NO_COLOR is set), always or never",
 		def:         "auto",
+		choices:     colorChoices(),
 		set: func(c *Config, v string) (err error) {
 			c.Color, err = ParseColorMode(v)
 			return err
@@ -146,6 +157,7 @@ var settings = []setting{
 		key:         "log.level",
 		description: "lowest level logged: " + strings.Join(logLevels, ", "),
 		def:         "info",
+		choices:     logLevels,
 		set: func(c *Config, v string) error {
 			if !slices.Contains(logLevels, strings.ToLower(v)) {
 				return fmt.Errorf("%q is not one of %s", v, strings.Join(logLevels, ", "))
@@ -202,6 +214,7 @@ var settings = []setting{
 		key:         "update.channel",
 		description: "releases wdx update installs: stable, or dev for the newest release of either kind",
 		def:         "stable",
+		choices:     UpdateChannels,
 		set: func(c *Config, v string) error {
 			if !slices.Contains(UpdateChannels, v) {
 				return fmt.Errorf("%q is not one of %s", v, strings.Join(UpdateChannels, ", "))
@@ -532,13 +545,14 @@ type Setting struct {
 	Description string
 	Default     string // "" when required or empty
 	Required    bool
+	Choices     []string // the values to choose among; nil when it takes any
 }
 
 // Settings describes every setting.
 func Settings() []Setting {
 	list := make([]Setting, 0, len(settings))
 	for _, s := range settings {
-		v := Setting{Key: s.key, Description: s.description, Default: s.def, Required: s.required}
+		v := Setting{Key: s.key, Description: s.description, Default: s.def, Required: s.required, Choices: s.choices}
 		if s.fromEnv {
 			v.EnvVar = envVar(s.key)
 		}

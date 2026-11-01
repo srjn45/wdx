@@ -1,8 +1,8 @@
 # tide: the agent info tab
 
-Status: implemented, but for the choice rows and the settings, which come together. Designed with the human on 2026-11-01.
+Status: implemented. Designed with the human on 2026-11-01. The settings' tab is in `docs/TIDE_SETTINGS.md`.
 
-A tab of the right pane showing what is known about an agent, as `key: value` rows. The same pane later shows the settings, each row editable. Tabs themselves are in `docs/TIDE_TABS.md`.
+A tab of the right pane showing what is known about an agent, as `key: value` rows. The settings use the same pane. Tabs themselves are in `docs/TIDE_TABS.md`.
 
 ## The pane
 
@@ -66,7 +66,7 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
  Enter save  Esc cancel
 ```
 
-Agent info has no choice row yet, so the choice kind is built with the settings.
+Agent info has no choice row yet; the settings do.
 
 ## Validation is in the API
 
@@ -84,13 +84,9 @@ Every client gets the same answer, tide included. tide sends what was typed and 
 - A rename is not a change of state, so `updated_at` stays.
 - `parent_agent_name` is added to the `Agent` schema.
 
-### Settings (later)
+### Settings
 
-- The table in `internal/config` stays the one definition. Each row's `set` already validates its value, and is what the API calls.
-- A row gains its `choices`, which the API returns and `set` checks: `no_input` (`true`, `false`), `color`, `log.level`, `update.channel`. A setting added to the table then shows up in the pane with no change to tide.
-- A value that cannot be used is a 422, with the reason `set` gives, shown under the row.
-- Empty is a value too: `otel.endpoint` and `terminal.shell` accept it.
-- `home` is read-only.
+See `docs/TIDE_SETTINGS.md`.
 
 ## Tabs
 

@@ -48,6 +48,10 @@ Decided on the way:
 - Comments of the user's own in the file are lost on a rewrite, as with `wdx update`.
 - The header the rewrite writes and `wdx help settings` change to say `wdx setting set` applies at once, and that hand edits need `wdx daemon restart`.
 
+## The API and tide
+
+`GET /v1/settings` and `PATCH /v1/settings/{setting}` are for clients that may not read the file, as tide (`docs/TIDE_SETTINGS.md`). The daemon may not import `config` either, so `runForeground` gives it a `SettingStore`, on the same `config.Set`. `wdx setting` does not use them, so that it works with the daemon down.
+
 ## The daemon's reload
 
 `POST /v1/daemon/reload`, with no body, re-reads the settings and applies them. depguard keeps `config` out of the daemon, so `runForeground` in `cli` gives it a reload function in `daemon.Options`, which calls `config.LoadHome`. The home is the only setting from the environment and is already known, so no variable is read after `main`.
