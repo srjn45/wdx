@@ -179,6 +179,23 @@ So:
 - A name is `main` for the clone, else the last part of the path, with a number if that is taken, so that a name is one checkout.
 - A path outside the worktree is `invalid_path`.
 
+## A worktree's tab
+
+`Enter` on a worktree opens one tab with two views, called by what it shows now:
+
+- **`uncommitted: <name>`** while the worktree has anything not committed: every file's changes, staged, not staged and untracked, as one patch.
+- **`pr: <name>`** once all is committed: its commits against the base. The tab moves there by itself, since nothing is left to show.
+- `Tab` flips between them while both have something to show. Having turned to the commits, it stays there until flipped back, or there is nothing uncommitted left.
+- Each view keeps its own place. Only the view shown is read.
+
+`C`, on the uncommitted view, asks the agent to commit:
+
+- A box opens with `Commit all uncommitted changes`, which can be edited. `Enter` sends it to the agent's inbox, and `Esc` cancels.
+- The agent writes the message and follows the repository's rules, so wdx commits nothing itself. The tab follows by itself: a commit fires the watch.
+- Agents are those whose directory is in the worktree, the deepest one holding it, so one in a worktree wdx did not register counts. With several, `←` `→` choose. With none, `C` refuses and says so.
+- It warns when the agent chosen is working, as a commit then may take in unfinished work, and lets it be sent.
+- A send that fails leaves the box open, with the text and why.
+
 ## Moving around a diff
 
 The arrows move a current line, marked `▸`, and the view follows it.
@@ -204,20 +221,14 @@ A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` a
 
 The order below is agreed; "proposed" marks what is not.
 
-The bar will list `C` on the worktree diff while it shows uncommitted changes, and `L` while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has neither.
+The bar will list `L` on a worktree's tab while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has no `L`.
 
-### 1. From uncommitted to landed
-
-- A worktree shows a complete diff of its uncommitted changes, from where it can be committed, and once all is committed the PR diff, from where it can be landed.
-- Committing is a command sent to the agent.
-- Proposed: one tab per worktree, showing the uncommitted changes while there are any.
-
-### 2. Verified
+### 1. Verified
 
 - `v` marks a file verified. It is only a label: committing and landing do not depend on it. Editing the file removes it.
 - Proposed: a mark holds the file's blob id from `git hash-object`, which writes nothing and is the same id once committed, so a mark survives the commit of what was verified.
 
-### 3. Comments, sent as a review
+### 2. Comments, sent as a review
 
 - `c` comments, `Esc` cancels, `Enter` adds it. Comments are sent together as a review, so that an agent does not start acting too early, to the agent working in that worktree.
 - They are saved until delivered, because no agent may be running.

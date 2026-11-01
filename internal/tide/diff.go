@@ -26,8 +26,13 @@ const (
 	committedPrefix = "pr:"
 	fileDiffLabel   = "diff: "
 	committedLabel  = "pr: "
-	diffWheelLines  = 3
-	diffTabStop     = "    "
+	// uncommittedLabel is what a worktree's tab is called while it shows that.
+	uncommittedLabel = "uncommitted: "
+	// uncommittedPrefix names the view of a worktree's tab showing what is not
+	// committed. It is no tab of its own: both views are the one tab.
+	uncommittedPrefix = "uncommitted:"
+	diffWheelLines    = 3
+	diffTabStop       = "    "
 	// jumpContext is how many lines stay above what a key goes to.
 	jumpContext = 2
 )
@@ -45,6 +50,9 @@ func isDiffTab(tab string) bool {
 // diffTabOf returns the worktree a diff's tab is of, and its file if it is a
 // file's.
 func diffTabOf(tab string) (worktree, file string) {
+	if rest, ok := strings.CutPrefix(tab, uncommittedPrefix); ok {
+		return rest, ""
+	}
 	if rest, ok := strings.CutPrefix(tab, fileDiffPrefix); ok {
 		worktree, file, _ = strings.Cut(rest, rowSeparator)
 		return worktree, file
@@ -52,13 +60,44 @@ func diffTabOf(tab string) (worktree, file string) {
 	return strings.TrimPrefix(tab, committedPrefix), ""
 }
 
-// diffTitle is what the tab strip calls a diff's tab.
-func diffTitle(tab string) string {
+// diffTitle is what the tab strip calls a diff's tab, which says what it shows now.
+func (m *Model) diffTitle(tab string) string {
 	worktree, file := diffTabOf(tab)
-	if file != "" {
+	switch {
+	case file != "":
 		return fileDiffLabel + worktree + "/" + tabLeaf(file)
+	case strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix):
+		return uncommittedLabel + worktree
 	}
 	return committedLabel + worktree
+}
+
+// diffViewOf is the view tab shows now, which names what it holds: a worktree's
+// tab shows what is not committed while there is any, unless Tab left that for the
+// commits, and the commits once all is committed.
+func (m *Model) diffViewOf(tab string) string {
+	worktree, file := diffTabOf(tab)
+	if file != "" || !m.hasUncommitted(worktree) {
+		return tab
+	}
+	if l := m.list(); l != nil && l.showCommits[worktree] {
+		return tab
+	}
+	return uncommittedPrefix + worktree
+}
+
+// hasUncommitted reports whether the worktree called name has files not committed.
+func (m *Model) hasUncommitted(name string) bool {
+	return slices.ContainsFunc(m.worktreeStatuses(), func(w api.WorktreeStatus) bool { return w.Name == name && len(w.Files) > 0 })
+}
+
+// shownDiff returns what the tab shown holds, nil before it is read.
+func (m *Model) shownDiff() *diffView {
+	l := m.list()
+	if l == nil {
+		return nil
+	}
+	return l.diffs[m.diffViewOf(l.active)]
 }
 
 // diffShown reports whether the agent pane shows a diff.
@@ -69,10 +108,11 @@ func (m *Model) diffShown() bool {
 
 // diffView is what a diff's tab holds, for the run.
 type diffView struct {
-	seen    string // what the worktree was when last asked for: asked again when it differs
-	asked   bool
-	loading bool
-	err     string
+	seen        string // what the worktree was when last asked for: asked again when it differs
+	asked       bool
+	loading     bool
+	err         string
+	uncommitted bool // the view of what is not committed, of a worktree's tab
 
 	message string // why there is nothing to show, instead of the rows
 	heading string // the line above the rows
@@ -107,6 +147,7 @@ type diffLoaded struct {
 	projectID, tab string
 	file           *api.WorktreeFileDiff
 	committed      *api.WorktreeDiff
+	uncommitted    *api.WorktreeDiff
 	err            error
 }
 
@@ -122,6 +163,9 @@ func (m *Model) diffSeen(tab string) string {
 	head := ""
 	if w.Head != nil {
 		head = *w.Head
+	}
+	if strings.HasPrefix(tab, uncommittedPrefix) {
+		return fmt.Sprint(head, " ", w.Files)
 	}
 	if file == "" {
 		return fmt.Sprint(head, " ", number(w.Ahead), " ", number(w.Added), " ", number(w.Removed))
@@ -156,17 +200,18 @@ func (m *Model) diffSync() tea.Cmd {
 	if l.diffs == nil {
 		l.diffs = map[string]*diffView{}
 	}
-	v, ok := l.diffs[l.active]
+	view := m.diffViewOf(l.active)
+	v, ok := l.diffs[view]
 	if !ok {
-		v = &diffView{jump: true}
-		l.diffs[l.active] = v
+		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix)}
+		l.diffs[view] = v
 	}
-	seen := m.diffSeen(l.active)
+	seen := m.diffSeen(view)
 	if v.loading || (v.asked && v.seen == seen) {
 		return nil
 	}
 	v.asked, v.loading, v.seen = true, true, seen
-	return m.readDiff(l.active)
+	return m.readDiff(view)
 }
 
 // readDiff asks the daemon for the diff of tab.
@@ -180,10 +225,14 @@ func (m *Model) readDiff(tab string) tea.Cmd {
 	worktree, file := diffTabOf(tab)
 	return func() tea.Msg {
 		msg := diffLoaded{projectID: id, tab: tab}
-		if file != "" {
+		switch {
+		case file != "":
 			r, err := m.client.WorktreeFileDiff(m.ctx, worktree, file, ref, "")
 			msg.file, msg.err = &r, err
-		} else {
+		case strings.HasPrefix(tab, uncommittedPrefix):
+			r, err := m.client.WorktreeUncommittedDiff(m.ctx, worktree, ref, "")
+			msg.uncommitted, msg.err = &r, err
+		default:
 			r, err := m.client.WorktreeDiff(m.ctx, worktree, ref, "")
 			msg.committed, msg.err = &r, err
 		}
@@ -206,9 +255,12 @@ func (m *Model) diffLoaded(msg diffLoaded) {
 	v.err, v.message, v.heading, v.cutOff = "", "", "", false
 	v.split, v.unified = nil, nil
 	v.width = 0 // what is drawn is to be worked out again
-	if msg.file != nil {
+	switch {
+	case msg.file != nil:
 		v.setFile(*msg.file)
-	} else {
+	case msg.uncommitted != nil:
+		v.setUncommitted(*msg.uncommitted)
+	default:
 		v.setCommitted(*msg.committed)
 	}
 }
@@ -222,6 +274,25 @@ func (v *diffView) setFile(d api.WorktreeFileDiff) {
 		v.message = "no uncommitted changes"
 	default:
 		v.split = splitPatch(d.Patch)
+	}
+}
+
+func (v *diffView) setUncommitted(d api.WorktreeDiff) {
+	v.cutOff = d.Truncated
+	if d.Patch == "" {
+		v.message = "no uncommitted changes"
+		return
+	}
+	v.unified = strings.Split(strings.TrimRight(d.Patch, "\n"), "\n")
+	files := 0
+	for _, line := range v.unified {
+		if strings.HasPrefix(line, "diff --git ") {
+			files++
+		}
+	}
+	v.heading = "not committed · 1 file"
+	if files != 1 {
+		v.heading = fmt.Sprintf("not committed · %d files", files)
 	}
 }
 
@@ -476,9 +547,9 @@ type barKey struct {
 
 // barKeys are the keys that can act on the tab now, in the order the bar shows
 // them. file says whether it is a file's diff.
-func (v *diffView) barKeys(file bool) []barKey {
+func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 	if len(v.lines) == 0 {
-		return []barKey{{"C-q -", "close", 1}}
+		return append([]barKey{{"C-q -", "close", 1}}, extra...)
 	}
 	keys := []barKey{{"↑↓", "scroll", 1}, {"[ ]", "change", 5}}
 	if file {
@@ -490,11 +561,24 @@ func (v *diffView) barKeys(file bool) []barKey {
 	if v.search != nil {
 		keys = append(keys, barKey{"n N", "match", 6})
 	}
-	return append(keys, barKey{"?", "keys", 9})
+	return append(append(keys, extra...), barKey{"?", "keys", 9})
+}
+
+// worktreeBarKeys are what a worktree's tab adds to the bar: the other view while
+// there are two, and committing while it shows what is not.
+func (m *Model) worktreeBarKeys(tab string) []barKey {
+	worktree, file := diffTabOf(tab)
+	if file != "" || !m.hasUncommitted(worktree) {
+		return nil
+	}
+	if strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix) {
+		return []barKey{{"Tab", "commits", 7}, {commitKey, "commit", 8}}
+	}
+	return []barKey{{"Tab", "uncommitted", 7}}
 }
 
 // allKeys are what ? shows.
-func (v *diffView) allKeys(file bool) []barKey {
+func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
 	keys := []barKey{
 		{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
 		{"g G", "the first or last line", 0}, {"[ ]", "the change before or after", 0},
@@ -504,6 +588,9 @@ func (v *diffView) allKeys(file bool) []barKey {
 	} else {
 		keys = append(keys, barKey{"{ }", "the file before or after", 0})
 	}
+	for _, k := range extra {
+		keys = append(keys, barKey{k.keys, "shows or does: " + k.label, 0})
+	}
 	return append(keys,
 		barKey{"/ and text", "search; capitals make it exact", 0}, barKey{"n N", "the next or last match", 0},
 		barKey{"Esc", "end the search", 0}, barKey{"C-q -", "close the tab", 0}, barKey{"Alt+←", "the tab before", 0})
@@ -512,7 +599,7 @@ func (v *diffView) allKeys(file bool) []barKey {
 // bar is the bar of shortcuts at the bottom of the tab: what can act on it now and,
 // at its right end, where the current line is. What does not fit goes, the least
 // needed first.
-func (v *diffView) bar(file bool, width int, st style.Style) string {
+func (v *diffView) bar(file bool, extra []barKey, width int, st style.Style) string {
 	if v.prompt != "" {
 		return v.prompt + v.typed + "_" + st.Muted("  Enter go  Esc cancel")
 	}
@@ -520,7 +607,7 @@ func (v *diffView) bar(file bool, width int, st style.Style) string {
 	if place == "" {
 		place = v.position(file)
 	}
-	keys := v.barKeys(file)
+	keys := v.barKeys(file, extra)
 	used := func(keys []barKey, place string) int {
 		n := 1 + ansi.StringWidth(place)
 		for _, k := range keys {
@@ -607,7 +694,7 @@ func (v *diffView) lastNumber() int {
 // why there is none.
 func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	l := m.list()
-	v := l.diffs[l.active]
+	v := m.shownDiff()
 	var top []string
 	if v != nil && v.err != "" {
 		top = append(top, st.Failure(wrap("the diff could not be read: "+v.err, area.Dx())))
@@ -624,6 +711,7 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	}
 	_, file := diffTabOf(l.active)
 	isFile := file != ""
+	extra := m.worktreeBarKeys(l.active)
 	width := max(area.Dx()-1, 1) // the first column says which line is current
 	if v.split != nil || v.unified != nil {
 		v.prepare(width, st)
@@ -639,11 +727,11 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	content := area
 	if area.Dy() >= 3 { // too small for it, the lines come first
 		content.Max.Y--
-		uv.NewStyledString(v.bar(isFile, area.Dx(), st)).Draw(buf, uv.Rect(area.Min.X, content.Max.Y, area.Dx(), 1))
+		uv.NewStyledString(v.bar(isFile, extra, area.Dx(), st)).Draw(buf, uv.Rect(area.Min.X, content.Max.Y, area.Dx(), 1))
 	}
 	if v.keyHelp {
 		lines := []string{st.Heading(" Keys") + st.Muted("  Esc or ? closes"), ""}
-		for _, k := range v.allKeys(isFile) {
+		for _, k := range v.allKeys(isFile, extra) {
 			lines = append(lines, " "+st.Command(padded(k.keys, 16))+" "+st.Muted(k.label))
 		}
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, content)
@@ -768,7 +856,7 @@ func (v *diffView) nextMatch(step int, from bool) {
 // diffKey takes a key while the agent pane shows a diff.
 func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 	l := m.list()
-	v := l.diffs[l.active]
+	v := m.shownDiff()
 	if v == nil {
 		return nil
 	}
@@ -828,6 +916,10 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		v.keyHelp = true
 	case name == "esc":
 		v.clearSearch()
+	case name == "tab":
+		m.flipWorktreeView(l.active)
+	case name == commitKey:
+		m.askCommit(l.active, v)
 	}
 	return nil
 }
@@ -868,8 +960,7 @@ func (v *diffView) finishPrompt() {
 
 // diffWheel scrolls the diff shown, the current line staying in view.
 func (m *Model) diffWheel(msg tea.MouseWheelMsg) {
-	l := m.list()
-	v := l.diffs[l.active]
+	v := m.shownDiff()
 	if v == nil {
 		return
 	}
@@ -884,8 +975,7 @@ func (m *Model) diffWheel(msg tea.MouseWheelMsg) {
 
 // diffClick makes the line clicked current; row counts from the pane's top.
 func (m *Model) diffClick(row int) {
-	l := m.list()
-	v := l.diffs[l.active]
+	v := m.shownDiff()
 	if v == nil || v.keyHelp {
 		return
 	}

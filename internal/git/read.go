@@ -352,8 +352,14 @@ func FileDiff(ctx context.Context, dir, path string) (Patch, error) {
 	if !bytes.HasPrefix(status, []byte("?? ")) {
 		return Patch{}, nil
 	}
-	// git diff never shows an untracked file: compared with nothing, it is all added.
-	out, truncated, err = read(ctx, dir, noDownload, "diff", "--no-index", "--no-color", "--no-ext-diff", wholeFile, "--", "/dev/null", path)
+	return untrackedDiff(ctx, dir, path, wholeFile)
+}
+
+// untrackedDiff is an untracked file compared with nothing, all added: git diff
+// never shows one.
+func untrackedDiff(ctx context.Context, dir, path string, flags ...string) (Patch, error) {
+	args := append(append([]string{"diff", "--no-index", "--no-color", "--no-ext-diff"}, flags...), "--", "/dev/null", path)
+	out, truncated, err := read(ctx, dir, noDownload, args...)
 	if e, ok := errors.AsType[*ReadError](err); ok && e.Exit == 1 {
 		err = nil // differing is what --no-index reports with it
 	}
@@ -361,6 +367,42 @@ func FileDiff(ctx context.Context, dir, path string) (Patch, error) {
 		return Patch{}, err
 	}
 	return patchOf(out, truncated), nil
+}
+
+// UncommittedDiff returns everything not committed in the checkout at dir, staged,
+// not staged and untracked, as one patch of the changes only. A user asked for it,
+// so what a partial clone lacks is downloaded.
+func UncommittedDiff(ctx context.Context, dir string) (Patch, error) {
+	head, err := headTree(ctx, dir)
+	if err != nil {
+		return Patch{}, err
+	}
+	out, truncated, err := read(ctx, dir, mayDownload, append(diffFlags, head)...)
+	if err != nil {
+		return Patch{}, err
+	}
+	all := patchOf(out, truncated)
+	changes, err := Changes(ctx, dir)
+	if err != nil {
+		return Patch{}, err
+	}
+	for _, c := range changes {
+		if c.Status != "?" {
+			continue
+		}
+		if all.Truncated || len(all.Text) >= maxPatch {
+			all.Truncated = true
+			break
+		}
+		p, err := untrackedDiff(ctx, dir, c.Path)
+		if err != nil {
+			return Patch{}, err
+		}
+		all.Text += p.Text
+		all.Binary = all.Binary || p.Binary
+		all.Truncated = p.Truncated
+	}
+	return all, nil
 }
 
 // headTree is what uncommitted changes are measured from: HEAD or, before the

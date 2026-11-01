@@ -169,7 +169,7 @@ func keys(m *Model, names ...string) {
 // keyMsgs returns the keys names name; any other name types its runes.
 func keyMsgs(names ...string) []tea.KeyPressMsg {
 	byName := map[string]tea.KeyPressMsg{
-		"up": key(tea.KeyUp, 0), "down": key(tea.KeyDown, 0), "enter": key(tea.KeyEnter, 0), "esc": key(tea.KeyEscape, 0),
+		"up": key(tea.KeyUp, 0), "down": key(tea.KeyDown, 0), "\t": key(tea.KeyTab, 0), "enter": key(tea.KeyEnter, 0), "esc": key(tea.KeyEscape, 0),
 		"C-q": key('q', tea.ModCtrl), `C-\`: key('\\', tea.ModCtrl), "alt+right": key(tea.KeyRight, tea.ModAlt),
 		"alt+down": key(tea.KeyDown, tea.ModAlt), "alt+up": key(tea.KeyUp, tea.ModAlt), "alt+left": key(tea.KeyLeft, tea.ModAlt),
 		"C-]": key(']', tea.ModCtrl), "backspace": key(tea.KeyBackspace, 0),

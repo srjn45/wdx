@@ -71,14 +71,17 @@ func newWorktreeListCmd() *cobra.Command {
 func newWorktreeDiffCmd() *cobra.Command {
 	var scope projectScope
 	var name, path string
+	var uncommitted bool
 	cmd := &cobra.Command{
-		Use:   "diff --name <worktree> [--path <file>] [--project-id <id> | --project-name <name>]",
-		Short: "Show what a worktree has committed, or a file's uncommitted changes",
-		Long: "Without --path, what the worktree has committed since it left its base,\n" +
-			"as a PR would show it: later commits on the base are not removals. With it,\n" +
+		Use:   "diff --name <worktree> [--uncommitted | --path <file>] [--project-id <id> | --project-name <name>]",
+		Short: "Show what a worktree has committed, or what it has not",
+		Long: "By default, what the worktree has committed since it left its base, as a\n" +
+			"PR would show it: later commits on the base are not removals. With\n" +
+			"--uncommitted, everything not committed, untracked files too. With --path,\n" +
 			"the uncommitted changes of that file, with all of its lines.",
 		Example: examples(
 			"What a worktree has committed", identity.Name+" worktree diff --name auth-fix",
+			"Everything not committed", identity.Name+" worktree diff --name auth-fix --uncommitted",
 			"The uncommitted changes of a file", identity.Name+" worktree diff --name auth-fix --path internal/tide/tabs.go",
 			"As JSON", identity.Name+" worktree diff --name auth-fix --project-name app --json",
 		),
@@ -100,7 +103,11 @@ func newWorktreeDiffCmd() *cobra.Command {
 				}
 				return printResult(cmd, worktreeFileDiff(d))
 			}
-			d, err := clientOf(cmd).WorktreeDiff(cmd.Context(), name, ref, dir)
+			read := clientOf(cmd).WorktreeDiff
+			if uncommitted {
+				read = clientOf(cmd).WorktreeUncommittedDiff
+			}
+			d, err := read(cmd.Context(), name, ref, dir)
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
@@ -110,6 +117,8 @@ func newWorktreeDiffCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree, main for the clone")
 	cmd.Flags().StringVar(&path, "path", "", "`file` to show the uncommitted changes of, relative to the worktree")
+	cmd.Flags().BoolVar(&uncommitted, "uncommitted", false, "show everything not committed instead")
+	cmd.MarkFlagsMutuallyExclusive("uncommitted", "path")
 	cmd.MarkFlagRequired("name")
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
 	cmd.RegisterFlagCompletionFunc("path", cobra.NoFileCompletions)

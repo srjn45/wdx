@@ -129,6 +129,11 @@ func TestWorktreeRequests(t *testing.T) {
 	if err != nil || d.JSON200 == nil || !strings.Contains(d.JSON200.Patch, "+committed") || strings.Contains(d.JSON200.Patch, "+two") || d.JSON200.Base == nil || *d.JSON200.Base != "main" {
 		t.Fatalf("committed: %v, %s", err, d.Body)
 	}
+	on := true
+	u, err := td.client.GetWorktreeDiffWithResponse(ctx, "work", &api.GetWorktreeDiffParams{Project: &project, Uncommitted: &on})
+	if err != nil || u.JSON200 == nil || !strings.Contains(u.JSON200.Patch, "+two") || strings.Contains(u.JSON200.Patch, "+committed") || u.JSON200.Base != nil {
+		t.Fatalf("uncommitted: %v, %s", err, u.Body)
+	}
 	f, err := td.client.GetWorktreeFileDiffWithResponse(ctx, "work", &api.GetWorktreeFileDiffParams{Project: &project, Path: "file"})
 	if err != nil || f.JSON200 == nil || !strings.Contains(f.JSON200.Patch, "+two") {
 		t.Fatalf("file: %v, %s", err, f.Body)

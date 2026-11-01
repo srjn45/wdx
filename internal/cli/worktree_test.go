@@ -99,6 +99,10 @@ func TestWorktreeDiff(t *testing.T) {
 	if exit != api.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
 		t.Errorf("uncommitted: exit %d, %q", exit, v.Patch)
 	}
+	v, exit = wdxWorktree(t, home, app, "diff", "--name", "work", "--uncommitted")
+	if exit != api.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
+		t.Errorf("all uncommitted: exit %d, %q", exit, v.Patch)
+	}
 	out := wdxWith(t, home, in(app), "worktree", "diff", "--name", "work")
 	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "+committed") {
 		t.Errorf("text: %+v", out)

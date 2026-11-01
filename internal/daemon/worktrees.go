@@ -112,6 +112,13 @@ func (s *server) GetWorktreeDiff(ctx context.Context, req api.GetWorktreeDiffReq
 	if err != nil {
 		return nil, err
 	}
+	if deref(req.Params.Uncommitted) {
+		r, err := worktree.UncommittedDiff(ctx, c, req.Worktree)
+		if err != nil {
+			return nil, err
+		}
+		return api.GetWorktreeDiff200JSONResponse{Worktree: r.Status.Name, Patch: r.Patch.Text, Binary: r.Patch.Binary, Truncated: r.Patch.Truncated}, nil
+	}
 	r, err := worktree.CommittedDiff(ctx, c, req.Worktree)
 	if err != nil {
 		return nil, err

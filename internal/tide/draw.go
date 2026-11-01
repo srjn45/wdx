@@ -69,6 +69,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.confirm != nil {
 		m.drawPopup(buf, m.confirmPopup())
 	}
+	if m.commit != nil {
+		m.drawPopup(buf, m.commitPopup())
+	}
 	if m.child != nil {
 		m.drawPopup(buf, m.childPopup())
 	}
@@ -377,6 +380,9 @@ func (m *Model) statusLine() string {
 	case m.confirm != nil:
 		state = style.StatusPrefix
 		right = "confirm: y " + m.confirm.verb() + "  n or Esc keep"
+	case m.commit != nil:
+		state = style.StatusPrefix
+		right = "commit: type what to ask  Enter send  Esc cancel"
 	case m.child != nil:
 		state = style.StatusPrefix
 		right = "new child: type a worktree  Enter create  Esc cancel"

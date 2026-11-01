@@ -101,6 +101,7 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 type agentTab struct {
 	tab   string
 	agent api.Agent
+	diff  string // what a diff's tab is called now
 }
 
 // marked reports whether it shows a state mark: only an agent has a state.
@@ -110,7 +111,7 @@ func (t agentTab) marked() bool { return t.tab != settingsTab && !isDiffTab(t.ta
 func (t agentTab) title() string {
 	switch {
 	case isDiffTab(t.tab):
-		return diffTitle(t.tab)
+		return t.diff
 	case !t.marked():
 		return settingsTab
 	case isInfoTab(t.tab):
@@ -135,7 +136,9 @@ func (m *Model) openTabs() []agentTab {
 	}
 	var tabs []agentTab
 	for _, tab := range l.tabs {
-		if tab == settingsTab || isDiffTab(tab) {
+		if isDiffTab(tab) {
+			tabs = append(tabs, agentTab{tab: tab, diff: m.diffTitle(tab)})
+		} else if tab == settingsTab {
 			tabs = append(tabs, agentTab{tab: tab})
 		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
 			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})

@@ -322,16 +322,24 @@ paths:
       - $ref: "#/components/parameters/WorktreeRef"
     get:
       operationId: getWorktreeDiff
-      summary: What a worktree has committed since it left its base, as a PR shows it
+      summary: What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
       description: |
         Measured from the merge base, so that later commits on the base are not
-        removals. What is not committed is not in it. In a partial clone, what it
-        takes is downloaded.
+        removals. What is not committed is not in it.
+
+        With uncommitted, the patch is instead everything not committed, staged,
+        not staged and untracked, with base, merge_base and ahead null.
+
+        In a partial clone, what it takes is downloaded.
 
         Errors: invalid_path, not_found, usage.
       parameters:
         - $ref: "#/components/parameters/WorktreeProject"
         - $ref: "#/components/parameters/WorktreeDir"
+        - name: uncommitted
+          in: query
+          description: Show what is not committed instead.
+          schema: { type: boolean }
       responses:
         "200":
           description: The diff.

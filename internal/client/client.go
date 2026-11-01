@@ -355,6 +355,16 @@ func (c *Client) WorktreeDiff(ctx context.Context, name, ref, dir string) (api.W
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// WorktreeUncommittedDiff returns everything the worktree name has not committed.
+func (c *Client) WorktreeUncommittedDiff(ctx context.Context, name, ref, dir string) (api.WorktreeDiff, error) {
+	on := true
+	r, err := c.api.GetWorktreeDiffWithResponse(ctx, name, &api.GetWorktreeDiffParams{Project: nonEmpty(ref), Dir: nonEmpty(dir), Uncommitted: &on})
+	if err != nil {
+		return api.WorktreeDiff{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeFileDiff returns the uncommitted changes of the file at path in the
 // worktree name.
 func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileDiff, error) {

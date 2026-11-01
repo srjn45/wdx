@@ -253,11 +253,24 @@ func worktreeSummary(w api.WorktreeStatus) string {
 	return s
 }
 
+// worktreeHolding names the worktree dir is in: the deepest, since worktrees are
+// often inside the clone. It goes by the path, as an agent's own worktree field
+// knows only those wdx registered, and every worktree git lists counts here.
+func (m *Model) worktreeHolding(dir string) string {
+	name, longest := "", 0
+	for _, w := range m.worktreeStatuses() {
+		if (dir == w.Path || strings.HasPrefix(dir, w.Path+"/")) && len(w.Path) > longest {
+			name, longest = w.Name, len(w.Path)
+		}
+	}
+	return name
+}
+
 // agentsIn names the running agents in the worktree called name.
 func (m *Model) agentsIn(name string) []string {
 	var names []string
 	for _, a := range m.agents() {
-		if a.State == api.AgentStateRunning && a.Worktree != nil && *a.Worktree == name {
+		if a.State == api.AgentStateRunning && m.worktreeHolding(a.Dir) == name {
 			names = append(names, a.Name)
 		}
 	}

@@ -218,7 +218,20 @@ func FileDiff(ctx context.Context, c Checkouts, name, path string) (git.Patch, e
 	return git.FileDiff(ctx, s.Path, path)
 }
 
-// Committed is what a checkout has committed since it left its base.
+// UncommittedDiff returns everything not committed in the checkout called name, as
+// one patch of the changes only.
+func UncommittedDiff(ctx context.Context, c Checkouts, name string) (Committed, error) {
+	s, err := Find(ctx, c, name)
+	if err != nil {
+		return Committed{}, err
+	}
+	r := Committed{Status: s}
+	r.Patch, err = git.UncommittedDiff(ctx, s.Path)
+	return r, err
+}
+
+// Committed is a checkout with a patch of it: for what is committed, since it left
+// its base, with MergeBase saying where that was.
 type Committed struct {
 	Status    Status
 	MergeBase string // "" when it shares no history with its base

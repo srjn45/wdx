@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,7 +170,7 @@ func TestDiffTabs(t *testing.T) {
 		if w, f := diffTabOf(tc.tab); w != tc.worktree || f != tc.file {
 			t.Errorf("%q: %q, %q", tc.tab, w, f)
 		}
-		if got := diffTitle(tc.tab); got != tc.title {
+		if got := worktreesModel().diffTitle(tc.tab); got != tc.title {
 			t.Errorf("title of %q: %q", tc.tab, got)
 		}
 		if !isDiffTab(tc.tab) || isDiffTab("agent-1") || isDiffTab(settingsTab) || isDiffTab(infoTab("a")) {
@@ -460,13 +461,146 @@ func TestDiffBarNarrow(t *testing.T) {
 	v := &diffView{split: longFile(30, 5)}
 	v.prepare(100, style.New(false))
 	for _, width := range []int{100, 60, 40, 30, 12} {
-		got := ansi.Strip(v.bar(true, width, style.New(false)))
+		got := ansi.Strip(v.bar(true, nil, width, style.New(false)))
 		if ansi.StringWidth(got) > max(width, 8) {
 			t.Errorf("%d: %d wide: %q", width, ansi.StringWidth(got), got)
 		}
 		if width >= 12 && !strings.Contains(got, "?") {
 			t.Errorf("%d: the full list cannot be reached: %q", width, got)
 		}
+	}
+}
+
+// worktreeTabModel shows a worktree's tab, with an agent working in it if working.
+func worktreeTabModel(t *testing.T, files ...api.WorktreeFile) (*Model, *agentList) {
+	t.Helper()
+	main := "main"
+	m := worktreesModel(api.WorktreeStatus{Name: "w", Path: "/w", Ahead: aheadBy(1), Base: &main, Files: files})
+	m.layout.setFocus(agent)
+	l := m.list()
+	l.openTab(committedTab("w"))
+	unified := []string{"diff --git a/f b/f", "@@ -1 +1 @@", "-a", "+b"}
+	l.diffs = map[string]*diffView{
+		committedTab("w"):       {asked: true, unified: unified},
+		uncommittedPrefix + "w": {asked: true, unified: unified, uncommitted: true},
+	}
+	for view, v := range l.diffs {
+		v.seen = m.diffSeen(view)
+	}
+	return m, l
+}
+
+func TestWorktreeTabViews(t *testing.T) {
+	t.Parallel()
+	m, l := worktreeTabModel(t, changed("f", api.WorktreeFileStatusM))
+	got := text(m)
+	if !strings.Contains(got, "uncommitted: w") || !strings.Contains(got, "C commit") || !strings.Contains(got, "Tab commits") {
+		t.Errorf("with changes it shows them:\n%s", got)
+	}
+
+	keys(m, "\t")
+	if m.diffViewOf(l.active) != committedTab("w") {
+		t.Fatal("Tab did not flip")
+	}
+	got = text(m)
+	if !strings.Contains(got, "pr: w") || strings.Contains(got, "C commit") || !strings.Contains(got, "Tab uncommitted") {
+		t.Errorf("the commits offer no commit:\n%s", got)
+	}
+	keys(m, commitKey)
+	if m.commit != nil {
+		t.Error("C acted on the commits")
+	}
+	keys(m, "\t")
+	if !strings.HasPrefix(m.diffViewOf(l.active), uncommittedPrefix) {
+		t.Fatal("Tab did not flip back")
+	}
+
+	// All committed, it moves by itself, and there is nothing to flip to.
+	(*m.following.project.WorktreeStatuses)[0].Files = nil
+	if m.diffViewOf(l.active) != committedTab("w") {
+		t.Error("it stayed on a view with nothing to show")
+	}
+	got = text(m)
+	if !strings.Contains(got, "pr: w") || strings.Contains(got, "Tab ") {
+		t.Errorf("all committed:\n%s", got)
+	}
+	keys(m, "\t")
+	if m.diffViewOf(l.active) != committedTab("w") {
+		t.Error("Tab flipped to nothing")
+	}
+}
+
+func TestWorktreeHolding(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(
+		api.WorktreeStatus{Name: "main", Path: "/r"},
+		api.WorktreeStatus{Name: "work", Path: "/r/.worktrees/work"},
+		api.WorktreeStatus{Name: "rest", Path: "/rest"},
+	)
+	for dir, want := range map[string]string{
+		"/r": "main", "/r/sub": "main", "/r/.worktrees/work": "work", "/r/.worktrees/work/sub": "work", "/rest/x": "rest", "/r2": "", "/other": "",
+	} {
+		if got := m.worktreeHolding(dir); got != want {
+			t.Errorf("%s: want %q, got %q", dir, want, got)
+		}
+	}
+}
+
+func runningAgent(id, dir string, activity api.AgentActivity) api.Agent {
+	return api.Agent{Id: id, Name: id, Dir: dir, State: api.AgentStateRunning, Activity: &activity}
+}
+
+func TestCommitBox(t *testing.T) {
+	t.Parallel()
+	m, _ := worktreeTabModel(t, changed("f", api.WorktreeFileStatusM))
+
+	// None running: it says so.
+	*m.following.project.Agents = nil
+	keys(m, commitKey)
+	if m.commit != nil || !strings.Contains(text(m), "no agent is running in w") {
+		t.Fatalf("with no agent:\n%s", text(m))
+	}
+
+	// One idle, in the worktree; one elsewhere is not asked.
+	*m.following.project.Agents = []api.Agent{runningAgent("a", "/w/sub", api.AgentActivityIdle), runningAgent("x", "/other", api.AgentActivityIdle)}
+	keys(m, commitKey)
+	if m.commit == nil || len(m.commit.agents) != 1 || m.commit.text != commitPrompt {
+		t.Fatalf("box: %+v", m.commit)
+	}
+	got := text(m)
+	if !strings.Contains(got, commitPrompt) || strings.Contains(got, "is working") || strings.Contains(got, "← ") {
+		t.Errorf("one idle agent:\n%s", got)
+	}
+
+	// The text can be edited, and Esc leaves it unsent.
+	keys(m, "backspace", "!")
+	if m.commit.text != strings.TrimSuffix(commitPrompt, "s")+"!" {
+		t.Errorf("text: %q", m.commit.text)
+	}
+	keys(m, "esc")
+	if m.commit != nil {
+		t.Error("Esc left the box")
+	}
+
+	// Several, one working: it can be chosen, and warned of.
+	*m.following.project.Agents = []api.Agent{runningAgent("a", "/w", api.AgentActivityIdle), runningAgent("b", "/w", api.AgentActivityWorking)}
+	keys(m, commitKey, "right")
+	if m.commit.agents[m.commit.chosen].Id != "b" {
+		t.Fatalf("chosen: %d", m.commit.chosen)
+	}
+	got = text(m)
+	if !strings.Contains(got, "b is working") || !strings.Contains(got, "→") {
+		t.Errorf("a working agent:\n%s", got)
+	}
+
+	// A failure keeps the text and says why.
+	m.Update(commitSent{agent: "b", err: errors.New("agent_not_running")})
+	if m.commit == nil || m.commit.err == "" || !strings.Contains(text(m), "agent_not_running") {
+		t.Errorf("failure: %+v", m.commit)
+	}
+	m.Update(commitSent{agent: "b"})
+	if m.commit != nil || !strings.Contains(text(m), "sent to b") {
+		t.Errorf("sent: %+v", m.commit)
 	}
 }
 
@@ -551,18 +685,34 @@ func TestWorktreeDiffsLive(t *testing.T) {
 		return strings.Contains(text(m), "no uncommitted changes") && strings.Contains(text(m), "↑2")
 	})
 
-	// Enter on the worktree shows what it committed.
-	writeFile(t, filepath.Join(work, "later"), "not committed\n")
+	// Enter on the worktree shows what is not committed, while there is any.
+	writeFile(t, filepath.Join(work, "later"), "still to commit\n")
+	p.keys("C-q", refreshKey)
 	m.layout.setFocus(project)
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file == nil && r.worktree.Name == "work" }))
 	p.keys("enter")
-	p.until(t, "the PR view", func(m *Model) bool {
+	p.until(t, "the uncommitted view", func(m *Model) bool {
+		got := text(m)
+		return strings.Contains(got, "uncommitted: work") && strings.Contains(got, "+still to commit") && strings.Contains(got, "C commit")
+	})
+	if got := text(m); strings.Contains(got, "+committed") {
+		t.Errorf("what is committed is in the uncommitted view:\n%s", got)
+	}
+	p.keys("\t")
+	p.until(t, "the commits, by Tab", func(m *Model) bool {
 		got := text(m)
 		return strings.Contains(got, "pr: work") && strings.Contains(got, "base: main") && strings.Contains(got, "+committed")
 	})
-	if got := text(m); strings.Contains(got, "not committed") {
-		t.Errorf("what is not committed is in the PR view:\n%s", got)
-	}
+	p.keys("\t")
+	p.until(t, "the uncommitted view again", func(m *Model) bool { return strings.Contains(text(m), "uncommitted: work") })
+
+	// Once it is committed, by anyone, the tab moves by itself.
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "later")
+	p.until(t, "the commits, by themselves", func(m *Model) bool {
+		v := m.shownDiff() // the line may be below what is on the screen
+		return strings.Contains(text(m), "pr: work") && v != nil && slices.Contains(v.unified, "+still to commit")
+	})
 
 	// A diff's tab stays when what it shows is gone, and says why.
 	if len(m.list().tabs) != 2 {
@@ -574,6 +724,36 @@ func TestWorktreeDiffsLive(t *testing.T) {
 		t.Errorf("tabs after: %v", m.list().tabs)
 	}
 	p.until(t, "the tab saying so", func(m *Model) bool { return strings.Contains(text(m), "could not be read") })
+}
+
+// TestCommitSent goes through a real daemon to a real agent's inbox: what Enter sends
+// is what the agent is given.
+func TestCommitSent(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	writeFile(t, filepath.Join(dir, "file"), "changed\n")
+	if _, err := h.client().CreateAgent(t.Context(), api.CreateAgent{Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the worktree and its agent", func(m *Model) bool { return m.hasUncommitted("main") && len(m.runningAgentsIn("main")) == 1 })
+	m := p.m
+	m.moveToWorktree(0)
+	p.keys("enter")
+	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "C commit") })
+	p.keys(commitKey)
+	if m.commit == nil {
+		t.Fatalf("no box:\n%s", text(m))
+	}
+	p.keys("enter")
+	p.until(t, "the answer", func(m *Model) bool { return m.commit == nil })
+	if m.statusNotice == "" || !strings.HasPrefix(m.statusNotice, "sent to ") {
+		t.Errorf("notice: %q", m.statusNotice)
+	}
 }
 
 func writeFile(t *testing.T, path, content string) {

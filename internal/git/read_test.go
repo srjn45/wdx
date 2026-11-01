@@ -343,6 +343,31 @@ func TestFileDiff(t *testing.T) {
 	}
 }
 
+func TestUncommittedDiff(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	write(t, dir, "bare.txt", "staged\n")
+	gittest.Git(t, dir, "add", "bare.txt")
+	p, err := UncommittedDiff(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"+2", "-two", "+staged", "+fresh", "diff --git a/new b/new"} {
+		if !strings.Contains(p.Text, want) {
+			t.Errorf("no %q in\n%s", want, p.Text)
+		}
+	}
+	// Changes only: a line far from any change is not in it, nor what is committed.
+	if strings.Contains(p.Text, "+first") {
+		t.Errorf("what is committed is in it:\n%s", p.Text)
+	}
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "all")
+	if p, err = UncommittedDiff(t.Context(), dir); err != nil || p.Text != "" {
+		t.Errorf("all committed: %+v, %v", p, err)
+	}
+}
+
 func TestFileDiffBeforeTheFirstCommit(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "empty")

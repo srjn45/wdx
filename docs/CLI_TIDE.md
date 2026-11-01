@@ -30,7 +30,9 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 |---|---|---|---|---|
 | List the worktrees and their uncommitted files | `worktree list` | the left pane | Same | tide's stays up to date, and the CLI reads once |
 | A file's uncommitted changes | `worktree diff --path` | a tab, split in two | By design | A script needs the patch, a person the two versions side by side |
-| What a worktree has committed | `worktree diff` | a tab | Same | |
+| What a worktree has committed | `worktree diff` | its tab | Same | |
+| Everything a worktree has not committed | `worktree diff --uncommitted` | its tab | Same | |
+| Ask an agent to commit | `agent send` | `C` in a worktree's tab | Same | |
 | Read the worktrees again | not needed | `C-q f`, `f` in the list | By design | Each command reads anew |
 
 ## Agents
