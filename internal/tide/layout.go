@@ -117,7 +117,7 @@ func (l layout) neighbour(d direction) pane {
 		return terminal
 	case l.focus == project && d == right:
 		return agent
-	case l.focus == agent && d == left:
+	case l.focus == agent && (d == left || d == up):
 		return project
 	}
 	return none

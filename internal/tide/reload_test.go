@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func TestReload(t *testing.T) {
 	agents := []api.Agent{{Id: "agent-a", Name: "a", State: api.AgentStateRunning}, {Id: "agent-b", Name: "b", State: api.AgentStateRunning}}
 	terms := []api.Terminal{{Id: "term-x", Name: "x", State: api.TerminalStateRunning, Dir: "/work/demo"}, {Id: "term-y", Name: "y", State: api.TerminalStateRunning, Dir: "/work/demo"}}
 	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Terminals: &terms, Agents: &agents}}})
-	m.list().active = "agent-b"
+	m.list().openTab("agent-b")
 	m.selectTab(1)
 	m.layout.setFocus(terminal)
 	m.layout.toggleZoom()
@@ -158,8 +159,8 @@ func TestReload(t *testing.T) {
 	m.Update(key('q', tea.ModCtrl))
 	m.update(key('r', 0))
 	r := m.Reload()
-	want := Resume{Project: "demo", ProjectID: "proj-demo", Focus: "terminal", Zoomed: "terminal", LastTop: "project", TerminalOpen: true, Terminal: "term-y", Agent: "agent-b"}
-	if r == nil || *r != want {
+	want := Resume{Project: "demo", ProjectID: "proj-demo", Focus: "terminal", Zoomed: "terminal", LastTop: "project", TerminalOpen: true, Terminal: "term-y", Agent: "agent-b", Tabs: []string{"agent-b"}}
+	if r == nil || !reflect.DeepEqual(*r, want) {
 		t.Fatalf("resume %+v, want %+v", r, want)
 	}
 	if m.following != nil {

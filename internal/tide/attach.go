@@ -96,7 +96,7 @@ func (m *Model) attachSelected() tea.Cmd {
 		return m.client.GetTerminalHistory(ctx, "id:"+t.Id, "", "", from, count)
 	})
 	active, ok := m.activeAgent()
-	attachAgent := m.attachPane(agent, terminalOf(active), ok, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+	attachAgent := m.attachPane(agent, terminalOf(active), ok && !m.tabResting, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
 		return m.client.GetAgentHistory(ctx, "id:"+active.Id, "", "", from, count)
 	})
 	return tea.Batch(attachTerminal, attachAgent)

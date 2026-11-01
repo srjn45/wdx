@@ -1,6 +1,6 @@
 # tide: the wdx Terminal-IDE
 
-Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, Phase B2, the project followed live with its terminals as tabs, Phase B3, the selected terminal live in the terminal pane, and Phase B4, the Agents list with the active agent live in the agent pane, are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md, docs/TIDE_B2.md, docs/TIDE_B3.md and docs/TIDE_B4.md record how they were built). The rest is design.
+Status: Phase A, the layout skeleton, Phase B1, opening and switching projects, Phase B2, the project followed live with its terminals as tabs, Phase B3, the selected terminal live in the terminal pane, Phase B4, the Agents list with the active agent live in the agent pane, and the agent pane's tabs are implemented in `internal/tide` (see Phases; docs/TIDE_B1.md, docs/TIDE_B2.md, docs/TIDE_B3.md, docs/TIDE_B4.md and docs/TIDE_TABS.md record how they were built). The rest is design.
 
 tide is the interactive terminal UI of wdx, started with `wdx tide`. It ships in the same binary as the CLI and the daemon.
 
@@ -35,9 +35,8 @@ Three fixed panes. No general split tree.
 ### Right pane: agent
 
 - 3/4 of the width.
-- Shows one agent at a time: the one made active in the project view.
-- The agent's name is on the pane's frame line.
-- Live agent PTY.
+- One tab per agent opened from the project view, on the pane's frame line; the current one is the active agent (docs/TIDE_TABS.md).
+- Live agent PTY, of the current tab only.
 
 ### Bottom pane: terminal
 
@@ -195,9 +194,9 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 - Pressing the letter right away fires the action (`C-q n`), with no delay.
 - Typing more than one letter turns it into a fuzzy command palette.
 - Screens open from this menu.
-- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `\`, `]` and `C-q` send that ctrl key to the program in focus (agent or terminal pane), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
+- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `-` close the current agent tab (while the agent pane has the focus), `\`, `]` and `C-q` send that ctrl key to the program in focus (agent or terminal pane), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
 - With the project pane in focus, the menu's letters also work without `C-q`, showing the same popups: nothing there takes typing. In the agent and terminal panes they go to the program, so those keep only `C-q`. `q` quits at once there too, which is safe because terminals and agents keep running.
-- `C-q r` reloads tide: the process replaces itself with the binary installed, in the same window, so an update reaches a tide left open. Terminals and agents never notice: their holders are other processes, and they stay on the binary they started from until their shell starts again (docs/TERMINALS.md). The next run gets what to show through the hidden flag `--resume`: the project, the focus, the zoom, the terminal pane, the tab selected and the active agent. Scroll positions, folds, open popups and the state of other projects go with the old run. A project closed meanwhile, or a state not understood, starts tide as usual. A later release must keep `--resume`, since an earlier one reloads into it; reloading into a release from before it fails with `usage` and gives the window back. A binary missing or not executable is found before quitting: tide stays open and says so in the status line. A failure of the replacement itself, which the check leaves very unlikely, ends tide with an error. The key is not offered until the projects are listed, where `r` tries the listing again.
+- `C-q r` reloads tide: the process replaces itself with the binary installed, in the same window, so an update reaches a tide left open. Terminals and agents never notice: their holders are other processes, and they stay on the binary they started from until their shell starts again (docs/TERMINALS.md). The next run gets what to show through the hidden flag `--resume`: the project, the focus, the zoom, the terminal pane, the tab selected, the agent tabs open and the active agent. Scroll positions, folds, open popups and the state of other projects go with the old run. A project closed meanwhile, or a state not understood, starts tide as usual. A later release must keep `--resume`, since an earlier one reloads into it; reloading into a release from before it fails with `usage` and gives the window back. A binary missing or not executable is found before quitting: tide stays open and says so in the status line. A failure of the replacement itself, which the check leaves very unlikely, ends tide with an error. The key is not offered until the projects are listed, where `r` tries the listing again.
 - The final list of actions and letters is still to be decided.
 
 ### Switching panes
@@ -206,6 +205,7 @@ Switching focus is the most frequent action, so it is one chord, never a prefix 
 
 - A modifier plus arrows, moving focus in the arrow's direction. `↓` from either top pane goes to the terminal pane; `↑` from the terminal returns to the top pane that had focus last.
 - While the terminal pane has focus, left and right switch tabs, since it has no horizontal neighbor.
+- While the agent pane has focus, left and right walk `left pane - tab 1 ... tab n`, and `↑` goes to the left pane from any tab, keeping it (docs/TIDE_TABS.md).
 - `Alt+arrows`. It works out of the box in GNOME Terminal, Konsole and xterm, and costs little inside panes, where word jump is usually `ESC b` / `ESC f` or `Ctrl+←/→`. Both encodings terminals send for it are accepted (`CSI 1;3 A` and `ESC` before the arrow).
 - `ESC b` / `ESC f` are never taken: they are word jump in every shell. A macOS terminal set to send them for Option+←/→ needs Option+arrows mapped back to the arrow codes, which tide's help explains.
 - `Ctrl+arrows` are out: macOS takes them, and they are word jump on Linux. `Ctrl+Alt+arrows` never reach the terminal on GNOME, which switches workspaces with them.
@@ -269,8 +269,8 @@ The project pane and its screens use plain keys for their own navigation (`j` / 
 Supported, though most users will mostly use the keyboard.
 
 - Click a pane to focus it.
-- Double-click a frame title, or click a `[⤢]` button on it, to zoom.
-- Click a terminal tab to switch to it.
+- Double-click a frame title, both clicks on the same thing, or click a `[⤢]` button on it, to zoom.
+- Click a terminal tab or an agent tab to switch to it, an agent tab's `(-)` to close it, and `←` or `→` on the strip to go to the nearest tab hidden there.
 - Drag the dividers to resize.
 - The wheel scrolls a pane's scrollback.
 - Programs that request the mouse (vim, htop) get mouse events inside their pane.
@@ -285,7 +285,8 @@ Supported, though most users will mostly use the keyboard.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Phase B3, terminals in the terminal pane (implemented, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.
 - **Phase B4, the Agents list (implemented, docs/TIDE_B4.md):** the project pane lists the project's agents; `Enter` or a click makes one active, live in the agent pane through termview; `C-q a` creates an agent and `C-q x` removes one. The list is linear; child agents came next (docs/CHILD_AGENTS.md).
-- **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves. docs/IDE.md holds the wider direction: tabs in the right pane, worktrees and diffs, code, docs and plans.
+- **Agent tabs (implemented, docs/TIDE_TABS.md):** a tab per agent opened in the right pane, closed with `C-q -` or `(-)`, walked with `Alt+←/→`, on a strip that slides to keep the current one shown.
+- **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves. docs/IDE.md holds the wider direction: other tab types in the right pane, worktrees and diffs, code, docs and plans.
 
 ## Open questions
 

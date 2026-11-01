@@ -78,6 +78,7 @@ func TestActions(t *testing.T) {
 	}{
 		{"start", nil, layout{terminalOpen: true, focus: agent, lastTop: agent}},
 		{"left", []action{moveLeft}, layout{terminalOpen: true, focus: project, lastTop: project}},
+		{"up from the agent pane", []action{moveUp}, layout{terminalOpen: true, focus: project, lastTop: project}},
 		{"left at the edge", []action{moveLeft, moveLeft, moveUp}, layout{terminalOpen: true, focus: project, lastTop: project}},
 		{"down and back up", []action{moveLeft, moveDown, moveUp}, layout{terminalOpen: true, focus: project, lastTop: project}},
 		{"down then sideways stays", []action{moveDown, moveLeft, moveRight, moveDown}, layout{terminalOpen: true, focus: terminal, lastTop: agent}},

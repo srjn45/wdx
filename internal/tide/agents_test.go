@@ -91,7 +91,7 @@ func TestAgentsList(t *testing.T) {
 	// the cursor on it.
 	wantRow(t, m, "swift-falcon", "│▸ ● swift-falcon")
 	wantRow(t, m, "swift-falcon", "◂")
-	wantText(t, m, " swift-falcon ─", "↑↓ select  Enter show")
+	wantText(t, m, "[● swift-falcon(-)]─", "↑↓ select  Enter show")
 
 	// The arrows move the cursor alone; it stops at the ends.
 	m.Update(key('k', 0))
@@ -116,7 +116,7 @@ func TestAgentsList(t *testing.T) {
 	if m.layout.focus != project {
 		t.Fatalf("Enter moved the focus to %s", m.layout.focus)
 	}
-	wantText(t, m, " bold-heron ─")
+	wantText(t, m, "[● swift-falcon(-)]─[✕ bold-heron(-)]─")
 
 	// Out of the pane, the cursor hides and the active agent stays.
 	m.Update(keyMsgs("alt+right")[0])
@@ -615,7 +615,7 @@ func TestAgentsFoldedActive(t *testing.T) {
 	wantRow(t, m, "c-middle", "◂")
 	keys(m, "left", "left")
 	wantRow(t, m, "a-parent", "◂")
-	wantText(t, m, " d-deep ─")
+	wantText(t, m, "[● d-deep(-)]─")
 	keys(m, "right")
 	wantRow(t, m, "c-middle", "◂")
 	if strings.Contains(row(t, m, "a-parent"), "◂") {
@@ -719,7 +719,7 @@ func TestNewChildAgent(t *testing.T) {
 		t.Fatalf("child in %s, want %s", child.Dir, parent.Dir)
 	}
 
-	p.keys("alt+left", "up", "C-q", "x")
+	p.keys("alt+up", "up", "C-q", "x")
 	wantText(t, p.m, "It stays as removed until its children are gone.")
 	p.keys("y")
 	p.until(t, "the parent a tombstone", func(m *Model) bool {

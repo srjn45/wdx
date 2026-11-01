@@ -51,6 +51,8 @@ type Resume struct {
 	TerminalOpen bool   `json:"terminal_open"`
 	Terminal     string `json:"terminal,omitempty"` // the id of the tab selected
 	Agent        string `json:"agent,omitempty"`    // the id of the active agent
+	// Tabs are the ids of the agents with a tab open.
+	Tabs []string `json:"tabs,omitempty"`
 }
 
 // String is r as the flag carries it.
@@ -96,6 +98,7 @@ func (m *Model) startReload() tea.Cmd {
 		if a, ok := m.activeAgent(); ok {
 			r.Agent = a.Id
 		}
+		r.Tabs = m.list().tabs
 	}
 	m.reload = r
 	m.log.Info("tide reloading", "executable", m.executable, "project", m.shown)
@@ -129,7 +132,7 @@ func (m *Model) resumed() (tea.Cmd, bool) {
 		}
 		// Active once the stream brings it, as an agent created here is; the
 		// first running one must not take its place, nor take it when none was.
-		m.agentLists[r.ProjectID] = &agentList{closed: map[string]bool{}, created: r.Agent, opened: true}
+		m.agentLists[r.ProjectID] = &agentList{closed: map[string]bool{}, tabs: r.Tabs, created: r.Agent, opened: true}
 	}
 	cmd := m.show(r.Project)
 	m.layout.terminalOpen = r.TerminalOpen

@@ -36,13 +36,17 @@ const (
 
 // agentList is what tide remembers of a project's Agents list for the run.
 type agentList struct {
-	cursor  string          // the id of the agent under the cursor
-	row     int             // its row, which the next agent takes when it goes
-	active  string          // the id of the agent the agent pane shows, or ""
-	offset  int             // the rows scrolled past
-	opened  bool            // the project came once, and its first running agent became active
-	created string          // the id of an agent created here, active once the stream brings it
-	closed  map[string]bool // the ids of the parents folded; what is open inside them stays so
+	cursor  string   // the id of the agent under the cursor
+	row     int      // its row, which the next agent takes when it goes
+	active  string   // the id of the agent the agent pane shows, its tab being the current one; "" only with no tabs
+	tabs    []string // the ids of the agents with a tab open, in the tabs' order
+	tabFrom int      // the first tab the strip shows
+	// tombstones are the agents the last event had as removed, nil before one came.
+	tombstones map[string]bool
+	offset     int             // the rows scrolled past
+	opened     bool            // the project came once, and its first running agent became active
+	created    string          // the id of an agent created here, active once the stream brings it
+	closed     map[string]bool // the ids of the parents folded; what is open inside them stays so
 }
 
 // agentListRow is a row of the Agents list.
@@ -169,25 +173,25 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 }
 
 // agentsChanged keeps the cursor on its agent, or on the one that took its
-// row; an active agent that is gone leaves the agent pane empty. The first
-// time a project comes, its first running agent becomes active.
+// row; the tab of an agent that is gone closes. The first time a project comes,
+// its first running agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
 	if i := agentIndex(agents, l.created); i >= 0 {
-		l.active, l.cursor = l.created, l.created
+		l.openTab(l.created)
+		l.cursor = l.created
 		l.reveal(agents, l.created)
 		l.created = ""
 	}
 	if !l.opened {
 		l.opened = true
 		if i := slices.IndexFunc(agents, func(a api.Agent) bool { return a.State == api.AgentStateRunning }); i >= 0 {
-			l.active, l.cursor = agents[i].Id, agents[i].Id
+			l.openTab(agents[i].Id)
+			l.cursor = agents[i].Id
 			m.log.Info("agent active", "name", agents[i].Name, "reason", "first running")
 		}
 	}
-	if agentIndex(agents, l.active) < 0 {
-		l.active = ""
-	}
+	m.tabsChanged(agents)
 	rows := m.listRows()
 	if i := shownAs(rows, agents, l.cursor); i >= 0 {
 		l.row, l.cursor = i, rows[i].agent.Id
@@ -230,10 +234,10 @@ func (m *Model) moveCursor(i int) {
 	l.row, l.cursor = i, rows[i].agent.Id
 }
 
-// activate makes the agent under the cursor active.
+// activate opens the tab of the agent under the cursor, or goes to it.
 func (m *Model) activate() {
 	if a, ok := m.cursorAgent(); ok {
-		m.list().active = a.Id
+		m.list().openTab(a.Id)
 		m.log.Info("agent active", "name", a.Name, "reason", "chosen")
 	}
 }

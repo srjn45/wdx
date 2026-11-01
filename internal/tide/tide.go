@@ -28,6 +28,7 @@ const (
 	zoomKey     = "ctrl+]"
 	terminalKey = `ctrl+\`
 	menuKey     = "ctrl+q"
+	closeTabKey = "-" // of the menu
 )
 
 // focusKeys are Alt and an arrow, whichever way the terminal sends them.
@@ -65,6 +66,9 @@ type Model struct {
 	attaches       int                                                                  // how many attachments were made, numbering them
 	rests          int                                                                  // how many project switches rested, numbering them
 	resting        bool                                                                 // a project switched to has not rested yet: nothing attaches
+	tabRests       int                                                                  // how many agent tab switches rested, numbering them
+	tabSwitching   bool                                                                 // an agent tab was switched to with the keys, and they have not rested yet
+	tabResting     bool                                                                 // another was switched to soon after: no agent attaches
 	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
 	child          *childBox                                                            // the worktree C-q c asks for, while it does
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
@@ -119,6 +123,7 @@ type Options struct {
 type click struct {
 	pane pane
 	at   time.Time
+	tab  int // the tab clicked, or -1
 }
 
 // New returns tide's window. Its requests to the daemon run with ctx,
@@ -230,6 +235,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case rested:
 		if msg.rests == m.rests {
 			m.resting = false
+		}
+	case tabRested:
+		if msg.rests == m.tabRests {
+			m.tabSwitching, m.tabResting = false, false
 		}
 	case termview.EndedMsg:
 		return m, m.ended(msg)
@@ -456,6 +465,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			return m.paneInput(m.layout.focus, msg)
 		case m.layout.focus == terminal && (d == left || d == right):
 			m.switchTab(d)
+		case m.layout.focus == agent && (d == left || d == right):
+			return m.tabKey(d)
 		case m.layout.move(d):
 			m.changed("move")
 		}
@@ -495,6 +506,10 @@ func (m *Model) menuAction(name string) tea.Cmd {
 	case `\`, "]", menuKey:
 		if m.programInFocus() {
 			return m.sendToProgram(name)
+		}
+	case closeTabKey:
+		if a, ok := m.closableTab(); ok {
+			m.closeTab(a.Id, "asked")
 		}
 	case "r":
 		if m.menuOffers("r") {
@@ -599,25 +614,38 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	return nil
 }
 
-// clickTitle handles a click on p's top border: its zoom button, a tab,
-// or a second click soon after the first zooms.
+// clickTitle handles a click on p's top border: its zoom button, a tab, a
+// tab's close button, an arrow of hidden tabs, or a second click soon after the
+// first, on the same thing, zooms. A button never counts towards a double-click:
+// the next click may land on what took its place.
 func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 	now := m.now()
-	double := m.lastClick.pane == p && now.Sub(m.lastClick.at) <= doubleClick
-	m.lastClick = click{pane: p, at: now}
+	on := label{tab: -1}
 	for _, l := range m.labels(p, f) {
-		if !at.In(l.area) {
-			continue
+		if at.In(l.area) {
+			on = l
+			break
 		}
-		switch {
-		case l.zoom:
-			m.lastClick = click{}
-			m.layout.toggleZoom()
-			m.changed("zoom button")
-			return
-		case l.tab >= 0:
-			m.selectTab(l.tab)
-		}
+	}
+	switch {
+	case on.zoom:
+		m.lastClick = click{}
+		m.layout.toggleZoom()
+		m.changed("zoom button")
+		return
+	case on.closes:
+		m.lastClick = click{}
+		m.closeTab(m.tabAgents()[on.tab].Id, "clicked")
+		return
+	case on.arrow:
+		m.lastClick = click{}
+		m.selectClicked(p, on.tab)
+		return
+	}
+	double := m.lastClick.pane == p && m.lastClick.tab == on.tab && now.Sub(m.lastClick.at) <= doubleClick
+	m.lastClick = click{pane: p, at: now, tab: on.tab}
+	if on.tab >= 0 {
+		m.selectClicked(p, on.tab)
 	}
 	if double {
 		m.lastClick = click{}
@@ -626,6 +654,16 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 		return
 	}
 	m.changed("click")
+}
+
+// selectClicked selects the tab i of p.
+func (m *Model) selectClicked(p pane, i int) {
+	if p == agent {
+		m.list().active = m.tabAgents()[i].Id
+		m.log.Debug("tab selected", "agent_id", m.list().active)
+		return
+	}
+	m.selectTab(i)
 }
 
 // wheel goes to the pane under the pointer, whichever has the focus.

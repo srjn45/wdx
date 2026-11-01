@@ -160,6 +160,8 @@ type label struct {
 	area   uv.Rectangle
 	tab    int  // the tab a click selects, or -1
 	zoom   bool // the zoom button
+	closes bool // a click closes the tab instead
+	arrow  bool // the arrow of tabs hidden on its side, the tab being the nearest
 }
 
 // zoomButton is the button a click zooms or un-zooms a pane with.
@@ -190,11 +192,10 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		add(" ["+m.root.title()+"] ", -1, m.st.Name)
 		return labels
 	case p != terminal:
-		title := p.String()
-		if a, ok := m.activeAgent(); ok && p == agent {
-			title = a.Name
+		if tabs := m.tabAgents(); p == agent && len(tabs) > 0 {
+			return append(labels, m.agentTabLabels(tabs, x+1, end, f.Min.Y)...) // after a cell of the line
 		}
-		add(" "+title+" ", -1, m.st.Name)
+		add(" "+p.String()+" ", -1, m.st.Name)
 		return labels
 	}
 	plain := func(s string) string { return s }

@@ -28,6 +28,9 @@ func (m *Model) menuItems() []menuItem {
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
+	if a, ok := m.closableTab(); ok {
+		items = append(items, menuItem{closeTabKey, "close the tab of " + a.Name, "close tab"})
+	}
 	if m.programInFocus() {
 		items = append(items,
 			menuItem{`\`, `send C-\ to the program`, "send"},
@@ -111,6 +114,15 @@ func (m *Model) focusTerminalPane() {
 		}
 	}
 	m.changed("terminal pane")
+}
+
+// closableTab returns the agent whose tab C-q - would close: only with the agent
+// pane in focus, so that it cannot seem to close a terminal's tab.
+func (m *Model) closableTab() (api.Agent, bool) {
+	if m.layout.focus != agent {
+		return api.Agent{}, false
+	}
+	return m.activeAgent()
 }
 
 // removal is what C-q x would remove: the entity in focus.
