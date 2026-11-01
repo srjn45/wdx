@@ -98,6 +98,8 @@ type Options struct {
 	// AgentStatus records what a row of KindAgent's process is doing, as its
 	// holder told. Nothing is recorded when nil.
 	AgentStatus func(ctx context.Context, id string, status holder.Status)
+	// AgentEnded is told a row of KindAgent's process ended, when not nil.
+	AgentEnded func(id string)
 }
 
 // AgentLaunch is how to run a row of KindAgent.
@@ -709,6 +711,7 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 			select {
 			case exit := <-c.Exited():
 				s.recordExit(ctx, id, exit)
+				s.agentEnded(t)
 				if err := c.Release(); err != nil {
 					log.Info("release not sent", "err", err)
 				}
@@ -727,6 +730,7 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 				if err != nil {
 					log.Info("holder gone", "err", err)
 					s.recordGone(ctx, id)
+					s.agentEnded(t)
 					return
 				}
 				// Under w.mu, which Close takes to close the current
@@ -755,6 +759,12 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 func (s *Supervisor) recordStatus(ctx context.Context, kind Kind, id string, conn *holder.Conn) {
 	if kind == KindAgent && s.opts.AgentStatus != nil {
 		s.opts.AgentStatus(ctx, id, conn.Status())
+	}
+}
+
+func (s *Supervisor) agentEnded(t Terminal) {
+	if t.Kind == KindAgent && s.opts.AgentEnded != nil {
+		s.opts.AgentEnded(t.ID)
 	}
 }
 

@@ -42,7 +42,8 @@ type Launch struct {
 
 - `claude --resume <id>` when `~/.claude/projects/*/<id>.jsonl` exists, else `claude --session-id <id>`.
 - The check is needed: Claude Code saves no transcript until something is typed, and `--resume` of such a session fails with `No conversation found with session ID` (checked on 2.1.314). So an agent created and left untouched, then relaunched, starts that session afresh.
-- wdx generates the session id, a UUID, when it creates the agent.
+- wdx generates the session id, a UUID, when it creates the agent. A `/clear` starts another session, and the agent's `session_id` follows it: a start goes on with the latest conversation (docs/AGENT_RESUME.md).
+- A `--settings` file adds a hook that tells wdx each session, and a transcript Claude Code has deleted comes back from wdx's backup.
 
 ## The table
 
@@ -76,7 +77,7 @@ CREATE TABLE agents (
 | `agent create` | inserts both rows, then starts the holder; `start_failed` leaves the row `failed` |
 | `agent start` | from `exited`, `failed` or `lost`: starts it again, in the same session, so the conversation comes back |
 | `agent rename` | changes the name on its terminal row; the process and session go by id and do not notice. A tombstone cannot be renamed |
-| `agent remove` | stops a live process (`--stop-running`), deletes both rows; the ACA's own transcript stays on disk |
+| `agent remove` | stops a live process (`--stop-running`), deletes both rows, moves wdx's backup of the conversation to the trash for 7 days (docs/AGENT_RESUME.md); the ACA's own transcript stays on disk |
 | `project close` | stops its agents along with its terminals, under the same `--stop-running` |
 | `project open` | relaunches its `stopped` agents, in the same session |
 | `project remove` | stops them and deletes the rows |
@@ -105,6 +106,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 | `POST /v1/agents/{agent}/start` | 200 `{"result": "started", "agent": {...}}` | `not_found`, `project_closed`, `agent_running`, `start_failed` |
 | `DELETE /v1/agents/{agent}?stop_running=true` | 200 `{"result": "removed", "agent": {...}}` | `not_found`, `agent_running` |
 | `GET /v1/agents/{agent}/history?tail=` or `?from=&count=` | 200 `{"history": {...}}`, as for terminals; what attach scrolls through | `not_found` |
+| `GET /v1/agents/{agent}/transcript?tail=` or `?from=&count=` | 200 `{"transcript": {...}}`; the conversation as text, docs/AGENT_RESUME.md | `not_found` |
 
 `{agent}` is `id:` and its id, or a name together with `?project=<ref>` or `?dir=/abs`, as for terminals.
 
@@ -144,6 +146,7 @@ wdx agent get    (--id <id> | --name <name>) [--project-id <id> | --project-name
 wdx agent start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent rename (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --new-name <name>
 wdx agent attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
+wdx agent transcript (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--tail <lines> | [--from <line>] [--count <lines>] | --path]: docs/AGENT_RESUME.md
 wdx agent send   (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [--instant]: docs/SEND.md
 wdx agent remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]
 ```
@@ -171,7 +174,7 @@ CI has no `claude`, and tests never touch the network, so no test runs a real AC
 - **`aca.ClaudeCode`** has unit tests of `Command` against a temporary home: with and without a transcript.
 - **The real thing** is checked by hand before a change here lands: create, attach and see Claude Code, detach, a daemon restart, close and open the project, `agent start` after `/exit`, remove. It sends no prompt unless typed. Nothing automated notices if Claude Code changes its flags or where it keeps transcripts.
 
-Limits known so far: `aca.ClaudeCode` looks for transcripts under `~/.claude`, so a `CLAUDE_CONFIG_DIR` set in the user's rc file would make it start a session that exists instead of resuming it; and resuming a session with a conversation is covered by unit tests of the command, not yet by a run against Claude Code, since that sends a prompt.
+Limits known so far: until its hook has told a session's path, `aca.ClaudeCode` looks for transcripts under `~/.claude`, so a `CLAUDE_CONFIG_DIR` set in the user's rc file would make its first start of a session resume nothing; and resuming a session with a conversation is covered by unit tests of the command, not yet by a run against Claude Code, since that sends a prompt.
 
 ## Implementation plan
 

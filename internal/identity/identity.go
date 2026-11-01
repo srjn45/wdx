@@ -73,6 +73,23 @@ func TerminalsDir(home string) string {
 	return filepath.Join(home, "terminals")
 }
 
+// AgentsDir holds the directory of each agent under home.
+func AgentsDir(home string) string {
+	return filepath.Join(home, "agents")
+}
+
+// AgentDir holds the backup of agent id's conversation under home. It can hold
+// secrets: only the user may read it.
+func AgentDir(home, id string) string {
+	return filepath.Join(AgentsDir(home), id)
+}
+
+// TrashAgentsDir holds what is kept of removed agents under home, until it
+// expires.
+func TrashAgentsDir(home string) string {
+	return filepath.Join(home, "trash", "agents")
+}
+
 // LogsDir is where the daily log files are written under home.
 func LogsDir(home string) string {
 	return filepath.Join(home, "logs")

@@ -3,9 +3,12 @@
 package acatest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -22,6 +25,10 @@ type ACA struct {
 	Launches string
 	// Script is what its shell runs; defaultScript when "".
 	Script string
+	// Conversation, when set, is the file BackUp takes the transcript from, and
+	// Session the one holding the session it says it is in now.
+	Conversation string
+	Session      string
 }
 
 // ID implements aca.AiCodingAgent.
@@ -38,6 +45,22 @@ func (a *ACA) Deliver(w io.Writer, message string) error { return aca.ClaudeCode
 // Interrupt implements aca.AiCodingAgent: Claude Code's, as a holder goes by the
 // id.
 func (a *ACA) Interrupt() []byte { return aca.ClaudeCode{}.Interrupt() }
+
+// BackUp implements aca.AiCodingAgent.
+func (a *ACA) BackUp(_ context.Context, l aca.Launch) (string, error) {
+	session := l.SessionID
+	if data, err := os.ReadFile(a.Session); err == nil {
+		session = strings.TrimSpace(string(data))
+	}
+	data, err := os.ReadFile(a.Conversation)
+	if errors.Is(err, os.ErrNotExist) || a.Conversation == "" {
+		return session, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return session, os.WriteFile(filepath.Join(l.BackupDir, aca.TranscriptFile), data, 0o600)
+}
 
 // Command implements aca.AiCodingAgent.
 func (a *ACA) Command(l aca.Launch) ([]string, error) {

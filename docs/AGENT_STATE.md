@@ -347,7 +347,7 @@ Known wrong answers, none of which matters for display:
 ### Found on the way
 
 - **`/model` changes the default of every later agent.** Enter in the menu and `/model <name>` both write `"model"` to Claude's settings (`saved as your default for new sessions`), only `s` in the menu does not. So an agent's `/model` reaches the next agent started.
-- **`/clear` starts a new session,** a transcript of its own, and `--resume` of the old id goes back to the conversation before it. Since an agent's `session_id` is fixed, a relaunch after `/clear` would bring back what was cleared. Seen with `claude --resume`, not through a wdx relaunch.
+- **`/clear` starts a new session,** a transcript of its own, and `--resume` of the old id goes back to the conversation before it. An agent's `session_id` now follows it through a hook, so a relaunch goes on from the latest conversation (docs/AGENT_RESUME.md).
 
 ## Later: why it is waiting
 

@@ -3,7 +3,6 @@ package aca
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -19,16 +18,25 @@ func (ClaudeCode) ID() string { return "claude_code" }
 
 // Command implements AiCodingAgent. A session is resumed only once it has a
 // transcript: Claude Code writes none until something is typed, and resuming
-// such a session fails with "No conversation found".
+// such a session fails with "No conversation found". One Claude Code has
+// deleted comes back from the backup.
 func (ClaudeCode) Command(l Launch) ([]string, error) {
-	transcripts, err := filepath.Glob(filepath.Join(l.UserHome, ".claude", "projects", "*", l.SessionID+".jsonl"))
+	command := []string{"claude", "--session-id", l.SessionID}
+	resume, err := claudeCodeTranscriptAt(l)
 	if err != nil {
 		return nil, fmt.Errorf("look for the transcript of session %s: %w", l.SessionID, err)
 	}
-	if len(transcripts) > 0 {
-		return []string{"claude", "--resume", l.SessionID}, nil
+	if resume {
+		command = []string{"claude", "--resume", l.SessionID}
 	}
-	return []string{"claude", "--session-id", l.SessionID}, nil
+	if l.BackupDir == "" {
+		return command, nil
+	}
+	settings, err := claudeCodeWriteSettings(l.BackupDir)
+	if err != nil {
+		return nil, fmt.Errorf("write the settings of its backup: %w", err)
+	}
+	return append(command, "--settings", settings), nil
 }
 
 // Bracketed paste keeps a message's newlines content, not Enter.

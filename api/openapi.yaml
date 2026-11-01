@@ -755,6 +755,42 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TerminalHistoryEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
+  /v1/agents/{agent}/transcript:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getAgentTranscript
+      summary: Lines of an agent's conversation as text, in any state
+      description: |
+        wdx's backup of the conversation, across its compactions and sessions,
+        kept until the agent is removed and brought up to date first. Unlike
+        getAgentHistory, this is what the agent and the human said and did, not
+        what the screen showed.
+
+        Errors: invalid_path, not_found; tail with from or count is a usage
+        error.
+      parameters:
+        - name: from
+          in: query
+          description: The number of the first line; excludes tail.
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: count
+          in: query
+          description: Lines from from on, or from 0 without from; 1000 when not given; excludes tail.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+        - name: tail
+          in: query
+          description: The last lines; excludes from and count; 1000 when none is given.
+          schema: { type: integer, minimum: 1, maximum: 10000 }
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentTranscriptEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
 
 components:
   parameters:
@@ -1197,6 +1233,24 @@ components:
           description: The lines as the terminal drew them, with their escape codes for styles and links.
           items: { type: string }
 
+    AgentTranscript:
+      type: object
+      required: [path, from, next, lines]
+      properties:
+        path: { type: string, description: "The file on the daemon's machine, whole, for grep." }
+        from: { type: integer, format: int64, description: The number of the first line in lines. }
+        next: { type: integer, format: int64, description: The number the next line written will take. }
+        lines:
+          type: array
+          description: The lines, oldest first, as Markdown.
+          items: { type: string }
+
+    AgentTranscriptEnvelope:
+      type: object
+      required: [transcript]
+      properties:
+        transcript: { $ref: "#/components/schemas/AgentTranscript" }
+
     TerminalHistoryEnvelope:
       type: object
       required: [history]
@@ -1247,7 +1301,7 @@ components:
           items: { $ref: "#/components/schemas/Agent" }
         terminal_id: { type: string, description: "What holds its process, which attaching dials; no terminal path accepts it." }
         aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
-        session_id: { type: string, description: "The AI coding agent's session, which it goes on with when started again." }
+        session_id: { type: string, description: "The AI coding agent's latest session, which it goes on with when started again; changes when the conversation is cleared." }
         dir: { type: string, description: "Where it starts, now and on every relaunch." }
         worktree: { type: string, nullable: true, description: "The name of the project's worktree holding dir, main for the clone; null when none does." }
         state: { $ref: "#/components/schemas/AgentState" }

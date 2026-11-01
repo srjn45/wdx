@@ -27,7 +27,7 @@ func newAgentCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentSendCmd(), newAgentStartCmd())
+	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
 	return cmd
 }
 

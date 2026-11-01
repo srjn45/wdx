@@ -1,0 +1,373 @@
+package agent
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/atomicfile"
+	"github.com/srjn45/wdx/internal/holder"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+)
+
+// DefaultTrashRetention is how long what is kept of a removed agent stays.
+const DefaultTrashRetention = 7 * 24 * time.Hour
+
+const (
+	backupAgentFile   = "agent.json"
+	backupRemovedFile = "removed.json"
+)
+
+// backupRecord says whose a backup is, since the agent's row goes before it
+// does. Its keys are what a later feature reads from the trash.
+type backupRecord struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	ProjectID string    `json:"project_id"`
+	Project   string    `json:"project_name"`
+	Dir       string    `json:"dir"`
+	ACA       string    `json:"aca"`
+	SessionID string    `json:"session_id"`
+	CreatedAt time.Time `json:"created_at"`
+	RemovedAt time.Time `json:"removed_at,omitzero"`
+}
+
+// Backups keeps a backup of each agent's conversation until the agent is removed,
+// and for a while after. docs/AGENT_RESUME.md.
+type Backups struct {
+	ctx       context.Context
+	store     *Store
+	home      string
+	acas      []aca.AiCodingAgent
+	retention time.Duration
+	// OnChange, when set, is told an agent's session changed.
+	OnChange func()
+
+	// work is held while a backup or the trash changes, which can take a while.
+	work    sync.Mutex
+	timer   *time.Timer
+	stopped bool
+
+	queue   sync.Mutex
+	queued  map[string]bool
+	closed  bool
+	running sync.WaitGroup
+}
+
+// NewBackups returns the backups of the agents in store, under home, of the
+// AI coding agents in acas; a removed agent's stays for retention, or
+// DefaultTrashRetention when 0.
+func NewBackups(ctx context.Context, store *Store, home string, acas []aca.AiCodingAgent, retention time.Duration) *Backups {
+	if retention == 0 {
+		retention = DefaultTrashRetention
+	}
+	return &Backups{
+		ctx: context.WithoutCancel(ctx), store: store, home: home, acas: acas, retention: retention,
+		queued: map[string]bool{},
+	}
+}
+
+// Close waits for the work under way and starts no more.
+func (b *Backups) Close() {
+	b.queue.Lock()
+	b.closed = true
+	b.queue.Unlock()
+	b.work.Lock()
+	b.stopped = true
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	b.work.Unlock()
+	b.running.Wait()
+}
+
+// Request brings the backup of the agent on terminal row terminalID up to date,
+// in the background: what tells it must not wait for a copy. Requests made
+// while one waits to start are the same request.
+func (b *Backups) Request(terminalID string) {
+	b.queue.Lock()
+	defer b.queue.Unlock()
+	if b.closed || b.queued[terminalID] {
+		return
+	}
+	b.queued[terminalID] = true
+	b.running.Go(func() {
+		b.work.Lock()
+		defer b.work.Unlock()
+		b.queue.Lock()
+		delete(b.queued, terminalID)
+		b.queue.Unlock()
+		log := logging.FromContext(b.ctx).With("terminal_id", terminalID)
+		a, err := b.store.GetByTerminal(b.ctx, terminalID)
+		if errors.Is(err, ErrNotFound) {
+			return // removed meanwhile; Sweep took its last bytes
+		}
+		if err != nil {
+			log.Error("agent backup not started", "err", err)
+			return
+		}
+		if _, err := b.up(b.ctx, a); err != nil {
+			log.Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+		}
+	})
+}
+
+// RequestAll is Request for every agent, for what changed while no daemon ran.
+func (b *Backups) RequestAll(ctx context.Context) error {
+	list, err := b.store.List(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, a := range list {
+		b.Request(a.Terminal.ID)
+	}
+	return nil
+}
+
+// up brings a's backup up to date and returns the session it is in now, as far
+// as is known, with an error. A b.work holder only.
+func (b *Backups) up(ctx context.Context, a Agent) (string, error) {
+	known := b.known(a.ACA)
+	if known == nil {
+		return a.SessionID, nil // Launches reports it, on a start
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return a.SessionID, err
+	}
+	dir := identity.AgentDir(b.home, a.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return a.SessionID, err
+	}
+	session, err := known.BackUp(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: dir})
+	if session != "" && session != a.SessionID {
+		changed, serr := b.store.setSession(ctx, a.ID, session)
+		if serr != nil {
+			return a.SessionID, errors.Join(err, serr)
+		}
+		logging.FromContext(ctx).Info("agent session changed", "agent_id", a.ID, "from", a.SessionID, "session_id", session)
+		if changed && b.OnChange != nil {
+			b.OnChange()
+		}
+		a.SessionID = session
+	}
+	data, merr := json.Marshal(backupRecord{
+		ID: a.ID, Name: a.Terminal.Name, ProjectID: a.Terminal.ProjectID, Project: a.Terminal.ProjectName,
+		Dir: a.Terminal.Dir, ACA: a.ACA, SessionID: a.SessionID, CreatedAt: a.Terminal.CreatedAt,
+	})
+	if merr == nil {
+		merr = atomicfile.Write(filepath.Join(dir, backupAgentFile), data, 0o600)
+	}
+	return a.SessionID, errors.Join(err, merr)
+}
+
+func (b *Backups) known(id string) aca.AiCodingAgent {
+	for _, candidate := range b.acas {
+		if candidate.ID() == id {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// Sweep moves the backups of agents that have no row to the trash, taking their
+// last bytes first, and deletes what expired there. However a row went, an
+// agent's removal or its project's, or a crash between, it ends here.
+func (b *Backups) Sweep(ctx context.Context) error {
+	b.work.Lock()
+	defer b.work.Unlock()
+	log := logging.FromContext(ctx)
+	// Listed before the agents: a directory is made after its row.
+	entries, err := os.ReadDir(identity.AgentsDir(b.home))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	list, err := b.store.List(ctx, "")
+	if err != nil {
+		return err
+	}
+	exist := map[string]bool{}
+	for _, a := range list {
+		exist[a.ID] = true
+	}
+	for _, e := range entries {
+		if exist[e.Name()] {
+			continue
+		}
+		if err := b.toTrash(ctx, e.Name()); err != nil {
+			log.Error("agent backup not moved to the trash", "agent_id", e.Name(), "err", err)
+		}
+	}
+	return b.expire(ctx)
+}
+
+// toTrash moves the backup of the agent id, whose row is gone. A b.work holder
+// only.
+func (b *Backups) toTrash(ctx context.Context, id string) error {
+	log := logging.FromContext(ctx)
+	dir := identity.AgentDir(b.home, id)
+	record := backupRecord{ID: id}
+	if data, err := os.ReadFile(filepath.Join(dir, backupAgentFile)); err == nil {
+		if err := json.Unmarshal(data, &record); err != nil {
+			log.Error("agent record not read", "agent_id", id, "err", err)
+		}
+	}
+	if known := b.known(record.ACA); known != nil {
+		account, err := holder.LookupAccount(ctx)
+		if err == nil {
+			_, err = known.BackUp(ctx, aca.Launch{Dir: record.Dir, SessionID: record.SessionID, UserHome: account.Home, BackupDir: dir})
+		}
+		if err != nil {
+			log.Error("last of the agent's backup not taken", "agent_id", id, "err", err)
+		}
+	}
+	record.RemovedAt = time.Now().UTC()
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	if err := atomicfile.Write(filepath.Join(dir, backupRemovedFile), data, 0o600); err != nil {
+		return err
+	}
+	trash := identity.TrashAgentsDir(b.home)
+	if err := os.MkdirAll(trash, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(trash), 0o700); err != nil {
+		return err
+	}
+	to := filepath.Join(trash, id)
+	if err := os.RemoveAll(to); err != nil {
+		return err
+	}
+	if err := os.Rename(dir, to); err != nil {
+		return err
+	}
+	log.Info("agent backup moved to the trash", "agent_id", id, "path", to)
+	return nil
+}
+
+// expire deletes what is past its time in the trash, and arms one timer for the
+// next to go. A b.work holder only.
+func (b *Backups) expire(ctx context.Context) error {
+	log := logging.FromContext(ctx)
+	trash := identity.TrashAgentsDir(b.home)
+	entries, err := os.ReadDir(trash)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var next time.Time
+	now := time.Now()
+	for _, e := range entries {
+		due := b.trashedAt(filepath.Join(trash, e.Name()), e).Add(b.retention)
+		if due.After(now) {
+			if next.IsZero() || due.Before(next) {
+				next = due
+			}
+			continue
+		}
+		path := filepath.Join(trash, e.Name())
+		if err := os.RemoveAll(path); err != nil {
+			log.Error("agent backup not deleted from the trash", "path", path, "err", err)
+			continue
+		}
+		log.Info("agent backup deleted from the trash", "agent_id", e.Name(), "path", path)
+	}
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	if next.IsZero() {
+		return nil
+	}
+	b.timer = time.AfterFunc(time.Until(next), func() {
+		b.work.Lock()
+		defer b.work.Unlock()
+		if b.stopped {
+			return
+		}
+		if err := b.expire(ctx); err != nil {
+			log.Error("agent trash not swept", "err", err)
+		}
+	})
+	return nil
+}
+
+// trashedAt is when the backup at path was removed: what it says, or else its
+// directory's time, for one a crash left unfinished.
+func (b *Backups) trashedAt(path string, e os.DirEntry) time.Time {
+	var record backupRecord
+	if data, err := os.ReadFile(filepath.Join(path, backupRemovedFile)); err == nil && json.Unmarshal(data, &record) == nil && !record.RemovedAt.IsZero() {
+		return record.RemovedAt
+	}
+	if info, err := e.Info(); err == nil {
+		return info.ModTime()
+	}
+	return time.Now()
+}
+
+// Transcript is lines of an agent's conversation as text.
+type Transcript struct {
+	Path  string // the file, for whoever would grep it
+	From  int64  // the number of the first of Lines
+	Next  int64  // the number the next line written will take
+	Lines []string
+}
+
+// transcript brings a's backup up to date, then reads count lines from line from
+// on, or its last count lines when from is nil.
+func (b *Backups) transcript(ctx context.Context, a Agent, from *int64, count int) (Transcript, error) {
+	b.work.Lock()
+	defer b.work.Unlock()
+	if _, err := b.up(ctx, a); err != nil {
+		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+	}
+	path := filepath.Join(identity.AgentDir(b.home, a.ID), aca.TranscriptFile)
+	t := Transcript{Path: path, Lines: []string{}}
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return t, nil
+	}
+	if err != nil {
+		return Transcript{}, err
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadString('\n')
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return Transcript{}, err
+		}
+		n := t.Next
+		t.Next++
+		line = line[:len(line)-1]
+		switch {
+		case from == nil:
+			t.Lines = append(t.Lines, line)
+			if len(t.Lines) > count {
+				t.Lines = t.Lines[1:]
+			}
+		case n >= *from && len(t.Lines) < count:
+			t.Lines = append(t.Lines, line)
+		}
+	}
+	if from == nil {
+		t.From = t.Next - int64(len(t.Lines))
+	} else {
+		t.From = min(*from, t.Next)
+	}
+	return t, nil
+}

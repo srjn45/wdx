@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -771,4 +773,43 @@ func TestAgentSendRemoved(t *testing.T) {
 	}
 	v, exit := wdxJSON(t, home, "agent", "send", "--id", parent.Id, "--prompt", "hello")
 	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+}
+
+func TestAgentTranscript(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	a := newAgent(t, home, app, "helper")
+	file := filepath.Join(identity.AgentDir(home, a.Id), aca.TranscriptFile)
+	if err := os.WriteFile(file, []byte("# Session s\n\nhello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper")
+	if exit != api.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.Next != 3 || !slices.Equal(v.Transcript.Lines, []string{"# Session s", "", "hello"}) {
+		t.Fatalf("want every line, got exit %d, %+v", exit, v.Transcript)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--tail", "1")
+	if exit != api.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
+		t.Fatalf("want the last line, got exit %d, %+v", exit, v.Transcript)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--from", "2", "--count", "1")
+	if exit != api.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
+		t.Fatalf("want line 2, got exit %d, %+v", exit, v.Transcript)
+	}
+	for _, flags := range [][]string{{"--tail", "2", "--from", "3"}, {"--tail", "2", "--count", "3"}, {"--path", "--tail", "2"}, {"--tail", "0"}} {
+		v, exit = wdxJSONWith(t, home, in(app), append([]string{"agent", "transcript", "--name", "helper"}, flags...)...)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "nobody")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+
+	out := wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--tail", "1")
+	if out.exit != api.ExitOK || out.stdout != "hello\n" {
+		t.Fatalf("text: %+v", out)
+	}
+	out = wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--path")
+	if out.exit != api.ExitOK || out.stdout != file+"\n" {
+		t.Fatalf("path: %+v", out)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
@@ -822,4 +823,155 @@ func TestAgentQueued(t *testing.T) {
 		}
 	}
 	td.waitProject(t, "app", "the message delivered", queued(0))
+}
+
+func TestAgentTranscript(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	const secret = "the-secret-in-a-conversation"
+	conversation := filepath.Join(t.TempDir(), "conversation")
+	if err := os.WriteFile(conversation, []byte("hello\n"+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Conversation: conversation} })
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+
+	r, err := td.client.GetAgentTranscriptWithResponse(ctx, "id:"+a.Id, nil)
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("transcript: %v %s", err, r.Body)
+	}
+	got := r.JSON200.Transcript
+	if want := filepath.Join(identity.AgentDir(td.home, a.Id), aca.TranscriptFile); got.Path != want || got.From != 0 || got.Next != 2 || !slices.Equal(got.Lines, []string{"hello", secret}) {
+		t.Errorf("transcript = %+v", got)
+	}
+	r, err = td.client.GetAgentTranscriptWithResponse(ctx, "id:"+a.Id, &api.GetAgentTranscriptParams{From: optional(int64(1)), Count: optional(1)})
+	if err != nil || r.JSON200 == nil || !slices.Equal(r.JSON200.Transcript.Lines, []string{secret}) {
+		t.Errorf("from 1: %v %s", err, r.Body)
+	}
+	r, err = td.client.GetAgentTranscriptWithResponse(ctx, "id:"+a.Id, &api.GetAgentTranscriptParams{Tail: optional(1), Count: optional(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusBadRequest, api.ErrorCodeUsage)
+	r, err = td.client.GetAgentTranscriptWithResponse(ctx, "id:agent-nothing", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+
+	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("logs: %v %v", logs, err)
+	}
+	for _, name := range logs {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Errorf("the conversation is in %s", name)
+		}
+	}
+}
+
+// An agent's history reaches the logs no more than a terminal's does.
+func TestAgentHistoryIsNotLogged(t *testing.T) {
+	t.Parallel()
+	const secret = "the-secret-on-a-screen"
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	// The test terminals keep no history: it is written as a holder would.
+	dir := filepath.Join(identity.TerminalDir(td.home, a.TerminalId), "history")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "0000000000.log"), []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := td.client.GetAgentHistoryWithResponse(context.Background(), "id:"+a.Id, nil)
+	if err != nil || r.JSON200 == nil || !slices.Equal(r.JSON200.History.Lines, []string{secret}) {
+		t.Fatalf("history: %v %s", err, r.Body)
+	}
+	logged := func() string {
+		logs, err := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var all strings.Builder
+		for _, name := range logs {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			all.Write(data)
+		}
+		return all.String()
+	}
+	waittest.For(t, "the history's response to be logged", func() bool {
+		for line := range strings.Lines(logged()) {
+			if strings.Contains(line, "request returned") && strings.Contains(line, a.Id+"/history") {
+				return true
+			}
+		}
+		return false
+	})
+	if strings.Contains(logged(), secret) {
+		t.Error("the screen's text is in the log")
+	}
+}
+
+// The backup comes up to date when an agent stops to wait and when it ends,
+// with nobody asking for it.
+func TestAgentBackupFollowsTheAgent(t *testing.T) {
+	t.Parallel()
+	conversation := filepath.Join(t.TempDir(), "conversation")
+	write := func(text string) {
+		if err := os.WriteFile(conversation, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("waiting\n")
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Conversation: conversation} })
+	app := td.create(t, "app").Worktrees[0].Path
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(statusScript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createAgent(t, "", app, "helper")
+	file := filepath.Join(identity.AgentDir(td.home, a.Id), aca.TranscriptFile)
+	has := func(want string) func() bool {
+		return func() bool {
+			data, err := os.ReadFile(file)
+			return err == nil && string(data) == want
+		}
+	}
+	td.waitActivity(t, "helper", "waiting", false)
+	waittest.For(t, "the backup as it waits", has("waiting\n"))
+	write("later\n")
+	if err := syscall.Kill(*td.waitAgentState(t, a.Id, api.AgentStateRunning).Pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	waittest.For(t, "the backup at the agent's end", has("later\n"))
+}
+
+func TestRemovingAProjectMovesItsAgentsBackups(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	if _, err := os.Stat(identity.AgentDir(td.home, a.Id)); err != nil {
+		t.Fatal(err)
+	}
+	stop := true
+	r, err := td.client.DeleteProjectWithResponse(context.Background(), "app", &api.DeleteProjectParams{StopRunning: &stop})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("remove: %v %s", err, r.Body)
+	}
+	if _, err := os.Stat(identity.AgentDir(td.home, a.Id)); !os.IsNotExist(err) {
+		t.Errorf("the backup stayed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(identity.TrashAgentsDir(td.home), a.Id, "removed.json")); err != nil {
+		t.Errorf("not in the trash: %v", err)
+	}
 }

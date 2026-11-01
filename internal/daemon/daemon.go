@@ -30,6 +30,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/worktree"
@@ -64,6 +65,9 @@ type Options struct {
 	// is asked to stop, before the changes among them are cancelled;
 	// DefaultShutdownTimeout when 0.
 	ShutdownTimeout time.Duration
+	// TrashRetention is how long what is kept of a removed agent stays;
+	// agent.DefaultTrashRetention when 0.
+	TrashRetention time.Duration
 	// StopGrace is how long a shell has to end after it is hung up on;
 	// terminal.DefaultStopGrace when 0.
 	StopGrace time.Duration
@@ -134,6 +138,7 @@ type Daemon struct {
 	db        *sql.DB
 	projects  *project.Store
 	agents    *agent.Manager
+	backups   *agent.Backups
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
 	// stopTracker ends what the tracker does, once no stream follows.
@@ -228,6 +233,8 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		opts.ACA = aca.ClaudeCode{}
 	}
 	agents := agent.NewStore(d.db)
+	d.backups = agent.NewBackups(logged, agents, opts.Home, []aca.AiCodingAgent{opts.ACA}, opts.TrashRetention)
+	d.backups.OnChange = d.notices.notify
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:   opts.Executable,
 		Home:         opts.Home,
@@ -237,7 +244,8 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		StopGrace:    opts.StopGrace,
 		StopReport:   opts.StopReport,
 		Limits:       opts.HolderLimits,
-		AgentLaunch:  agent.Launches(agents, []aca.AiCodingAgent{opts.ACA}),
+		AgentLaunch:  agent.Launches(d.backups),
+		AgentEnded:   d.backups.Request,
 		AgentStatus: func(ctx context.Context, id string, status holder.Status) {
 			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft, status.Queued, status.Model)
 			if err != nil {
@@ -245,16 +253,25 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			}
 			if changed {
 				d.notices.notify()
+				if status.Activity == string(screen.ActivityIdle) || status.Activity == string(screen.ActivityWaiting) {
+					d.backups.Request(id)
+				}
 			}
 		},
 	})
-	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)
+	d.agents = agent.NewManager(agents, d.terminals, d.backups, opts.ACA)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
 	}
 	if err := d.terminals.Sweep(logged); err != nil {
 		return nil, err
+	}
+	if err := d.backups.Sweep(logged); err != nil {
+		d.log.Error("agent backups not swept", "err", err)
+	}
+	if err := d.backups.RequestAll(logged); err != nil {
+		d.log.Error("agent backups not requested", "err", err)
 	}
 	d.log.Info("daemon started",
 		"home", opts.Home,
@@ -451,6 +468,9 @@ func (d *Daemon) close() {
 	if d.terminals != nil {
 		// The holders and their shells run on; the next daemon adopts them.
 		d.terminals.Close()
+	}
+	if d.backups != nil {
+		d.backups.Close()
 	}
 	if d.db != nil {
 		d.db.Close()

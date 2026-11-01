@@ -176,6 +176,10 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 			switch {
 			case operation == "getTerminalHistory" && rec.status == http.StatusOK:
 				response = historyLogged(rec.body.Bytes())
+			case operation == "getAgentHistory" && rec.status == http.StatusOK:
+				response = historyLogged(rec.body.Bytes())
+			case operation == "getAgentTranscript" && rec.status == http.StatusOK:
+				response = transcriptLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
 				response = "event stream"
 			}
@@ -211,6 +215,17 @@ func historyLogged(b []byte) any {
 	}
 	h := r.History
 	return map[string]any{"history": map[string]any{"from": h.From, "next": h.Next, "first": h.First, "lines": len(h.Lines)}}
+}
+
+// transcriptLogged is a transcript response as logged: a conversation can hold
+// secrets, so its lines are counted, never logged.
+func transcriptLogged(b []byte) any {
+	var r api.AgentTranscriptEnvelope
+	if json.Unmarshal(b, &r) != nil {
+		return "unreadable transcript"
+	}
+	t := r.Transcript
+	return map[string]any{"transcript": map[string]any{"path": t.Path, "from": t.From, "next": t.Next, "lines": len(t.Lines)}}
 }
 
 // jsonValue logs b as nested JSON when it is JSON, else as a string.

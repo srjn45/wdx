@@ -31,6 +31,7 @@ type fixture struct {
 	aca       *acatest.ACA
 	terminals *terminal.Supervisor
 	agents    *Manager
+	backups   *Backups
 	project   string
 	dir       string
 	home      string
@@ -58,20 +59,22 @@ func newFixture(t *testing.T, script string) fixture {
 	}
 	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Script: script}
 	store := NewStore(d)
+	backups := NewBackups(ctx, store, home, []aca.AiCodingAgent{test}, 0)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
 		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: runtest.LoginShell(t),
 		StopReport: holdertest.Patience(t), Limits: holdertest.Limits(t),
-		AgentLaunch: Launches(store, []aca.AiCodingAgent{test}),
+		AgentLaunch: Launches(backups),
 	})
-	agents := NewManager(store, terminals, test)
+	agents := NewManager(store, terminals, backups, test)
 	t.Cleanup(func() {
 		list, _ := store.List(ctx, "")
 		for _, a := range list {
 			_, _ = agents.Remove(ctx, a.ID, true) // no holder is left to fail the test: each is stopped, or killed past the grace
 		}
 		terminals.Close()
+		backups.Close()
 	})
-	return fixture{db: d, aca: test, terminals: terminals, agents: agents, project: "proj-app", dir: t.TempDir(), home: home}
+	return fixture{db: d, aca: test, terminals: terminals, agents: agents, backups: backups, project: "proj-app", dir: t.TempDir(), home: home}
 }
 
 func (f fixture) create(t *testing.T, name string) Agent {

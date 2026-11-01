@@ -137,6 +137,9 @@ func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool
 	if err := s.terminals.Sweep(ctx); err != nil {
 		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
 	}
+	if err := s.agents.SweepBackups(ctx); err != nil {
+		logging.FromContext(ctx).Error("agent backups not swept", "err", err)
+	}
 	r := result(api.ResultRemoved, p)
 	r.Stopped = optionalTerminals(stopped)
 	r.StoppedAgents = optionalAgents(stoppedAgents)

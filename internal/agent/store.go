@@ -21,7 +21,7 @@ import (
 type Agent struct {
 	ID        string
 	ACA       string    // which AI coding agent it runs: aca.AiCodingAgent's ID
-	SessionID string    // the AI coding agent's session, which it goes on with
+	SessionID string    // the AI coding agent's latest session, which it goes on with
 	ParentID  string    // the agent it was created under, or "" at the top level
 	Parent    string    // that agent's name
 	Worktree  string    // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
@@ -129,6 +129,17 @@ const worktreeOfDir = `
 // query returns the agents matching where, a constant condition on a, the
 // agents, t, their terminal rows, and p, their projects. Going by the terminal's
 // state, the status needs nothing done when the process ends, however it ends.
+// setSession records the session the agent is in now, and reports whether that
+// changed anything: /clear starts another.
+func (s *Store) setSession(ctx context.Context, id, session string) (bool, error) {
+	r, err := s.db.ExecContext(ctx, `UPDATE agents SET session_id = ? WHERE id = ?`, session, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.RowsAffected()
+	return n > 0, err
+}
+
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT a.id, a.aca, a.session_id, a.parent_agent_id,

@@ -2,7 +2,10 @@
 // Claude Code for now, Codex and others later. See docs/AGENT.md.
 package aca
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 // AiCodingAgent is one AI CLI wdx can run in an agent.
 type AiCodingAgent interface {
@@ -20,7 +23,16 @@ type AiCodingAgent interface {
 	Deliver(w io.Writer, message string) error
 	// Interrupt is the input that stops its turn.
 	Interrupt() []byte
+	// BackUp brings the backup in l.BackupDir up to date with what it keeps of
+	// the conversation, TranscriptFile among it, and returns the session it is
+	// in now, which a command that resumes goes on with. What it keeps and how
+	// it says so differ per AI coding agent. docs/AGENT_RESUME.md.
+	BackUp(ctx context.Context, l Launch) (session string, err error)
 }
+
+// TranscriptFile is the name of the conversation as text in a backup, oldest
+// first, which only ever grows.
+const TranscriptFile = "transcript.md"
 
 // ByID is the AI coding agent named id, for what cannot be handed one: the
 // holder is a process of its own, told an id. docs/AGENT_STATE.md.
@@ -40,4 +52,6 @@ type Launch struct {
 	// UserHome is the user's home directory, which holds what an AI CLI
 	// keeps.
 	UserHome string
+	// BackupDir is the agent's backup; "" keeps none.
+	BackupDir string
 }

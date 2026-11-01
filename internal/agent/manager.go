@@ -71,22 +71,28 @@ func (e *SendError) Unwrap() error { return e.Err }
 
 // Launches returns what the terminals' supervisor asks at each launch of an
 // agent's row: the agent's id, and the id and command of its AI coding agent,
-// among acas, for its session. The supervisor needs it before a Manager can exist.
-func Launches(store *Store, acas []aca.AiCodingAgent) func(context.Context, terminal.Terminal) (terminal.AgentLaunch, error) {
+// among those of b, for the session it was last in, which the backup knows. The
+// supervisor needs it before a Manager can exist.
+func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.AgentLaunch, error) {
 	return func(ctx context.Context, t terminal.Terminal) (terminal.AgentLaunch, error) {
-		a, err := store.GetByTerminal(ctx, t.ID)
+		b.work.Lock()
+		defer b.work.Unlock()
+		a, err := b.store.GetByTerminal(ctx, t.ID)
 		if err != nil {
 			return terminal.AgentLaunch{}, err
 		}
-		for _, candidate := range acas {
-			if candidate.ID() != a.ACA {
-				continue
+		if candidate := b.known(a.ACA); candidate != nil {
+			session, err := b.up(ctx, a)
+			if err != nil {
+				// A start does not depend on its backup.
+				logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
 			}
+			a.SessionID = session
 			account, err := holder.LookupAccount(ctx)
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
-			command, err := candidate.Command(aca.Launch{Dir: t.Dir, SessionID: a.SessionID, UserHome: account.Home})
+			command, err := candidate.Command(aca.Launch{Dir: t.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID)})
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
@@ -102,13 +108,14 @@ func Launches(store *Store, acas []aca.AiCodingAgent) func(context.Context, term
 type Manager struct {
 	store     *Store
 	terminals *terminal.Supervisor
+	backups   *Backups
 	aca       aca.AiCodingAgent // what new agents run
 }
 
 // NewManager returns a Manager of the agents in store; new agents run
-// newAgents.
-func NewManager(store *Store, terminals *terminal.Supervisor, newAgents aca.AiCodingAgent) *Manager {
-	return &Manager{store: store, terminals: terminals, aca: newAgents}
+// newAgents, and b keeps their backups.
+func NewManager(store *Store, terminals *terminal.Supervisor, b *Backups, newAgents aca.AiCodingAgent) *Manager {
+	return &Manager{store: store, terminals: terminals, backups: b, aca: newAgents}
 }
 
 // Store returns the Store the Manager keeps its agents in.
@@ -222,6 +229,9 @@ func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agen
 	if err := m.removeEmptyTombstones(ctx, a.ParentID); err != nil {
 		logging.FromContext(ctx).Error("tombstones not removed", "agent_id", a.ID, "err", err)
 	}
+	if err := m.backups.Sweep(ctx); err != nil {
+		logging.FromContext(ctx).Error("agent backups not swept", "err", err)
+	}
 	return a, nil
 }
 
@@ -275,6 +285,22 @@ func (m *Manager) History(ctx context.Context, id string, from *int64, count int
 		return holder.History{}, err
 	}
 	return m.terminals.AgentHistory(ctx, a.Terminal.ID, from, count)
+}
+
+// SweepBackups moves the backups of agents whose rows went with their project to
+// the trash.
+func (m *Manager) SweepBackups(ctx context.Context) error {
+	return m.backups.Sweep(ctx)
+}
+
+// Transcript reads count lines of the agent's conversation as text, from line
+// from on, or its last count lines when from is nil, in any state.
+func (m *Manager) Transcript(ctx context.Context, id string, from *int64, count int) (Transcript, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Transcript{}, err
+	}
+	return m.backups.transcript(ctx, a, from, count)
 }
 
 // withTerminal returns the agent on row t.

@@ -355,6 +355,9 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			if h, ok := obj["history"].(map[string]any); ok {
 				h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged
 			}
+			if r, ok := obj["transcript"].(map[string]any); ok {
+				r["lines"] = float64(len(r["lines"].([]any))) // a conversation is counted, not logged
+			}
 		}
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
@@ -413,13 +416,14 @@ type jsonOutput struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
 
-	Terminal  *api.Terminal        `json:"terminal"`
-	Terminals []api.Terminal       `json:"terminals"`
-	Agent     *api.Agent           `json:"agent"`
-	Agents    []api.Agent          `json:"agents"`
-	History   *api.TerminalHistory `json:"history"`
-	Started   []api.Terminal       `json:"started"`
-	Stopped   []api.Terminal       `json:"stopped"`
+	Terminal   *api.Terminal        `json:"terminal"`
+	Terminals  []api.Terminal       `json:"terminals"`
+	Agent      *api.Agent           `json:"agent"`
+	Agents     []api.Agent          `json:"agents"`
+	History    *api.TerminalHistory `json:"history"`
+	Transcript *api.AgentTranscript `json:"transcript"`
+	Started    []api.Terminal       `json:"started"`
+	Stopped    []api.Terminal       `json:"stopped"`
 
 	StartedAgents []api.Agent `json:"started_agents"`
 	StoppedAgents []api.Agent `json:"stopped_agents"`

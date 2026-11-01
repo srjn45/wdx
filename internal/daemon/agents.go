@@ -170,6 +170,26 @@ func (s *server) GetAgentHistory(ctx context.Context, req api.GetAgentHistoryReq
 	return api.GetAgentHistory200JSONResponse{History: api.TerminalHistory{From: h.From, Next: h.Next, First: h.First, Lines: lines}}, nil
 }
 
+func (s *server) GetAgentTranscript(ctx context.Context, req api.GetAgentTranscriptRequestObject) (api.GetAgentTranscriptResponseObject, error) {
+	from, count, tail := req.Params.From, req.Params.Count, req.Params.Tail
+	if tail != nil && (from != nil || count != nil) {
+		return nil, &requestError{err: errors.New("give tail, or from and count, not both")}
+	}
+	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if count != nil && from == nil {
+		from = new(int64)
+	}
+	r, err := s.agents.Transcript(ctx, a.ID, from, cmp.Or(deref(count), deref(tail), 1000))
+	if err != nil {
+		return nil, err
+	}
+	logging.FromContext(ctx).Info("transcript read", "agent_id", a.ID, "from", r.From, "lines", len(r.Lines), "next", r.Next)
+	return api.GetAgentTranscript200JSONResponse{Transcript: api.AgentTranscript{Path: r.Path, From: r.From, Next: r.Next, Lines: r.Lines}}, nil
+}
+
 // findAgent returns the agent ref names: "id:" and its id, or its name in the
 // project named by projectRef or holding dir. A project given with an id must
 // be the agent's.

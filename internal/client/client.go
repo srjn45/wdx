@@ -253,6 +253,23 @@ func (c *Client) GetAgentHistory(ctx context.Context, ref, project, dir string, 
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// GetAgentTranscript reads the conversation of the agent ref names as text, as
+// GetAgent does: count lines from line from on, or the last count lines when
+// from is nil.
+func (c *Client) GetAgentTranscript(ctx context.Context, ref, project, dir string, from *int64, count int) (api.AgentTranscriptEnvelope, error) {
+	params := api.GetAgentTranscriptParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if from != nil {
+		params.From, params.Count = from, &count
+	} else {
+		params.Tail = &count
+	}
+	r, err := c.api.GetAgentTranscriptWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.AgentTranscriptEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // RenameAgent renames the agent ref names, as StartAgent does.
 func (c *Client) RenameAgent(ctx context.Context, ref, project, dir, name string) (api.AgentResult, error) {
 	r, err := c.api.UpdateAgentWithResponse(ctx, ref, &api.UpdateAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdateAgent{Name: name})
