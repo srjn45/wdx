@@ -393,40 +393,100 @@ func (b *Backups) transcript(ctx context.Context, a Agent, from *int64, count in
 // backup between would put the row back. A crash before it is told leaves the agent in
 // its old session with a message that says otherwise; the other way round, it would be
 // in a new session with nothing to tell it so.
-func (b *Backups) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier, a Agent) error) error {
+func (b *Backups) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier, a Agent) error) ([]string, error) {
 	b.work.Lock()
 	defer b.work.Unlock()
 	a, err := b.store.Get(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	previous, err := b.up(ctx, a)
 	if err != nil {
 		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
 	}
 	if a, err = b.store.Get(ctx, id); err != nil {
-		return err
+		return nil, err
+	}
+	// Before the backup that is the old session's last, for what it wrote until it stopped.
+	stopped := b.stopDetached(ctx, a)
+	if len(stopped) > 0 {
+		if previous, err = b.up(ctx, a); err != nil {
+			logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
+		}
+		if a, err = b.store.Get(ctx, id); err != nil {
+			return nil, err
+		}
 	}
 	known := b.known(a.ACA)
 	if known == nil {
-		return fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+		return nil, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
 	}
 	account, err := holder.LookupAccount(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := b.store.beginSession(ctx, id, session, func(ctx context.Context, tx db.Querier) error { return linked(ctx, tx, a) }); err != nil {
-		return err
+		return nil, err
 	}
 	dir := identity.AgentDir(b.home, id)
 	if err := known.BeginSession(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: previous, UserHome: account.Home, BackupDir: dir}, session); err != nil {
-		return err
+		return nil, err
 	}
 	logging.FromContext(ctx).Info("agent session begun", "agent_id", id, "from", previous, "session_id", session)
 	if b.OnChange != nil {
 		b.OnChange()
 	}
-	return nil
+	return stopped, nil
+}
+
+// detachedOf asks a's AI coding agent what of a runs outside its terminal, of what the
+// backup knows. Not knowing is no reason to refuse or fail anything: there is then nothing
+// that can be stopped either.
+func (b *Backups) detachedOf(ctx context.Context, a Agent) (aca.AiCodingAgent, aca.Launch, []aca.DetachedSession) {
+	known := b.known(a.ACA)
+	if known == nil {
+		return nil, aca.Launch{}, nil
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("agent background sessions not looked for", "agent_id", a.ID, "err", err)
+		return nil, aca.Launch{}, nil
+	}
+	l := aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Shell: account.LoginShell()}
+	detached, err := known.Detached(ctx, l)
+	if err != nil {
+		logging.FromContext(ctx).Error("agent background sessions not looked for", "agent_id", a.ID, "err", err)
+		return nil, aca.Launch{}, nil
+	}
+	return known, l, detached
+}
+
+// detached brings a's backup up to date, which is what finds a session gone elsewhere,
+// and returns what of a runs outside its terminal.
+func (b *Backups) detached(ctx context.Context, a Agent) []aca.DetachedSession {
+	b.work.Lock()
+	defer b.work.Unlock()
+	if _, err := b.up(ctx, a); err != nil {
+		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+	}
+	_, _, detached := b.detachedOf(ctx, a)
+	return detached
+}
+
+// stopDetached stops what of a runs outside its terminal and returns the sessions it
+// stopped. One that will not stop is logged and left, which should not cost the restart.
+func (b *Backups) stopDetached(ctx context.Context, a Agent) []string {
+	known, l, detached := b.detachedOf(ctx, a)
+	var stopped []string
+	for _, d := range detached {
+		if err := known.StopDetached(ctx, l, d); err != nil {
+			logging.FromContext(ctx).Error("agent background session not stopped", "agent_id", a.ID, "session_id", d.Session, "err", err)
+			continue
+		}
+		logging.FromContext(ctx).Info("agent background session stopped", "agent_id", a.ID, "session_id", d.Session)
+		stopped = append(stopped, d.Session)
+	}
+	return stopped
 }
 
 // briefLimit is how much of an agent's conversation its brief holds. docs/AGENT_RESUME.md.

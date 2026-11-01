@@ -608,22 +608,22 @@ func TestRestartWaitsForAnIdleAgent(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "")
 	a := f.create(t, "helper")
-	if _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
 		t.Fatalf("activity %s: %v", a.Activity, err)
 	}
 	f.setIdle(t, a, true)
-	if _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
 		t.Fatalf("a draft: %v", err)
 	}
 	f.setIdle(t, a, false)
-	again, err := f.agents.Restart(ctx, a.ID, false)
+	again, _, err := f.agents.Restart(ctx, a.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if again.Terminal.State != terminal.StateRunning || again.SessionID == a.SessionID {
 		t.Errorf("restarted = %+v", again)
 	}
-	forced, err := f.agents.Restart(ctx, a.ID, true)
+	forced, _, err := f.agents.Restart(ctx, a.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,7 @@ func TestARestartBeginsASessionThatSticks(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
-	again, err := f.agents.Restart(ctx, a.ID, false)
+	again, _, err := f.agents.Restart(ctx, a.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,6 +671,43 @@ func TestARestartBeginsASessionThatSticks(t *testing.T) {
 	}
 	if !slices.Equal(sessions, []string{a.SessionID, again.SessionID, again.SessionID}) {
 		t.Errorf("sessions = %q", sessions)
+	}
+}
+
+// A session at work outside the terminal counts as busy; force, or its being idle, stops
+// it and says so.
+func TestARestartStopsWhatRunsOutsideTheTerminal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	a := f.create(t, "helper")
+	f.waitState(t, a.ID, terminal.StateExited)
+
+	f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg", Working: true}}
+	var busy *BusyError
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); !errors.As(err, &busy) || busy.Detached != "s-bg" {
+		t.Fatalf("restart with a working session = %v", err)
+	}
+	if len(f.aca.Stopped) != 0 {
+		t.Errorf("stopped %q when refusing", f.aca.Stopped)
+	}
+
+	f.aca.Running[0].Working = false
+	_, stopped, err := f.agents.Restart(ctx, a.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stopped, []string{"s-bg"}) || !slices.Equal(f.aca.Stopped, []string{"s-bg"}) {
+		t.Errorf("stopped = %q, the ACA saw %q", stopped, f.aca.Stopped)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+
+	f.aca.Running = []aca.DetachedSession{{ID: "bg2", Session: "s-bg2", Working: true}}
+	if _, stopped, err = f.agents.Restart(ctx, a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stopped, []string{"s-bg2"}) {
+		t.Errorf("forced: stopped = %q", stopped)
 	}
 }
 
@@ -704,7 +741,7 @@ func TestARestartCarriesWhatIsPendingBehindItsFirstMessage(t *testing.T) {
 	insert("msg-instant", 1, "pending", 1)
 	insert("msg-held", 0, "held", 1)
 
-	again, err := f.agents.Restart(ctx, a.ID, false)
+	again, _, err := f.agents.Restart(ctx, a.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,7 +780,7 @@ func TestARestartCarriesWhatIsPendingBehindItsFirstMessage(t *testing.T) {
 	}
 
 	// The next restart replaces a first message that has not gone.
-	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	next := f.messagesOf(t, a)
@@ -771,7 +808,7 @@ func TestARelaunchRunsWhereTheAgentLastWorked(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
-	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
@@ -782,7 +819,7 @@ func TestARelaunchRunsWhereTheAgentLastWorked(t *testing.T) {
 	if err := os.RemoveAll(worktree); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
@@ -810,7 +847,7 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Restart(ctx, parent.ID, true); !isRemoved(err) {
+	if _, _, err := f.agents.Restart(ctx, parent.ID, true); !isRemoved(err) {
 		t.Errorf("tombstone: %v", err)
 	}
 
@@ -826,7 +863,7 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.agents.Restart(ctx, a.ID, false)
+	_, _, err = f.agents.Restart(ctx, a.ID, false)
 	failed, ok := errors.AsType[*StartError](err)
 	if !ok || failed.Agent.Terminal.State != terminal.StateFailed || failed.Agent.SessionID == a.SessionID {
 		t.Fatalf("failed launch: %v %+v", err, failed)
@@ -834,7 +871,7 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	if list := f.messagesOf(t, a); len(list) != 1 || !strings.Contains(list[0].Text, "--brief") {
 		t.Errorf("its first message waits: %+v", list)
 	}
-	if _, err := f.agents.Restart(ctx, a.ID, false); !errors.As(err, &failed) {
+	if _, _, err := f.agents.Restart(ctx, a.ID, false); !errors.As(err, &failed) {
 		t.Fatal(err)
 	}
 	if list := f.messagesOf(t, a); len(list) != 1 {

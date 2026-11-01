@@ -271,8 +271,9 @@ func newAgentRestartCmd() *cobra.Command {
 			"message tells it to read agent transcript --brief. Messages not yet delivered\n" +
 			"reach it after that one, general even if they were instant; one delivered just\n" +
 			"before may come again. What the old session held only in memory goes with it.\n" +
-			"Unless it is idle with an empty input box, it takes --force, which can leave\n" +
-			"work half done.",
+			"A background session its AI coding agent moved it to is stopped too, and named.\n" +
+			"Unless it is idle with an empty input box, and no such session is at work, it\n" +
+			"takes --force, which can leave work half done.",
 		Example: examples(
 			"Restart an idle agent of the project you are in", identity.Name+" agent restart --name reviewer",
 			"In the middle of its work, as JSON", identity.Name+" agent restart --id agent-1a2b3c4d --force --json",
@@ -280,7 +281,7 @@ func newAgentRestartCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not restarted",
-			outputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}`,
+			outputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}, with stopped_sessions when it stopped any`,
 			resultList:    "restarted",
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentBusy, api.ErrorCodeDaemonUnavailable),
@@ -583,6 +584,9 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 	field("dir", a.Dir)
 	field("aca", a.Aca)
 	field("id", a.Id)
+	if r.StoppedSessions != nil {
+		fmt.Fprintf(w, "%s %s\n", st.Warning("stopped its background session:"), strings.Join(*r.StoppedSessions, ", "))
+	}
 	if r.PromptError != nil {
 		fmt.Fprintf(w, "%s %s\n", st.Warning("its prompt was not sent:"), *r.PromptError)
 	}

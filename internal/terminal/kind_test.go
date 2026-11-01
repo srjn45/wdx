@@ -441,7 +441,12 @@ func TestBeginSessionKeepsAReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 || list[0].Text != "read your history" || !list[0].Instant || list[1].ID != review || list[1].State == MessageHeld || list[1].SessionID != "new" {
+	if len(list) != 2 {
+		t.Fatalf("messages = %+v", list)
+	}
+	// The holder is real, and may have typed either by now, which clears a message's text.
+	first := list[0].Text == "read your history" || list[0].State == MessageDelivered
+	if !first || !list[0].Instant || list[1].ID != review || list[1].State == MessageHeld || list[1].SessionID != "new" {
 		t.Errorf("messages = %+v", list)
 	}
 	var state string

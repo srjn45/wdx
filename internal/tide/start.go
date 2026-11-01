@@ -1,6 +1,9 @@
 package tide
 
 import (
+	"fmt"
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -105,8 +108,9 @@ func (m *Model) restartable() (removal, bool) {
 
 // restarted is the answer to a restart.
 type restarted struct {
-	r   removal
-	err error
+	r       removal
+	stopped []string
+	err     error
 }
 
 // restart asks the daemon for a new session, with force as the person saw what it is
@@ -114,8 +118,12 @@ type restarted struct {
 func (m *Model) restart(r removal) tea.Cmd {
 	m.log.Info("restart confirmed", "name", r.name)
 	return func() tea.Msg {
-		_, err := m.client.RestartAgent(m.ctx, "id:"+r.id, "", "", true)
-		return restarted{r: r, err: err}
+		result, err := m.client.RestartAgent(m.ctx, "id:"+r.id, "", "", true)
+		var stopped []string
+		if result.StoppedSessions != nil {
+			stopped = *result.StoppedSessions
+		}
+		return restarted{r: r, stopped: stopped, err: err}
 	}
 }
 
@@ -126,7 +134,10 @@ func (m *Model) restarted(msg restarted) {
 		m.statusNotice = msg.err.Error()
 		return
 	}
-	m.log.Info("restarted", "name", msg.r.name)
+	m.log.Info("restarted", "name", msg.r.name, "stopped", len(msg.stopped))
+	if len(msg.stopped) > 0 {
+		m.statusNotice = fmt.Sprintf("stopped its background session: %s", strings.Join(msg.stopped, ", "))
+	}
 }
 
 // restartPopup is the confirmation of a restart.

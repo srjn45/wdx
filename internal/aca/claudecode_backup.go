@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -32,6 +33,13 @@ const (
 	// Where a session came from, in what is appended to claudeCodeSessionsFile.
 	claudeCodeSourceClear   = "clear"
 	claudeCodeSourceRestart = "wdx_restart"
+	// claudeCodeSourceContinued marks a session found by a link in a transcript: Claude
+	// Code moved the conversation to it, in a background process of its own.
+	claudeCodeSourceContinued = "wdx_continued"
+	// claudeCodeContinuedMark is how Claude Code itself looks for the link. A message
+	// quoting it has its quotes escaped, and so does not match.
+	claudeCodeContinuedMark = `"type":"continued-in"`
+	claudeCodeCommandTime   = 30 * time.Second
 )
 
 // claudeCodeWriteSettings writes the settings that have Claude Code append each
@@ -58,6 +66,9 @@ func claudeCodeWriteSettings(backup string) (string, error) {
 type claudeCodeSession struct {
 	ID         string
 	Transcript string
+	// ContinuedFrom is the session whose last messages this one's transcript starts with
+	// copies of, if Claude Code moved the conversation here.
+	ContinuedFrom string
 }
 
 // claudeCodeStart is a line of claudeCodeSessionsFile: a session the hook said started,
@@ -66,6 +77,40 @@ type claudeCodeStart struct {
 	SessionID  string `json:"session_id"`
 	Transcript string `json:"transcript_path,omitempty"`
 	Source     string `json:"source,omitempty"`
+	// ContinuedFrom is the session whose transcript links to this one. The link does not
+	// make it the current session unless that one was current, as a link can be found
+	// only after the agent has gone on to another.
+	ContinuedFrom string `json:"continued_from,omitempty"`
+}
+
+// appendClaudeCodeStarts adds to claudeCodeSessionsFile, on lines of their own after
+// whatever a killed hook left.
+func appendClaudeCodeStarts(backup string, lines ...claudeCodeStart) error {
+	var text bytes.Buffer
+	path := filepath.Join(backup, claudeCodeSessionsFile)
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 && data[len(data)-1] != '\n' {
+		text.WriteByte('\n')
+	}
+	for _, line := range lines {
+		data, err := json.Marshal(line)
+		if err != nil {
+			return err
+		}
+		text.Write(data)
+		text.WriteByte('\n')
+	}
+	if err := os.MkdirAll(backup, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(text.Bytes()); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // readClaudeCodeStarts returns what claudeCodeSessionsFile holds, oldest first. A hook
@@ -99,6 +144,77 @@ func readClaudeCodeStarts(backup string) ([]claudeCodeStart, error) {
 	return starts, nil
 }
 
+// claudeCodeDetachedID is what `claude agents` calls a background session. It goes into a
+// command line for a shell that may be any shell, so it can hold nothing to quote.
+var claudeCodeDetachedID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+
+// claudeCodeRun runs a command line of the claude program in the user's login shell.
+func claudeCodeRun(ctx context.Context, l Launch, command string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, claudeCodeCommandTime)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, l.Shell, "-lc", command)
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", command, err)
+	}
+	return out, nil
+}
+
+// Detached implements AiCodingAgent: the sessions a transcript linked to that `claude
+// agents` says have a process. It lists sessions of other work too, which are never
+// touched, and ones with no process, which Claude Code remembers but which do not run.
+func (ClaudeCode) Detached(ctx context.Context, l Launch) ([]DetachedSession, error) {
+	starts, err := readClaudeCodeStarts(l.BackupDir)
+	if err != nil {
+		return nil, err
+	}
+	continued := map[string]bool{}
+	for _, s := range starts {
+		if s.ContinuedFrom != "" {
+			continued[s.SessionID] = true
+		}
+	}
+	if len(continued) == 0 {
+		return nil, nil
+	}
+	out, err := claudeCodeRun(ctx, l, "claude agents --json")
+	if err != nil {
+		return nil, err
+	}
+	// A login shell's startup files can print before it.
+	if at := bytes.IndexByte(out, '['); at > 0 {
+		out = out[at:]
+	}
+	var running []struct {
+		ID      string `json:"id"`
+		Session string `json:"sessionId"`
+		Kind    string `json:"kind"`
+		PID     int    `json:"pid"`
+		Status  string `json:"status"`
+	}
+	if err := json.Unmarshal(out, &running); err != nil {
+		return nil, fmt.Errorf("read claude agents: %w", err)
+	}
+	var detached []DetachedSession
+	for _, r := range running {
+		if r.Kind == "background" && r.PID != 0 && continued[r.Session] {
+			detached = append(detached, DetachedSession{ID: r.ID, Session: r.Session, Working: r.Status != "idle"})
+		}
+	}
+	return detached, nil
+}
+
+// StopDetached implements AiCodingAgent. `claude --resume` and `claude attach` still find
+// the conversation.
+func (ClaudeCode) StopDetached(ctx context.Context, l Launch, d DetachedSession) error {
+	if !claudeCodeDetachedID.MatchString(d.ID) {
+		return fmt.Errorf("not the id of a background session: %q", d.ID)
+	}
+	_, err := claudeCodeRun(ctx, l, "claude stop "+d.ID)
+	return err
+}
+
 // BeginSession implements AiCodingAgent. Its line is what makes it the session BackUp
 // says the agent is in, and what tells the brief a restart began it, not a /clear. It
 // comes on a line of its own after whatever a killed hook left. An agent from before
@@ -108,35 +224,11 @@ func (ClaudeCode) BeginSession(_ context.Context, l Launch, session string) erro
 	if err != nil {
 		return err
 	}
-	var text bytes.Buffer
-	path := filepath.Join(l.BackupDir, claudeCodeSessionsFile)
-	if data, err := os.ReadFile(path); err == nil && len(data) > 0 && data[len(data)-1] != '\n' {
-		text.WriteByte('\n')
-	}
 	lines := []claudeCodeStart{{SessionID: session, Source: claudeCodeSourceRestart}}
 	if !slices.ContainsFunc(starts, func(s claudeCodeStart) bool { return s.SessionID == l.SessionID }) {
 		lines = append([]claudeCodeStart{{SessionID: l.SessionID}}, lines...)
 	}
-	for _, line := range lines {
-		data, err := json.Marshal(line)
-		if err != nil {
-			return err
-		}
-		text.Write(data)
-		text.WriteByte('\n')
-	}
-	if err := os.MkdirAll(l.BackupDir, 0o700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(text.Bytes()); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
+	return appendClaudeCodeStarts(l.BackupDir, lines...)
 }
 
 // claudeCodeSessions returns the agent's sessions, oldest first, and the one it
@@ -144,38 +236,51 @@ func (ClaudeCode) BeginSession(_ context.Context, l Launch, session string) erro
 func claudeCodeSessions(l Launch) (sessions []claudeCodeSession, current string, err error) {
 	current = l.SessionID
 	index := map[string]int{}
-	add := func(id, transcript string) {
+	add := func(id, transcript, from string) {
 		if i, ok := index[id]; ok {
 			if transcript != "" {
 				sessions[i].Transcript = transcript
 			}
+			if from != "" {
+				sessions[i].ContinuedFrom = from
+			}
 			return
 		}
 		index[id] = len(sessions)
-		sessions = append(sessions, claudeCodeSession{ID: id, Transcript: transcript})
+		sessions = append(sessions, claudeCodeSession{ID: id, Transcript: transcript, ContinuedFrom: from})
 	}
-	add(l.SessionID, "")
+	add(l.SessionID, "", "")
 	starts, err := readClaudeCodeStarts(l.BackupDir)
 	if err != nil {
 		return nil, "", err
 	}
 	for _, started := range starts {
-		add(started.SessionID, started.Transcript)
-		current = started.SessionID
+		if started.ContinuedFrom != "" {
+			add(started.ContinuedFrom, "", "")
+		}
+		add(started.SessionID, started.Transcript, started.ContinuedFrom)
+		if started.ContinuedFrom == "" || started.ContinuedFrom == current {
+			current = started.SessionID
+		}
 	}
 	for i, s := range sessions {
 		if s.Transcript != "" {
 			continue
 		}
-		found, err := filepath.Glob(filepath.Join(l.UserHome, ".claude", "projects", "*", s.ID+".jsonl"))
-		if err != nil {
+		if sessions[i].Transcript, err = claudeCodeFindTranscript(l, s.ID); err != nil {
 			return nil, "", err
-		}
-		if len(found) > 0 {
-			sessions[i].Transcript = found[0]
 		}
 	}
 	return sessions, current, nil
+}
+
+// claudeCodeFindTranscript is where Claude Code keeps session id, "" when it keeps none.
+func claudeCodeFindTranscript(l Launch, id string) (string, error) {
+	found, err := filepath.Glob(filepath.Join(l.UserHome, ".claude", "projects", "*", id+".jsonl"))
+	if err != nil || len(found) == 0 {
+		return "", err
+	}
+	return found[0], nil
 }
 
 // claudeCodeTranscriptAt reports whether l.SessionID has a transcript where
@@ -244,15 +349,46 @@ func (ClaudeCode) BackUp(ctx context.Context, l Launch) (Backup, error) {
 		return Backup{Session: current}, err
 	}
 	var failed []error
-	for _, s := range sessions {
+	// By index, as a session can link to one that joins the list here.
+	for i := 0; i < len(sessions); i++ {
+		s := sessions[i]
 		dest := filepath.Join(raw, s.ID+".jsonl")
 		if err := claudeCodeCopySession(ctx, s, dest, state); err != nil {
 			failed = append(failed, fmt.Errorf("session %s: %w", s.ID, err))
 			continue
 		}
+		linked, err := state.scanLinks(dest, s.ID)
+		if err != nil {
+			failed = append(failed, fmt.Errorf("session %s: %w", s.ID, err))
+		}
+		for _, next := range linked {
+			if slices.ContainsFunc(sessions, func(known claudeCodeSession) bool { return known.ID == next }) {
+				continue
+			}
+			transcript, err := claudeCodeFindTranscript(l, next)
+			if err == nil {
+				err = appendClaudeCodeStarts(l.BackupDir, claudeCodeStart{SessionID: next, Transcript: transcript, Source: claudeCodeSourceContinued, ContinuedFrom: s.ID})
+			}
+			if err != nil {
+				failed = append(failed, fmt.Errorf("session %s: %w", next, err))
+				continue
+			}
+			logging.FromContext(ctx).Info("agent session continued elsewhere", "session_id", s.ID, "to", next)
+			sessions = append(sessions, claudeCodeSession{ID: next, Transcript: transcript, ContinuedFrom: s.ID})
+			if current == s.ID {
+				current = next
+			}
+		}
+		if s.ContinuedFrom != "" && !state.PastCopy[s.ID] {
+			if state.copied, err = claudeCodeUUIDs(filepath.Join(raw, s.ContinuedFrom+".jsonl")); err != nil {
+				failed = append(failed, fmt.Errorf("session %s: %w", s.ContinuedFrom, err))
+			}
+		}
+		state.past = s.ContinuedFrom != "" && s.ID != current
 		if err := state.render(ctx, s.ID, dest, filepath.Join(l.BackupDir, TranscriptFile)); err != nil {
 			failed = append(failed, fmt.Errorf("session %s: %w", s.ID, err))
 		}
+		state.copied = nil
 	}
 	if err := state.write(l.BackupDir); err != nil {
 		failed = append(failed, err)
@@ -275,6 +411,7 @@ func claudeCodeCopySession(ctx context.Context, s claudeCodeSession, dest string
 	}
 	if replaced {
 		delete(state.Offsets, s.ID)
+		delete(state.Scanned, s.ID)
 	}
 	source := strings.TrimSuffix(s.Transcript, ".jsonl")
 	target := strings.TrimSuffix(dest, ".jsonl")
@@ -384,10 +521,21 @@ type claudeCodeRendered struct {
 	// Thinking says thinking was the last thing written, whose end the text after it
 	// has to mark, thinking not being fenced.
 	Thinking bool `json:"thinking,omitempty"`
+	// Scanned is how far each session's copy has been looked through for links to the
+	// session it went on in, apart from Offsets so that a backup from before the links
+	// were followed still finds them.
+	Scanned map[string]int64 `json:"scanned,omitempty"`
+	// PastCopy holds the sessions rendered past what they copied from the one before.
+	PastCopy map[string]bool `json:"past_copy,omitempty"`
+	// copied is what the session being rendered may start with copies of, by uuid.
+	copied map[string]bool
+	// past says the session being rendered was found by a link only after the agent had
+	// gone on, so that where it worked is not where the agent is.
+	past bool
 }
 
 func readClaudeCodeRendered(backup string) (*claudeCodeRendered, error) {
-	state := &claudeCodeRendered{Offsets: map[string]int64{}}
+	state := &claudeCodeRendered{Offsets: map[string]int64{}, Scanned: map[string]int64{}, PastCopy: map[string]bool{}}
 	data, err := os.ReadFile(filepath.Join(backup, claudeCodeRenderedFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
@@ -401,6 +549,12 @@ func readClaudeCodeRendered(backup string) (*claudeCodeRendered, error) {
 	if state.Offsets == nil {
 		state.Offsets = map[string]int64{}
 	}
+	if state.Scanned == nil {
+		state.Scanned = map[string]int64{}
+	}
+	if state.PastCopy == nil {
+		state.PastCopy = map[string]bool{}
+	}
 	return state, nil
 }
 
@@ -410,6 +564,74 @@ func (r *claudeCodeRendered) write(backup string) error {
 		return err
 	}
 	return atomicfile.Write(filepath.Join(backup, claudeCodeRenderedFile), data, 0o600)
+}
+
+// scanLinks returns the sessions that the lines of the copy at raw, past how far it has
+// been scanned, say session went on in. A line still being written waits for the next time.
+func (r *claudeCodeRendered) scanLinks(raw, session string) ([]string, error) {
+	in, err := os.Open(raw)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	if _, err := in.Seek(r.Scanned[session], io.SeekStart); err != nil {
+		return nil, err
+	}
+	var linked []string
+	lines := bufio.NewReader(in)
+	for {
+		line, err := lines.ReadBytes('\n')
+		if errors.Is(err, io.EOF) {
+			return linked, nil
+		}
+		if err != nil {
+			return linked, err
+		}
+		r.Scanned[session] += int64(len(line))
+		if !bytes.Contains(line, []byte(claudeCodeContinuedMark)) {
+			continue
+		}
+		var link struct {
+			Type        string `json:"type"`
+			ContinuedIn string `json:"continuedInSessionId"`
+		}
+		if json.Unmarshal(line, &link) == nil && link.Type == "continued-in" && link.ContinuedIn != "" &&
+			filepath.Base(link.ContinuedIn) == link.ContinuedIn {
+			linked = append(linked, link.ContinuedIn)
+		}
+	}
+}
+
+// claudeCodeUUIDs is the uuid of each line of the copy at raw.
+func claudeCodeUUIDs(raw string) (map[string]bool, error) {
+	in, err := os.Open(raw)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	uuids := map[string]bool{}
+	lines := bufio.NewReader(in)
+	for {
+		line, err := lines.ReadBytes('\n')
+		if errors.Is(err, io.EOF) {
+			return uuids, nil
+		}
+		if err != nil {
+			return uuids, err
+		}
+		var with struct {
+			UUID string `json:"uuid"`
+		}
+		if json.Unmarshal(line, &with) == nil && with.UUID != "" {
+			uuids[with.UUID] = true
+		}
+	}
 }
 
 // render appends to the text file the lines of the copy at raw past its offset.
@@ -455,6 +677,7 @@ func (r *claudeCodeRendered) render(ctx context.Context, session, raw, text stri
 // Claude Code sent and did, which stay in the raw copy.
 type claudeCodeLine struct {
 	Type      string `json:"type"`
+	UUID      string `json:"uuid"`
 	Timestamp string `json:"timestamp"`
 	Meta      bool   `json:"isMeta"`
 	Sidechain bool   `json:"isSidechain"`
@@ -483,8 +706,17 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 	if json.Unmarshal(raw, &line) != nil {
 		return 1
 	}
+	// A session Claude Code moved the conversation to starts with copies of the last
+	// messages, up to the first line of its own, which are in the text already.
+	if r.copied != nil && line.UUID != "" {
+		if r.copied[line.UUID] {
+			return 0
+		}
+		r.copied = nil
+		r.PastCopy[session] = true
+	}
 	// A subagent's lines say where it works, which is not where the agent is.
-	if line.Cwd != "" && !line.Sidechain {
+	if line.Cwd != "" && !line.Sidechain && !r.past {
 		r.Dir = line.Cwd
 	}
 	if line.Type != "user" && line.Type != "assistant" || line.Meta || line.Sidechain {

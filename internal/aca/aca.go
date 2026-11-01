@@ -36,6 +36,19 @@ type AiCodingAgent interface {
 	// since, and each tool call as one line. An AI coding agent with no summary starts
 	// from the first request. docs/AGENT_RESUME.md.
 	Brief(ctx context.Context, l Launch, limit int) (Brief, error)
+	// Detached is what of the agent's conversation still runs outside its terminal,
+	// where stopping the terminal does not reach it. Most agents have none, and finding
+	// that out starts nothing. docs/AGENT_RESUME.md.
+	Detached(ctx context.Context, l Launch) ([]DetachedSession, error)
+	// StopDetached stops one of what Detached found. Its conversation stays.
+	StopDetached(ctx context.Context, l Launch, d DetachedSession) error
+}
+
+// DetachedSession is a session of an agent running outside its terminal.
+type DetachedSession struct {
+	ID      string // what the AI coding agent calls the process
+	Session string
+	Working bool
 }
 
 // Brief is what AiCodingAgent.Brief found in TranscriptFile.
@@ -82,4 +95,7 @@ type Launch struct {
 	UserHome string
 	// BackupDir is the agent's backup; "" keeps none.
 	BackupDir string
+	// Shell is the user's login shell, which finds the AI CLI when something other than
+	// Command has to run it. Only Detached and StopDetached need it.
+	Shell string
 }

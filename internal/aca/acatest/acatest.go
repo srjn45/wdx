@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -31,6 +32,9 @@ type ACA struct {
 	Session      string
 	// Dir, when set, is the file holding where it says it last worked.
 	Dir string
+	// Running is what Detached finds, and Stopped what StopDetached took from it.
+	Running []aca.DetachedSession
+	Stopped []string
 }
 
 // ID implements aca.AiCodingAgent.
@@ -79,6 +83,18 @@ func (a *ACA) BeginSession(_ context.Context, _ aca.Launch, session string) erro
 // Claude Code's backup writes.
 func (a *ACA) Brief(ctx context.Context, l aca.Launch, limit int) (aca.Brief, error) {
 	return aca.ClaudeCode{}.Brief(ctx, l, limit)
+}
+
+// Detached implements aca.AiCodingAgent.
+func (a *ACA) Detached(context.Context, aca.Launch) ([]aca.DetachedSession, error) {
+	return a.Running, nil
+}
+
+// StopDetached implements aca.AiCodingAgent.
+func (a *ACA) StopDetached(_ context.Context, _ aca.Launch, d aca.DetachedSession) error {
+	a.Running = slices.DeleteFunc(a.Running, func(r aca.DetachedSession) bool { return r.ID == d.ID })
+	a.Stopped = append(a.Stopped, d.Session)
+	return nil
 }
 
 // Command implements aca.AiCodingAgent.

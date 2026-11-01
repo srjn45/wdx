@@ -54,9 +54,14 @@ func (e *StartError) Unwrap() error { return e.Err }
 // something, and was not told to.
 type BusyError struct {
 	Agent Agent
+	// Detached is the session working outside the agent's terminal, if that is why.
+	Detached string
 }
 
 func (e *BusyError) Error() string {
+	if e.Detached != "" {
+		return fmt.Sprintf("agent %s has a background session at work: %s", e.Agent.Terminal.Name, e.Detached)
+	}
 	doing := e.Agent.Activity
 	if e.Agent.Draft {
 		doing = "holding a draft in its input box"
@@ -220,34 +225,47 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 // it to read its history. A tombstone fails with a *RemovedError, one in the middle of
 // something with a *BusyError unless force, and one that does not start with a
 // *StartError, leaving it failed in the new session.
-func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, error) {
+//
+// It also returns the sessions of the agent it stopped outside its terminal: what is left
+// running there would go on with the old conversation beside the new one.
+func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, []string, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
 	}
 	if a.Tombstone() {
-		return Agent{}, &RemovedError{Agent: a}
+		return Agent{}, nil, &RemovedError{Agent: a}
 	}
-	if a.busy() && !force {
-		return Agent{}, &BusyError{Agent: a}
+	if !force {
+		if a.busy() {
+			return Agent{}, nil, &BusyError{Agent: a}
+		}
+		for _, d := range m.backups.detached(ctx, a) {
+			if d.Working {
+				return Agent{}, nil, &BusyError{Agent: a, Detached: d.Session}
+			}
+		}
 	}
 	session, err := newSessionID()
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
 	}
+	var stopped []string
 	t, err := m.terminals.RestartAgent(ctx, a.Terminal.ID, func(ctx context.Context) error {
-		return m.backups.beginSession(ctx, a.ID, session, func(ctx context.Context, tx db.Querier, a Agent) error {
+		var err error
+		stopped, err = m.backups.beginSession(ctx, a.ID, session, func(ctx context.Context, tx db.Querier, a Agent) error {
 			return m.terminals.Store().BeginSession(ctx, tx, a.Terminal.ID, session, firstMessage(a))
 		})
+		return err
 	})
 	if err != nil {
-		return Agent{}, m.agentError(ctx, err)
+		return Agent{}, nil, m.agentError(ctx, err)
 	}
 	if a, err = m.store.Get(ctx, id); err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
 	}
-	logging.FromContext(ctx).Info("agent restarted", "agent_id", id, "session_id", session, "forced", force)
-	return a.OnRow(t), nil
+	logging.FromContext(ctx).Info("agent restarted", "agent_id", id, "session_id", session, "forced", force, "detached_stopped", len(stopped))
+	return a.OnRow(t), stopped, nil
 }
 
 // firstMessage is what tells a restarted agent to read its history.

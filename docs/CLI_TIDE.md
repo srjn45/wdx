@@ -68,7 +68,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Read its conversation in brief | `agent transcript --brief` | not needed | By design | The agent reads it, in a new session, not a person |
 | Send a message from a script | `agent send` | not needed | By design | A person types into the ACA, which queues messages itself. `send` is how scripts and other agents reach an agent |
 | Start one that ended | `agent start` | `C-q g` | Same | |
-| Start it again in a new session | `agent restart`, with `--force` while it is busy | `C-q n`, after a confirmation | Same | The CLI refuses a busy agent, as a script cannot see it; tide says what it is doing and `y` goes on |
+| Start it again in a new session | `agent restart`, with `--force` while it is busy | `C-q n`, after a confirmation | Same | The CLI refuses a busy agent, as a script cannot see it; tide says what it is doing and `y` goes on. Both say when it stopped a background session of the agent |
 | Remove an agent | `agent remove` | `C-q x` | Same | |
 
 ## Terminals

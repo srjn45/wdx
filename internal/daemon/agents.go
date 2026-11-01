@@ -149,10 +149,15 @@ func (s *server) RestartAgent(ctx context.Context, req api.RestartAgentRequestOb
 		return nil, &projectClosedError{project: p}
 	}
 	force := req.Body != nil && deref(req.Body.Force)
-	if a, err = s.agents.Restart(ctx, a.ID, force); err != nil {
+	a, stopped, err := s.agents.Restart(ctx, a.ID, force)
+	if err != nil {
 		return nil, err
 	}
-	return api.RestartAgent200JSONResponse{Result: api.ResultRestarted, Agent: agentView(a)}, nil
+	response := api.RestartAgent200JSONResponse{Result: api.ResultRestarted, Agent: agentView(a)}
+	if len(stopped) > 0 {
+		response.StoppedSessions = &stopped
+	}
+	return response, nil
 }
 
 func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) (api.SendAgentResponseObject, error) {

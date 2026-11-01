@@ -995,7 +995,8 @@ paths:
         same id, in the directory it last worked in if that is still there, else its
         own. The first message tells it to read getAgentTranscript's brief. Messages
         not yet delivered go on to the new session, after that one; those held stay
-        held. One that is running and not idle with an empty input box refuses it with
+        held. A session the AI coding agent moved outside its terminal is stopped too, and
+        named in stopped_sessions; at work, it counts as busy. One that is running and not idle with an empty input box refuses it with
         agent_busy, unless force. One that does not start is left failed, in the new
         session, and returns start_failed with the agent under details.agent.
 
@@ -1927,6 +1928,10 @@ components:
         prompt_error:
           type: string
           description: Why its prompt was not sent, with the agent running all the same; left out otherwise.
+        stopped_sessions:
+          type: array
+          items: { type: string }
+          description: The sessions of the agent a restart stopped outside its terminal, where its AI coding agent had moved them; left out when there were none.
 
     UpdateAgent:
       type: object

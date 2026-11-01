@@ -1122,6 +1122,33 @@ func TestCreateAgentWithAPrompt(t *testing.T) {
 	}
 }
 
+// TestRestartSaysWhatItStoppedOutsideTheTerminal: the answer names the background session,
+// and has no such key when there was none.
+func TestRestartSaysWhatItStoppedOutsideTheTerminal(t *testing.T) {
+	t.Parallel()
+	test := &acatest.ACA{}
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = test })
+	ctx := context.Background()
+	a := td.createAgent(t, "", td.create(t, "app").Worktrees[0].Path, "helper")
+
+	r, err := td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{Force: optional(true)})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("restart: %v, %s", err, r.Body)
+	}
+	if r.JSON200.StoppedSessions != nil || strings.Contains(string(r.Body), "stopped_sessions") {
+		t.Errorf("with none running: %s", r.Body)
+	}
+
+	test.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg"}}
+	r, err = td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{Force: optional(true)})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("restart: %v, %s", err, r.Body)
+	}
+	if got := r.JSON200.StoppedSessions; got == nil || !slices.Equal(*got, []string{"s-bg"}) {
+		t.Errorf("stopped_sessions = %v in %s", got, r.Body)
+	}
+}
+
 // TestRestartDeliversItsFirstMessageFirst: with a general and an instant message waiting
 // for a holder that goes, the new session hears of its history first, and then of them in
 // the order they were sent. A held one stays, and the request logs no message.
