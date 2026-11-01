@@ -2,7 +2,7 @@
 // writes what the holder logged to $REAL_BASE/<name>.log. It uses a little quota.
 // See ../README.md.
 //
-//	holdercheck states|fullscreen|wheeldraft|send <name> <wdx binary> <claude binary> <cols>x<rows> [claude flag]...
+//	holdercheck states|fullscreen|wheeldraft|send|model <name> <wdx binary> <claude binary> <cols>x<rows> [claude flag]...
 package main
 
 import (
@@ -225,7 +225,14 @@ func start(name, wdx, claude string, cols, rows int, extra ...string) *run {
 	var err error
 	r.out, err = os.Create(filepath.Join(base, name+".log"))
 	check(err)
-	command := append([]string{"/usr/bin/env", "DISABLE_AUTOUPDATER=1", claude, "--safe-mode", "--model", "haiku", "--permission-mode", "manual"}, extra...)
+	// /model saves its choice to Claude's settings, so the model scenario runs with
+	// a CLAUDE_CONFIG_DIR of its own, logged in.
+	command := []string{"/usr/bin/env", "DISABLE_AUTOUPDATER=1"}
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		command = append(command, "CLAUDE_CONFIG_DIR="+dir)
+	}
+	command = append(command, claude, "--safe-mode", "--model", "haiku", "--permission-mode", "manual")
+	command = append(command, extra...)
 	r.started, err = holder.Start(r.ctx, holder.StartOptions{Executable: wdx, Home: r.home, ID: r.id, Project: "real", Dir: r.work,
 		Shell: "/bin/sh", ACA: "claude_code", Command: command, HistoryLines: 100_000,
 		Env: []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8", "DISABLE_AUTOUPDATER=1"}})
@@ -560,6 +567,51 @@ func send(r *run) {
 	r.finish()
 }
 
+// model checks what the daemon is told of the model, on the holder's connection.
+func model(r *run) {
+	told := func(what, want string) {
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			if r.conn.Status().Model == want {
+				r.mark("OK %s: %s", what, want)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		r.mark("WRONG %s: told %q, want %q", what, r.conn.Status().Model, want)
+		r.snap(what, 12)
+	}
+	command := func(what, text, want string) {
+		r.slow(text, 30*time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
+		r.keys("\r")
+		time.Sleep(2 * time.Second)
+		told(what, want)
+	}
+	r.trust()
+	told("a new agent's banner", "Haiku 5.5")
+	command("/model sonnet", "/model sonnet", "Sonnet 5.5")
+	command("an unknown name", "/model nonsense", "Sonnet 5.5")
+	command("/model opus[1m], whose banner stays", "/model opus[1m]", "Opus 5.5")
+	r.slow("/model", 30*time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
+	r.keys("\r")
+	time.Sleep(2 * time.Second)
+	told("the menu open", "Opus 5.5")
+	r.keys("\x1b")
+	time.Sleep(2 * time.Second)
+	told("the menu cancelled", "Opus 5.5")
+	command("/model haiku", "/model haiku", "Haiku 5.5")
+	r.slow("Say hi in one word.", 30*time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
+	r.keys("\r")
+	r.expect("the turn's end", 60*time.Second, activity("idle"))
+	time.Sleep(2 * time.Second)
+	told("after a turn", "Haiku 5.5")
+	r.snap("the end", 10)
+	r.finish()
+}
+
 func main() {
 	scenario, name, wdx, claude := os.Args[1], os.Args[2], os.Args[3], os.Args[4]
 	var cols, rows int
@@ -575,5 +627,7 @@ func main() {
 		wheelDraft(r)
 	case "send":
 		send(r)
+	case "model":
+		model(r)
 	}
 }

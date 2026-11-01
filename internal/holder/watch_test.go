@@ -762,6 +762,61 @@ wait_for end
 	f.endHolder(t, id, s)
 }
 
+// TestWatchRemembersTheModel: a screen says the model only for a moment. The last
+// name stays through screens that say nothing, one the parser panics on, and every
+// activity, and a change of it alone tells the daemon.
+func TestWatchRemembersTheModel(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := newFakeScreen(t)
+		told := func() bool {
+			select {
+			case <-s.watch.statusChanged:
+				return true
+			default:
+				return false
+			}
+		}
+		wantModel := func(want string) {
+			t.Helper()
+			if got := s.watch.state().Model; got != want {
+				t.Errorf("model %q, want %q", got, want)
+			}
+		}
+		wantModel("")
+		s.draws("nothing yet", readableIdle)
+		wantModel("")
+		told()
+
+		named := readableIdle
+		named.Model = "Haiku 5.5"
+		s.draws("the banner", named)
+		wantModel("Haiku 5.5")
+		if !told() {
+			t.Error("only the model changed, and the daemon is not told")
+		}
+		s.draws("scrolled on", readableIdle)
+		wantModel("Haiku 5.5")
+		if told() {
+			t.Error("a screen that says nothing told the daemon of a change")
+		}
+		s.draws("a prompt", screen.ScreenState{Activity: screen.ActivityWaiting})
+		wantModel("Haiku 5.5")
+		if got := statusOf(s.watch.state()); got != (Status{Activity: "waiting", Model: "Haiku 5.5"}) {
+			t.Errorf("status %+v", got)
+		}
+
+		s.parse = func(_, _ []string) screen.ScreenState { panic("no") }
+		s.draws("unreadable", readableIdle)
+		wantModel("Haiku 5.5")
+		s.parse = func(_, _ []string) screen.ScreenState { return *s.state.Load() }
+
+		named.Model = "Opus 5.5"
+		s.draws("/model opus", named)
+		wantModel("Opus 5.5")
+	})
+}
+
 func TestStatusNotOnAShell(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

@@ -175,8 +175,10 @@ watchScreen ─► holder ─► frameStatus ─► Conn ─► Supervisor ─�
 More attributes will come from watching a terminal, so instead of an event type for each, the holder sends one complete object over its existing connection on every change, as the project stream does for tide: `frameStatus`, frame 12, carrying a `Status`. The name avoids `state`, which means whether the process is alive, and `ScreenState`, as later fields will not come from the screen.
 
 ```json
-{"activity":"waiting","draft":false,"queued":0}
+{"activity":"waiting","draft":false,"queued":0,"model":"Haiku 5.5"}
 ```
+
+`model` is left out until the program has shown one (see Which AI model it runs).
 
 `Hello` carries the same object, so a daemon that restarts learns it on connecting. `input_box` and `in_turn` stay in the holder, for the fallback and the `inboxReader`, so a change only to them sends nothing. Only the daemon's connection gets the frame, not attached clients.
 
@@ -210,9 +212,9 @@ Checked on real Claude Code 2.1.316 on 2026-11-01, through a real daemon in a th
 
 ```
 $ wdx agent list
-NAME          STATE    ACTIVITY  ACA          DIR               ID
-calm-otter    running  waiting   claude_code  /home/me/dev/wdx  agent-5e6f7a8b
-swift-falcon  running  working   claude_code  /home/me/dev/wdx  agent-1a2b3c4d
+NAME          STATE    ACTIVITY  MODEL      ACA          DIR               ID
+calm-otter    running  waiting   Haiku 5.5  claude_code  /home/me/dev/wdx  agent-5e6f7a8b
+swift-falcon  running  working   Opus 5.5   claude_code  /home/me/dev/wdx  agent-1a2b3c4d
 
 $ wdx agent get --name calm-otter --json
 {"agent": {"name": "calm-otter", "state": "running", "activity": "waiting", "draft": false, ...}}
@@ -291,6 +293,60 @@ They ran in tmux with Haiku and tiny prompts, in `--safe-mode`, which keeps the 
 Haiku backgrounded the subagent it was told to run in the foreground, so a foreground subagent is not recorded.
 
 With the user's default of auto mode no permission prompt appears for these commands, so which prompts come depends on the mode. Not recorded: MCP input, login, a network retry, a limit.
+
+## Which AI model it runs
+
+Status: built. Decided by the human on 2026-11-01: for display only for now, and a new agent shows its model right away.
+
+- **Read from the screen.** `ScreenState` gets `Model`, the name as Claude shows it (`Haiku 5.5`), empty when the screen does not say. `Parse` stays pure. Claude's session transcript gives the exact id on each reply (`claude-haiku-5-5`), and records what really answered, but only after the next reply. Anything that comes to act on the model, as switching or cost, reads the transcript instead.
+- **Remembered by the holder.** The banner scrolls away, and so does a confirmation. So `watchScreen` keeps the last name read. It reads from the process's start, and a relaunch starts a new holder, so a name never outlives its run.
+- **Two places count, the lowest on the screen wins, and only while the input box shows, empty, at the bottom of the conversation:**
+
+| Where | Looks like |
+|---|---|
+| a confirmation, on the line just below `❯ /model...` | `⎿  Set model to Haiku 5.5 and saved as your default for new sessions`, `... for this session only`, `Set model to Sonnet 5.5 (default) and ...`, `Kept model as Haiku 5.5` |
+| the banner, on the line below the top of its logo (`▐▛███▛█`) | `▝▜██████▀  Haiku 5.5 · Claude Max`, or only `Haiku 5.5` at 30 columns |
+
+A name anywhere else means nothing: told to end its turn with one word, Claude replied `● Haiku` (`background-auto-80x24`). `Model 'nonsense' not found` changes nothing.
+
+The conditions are there because old names do show:
+
+| Screen | What it shows | So |
+|---|---|---|
+| fullscreen, scrolled back | older confirmations lowest, with `Jump to bottom` over the conversation | that line stops the search |
+| the transcript view (`ctrl+o`) | every confirmation | no input box |
+| a command being typed, as `/model` | its suggestions cover the newest confirmation at a narrow width, leaving an older one lowest | a draft: not read |
+| the `/model` menu | every model's name | a prompt, with no input box |
+
+- **Its shape is checked.** The screen's text never leaves the holder, and this is the one exception, so a value must be a word and a version, as `Opus 5.5` or `Fable 5`. Anything else is not read, the last name staying. That also stops a name cut by a wrap being read as a shorter one.
+- **Synced as `activity` is.** A `model` field of `Status`, so no new protocol version: a holder too old to send it shows null. Then `ALTER TABLE agents ADD COLUMN model TEXT;`, null unless the process is running, and `model` in the API and the project stream.
+- **Where it shows:** `wdx agent get`, a `MODEL` column in `wdx agent list`, and tide's agent info tab (docs/TIDE_INFO.md), not the Agents row, which is narrow.
+
+### What the recordings found
+
+18 sessions on 2.1.316 under tmux, in `--safe-mode` and a `CLAUDE_CONFIG_DIR` of their own, in both renderers at 120x40 and 40x24, and the default renderer at 30x24: `record/model.py` to `model5.py`. Eight are the fixtures in `internal/aca/testdata/claude_code/2.1.316/`.
+
+Under a real `wdx holder`, with no daemon, on 2026-11-01: `holdercheck`'s `model` scenario, in both renderers at 80x24 and 40x24. On the holder's own connection, what a daemon is told, it read the banner, `/model sonnet`, `opus[1m]`, the menu opened and cancelled, and a turn, and told no other name. An unknown name changed nothing. That check is what found the row of the table about a command being typed. Through a real daemon only with a test command printing a real banner (`TestAgentStatus`), as a real `claude` started by a daemon would have used the user's own settings.
+
+- **The banner redraws in place** on a `/model` (the menu, an argument, session only), in both renderers, and is first drawn only once the trust prompt is answered. So a new agent shows its model after that, and null at the prompt.
+- **The banner can be wrong.** After `/model opus[1m]` it stayed `Sonnet 5.5` under `Set model to Opus 5.5`, which is why the lowest wins and a confirmation is below it. That name has no `[1m]` in either place.
+- **`--resume` keeps the session's model,** whatever the settings say, and shows it in the banner. Replies or none after the last `/model`, the banner, the old confirmation and `Kept model as` all agreed.
+- **On a small screen a resume's history scrolls the banner off** about 0.25 s after it is drawn, in 3 to 5 chunks. The moment of 50 ms reads it first in the replay (`model-resume-40x24`), not yet under a holder.
+- **Unchanged by** `/clear`, `/compact`, a turn, and the menu cancelled with Esc, apart from the `Kept model as` line.
+
+Known wrong answers, none of which matters for display:
+
+- One unexplained: a session that went through session-only, `default` and `opus[1m]`, ending on `/model sonnet`, resumed with the banner saying `Opus 5.5` and the old confirmation below it saying `Sonnet 5.5`. It reads `Sonnet 5.5`, and which was true was not checked. A plain `/model sonnet` did not do it.
+- A model that changes without printing these lines, as an automatic fallback, a plan-mode model or a limit, leaves the old name showing. None was recorded.
+- An agent can print the same two lines and show a false name.
+- It is the main session's model; a subagent can run another.
+- A name that is not a word and a version, as a custom model on another provider, shows the last name, or null. Not recorded.
+- Without color, where a cut-off footer makes a placeholder read as a draft (see the known failures above), the banner is not read until the box empties or the footer says more. All four color-free recordings the test replays still read it, at 120, 40 and 30 columns.
+
+### Found on the way
+
+- **`/model` changes the default of every later agent.** Enter in the menu and `/model <name>` both write `"model"` to Claude's settings (`saved as your default for new sessions`), only `s` in the menu does not. So an agent's `/model` reaches the next agent started.
+- **`/clear` starts a new session,** a transcript of its own, and `--resume` of the old id goes back to the conversation before it. Since an agent's `session_id` is fixed, a relaunch after `/clear` would bring back what was cleared. Seen with `claude --resume`, not through a wdx relaunch.
 
 ## Later: why it is waiting
 

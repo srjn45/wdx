@@ -1,6 +1,6 @@
-"""Copies a recording from out/<src> to ../2.1.314/<name>, masking what is private.
+"""Copies a recording from out/<src> to ../<version>/<name>, masking what is private.
 
-usage: sanitize.py <src> <name> [word-to-mask ...]
+usage: [VERSION=2.1.314] sanitize.py <src> <name> [word-to-mask ...]
 
 Masks keep each word's length, so the screen's layout holds. A narrow screen can
 wrap a path or id across lines, past these masks: replay the result and scan
@@ -30,7 +30,7 @@ def clean(raw, words):
 def main():
     src, name, words = sys.argv[1], sys.argv[2], [w.encode() for w in sys.argv[3:]]
     src = f"{HERE}/out/{src}"
-    dest = f"{HERE}/../2.1.314/{name}"
+    dest = f"{HERE}/../{os.environ.get('VERSION', '2.1.314')}/{name}"
     shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest)
     raw = open(f"{src}/raw.out", "rb").read()

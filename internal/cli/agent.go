@@ -541,14 +541,14 @@ func (l agentList) text(w io.Writer, st style.Style) {
 		return
 	}
 	var table style.Table
-	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACTIVITY"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
+	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACTIVITY"), st.Heading("MODEL"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
 	if l.all {
 		heading = append([]string{st.Heading("PROJECT")}, heading...)
 	}
 	table.Row(heading...)
 	for _, r := range agentTreeRows(l.Agents) {
 		a := r.agent
-		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), a.Aca, a.Dir, st.Muted(a.Id)}
+		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), agentModelText(a), a.Aca, a.Dir, st.Muted(a.Id)}
 		if l.all {
 			row = append([]string{st.Name(a.ProjectName)}, row...)
 		}
@@ -606,6 +606,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.Queued != nil && *a.Queued > 0 {
 		field("queued", strconv.Itoa(*a.Queued))
 	}
+	if a.Model != nil {
+		field("model", *a.Model)
+	}
 	if a.Error != nil {
 		field("error", st.Failure(*a.Error))
 	}
@@ -639,6 +642,14 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.RemovedAt != nil {
 		field("removed", a.RemovedAt.Local().Format(time.DateTime))
 	}
+}
+
+// agentModelText is the model a last showed; nothing before it has.
+func agentModelText(a api.Agent) string {
+	if a.Model == nil {
+		return ""
+	}
+	return *a.Model
 }
 
 // agentActivityText is what a is doing, which a human may have to answer when it

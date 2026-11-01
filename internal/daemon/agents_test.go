@@ -656,6 +656,8 @@ wait_for() { until [ -f "$1" ]; do sleep 0.01; done; }
 printf '\033[2J\033[H%s\r\n ❯ 1. Yes\r\n\r\n Esc to cancel · Tab to amend' 'Do you want to proceed?'
 wait_for draft
 printf '\033[2J\033[H%s\r\n❯ typed\r\n%s\r\n  ⏸ manual mode on · esc to interrupt' "$rule" "$rule"
+wait_for banner
+printf '\033[2J\033[H ▐▛███▛█   Claude Code v2.1.316\r\n▝▜██████▀  Haiku 5.5 · Claude Max\r\n%s\r\n❯ \r\n%s\r\n  ⏸ manual mode on · esc to interrupt' "$rule" "$rule"
 wait_for idle
 printf '\033[2J\033[H%s\r\n❯ \r\n%s\r\n  ⏸ manual mode on · ? for shortcuts · ← 1 agent' "$rule" "$rule"
 wait_for end
@@ -667,6 +669,13 @@ func activityOf(a api.Agent) string {
 		return ""
 	}
 	return string(*a.Activity)
+}
+
+func modelOf(a api.Agent) string {
+	if a.Model == nil {
+		return ""
+	}
+	return *a.Model
 }
 
 func agentsIn(e event) []api.Agent {
@@ -719,6 +728,11 @@ func TestAgentStatus(t *testing.T) {
 
 	step("draft")
 	td.waitActivity(t, "helper", "working", true)
+	step("banner")
+	td.waitActivity(t, "helper", "working", false)
+	if got := td.waitAgentState(t, a.Id, api.AgentStateRunning); modelOf(got) != "Haiku 5.5" {
+		t.Errorf("the banner read as model %q", modelOf(got))
+	}
 
 	// Changed with no daemon to tell, so that only the hello can say it.
 	td.stop()
@@ -741,11 +755,14 @@ func TestAgentStatus(t *testing.T) {
 	if !got.UpdatedAt.Equal(updated) {
 		t.Errorf("updated_at moved from %s to %s", updated, got.UpdatedAt)
 	}
+	if modelOf(got) != "Haiku 5.5" {
+		t.Errorf("a daemon starting again, on a screen that does not say it, learns model %q", modelOf(got))
+	}
 
 	step("end")
 	got = next.waitAgentState(t, a.Id, api.AgentStateExited)
-	if got.Activity != nil || got.Draft != nil {
-		t.Errorf("an exited agent shows %s, %v", activityOf(got), got.Draft)
+	if got.Activity != nil || got.Draft != nil || got.Model != nil {
+		t.Errorf("an exited agent shows %s, %v, %s", activityOf(got), got.Draft, modelOf(got))
 	}
 
 	step("again")
@@ -770,8 +787,8 @@ func TestAgentStatusOfAHolderThatSaysNothing(t *testing.T) {
 	td := startOn(t, home, telemetry.Options{}, func(o *Options) { o.ACA = otherACA{&acatest.ACA{}} })
 	app := td.create(t, "app").Worktrees[0].Path
 	a := td.createAgent(t, "", app, "helper")
-	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft {
-		t.Errorf("got %s, %v", activityOf(a), a.Draft)
+	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft || a.Model != nil {
+		t.Errorf("got %s, %v, %s", activityOf(a), a.Draft, modelOf(a))
 	}
 }
 
@@ -799,8 +816,10 @@ func TestAgentQueued(t *testing.T) {
 		}
 	}
 	td.waitProject(t, "app", "the message queued", queued(1))
-	if err := os.WriteFile(filepath.Join(app, "idle"), nil, 0o600); err != nil {
-		t.Fatal(err)
+	for _, step := range []string{"banner", "idle"} {
+		if err := os.WriteFile(filepath.Join(app, step), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	td.waitProject(t, "app", "the message delivered", queued(0))
 }

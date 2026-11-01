@@ -80,6 +80,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "activity", values: present(a.Activity, func(v api.AgentActivity) string { return string(v) })},
 		{key: "draft", values: present(a.Draft, yesNo)},
 		{key: "queued", values: present(a.Queued, strconv.Itoa)},
+		{key: "model", values: present(a.Model, identical)},
 	}
 }
 

@@ -164,7 +164,7 @@ func (w *screenWatch) stateChanged() <-chan struct{} {
 func (w *screenWatch) state() screen.ScreenState { return *w.latest.Load() }
 
 func statusOf(state screen.ScreenState) Status {
-	return Status{Activity: string(state.Activity), Draft: state.Draft}
+	return Status{Activity: string(state.Activity), Draft: state.Draft, Model: state.Model}
 }
 
 // watchScreen waits the moment after a change, reads the screen and parses it
@@ -184,6 +184,9 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 		parsed   screen.ScreenState
 		seen     int64 // the last input told to motion
 		failed   bool  // the parser panicked on the last screen
+		// model is the last name read: a screen says it only for a moment, and the
+		// next screens say nothing.
+		model string
 	)
 	for {
 		wakeAt, armed := motion.Wake()
@@ -226,7 +229,10 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 			if !failed {
 				if state != parsed {
 					parsed = state
-					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn)
+					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "model", state.Model)
+				}
+				if state.Model != "" {
+					model = state.Model
 				}
 				motion.Screen(now, !slices.Equal(lines, previous), state)
 				previous = lines
@@ -238,6 +244,7 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 		if !failed {
 			state = motion.State()
 		}
+		state.Model = model
 		w.publish(state)
 	}
 }
@@ -275,7 +282,7 @@ func (w *screenWatch) publish(state screen.ScreenState) {
 	if statusOf(state) != statusOf(last) {
 		wake(w.statusChanged)
 	}
-	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn)
+	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "model", state.Model)
 }
 
 // isInput reports whether a frame of a client's input is what the fallback

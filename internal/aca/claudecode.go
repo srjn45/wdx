@@ -74,7 +74,14 @@ var (
 	// A prompt's option has a plain space after the ❯ and the box a no-break
 	// one, so a draft that reads "1. buy milk" stays a draft.
 	claudeCodeOption = regexp.MustCompile(`^❯ +\d+\.\s`)
+	// A model's name is a word and a version, so that a name a wrap has cut is not
+	// read as a shorter one, and what leaves the holder cannot be other text.
+	claudeCodeBannerModel  = regexp.MustCompile(`^▝▜[^A-Za-z]*` + claudeCodeModelName + `(?:\s+\(.*\))?(?:\s+·.*)?$`)
+	claudeCodeChangedModel = regexp.MustCompile(`^⎿\s+(?:Set model to|Kept model as) ` + claudeCodeModelName + `(?:\s|$)`)
+	claudeCodeModelCommand = regexp.MustCompile(`^❯[ \x{00a0}]/model(?:\s|$)`)
 )
+
+const claudeCodeModelName = `([A-Z][a-z]+ \d+(?:\.\d+)?)`
 
 // Parse implements ScreenParser.
 func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
@@ -99,6 +106,9 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 	}
 	inTurn := strings.Contains(box.footer, "esc to interrupt")
 	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed), InTurn: inTurn}
+	if !state.Draft {
+		state.Model = claudeCodeModel(lines[:box.first])
+	}
 	switch {
 	case inTurn,
 		claudeCodeBackgroundWork.MatchString(box.footer),
@@ -108,6 +118,30 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 		state.Activity = screen.ActivityIdle
 	}
 	return state
+}
+
+// claudeCodeModel reads the model from what is above the input box, lowest
+// first: a confirmation is below the banner, which /model opus[1m] leaves as it
+// was. Only with the box showing and empty, and at the bottom of the conversation:
+// the transcript view and a screen scrolled back show old confirmations, and the
+// suggestions of a command being typed cover the newest.
+func claudeCodeModel(above []string) string {
+	for i := len(above) - 1; i > 0; i-- {
+		line := strings.TrimSpace(above[i])
+		switch {
+		case strings.Contains(line, "Jump to bottom"):
+			return ""
+		case strings.HasPrefix(line, "⎿"):
+			if m := claudeCodeChangedModel.FindStringSubmatch(line); m != nil && claudeCodeModelCommand.MatchString(above[i-1]) {
+				return m[1]
+			}
+		case strings.HasPrefix(line, "▝▜"):
+			if m := claudeCodeBannerModel.FindStringSubmatch(line); m != nil && strings.HasPrefix(strings.TrimSpace(above[i-1]), "▐▛") {
+				return m[1]
+			}
+		}
+	}
+	return ""
 }
 
 const claudeCodeTailLines = 3

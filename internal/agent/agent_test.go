@@ -513,7 +513,7 @@ func TestSetStatus(t *testing.T) {
 	store := f.agents.Store()
 	set := func(activity string, draft bool, queued int, wantChanged bool) Agent {
 		t.Helper()
-		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft, queued)
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft, queued, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -536,6 +536,30 @@ func TestSetStatus(t *testing.T) {
 	if got := set("waiting", true, 2, true); got.Queued != 2 {
 		t.Errorf("the queue's length not kept: %d", got.Queued)
 	}
+	setModel := func(model string, wantChanged bool) string {
+		t.Helper()
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, "waiting", true, 2, model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed != wantChanged {
+			t.Errorf("SetStatus(model %q) changed = %v", model, changed)
+		}
+		got, err := store.Get(ctx, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Model
+	}
+	if got := setModel("Haiku 5.5", true); got != "Haiku 5.5" {
+		t.Errorf("the model not kept: %q", got)
+	}
+	if got := setModel("Haiku 5.5", false); got != "Haiku 5.5" {
+		t.Errorf("the model after a repeat: %q", got)
+	}
+	if got := setModel("", true); got != "" {
+		t.Errorf("a holder that has read none, as after a relaunch, leaves %q", got)
+	}
 	if got := set("limited", true, 2, true); got.Activity != "unknown" {
 		t.Errorf("a value not known reads %q", got.Activity)
 	}
@@ -543,7 +567,7 @@ func TestSetStatus(t *testing.T) {
 	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0); err != nil || changed {
+	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0, ""); err != nil || changed {
 		t.Errorf("no agent: changed %v, %v", changed, err)
 	}
 }
@@ -555,7 +579,7 @@ func TestStatusOnlyWhileRunning(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "until [ -f end ]; do sleep 0.01; done; exit 0")
 	a := f.create(t, "helper")
-	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true, 3); err != nil {
+	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true, 3, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(f.dir, "end"), nil, 0o600); err != nil {

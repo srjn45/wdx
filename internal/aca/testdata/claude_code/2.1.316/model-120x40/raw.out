@@ -1,0 +1,659 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/xxxx/xxxxxx/xxx/xxx/xxxxxxxxxx/xxxxx-xxxxx/xxxxxxxx/xxx/xxxxxxxx/xxxxxxxxxxx/xxxxxx/work/w-47hy7po1[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject[40Gyou[44Gcreated[52Gor[55Gone[59Gyou[63Gtrust?[70G(Like[76Gyour[81Gown[85Gcode,[91Ga[93Gwell-known[104Gopen[109Gsource
+[2Gproject,[11Gor[14Gwork[19Gfrom[24Gyour[29Gteam).[36GIf[39Gnot,[44Gtake[49Ga[51Gmoment[58Gto[61Greview[68Gwhat's[75Gin[78Gthis[83Gfolder[90Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,[40Gand[44Gexecute[52Gfiles[58Ghere.
+
+[2G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mSecurity guide[39m]8;;
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u]7501;?[c[?2026$p[c[>4m[<u[?1004l[?2031l[?2004l[1D[4B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[16A[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;220m[1mAllow[9Gexternal[18GCLAUDE.md[28Gfile[33Gimports?[22m[39m
+
+[3GThis[8Gproject's[18GCLAUDE.md[28Gor[31G.claude/rules[45Gimports[53Gfiles[59Goutside[67Gthe[71Gcurrent[79Gworking[87Gdirectory.[98GNever[104Gallow[110Gthis[115Gfor
+[3Gthird-party[15Grepositories.
+
+[3G[38;5;246mExternal[12Gimports:[39m
+[3G[38;5;246m [5G/home/xxxxxx/dev/wdx/AGENTS.md[39m
+[3G[38;5;246m [5G/home/xxxxxx/dev/wdx/.worktrees/agent-model/AGENTS.md[39m
+
+[3G[38;5;246mImportant:[14GOnly[19Guse[23GClaude[30GCode[35Gwith[40Gfiles[46Gyou[50Gtrust.[57GAccessing[67Guntrusted[77Gfiles[83Gmay[87Gpose[92Gsecurity[101Grisks[39m
+[3G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mhttps://code.claude.com/docs/en/security[39m]8;;
+
+[3G[38;5;153m❯[5GNo,[9Gdisable[17Gexternal[26Gimports[39m
+[5GYes,[10Gallow[16Gexternal[25Gimports
+
+[3G[38;5;246m[3mEnter[9Gto[12Gconfirm[20G·[22GEsc[26Gto[29Gcancel[23m[39m
+[2C[4A[>0q[c[?2026$p[c[>4m[<u[?1004l[?2031l[?2004l[2D[4B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[17A[?2004h[?2031h[?1004h[<u[>5u[>4;2m]0;✳ Claude Code[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.316[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m~/dev/wdx/.worktrees/agent-model/internal/aca/testdata/claude_code/record/work/w-47hy7po1[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[37Gdisabled[46G(CLAUDE.md,[58Gskills,[66Gplugins,[75Ghooks,[82GMCP,[87Gagents,[95Gand[99Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[34Gre-enable[39m
+
+[3GGet[7Gto[10Gfinished[19Gwork[24Gsooner[31Gwith[36GOpus[41G5.5.[46GSwitch[53Ganytime[61Gwith[66G[38;5;153m/model[39m.
+[3G[38;5;246m1[5Gmore[10Gnotice[17Ghidden[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ [2mTry[7G"write[14Ga[16Gtest[21Gfor[25G<filepath>"[22m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G·[40G←[42Gfor[46Gagents[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[>0q[c[?2026$p[c[?25l[2D[3B[2C[3A[38;5;153m/model[39m[K[2C[2B[38;5;153m❯ /[1mmodel[22m                      Set the AI [1mmodel[22m for Claude Code (currently Haiku 5.5)[101G[39m[K
+[3G[38;5;246m [5G/auto-mode-setup[33GTeach[39Gauto[44Gmode[49Gabout[55Gyour[60Genvironment,[73Gplus[78Goptional[87Grule[92Gtweaks[39m
+[3G[38;5;246m [5G/code-review[33G3[35Gfree[40G/ultrareview[53G·[55GReview[62Gthe[66Gcurrent[74Gdiff[79Gor[82Ga[84GPR[87Gfor[91Gbugs[96Gand[100Gcleanups[39m
+[3G[38;5;246m [5G/update-config[33GChange[40Gsettings:[50Ghooks,[57Gpermissions,[70Genvironment[82Gvariables[39m
+[3G[38;5;246m [5G/loop[33GRepeat[40Ga[42Gprompt[49Gor[52Gcommand[60Gon[63Gan[66Ginterval[75G(e.g.[81G/loop[87G5m[90G/foo)[39m
+[3G[38;5;246m [5G/claude-api[33GBuild[39Gand[43Gdebug[49Gapps[54Gthat[59Guse[63Gthe[67GClaude[74GAPI[39m
+[3G[38;5;246m [5G/advisor[33GLet[37GClaude[44Gconsult[52Ga[54Gstronger[63G[39m[1mmodel[22m[38;5;246m at[72Gkey[76Gmoments[39m
+[3G[38;5;246m [5G/effort[33GSet[37Geffort[44Glevel[50Gfor[54G[39m[1mmodel[22m[38;5;246m usage[39m
+[3G[38;5;246m [5G/status[33GShow[38GClaude[45GCode[50Gstatus[57Gincluding[67Gversion,[76G[39m[1mmodel[22m[38;5;246m,[83Gaccount,[92GAPI[96Gconnectivity,[110Gand[114Gtool[39m
+[33G[38;5;246mstatuses[39m
+
+
+
+
+
+
+
+
+
+
+[8C[22A[?25h[?25l[8D[22B[2K[G[1A[22A[48;5;237m[38;5;246m❯ [38;5;231m/model[39m                                                                                                                [1B[49m[K[1B[38;5;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[2C[1B[1mSelect model[22m[39m[K[2C[1B[38;5;246mSwitch betw[15Gen Claude[25Gmodels.[33GYour pick becomes the[55Gdefault for n[69Gw sessions. F[83Gr other/previous model names, [2C[1Bspe[7Gify with --model.[39m[K[2C[1B[K[2C[1B  [38;5;246m1.  [39mDefault (recommended)  [38;5;174mOpus 5.5[38;5;246m · Best f[52Geveryday, complex tasks[39m[K[2C[1B  [38;5;246m2.  [39mOpus 5.5               [38;5;246mFor complex work[50Gnd everyday tasks[39m[K[2C[1B  [38;5;246m3.  [39mFable 5.1              [38;5;246mFor your toughe[48Gt ch[53Gllenges[39m[K[2C[1B  [38;5;246m4.  [39mSonnet 5.5             [38;5;246mMos[40Gicient for simpler ta[62Gks[39m[K[2C[1B[38;5;153m❯[39m [38;5;246m5.  [38;5;114mHaiku 5.5[39m [38;5;114m✔[39m            [38;5;246mFastest for quick[50Ganswers[39m[K[4C[1B[38;5;246m6.  [39mHaiku[15G4.5[32G[38;5;246mFastest for quick answers[4C[1B7.  [39mSonnet[16G5[32G[38;5;246mEfficient for routine tasks[4C[1B8.  [39mOpus[14G5[32G[38;5;246mBest for everyday, complex tasks[4C[1B9.  [39mFable[15G5[32G[38;5;246mMost capable for your hardest and longest-running tasks[2C[1B↓[5G10. [39mOpus[14G4.8[32G[38;5;246mBest for everyday, complex tasks[5C[1B… +3 models[2C[2B[38;5;174m◐[38;5;246m Medium effort (default)[38;5;239m ←/→ to adjust[2C[2B[38;5;246mEnter to set as default · s to use this session only · Esc to cancel[1B[39m[K[2C[11A[2D[11B[2C[11A [2C[1B[38;5;153m❯[9GHaiku 4.5[2C[7B[38;5;239m○ Effort not supported for Haiku[36G4.5[39m[K
+
+
+[2C[10A[2D[10B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[17C[10A[38;5;246m4[10B[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[20A[1C[1A[48;5;237m [49m
+[38;5;246m [3G⎿[6G[39mSet[10Gmodel[16Gto[19G[38;5;153mHaiku[25G4.5[29G[39mand[33Gsaved[39Gas[42Gyour[47Gdefault[55Gfor[59Gnew[63Gsessions
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G·[40G←[42Gfor[46Gagents[39m
+[19G[38;5;246mtmux[24Gfocus-events[37Goff[41G·[43Gadd[47G'set[52G-g[55Gfocus-events[68Gon'[72Gto[75G~/.tmux.conf[88Gand[92Greattach[101Gfor[105Gfocus[111Gtracking[39m
+[2C[4A[?25h[?25l[2D[4B[36C[2A[K
+
+[2C[4A[?25h[?25l[2D[4B[2C[4A[38;5;153m/model[10G[39msonnet[18C[2B[K
+
+[15C[4A[?25h[?25l[15D[4B[2K[1A[2K[1A[2K[1A[2K[G[1A[1A[48;5;237m[38;5;246m❯ [38;5;231m/model sonnet[39m                                                                                                         [1B[49m[K[1B[K[1B[K[1B[K[3A[11C[13A[38;5;246mSonnet 5.5 · Claude Max[39m
+
+
+
+
+
+
+
+
+
+
+
+
+[1C[1A[48;5;237m [49m
+[38;5;246m [3G⎿[6G[39mSet[10Gmodel[16Gto[19G[38;5;153mSonnet[26G5.5[30G[39mand[34Gsaved[40Gas[43Gyour[48Gdefault[56Gfor[60Gnew[64Gsessions
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[39m
+[19G[38;5;246mtmux[24Gfocus-events[37Goff[41G·[43Gadd[47G'set[52G-g[55Gfocus-events[68Gon'[72Gto[75G~/.tmux.conf[88Gand[92Greattach[101Gfor[105Gfocus[111Gtracking[39m
+[2C[4A[?25h[?25l[2D[4B[2C[4A[38;5;153m/model[10G[39mhaiku[18C[2B[K
+
+[14C[4A[?25h[?25l[14D[4B[2K[1A[2K[1A[2K[1A[2K[G[1A[1A[48;5;237m[38;5;246m❯ [38;5;231m/model haiku[39m                                                                                                          [1B[49m[K[1B[K[1B[K[1B[K[3A[11C[16A[38;5;246mHaiku 5.5 · Claude Max[39m[K[1C[15B[48;5;237m [49m
+[38;5;246m [3G⎿[6G[39mSet[10Gmodel[16Gto[19G[38;5;153mHaiku[25G5.5[29G[39mand[33Gsaved[39Gas[42Gyour[47Gdefault[55Gfor[59Gnew[63Gsessions
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[39m
+[19G[38;5;246mtmux[24Gfocus-events[37Goff[41G·[43Gadd[47G'set[52G-g[55Gfocus-events[68Gon'[72Gto[75G~/.tmux.conf[88Gand[92Greattach[101Gfor[105Gfocus[111Gtracking[39m
+[2C[4A[?25h[?25l[2D[4B[2K[G[1A[100C[1A[38;5;246m◐ medium · /effort[1B[39m[K[2C[3A[?25h[?25l[2D[3B[2C[3A[38;5;153m/model[10G[39mnonsense[18C[2B                  
+[17C[3A[?25h[?25l[17D[3B[2K[1A[2K[1A[2K[G[1A[1A[48;5;237m[38;5;246m❯ [38;5;231m/model nonsense[39m                                                                                                       [1B[49m[K[1B[K[1B[K[2A[1C[1A[48;5;237m [19G[49m[K
+[38;5;246m [3G⎿[6G[39mModel[12G'nonsense'[23Gnot[27Gfound
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[?25l[2D[3B[2C[3ASay[7Ghi[10Gin[13Gone[17Gword.[18C[2B                  
+[21C[3A[?25h[?25l[21D[3B[4A[48;5;237m[38;5;246m❯ [38;5;231mSay hi in one word.[39m                                                                                                   [1B[49m[K[1B[38;5;174m✢[39m [38;5;174mLollygagging… [39m[K[1B[38;5;246m  ⎿[5G Tip: Run [38;5;153m/ultrareview[38;5;246m for a cloud-based multi-agent review that finds and verifies bugs in your branch — 3 free [39m[K
+[6G[38;5;246mreviews[14Gleft[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[?25l[2D[3B[8A[38;5;174m·[39m
+
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[8A[38;5;174m✢[39m
+
+
+
+
+
+
+
+[2C[3A[?25h]0;✳ Greeting in one word[?25l[2D[3B[8A[38;5;174m*[15G[38;5;216m…[39m
+
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[8A[38;5;174m✶[39m
+
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[8A[38;5;174m✻[14G[38;5;216mg[17G[38;5;246m(1s · ↓[25G1 tokens)[39m
+
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[8A[38;5;231m●[3G[39m[K[1B[K[1B[38;5;174m✻[3GLollygaggin[38;5;216mg…[38;5;174m [38;5;246m(1s · ↓[25G1 tokens)[1B  ⎿  Tip: Run [38;5;153m/ultrareview[38;5;246m for a cloud-based multi-agent review that finds and verifies bugs in your branch — 3 free [1B[39m     [38;5;246mreviews left[39m[K[1B[K[2B[38;5;246m❯ [39m[K
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[?25l[2D[3B[2C[10AHi
+
+
+
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[2K[1A[2K[G[1A[6A[38;5;246m✻[3GCrunched for 1s ·[21Gdone 9:43 AM[39m[K[1B[K[1B[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1B[39m❯ [2B  [38;5;246m⏸ manual mode on · ? for shortcuts[101G◐ medium · /effort[1B[39m[K[1B[K[1A[2C[3A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[3B[2C[3A[38;5;153m/clear[2C[2B❯ /[1mclear[22m                      Start a new session with empty context; previous session stays on disk (resumable with[39m
+[33G[38;5;153m/resume)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[8C[22A[?25h]0;✳ Claude Code[?25l[8D[22B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.316[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m~/dev/wdx/.worktrees/agent-model/internal/aca/testdata/claude_code/record/work/w-47hy7po1[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[37Gdisabled[46G(CLAUDE.md,[58Gskills,[66Gplugins,[75Ghooks,[82GMCP,[87Gagents,[95Gand[99Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[34Gre-enable[39m
+
+[3GGet[7Gto[10Gfinished[19Gwork[24Gsooner[31Gwith[36GOpus[41G5.5.[46GSwitch[53Ganytime[61Gwith[66G[38;5;153m/model[39m.
+[3G[38;5;246m1[5Gmore[10Gnotice[17Ghidden[39m
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/clear[39m                                                                                                                [49m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[?25l[2D[3B[100C[1A[K
+[2C[3A[?25h[?25l[2D[3B[2C[3ASay[7Gok[10Gin[13Gone[17Gword.[18C[2B[K
+[21C[3A[?25h[?25l[21D[3B[4A[48;5;237m[38;5;246m❯ [38;5;231mSay ok in one word.[39m                                                                                                   [1B[49m[K[1B[38;5;174m*[39m [38;5;174mProof[38;5;216ming[38;5;174m… [39m[K[1B[38;5;246m  ⎿[5G Tip: Use /memory to view and manage Claude memory[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39m
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;174m✢[7G[38;5;216mf[10G[38;5;174mg[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;174m·[6G[38;5;216mo[9G[38;5;174mn[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[4C[7A[38;5;216mo[8G[38;5;174mi[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;174m✢[4G[38;5;216mr[7G[38;5;174mf[39m
+
+
+
+
+
+
+[2C[3A[?25h]0;✳ Single-word acknowledgment[?25l[2D[3B[7A[38;5;174m*[3G[38;5;216mP[6G[38;5;174mo[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;174m✶[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;174m✻[5Go[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;231m●[3G[39mok[K[1B[K[1B[38;5;174m✻[3G[38;5;216mPr[38;5;174moofing… [1B[38;5;246m  ⎿  Tip: Use /memory to view and manage Claude memory[39m[K[1B[K[2B[38;5;246m❯ [39m[K
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39m
+[2C[3A[?25h[?25l[2D[3B[2K[G[1A[6A[38;5;246m✻[3GSautéed for 1s · done 9:43 AM[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1B[39m❯ [K[1B[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1B[39m  [38;5;246m⏸ manual mode on · ? for shortcuts[39m[K[1B[K[2C[3A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[3B[2C[3A[38;5;153m/compact[2C[2B❯ /[1mcompact[22m                    Free up context by summarizing the conversation so far[39m
+[3G[38;5;246m [5G/auto[39m[1mcompact[22m[38;5;246m [33GSet[37Ghow[41Gfull[46Gthe[50Gcontext[58Ggets[63Gbefore[70Gauto-summarizing[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[10C[22A[?25h[?25l[10D[22B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.316[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m~/dev/wdx/.worktrees/agent-model/internal/aca/testdata/claude_code/record/work/w-47hy7po1[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[37Gdisabled[46G(CLAUDE.md,[58Gskills,[66Gplugins,[75Ghooks,[82GMCP,[87Gagents,[95Gand[99Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[34Gre-enable[39m
+
+[3GGet[7Gto[10Gfinished[19Gwork[24Gsooner[31Gwith[36GOpus[41G5.5.[46GSwitch[53Ganytime[61Gwith[66G[38;5;153m/model[39m.
+[3G[38;5;246m1[5Gmore[10Gnotice[17Ghidden[39m
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/clear[39m                                                                                                                [49m
+
+[48;5;237m[38;5;246m❯ [38;5;231mSay ok in one word.[39m                                                                                                   [49m
+
+[38;5;231m●[3G[39mok
+
+[38;5;246m✻[3GSautéed[11Gfor[15G1s[18G·[20Gdone[25G9:43[30GAM[39m
+
+[48;5;237m[38;5;246m❯ [38;5;231m/compact[39m                                                                                                              [49m
+
+[38;5;147m*[3GCompacting[14Gconversation[38;5;153m…[38;5;147m [38;5;246m(0s)[39m
+[38;5;246m [3G⎿[5G Tip:[11GUse[15G/theme[22Gto[25Gchange[32Gthe[36Gcolor[42Gtheme[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39m
+[2C[3A[?25h[?25l[2D[3B[25C[7A[38;5;147m…[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m·[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m*[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[30C[7A[38;5;246m · ↓[36G1 tokens)[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✶[29G[38;5;246m1[36G3[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✻[36G[38;5;246m4[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✽[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m2 tokens)[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[35C[7A[38;5;246m54[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✻[36G[38;5;246m63[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m9[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✶[36G[38;5;246m107 tokens)[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m*[29G[38;5;246m2[37G32[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[37G[38;5;246m50[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m·[37G[38;5;246m6[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[37C[7A[38;5;246m8[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[25C[7A[38;5;153m…[37G[38;5;246m93[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[35C[7A[38;5;246m218[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[25G[38;5;153mn[37G[38;5;246m36[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m4[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m*[24G[38;5;153mo[29G[38;5;246m3[37G84[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✶[36G[38;5;246m309[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✻[23G[38;5;153mi[26G[38;5;147m…[37G[38;5;246m1[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✽[22G[38;5;153mt[25G[38;5;147mn[37G[38;5;246m27[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m32[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[20C[7A[38;5;153ma[24G[38;5;147mo[37G[38;5;246m57[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m82[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✻[20G[38;5;153ms[23G[38;5;147mi[37G[38;5;246m96[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✶[36G[38;5;246m410[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[18C[7A[38;5;153mr[22G[38;5;147mt[29G[38;5;246m4[38G6[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m*[18G[38;5;153me[21G[38;5;147ma[37G[38;5;246m41[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[37G[38;5;246m59[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m·[17G[38;5;153mv[20G[38;5;147ms[37G[38;5;246m73[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[37C[7A[38;5;246m7[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[15C[7A[38;5;153mn[19G[38;5;147mr[36G[38;5;246m502[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[36C[7A[38;5;246m27[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✢[15G[38;5;153mo[18G[38;5;147me[37G[38;5;246m46[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m*[37G[38;5;246m55[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[13C[7A[38;5;153mc[17G[38;5;147mv[29G[38;5;246m5[37G61[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✶[13G[38;5;153m [16G[38;5;147mn[37G[38;5;246m86[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[7A[38;5;147m✻[36G[38;5;246m61[39m
+
+
+
+
+
+
+[2C[3A[?25h[?25l[2D[3B[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[12A[38;5;246m✻ Conversation compacted (ctrl+o for the summary)[39m[K[2C[1B[38;5;246mEarlier messages are saved in ]8;id=10tq8wp;file:///tmp/wdx-model-rec/projects/-xxxx-xxxxxx-xxx-xxx--xxxxxxxxx-xxxxx-xxxxx-xxxxxxxx-xxx-xxxxxxxx-xxxxxx-xxxx-xxxxxx-work-w-47hy7po1/00000000-0000-0000-0000-000000000000.jsonl/tmp/wdx-model-rec/projects/-home-xxxxxx-dev-wdx--worktrees-agent-model-internal-aca-tes]8;;[1B[39m  ]8;id=10tq8wp;file:///tmp/wdx-model-rec/projects/-xxxx-xxxxxx-xxx-xxx--xxxxxxxxx-xxxxx-xxxxx-xxxxxxxx-xxx-xxxxxxxx-xxxxxx-xxxx-xxxxxx-work-w-47hy7po1/00000000-0000-0000-0000-000000000000.jsonl[38;5;246mtdata-claude-code-record-work-w-47hy7po1/00000000-0000-0000-0000-000000000000.jsonl[39m]8;;[K[2B[K[1B[48;5;237m[38;5;246m❯[39m [38;5;231m/compact[39m                                                                                                              [1B[49m[38;5;246m  ⎿  [39m[2mCompacted (ctrl+o to see full summary)[2B[22m[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1B[39m❯ [1B[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1B[39m  [38;5;246m⏸[5Gmanual mode on ·[22G? for shor[33Gcuts[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[4A[2C[3A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[3B[2C[3A[38;5;153m/model[10G[39msonnet[18C[2B[K
+[15C[3A[?25h[?25l[15D[3B[2K[1A[2K[1A[2K[G[1A[1A[48;5;237m[38;5;246m❯ [38;5;231m/model sonnet[39m                                                                                                         [1B[49m[K[1B[K[1B[K[2A[11C[18A[38;5;246mSonnet 5.5 · Claude Max[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1C[1A[48;5;237m [49m
+[38;5;246m [3G⎿[6G[39mSet[10Gmodel[16Gto[19G[38;5;153mSonnet[26G5.5[30G[39mand[34Gsaved[40Gas[43Gyour[48Gdefault[56Gfor[60Gnew[64Gsessions
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[101G◐[103Gmedium[110G·[112G/effort[39m
+[2C[3A[?25h[?25l[2D[3B[2C[1A[38;5;246mPress Ctrl-C again[22Gto exit[39m        
+[2C[3A[?25h[?1006l[?1003l[?1002l[?1000l[2D[3B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;[2m[22m
+[2mResume this session with:[22m
+[2mclaude --resume 00000000-0000-0000-0000-000000000000[22m
+[2m[22m

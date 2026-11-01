@@ -114,10 +114,10 @@ func TestInfoGoesToAnOpenTab(t *testing.T) {
 
 func TestInfoShowsTheFields(t *testing.T) {
 	t.Parallel()
-	worktree, parent, activity, draft, queued := "auth-fix", "planner", api.AgentActivityWorking, false, 2
+	worktree, parent, activity, draft, queued, model := "auth-fix", "planner", api.AgentActivityWorking, false, 2, "Haiku 5.5"
 	kids := []api.Agent{running("tests"), running("docs")}
 	a := api.Agent{Name: "lead", State: api.AgentStateRunning, Aca: "claude_code", ProjectName: "demo", Worktree: &worktree,
-		ParentAgentName: &parent, Children: &kids, Activity: &activity, Draft: &draft, Queued: &queued}
+		ParentAgentName: &parent, Children: &kids, Activity: &activity, Draft: &draft, Queued: &queued, Model: &model}
 	m := newAgentsModel(120, 41, a)
 	m.layout.setFocus(project)
 	keys(m, "i")
@@ -139,6 +139,7 @@ func TestInfoShowsTheFields(t *testing.T) {
 		"activity:           working",
 		"draft:              no",
 		"queued:             2",
+		"model:              Haiku 5.5",
 		"Enter rename",
 		"[● info: lead(-)]",
 	} {

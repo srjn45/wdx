@@ -13,7 +13,7 @@ An ACA cannot compile without these.
 | Where it keeps transcripts | `Command()`, `internal/aca/claudecode.go` | `~/.claude/projects/*/<id>.jsonl`; a `CLAUDE_CONFIG_DIR` set in the user's rc file is not seen |
 | Giving it a message | `Deliver()`, `internal/aca/claudecode.go`; docs/SEND.md | bracketed paste, about 150 ms, then Enter as a separate key; a paste-end marker in the message is taken out |
 | Stopping its turn | `Interrupt()`, `internal/aca/claudecode.go`; docs/SEND.md | Esc |
-| Reading its activity and draft from its screen | `ScreenParser()`, `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | the footer rules; its fixes reach a running agent when it is relaunched |
+| Reading its activity, draft and model from its screen | `ScreenParser()`, `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | the footer rules, the banner and `/model` lines; its fixes reach a running agent when it is relaunched |
 
 ## Outside `AiCodingAgent`
 

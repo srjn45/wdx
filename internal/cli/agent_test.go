@@ -176,20 +176,20 @@ func TestAgentGet(t *testing.T) {
 // running has no status to show.
 func TestAgentStatusText(t *testing.T) {
 	t.Parallel()
-	waiting, yes, two := api.AgentActivityWaiting, true, 2
+	waiting, yes, two, model := api.AgentActivityWaiting, true, 2, "Haiku 5.5"
 	var out bytes.Buffer
-	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two}}.text(&out, style.New(false))
-	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
+	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two, Model: &model}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`model\s+Haiku 5\.5\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
 		t.Errorf("running: %s", out.String())
 	}
 	out.Reset()
 	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}.text(&out, style.New(false))
-	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") {
+	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") || strings.Contains(out.String(), "model") {
 		t.Errorf("exited: %s", out.String())
 	}
 	out.Reset()
-	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Aca: "claude_code"}}}}.text(&out, style.New(false))
-	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+claude_code`).MatchString(out.String()) {
+	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Model: &model, Aca: "claude_code"}}}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+MODEL\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+Haiku 5\.5\s+claude_code`).MatchString(out.String()) {
 		t.Errorf("list: %s", out.String())
 	}
 }

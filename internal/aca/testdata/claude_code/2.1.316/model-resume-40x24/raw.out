@@ -1,0 +1,105 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m]0;✳ Greeting[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.316[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m~/…/work/w-zghsgpys[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[39m
+[3G[38;5;220mdisabled[12G(CLAUDE.md,[24Gskills,[32Gplugins,[39m
+[3G[38;5;220mhooks,[10GMCP,[15Gagents,[23Gand[27Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[39m
+[3G[38;5;246mre-enable[39m
+
+[38;5;174m▎[3G[✻][38;5;246m [38;5;174m[✻][38;5;246m [38;5;174m[✻][38;5;246m ·[17GShare[23GClaude[30GCode[35Gand[39m
+[38;5;174m▎[3G[38;5;246mearn[8G€10[12Gin[15Gusage[21Gcredits[29G·[31G/passes[39m
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model[39m                                [49m
+[38;5;246m [3G⎿[5G[39mSet[9Gmodel[15Gto[18G[38;5;153mHaiku[24G4.5[28G[39mand[32Gsaved[38Gas
+[38;5;246m [5G[39myour[10Gdefault[18Gfor[22Gnew[26Gsessions
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model sonnet[39m                         [49m
+[38;5;246m [3G⎿[6G[39mSet[10Gmodel[16Gto[19G[38;5;153mSonnet[26G5.5[30G[39mand[34Gsaved
+[6Gas[9Gyour[14Gdefault[22Gfor[26Gnew[30Gsessions
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model haiku[39m                          [49m
+[38;5;246m [3G⎿[5G[39mSet[9Gmodel[15Gto[18G[38;5;153mHaiku[24G5.5[28G[39mand[32Gsaved[38Gas
+[38;5;246m [5G[39myour[10Gdefault[18Gfor[22Gnew[26Gsessions
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model nonsense[39m [49m
+[38;5;246m [3G⎿[6G[39mModel[12G'nonsense'[23Gnot[27Gfound
+
+[48;5;237m[38;5;246m❯ [38;5;231mSay hi in one word.[39m                   [49m
+
+[38;5;231m●[3G[39mHi
+
+[38;5;246m✻[3GChurned[11Gfor[15G1s[18G·[20Gdone[25G9:45[30GAM[39m
+
+[38;5;244m────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[>0q[?u]7501;?[c[?2026$p[c(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4A[38;5;153m/model[2C[2B❯ /[1mmodel[22m          Set the AI [1mmodel[22m[39m[K[20C[1B[38;5;153mfor Claude Code (…[39m
+[3G[38;5;246m [5G…to-mode-setup[21GTeach[27Gauto[32Gmode[39m
+[21G[38;5;246mabout[27Gyour[32Genviro…[39m
+[3G[38;5;246m [5G/code-review[21G3[23Gfree[39m
+[21G[38;5;246m/ultrareview[34G·[36GRe…[39m
+[3G[38;5;246m [5G/update-config[21GChange[28Gsettings:[39m
+[21G[38;5;246mhooks,[28Gpermission…[39m
+[3G[38;5;246m [5G/loop[21GRepeat[28Ga[30Gprompt[37Gor[39m
+[21G[38;5;246mcommand[29Gon[32Gan[35Gint…[39m
+[3G[38;5;246m [5G/claude-api[21GBuild[27Gand[31Gdebug[39m
+[21G[38;5;246mapps[26Gthat[31Guse[35Gthe…[39m
+[8C[14A[?25h[?25l[8D[14B[15A[48;5;237m[38;5;246m❯ [38;5;231m/model[39m                                [1B[49m[K[1B[38;5;153m────────────────────────────────────────[2C[1B[1mSelect model[22m[39m[K[2C[1B[38;5;246mSwitch between Claude models. Your [39m[K[2C[1B[38;5;246mpick become[15G [17Ghe[20Gdef[24Gult for[32Gnew [2C[1Bsessions. For other/previ[30Gs[32Gmodel [39m[K[2C[1B[38;5;246mnames, sp[13Gc[15Gfy[18Gwith[23G--model.[20C[1B[39m[K[2C[1B  [38;5;246m1.  [39mDefault (recommen…  [38;5;246mSonnet 5.5[20C[1B[39m        [38;5;246m· [39m[K[2C[1B                          [38;5;246mEfficient [20C[1B[39m        [38;5;246mfor [39m[K[2C[1B                          [38;5;246mroutine [20C[1B[39m        [30G[38;5;246masks[39m[K
+[5G[38;5;246m2.[9G[39mOpus[14G5.5[29G[38;5;246mFor[39m
+[29G[38;5;246mcomplex[39m
+[29G[38;5;246mwork[34Gand[39m
+[29G[38;5;246meveryday[39m
+[29G[38;5;246mtasks[39m
+[5G[38;5;246m3.[9G[39mFable[15G5.1[29G[38;5;246mFor[33Gyour[39m
+[29G[38;5;246mtoughest[39m
+[29G[38;5;246mchallenges[39m
+[5G[38;5;246m4.[9G[39mSonnet[16G5.5[29G[38;5;246mMost[39m
+[29G[38;5;246mefficient[39m
+[29G[38;5;246mfor[39m
+[29G[38;5;246msimpler[39m
+[29G[38;5;246mtasks[39m
+[3G[38;5;153m❯[5G[38;5;246m5.[9G[38;5;114mHaiku[15G5.5[19G✔[29G[38;5;246mFastest[39m
+[29G[38;5;246mfor[33Gquick[39m
+[29G[38;5;246manswers[39m
+[6G[38;5;246m…[8G+8[11Gmodels[39m
+
+[3G[38;5;174m◐[38;5;246m Medium[12Geffort[19G(default)[38;5;239m ←/→[33Gto[39m
+[3G[38;5;239madjust[39m
+
+[3G[38;5;246mEnter[9Gto[12Gset[16Gas[19Gdefault[27G·[29Gs[31Gto[34Guse[39m
+[3G[38;5;246mthis[8Gsession[16Gonly[21G·[23GEsc[27Gto[30Gcancel[39m
+[2C[10A[2D[10B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[6Gas[9Gyour[14Gdefault[22Gfor[26Gnew[30Gsessions
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model haiku[39m                          [49m
+[38;5;246m [3G⎿[5G[39mSet[9Gmodel[15Gto[18G[38;5;153mHaiku[24G5.5[28G[39mand[32Gsaved[38Gas
+[38;5;246m [5G[39myour[10Gdefault[18Gfor[22Gnew[26Gsessions
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model nonsense[39m [49m
+[38;5;246m [3G⎿[6G[39mModel[12G'nonsense'[23Gnot[27Gfound
+
+[48;5;237m[38;5;246m❯ [38;5;231mSay hi in one word.[39m                   [49m
+
+[38;5;231m●[3G[39mHi
+
+[38;5;246m✻[3GChurned[11Gfor[15G1s[18G·[20Gdone[25G9:45[30GAM[39m
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/model[39m [49m
+[38;5;246m [3G⎿[6G[39mKept[11Gmodel[17Gas[20G[38;5;153mHaiku[26G5.5[39m
+
+[38;5;244m────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G…[39m
+[3G[38;5;246mtmux[8Gfocus-events[21Goff[25G·[27Gadd[31G'set[36G-g…[39m
+[2C[4A[?25h[?25l[2D[4B[36C[2A[K
+
+[2C[4A[?25h[?25l[2D[4B[2C[2A[38;5;246mPress Ctrl-C again[22Gto exit[39m[K
+
+[2C[4A[?25h[?1006l[?1003l[?1002l[?1000l[2D[4B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;[2m[22m
+[2mResume this session with:[22m
+[2mclaude --resume 00000000-0000-0000-0000-000000000000[22m
+[2m[22m

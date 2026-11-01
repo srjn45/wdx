@@ -90,6 +90,8 @@ type Status struct {
 	Draft    bool   `json:"draft"`
 	// Queued is how many messages wait in the inbox.
 	Queued int `json:"queued"`
+	// Model is the AI model's name as the program last showed it; "" until it has.
+	Model string `json:"model,omitempty"`
 }
 
 // Size is a terminal's size in cells.

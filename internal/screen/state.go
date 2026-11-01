@@ -27,4 +27,8 @@ type ScreenState struct {
 	// not only running something in the background. A footer cut off before it
 	// says so reads false, so a turn is never interrupted on a guess.
 	InTurn bool
+	// Model is the name of the AI model the ACA says it runs, when this screen
+	// says so, as "Haiku 5.5"; "" when it does not, which is most screens, so
+	// whoever reads the screen over time keeps the last.
+	Model string
 }

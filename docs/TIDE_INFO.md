@@ -26,6 +26,7 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
    activity:           working
    draft:              no
    queued:             2
+   model:              Haiku 5.5
 
  Enter rename
 ```

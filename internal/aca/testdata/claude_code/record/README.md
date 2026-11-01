@@ -16,3 +16,5 @@ Its `send` scenario gives Claude messages in each state docs/SEND.md says someth
 
     CGO_ENABLED=0 go build -o /some/dir/wdx ./cmd/wdx
     REAL_BASE=/tmp/x go run ./internal/aca/testdata/claude_code/record/holdercheck states s316 /some/dir/wdx ~/.local/share/claude/versions/2.1.316 120x40
+
+`model.py`, `model2.py`, `model3.py` and `model4.py` record `/model` and what shows old names, and `holdercheck`'s `model` scenario checks what a real holder tells of them. `/model` saves its choice to Claude's settings, so run them with a config directory of their own, logged in once by hand: `MODEL_CONFIG` for the scripts, `CLAUDE_CONFIG_DIR` for `holdercheck`. The results are in `../2.1.316/`, copied with `VERSION=2.1.316 sanitize.py`.

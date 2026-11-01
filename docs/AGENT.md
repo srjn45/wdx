@@ -4,7 +4,7 @@ Status: implemented. Checked against the real Claude Code 2.1.314 (see Tests).
 
 An agent is an AI coding agent (an ACA: Claude Code for now, Codex, Cursor, Antigravity later) running in a terminal of a project. It has everything a terminal has, its holder included: it outlives the daemon and the window that showed it, and you attach to it and detach from it the same way. On top it knows which ACA it runs and which session of that ACA is its own.
 
-Child agents and tombstones are in docs/CHILD_AGENTS.md. What the ACA is doing, `activity` and `draft`, is in docs/AGENT_STATE.md. Not in this step: choosing a model, an initial prompt, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
+Child agents and tombstones are in docs/CHILD_AGENTS.md. What the ACA is doing, `activity` and `draft`, and the model it shows, `model`, are in docs/AGENT_STATE.md. Not in this step: choosing a model, an initial prompt, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
 
 ## Architecture
 
@@ -111,7 +111,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 ```json
 {"id": "agent-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "wdx",
  "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx", "worktree": "main",
- "state": "running", "activity": "idle", "draft": false, "queued": 0, "pid": 4242, "exit_code": null, "error": null,
+ "state": "running", "activity": "idle", "draft": false, "queued": 0, "model": "Haiku 5.5", "pid": 4242, "exit_code": null, "error": null,
  "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null, "removed_at": null}
 ```
 
