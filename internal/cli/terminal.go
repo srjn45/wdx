@@ -77,7 +77,8 @@ func newTerminalCreateCmd() *cobra.Command {
 			"working directory when that is in the project, else in the project's\n" +
 			"clone path. The shell is terminal.shell, your login shell by default.\n\n" +
 			"Terminals get a generated name such as swift-falcon unless --name is\n" +
-			"given; names are unique within a project.",
+			"given; names have letters, numbers and - only, and are unique within a\n" +
+			"project.",
 		Example: examples(
 			"Create a terminal in the project you are in", identity.Name+" terminal create",
 			"Name it and pick the project", identity.Name+" terminal create --project-name app --name server",

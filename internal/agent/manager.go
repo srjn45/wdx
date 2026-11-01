@@ -168,6 +168,22 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 	return a.OnRow(t), nil
 }
 
+// Rename gives an agent a new name; a tombstone fails with a *RemovedError.
+func (m *Manager) Rename(ctx context.Context, id, name string) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
+	}
+	t, err := m.terminals.RenameAgent(ctx, a.Terminal.ID, name)
+	if err != nil {
+		return Agent{}, m.agentError(ctx, err)
+	}
+	return a.OnRow(t), nil
+}
+
 // Remove deletes an agent and returns it as it was last, stopped when it was
 // live. A live one fails with a *RunningError unless stopRunning. What the AI
 // coding agent keeps of the session stays on disk.

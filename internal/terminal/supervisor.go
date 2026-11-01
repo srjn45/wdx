@@ -212,6 +212,12 @@ func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir strin
 	return s.create(ctx, KindAgent, projectID, name, dir, linked)
 }
 
+// RenameAgent renames the agent's row with id. Its holder and process go by id,
+// and do not notice.
+func (s *Supervisor) RenameAgent(ctx context.Context, id, name string) (Terminal, error) {
+	return s.store.rename(ctx, id, name)
+}
+
 func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
 	shell, _ := s.newTerminals()
 	if shell == "" {

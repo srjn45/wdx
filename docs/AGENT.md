@@ -75,6 +75,7 @@ CREATE TABLE agents (
 |---|---|
 | `agent create` | inserts both rows, then starts the holder; `start_failed` leaves the row `failed` |
 | `agent start` | from `exited`, `failed` or `lost`: starts it again, in the same session, so the conversation comes back |
+| `agent rename` | changes the name on its terminal row; the process and session go by id and do not notice. A tombstone cannot be renamed |
 | `agent remove` | stops a live process (`--stop-running`), deletes both rows; the ACA's own transcript stays on disk |
 | `project close` | stops its agents along with its terminals, under the same `--stop-running` |
 | `project open` | relaunches its `stopped` agents, in the same session |
@@ -141,6 +142,7 @@ wdx agent create [--project-id <id> | --project-name <name>] [--name <name>] [--
 wdx agent list   [--project-id <id> | --project-name <name> | --all]
 wdx agent get    (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
+wdx agent rename (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --new-name <name>
 wdx agent attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent send   (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [--instant]: docs/SEND.md
 wdx agent remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]

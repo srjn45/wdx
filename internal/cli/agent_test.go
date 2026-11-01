@@ -225,6 +225,38 @@ func TestAgentStart(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
 }
 
+func TestAgentRename(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	a := newAgent(t, home, app, "helper")
+	newAgent(t, home, app, "other")
+
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "rename", "--name", "helper", "--new-name", "aide")
+	if exit != api.ExitOK || v.Result != "renamed" || v.Agent.Name != "aide" || v.Agent.Id != a.Id || v.Agent.SessionId != a.SessionId {
+		t.Fatalf("want aide, got exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "Other")
+	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantHint(t, v, "choose another --new-name")
+	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "no_way")
+	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	wantHint(t, v, "choose another --new-name")
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "rename", "--name", "helper", "--new-name", "again")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id)
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+
+	if out := wdx(t, home, "agent", "rename", "--id", a.Id, "--new-name", "aide-2"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "renamed agent aide-2 in app\n") {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+
+	wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", a.Id, "--name", "child")
+	wdxJSON(t, home, "agent", "remove", "--id", a.Id, "--stop-running")
+	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "ghost")
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+}
+
 func TestAgentStartFails(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

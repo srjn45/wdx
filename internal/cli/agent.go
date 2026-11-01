@@ -27,7 +27,7 @@ func newAgentCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentSendCmd(), newAgentStartCmd())
+	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentSendCmd(), newAgentStartCmd())
 	return cmd
 }
 
@@ -42,7 +42,8 @@ func newAgentCreateCmd() *cobra.Command {
 			"directory when that is in the project, else in the project's clone path.\n" +
 			"It runs through your login shell, which finds the program.\n\n" +
 			"Agents get a generated name such as swift-falcon unless --name is given;\n" +
-			"names are unique within a project, among agents and terminals.\n\n" +
+			"names have letters, numbers and - only, and are unique within a project,\n" +
+			"among agents and terminals.\n\n" +
 			"With a parent flag it is a child of that agent: it belongs to the parent's\n" +
 			"project and starts in the parent's dir. Without one it is at the top level,\n" +
 			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".\n\n" +
@@ -244,6 +245,50 @@ func newAgentStartCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
+	return cmd
+}
+
+func newAgentRenameCmd() *cobra.Command {
+	var ref agentRef
+	var newName string
+	cmd := &cobra.Command{
+		Use:   "rename (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --new-name <name>",
+		Short: "Give an agent a new name",
+		Long: "It goes on running, in the same session. Names have letters, numbers and -\n" +
+			"only, and are unique within a project, among agents and terminals. What\n" +
+			"used the old name no longer finds it. A removed agent cannot be renamed.",
+		Example: examples(
+			"Rename an agent of the project you are in", identity.Name+" agent rename --name reviewer --new-name auth-review",
+			"By id, as JSON", identity.Name+" agent rename --id agent-1a2b3c4d --new-name auth-review --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not renamed",
+			outputNote:    "The agent, under its new name.\n" + `With --json: {"result": "renamed", "agent": {...}}`,
+			resultList:    "renamed",
+			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+				api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path, project, dir, err := ref.resolve(cmd)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).RenameAgent(cmd.Context(), path, project, dir, newName)
+			switch problemCode(err) {
+			case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
+				return &hinted{err, "choose another --new-name"}
+			}
+			if err != nil {
+				return agentHint(ref.notFoundHint(err))
+			}
+			return printResult(cmd, agentResult(r))
+		},
+	}
+	ref.addFlags(cmd)
+	cmd.Flags().StringVar(&newName, "new-name", "", "`name` to give the agent")
+	cmd.MarkFlagRequired("new-name")
+	cmd.RegisterFlagCompletionFunc("new-name", cobra.NoFileCompletions)
 	return cmd
 }
 

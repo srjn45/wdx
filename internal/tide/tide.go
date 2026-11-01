@@ -89,6 +89,8 @@ type Model struct {
 	resume        *Resume                                   // what to show first, until the projects are listed
 	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
 	stripLinger   time.Duration                             // from Options
+
+	info valuePane // the agent info shown, if any
 }
 
 // content is what a pane shows.
@@ -167,6 +169,7 @@ func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemo
 // active agent if they are not, and gives them their panes' sizes.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
+	m.infoSync()
 	attach := m.attachSelected()
 	m.syncSize()
 	return m, tea.Batch(cmd, attach)
@@ -244,6 +247,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.ended(msg)
 	case removed:
 		m.removed(msg)
+	case valueSaved:
+		m.valueSavedMsg(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -507,9 +512,14 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		if m.programInFocus() {
 			return m.sendToProgram(name)
 		}
+	case infoKey:
+		if a, ok := m.infoTarget(); ok {
+			m.switcher, m.opening = nil, nil
+			m.openInfo(a)
+		}
 	case closeTabKey:
-		if a, ok := m.closableTab(); ok {
-			m.closeTab(a.Id, "asked")
+		if _, ok := m.closableTab(); ok {
+			m.closeTab(m.list().active, "asked")
 		}
 	case "r":
 		if m.menuOffers("r") {
@@ -607,6 +617,9 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 			if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
 				s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2)
 			}
+			if p == agent && m.infoShown() && m.confirm == nil {
+				m.infoClick(at.Y-f.Min.Y-1, f.Inset(1))
+			}
 		}
 		m.changed("click")
 		return nil
@@ -635,7 +648,7 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 		return
 	case on.closes:
 		m.lastClick = click{}
-		m.closeTab(m.tabAgents()[on.tab].Id, "clicked")
+		m.closeTab(m.openTabs()[on.tab].tab, "clicked")
 		return
 	case on.arrow:
 		m.lastClick = click{}
@@ -659,8 +672,8 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 // selectClicked selects the tab i of p.
 func (m *Model) selectClicked(p pane, i int) {
 	if p == agent {
-		m.list().active = m.tabAgents()[i].Id
-		m.log.Debug("tab selected", "agent_id", m.list().active)
+		m.list().active = m.openTabs()[i].tab
+		m.log.Debug("tab selected", "tab", m.list().active)
 		return
 	}
 	m.selectTab(i)

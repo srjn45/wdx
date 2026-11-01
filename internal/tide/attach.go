@@ -95,7 +95,7 @@ func (m *Model) attachSelected() tea.Cmd {
 	attachTerminal := m.attachPane(terminal, t, ok, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
 		return m.client.GetTerminalHistory(ctx, "id:"+t.Id, "", "", from, count)
 	})
-	active, ok := m.activeAgent()
+	active, ok := m.attachedAgent()
 	attachAgent := m.attachPane(agent, terminalOf(active), ok && !m.tabResting, func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
 		return m.client.GetAgentHistory(ctx, "id:"+active.Id, "", "", from, count)
 	})
@@ -321,6 +321,9 @@ func (m *Model) syncSize() {
 
 // paneInput gives a key, a paste or a mouse event to what the pane p shows.
 func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
+	if p == agent && m.infoShown() {
+		return m.infoInput(msg)
+	}
 	a := m.attachedIn(p)
 	if a == nil || a.pane == nil || a.ended {
 		return nil
@@ -398,6 +401,10 @@ func (m *Model) programMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 // paneWheel gives a turn of the wheel over the pane p to it: to the program,
 // or scrolling its history.
 func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd {
+	if p == agent && m.infoShown() {
+		m.info.wheel(msg)
+		return nil
+	}
 	a := m.attachedIn(p)
 	if a == nil || a.pane == nil {
 		return nil

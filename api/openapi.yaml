@@ -470,6 +470,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AgentEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateAgent
+      summary: Rename an agent
+      description: |
+        Its process, session and id stay as they are. A name is trimmed, and
+        then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+        a project among agents and terminals, tombstones too, ignoring case;
+        an agent may change the case of its own. A tombstone cannot be
+        renamed.
+
+        Errors: agent_removed, invalid_name, invalid_path, name_taken,
+        not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAgent" }
+      responses:
+        "200":
+          description: The agent, with result renamed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
     delete:
       operationId: deleteAgent
       summary: Delete an agent
@@ -669,7 +693,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed]
 
     Worktree:
       type: object
@@ -930,7 +954,7 @@ components:
         name:
           type: string
           nullable: true
-          description: A generated adjective-noun codename by default.
+          description: A generated adjective-noun codename by default; see updateAgent for what a name may hold.
 
     AgentState:
       type: string
@@ -945,13 +969,14 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, terminal_id, aca, session_id, dir, worktree, state, activity, draft, queued, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, worktree, state, activity, draft, queued, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
         parent_agent_id: { type: string, nullable: true, description: "The agent it was created under; null at the top level." }
+        parent_agent_name: { type: string, nullable: true, description: "That agent's name; null at the top level." }
         children:
           type: array
           description: The agents created under it, by name, with their children; set by listAgents, getAgent and getProject only.
@@ -1017,6 +1042,15 @@ components:
         worktree_created:
           type: boolean
           description: True when creating the agent created its worktree; left out otherwise.
+
+    UpdateAgent:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Its new name; see updateAgent.
 
     CreateAgent:
       type: object

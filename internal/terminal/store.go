@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -96,6 +97,22 @@ func (e *InvalidNameError) Error() string {
 	return fmt.Sprintf("invalid name %q: %s", e.Name, e.Reason)
 }
 
+// nameChars is what a name may hold. Names are drawn in tide's tabs and printed
+// by the cli, so they must not be able to move a terminal's cursor.
+var nameChars = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+
+// cleanName returns name trimmed, or an *InvalidNameError when it cannot be used.
+func cleanName(name string) (string, error) {
+	cleaned := strings.TrimSpace(name)
+	if cleaned == "" {
+		return "", &InvalidNameError{Name: name, Reason: "it is blank"}
+	}
+	if !nameChars.MatchString(cleaned) {
+		return "", &InvalidNameError{Name: name, Reason: "it can only have letters, numbers and -"}
+	}
+	return cleaned, nil
+}
+
 // Store persists terminals.
 type Store struct {
 	db      *sql.DB
@@ -120,12 +137,14 @@ const codenameTries = 10
 // if any, runs in the same transaction with the new id, so that a crash
 // leaves both its rows or neither.
 func (s *Store) insert(ctx context.Context, kind Kind, projectID, name, dir, shell string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
-	if strings.Contains(name, ":") {
-		return Terminal{}, &InvalidNameError{Name: name, Reason: `cannot contain ":"`}
-	}
 	id, err := db.NewID("term")
 	if err != nil {
 		return Terminal{}, err
+	}
+	if name != "" {
+		if name, err = cleanName(name); err != nil {
+			return Terminal{}, err
+		}
 	}
 	if name == "" {
 		if name, err = s.freeCodename(ctx, projectID); err != nil {
@@ -156,6 +175,35 @@ func (s *Store) insert(ctx context.Context, kind Kind, projectID, name, dir, she
 		return Terminal{}, err
 	}
 	logging.FromContext(ctx).Info("terminal created", "terminal_id", id, "kind", kind, "project_id", projectID, "name", name, "dir", dir, "shell", shell)
+	s.changed()
+	return s.row(ctx, id)
+}
+
+// rename gives the row with id the name name, unless another row of its project
+// has it. Its state did not change, so updated_at stays.
+func (s *Store) rename(ctx context.Context, id, name string) (Terminal, error) {
+	name, err := cleanName(name)
+	if err != nil {
+		return Terminal{}, err
+	}
+	t, err := s.row(ctx, id)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if name == t.Name {
+		return t, nil
+	}
+	other, err := s.rowByName(ctx, t.ProjectID, name)
+	if err == nil && other.ID != id {
+		return Terminal{}, &NameTakenError{Name: name, Terminal: other}
+	}
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Terminal{}, err
+	}
+	if _, err := db.Exec(ctx, s.db, "UPDATE terminals SET name = ? WHERE id = ?", name, id); err != nil {
+		return Terminal{}, err
+	}
+	logging.FromContext(ctx).Info("terminal renamed", "terminal_id", id, "name", name, "was", t.Name)
 	s.changed()
 	return s.row(ctx, id)
 }

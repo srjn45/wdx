@@ -24,8 +24,8 @@ const minAgentName = 10
 // The status line says these while the list takes the keys, with the fold keys
 // when there is something to fold.
 const (
-	selectHint = "↑↓ select  Enter show  Alt+arrows move  C-q menu"
-	treeHint   = "↑↓ select  ←→ fold  Enter show  Alt+arrows move  C-q menu"
+	selectHint = "↑↓ select  Enter show  i info  Alt+arrows move  C-q menu"
+	treeHint   = "↑↓ select  ←→ fold  Enter show  i info  Alt+arrows move  C-q menu"
 )
 
 // The fold marks of a parent's row. ▸ is taken by the cursor.
@@ -38,14 +38,14 @@ const (
 type agentList struct {
 	cursor  string   // the id of the agent under the cursor
 	row     int      // its row, which the next agent takes when it goes
-	active  string   // the id of the agent the agent pane shows, its tab being the current one; "" only with no tabs
-	tabs    []string // the ids of the agents with a tab open, in the tabs' order
+	active  string   // the current tab, whose agent the list marks; "" only with no tabs
+	tabs    []string // the tabs open, in their order: an agent's id, or infoTab of it
 	tabFrom int      // the first tab the strip shows
 	// tombstones are the agents the last event had as removed, nil before one came.
 	tombstones map[string]bool
 	offset     int             // the rows scrolled past
 	opened     bool            // the project came once, and its first running agent became active
-	created    string          // the id of an agent created here, active once the stream brings it
+	created    string          // the tab of an agent created here, current once the stream brings it
 	closed     map[string]bool // the ids of the parents folded; what is open inside them stays so
 }
 
@@ -177,10 +177,10 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 // its first running agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
-	if i := agentIndex(agents, l.created); i >= 0 {
+	if i := agentIndex(agents, tabAgent(l.created)); i >= 0 {
 		l.openTab(l.created)
-		l.cursor = l.created
-		l.reveal(agents, l.created)
+		l.cursor = agents[i].Id
+		l.reveal(agents, agents[i].Id)
 		l.created = ""
 	}
 	if !l.opened {
@@ -213,13 +213,13 @@ func (m *Model) cursorAgent() (api.Agent, bool) {
 	return rows[l.row].agent, true
 }
 
-// activeAgent returns the agent the agent pane shows.
+// activeAgent returns the agent of the current tab.
 func (m *Model) activeAgent() (api.Agent, bool) {
 	l, agents := m.list(), m.agents()
 	if l == nil {
 		return api.Agent{}, false
 	}
-	if i := agentIndex(agents, l.active); i >= 0 {
+	if i := agentIndex(agents, tabAgent(l.active)); i >= 0 {
 		return agents[i], true
 	}
 	return api.Agent{}, false
@@ -482,7 +482,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		l.offset = max(min(l.offset, l.row), l.row-body+1)
 		l.offset = max(min(l.offset, len(rows)-body), 0)
 		// A parent folded over the active agent carries its mark.
-		activeRow := shownAs(rows, agents, l.active)
+		activeRow := shownAs(rows, agents, tabAgent(l.active))
 		for i := l.offset; i < min(l.offset+body, len(rows)); i++ {
 			cursor := i == l.row && m.layout.focus == project
 			lines = append(lines, agentRow(st, rows[i], cursor, i == activeRow, width))
@@ -626,6 +626,9 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	active, ok := m.activeAgent()
 	switch {
 	case !following:
+	case ok && m.infoShown():
+		m.drawInfo(buf, area, st, active)
+		return
 	case ok:
 		m.drawShown(buf, area, st, agent, terminalOf(active), nil)
 		return

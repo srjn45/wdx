@@ -253,6 +253,15 @@ func (c *Client) GetAgentHistory(ctx context.Context, ref, project, dir string, 
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// RenameAgent renames the agent ref names, as StartAgent does.
+func (c *Client) RenameAgent(ctx context.Context, ref, project, dir, name string) (api.AgentResult, error) {
+	r, err := c.api.UpdateAgentWithResponse(ctx, ref, &api.UpdateAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdateAgent{Name: name})
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // StartAgent starts the agent ref names: "id:" and its id, or its name in the
 // project named by project or holding dir.
 func (c *Client) StartAgent(ctx context.Context, ref, project, dir string) (api.AgentResult, error) {

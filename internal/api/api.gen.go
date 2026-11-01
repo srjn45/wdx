@@ -339,6 +339,7 @@ const (
 	ResultRegistered Result = "registered"
 	ResultReloaded   Result = "reloaded"
 	ResultRemoved    Result = "removed"
+	ResultRenamed    Result = "renamed"
 	ResultStarted    Result = "started"
 )
 
@@ -364,6 +365,8 @@ func (e Result) Valid() bool {
 	case ResultReloaded:
 		return true
 	case ResultRemoved:
+		return true
+	case ResultRenamed:
 		return true
 	case ResultStarted:
 		return true
@@ -431,6 +434,9 @@ type Agent struct {
 
 	// ParentAgentId The agent it was created under; null at the top level.
 	ParentAgentId *string `json:"parent_agent_id"`
+
+	// ParentAgentName That agent's name; null at the top level.
+	ParentAgentName *string `json:"parent_agent_name"`
 
 	// Pid The AI coding agent's, while it has one.
 	Pid         *int   `json:"pid"`
@@ -544,7 +550,7 @@ type CreateTerminal struct {
 	// Dir Absolute path the shell starts in; see createTerminal.
 	Dir string `json:"dir"`
 
-	// Name A generated adjective-noun codename by default.
+	// Name A generated adjective-noun codename by default; see updateAgent for what a name may hold.
 	Name *string `json:"name,omitempty"`
 
 	// Project The project's name, or "id:" and its id; by default the one whose worktree holds dir.
@@ -804,6 +810,12 @@ type TerminalResult struct {
 // holder is gone and nobody stopped it.
 type TerminalState string
 
+// UpdateAgent defines model for UpdateAgent.
+type UpdateAgent struct {
+	// Name Its new name; see updateAgent.
+	Name string `json:"name"`
+}
+
 // UpdateProject defines model for UpdateProject.
 type UpdateProject struct {
 	State ProjectState `json:"state"`
@@ -870,6 +882,15 @@ type DeleteAgentParams struct {
 
 // GetAgentParams defines parameters for GetAgent.
 type GetAgentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// UpdateAgentParams defines parameters for UpdateAgent.
+type UpdateAgentParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -993,6 +1014,9 @@ type StartTerminalParams struct {
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgent
+
+// UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
+type UpdateAgentJSONRequestBody = UpdateAgent
 
 // SendAgentJSONRequestBody defines body for SendAgent for application/json ContentType.
 type SendAgentJSONRequestBody = AgentMessage
@@ -1308,6 +1332,38 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
 	GetAgent(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentWithBody Rename an agent
+	//
+	// Its process, session and id stay as they are. A name is trimmed, and
+	// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+	// a project among agents and terminals, tombstones too, ignoring case;
+	// an agent may change the case of its own. A tombstone cannot be
+	// renamed.
+	//
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+	UpdateAgentWithBody(ctx context.Context, agent AgentRef, params *UpdateAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgent Rename an agent
+	//
+	// Its process, session and id stay as they are. A name is trimmed, and
+	// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+	// a project among agents and terminals, tombstones too, ignoring case;
+	// an agent may change the case of its own. A tombstone cannot be
+	// renamed.
+	//
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+	UpdateAgent(ctx context.Context, agent AgentRef, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentHistory Lines of an agent's history, in any state
 	//
@@ -1801,6 +1857,58 @@ func (c *Client) DeleteAgent(ctx context.Context, agent AgentRef, params *Delete
 // Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
 func (c *Client) GetAgent(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentRequest(c.Server, agent, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentWithBody Rename an agent
+//
+// Its process, session and id stay as they are. A name is trimmed, and
+// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+// a project among agents and terminals, tombstones too, ignoring case;
+// an agent may change the case of its own. A tombstone cannot be
+// renamed.
+//
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+func (c *Client) UpdateAgentWithBody(ctx context.Context, agent AgentRef, params *UpdateAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentRequestWithBody(c.Server, agent, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgent Rename an agent
+//
+// Its process, session and id stay as they are. A name is trimmed, and
+// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+// a project among agents and terminals, tombstones too, ignoring case;
+// an agent may change the case of its own. A tombstone cannot be
+// renamed.
+//
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+func (c *Client) UpdateAgent(ctx context.Context, agent AgentRef, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentRequest(c.Server, agent, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2683,6 +2791,92 @@ func NewGetAgentRequest(server string, agent AgentRef, params *GetAgentParams) (
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewUpdateAgentRequest calls the generic UpdateAgent builder with application/json body
+func NewUpdateAgentRequest(server string, agent AgentRef, params *UpdateAgentParams, body UpdateAgentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentRequestWithBody(server, agent, params, "application/json", bodyReader)
+}
+
+// NewUpdateAgentRequestWithBody constructs an http.Request for the UpdateAgent method, with any body, and a specified content type
+func NewUpdateAgentRequestWithBody(server string, agent AgentRef, params *UpdateAgentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent", agent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/agents/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4011,6 +4205,38 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/agents/{agent} (the `GetAgent` operationId).
 	GetAgentWithResponse(ctx context.Context, agent AgentRef, params *GetAgentParams, reqEditors ...RequestEditorFn) (*GetAgentResponse, error)
 
+	// UpdateAgentWithBodyWithResponse Rename an agent
+	//
+	// Its process, session and id stay as they are. A name is trimmed, and
+	// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+	// a project among agents and terminals, tombstones too, ignoring case;
+	// an agent may change the case of its own. A tombstone cannot be
+	// renamed.
+	//
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+	UpdateAgentWithBodyWithResponse(ctx context.Context, agent AgentRef, params *UpdateAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error)
+
+	// UpdateAgentWithResponse Rename an agent
+	//
+	// Its process, session and id stay as they are. A name is trimmed, and
+	// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+	// a project among agents and terminals, tombstones too, ignoring case;
+	// an agent may change the case of its own. A tombstone cannot be
+	// renamed.
+	//
+	// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+	// not_found.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+	UpdateAgentWithResponse(ctx context.Context, agent AgentRef, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error)
+
 	// GetAgentHistoryWithResponse Lines of an agent's history, in any state
 	//
 	// As getTerminalHistory, of the lines that scrolled off the agent's
@@ -4590,6 +4816,54 @@ func (r GetAgentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAgentResponse) GetJSON200() *AgentResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAgentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5681,6 +5955,50 @@ func (c *ClientWithResponses) GetAgentWithResponse(ctx context.Context, agent Ag
 	return ParseGetAgentResponse(rsp)
 }
 
+// UpdateAgentWithBodyWithResponse Rename an agent
+//
+// Its process, session and id stay as they are. A name is trimmed, and
+// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+// a project among agents and terminals, tombstones too, ignoring case;
+// an agent may change the case of its own. A tombstone cannot be
+// renamed.
+//
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+func (c *ClientWithResponses) UpdateAgentWithBodyWithResponse(ctx context.Context, agent AgentRef, params *UpdateAgentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error) {
+	rsp, err := c.UpdateAgentWithBody(ctx, agent, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentResponse(rsp)
+}
+
+// UpdateAgentWithResponse Rename an agent
+//
+// Its process, session and id stay as they are. A name is trimmed, and
+// then has one or more of A-Z, a-z, 0-9 and "-". Names are unique within
+// a project among agents and terminals, tombstones too, ignoring case;
+// an agent may change the case of its own. A tombstone cannot be
+// renamed.
+//
+// Errors: agent_removed, invalid_name, invalid_path, name_taken,
+// not_found.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/agents/{agent} (the `UpdateAgent` operationId).
+func (c *ClientWithResponses) UpdateAgentWithResponse(ctx context.Context, agent AgentRef, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error) {
+	rsp, err := c.UpdateAgent(ctx, agent, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentResponse(rsp)
+}
+
 // GetAgentHistoryWithResponse Lines of an agent's history, in any state
 //
 // As getTerminalHistory, of the lines that scrolled off the agent's
@@ -6338,6 +6656,39 @@ func ParseGetAgentResponse(rsp *http.Response) (*GetAgentResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentResponse parses an HTTP response from a UpdateAgentWithResponse call
+func ParseUpdateAgentResponse(rsp *http.Response) (*UpdateAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -7029,6 +7380,9 @@ type ServerInterface interface {
 	// GetAgent An agent, in any state
 	// (GET /v1/agents/{agent})
 	GetAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentParams)
+	// UpdateAgent Rename an agent
+	// (PATCH /v1/agents/{agent})
+	UpdateAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params UpdateAgentParams)
 	// GetAgentHistory Lines of an agent's history, in any state
 	// (GET /v1/agents/{agent}/history)
 	GetAgentHistory(w http.ResponseWriter, r *http.Request, agent AgentRef, params GetAgentHistoryParams)
@@ -7274,6 +7628,61 @@ func (siw *ServerInterfaceWrapper) GetAgent(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgent(w, r, agent, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgent operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent" -------------
+	var agent AgentRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent", r.PathValue("agent"), &agent, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateAgentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgent(w, r, agent, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8250,6 +8659,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents", wrapper.CreateAgent)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.DeleteAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.GetAgent)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/agents/{agent}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/start", wrapper.StartAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/send", wrapper.SendAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/history", wrapper.GetAgentHistory)
@@ -8406,6 +8816,47 @@ type GetAgentdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetAgentdefaultApplicationProblemPlusJSONResponse) VisitGetAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentRequestObject struct {
+	Agent  AgentRef `json:"agent"`
+	Params UpdateAgentParams
+	Body   *UpdateAgentJSONRequestBody
+}
+
+type UpdateAgentResponseObject interface {
+	VisitUpdateAgentResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgent200JSONResponse AgentResult
+
+func (response UpdateAgent200JSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response UpdateAgentdefaultApplicationProblemPlusJSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9263,6 +9714,9 @@ type StrictServerInterface interface {
 	// GetAgent An agent, in any state
 	// (GET /v1/agents/{agent})
 	GetAgent(ctx context.Context, request GetAgentRequestObject) (GetAgentResponseObject, error)
+	// UpdateAgent Rename an agent
+	// (PATCH /v1/agents/{agent})
+	UpdateAgent(ctx context.Context, request UpdateAgentRequestObject) (UpdateAgentResponseObject, error)
 	// GetAgentHistory Lines of an agent's history, in any state
 	// (GET /v1/agents/{agent}/history)
 	GetAgentHistory(ctx context.Context, request GetAgentHistoryRequestObject) (GetAgentHistoryResponseObject, error)
@@ -9468,6 +9922,40 @@ func (sh *strictHandler) GetAgent(w http.ResponseWriter, r *http.Request, agent 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentResponseObject); ok {
 		if err := validResponse.VisitGetAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgent operation middleware
+func (sh *strictHandler) UpdateAgent(w http.ResponseWriter, r *http.Request, agent AgentRef, params UpdateAgentParams) {
+	var request UpdateAgentRequestObject
+
+	request.Agent = agent
+	request.Params = params
+
+	var body UpdateAgentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgent(ctx, request.(UpdateAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -10034,133 +10522,137 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

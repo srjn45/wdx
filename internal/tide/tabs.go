@@ -28,24 +28,24 @@ const (
 // tabRested ends the rest after the tab switched to with the keys.
 type tabRested struct{ rests int }
 
-// openTab makes the tab of the agent id current, opening it at the right end
-// when it is not open.
-func (l *agentList) openTab(id string) {
-	if !slices.Contains(l.tabs, id) {
-		l.tabs = append(l.tabs, id)
+// openTab makes the tab current, opening it at the right end when it is not
+// open.
+func (l *agentList) openTab(tab string) {
+	if !slices.Contains(l.tabs, tab) {
+		l.tabs = append(l.tabs, tab)
 	}
-	l.active = id
+	l.active = tab
 }
 
-// closeTab closes the tab of the agent id. When it was current the tab to its
-// right takes over or, when it was the last, the one to its left.
-func (l *agentList) closeTab(id string) {
-	i := slices.Index(l.tabs, id)
+// closeTab closes the tab. When it was current the tab to its right takes over
+// or, when it was the last, the one to its left.
+func (l *agentList) closeTab(tab string) {
+	i := slices.Index(l.tabs, tab)
 	if i < 0 {
 		return
 	}
 	l.tabs = slices.Delete(l.tabs, i, i+1)
-	if l.active != id {
+	if l.active != tab {
 		return
 	}
 	l.active = ""
@@ -54,12 +54,12 @@ func (l *agentList) closeTab(id string) {
 	}
 }
 
-// closeTab closes the tab of the agent id; with none left, the focus moves to
-// the list, where the next one is opened.
-func (m *Model) closeTab(id, reason string) {
+// closeTab closes the tab; with none left, the focus moves to the list, where
+// the next one is opened.
+func (m *Model) closeTab(tab, reason string) {
 	l := m.list()
-	l.closeTab(id)
-	m.log.Info("tab closed", "agent_id", id, "reason", reason)
+	l.closeTab(tab)
+	m.log.Info("tab closed", "tab", tab, "reason", reason)
 	if len(l.tabs) == 0 && m.layout.focus == agent {
 		m.focusProjectPane()
 	}
@@ -76,9 +76,10 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 			tombstones[a.Id] = true
 		}
 	}
-	for _, id := range slices.Clone(l.tabs) {
+	for _, tab := range slices.Clone(l.tabs) {
+		id := tabAgent(tab)
 		if agentIndex(agents, id) < 0 || (tombstones[id] && l.tombstones != nil && !l.tombstones[id]) {
-			m.closeTab(id, "agent removed")
+			m.closeTab(tab, "agent removed")
 		}
 	}
 	l.tombstones = tombstones
@@ -90,19 +91,42 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 	}
 }
 
-// tabAgents returns the agents of the open tabs, in the tabs' order.
-func (m *Model) tabAgents() []api.Agent {
+// agentTab is an open tab with the agent it is of.
+type agentTab struct {
+	tab   string
+	agent api.Agent
+}
+
+// title is what the strip calls it.
+func (t agentTab) title() string {
+	if isInfoTab(t.tab) {
+		return infoLabel + t.agent.Name
+	}
+	return t.agent.Name
+}
+
+// openTabs returns the open tabs, in their order.
+func (m *Model) openTabs() []agentTab {
 	l, agents := m.list(), m.agents()
 	if l == nil {
 		return nil
 	}
-	var tabs []api.Agent
-	for _, id := range l.tabs {
-		if i := agentIndex(agents, id); i >= 0 {
-			tabs = append(tabs, agents[i])
+	var tabs []agentTab
+	for _, tab := range l.tabs {
+		if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
+			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})
 		}
 	}
 	return tabs
+}
+
+// attachedAgent returns the agent the agent pane attaches: the current tab's,
+// unless it is the agent's info.
+func (m *Model) attachedAgent() (api.Agent, bool) {
+	if m.infoShown() {
+		return api.Agent{}, false
+	}
+	return m.activeAgent()
 }
 
 // tabKey moves along left pane - tab 1 - ... - tab n, as Alt+← and Alt+→ do in
@@ -127,7 +151,7 @@ func (m *Model) tabKey(d direction) tea.Cmd {
 		i++
 	}
 	l.active = l.tabs[i]
-	m.log.Debug("tab selected", "agent_id", l.active)
+	m.log.Debug("tab selected", "tab", l.active)
 	return m.restTabs()
 }
 
@@ -180,13 +204,13 @@ func fitTabs(widths []int, current, from, room int) (first, last int) {
 // agentTabLabels returns the tabs in the cells from x up to end of row y: the
 // current one bold, with the border line showing between them. A piece with no
 // room left is dropped, which only a tiny window comes to.
-func (m *Model) agentTabLabels(tabs []api.Agent, x, end, y int) []label {
+func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 	l := m.list()
 	widths := make([]int, len(tabs))
 	current := 0
-	for i, a := range tabs {
-		widths[i] = ansi.StringWidth(a.Name) + tabFrame
-		if a.Id == l.active {
+	for i, t := range tabs {
+		widths[i] = ansi.StringWidth(t.title()) + tabFrame
+		if t.tab == l.active {
 			current = i
 		}
 	}
@@ -212,17 +236,17 @@ func (m *Model) agentTabLabels(tabs []api.Agent, x, end, y int) []label {
 		room -= tabArrow
 	}
 	for i := first; i <= last; i++ {
-		a := tabs[i]
+		t := tabs[i]
 		styled := m.st.Muted
 		if i == current {
 			styled = m.st.Name
 		}
-		name := a.Name
+		name := t.title()
 		if widths[i] > room {
 			name = ansi.Truncate(name, max(room-tabFrame, 0), "…")
 		}
 		put(label{tab: i}, styled("["), 1)
-		put(label{tab: i}, agentMark(m.st, a), 1)
+		put(label{tab: i}, agentMark(m.st, t.agent), 1)
 		put(label{tab: i}, styled(" "+name), 1+ansi.StringWidth(name))
 		put(label{tab: i, closes: true}, styled(tabClose), ansi.StringWidth(tabClose))
 		put(label{tab: i}, styled("]"), 1)

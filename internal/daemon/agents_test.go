@@ -467,6 +467,39 @@ func TestAgentsOutliveDaemon(t *testing.T) {
 	}
 }
 
+func TestRenameAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	parent := td.createAgent(t, "", app, "parent")
+	td.createAgent(t, "", app, "other")
+	byID := "id:" + parent.Id
+	rename := func(name string) *api.UpdateAgentResponse {
+		t.Helper()
+		r, err := td.client.UpdateAgentWithResponse(ctx, byID, &api.UpdateAgentParams{}, api.UpdateAgent{Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	r := rename(" elder ")
+	if r.JSON200 == nil || r.JSON200.Result != api.ResultRenamed || r.JSON200.Agent.Name != "elder" || r.JSON200.Agent.Id != parent.Id {
+		t.Fatalf("renamed: %s", r.Body)
+	}
+	wantProblem(t, rename("OTHER").ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeNameTaken)
+	wantProblem(t, rename("no_way").ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidName)
+
+	child, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Dir: app, Parent: &byID, Name: optional("child")})
+	if err != nil || child.JSON201 == nil {
+		t.Fatalf("child: %v", err)
+	}
+	if a := child.JSON201.Agent; a.ParentAgentName == nil || *a.ParentAgentName != "elder" {
+		t.Fatalf("child: %+v", a)
+	}
+}
+
 func TestChildAgents(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

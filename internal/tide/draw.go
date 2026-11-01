@@ -192,7 +192,7 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 		add(" ["+m.root.title()+"] ", -1, m.st.Name)
 		return labels
 	case p != terminal:
-		if tabs := m.tabAgents(); p == agent && len(tabs) > 0 {
+		if tabs := m.openTabs(); p == agent && len(tabs) > 0 {
 			return append(labels, m.agentTabLabels(tabs, x+1, end, f.Min.Y)...) // after a cell of the line
 		}
 		add(" "+p.String()+" ", -1, m.st.Name)

@@ -28,6 +28,9 @@ func (m *Model) menuItems() []menuItem {
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
+	if a, ok := m.infoTarget(); ok {
+		items = append(items, menuItem{infoKey, "info of " + a.Name, "info"})
+	}
 	if a, ok := m.closableTab(); ok {
 		items = append(items, menuItem{closeTabKey, "close the tab of " + a.Name, "close tab"})
 	}

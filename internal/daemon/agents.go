@@ -95,6 +95,17 @@ func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (a
 	return api.GetAgent200JSONResponse{Agent: agentNode(a, childrenOf(list))}, nil
 }
 
+func (s *server) UpdateAgent(ctx context.Context, req api.UpdateAgentRequestObject) (api.UpdateAgentResponseObject, error) {
+	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if a, err = s.agents.Rename(ctx, a.ID, req.Body.Name); err != nil {
+		return nil, err
+	}
+	return api.UpdateAgent200JSONResponse{Result: api.ResultRenamed, Agent: agentView(a)}, nil
+}
+
 func (s *server) StartAgent(ctx context.Context, req api.StartAgentRequestObject) (api.StartAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {
@@ -264,7 +275,7 @@ func agentView(a agent.Agent) api.Agent {
 		EndedAt:     optionalTime(t.EndedAt),
 	}
 	if a.ParentID != "" {
-		v.ParentAgentId = &a.ParentID
+		v.ParentAgentId, v.ParentAgentName = &a.ParentID, &a.Parent
 	}
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree

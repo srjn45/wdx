@@ -23,6 +23,7 @@ type Agent struct {
 	ACA       string    // which AI coding agent it runs: aca.AiCodingAgent's ID
 	SessionID string    // the AI coding agent's session, which it goes on with
 	ParentID  string    // the agent it was created under, or "" at the top level
+	Parent    string    // that agent's name
 	Worktree  string    // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
 	RemovedAt time.Time // when it was removed, keeping it as a tombstone; zero otherwise
 	Activity  string    // what its process is doing, as a screen.Activity; "" unless it is running
@@ -129,7 +130,9 @@ const worktreeOfDir = `
 // state, the status needs nothing done when the process ends, however it ends.
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, (`+worktreeOfDir+`),
+		SELECT a.id, a.aca, a.session_id, a.parent_agent_id,
+			(SELECT pt.name FROM agents pa JOIN terminals pt ON pt.id = pa.terminal_id WHERE pa.id = a.parent_agent_id),
+			a.removed_at, (`+worktreeOfDir+`),
 			CASE WHEN t.state = 'running' THEN COALESCE(a.activity, 'unknown') END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
@@ -146,15 +149,15 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 	var list []Agent
 	for rows.Next() {
 		var a Agent
-		var parent sql.NullString
+		var parent, parentName sql.NullString
 		var removed sql.NullInt64
 		var worktree, activity sql.NullString
 		var draft sql.NullBool
 		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree, &activity, &draft, &queued); err != nil {
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued); err != nil {
 			return nil, err
 		}
-		a.ParentID = parent.String
+		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued = activity.String, draft.Bool, int(queued.Int64)
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)

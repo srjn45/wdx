@@ -203,6 +203,11 @@ func TestNames(t *testing.T) {
 	if _, err := s.Create(ctx, p, "id:x", dir(t, "")); !isType[*InvalidNameError](err) {
 		t.Fatalf("want a name with : refused, got %v", err)
 	}
+	for _, name := range []string{"   ", "a b", "a_b", "v1.2", "a\nb", "a\x1b[2Jb", "../x", "ñame"} {
+		if _, err := s.Create(ctx, p, name, dir(t, "")); !isType[*InvalidNameError](err) {
+			t.Errorf("want %q refused, got %v", name, err)
+		}
+	}
 	create(t, s, other, "build", dir(t, ""))
 
 	if got, err := s.store.GetByName(ctx, p, "BUILD"); err != nil || got.ID != first.ID {
@@ -247,6 +252,52 @@ func TestExitAndStartAgain(t *testing.T) {
 	}
 	if _, err := s.Start(context.Background(), term.ID); !isType[*RunningError](err) {
 		t.Fatalf("want a running terminal refused, got %v", err)
+	}
+}
+
+func TestCreateTrimsTheName(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	if got := create(t, s, f.project(t, "warden"), "  Trim-Me-2  ", dir(t, "")); got.Name != "Trim-Me-2" {
+		t.Errorf("name %q", got.Name)
+	}
+}
+
+func TestRename(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	ctx := context.Background()
+	p := f.project(t, "warden")
+	a, b := create(t, s, p, "one", dir(t, "")), create(t, s, p, "two", dir(t, ""))
+	changes := 0
+	s.store.OnChange(func() { changes++ })
+
+	got, err := s.RenameAgent(ctx, a.ID, " three ")
+	if err != nil || got.Name != "three" || got.ID != a.ID || !got.UpdatedAt.Equal(a.UpdatedAt) {
+		t.Fatalf("renamed: %+v, %v", got, err)
+	}
+	if changes != 1 {
+		t.Fatalf("a rename made %d changes", changes)
+	}
+	if _, err := s.RenameAgent(ctx, a.ID, "three"); err != nil || changes != 1 {
+		t.Fatalf("the same name: %v, %d changes", err, changes)
+	}
+	if got, err := s.RenameAgent(ctx, a.ID, "THREE"); err != nil || got.Name != "THREE" {
+		t.Fatalf("its own name in another case: %+v, %v", got, err)
+	}
+	_, err = s.RenameAgent(ctx, a.ID, "TWO")
+	if e, ok := errors.AsType[*NameTakenError](err); !ok || e.Terminal.ID != b.ID {
+		t.Fatalf("want the name taken, ignoring case, got %v", err)
+	}
+	for _, name := range []string{"", "   ", "a:b", "a_b"} {
+		if _, err := s.RenameAgent(ctx, a.ID, name); !isType[*InvalidNameError](err) {
+			t.Errorf("want %q refused, got %v", name, err)
+		}
+	}
+	if _, err := s.RenameAgent(ctx, "term-none", "four"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want not found, got %v", err)
 	}
 }
 

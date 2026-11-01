@@ -110,6 +110,46 @@ func TestCreate(t *testing.T) {
 	}
 }
 
+func TestRename(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "")
+	ctx := context.Background()
+	parent := f.create(t, "parent")
+	child := f.createChild(t, "child", parent.ID)
+	if child.Parent != "parent" {
+		t.Fatalf("parent name %q", child.Parent)
+	}
+	if parent.Parent != "" {
+		t.Fatalf("a top-level agent has parent %q", parent.Parent)
+	}
+
+	renamed, err := f.agents.Rename(ctx, parent.ID, "elder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Terminal.Name != "elder" || renamed.SessionID != parent.SessionID || renamed.Terminal.PID != parent.Terminal.PID || renamed.Terminal.State != terminal.StateRunning {
+		t.Fatalf("renamed: %+v", renamed)
+	}
+	if got, err := f.agents.Store().Get(ctx, child.ID); err != nil || got.Parent != "elder" {
+		t.Fatalf("the child's parent name: %+v, %v", got, err)
+	}
+
+	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Rename(ctx, parent.ID, "ghost"); !isRemoved(err) {
+		t.Fatalf("want a tombstone refused, got %v", err)
+	}
+	if _, err := f.agents.Rename(ctx, "agent-none", "ghost"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want not found, got %v", err)
+	}
+}
+
+func isRemoved(err error) bool {
+	_, ok := errors.AsType[*RemovedError](err)
+	return ok
+}
+
 func TestCreateGeneratesAName(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, "")
