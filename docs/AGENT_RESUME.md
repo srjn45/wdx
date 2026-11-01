@@ -1,6 +1,6 @@
 # Keeping an agent's ACA running
 
-Status: an agent's history is built for Claude Code. Resuming an ACA that ended is decided and not built.
+Status: an agent's history is built for Claude Code. Resuming an ACA that ended and restarting an agent in a new session are decided and not built.
 
 ## Resuming an ACA that ended
 
@@ -20,7 +20,7 @@ Proposed, not yet confirmed:
 Open:
 
 - Whether a `lost` agent is resumed. Recommended: no, or a reboot restarts every agent at once with nobody watching.
-- Whether queued messages survive. They live in the holder, so a relaunch probably loses them. Recommended: document it.
+- Whether queued messages survive. They live in the holder today, and the queue moving to the daemon's database will keep them across a relaunch; see "Messages across a restart".
 
 Consequences to document:
 
@@ -31,13 +31,51 @@ Consequences to document:
 
 Parked on 2026-11-01 until an agent's history is built.
 
-## No `wdx agent restart`
+## Restarting an agent in a new session
 
-Decided by the human on 2026-11-01: `agent start` already relaunches an agent in its session. Rotating, handing off and switching ACA are not being built now.
+Decided by the human on 2026-11-01; not built. `agent start` goes on with the same conversation, whatever its size. `wdx agent restart` keeps the agent and begins a new session, in which the agent reads only what it needs of its history. This replaces the earlier decision to have no restart command. Rotating, handing off and switching ACA are still not being built.
+
+- **The steps.** The ACA is stopped, the backup is brought up to date, a new session starts under the same agent id, and its first message tells the agent to read `wdx agent transcript --brief`, and older lines if it needs them. `transcript.md` goes on growing, with a heading for the new session.
+- **Who asks.** A person or a script: `wdx agent restart (--id | --name) [project flags] [--force]`, and a key in tide with a confirmation. Nothing restarts an agent by itself, though auto-resume could later fall back on it when a resume keeps failing.
+- **While the agent is working** it is refused with a conflict, unless `--force` is given, as a stop in the middle of a turn can leave work half done.
+- **Where.** In the worktree the agent was last in if it still exists, or else its own directory, which the first message then says.
+
+### The brief
+
+Tool calls and results are 73% and 90% of the two transcripts measured, so the last lines would be mostly file dumps and test output, and would miss the original request. `--brief` gives the conversation without them:
+
+- **It starts at** the latest compaction summary, or the first request when there is none.
+- **It goes on with** every message since, without thinking, and each tool call as one line: its name, a short form of its input, whether it failed, and its line in `transcript.md`, which `--from` reads in full.
+- **`/clear` is respected:** the brief looks no further back than the session a `/clear` began.
+- **A restart is not a starting point.** It looks back through sessions a restart began, which therefore have to be marked, or a second restart would start from the first one's message and lose the original request, since the brief the agent read was a tool result.
+- **It has a size limit,** 64 KB to begin with. Over it, the starting point stays, the oldest messages after it go, and a line says which lines of `transcript.md` hold them.
+
+Measured on 2026-11-01, from the latest compaction summary on:
+
+| Agent | `transcript.md` | Everything since | The brief |
+|---|---|---|---|
+| `frosty-seal` | 892 KB | 55 KB | 16 KB, about 4,000 tokens |
+| `worktree-feat` | 1,295 KB | 464 KB | 39 KB, about 10,000 tokens |
+
+A compaction summary is written by the ACA and leaves things out, which is why the rest of the file stays one command away. An ACA with no such summary starts from the first request.
+
+### Messages across a restart
+
+Messages are moving to a queue the daemon keeps in the database, which sends again whatever was not acknowledged to a new holder (docs/SEND.md). A restart builds on it:
+
+- Messages not yet delivered survive and reach the new session.
+- The first message goes through the same queue, ahead of them, so the agent reads its history before it hears anything else.
+- A message delivered but not acknowledged when the ACA stopped arrives again in the new session, which is the queue's at-least-once delivery.
+
+### Known limits
+
+- What the old session held only in memory goes with it: background processes, and probably approvals given for the session and a `/model` choice. Not yet tried.
+- A fork of the session is not followed by the backup, so work done in one is not in the brief.
+- An agent started before the backup existed gets its session hook from the restart.
 
 ## Keeping an agent's history
 
-Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific, and only Claude Code's is built. `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation.
+Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific, and only Claude Code's is built. `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.
 
 ```
 ~/.wdx/agents/<agent id>/
