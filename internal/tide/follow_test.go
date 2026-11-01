@@ -370,7 +370,10 @@ func TestMenuSendsKeys(t *testing.T) {
 	}
 
 	p.keys("alt+down")
-	p.typed("stty -isig -icanon -echo -ixon; cat -v\n") // the keys as bytes, not signals
+	// The keys as bytes, not signals, once the shell has said so: sent before its
+	// stty runs, C-\ would be a signal. The quotes keep the line typed from matching.
+	p.typed("stty -isig -icanon -echo -ixon; echo re''ady; cat -v\n")
+	p.until(t, "the terminal set", screenHas("ready"))
 	p.keys("C-q")
 	wantText(t, p.m, `\  send C-\ to the program`)
 	wantText(t, p.m, "]  send C-] to the program")
