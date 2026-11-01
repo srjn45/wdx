@@ -18,6 +18,8 @@ wdx agent send    (--id <id> | --name <name>) [--project-id <id> | --project-nam
 - Enter is always pressed.
 - There is no size limit of our own. The one ceiling is the protocol's 1 MiB frame, which the CLI cannot reach (Linux caps one argument at about 128 KiB); a larger request through the API gets `send_failed`.
 
+`wdx agent create --prompt` gives a new agent its task the same way: the first message in its inbox, kept and held back like any other until the agent is ready for it. So no ACA needs a way to take a task when it starts. A prompt that cannot be sent leaves the agent running, and `prompt_error` says why.
+
 ## Keeping a message until it arrives
 
 Decided with the human on 2026-11-01. Every message is first stored in the table `messages` in the daemon's database, then forwarded to the holder as it always was. A holder's inbox still decides when to type, with the rules below, so it stays what it was, and works with no daemon there; the table is the record, and the only thing recovered from.

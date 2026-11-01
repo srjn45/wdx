@@ -1081,3 +1081,43 @@ func TestRemovingAnAgentGivesItsReviewBack(t *testing.T) {
 		t.Errorf("after: %s", got)
 	}
 }
+
+// TestCreateAgentWithAPrompt: the prompt is its first message, kept like any other and
+// not logged, and an empty one creates nothing.
+func TestCreateAgentWithAPrompt(t *testing.T) {
+	t.Parallel()
+	const secret = "the-secret-task"
+	td := start(t)
+	ctx := context.Background()
+	project := "app"
+	app := td.create(t, project).Worktrees[0].Path
+	blank := "  "
+	if r, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Dir: app, Name: optional("empty"), Prompt: &blank}); err != nil || r.StatusCode() != http.StatusBadRequest {
+		t.Fatalf("blank: %v, %s", err, r.Body)
+	}
+	if agents := td.agents(t, &api.ListAgentsParams{Project: &project}); len(agents) != 0 {
+		t.Errorf("a blank prompt created %+v", agents)
+	}
+	prompt := secret
+	r, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Dir: app, Name: optional("worker"), Prompt: &prompt})
+	if err != nil || r.JSON201 == nil || r.JSON201.PromptError != nil || r.JSON201.Agent.State != api.AgentStateRunning {
+		t.Fatalf("create: %v, %s", err, r.Body)
+	}
+	l, err := td.client.ListMessagesWithResponse(ctx, &api.ListMessagesParams{Project: &project})
+	if err != nil || l.JSON200 == nil || len(l.JSON200.Messages) != 1 || l.JSON200.Messages[0].Text != secret || l.JSON200.Messages[0].TerminalId != r.JSON201.Agent.TerminalId {
+		t.Fatalf("its message: %v, %s", err, l.Body)
+	}
+	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("logs: %v, %v", logs, err)
+	}
+	for _, name := range logs {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Errorf("the prompt is in %s", name)
+		}
+	}
+}

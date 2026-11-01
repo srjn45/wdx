@@ -1714,6 +1714,9 @@ components:
         worktree_created:
           type: boolean
           description: True when creating the agent created its worktree; left out otherwise.
+        prompt_error:
+          type: string
+          description: Why its prompt was not sent, with the agent running all the same; left out otherwise.
 
     UpdateAgent:
       type: object
@@ -1748,6 +1751,10 @@ components:
           type: string
           nullable: true
           description: The worktree to start in, created when there is none of that name; see createAgent.
+        prompt:
+          type: string
+          nullable: true
+          description: Its task, as the first message in its inbox, which waits until it is ready for it; see sendAgent.
 
     ErrorCode:
       type: string

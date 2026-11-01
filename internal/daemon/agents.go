@@ -34,6 +34,9 @@ func (s *server) ListAgents(ctx context.Context, req api.ListAgentsRequestObject
 
 func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObject) (api.CreateAgentResponseObject, error) {
 	b := req.Body
+	if b.Prompt != nil && strings.TrimSpace(*b.Prompt) == "" {
+		return nil, &requestError{err: errors.New("prompt is empty")}
+	}
 	if err := absolute(b.Dir); err != nil {
 		return nil, err
 	}
@@ -80,7 +83,16 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateAgent201JSONResponse{Result: api.ResultCreated, Agent: agentView(a), WorktreeCreated: worktreeCreated}, nil
+	r := api.CreateAgent201JSONResponse{Result: api.ResultCreated, Agent: agentView(a), WorktreeCreated: worktreeCreated}
+	if b.Prompt != nil {
+		// The agent exists whatever comes of this, so its failure must not hide that.
+		if _, _, err := s.agents.Send(ctx, a.ID, *b.Prompt, false); err != nil {
+			logging.FromContext(ctx).Error("agent's prompt not sent", "agent_id", a.ID, "err", err)
+			text := err.Error()
+			r.PromptError = &text
+		}
+	}
+	return r, nil
 }
 
 func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {

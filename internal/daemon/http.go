@@ -204,6 +204,9 @@ func requestLogged(operation string, b []byte) any {
 	if worktreeRequests[operation] {
 		return map[string]any{"body_bytes": len(b)} // a comment, or a review's note
 	}
+	if operation == "createAgent" {
+		return createAgentLogged(b)
+	}
 	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)
 	}
@@ -216,6 +219,19 @@ func requestLogged(operation string, b []byte) any {
 		logged["instant"] = *r.Instant
 	}
 	return logged
+}
+
+// createAgentLogged is createAgent's body as logged, its prompt measured.
+func createAgentLogged(b []byte) any {
+	var r map[string]any
+	if json.Unmarshal(b, &r) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	if prompt, ok := r["prompt"].(string); ok {
+		delete(r, "prompt")
+		r["prompt_bytes"] = len(prompt)
+	}
+	return r
 }
 
 // historyLogged is a history response as logged: terminal output can hold

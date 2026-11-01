@@ -813,3 +813,35 @@ func TestAgentTranscript(t *testing.T) {
 		t.Fatalf("path: %+v", out)
 	}
 }
+
+func TestAgentCreateWithAPrompt(t *testing.T) {
+	t.Parallel()
+	const secret = "the-secret-task"
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "empty", "--prompt", " ")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantHint(t, v, "agent create --help")
+
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--name", "worker", "--prompt", secret)
+	if exit != api.ExitOK || v.Result != "created" {
+		t.Fatalf("create: %d, %+v", exit, v)
+	}
+	out := wdxWith(t, home, in(app), "message", "list")
+	if !strings.Contains(out.stdout, secret) || !strings.Contains(out.stdout, "worker") {
+		t.Errorf("its message: %+v", out)
+	}
+	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(home), "*.log"))
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("logs: %v, %v", logs, err)
+	}
+	for _, name := range logs {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Errorf("the prompt is in %s", name)
+		}
+	}
+}

@@ -52,6 +52,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 |---|---|---|---|---|
 | Create an agent | `agent create` | `C-q a` | Same | |
 | Create a child | `agent create --parent-*` | `C-q c` | Same | |
+| Start it on a task | `--prompt` | type it into the agent | Later (tide) | Comes with the agent form, with the name and the rest |
 | Choose the name when creating | `--name` | a generated name, editable in the info tab | Later (tide) | Comes with an agent form, once there are more fields (ACA, model, role, name) |
 | Choose a worktree for an agent with no parent | `--worktree` | only for a child | Later (tide) | Comes with the agent form or the worktrees work |
 | List agents | `agent list` | the left pane | Same | |

@@ -132,7 +132,7 @@ Proposed:
 
 A built-in subagent is given a task and hands its result back. A wdx child cannot yet, so subagents are replaced only once these exist:
 
-- `wdx agent create --prompt`, the agent parameters already next in docs/CHILD_AGENTS.md.
+- `wdx agent create --prompt`, built: the task is the first message in its inbox (docs/SEND.md). The other agent parameters in docs/CHILD_AGENTS.md are still to come.
 - The result coming back: the note tells a child with a parent to report with `wdx agent send` when it finishes, which works once the prompt does.
 
 What a child is doing is already there: `wdx agent get` shows its activity and queued messages (docs/AGENT_STATE.md).

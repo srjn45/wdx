@@ -33,9 +33,9 @@ func newAgentCmd() *cobra.Command {
 
 func newAgentCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, parentID, parentName, worktree string
+	var name, parentID, parentName, worktree, prompt string
 	cmd := &cobra.Command{
-		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>]",
+		Use:   "create [--prompt <text>] [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>]",
 		Short: "Create an agent and start its AI coding agent",
 		Long: "Without a project flag, the agent belongs to the project the working\n" +
 			"directory is in, and starts there. With one, it starts in the working\n" +
@@ -51,9 +51,14 @@ func newAgentCreateCmd() *cobra.Command {
 			"the clone, and any other name matches the last part of a worktree's path. A\n" +
 			"name that matches none creates the worktree in <project root>/.worktrees/<name>,\n" +
 			"on a new branch of that name from the HEAD of where it would otherwise start.\n" +
-			"Removing the agent leaves the worktree.",
+			"Removing the agent leaves the worktree.\n\n" +
+			"With --prompt it starts on that task: the first message in its inbox, as\n" +
+			identity.Name + " agent send gives it, typed in once it is ready for it. A prompt that\n" +
+			"cannot be sent leaves the agent running, and the result says why.",
 		Example: examples(
 			"Create an agent in the project you are in", identity.Name+" agent create",
+			"Start one on a task", identity.Name+" agent create --name reviewer --prompt summarize",
+			"Start a child on a task, in a worktree of its own", identity.Name+" agent create --parent-name reviewer --worktree fix-login --prompt fix",
 			"Name it and pick the project", identity.Name+" agent create --project-name app --name reviewer",
 			"Create a child of an agent", identity.Name+" agent create --parent-name reviewer",
 			"Create a child by the parent's id, as JSON", identity.Name+" agent create --parent-id agent-1a2b3c4d --json",
@@ -70,6 +75,9 @@ func newAgentCreateCmd() *cobra.Command {
 				api.ErrorCodeWorktreeFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed(promptFlag) && strings.TrimSpace(prompt) == "" {
+				return &usageError{errors.New("--prompt is empty")}
+			}
 			dir, err := workDir(cmd)
 			if err != nil {
 				return err
@@ -78,7 +86,7 @@ func newAgentCreateCmd() *cobra.Command {
 			if parentID != "" {
 				parent = "id:" + parentID
 			}
-			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree)})
+			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree), Prompt: optional(prompt)})
 			if err != nil {
 				if parentID == "" {
 					err = outsideHint(err, scope, "")
@@ -98,6 +106,8 @@ func newAgentCreateCmd() *cobra.Command {
 	cmd.RegisterFlagCompletionFunc("parent-name", completeParents("name"))
 	cmd.Flags().StringVar(&worktree, "worktree", "", "`name` of the worktree to start in, created when there is none (default: the parent's, else the one you are in, else main)")
 	cmd.RegisterFlagCompletionFunc("worktree", cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
+	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -526,6 +536,9 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 	field("dir", a.Dir)
 	field("aca", a.Aca)
 	field("id", a.Id)
+	if r.PromptError != nil {
+		fmt.Fprintf(w, "%s %s\n", st.Warning("its prompt was not sent:"), *r.PromptError)
+	}
 }
 
 // agentList is a list of agents; all says they may belong to several
