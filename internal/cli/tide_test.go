@@ -116,8 +116,11 @@ func TestTideReload(t *testing.T) {
 	run.input("\x11") // C-q: the menu
 	run.waitScreen("┃ r  reload tide")
 	run.input("r")
-	// No popup to choose a project from: only a resumed tide shows this again
-	// with no key pressed. The menu is gone as well, so it is a new start.
+	// Until the next tide has taken the terminal, the status line still on it is
+	// the old tide's, and a key goes to a process that is ending. The next one
+	// clears the screen as it enters, so what follows is its own: no popup to
+	// choose a project from, as only a resumed tide shows this with no key pressed.
+	run.waitAltScreens(2)
 	run.waitScreen("terminal · shell · zoomed")
 	if got := pid(); got != before {
 		t.Fatalf("the shell went from pid %v to %v", before, got)
