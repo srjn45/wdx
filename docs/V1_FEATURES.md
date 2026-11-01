@@ -39,7 +39,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` dropped
 ## 3. Agent lifecycle
 
 - [~] P0 Spawn an agent (prompt / ticket / typed): typed, by attaching, with Claude Code (docs/AGENT.md)
-- [~] P0 List agents; status and detail; live states (`pending`, `busy`, `idle`, `need-input`, `done`, `orphaned`, `rate_limited`): list and detail, whether the process is alive; no live states yet
+- [~] P0 List agents; status and detail; live states (`pending`, `busy`, `idle`, `need-input`, `done`, `orphaned`, `rate_limited`): list and detail, whether the process is alive, and what it is doing (`working`, `idle`, `waiting`, `unknown`); no `done` or `rate_limited` yet
 - [ ] P0 Terminate / tear down (umbrella verb)
 - [ ] P0 Delete / hard-purge
 - [ ] P1 Restore an orphaned agent; recover orphaned agents with live panes

@@ -165,8 +165,7 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 	if err != nil {
 		return Agent{}, m.agentError(ctx, err)
 	}
-	a.Terminal = t
-	return a, nil
+	return a.OnRow(t), nil
 }
 
 // Remove deletes an agent and returns it as it was last, stopped when it was
@@ -202,7 +201,7 @@ func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agen
 	if err != nil {
 		return Agent{}, m.agentError(ctx, err)
 	}
-	a.Terminal = t
+	a = a.OnRow(t)
 	logging.FromContext(ctx).Info("agent removed", "agent_id", a.ID)
 	if err := m.removeEmptyTombstones(ctx, a.ParentID); err != nil {
 		logging.FromContext(ctx).Error("tombstones not removed", "agent_id", a.ID, "err", err)
@@ -249,8 +248,7 @@ func (m *Manager) Send(ctx context.Context, id, prompt string, instant bool) (Ag
 	if err != nil {
 		return Agent{}, m.agentError(ctx, err)
 	}
-	a.Terminal = t
-	return a, nil
+	return a.OnRow(t), nil
 }
 
 // History reads count lines of the agent's history from line from on, or its
@@ -269,8 +267,7 @@ func (m *Manager) withTerminal(ctx context.Context, t terminal.Terminal) (Agent,
 	if err != nil {
 		return Agent{}, err
 	}
-	a.Terminal = t
-	return a, nil
+	return a.OnRow(t), nil
 }
 
 // agentError says err, about an agent's terminal row, of the agent.

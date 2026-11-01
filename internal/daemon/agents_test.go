@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -607,5 +609,135 @@ func TestSendAgentNotRunning(t *testing.T) {
 	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentNotRunning)
 	if stopped := detail(t, r.ApplicationproblemJSONDefault, "agent"); stopped["id"] != a.Id {
 		t.Fatalf("want the agent in details, got %v", stopped)
+	}
+}
+
+// statusScript draws what Claude Code's parser reads, one screen for each file
+// that appears, and ends when told. Started again, once "again" exists, it draws
+// nothing.
+const statusScript = `
+if [ -f again ]; then exec sleep 1000; fi
+rule=────────────────
+stty raw -echo
+wait_for() { until [ -f "$1" ]; do sleep 0.01; done; }
+printf '\033[2J\033[H%s\r\n ❯ 1. Yes\r\n\r\n Esc to cancel · Tab to amend' 'Do you want to proceed?'
+wait_for draft
+printf '\033[2J\033[H%s\r\n❯ typed\r\n%s\r\n  ⏸ manual mode on · esc to interrupt' "$rule" "$rule"
+wait_for idle
+printf '\033[2J\033[H%s\r\n❯ \r\n%s\r\n  ⏸ manual mode on · ? for shortcuts · ← 1 agent' "$rule" "$rule"
+wait_for end
+exit 0
+`
+
+func activityOf(a api.Agent) string {
+	if a.Activity == nil {
+		return ""
+	}
+	return string(*a.Activity)
+}
+
+func agentsIn(e event) []api.Agent {
+	if e.project.Agents == nil {
+		return nil
+	}
+	return *e.project.Agents
+}
+
+// waitActivity follows the project's stream until the agent named name shows the
+// status: a change reaches every open stream.
+func (td *testDaemon) waitActivity(t *testing.T, name, activity string, draft bool) {
+	t.Helper()
+	td.waitProject(t, "app", "agent "+name+" "+activity, func(e event) bool {
+		for _, a := range agentsIn(e) {
+			if a.Name == name {
+				return activityOf(a) == activity && a.Draft != nil && *a.Draft == draft
+			}
+		}
+		return false
+	})
+}
+
+// TestAgentStatus: what the screen shows reaches the API and the project's stream,
+// a daemon that restarts learns what changed while it was gone, and nothing shows
+// once the process ends or of the last run when it starts again.
+func TestAgentStatus(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	step := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(app, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(statusScript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createAgent(t, "", app, "helper")
+	if a.Activity == nil || a.Draft == nil {
+		t.Errorf("a running agent without a status: %+v", a)
+	}
+	td.waitActivity(t, "helper", "waiting", false)
+	got := td.waitAgentState(t, a.Id, api.AgentStateRunning)
+	if activityOf(got) != "waiting" || got.Draft == nil || *got.Draft {
+		t.Errorf("get agent: %s %v", activityOf(got), got.Draft)
+	}
+	updated := got.UpdatedAt
+
+	step("draft")
+	td.waitActivity(t, "helper", "working", true)
+
+	// Changed with no daemon to tell, so that only the hello can say it.
+	td.stop()
+	step("idle")
+	waittest.For(t, "the holder to read the change", func() bool {
+		logs, _ := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+		for _, name := range logs {
+			b, _ := os.ReadFile(name)
+			for line := range strings.Lines(string(b)) {
+				if strings.Contains(line, "screen state changed") && strings.Contains(line, `"activity":"idle"`) {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	next := startOn(t, td.home, telemetry.Options{}, nil)
+	next.waitActivity(t, "helper", "idle", false)
+	got = next.waitAgentState(t, a.Id, api.AgentStateRunning)
+	if !got.UpdatedAt.Equal(updated) {
+		t.Errorf("updated_at moved from %s to %s", updated, got.UpdatedAt)
+	}
+
+	step("end")
+	got = next.waitAgentState(t, a.Id, api.AgentStateExited)
+	if got.Activity != nil || got.Draft != nil {
+		t.Errorf("an exited agent shows %s, %v", activityOf(got), got.Draft)
+	}
+
+	step("again")
+	r, err := next.client.StartAgentWithResponse(context.Background(), "id:"+a.Id, nil)
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("start agent: %v %s", err, r.Body)
+	}
+	if got := r.JSON200.Agent; activityOf(got) != "unknown" {
+		t.Errorf("started again, it shows %s", activityOf(got))
+	}
+}
+
+// otherACA is one no holder knows: it reads no screen and says nothing, as a
+// holder too old to does.
+type otherACA struct{ *acatest.ACA }
+
+func (otherACA) ID() string { return "other" }
+
+func TestAgentStatusOfAHolderThatSaysNothing(t *testing.T) {
+	t.Parallel()
+	home := runtest.Dir(t)
+	td := startOn(t, home, telemetry.Options{}, func(o *Options) { o.ACA = otherACA{&acatest.ACA{}} })
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft {
+		t.Errorf("got %s, %v", activityOf(a), a.Draft)
 	}
 }

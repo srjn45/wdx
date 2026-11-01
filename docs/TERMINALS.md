@@ -174,6 +174,7 @@ Frames on the socket: one byte of type, a 4-byte big-endian length, the payload;
 | `stop` | daemon → holder | `{"grace_ms": 5000}`; answered by `exited` |
 | `release` | daemon → holder | none; the holder exits |
 | `send` | daemon → holder, version 3 | `{"prompt": "..."}`, queued for the shell; docs/SEND.md |
+| `status` | holder → daemon, no version of its own | `{"activity": "waiting", "draft": false}` when it changes, on a terminal running an ACA, and in `hello` as `status`; docs/AGENT_STATE.md |
 
 Version 2 adds clients beside the daemon, with `attach`, `history`, `snapshot`, `output`, `input` and `resize`: docs/ATTACH.md.
 

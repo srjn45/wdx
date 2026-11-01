@@ -52,6 +52,8 @@ type agentListRow struct {
 	guide string // the tree's lines before the fold mark
 	fold  string // foldOpen, foldClosed or, in a tree, blank at the top level
 	below int    // the agents under it
+	// waiting is how many of them are waiting, which a folded parent must not hide.
+	waiting int
 }
 
 // list returns the Agents list of the project shown, nil until it is known.
@@ -112,7 +114,9 @@ func (m *Model) listRows() []agentListRow {
 			}
 			switch {
 			case len(children) > 0 && l.closed[a.Id]:
-				r.fold, r.below = foldClosed, len(api.FlattenAgents(children))
+				below := api.FlattenAgents(children)
+				r.fold, r.below = foldClosed, len(below)
+				r.waiting = waitingAgents(below)
 			case len(children) > 0:
 				r.fold = foldOpen
 			case depth == 0 && tree:
@@ -539,7 +543,7 @@ func agentRow(st style.Style, r agentListRow, cursor, active bool, width int) st
 		name = st.Muted(name)
 	}
 	if detail != "" {
-		detail = " " + st.Muted(detail)
+		detail = " " + agentDetailStyle(st, r, detail)
 	}
 	if r.fold != "" {
 		guide += r.fold + " "
@@ -556,17 +560,49 @@ func agentMark(st style.Style, a api.Agent) string {
 	if a.State == api.AgentStateRemoved {
 		return st.Muted("†")
 	}
+	if agentWaiting(a) {
+		return st.Warning("?")
+	}
 	return stateMark(st, api.TerminalState(a.State))
 }
 
+func agentWaiting(a api.Agent) bool {
+	return a.Activity != nil && *a.Activity == api.AgentActivityWaiting
+}
+
+func waitingAgents(list []api.Agent) int {
+	n := 0
+	for _, a := range list {
+		if agentWaiting(a) {
+			n++
+		}
+	}
+	return n
+}
+
+// agentDetailStyle is detail, what r says beside its mark, as what it says calls
+// for: an agent waiting is what a human looks for.
+func agentDetailStyle(st style.Style, r agentListRow, detail string) string {
+	if r.waiting > 0 || (r.below == 0 && agentWaiting(r.agent)) {
+		return st.Warning(detail)
+	}
+	return st.Muted(detail)
+}
+
 // agentDetail is what the row says beside its mark: how many agents a folded
-// parent hides, or what its state does not tell; running is the mark alone.
+// parent hides, or how many of them are waiting, or what its state does not tell:
+// of a running agent, that it is working or waiting.
 func agentDetail(r agentListRow) string {
 	a := r.agent
 	switch {
+	case r.waiting > 0:
+		return fmt.Sprintf("%d waiting", r.waiting)
 	case r.below > 0:
 		return fmt.Sprintf("%d below", r.below)
 	case a.State == api.AgentStateRunning:
+		if a.Activity != nil && (*a.Activity == api.AgentActivityWorking || *a.Activity == api.AgentActivityWaiting) {
+			return string(*a.Activity)
+		}
 		return ""
 	case a.State == api.AgentStateRemoved:
 		return string(a.State)

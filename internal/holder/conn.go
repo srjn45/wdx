@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // ErrSendUnsupported is a holder that speaks a protocol before the inbox: its
@@ -22,7 +25,7 @@ var ErrAgentSendUnsupported = errors.New("the agent's holder is too old to take 
 var ErrMessageTooLarge = fmt.Errorf("the message does not fit in the %d bytes the holder takes", maxPayload)
 
 // Conn is the daemon's connection to a holder. Nothing polls: the holder
-// pushes the shell's exit, and the connection ending means the holder is
+// pushes the shell's exit and its status, and the connection ending means the holder is
 // gone or replaced it with a newer one.
 type Conn struct {
 	c            net.Conn
@@ -31,6 +34,10 @@ type Conn struct {
 	exited       chan Exit
 	done         chan struct{}
 	wmu          sync.Mutex
+	// status is the latest told, kept here so that the reader never waits for
+	// who records it.
+	status        atomic.Pointer[Status]
+	statusChanged chan struct{}
 }
 
 // Dial connects to the holder of terminal id listening on socket.
@@ -54,7 +61,12 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 		return nil, err
 	}
 	_ = c.SetDeadline(time.Time{})
-	conn := &Conn{c: c, writeTimeout: limits.Write, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{})}
+	conn := &Conn{c: c, writeTimeout: limits.Write, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{}), statusChanged: make(chan struct{}, 1)}
+	if hello.Status != nil {
+		conn.status.Store(hello.Status)
+	} else {
+		conn.status.Store(&Status{Activity: string(screen.ActivityUnknown)})
+	}
 	if hello.Exited != nil {
 		conn.exited <- *hello.Exited
 	}
@@ -103,6 +115,18 @@ func (c *Conn) Exited() <-chan Exit {
 	return c.exited
 }
 
+// Status is the holder's latest status. A holder with none to tell, as one too
+// old to, is unknown.
+func (c *Conn) Status() Status {
+	return *c.status.Load()
+}
+
+// StatusChanged tells when Status changed; a wake pending is enough, as Status
+// gives the latest.
+func (c *Conn) StatusChanged() <-chan struct{} {
+	return c.statusChanged
+}
+
 // Done is closed when the connection ends.
 func (c *Conn) Done() <-chan struct{} {
 	return c.done
@@ -115,16 +139,23 @@ func (c *Conn) read() {
 		if err != nil {
 			return
 		}
-		if t != frameExited {
-			continue
-		}
-		var exit Exit
-		if json.Unmarshal(body, &exit) != nil {
-			continue
-		}
-		select {
-		case c.exited <- exit:
-		default: // already told
+		switch t {
+		case frameExited:
+			var exit Exit
+			if json.Unmarshal(body, &exit) != nil {
+				continue
+			}
+			select {
+			case c.exited <- exit:
+			default: // already told
+			}
+		case frameStatus:
+			var status Status
+			if json.Unmarshal(body, &status) != nil {
+				continue
+			}
+			c.status.Store(&status)
+			wake(c.statusChanged)
 		}
 	}
 }

@@ -269,6 +269,10 @@ func agentView(a agent.Agent) api.Agent {
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree
 	}
+	if a.Activity != "" {
+		activity := api.AgentActivity(a.Activity)
+		v.Activity, v.Draft = &activity, &a.Draft
+	}
 	if a.Tombstone() {
 		v.State = api.AgentStateRemoved
 		v.RemovedAt = optionalTime(a.RemovedAt)

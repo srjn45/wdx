@@ -765,3 +765,48 @@ func TestNewChildAgentWorktree(t *testing.T) {
 	p.keys("alt+left", "C-q", "c", "t", "a", "k", "e", "n", "enter")
 	p.until(t, "the failure", func(m *Model) bool { return strings.Contains(m.statusNotice, "taken") })
 }
+
+// TestAgentRowActivity: a row says what a running agent is doing when a human
+// would care, and a waiting one keeps its own mark where the word has no room.
+func TestAgentRowActivity(t *testing.T) {
+	t.Parallel()
+	st := style.New(false)
+	doing := func(activity api.AgentActivity) api.Agent {
+		return api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &activity}
+	}
+	tests := []struct {
+		name  string
+		row   agentListRow
+		width int
+		want  string
+	}{
+		{"waiting", agentListRow{agent: doing(api.AgentActivityWaiting)}, 40, "  ? helper                      waiting "},
+		{"waiting in a narrow pane", agentListRow{agent: doing(api.AgentActivityWaiting)}, 14, "  ? helper    "},
+		{"working", agentListRow{agent: doing(api.AgentActivityWorking)}, 40, "  ● helper                      working "},
+		{"idle", agentListRow{agent: doing(api.AgentActivityIdle)}, 40, "  ● helper                              "},
+		{"unknown", agentListRow{agent: doing(api.AgentActivityUnknown)}, 40, "  ● helper                              "},
+		{"no status", agentListRow{agent: api.Agent{Name: "helper", State: api.AgentStateRunning}}, 40, "  ● helper                              "},
+		{"a parent hiding a waiting agent", agentListRow{agent: doing(api.AgentActivityIdle), below: 2, waiting: 1}, 40, "  ● helper                    1 waiting "},
+		{"a parent hiding none", agentListRow{agent: doing(api.AgentActivityWorking), below: 2}, 40, "  ● helper                      2 below "},
+	}
+	for _, tt := range tests {
+		if got := agentRow(st, tt.row, false, false, tt.width); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestAgentsFoldedWaiting: folding a parent over an agent that is waiting says so,
+// however deep it is.
+func TestAgentsFoldedWaiting(t *testing.T) {
+	t.Parallel()
+	waiting, idle := api.AgentActivityWaiting, api.AgentActivityIdle
+	deep := api.Agent{Id: "agent-deep", Name: "deep", State: api.AgentStateRunning, Activity: &waiting}
+	middle := api.Agent{Id: "agent-middle", Name: "middle", State: api.AgentStateRunning, Activity: &idle, Children: &[]api.Agent{deep}}
+	top := api.Agent{Id: "agent-top", Name: "top", State: api.AgentStateRunning, Activity: &idle, Children: &[]api.Agent{middle}}
+	m := newAgentsModel(128, 41, top)
+	wantRow(t, m, "deep", "? deep")
+	wantRow(t, m, "deep", "waiting")
+	keys(m, "left")
+	wantRow(t, m, "top", "1 waiting")
+}

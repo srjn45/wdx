@@ -397,8 +397,7 @@ func (s *server) byKind(ctx context.Context, rows []terminal.Terminal) ([]termin
 		if err != nil {
 			return nil, nil, err
 		}
-		a.Terminal = t
-		agents = append(agents, a)
+		agents = append(agents, a.OnRow(t))
 	}
 	return terminals, agents, nil
 }

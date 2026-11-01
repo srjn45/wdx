@@ -1,6 +1,6 @@
 # Agent activity
 
-Status: steps 1 and 2 are built. `ScreenParser` and `ClaudeCodeScreenParser` read the screen, and the holder's `watchScreen` keeps the latest `ScreenState` and logs each change, on a terminal running an ACA. It tells nobody yet, so nothing shows to a user. Sharing state with the daemon, and how `wdx agent send` uses it, are deferred, to discuss later.
+Status: built. `ScreenParser` and `ClaudeCodeScreenParser` read the screen, the holder's `watchScreen` keeps the latest `ScreenState` on a terminal running an ACA, and the holder tells the daemon, which shows it in the API, `wdx agent list` and `get`, and tide (see Syncing to the daemon). `wdx agent send` reads it in the holder (docs/SEND.md).
 
 What an agent's ACA is doing right now. It is not the terminal's `state`, which stays whether the process is alive (docs/AGENT.md). Later features build on it: auto-approve, switching ACA or resuming at a limit, autopilot. None of those is in this step.
 
@@ -8,7 +8,7 @@ This step answers only "is it working, idle or waiting?", from the bottom of the
 
 ## The model
 
-`activity` is a new field of an agent, beside `state`. It is null unless the process is running.
+`activity` is a new field of an agent, beside `state`, and `draft` says whether a human left text in its input box. Both are null unless the process is running.
 
 | `activity` | Meaning |
 |---|---|
@@ -141,7 +141,7 @@ Other facts:
 The holder owns it, as it owns the truth about the process (docs/TERMINALS.md):
 
 ```
-PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► log (and, later, the daemon)
+PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► log and the daemon
                                             │ calls
                   ScreenParser.Parse(lines, undimmed)
 ```
@@ -154,7 +154,6 @@ PTY ─► spool ─► vt screen ─► channel ─► watchScreen ─► log (
 - After a signal it waits a moment before reading, so that it reads a finished redraw: Claude does not use synchronized output, so half-drawn screens do reach the vt. This limits the rate rather than waiting for quiet, so a screen that never stops is still read. The moment is a field tests can shorten; its value comes from replaying the recordings.
 - Nothing polls: one timer, armed only for a read that is due or while the answer depends on the still time.
 - A panic in a parser is recovered and gives `unknown`, logged once and without its value, which could hold the screen's text: the holder owns the agent's PTY, and a parser must never take it down. A moving screen stays `unknown` then, not `working`, as nothing can say what it shows. A hung parser only delays the state, and the holder quits without it.
-- Later, with the daemon: the holder pushes a frame only when the activity changes, as it pushes `exited`, and `Hello` carries the current one, so a daemon that restarts learns it on connecting. The daemon keeps the last one of each live holder in memory and tells the stream, with no table or migration. A running holder of an older version keeps working, and its agents show `unknown` until relaunched.
 - Changes are logged at info as their values (`activity`, `input_box`, `draft`), at debug what the parser itself read, and a counted input with no content. The screen's text never leaves the holder.
 
 A parser fixed in a wdx release reaches a running agent only when it is relaunched, since a holder keeps its binary. That matches the ACA: a running ACA keeps its wording until relaunched too, and the relaunch starts a holder of the current wdx.
@@ -165,11 +164,47 @@ Another way to read an ACA: ignore the screen while output keeps coming, and ide
 
 Claude Code uses it only as the fallback for unreadable footers (see The motion fallback): as the main rule it would misread the Bash prompt, whose `●` blinks every 0.6 s for as long as it is open. An ACA that uses it needs the same check first: a recording of whether anything keeps moving at its prompts and at idle.
 
-### Sharing state, later
+### Syncing to the daemon
 
-Decided by the human on 2026-10-31: for now only detect the right values; how they reach the daemon is deferred, and `draft` stays private to the holder until then.
+Decided by the human on 2026-10-31 and 2026-11-01.
 
-The direction: more attributes will come from watching a terminal, so instead of an event type for each, the holder sends the complete state object over its existing connection on every change, as the project stream does for tide. Parsers detect, the holder emits, the daemon updates what it keeps and emits to tide. So `frameActivity` in the plan below, and in docs/SEND.md's frame numbers, would become one state frame. Whether the daemon keeps it in the database or in memory is to settle then; this doc so far says memory.
+```
+watchScreen ─► holder ─► frameStatus ─► Conn ─► Supervisor ─► agents row ─► notify ─► project stream ─► tide
+```
+
+More attributes will come from watching a terminal, so instead of an event type for each, the holder sends one complete object over its existing connection on every change, as the project stream does for tide: `frameStatus`, frame 12, carrying a `Status`. The name avoids `state`, which means whether the process is alive, and `ScreenState`, as later fields will not come from the screen.
+
+```json
+{"activity":"waiting","draft":false}
+```
+
+`Hello` carries the same object, so a daemon that restarts learns it on connecting. `input_box` and `in_turn` stay in the holder, for the fallback and the `inboxReader`, so a change only to them sends nothing. Only the daemon's connection gets the frame, not attached clients.
+
+The daemon keeps it in the database, not memory, so `agent.Store` and the project stream work as they do today:
+
+```sql
+ALTER TABLE agents ADD COLUMN activity TEXT;
+ALTER TABLE agents ADD COLUMN draft INTEGER;
+```
+
+- **Additive,** so `wdx update --rollback` keeps the data. An older daemon skips the frame, as its reader takes only `exited`.
+- **No `CHECK` on `activity`.** Adding `limited` would rebuild the table, and a running holder can be newer than its daemon. The daemon turns a value it does not know into `unknown`.
+- **Never stale.** The agents query returns both only when the terminal's state is `running`, so exit, stop and lost need no code of their own. On a launch, and on adopting a terminal still `starting`, what `Hello` says is written before the terminal is marked `running`. Each dial writes it: the launch, `Reconcile` and the redial in `follow`.
+- **`updated_at` is untouched.** It says when `state` last changed.
+- **`draft` is public:** in the API and `wdx agent get --json`, true or false, never the text. The holder's sender goes on reading it locally.
+- **No time of the last change for now.** "Waiting for 12 minutes" or finding a stuck agent would need one, added then, set by the holder so that a daemon restart does not reset it.
+- **A holder too old to send status** shows `unknown` until relaunched. A shell terminal has no status.
+- **Nothing blocks the terminal.** The holder writes to the daemon under `h.mu`, which a stalled daemon could hold for the whole write timeout, so a goroutine of its own sends the latest status, not `watchScreen`. It has its own wake, as the `inboxReader` takes `published`. `Conn` keeps only the latest, so its reader never waits on the database.
+- **No change is missed.** The holder updates the latest status before taking `h.mu` to write, so a change during a connect goes out in `Hello`, the next frame or both. A repeat is harmless.
+- **`terminal` still knows nothing of agents.** The Supervisor gets a function in its options, as with `AgentLaunch`, which the daemon connects to `agent.Store` and then to the streams' notice.
+- **No new protocol version,** decided by the human. The version stays 4, as the daemon asks nothing new of the holder: a holder with no status in its `Hello` is too old to send one, and the released daemon skips the frame and the field. Version 5 would need a release of its own first, since `drives` stops at 4 and a rollback would lose every newer holder.
+- **The queue's length** comes straight after, in a commit of its own: a field of `Status` and a column, with no `frameInbox` (docs/SEND.md, step 6). Until then `draft: true` is the only sign of a message held.
+
+Checked on real Claude Code 2.1.316 on 2026-11-01, through a real daemon in a throwaway home, against `wdx agent list` and `get`:
+
+- At a trust prompt it read `waiting`, and still did after the daemon was stopped and started again. Removing the agent then showed no status.
+- One turn of 7 s, a `ping` and a one-word reply, went `unknown`, `idle`, `working` with `draft` true for 105 ms while `agent send` pasted the message, `working`, `idle`: 5 writes, so a few a turn, and each makes every open stream read its whole project again. The stream's cost itself is not measured.
+- Not driven through the daemon: a permission, a decision, Esc, a narrow tide pane. The parser's answers for them under a real holder are in Step 2 findings, and the row in a narrow pane is in `TestAgentRowActivity`.
 
 ## What the user sees
 
@@ -180,10 +215,20 @@ calm-otter    running  waiting   claude_code  /home/me/dev/wdx  agent-5e6f7a8b
 swift-falcon  running  working   claude_code  /home/me/dev/wdx  agent-1a2b3c4d
 
 $ wdx agent get --name calm-otter --json
-{"agent": {"name": "calm-otter", "state": "running", "activity": "waiting", ...}}
+{"agent": {"name": "calm-otter", "state": "running", "activity": "waiting", "draft": false, ...}}
 ```
 
-The project stream carries it, so tide's Agents list shows it live, and marks an agent that is `waiting`.
+`draft` shows in `wdx agent get`'s text only when true, and not in the list.
+
+The project stream carries both, so tide's Agents list shows activity live, decided by the human:
+
+| `activity` | The row |
+|---|---|
+| `waiting` | a state mark of its own, which a narrow pane keeps, and the word |
+| `working` | the word, muted |
+| `idle`, `unknown` | the running mark alone |
+
+A folded parent says `1 waiting` in place of `2 below` while an agent it hides is waiting, so that one cannot go unnoticed.
 
 Known limits at the end of this step:
 
@@ -195,7 +240,7 @@ Known limits at the end of this step:
 Decided by the human on 2026-10-31. The plan's step 2 below is narrowed to this.
 
 - **The holder reads the screen and keeps the latest `ScreenState`. It tells nobody yet.** Each change is logged, values only, never the screen's text. No frame and no protocol change, so it cannot clash with docs/SEND.md's frames.
-- **Syncing state to the daemon must still be built: nothing outside the holder sees activity until then.** Steps 3 to 5 depend on it, as does `wdx agent list` showing anything; see Sharing state, later.
+- **Syncing state to the daemon came after this step;** see Syncing to the daemon.
 - **Mouse movement is not input.** Claude Code's fullscreen mode gets every mouse move, so counting them would freeze the answer whenever a mouse crosses a pane.
 - **What counts as input** to the fallback, decided in the holder from each raw input frame (`isInput`, `internal/holder/watch.go`): anything but a frame made only of mouse movement, in the SGR or X10 encoding. Bit 32 of a report's button code is motion, with or without a button held, so a drag is movement too, and bit 64 a wheel. A frame with a key among the moves is input. So is a resize. The vt's answers to queries (`h.answer`) go to the PTY without passing it. An attached client's terminal answers instead, in input frames, and those do count, holding the answer for the still time; under a real holder Claude queried only at startup, so that costs nothing. A report cut at a frame's end counts as input too, the safe side.
 - **Scrolling.** Where the program did not ask for the mouse, the wheel scrolls the viewer's own history (`internal/termview`), which never reaches the holder. Where it did, as fullscreen Claude Code does, the wheel is forwarded, and Claude Code redraws. A wheel or click there counts as input, so it holds the answer instead of reading as motion. A readable footer is unaffected either way.
@@ -221,11 +266,11 @@ Found on the way:
 Each step builds and passes `make test` on its own, and is a `feat:` or `test:` commit. Adding a field and a column breaks nothing, so no `!`.
 
 1. **Prove the rule, before touching the holder. Done.** The parser, tested on recordings: every recorded screen gives its activity, and replaying the raw output chunk by chunk through `internal/screen` gives the right sequence.
-2. **The holder. Done, without what tells anyone** (Step 2 decisions): `--aca`, `AiCodingAgent.ScreenParser()`, `aca.ByID`, `watchScreen`, the fallback moved out of the tests into `screen.Motion`. Tests run the real parser against a test command that prints real footers, so no real ACA is needed. The `cli -> aca` direction in AGENTS.md. Claude Code 2.1.316 re-checked. Still to build, before step 3: `frameActivity` or the state frame, `Hello.Activity`, a protocol version, `Conn.Activity()`, with their tests: a change is pushed, a repeat is not, a reconnect is told the current one.
-3. **The daemon and API.** `activity` in `api/openapi.yaml`, `make generate`. The supervisor passes the ACA, keeps the last activity per live holder and notifies the streams. Tests: an agent's activity through `GET /v1/agents`, the project stream, a daemon restart with the holder alive, a version 2 holder's `unknown`, null once the process ends.
-4. **The CLI.** The `ACTIVITY` column and `get`'s field, with their tests and help.
-5. **Tide.** The activity in the Agents list and the `waiting` mark, with its tests.
-6. **Docs and the real thing.** docs/AGENT.md, docs/TERMINALS.md, README, V1_FEATURES.md. Then by hand with the real Claude Code: a prompt, a permission, a decision, Esc, a trust prompt, a daemon restart while waiting, and a narrow tide pane. `make check`, `make test`, and `make test-stress PKG=` on `holder`, `terminal` and `agent`.
+2. **The holder. Done:** first without what tells anyone (Step 2 decisions): `--aca`, `AiCodingAgent.ScreenParser()`, `aca.ByID`, `watchScreen`, the fallback moved out of the tests into `screen.Motion`. Tests run the real parser against a test command that prints real footers, so no real ACA is needed. The `cli -> aca` direction in AGENTS.md. Claude Code 2.1.316 re-checked. Then `frameStatus`, `Status` in `Hello` and `Conn`'s latest status, with their tests: a change is pushed, a repeat is not, a reconnect is told the current one.
+3. **The daemon and API. Done.** The migration, `activity` and `draft` in `api/openapi.yaml`, `make generate`. The supervisor writes each status to the agent's row and notifies the streams. Tests: an agent's activity and draft through `GET /v1/agents`, the project stream, a daemon restart with the holder alive, a holder with no status showing `unknown`, a relaunch showing nothing of the last run, null once the process ends.
+4. **The CLI. Done.** The `ACTIVITY` column and `get`'s fields, with their tests and help.
+5. **Tide. Done.** The activity in the Agents list, the `waiting` mark and what a folded parent says, with their tests.
+6. **Docs and the real thing. Done, apart from what Syncing to the daemon lists as not driven.** docs/AGENT.md, docs/TERMINALS.md, README, V1_FEATURES.md. Then by hand with the real Claude Code: a prompt, a permission, a decision, Esc, a trust prompt, a daemon restart while waiting, and a narrow tide pane. `make check`, `make test`, and `make test-stress PKG=` on `holder`, `terminal` and `agent`.
 
 ## Recordings
 

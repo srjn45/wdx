@@ -49,9 +49,11 @@ const (
 	frameInput    frameType = 9  // client to holder: raw input for the shell
 	frameResize   frameType = 10 // client to holder: a Size
 	frameResized  frameType = 11 // holder to client: the terminal's new Size, in order with the output
-	// 12 is taken by frameActivity (docs/AGENT_STATE.md), 14 by frameInbox
-	// (docs/SEND.md).
-	frameSend frameType = 13 // daemon to holder: a sendRequest for the inbox
+	// Takes no version of its own: the daemon asks nothing new of the holder, a
+	// holder with no Status in its Hello sends none, and a daemon before it skips
+	// the frame. docs/AGENT_STATE.md.
+	frameStatus frameType = 12 // holder to daemon: its Status, when it changes
+	frameSend   frameType = 13 // daemon to holder: a sendRequest for the inbox
 )
 
 // Roles a connecting side gives in its hello; a hello without one is a
@@ -76,6 +78,16 @@ type Hello struct {
 	Exited     *Exit  `json:"exited,omitempty"`
 	// HistoryLines is the number the next history line will take.
 	HistoryLines int64 `json:"history_lines,omitempty"`
+	// Status is nil on a holder that does not read its screen, or is too old to
+	// say.
+	Status *Status `json:"status,omitempty"`
+}
+
+// Status is everything a holder tells the daemon about what its program is
+// doing, whole each time. docs/AGENT_STATE.md.
+type Status struct {
+	Activity string `json:"activity"`
+	Draft    bool   `json:"draft"`
 }
 
 // Size is a terminal's size in cells.

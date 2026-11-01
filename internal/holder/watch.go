@@ -59,7 +59,10 @@ type screenWatch struct {
 	latest    atomic.Pointer[screen.ScreenState]
 	// published is told after latest changes, for the inboxReader.
 	published chan struct{}
-	panicked  atomic.Bool // a panic in the parser is logged once
+	// statusChanged is told after a change of what latest says in a Status, for
+	// sendStatuses.
+	statusChanged chan struct{}
+	panicked      atomic.Bool // a panic in the parser is logged once
 
 	quit  chan struct{} // closed to stop the goroutine
 	ended chan struct{} // closed when the goroutine has ended
@@ -68,7 +71,7 @@ type screenWatch struct {
 func newScreenWatch(log *slog.Logger, parse ParseScreen, read func() (lines, undimmed []string, ok bool), times watchTimes) *screenWatch {
 	w := &screenWatch{
 		log: log, parse: parse, read: read, times: times.orDefaults(),
-		changed: make(chan struct{}, 1), inputs: make(chan struct{}, 1), published: make(chan struct{}, 1),
+		changed: make(chan struct{}, 1), inputs: make(chan struct{}, 1), published: make(chan struct{}, 1), statusChanged: make(chan struct{}, 1),
 		quit: make(chan struct{}), ended: make(chan struct{}),
 	}
 	begun := time.Now()
@@ -160,6 +163,20 @@ func (w *screenWatch) stateChanged() <-chan struct{} {
 
 // state is the latest state read.
 func (w *screenWatch) state() screen.ScreenState { return *w.latest.Load() }
+
+// status is the latest state as the daemon is told it; nil when nothing reads
+// the screen.
+func (w *screenWatch) status() *Status {
+	if w == nil {
+		return nil
+	}
+	status := statusOf(w.state())
+	return &status
+}
+
+func statusOf(state screen.ScreenState) Status {
+	return Status{Activity: string(state.Activity), Draft: state.Draft}
+}
 
 // watchScreen waits the moment after a change, reads the screen and parses it
 // outside the lock. Its one timer is armed only for a read due or while the
@@ -260,11 +277,15 @@ func panicError(r any) string {
 }
 
 func (w *screenWatch) publish(state screen.ScreenState) {
-	if state == w.state() {
+	last := w.state()
+	if state == last {
 		return
 	}
 	w.latest.Store(&state)
 	wake(w.published)
+	if statusOf(state) != statusOf(last) {
+		wake(w.statusChanged)
+	}
 	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn)
 }
 

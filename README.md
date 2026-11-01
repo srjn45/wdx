@@ -29,6 +29,7 @@ cd ~/code/api
 wdx agent create --name reviewer           # Claude Code in the project you are in; needs claude installed
 wdx agent create --name fix --worktree fix # the same in a new worktree, on a new branch
 wdx agent attach --name reviewer           # talk to it
+wdx agent list                             # what each is doing: working, idle, or waiting for you
 wdx terminal create --name server          # a shell in the project
 wdx terminal attach --name server
 

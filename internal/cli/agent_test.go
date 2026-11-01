@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -152,6 +155,9 @@ func TestAgentGet(t *testing.T) {
 	if exit != api.ExitOK || v.Agent.Id != a.Id {
 		t.Fatalf("unexpected get: exit %d, %+v", exit, v)
 	}
+	if v.Agent.Activity == nil || *v.Agent.Activity != api.AgentActivityUnknown || v.Agent.Draft == nil || *v.Agent.Draft {
+		t.Fatalf("unexpected status: %+v", v.Agent)
+	}
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "agent", "get", "--name", "helper")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 	v, exit = wdxJSON(t, home, "agent", "get", "--id", "agent-nothing")
@@ -160,8 +166,31 @@ func TestAgentGet(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 
 	out := wdxWith(t, home, in(app), "agent", "get", "--name", "helper")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "agent helper in app\n") || !strings.Contains(out.stdout, a.SessionId) {
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "agent helper in app\n") || !strings.Contains(out.stdout, a.SessionId) ||
+		!strings.Contains(out.stdout, "activity") || !strings.Contains(out.stdout, "unknown") || strings.Contains(out.stdout, "draft") {
 		t.Fatalf("unexpected text: %+v", out)
+	}
+}
+
+// TestAgentStatusText: a draft shows only when there is one, and an agent not
+// running has no status to show.
+func TestAgentStatusText(t *testing.T) {
+	t.Parallel()
+	waiting, yes := api.AgentActivityWaiting, true
+	var out bytes.Buffer
+	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) {
+		t.Errorf("running: %s", out.String())
+	}
+	out.Reset()
+	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}.text(&out, style.New(false))
+	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") {
+		t.Errorf("exited: %s", out.String())
+	}
+	out.Reset()
+	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Aca: "claude_code"}}}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+claude_code`).MatchString(out.String()) {
+		t.Errorf("list: %s", out.String())
 	}
 }
 

@@ -203,6 +203,15 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		StopReport:   opts.StopReport,
 		Limits:       opts.HolderLimits,
 		AgentLaunch:  agent.Launches(agents, []aca.AiCodingAgent{opts.ACA}),
+		AgentStatus: func(ctx context.Context, id string, status holder.Status) {
+			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft)
+			if err != nil {
+				logging.FromContext(ctx).Error("agent status not recorded", "terminal_id", id, "err", err)
+			}
+			if changed {
+				d.notices.notify()
+			}
+		},
 	})
 	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)
 	if err := d.terminals.Reconcile(logged); err != nil {

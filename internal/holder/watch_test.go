@@ -679,3 +679,126 @@ func TestWatchOfNothing(t *testing.T) {
 	w.resized()
 	w.stop()
 }
+
+// statusFrames connects as a daemon does, returning its hello and a function that
+// gives the next status told, going by every other frame.
+func (f fixture) statusFrames(t *testing.T, id string) (Hello, func() Status) {
+	t.Helper()
+	ctx := limited(t)
+	c, err := dial(ctx, identity.HolderSocket(f.home, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	hello, err := greet(c, roleDaemon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetDeadline(waittest.Deadline(t))
+	return hello, func() Status {
+		t.Helper()
+		for {
+			frame, body, err := readFrame(c)
+			if err != nil {
+				t.Fatalf("no status: %v", err)
+			}
+			if frame != frameStatus {
+				continue
+			}
+			var status Status
+			if err := json.Unmarshal(body, &status); err != nil {
+				t.Fatal(err)
+			}
+			return status
+		}
+	}
+}
+
+// TestStatusPushed: each change reaches the daemon as a complete status, a change
+// only to what stays in the holder sends nothing, and a daemon connecting is told
+// the current one.
+func TestStatusPushed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := "term-00000210"
+	dir, s := f.watched(t, id, `
+wait_for connected
+working one
+wait_for background
+background two
+wait_for prompt
+waiting three
+wait_for typed
+drafted four
+wait_for end
+`, stillVar+"=100ms")
+	hello, next := f.statusFrames(t, id)
+	if hello.Status == nil || *hello.Status != (Status{Activity: "unknown"}) {
+		t.Errorf("the hello before anything is read says %+v", hello.Status)
+	}
+	step(t, dir, "connected")
+	if got := next(); got != (Status{Activity: "working"}) {
+		t.Errorf("first status %+v", got)
+	}
+	step(t, dir, "background")
+	waitParsed(t, dir, "two")
+	step(t, dir, "prompt")
+	// Working in a turn and in the background differ only in InTurn: no frame.
+	if got := next(); got != (Status{Activity: "waiting"}) {
+		t.Errorf("status after the background %+v", got)
+	}
+	step(t, dir, "typed")
+	for got := next(); got != (Status{Activity: "idle", Draft: true}); got = next() {
+		if !got.Draft {
+			t.Errorf("status before the draft is read %+v", got)
+		}
+	}
+
+	again, _ := f.statusFrames(t, id)
+	if again.Status == nil || *again.Status != (Status{Activity: "idle", Draft: true}) {
+		t.Errorf("the hello of a daemon connecting again says %+v", again.Status)
+	}
+	step(t, dir, "end")
+	f.endHolder(t, id, s)
+}
+
+func TestStatusNotOnAShell(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := "term-00000211"
+	s := f.start(t, id, f.script(t, "printf 'output'; exit 0"))
+	c := f.dial(t, id)
+	if c.Hello().Status != nil {
+		t.Errorf("a shell's hello says %+v", c.Hello().Status)
+	}
+	f.endHolder(t, id, s)
+}
+
+// TestConnStatus: the daemon's side keeps the latest and tells of it; a hello with
+// none is a holder too old to say.
+func TestConnStatus(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := "term-00000212"
+	dir, s := f.watched(t, id, "wait_for connected\nwaiting one\nwait_for end\n")
+	c := f.dial(t, id)
+	if got := c.Status(); got != (Status{Activity: "unknown"}) {
+		t.Errorf("status before anything is read %+v", got)
+	}
+	step(t, dir, "connected")
+	waittest.For(t, "the status to change", func() bool { return c.Status().Activity == "waiting" })
+	select {
+	case <-c.StatusChanged():
+	default:
+		t.Error("nothing told of the change")
+	}
+	step(t, dir, "end")
+	f.endHolder(t, id, s)
+
+	other := f.start(t, "term-00000213", f.script(t, "exit 0"))
+	shell := f.dial(t, "term-00000213")
+	if got := shell.Status(); got != (Status{Activity: "unknown"}) {
+		t.Errorf("status of a holder that tells none %+v", got)
+	}
+	f.endHolder(t, "term-00000213", other)
+}

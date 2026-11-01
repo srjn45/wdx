@@ -343,6 +343,9 @@ func (h *holder) serve(ctx context.Context) error {
 	go h.exitClients()
 	go h.accept(ctx)
 	h.watch.start(h.followed)
+	if h.watch != nil {
+		go h.sendStatuses()
+	}
 
 	select {
 	case <-h.released:
@@ -626,6 +629,31 @@ func (h *holder) sendExit() {
 	}
 }
 
+// sendStatuses tells the daemon of each change of the status until the shell
+// ends. It runs apart from watchScreen, as a write holds h.mu and a stalled daemon
+// can keep it for the whole write timeout. The status is read after h.mu is taken,
+// so a change while a daemon connects goes out in its hello, the next frame or
+// both, and a repeat is harmless.
+func (h *holder) sendStatuses() {
+	for {
+		select {
+		case <-h.watch.statusChanged:
+		case <-h.ended:
+			return
+		}
+		h.mu.Lock()
+		if h.conn != nil {
+			if err := h.write(h.conn, frameStatus, h.watch.status()); err != nil {
+				h.log.Info("status not sent", "err", err)
+				// A write cut short leaves the frames out of step. Dialling again,
+				// the daemon gets the current status in the hello.
+				h.conn.Close()
+			}
+		}
+		h.mu.Unlock()
+	}
+}
+
 // write sends a frame to c; h.mu must be held.
 func (h *holder) write(c net.Conn, t frameType, payload any) error {
 	// Fails only on a closed connection, which the write reports.
@@ -725,7 +753,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 
 // hello is what the holder says to whoever connects; h.mu is held.
 func (h *holder) hello() Hello {
-	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load()}
+	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.watch.status()}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills

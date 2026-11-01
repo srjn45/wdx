@@ -95,6 +95,9 @@ type Options struct {
 	// AgentLaunch is what a row of KindAgent runs, asked at each launch,
 	// since an AI coding agent may start differently the second time.
 	AgentLaunch func(ctx context.Context, t Terminal) (AgentLaunch, error)
+	// AgentStatus records what a row of KindAgent's process is doing, as its
+	// holder told. Nothing is recorded when nil.
+	AgentStatus func(ctx context.Context, id string, status holder.Status)
 }
 
 // AgentLaunch is how to run a row of KindAgent.
@@ -286,11 +289,13 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		}
 		return Terminal{}, &StartError{Terminal: failed, Err: err}
 	}
+	// Before it is running, so that nothing shows what the last run was doing.
+	s.recordStatus(ctx, t.Kind, t.ID, conn)
 	if _, err := s.store.running(ctx, t.ID, started.PID, started.HolderPID, time.Now()); err != nil {
 		conn.Close()
 		return Terminal{}, err
 	}
-	s.follow(t.ID, conn)
+	s.follow(t, conn)
 	return s.store.row(ctx, t.ID)
 }
 
@@ -586,7 +591,7 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 			return nil, err
 		}
 		log.Info("unwatched holder found", "terminal_id", t.ID, "holder_pid", conn.Hello().HolderPID)
-		if w = s.follow(t.ID, conn); w == nil {
+		if w = s.follow(t, conn); w == nil {
 			return nil, nil // the daemon is stopping: the next one finishes the stop
 		}
 	}
@@ -647,6 +652,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		}
 		hello := conn.Hello()
 		log.Info("holder adopted", "terminal_id", t.ID, "state", t.State, "pid", hello.PID, "holder_pid", hello.HolderPID, "exited", hello.Exited != nil)
+		s.recordStatus(ctx, t.Kind, t.ID, conn)
 		if t.State == StateStarting {
 			if _, err := s.store.running(ctx, t.ID, hello.PID, hello.HolderPID, time.Now()); err != nil {
 				conn.Close()
@@ -654,7 +660,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			}
 		}
 		// The watcher records an exit the holder kept.
-		s.follow(t.ID, conn)
+		s.follow(t, conn)
 		if t.State == StateStopped && hello.Exited == nil {
 			log.Info("finishing the stop", "terminal_id", t.ID)
 			if err := conn.Stop(s.opts.StopGrace); err != nil {
@@ -669,7 +675,8 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 // releases the holder. A connection that drops is dialled again once; a
 // holder that does not answer is lost. Once the Supervisor is closed it
 // closes conn instead and returns nil: the next daemon adopts the holder.
-func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
+func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
+	id := t.ID
 	w := &watch{conn: conn, done: make(chan struct{})}
 	s.mu.Lock()
 	if s.closed {
@@ -700,6 +707,8 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 					log.Info("release not sent", "err", err)
 				}
 				return
+			case <-c.StatusChanged():
+				s.recordStatus(ctx, t.Kind, id, c)
 			case <-c.Done():
 				if ctx.Err() != nil {
 					return // the daemon is stopping; the holder runs on
@@ -730,10 +739,17 @@ func (s *Supervisor) follow(id string, conn *holder.Conn) *watch {
 					}
 				}
 				w.mu.Unlock()
+				s.recordStatus(ctx, t.Kind, id, next)
 			}
 		}
 	}()
 	return w
+}
+
+func (s *Supervisor) recordStatus(ctx context.Context, kind Kind, id string, conn *holder.Conn) {
+	if kind == KindAgent && s.opts.AgentStatus != nil {
+		s.opts.AgentStatus(ctx, id, conn.Status())
+	}
 }
 
 func (s *Supervisor) recordExit(ctx context.Context, id string, exit holder.Exit) {

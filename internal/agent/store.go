@@ -13,6 +13,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
@@ -24,12 +25,27 @@ type Agent struct {
 	ParentID  string    // the agent it was created under, or "" at the top level
 	Worktree  string    // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
 	RemovedAt time.Time // when it was removed, keeping it as a tombstone; zero otherwise
+	Activity  string    // what its process is doing, as a screen.Activity; "" unless it is running
+	Draft     bool      // whether a human left text in its input box
 	Terminal  terminal.Terminal
 }
 
 // Tombstone reports whether a was removed and stays only for its children.
 func (a Agent) Tombstone() bool {
 	return !a.RemovedAt.IsZero()
+}
+
+// OnRow is a with t as its terminal row, read at another moment: the status goes
+// by t's state, as a query's does.
+func (a Agent) OnRow(t terminal.Terminal) Agent {
+	a.Terminal = t
+	switch {
+	case t.State != terminal.StateRunning:
+		a.Activity, a.Draft = "", false
+	case a.Activity == "":
+		a.Activity = string(screen.ActivityUnknown)
+	}
+	return a
 }
 
 // ErrNotFound is returned when no agent matches a name or id.
@@ -78,6 +94,26 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Agent, erro
 	return list[0], nil
 }
 
+// SetStatus records what the process of the agent on terminalID is doing, and
+// reports whether that changes anything. A running holder can be newer than this
+// daemon, so an activity it does not know is unknown.
+func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool) (bool, error) {
+	switch screen.Activity(activity) {
+	case screen.ActivityWorking, screen.ActivityIdle, screen.ActivityWaiting, screen.ActivityUnknown:
+	default:
+		logging.FromContext(ctx).Warn("unknown activity read as unknown", "terminal_id", terminalID, "activity", activity)
+		activity = string(screen.ActivityUnknown)
+	}
+	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2 WHERE terminal_id = ?3 AND (activity IS NOT ?1 OR draft IS NOT ?2)", activity, draft, terminalID)
+	if err != nil {
+		return false, err
+	}
+	if rows > 0 {
+		logging.FromContext(ctx).Info("agent status changed", "terminal_id", terminalID, "activity", activity, "draft", draft)
+	}
+	return rows > 0, nil
+}
+
 // worktreeOfDir finds the deepest worktree of an agent's project holding its
 // dir, since the project's .worktrees is inside its clone: "main" for a clone,
 // else its path. An agent has no column for it: its dir already tells.
@@ -88,10 +124,14 @@ const worktreeOfDir = `
 	ORDER BY length(w.path) DESC LIMIT 1`
 
 // query returns the agents matching where, a constant condition on a, the
-// agents, t, their terminal rows, and p, their projects.
+// agents, t, their terminal rows, and p, their projects. Going by the terminal's
+// state, the status needs nothing done when the process ends, however it ends.
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, (`+worktreeOfDir+`), `+terminal.Columns+`
+		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, (`+worktreeOfDir+`),
+			CASE WHEN t.state = 'running' THEN COALESCE(a.activity, 'unknown') END,
+			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
+			`+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
 		JOIN projects p ON p.id = t.project_id
@@ -106,11 +146,13 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent sql.NullString
 		var removed sql.NullInt64
-		var worktree sql.NullString
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree); err != nil {
+		var worktree, activity sql.NullString
+		var draft sql.NullBool
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree, &activity, &draft); err != nil {
 			return nil, err
 		}
 		a.ParentID = parent.String
+		a.Activity, a.Draft = activity.String, draft.Bool
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
 		}

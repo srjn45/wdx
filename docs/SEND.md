@@ -1,6 +1,6 @@
 # Sending to terminals and agents
 
-Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing). The queue length on `agent get` waits for the state channel to the daemon (docs/AGENT_STATE.md, Sharing state).
+Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing). The queue length on `agent get` waits for the state channel to the daemon (docs/AGENT_STATE.md, Syncing to the daemon).
 
 Lets scripts and ACAs give a running terminal or agent a message without attaching.
 
@@ -67,7 +67,7 @@ Claude Code needs the separate Enter because one sent while a paste settles can 
 - `InTurn` tells a turn from background work, for the `inboxReader` only. The public `activity` stays as it is.
 - The interrupt key is pressed once per message: pressed again once the turn has stopped, Esc does something else. A turn that does not stop holds the message until it ends by itself.
 - A second `--instant` interrupts the turn the first started. General messages wait behind instant ones.
-- **`draft` comes before the table.** While there is text in the input box, the `inboxReader` holds, whatever the activity and with `--instant` too, so a message is never submitted along with what a human is typing. `watchScreen` reads `draft` true or false along with the activity and tells the `inboxReader`; it is not public, and `activity` stays `idle` with a draft in the box (docs/AGENT_STATE.md).
+- **`draft` comes before the table.** While there is text in the input box, the `inboxReader` holds, whatever the activity and with `--instant` too, so a message is never submitted along with what a human is typing. `watchScreen` reads `draft` true or false along with the activity and tells the `inboxReader`, and `activity` stays `idle` with a draft in the box (docs/AGENT_STATE.md).
 - A draft left in the box holds messages for as long as it stays, and they queue up behind it, with no timeout (decided by the human). The queue length on `agent get` shows it.
 - Text nobody typed is not a draft: Claude Code fills the box with dim placeholders and suggestions, which read the same in plain text. Reading this correctly is the parser's; read wrong, every message holds. A message pasted over a suggestion replaces it.
 - Claude Code's bash mode counts as a draft even with only its `!` (decided by the human), since a message there would run as a shell command. It holds until the human leaves bash mode.
@@ -79,9 +79,9 @@ Prompt text is never logged (AGENTS.md), but today the CLI logs raw args and eve
 
 ## Protocol
 
-`frameSend`, 13, goes from the daemon to the holder, with `instant` in its payload. 12 is kept for the state channel (docs/AGENT_STATE.md), which can carry the queue's length too.
+`frameSend`, 13, goes from the daemon to the holder, with `instant` in its payload. 12 is `frameStatus`, the state channel from the holder to the daemon (docs/AGENT_STATE.md), which will carry the queue's length too.
 
-Version 3 is the inbox, for shells: an older holder would drop `frameSend` silently, so the daemon asks for the version that has it. Version 4 delivers to an ACA and knows `instant`: a version 3 holder would type the message into an ACA with no look at its screen, so `agent send` asks for 4 and gets `send_failed` from an older one. So nothing here needs another acceptance release, but the next version, 5, does.
+Version 3 is the inbox, for shells: an older holder would drop `frameSend` silently, so the daemon asks for the version that has it. Version 4 delivers to an ACA and knows `instant`: a version 3 holder would type the message into an ACA with no look at its screen, so `agent send` asks for 4 and gets `send_failed` from an older one. So nothing here needs another acceptance release, but the next version, 5, does; the state channel needs no new version.
 
 Today's daemon accepts only versions 1 and 2, so rolling back to it would lose every newer holder. As for version 2 (docs/ATTACH.md), the daemon's acceptance ships first, in a release of its own that is installed before either feature is released.
 
@@ -94,7 +94,7 @@ Each step passes `make test` on its own and works in the worktree `send`. Nothin
 3. **`agent send`.** `AiCodingAgent`'s `Deliver`, the delivery table, Claude Code's paste and Enter. Built with step 4, in one commit.
 4. **`--instant`.** The instant queue, `InTurn` and the interrupt key. Built.
 5. **Docs and the real thing.** Done; see below. A narrow pane was not checked, as a footer too cut off to say only costs the interrupt.
-6. **The queue length on `agent get`.** With the state channel to the daemon, built separately.
+6. **The queue length on `agent get`.** In a commit of its own, straight after the state channel to the daemon.
 
 ## Checked on the real thing
 

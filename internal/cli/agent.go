@@ -496,14 +496,14 @@ func (l agentList) text(w io.Writer, st style.Style) {
 		return
 	}
 	var table style.Table
-	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
+	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACTIVITY"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
 	if l.all {
 		heading = append([]string{st.Heading("PROJECT")}, heading...)
 	}
 	table.Row(heading...)
 	for _, r := range agentTreeRows(l.Agents) {
 		a := r.agent
-		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), a.Aca, a.Dir, st.Muted(a.Id)}
+		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), a.Aca, a.Dir, st.Muted(a.Id)}
 		if l.all {
 			row = append([]string{st.Name(a.ProjectName)}, row...)
 		}
@@ -552,6 +552,12 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	field := fieldPrinter(w, st, 8)
 	fmt.Fprintf(w, "agent %s in %s\n", st.Name(a.Name), st.Name(a.ProjectName))
 	field("state", agentStateText(st, a))
+	if a.Activity != nil {
+		field("activity", agentActivityText(st, a))
+	}
+	if a.Draft != nil && *a.Draft {
+		field("draft", "yes")
+	}
 	if a.Error != nil {
 		field("error", st.Failure(*a.Error))
 	}
@@ -585,6 +591,20 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.RemovedAt != nil {
 		field("removed", a.RemovedAt.Local().Format(time.DateTime))
 	}
+}
+
+// agentActivityText is what a is doing, which a human may have to answer when it
+// is waiting; nothing when it is not running.
+func agentActivityText(st style.Style, a api.Agent) string {
+	switch {
+	case a.Activity == nil:
+		return ""
+	case *a.Activity == api.AgentActivityWaiting:
+		return st.Warning(string(*a.Activity))
+	case *a.Activity == api.AgentActivityUnknown:
+		return st.Muted(string(*a.Activity))
+	}
+	return string(*a.Activity)
 }
 
 func agentStateText(st style.Style, a api.Agent) string {

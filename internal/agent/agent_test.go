@@ -462,3 +462,63 @@ func isRunning(err error) bool {
 }
 
 func second[T any](_ T, err error) error { return err }
+
+// TestSetStatus: a change is told apart from a repeat, a value this daemon does
+// not know reads unknown, and only a running agent shows any.
+func TestSetStatus(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	store := f.agents.Store()
+	set := func(activity string, draft, wantChanged bool) Agent {
+		t.Helper()
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed != wantChanged {
+			t.Errorf("SetStatus(%s, %v) changed = %v", activity, draft, changed)
+		}
+		got, err := store.Get(ctx, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := set("waiting", false, true); got.Activity != "waiting" || got.Draft {
+		t.Errorf("after waiting: %q %v", got.Activity, got.Draft)
+	}
+	set("waiting", false, false)
+	if got := set("waiting", true, true); !got.Draft {
+		t.Error("the draft not kept")
+	}
+	if got := set("limited", true, true); got.Activity != "unknown" {
+		t.Errorf("a value not known reads %q", got.Activity)
+	}
+
+	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.SetStatus(ctx, "term-none", "idle", false); err != nil || changed {
+		t.Errorf("no agent: changed %v, %v", changed, err)
+	}
+}
+
+// TestStatusOnlyWhileRunning: what was recorded does not show once the process
+// ends, with nothing done about it.
+func TestStatusOnlyWhileRunning(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "until [ -f end ]; do sleep 0.01; done; exit 0")
+	a := f.create(t, "helper")
+	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.dir, "end"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft {
+		t.Errorf("an exited agent shows %q, draft %v", got.Activity, got.Draft)
+	}
+}
