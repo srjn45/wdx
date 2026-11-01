@@ -1,0 +1,180 @@
+# tide: worktrees and diffs
+
+Status: implemented. Designed with the human on 2026-11-01. "Proposed" marks what came from the AI and the human let stand.
+
+Reviewing what agents changed without leaving tide: step 3 of the order in `docs/IDE.md`. Tabs are in `docs/TIDE_TABS.md`.
+
+## The left pane
+
+One scrolling list with two headings, Agents first and Worktrees after it.
+
+```
+ Agents                    2
+ ● swift-falcon
+ ● tests
+ Worktrees                 4
+ ▾ main
+     M README.md
+ ▾ auth-fix  ↑3 +120 −8  ● swift-falcon
+     M internal/tide/tabs.go
+     D internal/tide/old.go
+     ? docs/AUTH.md
+   tide-tabs  landed
+   spike      ↑2 +40 −1
+   old-try    missing
+```
+
+- Every worktree `git worktree list` gives is listed, whether wdx made it or not, which also shows the stale ones to clean up. `missing` marks one whose directory is gone.
+- A worktree's children are its files with uncommitted changes: staged, unstaged and untracked, with git's status letter.
+- `←→` folds a worktree, as in the Agents list.
+- `Enter` on a file opens its file diff; `Enter` on a worktree opens its PR view. If that tab is open, it goes to it.
+
+The worktree row shows the commits ahead of the base with their added and removed lines, `landed` when none are ahead and nothing is uncommitted, and the agents running there. A new worktree with nothing in it also says `landed`: it has nothing to lose.
+
+The menu's `f`, or plain `f` in the list, reads every worktree again.
+
+Removing a stale worktree is not part of this: it shows `missing`, for `git worktree remove` or a later feature.
+
+## The file diff
+
+One tab per file, showing its uncommitted changes split in two: the whole committed file (`HEAD`) on the left, the whole file with its uncommitted changes on the right.
+
+```
+[● diff: auth-fix/tabs.go]
+ HEAD                      │ uncommitted
+ 10 func open() {          │ 10 func open() {
+ 11   return old()         │ 11   return next()
+                           │ 12   // and more
+ 12 }                      │ 13 }
+```
+
+Proposed:
+
+- Both sides are aligned and scroll together. `n` and `p` go to the next and previous change, and the tab opens on the first change.
+- Long lines wrap, keeping both sides aligned; zoom gives more width.
+- A new file has an empty left side, a deleted one an empty right side. A binary file says so.
+- A file with no uncommitted changes left, committed since for example, says so and its tab stays until closed.
+
+## The PR view
+
+One tab per worktree, showing only the changes, unified, of what is committed on it, from the merge-base with the base branch. So later commits on the base do not appear as removals, and it shows what a PR would.
+
+- Uncommitted changes are not in it: those are the worktree's file rows.
+- No branch selector for now.
+
+Proposed:
+
+- The base is the default branch named by `origin/HEAD`, else `main`, else `master`, as the local branch. A checkout on that branch itself compares with the same branch on `origin`, so it shows what is not pushed.
+- With no such branch, or nothing ahead of it, the tab says so.
+- Opening the tab downloads what a partial clone lacks, since the user asked for it (agreed). Measured beside `git fetch` and `git pull`, 726 of those and 2,983 such reads, on one clone: none failed. Nothing that runs by itself downloads.
+
+## Keeping it live, without git locks
+
+Agreed on 2026-11-01: no continuous git polling, because of long `git pull` and `git fetch` in big monorepos. No timer runs git; the events below do, on the architecture below. The cost: an edit not staged shows only at one of the events below, so an agent's edits appear when it stops rather than as it types. Watching a worktree's files is not proposed: it takes one watch per directory, which a monorepo can exhaust.
+
+### The events
+
+| Event | How it is seen | What is read again |
+|---|---|---|
+| A client starts following the project | the stream starts | the list and every worktree |
+| An agent stops working: idle, waiting or ended | agents compared with those last seen, on each notice | its worktree |
+| `index`, `HEAD` or `logs/HEAD` changed in a worktree's git directory | file watch | that worktree |
+| The directory `<common>/worktrees` changed: a worktree added or removed | file watch | the list |
+| The base branch's reflog changed | file watch | the commit summary of every worktree |
+| The user looks: the focus moves to the left pane, a diff tab opens, the refresh key (`C-q f`, or plain `f` in the left pane) | a request from tide | that worktree, or all of them |
+| The watcher lost events | the watcher says so | the list and every worktree |
+
+Creating an agent and opening a project need no event of their own: the agent's row comes from the database, a worktree made for it is seen by the watch on `worktrees`, and a project being followed is read when following starts.
+
+What each git operation touched in a linked worktree, measured on git 2.53.0:
+
+| Operation | In its git directory | In the common directory |
+|---|---|---|
+| edit, not staged | nothing | nothing |
+| `add`, `restore`, `stash pop` | `index` | |
+| `commit`, `reset --hard`, `stash`, `switch`, `rebase` | `index`, `logs/HEAD` | the branch's ref and reflog, if it moved |
+| `reset --soft` | `logs/HEAD` | the branch's ref and reflog |
+| `fetch`, nothing new | `FETCH_HEAD`, ignored | `origin/HEAD` |
+| `update-ref` on the base | nothing | its ref and reflog |
+
+So a repository takes 2 watches per worktree, on its git directory and its `logs`, plus 2: `worktrees` and the directory of the base's reflog. The main checkout's base is on `origin`, so its reflog is under `logs/refs/remotes/origin`, which is to be measured when built. A repository with no reflogs or in the reftable format has none of these files: it gets the other events only, and the log says so.
+
+### How it fits the daemon
+
+No entry point calls anything new. The daemon's `notices` already says that something changed, from every API request that changes anything, from `terminal.Store.OnChange` and from an agent's status arriving from its holder; a stream then reads its project again and sends it if it differs. The tracker (proposed name: `worktree.Tracker`) does the same.
+
+```
+ API requests, store changes,       git run by anyone,        the user
+ an agent's status                  anywhere                  in tide
+        │                               │                        │
+   notices.notify()                 file watch            POST refresh
+        │                               │                        │
+ agents compared with last seen         │                        │
+        └───────────────────────────────┼────────────────────────┘
+                                        ▼
+                     tracker marks the worktree out of date
+                                        ▼
+       settle; wait while index.lock exists; one git at a time per repository
+                                        ▼
+                          read-only git; result kept in memory
+                                        ▼  only if it differs
+                                notices.notify()
+                                        ▼
+                  each stream reads the project, with what is kept, as today
+                                        ▼
+                                      tide
+```
+
+- A stream never runs git: it reads what the tracker keeps, so a notice from a keystroke costs no git.
+- The tracker works for a project only while a stream follows it, counted across clients. tide follows only the project shown. When the last leaves, its watches and what it keeps are dropped.
+- It cannot loop: its reads write nothing, so they fire no watch, and its own notice finds no agent changed.
+- A request for a list or a diff, from `wdx worktree` or a diff tab, reads git itself, with the same read-only function.
+- A stream asks with `?worktrees=true`, as tide does: a client that does not ask costs no git.
+- `POST /v1/projects/{project}/worktrees/refresh` answers at once and, like a reload, does not wait for the daemon's other changes, so that a clone taking minutes does not hold it up.
+- Waiting on `index.lock` is a courtesy, since a read is safe beside it: the lock's end fires the watch. A refresh the user asked for does not wait, so a lock left by a crashed git cannot hide changes for good.
+- With no file watch available, as on some network file systems, the other events still work, and the log says so.
+- The watches use `fsnotify`, under a BSD license.
+
+### The lock rule
+
+The daemon's background git must never write to a repository. It never takes `index.lock`, the lock that makes an agent's or the user's `git add` or `commit` fail with "Unable to create index.lock". It never runs `fetch`, `gc`, `worktree prune` or `worktree repair`.
+
+Measured on git 2.53.0, with file timestamps changed so that the index was out of date:
+
+| Command | Index |
+|---|---|
+| `GIT_OPTIONAL_LOCKS=1 git status` | rewritten |
+| `GIT_OPTIONAL_LOCKS=0 git status` | untouched |
+| `GIT_OPTIONAL_LOCKS=0 git diff HEAD` | **rewritten** |
+| `GIT_OPTIONAL_LOCKS=0 git -c diff.autoRefreshIndex=false diff HEAD` | untouched |
+| `GIT_OPTIONAL_LOCKS=0 git diff-index HEAD` | untouched |
+| `GIT_OPTIONAL_LOCKS=0 git diff base...HEAD`, `rev-list`, `merge-base`, `show`, `worktree list`, `for-each-ref` | untouched |
+
+`strace` of the safe `git status` and `git diff HEAD` showed neither creating any file. Then `reset --hard`, `pull`, `fetch`, `add` and `rm --cached` ran for 20 seconds beside reads in a tight loop, on a repository of 3,000 files:
+
+| Reads beside them | Succeeded | Failed on a lock |
+|---|---|---|
+| none | 1975 | 0 |
+| plain `git status`, `git diff HEAD` | 1417 | 47 |
+| with both settings | 1520 | 0 |
+
+That is a small repository, not a monorepo. A reader that creates no lock file cannot cause a lock failure whatever the size, but its CPU and disk load does grow with the repository.
+
+So:
+
+- `--no-optional-locks` or `GIT_OPTIONAL_LOCKS=0` alone is not enough: `git diff HEAD` refreshes the index regardless.
+- The human's condition for all of this (2026-11-01): it must not disturb git commands run by a human or another agent.
+- Reads go through one function of `internal/git` that sets `GIT_OPTIONAL_LOCKS=0`, `diff.autoRefreshIndex=false`, `core.fsmonitor=false` and `GIT_NO_LAZY_FETCH=1` on every command, so that a new read cannot forget them and no read starts a daemon or downloads anything.
+- In a blobless partial clone, measured, `status` and `diff HEAD` changed nothing in `.git`, but `git diff base...HEAD` and `git show` of a missing file downloaded objects and changed 4 files there. With `GIT_NO_LAZY_FETCH=1` they fail instead and change nothing. So a worktree row whose `+ −` cannot be worked out shows only `↑3`.
+- `core.untrackedCache=true` changed nothing in `.git` under the same settings. `core.fsmonitor` could not be measured: this Linux build of git has no fsmonitor daemon. The setting is there so that it need not be.
+- A read that fails changes nothing: it is logged, and the next event tries again. One plain `git diff` died with a bus error, once, beside `reset` and `pull` in the contention test; it did not affect the other commands, and the cause is not known.
+- A test makes the index out of date, runs each read, and checks that the index file did not change. It is seen failing without the settings.
+- With an out-of-date index, git reads the files to compare them, each round, until something else refreshes the index. That is the price of never writing.
+
+## The API and the CLI
+
+- `GET /v1/worktrees` with `project` or `dir`, and `wdx worktree list`: every checkout, read now.
+- `GET /v1/worktrees/{worktree}/diff`, and `wdx worktree diff --name`: the PR view's patch.
+- `GET /v1/worktrees/{worktree}/files/diff?path=`, and `wdx worktree diff --name --path`: a file's patch with every line, which tide lays out in two columns.
+- A name is `main` for the clone, else the last part of the path, with a number if that is taken, so that a name is one checkout.
+- A path outside the worktree is `invalid_path`.

@@ -21,8 +21,17 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Reopen a closed project | `project open --name`, `--id`, or the list | `C-q o`, then `Enter` on it | Same | |
 | Close a project | `project close` | `C-q w` | Same | |
 | Remove a project | `project remove` | only when no checkout is left | Later (tide) | Comes after close |
-| Project details and checkouts | `project get` | no screen | By design | The agent and terminal lists already show a project; checkouts will show with the worktrees work |
+| Project details | `project get` | no screen | By design | The agent, terminal and worktree lists already show a project |
 | Switch between projects | not needed | `C-q p`, `Alt+Shift+←/→` | By design | A command names its project with a flag, or takes it from the directory |
+
+## Worktrees
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| List the worktrees and their uncommitted files | `worktree list` | the left pane | Same | tide's stays up to date, and the CLI reads once |
+| A file's uncommitted changes | `worktree diff --path` | a tab, split in two | By design | A script needs the patch, a person the two versions side by side |
+| What a worktree has committed | `worktree diff` | a tab | Same | |
+| Read the worktrees again | not needed | `C-q f`, `f` in the list | By design | Each command reads anew |
 
 ## Agents
 

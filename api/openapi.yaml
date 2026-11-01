@@ -238,7 +238,16 @@ paths:
         ends the stream. The project is followed by its id, so a rename
         keeps it. The stream also ends when the daemon stops.
 
+        With worktrees, each event also has "worktree_statuses", once they
+        are read. Only while such a stream is open does the daemon read them,
+        and only when something says they changed: it runs no git on a timer.
+
         Errors: not_found.
+      parameters:
+        - name: worktrees
+          in: query
+          description: Keep "worktree_statuses" up to date in the events.
+          schema: { type: boolean }
       responses:
         "200":
           description: The stream of the project's events.
@@ -264,6 +273,99 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProjectResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/projects/{project}/worktrees/refresh:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    post:
+      operationId: refreshWorktrees
+      summary: Read the "worktree_statuses" of a project's streams again now
+      description: |
+        Answers at once: the streams send what it finds. It does nothing when
+        no stream with worktrees follows the project. Unlike the reads that
+        happen by themselves, it does not wait for an index lock.
+
+        Errors: not_found.
+      parameters:
+        - name: worktree
+          in: query
+          description: The worktree's name; all of them when not given or not known.
+          schema: { type: string }
+      responses:
+        "202": { description: The read was asked for. }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees:
+    get:
+      operationId: listWorktrees
+      summary: List every checkout git lists for a project, with its changes
+      description: |
+        The checkouts of the project named by project, or of the project whose
+        worktree holds dir; one of them must be given. Read from git now, without
+        writing to the repository or downloading anything.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+      responses:
+        "200":
+          description: The worktrees.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/diff:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+    get:
+      operationId: getWorktreeDiff
+      summary: What a worktree has committed since it left its base, as a PR shows it
+      description: |
+        Measured from the merge base, so that later commits on the base are not
+        removals. What is not committed is not in it. In a partial clone, what it
+        takes is downloaded.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+      responses:
+        "200":
+          description: The diff.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeDiff" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/files/diff:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+    get:
+      operationId: getWorktreeFileDiff
+      summary: The uncommitted changes of a file, with all of its lines
+      description: |
+        Staged, not staged or untracked, against HEAD. The patch is empty when the
+        file has no uncommitted changes. In a partial clone, what it takes is
+        downloaded.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+        - name: path
+          in: query
+          required: true
+          description: The file's path, relative to the worktree.
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The diff.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFileDiff" }
         default: { $ref: "#/components/responses/Problem" }
 
   /v1/terminals:
@@ -656,6 +758,22 @@ paths:
 
 components:
   parameters:
+    WorktreeRef:
+      name: worktree
+      in: path
+      required: true
+      description: The worktree's name, main for the clone.
+      schema: { type: string, minLength: 1 }
+    WorktreeProject:
+      name: project
+      in: query
+      description: The project's name, or "id:" and its id; excludes dir.
+      schema: { type: string, minLength: 1 }
+    WorktreeDir:
+      name: dir
+      in: query
+      description: An absolute path in one of the project's worktrees; excludes project.
+      schema: { type: string, minLength: 1 }
     ProjectRef:
       name: project
       in: path
@@ -810,8 +928,72 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Agent" }
           description: The project's agents with no parent by name, in every state, with their children; set by getProject only.
+        worktree_statuses:
+          type: array
+          items: { $ref: "#/components/schemas/WorktreeStatus" }
+          description: Every checkout git lists, as last read; set only by streamProject with worktrees, once read.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    WorktreeStatus:
+      type: object
+      required: [name, path, branch, head, missing, base, ahead, added, removed, files]
+      properties:
+        name: { type: string, description: "main for the clone, else the last part of its path, with a number if that is taken." }
+        path: { type: string }
+        branch: { type: string, nullable: true, description: "Null when HEAD is detached." }
+        head: { type: string, nullable: true, description: "Null with no commit yet." }
+        missing: { type: boolean, description: "Its directory is gone." }
+        base: { type: string, nullable: true, description: "What its commits are measured against: the default branch, or the same on origin when it is on that branch; null when there is neither." }
+        ahead: { type: integer, nullable: true, description: "Commits it has that base has not; null when not known." }
+        added: { type: integer, nullable: true, description: "Lines those commits add; null when not known, as in a partial clone." }
+        removed: { type: integer, nullable: true, description: "Lines those commits remove; null when not known." }
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/WorktreeFile" }
+          description: The files with uncommitted changes, by path.
+
+    WorktreeFile:
+      type: object
+      required: [path, status, size, modified_at]
+      properties:
+        path: { type: string, description: "Relative to the worktree." }
+        status:
+          type: string
+          enum: [M, A, D, "?", U]
+          description: M changed, A added, D deleted, ? untracked, U in conflict.
+        size: { type: integer, format: int64 }
+        modified_at: { type: string, format: date-time, nullable: true, description: "Null for a deleted file." }
+
+    WorktreeList:
+      type: object
+      required: [worktrees]
+      properties:
+        worktrees:
+          type: array
+          items: { $ref: "#/components/schemas/WorktreeStatus" }
+
+    WorktreeDiff:
+      type: object
+      required: [worktree, base, merge_base, ahead, patch, binary, truncated]
+      properties:
+        worktree: { type: string }
+        base: { type: string, nullable: true, description: "As in WorktreeStatus." }
+        merge_base: { type: string, nullable: true, description: "Null when it shares no history with base, or has none." }
+        ahead: { type: integer, nullable: true }
+        patch: { type: string, description: "The unified diff; empty when nothing is ahead." }
+        binary: { type: boolean, description: "A file in it is binary, and only said to differ." }
+        truncated: { type: boolean, description: "Too long: patch is its beginning." }
+
+    WorktreeFileDiff:
+      type: object
+      required: [worktree, path, patch, binary, truncated]
+      properties:
+        worktree: { type: string }
+        path: { type: string }
+        patch: { type: string, description: "The unified diff with every line of the file; empty when nothing is uncommitted." }
+        binary: { type: boolean, description: "The file is binary, and only said to differ." }
+        truncated: { type: boolean, description: "Too long: patch is its beginning." }
 
     ProjectSummary:
       type: object

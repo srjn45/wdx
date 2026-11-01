@@ -95,6 +95,8 @@ type Model struct {
 	values      valuePane     // the agent info or the settings shown, if any
 	settings    []api.Setting // what the daemon last said, while a settings tab reads them
 	settingsErr string        // why it could not read them
+
+	lastFocus pane // the pane in focus at the last update: coming to the list reads the worktrees
 }
 
 // content is what a pane shows.
@@ -150,7 +152,7 @@ func New(ctx context.Context, opts Options) *Model {
 		layout:      newLayout(),
 		projects:    projects,
 		root:        noProjectScreen{},
-		openStream:  opts.Client.ProjectEvents,
+		openStream:  opts.Client.ProjectEventsWithWorktrees,
 		selectedTab: map[string]string{},
 		createdTab:  map[string]string{},
 		agentLists:  map[string]*agentList{},
@@ -174,9 +176,11 @@ func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemo
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
 	values := m.valuesSync()
+	diff := m.diffSync()
+	worktrees := m.worktreesSync()
 	attach := m.attachSelected()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, attach)
+	return m, tea.Batch(cmd, values, diff, worktrees, attach)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -261,6 +265,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingsListed(msg)
 	case settingSaved:
 		m.settingSaved(msg)
+	case diffLoaded:
+		m.diffLoaded(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -534,6 +540,10 @@ func (m *Model) menuAction(name string) tea.Cmd {
 			m.switcher, m.opening = nil, nil
 			m.openSettings()
 		}
+	case refreshKey:
+		if m.menuOffers(refreshKey) {
+			return m.refreshWorktrees("")
+		}
 	case startKey:
 		if s, ok := m.startable(); ok {
 			m.switcher, m.opening = nil, nil
@@ -648,7 +658,7 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 		if at.In(f.Inset(1)) {
 			m.press(f.Inset(1), at)
 			if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
-				s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2)
+				cmd = s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2, f.Dy()-2)
 			}
 			if p == agent && m.confirm == nil {
 				cmd = m.valueClick(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Inset(1))

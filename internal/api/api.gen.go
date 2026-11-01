@@ -414,6 +414,33 @@ func (e TerminalState) Valid() bool {
 	}
 }
 
+// Defines values for WorktreeFileStatus.
+const (
+	WorktreeFileStatusA     WorktreeFileStatus = "A"
+	WorktreeFileStatusD     WorktreeFileStatus = "D"
+	WorktreeFileStatusEmpty WorktreeFileStatus = "?"
+	WorktreeFileStatusM     WorktreeFileStatus = "M"
+	WorktreeFileStatusU     WorktreeFileStatus = "U"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeFileStatus enum.
+func (e WorktreeFileStatus) Valid() bool {
+	switch e {
+	case WorktreeFileStatusA:
+		return true
+	case WorktreeFileStatusD:
+		return true
+	case WorktreeFileStatusEmpty:
+		return true
+	case WorktreeFileStatusM:
+		return true
+	case WorktreeFileStatusU:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	// Aca Which AI coding agent it runs, as claude_code.
@@ -667,7 +694,10 @@ type Project struct {
 	// Terminals The project's terminals by name, in every state; set by getProject only.
 	Terminals *[]Terminal `json:"terminals,omitempty"`
 	UpdatedAt time.Time   `json:"updated_at"`
-	Worktrees []Worktree  `json:"worktrees"`
+
+	// WorktreeStatuses Every checkout git lists, as last read; set only by streamProject with worktrees, once read.
+	WorktreeStatuses *[]WorktreeStatus `json:"worktree_statuses,omitempty"`
+	Worktrees        []Worktree        `json:"worktrees"`
 }
 
 // ProjectEnvelope defines model for ProjectEnvelope.
@@ -889,6 +919,93 @@ type Worktree struct {
 	Present *bool `json:"present,omitempty"`
 }
 
+// WorktreeDiff defines model for WorktreeDiff.
+type WorktreeDiff struct {
+	Ahead *int `json:"ahead"`
+
+	// Base As in WorktreeStatus.
+	Base *string `json:"base"`
+
+	// Binary A file in it is binary, and only said to differ.
+	Binary bool `json:"binary"`
+
+	// MergeBase Null when it shares no history with base, or has none.
+	MergeBase *string `json:"merge_base"`
+
+	// Patch The unified diff; empty when nothing is ahead.
+	Patch string `json:"patch"`
+
+	// Truncated Too long: patch is its beginning.
+	Truncated bool   `json:"truncated"`
+	Worktree  string `json:"worktree"`
+}
+
+// WorktreeFile defines model for WorktreeFile.
+type WorktreeFile struct {
+	// ModifiedAt Null for a deleted file.
+	ModifiedAt *time.Time `json:"modified_at"`
+
+	// Path Relative to the worktree.
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+
+	// Status M changed, A added, D deleted, ? untracked, U in conflict.
+	Status WorktreeFileStatus `json:"status"`
+}
+
+// WorktreeFileStatus M changed, A added, D deleted, ? untracked, U in conflict.
+type WorktreeFileStatus string
+
+// WorktreeFileDiff defines model for WorktreeFileDiff.
+type WorktreeFileDiff struct {
+	// Binary The file is binary, and only said to differ.
+	Binary bool `json:"binary"`
+
+	// Patch The unified diff with every line of the file; empty when nothing is uncommitted.
+	Patch string `json:"patch"`
+	Path  string `json:"path"`
+
+	// Truncated Too long: patch is its beginning.
+	Truncated bool   `json:"truncated"`
+	Worktree  string `json:"worktree"`
+}
+
+// WorktreeList defines model for WorktreeList.
+type WorktreeList struct {
+	Worktrees []WorktreeStatus `json:"worktrees"`
+}
+
+// WorktreeStatus defines model for WorktreeStatus.
+type WorktreeStatus struct {
+	// Added Lines those commits add; null when not known, as in a partial clone.
+	Added *int `json:"added"`
+
+	// Ahead Commits it has that base has not; null when not known.
+	Ahead *int `json:"ahead"`
+
+	// Base What its commits are measured against: the default branch, or the same on origin when it is on that branch; null when there is neither.
+	Base *string `json:"base"`
+
+	// Branch Null when HEAD is detached.
+	Branch *string `json:"branch"`
+
+	// Files The files with uncommitted changes, by path.
+	Files []WorktreeFile `json:"files"`
+
+	// Head Null with no commit yet.
+	Head *string `json:"head"`
+
+	// Missing Its directory is gone.
+	Missing bool `json:"missing"`
+
+	// Name main for the clone, else the last part of its path, with a number if that is taken.
+	Name string `json:"name"`
+	Path string `json:"path"`
+
+	// Removed Lines those commits remove; null when not known.
+	Removed *int `json:"removed"`
+}
+
 // AgentRef defines model for AgentRef.
 type AgentRef = string
 
@@ -906,6 +1023,15 @@ type TerminalProject = string
 
 // TerminalRef defines model for TerminalRef.
 type TerminalRef = string
+
+// WorktreeDir defines model for WorktreeDir.
+type WorktreeDir = string
+
+// WorktreeProject defines model for WorktreeProject.
+type WorktreeProject = string
+
+// WorktreeRef defines model for WorktreeRef.
+type WorktreeRef = string
 
 // ListAgentsParams defines parameters for ListAgents.
 type ListAgentsParams struct {
@@ -994,6 +1120,18 @@ type DeleteProjectParams struct {
 	StopRunning *StopRunning `form:"stop_running,omitempty" json:"stop_running,omitempty"`
 }
 
+// StreamProjectParams defines parameters for StreamProject.
+type StreamProjectParams struct {
+	// Worktrees Keep "worktree_statuses" up to date in the events.
+	Worktrees *bool `form:"worktrees,omitempty" json:"worktrees,omitempty"`
+}
+
+// RefreshWorktreesParams defines parameters for RefreshWorktrees.
+type RefreshWorktreesParams struct {
+	// Worktree The worktree's name; all of them when not given or not known.
+	Worktree *string `form:"worktree,omitempty" json:"worktree,omitempty"`
+}
+
 // ListTerminalsParams defines parameters for ListTerminals.
 type ListTerminalsParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -1058,6 +1196,36 @@ type StartTerminalParams struct {
 
 	// Dir An absolute path in one of the project's worktrees; excludes project.
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// ListWorktreesParams defines parameters for ListWorktrees.
+type ListWorktreesParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetWorktreeDiffParams defines parameters for GetWorktreeDiff.
+type GetWorktreeDiffParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetWorktreeFileDiffParams defines parameters for GetWorktreeFileDiff.
+type GetWorktreeFileDiffParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+
+	// Path The file's path, relative to the worktree.
+	Path string `form:"path" json:"path"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -1633,10 +1801,14 @@ type ClientInterface interface {
 	// ends the stream. The project is followed by its id, so a rename
 	// keeps it. The stream also ends when the daemon stops.
 	//
+	// With worktrees, each event also has "worktree_statuses", once they
+	// are read. Only while such a stream is open does the daemon read them,
+	// and only when something says they changed: it runs no git on a timer.
+	//
 	// Errors: not_found.
 	//
 	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
-	StreamProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+	StreamProject(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	//
@@ -1647,6 +1819,17 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 	RecloneProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RefreshWorktrees Read the "worktree_statuses" of a project's streams again now
+	//
+	// Answers at once: the streams send what it finds. It does nothing when
+	// no stream with worktrees follows the project. Unlike the reads that
+	// happen by themselves, it does not wait for an index lock.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with POST /v1/projects/{project}/worktrees/refresh (the `RefreshWorktrees` operationId).
+	RefreshWorktrees(ctx context.Context, project ProjectRef, params *RefreshWorktreesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSettings Every setting, with its value in the config file now
 	//
@@ -1814,6 +1997,39 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListWorktrees List every checkout git lists for a project, with its changes
+	//
+	// The checkouts of the project named by project, or of the project whose
+	// worktree holds dir; one of them must be given. Read from git now, without
+	// writing to the repository or downloading anything.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
+	ListWorktrees(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it
+	//
+	// Measured from the merge base, so that later commits on the base are not
+	// removals. What is not committed is not in it. In a partial clone, what it
+	// takes is downloaded.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
+	GetWorktreeDiff(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetWorktreeFileDiff The uncommitted changes of a file, with all of its lines
+	//
+	// Staged, not staged or untracked, against HEAD. The patch is empty when the
+	// file has no uncommitted changes. In a partial clone, what it takes is
+	// downloaded.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/files/diff (the `GetWorktreeFileDiff` operationId).
+	GetWorktreeFileDiff(ctx context.Context, worktree WorktreeRef, params *GetWorktreeFileDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // ListAgents List agents as trees, by project name, then name
@@ -2354,11 +2570,15 @@ func (c *Client) UpdateProject(ctx context.Context, project ProjectRef, body Upd
 // ends the stream. The project is followed by its id, so a rename
 // keeps it. The stream also ends when the daemon stops.
 //
+// With worktrees, each event also has "worktree_statuses", once they
+// are read. Only while such a stream is open does the daemon read them,
+// and only when something says they changed: it runs no git on a timer.
+//
 // Errors: not_found.
 //
 // Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
-func (c *Client) StreamProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStreamProjectRequest(c.Server, project)
+func (c *Client) StreamProject(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamProjectRequest(c.Server, project, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2379,6 +2599,27 @@ func (c *Client) StreamProject(ctx context.Context, project ProjectRef, reqEdito
 // Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 func (c *Client) RecloneProject(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRecloneProjectRequest(c.Server, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RefreshWorktrees Read the "worktree_statuses" of a project's streams again now
+//
+// Answers at once: the streams send what it finds. It does nothing when
+// no stream with worktrees follows the project. Unlike the reads that
+// happen by themselves, it does not wait for an index lock.
+//
+// Errors: not_found.
+//
+// Corresponds with POST /v1/projects/{project}/worktrees/refresh (the `RefreshWorktrees` operationId).
+func (c *Client) RefreshWorktrees(ctx context.Context, project ProjectRef, params *RefreshWorktreesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshWorktreesRequest(c.Server, project, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2676,6 +2917,69 @@ func (c *Client) StartTerminal(ctx context.Context, terminal TerminalRef, params
 // Corresponds with GET /v1/version (the `GetVersion` operationId).
 func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetVersionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListWorktrees List every checkout git lists for a project, with its changes
+//
+// The checkouts of the project named by project, or of the project whose
+// worktree holds dir; one of them must be given. Read from git now, without
+// writing to the repository or downloading anything.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
+func (c *Client) ListWorktrees(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWorktreesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it
+//
+// Measured from the merge base, so that later commits on the base are not
+// removals. What is not committed is not in it. In a partial clone, what it
+// takes is downloaded.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
+func (c *Client) GetWorktreeDiff(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWorktreeDiffRequest(c.Server, worktree, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetWorktreeFileDiff The uncommitted changes of a file, with all of its lines
+//
+// Staged, not staged or untracked, against HEAD. The patch is empty when the
+// file has no uncommitted changes. In a partial clone, what it takes is
+// downloaded.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/worktrees/{worktree}/files/diff (the `GetWorktreeFileDiff` operationId).
+func (c *Client) GetWorktreeFileDiff(ctx context.Context, worktree WorktreeRef, params *GetWorktreeFileDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWorktreeFileDiffRequest(c.Server, worktree, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3595,7 +3899,7 @@ func NewUpdateProjectRequestWithBody(server string, project ProjectRef, contentT
 }
 
 // NewStreamProjectRequest constructs an http.Request for the StreamProject method
-func NewStreamProjectRequest(server string, project ProjectRef) (*http.Request, error) {
+func NewStreamProjectRequest(server string, project ProjectRef, params *StreamProjectParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -3618,6 +3922,33 @@ func NewStreamProjectRequest(server string, project ProjectRef) (*http.Request, 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Worktrees != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "worktrees", *params.Worktrees, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3652,6 +3983,67 @@ func NewRecloneProjectRequest(server string, project ProjectRef) (*http.Request,
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRefreshWorktreesRequest constructs an http.Request for the RefreshWorktrees method
+func NewRefreshWorktreesRequest(server string, project ProjectRef, params *RefreshWorktreesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/projects/%s/worktrees/refresh", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Worktree != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "worktree", *params.Worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
@@ -4295,6 +4687,226 @@ func NewGetVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListWorktreesRequest constructs an http.Request for the ListWorktrees method
+func NewListWorktreesRequest(server string, params *ListWorktreesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetWorktreeDiffRequest constructs an http.Request for the GetWorktreeDiff method
+func NewGetWorktreeDiffRequest(server string, worktree WorktreeRef, params *GetWorktreeDiffParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/diff", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetWorktreeFileDiffRequest constructs an http.Request for the GetWorktreeFileDiff method
+func NewGetWorktreeFileDiffRequest(server string, worktree WorktreeRef, params *GetWorktreeFileDiffParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/files/diff", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -4697,12 +5309,16 @@ type ClientWithResponsesInterface interface {
 	// ends the stream. The project is followed by its id, so a rename
 	// keeps it. The stream also ends when the daemon stops.
 	//
+	// With worktrees, each event also has "worktree_statuses", once they
+	// are read. Only while such a stream is open does the daemon read them,
+	// and only when something says they changed: it runs no git on a timer.
+	//
 	// Errors: not_found.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
-	StreamProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error)
+	StreamProjectWithResponse(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error)
 
 	// RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 	//
@@ -4715,6 +5331,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/projects/{project}/worktrees (the `RecloneProject` operationId).
 	RecloneProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*RecloneProjectResponse, error)
+
+	// RefreshWorktreesWithResponse Read the "worktree_statuses" of a project's streams again now
+	//
+	// Answers at once: the streams send what it finds. It does nothing when
+	// no stream with worktrees follows the project. Unlike the reads that
+	// happen by themselves, it does not wait for an index lock.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/projects/{project}/worktrees/refresh (the `RefreshWorktrees` operationId).
+	RefreshWorktreesWithResponse(ctx context.Context, project ProjectRef, params *RefreshWorktreesParams, reqEditors ...RequestEditorFn) (*RefreshWorktreesResponse, error)
 
 	// ListSettingsWithResponse Every setting, with its value in the config file now
 	//
@@ -4896,6 +5525,45 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
+
+	// ListWorktreesWithResponse List every checkout git lists for a project, with its changes
+	//
+	// The checkouts of the project named by project, or of the project whose
+	// worktree holds dir; one of them must be given. Read from git now, without
+	// writing to the repository or downloading anything.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
+	ListWorktreesWithResponse(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*ListWorktreesResponse, error)
+
+	// GetWorktreeDiffWithResponse What a worktree has committed since it left its base, as a PR shows it
+	//
+	// Measured from the merge base, so that later commits on the base are not
+	// removals. What is not committed is not in it. In a partial clone, what it
+	// takes is downloaded.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
+	GetWorktreeDiffWithResponse(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*GetWorktreeDiffResponse, error)
+
+	// GetWorktreeFileDiffWithResponse The uncommitted changes of a file, with all of its lines
+	//
+	// Staged, not staged or untracked, against HEAD. The patch is empty when the
+	// file has no uncommitted changes. In a partial clone, what it takes is
+	// downloaded.
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/files/diff (the `GetWorktreeFileDiff` operationId).
+	GetWorktreeFileDiffWithResponse(ctx context.Context, worktree WorktreeRef, params *GetWorktreeFileDiffParams, reqEditors ...RequestEditorFn) (*GetWorktreeFileDiffResponse, error)
 }
 
 type ListAgentsResponse struct {
@@ -5714,6 +6382,47 @@ func (r RecloneProjectResponse) ContentType() string {
 	return ""
 }
 
+type RefreshWorktreesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RefreshWorktreesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RefreshWorktreesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RefreshWorktreesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RefreshWorktreesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RefreshWorktreesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSettingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6188,6 +6897,150 @@ func (r GetVersionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetVersionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListWorktreesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWorktreesResponse) GetJSON200() *WorktreeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListWorktreesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWorktreesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWorktreesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWorktreesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWorktreesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetWorktreeDiffResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeDiff
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetWorktreeDiffResponse) GetJSON200() *WorktreeDiff {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetWorktreeDiffResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetWorktreeDiffResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetWorktreeDiffResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetWorktreeDiffResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetWorktreeDiffResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetWorktreeFileDiffResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeFileDiff
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetWorktreeFileDiffResponse) GetJSON200() *WorktreeFileDiff {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetWorktreeFileDiffResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetWorktreeFileDiffResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetWorktreeFileDiffResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetWorktreeFileDiffResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetWorktreeFileDiffResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6672,13 +7525,17 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 // ends the stream. The project is followed by its id, so a rename
 // keeps it. The stream also ends when the daemon stops.
 //
+// With worktrees, each event also has "worktree_statuses", once they
+// are read. Only while such a stream is open does the daemon read them,
+// and only when something says they changed: it runs no git on a timer.
+//
 // Errors: not_found.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
-func (c *ClientWithResponses) StreamProjectWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error) {
-	rsp, err := c.StreamProject(ctx, project, reqEditors...)
+func (c *ClientWithResponses) StreamProjectWithResponse(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error) {
+	rsp, err := c.StreamProject(ctx, project, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -6701,6 +7558,25 @@ func (c *ClientWithResponses) RecloneProjectWithResponse(ctx context.Context, pr
 		return nil, err
 	}
 	return ParseRecloneProjectResponse(rsp)
+}
+
+// RefreshWorktreesWithResponse Read the "worktree_statuses" of a project's streams again now
+//
+// Answers at once: the streams send what it finds. It does nothing when
+// no stream with worktrees follows the project. Unlike the reads that
+// happen by themselves, it does not wait for an index lock.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/projects/{project}/worktrees/refresh (the `RefreshWorktrees` operationId).
+func (c *ClientWithResponses) RefreshWorktreesWithResponse(ctx context.Context, project ProjectRef, params *RefreshWorktreesParams, reqEditors ...RequestEditorFn) (*RefreshWorktreesResponse, error) {
+	rsp, err := c.RefreshWorktrees(ctx, project, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRefreshWorktreesResponse(rsp)
 }
 
 // ListSettingsWithResponse Every setting, with its value in the config file now
@@ -6960,6 +7836,63 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetVersionResponse(rsp)
+}
+
+// ListWorktreesWithResponse List every checkout git lists for a project, with its changes
+//
+// The checkouts of the project named by project, or of the project whose
+// worktree holds dir; one of them must be given. Read from git now, without
+// writing to the repository or downloading anything.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
+func (c *ClientWithResponses) ListWorktreesWithResponse(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*ListWorktreesResponse, error) {
+	rsp, err := c.ListWorktrees(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWorktreesResponse(rsp)
+}
+
+// GetWorktreeDiffWithResponse What a worktree has committed since it left its base, as a PR shows it
+//
+// Measured from the merge base, so that later commits on the base are not
+// removals. What is not committed is not in it. In a partial clone, what it
+// takes is downloaded.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
+func (c *ClientWithResponses) GetWorktreeDiffWithResponse(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*GetWorktreeDiffResponse, error) {
+	rsp, err := c.GetWorktreeDiff(ctx, worktree, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWorktreeDiffResponse(rsp)
+}
+
+// GetWorktreeFileDiffWithResponse The uncommitted changes of a file, with all of its lines
+//
+// Staged, not staged or untracked, against HEAD. The patch is empty when the
+// file has no uncommitted changes. In a partial clone, what it takes is
+// downloaded.
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/worktrees/{worktree}/files/diff (the `GetWorktreeFileDiff` operationId).
+func (c *ClientWithResponses) GetWorktreeFileDiffWithResponse(ctx context.Context, worktree WorktreeRef, params *GetWorktreeFileDiffParams, reqEditors ...RequestEditorFn) (*GetWorktreeFileDiffResponse, error) {
+	rsp, err := c.GetWorktreeFileDiff(ctx, worktree, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWorktreeFileDiffResponse(rsp)
 }
 
 // ParseListAgentsResponse parses an HTTP response from a ListAgentsWithResponse call
@@ -7523,6 +8456,35 @@ func ParseRecloneProjectResponse(rsp *http.Response) (*RecloneProjectResponse, e
 	return response, nil
 }
 
+// ParseRefreshWorktreesResponse parses an HTTP response from a RefreshWorktreesWithResponse call
+func ParseRefreshWorktreesResponse(rsp *http.Response) (*RefreshWorktreesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RefreshWorktreesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListSettingsResponse parses an HTTP response from a ListSettingsWithResponse call
 func ParseListSettingsResponse(rsp *http.Response) (*ListSettingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7853,6 +8815,105 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	return response, nil
 }
 
+// ParseListWorktreesResponse parses an HTTP response from a ListWorktreesWithResponse call
+func ParseListWorktreesResponse(rsp *http.Response) (*ListWorktreesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWorktreesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetWorktreeDiffResponse parses an HTTP response from a GetWorktreeDiffWithResponse call
+func ParseGetWorktreeDiffResponse(rsp *http.Response) (*GetWorktreeDiffResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetWorktreeDiffResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeDiff
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetWorktreeFileDiffResponse parses an HTTP response from a GetWorktreeFileDiffWithResponse call
+func ParseGetWorktreeFileDiffResponse(rsp *http.Response) (*GetWorktreeFileDiffResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetWorktreeFileDiffResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeFileDiff
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListAgents List agents as trees, by project name, then name
@@ -7902,10 +8963,13 @@ type ServerInterface interface {
 	UpdateProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
 	// StreamProject Follow a project, sent whole every time it changes
 	// (GET /v1/projects/{project}/events)
-	StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params StreamProjectParams)
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	// RefreshWorktrees Read the "worktree_statuses" of a project's streams again now
+	// (POST /v1/projects/{project}/worktrees/refresh)
+	RefreshWorktrees(w http.ResponseWriter, r *http.Request, project ProjectRef, params RefreshWorktreesParams)
 	// ListSettings Every setting, with its value in the config file now
 	// (GET /v1/settings)
 	ListSettings(w http.ResponseWriter, r *http.Request)
@@ -7936,6 +9000,15 @@ type ServerInterface interface {
 	// GetVersion Version of the daemon
 	// (GET /v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
+	// ListWorktrees List every checkout git lists for a project, with its changes
+	// (GET /v1/worktrees)
+	ListWorktrees(w http.ResponseWriter, r *http.Request, params ListWorktreesParams)
+	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it
+	// (GET /v1/worktrees/{worktree}/diff)
+	GetWorktreeDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeDiffParams)
+	// GetWorktreeFileDiff The uncommitted changes of a file, with all of its lines
+	// (GET /v1/worktrees/{worktree}/files/diff)
+	GetWorktreeFileDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeFileDiffParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -8573,8 +9646,24 @@ func (siw *ServerInterfaceWrapper) StreamProject(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamProjectParams
+
+	// ------------- Optional query parameter "worktrees" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "worktrees", r.URL.Query(), &params.Worktrees, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "worktrees"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktrees", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.StreamProject(w, r, project)
+		siw.Handler.StreamProject(w, r, project, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8601,6 +9690,48 @@ func (siw *ServerInterfaceWrapper) RecloneProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RecloneProject(w, r, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RefreshWorktrees operation middleware
+func (siw *ServerInterfaceWrapper) RefreshWorktrees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RefreshWorktreesParams
+
+	// ------------- Optional query parameter "worktree" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "worktree", r.URL.Query(), &params.Worktree, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "worktree"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshWorktrees(w, r, project, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9051,6 +10182,175 @@ func (siw *ServerInterfaceWrapper) GetVersion(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorktrees operation middleware
+func (siw *ServerInterfaceWrapper) ListWorktrees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorktreesParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorktrees(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorktreeDiff operation middleware
+func (siw *ServerInterfaceWrapper) GetWorktreeDiff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorktreeDiffParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorktreeDiff(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorktreeFileDiff operation middleware
+func (siw *ServerInterfaceWrapper) GetWorktreeFileDiff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorktreeFileDiffParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorktreeFileDiff(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -9183,6 +10483,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/projects/{project}", wrapper.UpdateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}/events", wrapper.StreamProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees", wrapper.RecloneProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees/refresh", wrapper.RefreshWorktrees)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees", wrapper.ListWorktrees)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/diff", wrapper.GetWorktreeDiff)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/diff", wrapper.GetWorktreeFileDiff)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals", wrapper.ListTerminals)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals", wrapper.CreateTerminal)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.DeleteTerminal)
@@ -9813,6 +11117,7 @@ func (response UpdateProjectdefaultApplicationProblemPlusJSONResponse) VisitUpda
 
 type StreamProjectRequestObject struct {
 	Project ProjectRef `json:"project"`
+	Params  StreamProjectParams
 }
 
 type StreamProjectResponseObject interface {
@@ -9907,6 +11212,40 @@ type RecloneProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response RecloneProjectdefaultApplicationProblemPlusJSONResponse) VisitRecloneProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshWorktreesRequestObject struct {
+	Project ProjectRef `json:"project"`
+	Params  RefreshWorktreesParams
+}
+
+type RefreshWorktreesResponseObject interface {
+	VisitRefreshWorktreesResponse(w http.ResponseWriter) error
+}
+
+type RefreshWorktrees202Response struct {
+}
+
+func (response RefreshWorktrees202Response) VisitRefreshWorktreesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type RefreshWorktreesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RefreshWorktreesdefaultApplicationProblemPlusJSONResponse) VisitRefreshWorktreesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10313,6 +11652,125 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 	return err
 }
 
+type ListWorktreesRequestObject struct {
+	Params ListWorktreesParams
+}
+
+type ListWorktreesResponseObject interface {
+	VisitListWorktreesResponse(w http.ResponseWriter) error
+}
+
+type ListWorktrees200JSONResponse WorktreeList
+
+func (response ListWorktrees200JSONResponse) VisitListWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorktreesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListWorktreesdefaultApplicationProblemPlusJSONResponse) VisitListWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorktreeDiffRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   GetWorktreeDiffParams
+}
+
+type GetWorktreeDiffResponseObject interface {
+	VisitGetWorktreeDiffResponse(w http.ResponseWriter) error
+}
+
+type GetWorktreeDiff200JSONResponse WorktreeDiff
+
+func (response GetWorktreeDiff200JSONResponse) VisitGetWorktreeDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorktreeDiffdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetWorktreeDiffdefaultApplicationProblemPlusJSONResponse) VisitGetWorktreeDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorktreeFileDiffRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   GetWorktreeFileDiffParams
+}
+
+type GetWorktreeFileDiffResponseObject interface {
+	VisitGetWorktreeFileDiffResponse(w http.ResponseWriter) error
+}
+
+type GetWorktreeFileDiff200JSONResponse WorktreeFileDiff
+
+func (response GetWorktreeFileDiff200JSONResponse) VisitGetWorktreeFileDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorktreeFileDiffdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetWorktreeFileDiffdefaultApplicationProblemPlusJSONResponse) VisitGetWorktreeFileDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAgents List agents as trees, by project name, then name
@@ -10366,6 +11824,9 @@ type StrictServerInterface interface {
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(ctx context.Context, request RecloneProjectRequestObject) (RecloneProjectResponseObject, error)
+	// RefreshWorktrees Read the "worktree_statuses" of a project's streams again now
+	// (POST /v1/projects/{project}/worktrees/refresh)
+	RefreshWorktrees(ctx context.Context, request RefreshWorktreesRequestObject) (RefreshWorktreesResponseObject, error)
 	// ListSettings Every setting, with its value in the config file now
 	// (GET /v1/settings)
 	ListSettings(ctx context.Context, request ListSettingsRequestObject) (ListSettingsResponseObject, error)
@@ -10396,6 +11857,15 @@ type StrictServerInterface interface {
 	// GetVersion Version of the daemon
 	// (GET /v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
+	// ListWorktrees List every checkout git lists for a project, with its changes
+	// (GET /v1/worktrees)
+	ListWorktrees(ctx context.Context, request ListWorktreesRequestObject) (ListWorktreesResponseObject, error)
+	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it
+	// (GET /v1/worktrees/{worktree}/diff)
+	GetWorktreeDiff(ctx context.Context, request GetWorktreeDiffRequestObject) (GetWorktreeDiffResponseObject, error)
+	// GetWorktreeFileDiff The uncommitted changes of a file, with all of its lines
+	// (GET /v1/worktrees/{worktree}/files/diff)
+	GetWorktreeFileDiff(ctx context.Context, request GetWorktreeFileDiffRequestObject) (GetWorktreeFileDiffResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -10862,10 +12332,11 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, p
 }
 
 // StreamProject operation middleware
-func (sh *strictHandler) StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef) {
+func (sh *strictHandler) StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params StreamProjectParams) {
 	var request StreamProjectRequestObject
 
 	request.Project = project
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.StreamProject(ctx, request.(StreamProjectRequestObject))
@@ -10906,6 +12377,33 @@ func (sh *strictHandler) RecloneProject(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RecloneProjectResponseObject); ok {
 		if err := validResponse.VisitRecloneProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RefreshWorktrees operation middleware
+func (sh *strictHandler) RefreshWorktrees(w http.ResponseWriter, r *http.Request, project ProjectRef, params RefreshWorktreesParams) {
+	var request RefreshWorktreesRequestObject
+
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RefreshWorktrees(ctx, request.(RefreshWorktreesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefreshWorktrees")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RefreshWorktreesResponseObject); ok {
+		if err := validResponse.VisitRefreshWorktreesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11193,153 +12691,255 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListWorktrees operation middleware
+func (sh *strictHandler) ListWorktrees(w http.ResponseWriter, r *http.Request, params ListWorktreesParams) {
+	var request ListWorktreesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorktrees(ctx, request.(ListWorktreesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorktrees")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorktreesResponseObject); ok {
+		if err := validResponse.VisitListWorktreesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorktreeDiff operation middleware
+func (sh *strictHandler) GetWorktreeDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeDiffParams) {
+	var request GetWorktreeDiffRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorktreeDiff(ctx, request.(GetWorktreeDiffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorktreeDiff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorktreeDiffResponseObject); ok {
+		if err := validResponse.VisitGetWorktreeDiffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorktreeFileDiff operation middleware
+func (sh *strictHandler) GetWorktreeFileDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeFileDiffParams) {
+	var request GetWorktreeFileDiffRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorktreeFileDiff(ctx, request.(GetWorktreeFileDiffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorktreeFileDiff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorktreeFileDiffResponseObject); ok {
+		if err := validResponse.VisitGetWorktreeFileDiffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"+J8AAAD//w==",
+	"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",
+	"gUTp+ZRCiG2u8Zbqp565z5//fwAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

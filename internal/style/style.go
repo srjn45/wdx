@@ -56,6 +56,12 @@ func (s Style) Success(text string) string { return s.apply(text, bold, green) }
 // Warning styles what needs attention but is not a failure.
 func (s Style) Warning(text string) string { return s.apply(text, yellow) }
 
+// Added styles what a diff adds.
+func (s Style) Added(text string) string { return s.apply(text, green) }
+
+// Removed styles what a diff removes.
+func (s Style) Removed(text string) string { return s.apply(text, red) }
+
 // Failure styles an error.
 func (s Style) Failure(text string) string { return s.apply(text, bold, red) }
 

@@ -26,8 +26,13 @@ type event struct {
 // end when the stream does; closing the returned function leaves it.
 func (td *testDaemon) follow(t *testing.T, ref string) (<-chan event, func()) {
 	t.Helper()
+	return td.followWith(t, ref, nil)
+}
+
+func (td *testDaemon) followWith(t *testing.T, ref string, params *api.StreamProjectParams) (<-chan event, func()) {
+	t.Helper()
 	ctx, leave := context.WithCancel(context.Background())
-	resp, err := td.client.StreamProject(ctx, ref)
+	resp, err := td.client.StreamProject(ctx, ref, params)
 	if err != nil {
 		t.Fatal(err)
 	}

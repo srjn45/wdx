@@ -455,6 +455,26 @@ func (s *Store) GetByPath(ctx context.Context, path string) (Project, error) {
 	return s.GetByID(ctx, id)
 }
 
+// GetByRepository returns the project a checkout of the repository holding dir
+// belongs to: dir may be in a worktree the project has not heard of, made with
+// git itself.
+func (s *Store) GetByRepository(ctx context.Context, dir string) (Project, error) {
+	common, err := git.CommonDir(ctx, dir)
+	if err != nil {
+		logging.FromContext(ctx).Info("repository not resolved", "path", dir, "err", err)
+		return Project{}, fmt.Errorf("%w: no project holds %s", ErrNotFound, dir)
+	}
+	id, err := queryID(ctx, s.db, "SELECT project_id FROM project_worktrees WHERE git_common_dir = ?", common)
+	if err != nil {
+		return Project{}, err
+	}
+	logging.FromContext(ctx).Info("project looked up by repository", "path", dir, "git_common_dir", common, "project_id", id)
+	if id == "" {
+		return Project{}, fmt.Errorf("%w: no project holds %s", ErrNotFound, dir)
+	}
+	return s.GetByID(ctx, id)
+}
+
 // get returns the project whose column equals value; column is a constant.
 func (s *Store) get(ctx context.Context, column, value string) (Project, error) {
 	var p Project

@@ -45,7 +45,7 @@ func TestSelect(t *testing.T) {
 	m.Update(clickAt(in.Min.X, in.Min.Y))
 	dragTo(m, in.Max.X+10, in.Min.Y)
 	dragTo(m, in.Max.X+20, frames[terminal].Min.Y+2)
-	if !reversed(m, in.Min.X, in.Min.Y+2) || reversed(m, in.Max.X, in.Min.Y+2) {
+	if !reversed(m, in.Min.X, in.Min.Y+4) || reversed(m, in.Max.X, in.Min.Y+4) {
 		t.Fatal("the selection is not highlighted inside the pane only")
 	}
 	releaseAt(m, in.Max.X+20, frames[terminal].Min.Y+2)
@@ -61,7 +61,7 @@ func TestSelect(t *testing.T) {
 
 	// A key clears it.
 	keys(m, "x")
-	if m.sel != nil || reversed(m, in.Min.X, in.Min.Y+2) {
+	if m.sel != nil || reversed(m, in.Min.X, in.Min.Y+4) {
 		t.Fatal("a key left the selection")
 	}
 

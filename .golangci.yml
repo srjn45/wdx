@@ -30,6 +30,8 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/agent
               desc: the cli calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/worktree
+              desc: the cli calls the daemon's API, never the domain
         # The holder stays free of ACA code: it is given a parser, by the cli.
         holder-without-aca:
           files: ["**/internal/holder/*.go", "!$test"]
@@ -73,6 +75,8 @@ linters:
             - pkg: github.com/srjn45/wdx/internal/terminal
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/agent
+              desc: tide calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/worktree
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/db
               desc: tide calls the daemon's API, never the database

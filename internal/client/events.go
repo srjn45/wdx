@@ -33,7 +33,18 @@ const maxEvent = 16 << 20
 // ProjectEvents follows the project ref names, until ctx ends or Close.
 // A project that does not exist fails here, as a *ProblemError.
 func (c *Client) ProjectEvents(ctx context.Context, ref string) (*ProjectStream, error) {
-	resp, err := c.api.StreamProject(ctx, ref)
+	return c.follow(ctx, ref, nil)
+}
+
+// ProjectEventsWithWorktrees is ProjectEvents with the worktrees' statuses in
+// the events, which the daemon reads only for as long as this stream stays.
+func (c *Client) ProjectEventsWithWorktrees(ctx context.Context, ref string) (*ProjectStream, error) {
+	on := true
+	return c.follow(ctx, ref, &api.StreamProjectParams{Worktrees: &on})
+}
+
+func (c *Client) follow(ctx context.Context, ref string, params *api.StreamProjectParams) (*ProjectStream, error) {
+	resp, err := c.api.StreamProject(ctx, ref, params)
 	if err != nil {
 		return nil, err
 	}

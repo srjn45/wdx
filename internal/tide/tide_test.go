@@ -161,8 +161,8 @@ func TestRender(t *testing.T) {
 	want := `┌ [Pr─[⤢]─┬ agent ─────────────────[⤢]─┐
 │ Agents0 │no agents: C-q a creates one│
 │ no agent│                            │
-│         │                            │
-│         │                            │
+│ Worktree│                            │
+│ loading…│                            │
 │         │                            │
 │         │                            │
 ├ [● shell] [● tests] [● server] ──[⤢]─┤

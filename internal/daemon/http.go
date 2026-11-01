@@ -30,7 +30,7 @@ import (
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -77,15 +77,16 @@ func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *ht
 }
 
 const (
-	reloadPath   = "/v1/daemon/reload"
-	settingsPath = "/v1/settings/"
+	reloadPath      = "/v1/daemon/reload"
+	settingsPath    = "/v1/settings/"
+	refreshPathEnds = "/worktrees/refresh"
 )
 
 func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A reload or a setting touches nothing the changes use, and should not
-		// wait minutes for a clone to end.
-		if r.Method != http.MethodGet && r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) {
+		// A reload, a setting or a refresh touches nothing the changes use, and
+		// should not wait minutes for a clone to end.
+		if r.Method != http.MethodGet && r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			// A change runs to its end when the client leaves: cut short, it

@@ -80,7 +80,8 @@ func (m *Model) tabsChanged(agents []api.Agent) {
 	}
 	for _, tab := range slices.Clone(l.tabs) {
 		id := tabAgent(tab)
-		if tab == settingsTab {
+		// A diff's tab outlives what it shows, and says so.
+		if tab == settingsTab || isDiffTab(tab) {
 			continue
 		}
 		if agentIndex(agents, id) < 0 || (tombstones[id] && l.tombstones != nil && !l.tombstones[id]) {
@@ -102,12 +103,14 @@ type agentTab struct {
 	agent api.Agent
 }
 
-// marked reports whether it shows a state mark: the settings have no state.
-func (t agentTab) marked() bool { return t.tab != settingsTab }
+// marked reports whether it shows a state mark: only an agent has a state.
+func (t agentTab) marked() bool { return t.tab != settingsTab && !isDiffTab(t.tab) }
 
 // title is what the strip calls it.
 func (t agentTab) title() string {
 	switch {
+	case isDiffTab(t.tab):
+		return diffTitle(t.tab)
 	case !t.marked():
 		return settingsTab
 	case isInfoTab(t.tab):
@@ -132,7 +135,7 @@ func (m *Model) openTabs() []agentTab {
 	}
 	var tabs []agentTab
 	for _, tab := range l.tabs {
-		if tab == settingsTab {
+		if tab == settingsTab || isDiffTab(tab) {
 			tabs = append(tabs, agentTab{tab: tab})
 		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
 			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})

@@ -37,6 +37,9 @@ func (m *Model) menuItems() []menuItem {
 	if m.settingsOffered() {
 		items = append(items, menuItem{settingsKey, "settings", "settings"})
 	}
+	if m.list() != nil {
+		items = append(items, menuItem{refreshKey, "refresh worktrees", "refresh"})
+	}
 	if r, ok := m.closableProject(); ok {
 		items = append(items, menuItem{closeProjectKey, "close " + r.name, "close"})
 	}

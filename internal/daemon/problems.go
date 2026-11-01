@@ -11,6 +11,7 @@ import (
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/worktree"
 )
 
 // requestError is a request that cannot be served as sent.
@@ -67,6 +68,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
 	}
 	if e, ok := errors.AsType[*project.InvalidPathError](err); ok {
+		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}
+	}
+	if e, ok := errors.AsType[*worktree.InvalidPathError](err); ok {
 		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}
 	}
 	if e, ok := errors.AsType[*project.InvalidWorktreeNameError](err); ok {
@@ -140,7 +144,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeProjectInUse, details
 	}
 	switch {
-	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound):
+	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound):
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil

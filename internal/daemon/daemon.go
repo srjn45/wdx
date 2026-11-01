@@ -32,6 +32,7 @@ import (
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/worktree"
 )
 
 // DefaultShutdownTimeout is how long requests in flight get to finish once
@@ -134,9 +135,14 @@ type Daemon struct {
 	projects  *project.Store
 	agents    *agent.Manager
 	terminals *terminal.Supervisor
-	changes   sync.Mutex    // one request changing state at a time
-	notices   *notices      // tells the project streams about changes
-	stopping  chan struct{} // closed when the daemon starts stopping
+	tracker   *worktree.Tracker
+	// stopTracker ends what the tracker does, once no stream follows.
+	stopTracker context.CancelFunc
+	// trackerNotices is what tells it of the changes.
+	trackerNotices sync.WaitGroup
+	changes        sync.Mutex    // one request changing state at a time
+	notices        *notices      // tells the project streams about changes
+	stopping       chan struct{} // closed when the daemon starts stopping
 	// abort is cancelled when the changes in flight at shutdown have run
 	// out of time.
 	abort        context.Context
@@ -243,6 +249,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		},
 	})
 	d.agents = agent.NewManager(agents, d.terminals, opts.ACA)
+	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
 	}
@@ -435,6 +442,11 @@ func (d *Daemon) cancelChanges() {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.tracker != nil {
+		d.stopTracker()
+		d.trackerNotices.Wait() // both read the database, which goes below
+		d.tracker.Wait()
 	}
 	if d.terminals != nil {
 		// The holders and their shells run on; the next daemon adopts them.

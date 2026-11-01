@@ -42,6 +42,8 @@ A tab of the right pane. Proposed: through a daemon API, since tide may not impo
 
 ## Worktrees
 
+Built on 2026-11-01: docs/TIDE_WORKTREES.md, which is what holds now.
+
 Shows every active worktree, for reviewing changes before there is a PR.
 
 - Under a worktree: its uncommitted changes, file by file. A file opens its diff.

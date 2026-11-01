@@ -9,6 +9,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/worktree"
 )
 
 // server implements the API on the project store, the terminals' supervisor
@@ -22,6 +23,7 @@ type server struct {
 	stopping  <-chan struct{} // closed when the daemon starts stopping: the streams end
 	reload    func(context.Context) error
 	settings  SettingStore // nil when it has none
+	tracker   *worktree.Tracker
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

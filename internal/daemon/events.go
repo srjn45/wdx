@@ -58,22 +58,26 @@ func (s *server) StreamProject(ctx context.Context, req api.StreamProjectRequest
 	if err != nil {
 		return nil, err
 	}
-	return &projectStream{ctx: ctx, s: s, id: p.ID}, nil
+	return &projectStream{ctx: ctx, s: s, id: p.ID, worktrees: deref(req.Params.Worktrees)}, nil
 }
 
 // projectStream sends the project with id whole, then again after every
 // change to it, until the client leaves, the project is removed or the
 // daemon stops.
 type projectStream struct {
-	ctx context.Context
-	s   *server
-	id  string
+	ctx       context.Context
+	s         *server
+	id        string
+	worktrees bool // the worktrees' statuses are kept and sent
 }
 
 func (st *projectStream) VisitStreamProjectResponse(w http.ResponseWriter) error {
 	log := logging.FromContext(st.ctx)
 	changed, stop := st.s.notices.subscribe() // before the first read, so no change is missed
 	defer stop()
+	if st.worktrees {
+		defer st.s.tracker.Follow(st.id)()
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -131,6 +135,14 @@ func (st *projectStream) next() (event string, data []byte, err error) {
 	v, err := st.s.detail(st.ctx, p)
 	if err != nil {
 		return "", nil, err
+	}
+	if st.worktrees {
+		// Read from what is kept: a stream never runs git, so a change that has
+		// nothing to do with them costs none.
+		if list := st.s.tracker.Statuses(st.id); list != nil {
+			views := worktreeStatusViews(list)
+			v.WorktreeStatuses = &views
+		}
 	}
 	data, err = json.Marshal(api.ProjectEnvelope{Project: v})
 	return "project", data, err

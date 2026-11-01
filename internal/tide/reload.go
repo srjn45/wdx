@@ -96,7 +96,7 @@ func (m *Model) startReload() tea.Cmd {
 	if f := m.following; f != nil && f.project != nil {
 		r.ProjectID = f.project.Id
 		r.Terminal = m.selectedTab[f.project.Id]
-		if _, ok := m.activeAgent(); ok || m.settingsShown() {
+		if _, ok := m.activeAgent(); ok || m.settingsShown() || m.diffShown() {
 			r.Agent = m.list().active
 		}
 		r.Tabs = m.list().tabs

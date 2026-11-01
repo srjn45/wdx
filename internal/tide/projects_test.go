@@ -511,25 +511,26 @@ func TestPopupFrame(t *testing.T) {
 	m, _ := newModel(60, 24)
 	m.Update(key('q', tea.ModCtrl))
 	want := []string{
-		"                               ",
-		"  ┏━━━━━━━━━━━━━━━━━━━━━━━━━┓  ",
-		"  ┃                         ┃  ",
-		"  ┃  ┏━━━━━━━━━━━━━━━━━━━┓  ┃  ",
-		"  ┃  ┃ Menu              ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ o  open project   ┃  ┃  ",
-		"  ┃  ┃ p  switch project ┃  ┃  ",
-		"  ┃  ┃ s  settings       ┃  ┃  ",
-		"  ┃  ┃ q  quit           ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ Esc close         ┃  ┃  ",
-		"  ┃  ┗━━━━━━━━━━━━━━━━━━━┛  ┃  ",
-		"  ┃                         ┃  ",
-		"  ┗━━━━━━━━━━━━━━━━━━━━━━━━━┛  ",
-		"                               ",
+		"                                  ",
+		"  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ",
+		"  ┃                            ┃  ",
+		"  ┃  ┏━━━━━━━━━━━━━━━━━━━━━━┓  ┃  ",
+		"  ┃  ┃ Menu                 ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ o  open project      ┃  ┃  ",
+		"  ┃  ┃ p  switch project    ┃  ┃  ",
+		"  ┃  ┃ s  settings          ┃  ┃  ",
+		"  ┃  ┃ f  refresh worktrees ┃  ┃  ",
+		"  ┃  ┃ q  quit              ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ Esc close            ┃  ┃  ",
+		"  ┃  ┗━━━━━━━━━━━━━━━━━━━━━━┛  ┃  ",
+		"  ┃                            ┃  ",
+		"  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ",
+		"                                  ",
 	}
 	got := strings.Split(ansi.Strip(m.render()), "\n")
-	const x, y = 14, 3 // the middle of the 60 × 23 above the status line
+	const x, y = 13, 3 // the middle of the 60 × 23 above the status line
 	for i, w := range want {
 		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
 			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))
@@ -545,8 +546,8 @@ func TestPopupFrameSmallWindow(t *testing.T) {
 		outer, margin bool
 	}{
 		{80, 24, true, true},
-		{80, 15, true, false},
-		{80, 13, false, false},
+		{80, 16, true, false},
+		{80, 14, false, false},
 		{24, 24, false, false},
 	} {
 		m, _ := newModel(tc.width, tc.height)

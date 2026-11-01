@@ -320,6 +320,48 @@ func (c *Client) SetSetting(ctx context.Context, key, value string) (api.Setting
 
 // ListTerminals lists the terminals of the project named by project, or of
 // the one holding dir, or of every project when both are empty.
+// ListWorktrees reads every checkout of the project named by ref or holding dir.
+func (c *Client) ListWorktrees(ctx context.Context, ref, dir string) (api.WorktreeList, error) {
+	r, err := c.api.ListWorktreesWithResponse(ctx, &api.ListWorktreesParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// WorktreeDiff returns what the worktree name has committed since it left its base.
+func (c *Client) WorktreeDiff(ctx context.Context, name, ref, dir string) (api.WorktreeDiff, error) {
+	r, err := c.api.GetWorktreeDiffWithResponse(ctx, name, &api.GetWorktreeDiffParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeDiff{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// WorktreeFileDiff returns the uncommitted changes of the file at path in the
+// worktree name.
+func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileDiff, error) {
+	r, err := c.api.GetWorktreeFileDiffWithResponse(ctx, name, &api.GetWorktreeFileDiffParams{Path: path, Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeFileDiff{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// RefreshWorktrees asks for the worktree name of the project ref to be read
+// again, or all of them when name is "".
+func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string) error {
+	r, err := c.api.RefreshWorktreesWithResponse(ctx, ref, &api.RefreshWorktreesParams{Worktree: nonEmpty(name)})
+	if err != nil {
+		return err
+	}
+	if r.StatusCode() == http.StatusAccepted {
+		return nil
+	}
+	_, err = result[struct{}](r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault)
+	return err
+}
+
 func (c *Client) ListTerminals(ctx context.Context, project, dir string) (api.TerminalList, error) {
 	r, err := c.api.ListTerminalsWithResponse(ctx, &api.ListTerminalsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
 	if err != nil {
