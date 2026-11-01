@@ -189,6 +189,7 @@ ALTER TABLE agents ADD COLUMN activity TEXT;
 ALTER TABLE agents ADD COLUMN draft INTEGER;
 ```
 
+- **Columns in `agents`,** decided by the human on 2026-11-01, over one JSON column of `Status` and over a table of their own. These are facts wdx's own logic will build on, so they keep a typed place, and adding one is a line that only adds. A table of their own gains nothing from how often they change: SQLite has one writer for the whole database, none of them is indexed, and the row is small. What a change costs is every open stream reading its project again, which neither would change. Revisit when a value is large or nested, as a prompt's text and options, or when history is wanted: those go in a table of their own, leaving these here.
 - **Additive,** so `wdx update --rollback` keeps the data. An older daemon skips the frame, as its reader takes only `exited`.
 - **No `CHECK` on `activity`.** Adding `limited` would rebuild the table, and a running holder can be newer than its daemon. The daemon turns a value it does not know into `unknown`.
 - **Never stale.** The agents query returns both only when the terminal's state is `running`, so exit, stop and lost need no code of their own. On a launch, and on adopting a terminal still `starting`, what `Hello` says is written before the terminal is marked `running`. Each dial writes it: the launch, `Reconcile` and the redial in `follow`.
@@ -320,7 +321,7 @@ The conditions are there because old names do show:
 
 - **Its shape is checked.** The screen's text never leaves the holder, and this is the one exception, so a value must be a word and a version, as `Opus 5.5` or `Fable 5`. Anything else is not read, the last name staying. That also stops a name cut by a wrap being read as a shorter one.
 - **Synced as `activity` is.** A `model` field of `Status`, so no new protocol version: a holder too old to send it shows null. Then `ALTER TABLE agents ADD COLUMN model TEXT;`, null unless the process is running, and `model` in the API and the project stream.
-- **Where it shows:** `wdx agent get`, a `MODEL` column in `wdx agent list`, and tide's agent info tab (docs/TIDE_INFO.md), not the Agents row, which is narrow.
+- **Where it shows:** `wdx agent get`, a `MODEL` column in `wdx agent list`, and tide's agent info tab (docs/TIDE_INFO.md), next to `aca` in all three, not the Agents row, which is narrow.
 
 ### What the recordings found
 

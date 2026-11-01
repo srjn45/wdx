@@ -12,6 +12,7 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
  ▸ name:               swift-falcon
    id:                 agent-3f9a1c
    aca:                claude_code
+   model:              Haiku 5.5
 
    project_name:       wdx
    dir:                /home/srjn45/dev/wdx/.worktrees/auth-fix
@@ -26,7 +27,6 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
    activity:           working
    draft:              no
    queued:             2
-   model:              Haiku 5.5
 
  Enter rename
 ```

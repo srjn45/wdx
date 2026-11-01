@@ -69,6 +69,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		name,
 		{key: "id", values: []string{a.Id}},
 		{key: "aca", values: []string{a.Aca}},
+		{key: "model", values: present(a.Model, identical)},
 		{key: "project_name", values: []string{a.ProjectName}, gap: true},
 		{key: "dir", values: []string{a.Dir}},
 		{key: "worktree", values: present(a.Worktree, identical)},
@@ -80,7 +81,6 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "activity", values: present(a.Activity, func(v api.AgentActivity) string { return string(v) })},
 		{key: "draft", values: present(a.Draft, yesNo)},
 		{key: "queued", values: present(a.Queued, strconv.Itoa)},
-		{key: "model", values: present(a.Model, identical)},
 	}
 }
 

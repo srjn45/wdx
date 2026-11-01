@@ -606,9 +606,6 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.Queued != nil && *a.Queued > 0 {
 		field("queued", strconv.Itoa(*a.Queued))
 	}
-	if a.Model != nil {
-		field("model", *a.Model)
-	}
 	if a.Error != nil {
 		field("error", st.Failure(*a.Error))
 	}
@@ -627,6 +624,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)
+	if a.Model != nil {
+		field("model", *a.Model)
+	}
 	field("session", a.SessionId)
 	if a.Pid != nil {
 		field("pid", strconv.Itoa(*a.Pid))

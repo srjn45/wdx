@@ -127,6 +127,7 @@ func TestInfoShowsTheFields(t *testing.T) {
 		"▸ name:               lead",
 		"id:                 agent-lead",
 		"aca:                claude_code",
+		"model:              Haiku 5.5",
 		"project_name:       demo",
 		"dir:                /work/demo",
 		"worktree:           auth-fix",
@@ -139,13 +140,15 @@ func TestInfoShowsTheFields(t *testing.T) {
 		"activity:           working",
 		"draft:              no",
 		"queued:             2",
-		"model:              Haiku 5.5",
 		"Enter rename",
 		"[● info: lead(-)]",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
+	}
+	if aca, model, project := strings.Index(got, "aca:"), strings.Index(got, "model:"), strings.Index(got, "project_name:"); aca > model || model > project {
+		t.Errorf("the model is not next to the aca:\n%s", got)
 	}
 }
 
