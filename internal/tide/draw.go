@@ -376,7 +376,7 @@ func (m *Model) statusLine() string {
 		right = m.menuHint()
 	case m.confirm != nil:
 		state = style.StatusPrefix
-		right = "confirm: y remove  n or Esc keep"
+		right = "confirm: y " + m.confirm.verb() + "  n or Esc keep"
 	case m.child != nil:
 		state = style.StatusPrefix
 		right = "new child: type a worktree  Enter create  Esc cancel"

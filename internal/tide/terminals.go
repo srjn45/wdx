@@ -34,6 +34,9 @@ func (m *Model) menuItems() []menuItem {
 	if m.settingsOffered() {
 		items = append(items, menuItem{settingsKey, "settings", "settings"})
 	}
+	if r, ok := m.closableProject(); ok {
+		items = append(items, menuItem{closeProjectKey, "close " + r.name, "close"})
+	}
 	if t, ok := m.closableTab(); ok {
 		items = append(items, menuItem{closeTabKey, "close the tab of " + t.title(), "close tab"})
 	}
@@ -176,7 +179,8 @@ func (m *Model) focusedAgent() (api.Agent, bool) {
 	return api.Agent{}, false
 }
 
-// confirmBox asks before C-q x removes: removing cannot be undone.
+// confirmBox asks before C-q x removes, which cannot be undone, and before C-q w
+// stops what runs in a project.
 type confirmBox struct {
 	r    removal
 	busy bool // the removal was sent
@@ -199,6 +203,10 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 	case "y":
 		c.busy = true
 		r := c.r
+		if r.kind == projectKind {
+			m.log.Info("closing confirmed", "name", r.name)
+			return m.closeProject(r, true)
+		}
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
 		return func() tea.Msg {
 			var err error
@@ -210,7 +218,7 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 			return removed{r: r, err: err}
 		}
 	case "n", "esc":
-		m.log.Info("removal kept", "kind", c.r.kind, "name", c.r.name)
+		m.log.Info("confirmation declined", "kind", c.r.kind, "name", c.r.name)
 		m.confirm = nil
 	}
 	return nil
@@ -234,6 +242,9 @@ func (m *Model) removed(msg removed) {
 // confirmPopup is what the confirmation shows.
 func (m *Model) confirmPopup() popup {
 	c, st := m.confirm, m.st
+	if c.r.kind == projectKind {
+		return m.closePopup()
+	}
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
 	if c.r.running && c.r.kind == "agent" {
 		body = append(body, "It is running: it is stopped.")

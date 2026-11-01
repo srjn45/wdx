@@ -26,10 +26,11 @@ import (
 // tide's own keys, as Bubble Tea names them; every other key goes to the
 // focused pane.
 const (
-	zoomKey     = "ctrl+]"
-	terminalKey = `ctrl+\`
-	menuKey     = "ctrl+q"
-	closeTabKey = "-" // of the menu
+	zoomKey         = "ctrl+]"
+	terminalKey     = `ctrl+\`
+	menuKey         = "ctrl+q"
+	closeTabKey     = "-" // of the menu
+	closeProjectKey = "w" // of the menu
 )
 
 // focusKeys are Alt and an arrow, whichever way the terminal sends them.
@@ -250,6 +251,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.ended(msg)
 	case removed:
 		m.removed(msg)
+	case projectClosed:
+		return m, m.closed(msg)
 	case valueSaved:
 		m.valueSavedMsg(msg)
 	case settingsListed:
@@ -528,6 +531,16 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		if m.settingsOffered() {
 			m.switcher, m.opening = nil, nil
 			m.openSettings()
+		}
+	case closeProjectKey:
+		if r, ok := m.closableProject(); ok {
+			m.switcher, m.opening = nil, nil
+			if r.running {
+				m.confirm = &confirmBox{r: r}
+				m.log.Info("closing asked", "name", r.name)
+				return nil
+			}
+			return m.closeProject(r, false)
 		}
 	case closeTabKey:
 		if t, ok := m.closableTab(); ok {

@@ -149,13 +149,18 @@ func (m *Model) broke(err error) tea.Cmd {
 func (m *Model) projectGone() tea.Cmd {
 	name := m.shown
 	m.log.Info("project shown was removed", "name", name)
+	m.leaveProject()
+	m.opening = []screen{&openProjectScreen{projects: m.projects, notice: name + " was removed"}}
+	return m.listProjects()
+}
+
+// leaveProject shows no project.
+func (m *Model) leaveProject() {
 	m.unfollow()
 	m.shown = ""
 	m.layout.terminalOpen = false
 	m.root, m.switcher = noProjectScreen{}, nil
-	m.opening = []screen{&openProjectScreen{projects: m.projects, notice: name + " was removed"}}
 	m.focusProjectPane()
-	return m.listProjects()
 }
 
 // terminals returns the terminals of the project shown, by name.
