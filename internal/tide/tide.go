@@ -580,7 +580,7 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		}
 	case refreshKey:
 		if m.menuOffers(refreshKey) {
-			return m.refreshWorktrees("")
+			return m.refreshWorktrees("", true)
 		}
 	case startKey:
 		if s, ok := m.startable(); ok {

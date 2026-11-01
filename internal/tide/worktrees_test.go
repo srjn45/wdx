@@ -1201,6 +1201,11 @@ func TestLandingSummary(t *testing.T) {
 		{api.WorktreeLandingStateRebasing, nil, 1, "landing: rebase"},
 		{api.WorktreeLandingStateChecking, nil, 1, "landing: check"},
 		{api.WorktreeLandingStateMoving, nil, 1, "landing"},
+		{api.WorktreeLandingStatePushing, nil, 1, "landing: push"},
+		{api.WorktreeLandingStateOpening, nil, 1, "landing: PR"},
+		{api.WorktreeLandingStateOpened, nil, 1, ""},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodePushFailed), 1, "push failed"},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodePrFailed), 1, "PR failed"},
 		{api.WorktreeLandingStateFailed, code(api.ErrorCodeRebaseFailed), 1, "rebase conflict"},
 		{api.WorktreeLandingStateFailed, code(api.ErrorCodeCheckFailed), 1, "check failed"},
 		{api.WorktreeLandingStateFailed, code(api.ErrorCodeBaseMoved), 1, "base moved"},
@@ -1218,7 +1223,7 @@ func TestLandingSummary(t *testing.T) {
 
 func TestLandBarKey(t *testing.T) {
 	t.Parallel()
-	main, origin := "main", "origin/main"
+	main, origin, here := "main", "origin/main", "abc"
 	m := worktreesModel(
 		api.WorktreeStatus{Name: "main", Path: "/r", Ahead: aheadBy(2), Base: &main},
 		api.WorktreeStatus{Name: "ready", Path: "/r/a", Ahead: aheadBy(1), Base: &main},
@@ -1226,8 +1231,11 @@ func TestLandBarKey(t *testing.T) {
 		api.WorktreeStatus{Name: "nothing", Path: "/r/c", Ahead: aheadBy(0), Base: &main},
 		api.WorktreeStatus{Name: "remote", Path: "/r/d", Ahead: aheadBy(1), Base: &origin},
 		api.WorktreeStatus{Name: "going", Path: "/r/e", Ahead: aheadBy(1), Base: &main, Landing: &api.WorktreeLanding{State: api.WorktreeLandingStateChecking}},
+		api.WorktreeStatus{Name: "merged", Path: "/r/f", Ahead: aheadBy(1), Base: &main, Head: &here, PullRequest: &api.WorktreePullRequest{Number: 12, State: api.WorktreePullRequestStateMerged, Head: here}},
+		api.WorktreeStatus{Name: "open", Path: "/r/g", Ahead: aheadBy(1), Base: &main, Head: &here, PullRequest: &api.WorktreePullRequest{Number: 12, State: api.WorktreePullRequestStateOpen, Head: here}},
+		api.WorktreeStatus{Name: "newer", Path: "/r/h", Ahead: aheadBy(1), Base: &main, Head: &here, PullRequest: &api.WorktreePullRequest{Number: 12, State: api.WorktreePullRequestStateOpen, Head: "older"}},
 	)
-	for name, want := range map[string]string{"main": "", "ready": "land", "dirty": commitFirst, "nothing": "", "remote": "", "going": "landing…", "gone": ""} {
+	for name, want := range map[string]string{"main": "", "ready": "land", "dirty": commitFirst, "nothing": "", "remote": "land", "merged": "", "open": "PR #12 open", "newer": "land", "going": "landing…", "gone": ""} {
 		key, ok := m.landBarKey(name)
 		if ok != (want != "") || key.label != want {
 			t.Errorf("%s: %+v, %v, want %q", name, key, ok, want)
@@ -1245,6 +1253,65 @@ func TestLandBarKey(t *testing.T) {
 	m.flipWorktreeView(committedTab("dirty")) // on what is not committed, C is there instead
 	if !slices.ContainsFunc(m.worktreeBarKeys(committedTab("dirty")), func(k barKey) bool { return k.keys == landKey && k.label == commitFirst }) {
 		t.Errorf("no commit first: %+v", m.worktreeBarKeys(committedTab("dirty")))
+	}
+}
+
+func TestWorktreeRowSaysItsPR(t *testing.T) {
+	t.Parallel()
+	here := "abc"
+	merged := api.WorktreeStatus{Name: "work", Ahead: aheadBy(1), Head: &here, PullRequest: &api.WorktreePullRequest{Number: 12, State: api.WorktreePullRequestStateMerged, Head: here}}
+	if got := worktreeSummary(merged); got != "PR #12 merged ↑1" {
+		t.Errorf("summary: %q", got)
+	}
+	if !mergedThroughPR(merged) {
+		t.Errorf("merged: not removable")
+	}
+	merged.Files = []api.WorktreeFile{changed("f", api.WorktreeFileStatusM)}
+	if mergedThroughPR(merged) {
+		t.Errorf("merged, with a file changed: removable")
+	}
+	other := "def"
+	merged.Files, merged.Head = nil, &other
+	if mergedThroughPR(merged) {
+		t.Errorf("merged with other commits: removable")
+	}
+}
+
+func TestLandByPRInATide(t *testing.T) {
+	t.Parallel()
+	p, dir, work := landInTide(t)
+	m := p.m
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	gittest.Git(t, dir, "init", "-q", "--bare", origin)
+	gittest.Git(t, dir, "remote", "add", "origin", origin)
+
+	p.keys(landKey)
+	p.until(t, "the box", func(m *Model) bool { return m.land != nil && m.land.editing })
+	wantText(t, m, "Method:", "rebase and move the base", "Push the base to origin")
+	p.keys("right")
+	p.until(t, "the method changed", func(m *Model) bool { return m.land.method == api.ProjectLandingMethodPr })
+	wantText(t, m, "open a PR")
+	if strings.Contains(text(m), "Push the base to origin") {
+		t.Errorf("a PR has no base to push:\n%s", text(m))
+	}
+	p.keys("enter")
+	p.until(t, "the settings saved", func(m *Model) bool { return m.land != nil && !m.land.editing && !m.land.busy })
+	wantText(t, m, "Open a PR of work onto main?", "Check: none", "open PR")
+
+	p.keys("y")
+	p.until(t, "the PR on its row", func(m *Model) bool {
+		w, ok := m.worktreeNamed("work")
+		return m.land == nil && ok && w.PullRequest != nil && strings.Contains(m.statusNotice, "PR #12 open")
+	})
+	if m.confirm != nil {
+		t.Errorf("offered to remove what has not merged: %+v", m.confirm)
+	}
+	if strings.Contains(gitLog(t, dir), "work") {
+		t.Errorf("reached main: %s", gitLog(t, dir))
+	}
+	wantText(t, m, "PR #12 open")
+	if _, err := os.Stat(work); err != nil {
+		t.Errorf("the worktree: %v", err)
 	}
 }
 

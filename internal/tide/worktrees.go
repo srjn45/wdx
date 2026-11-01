@@ -179,19 +179,21 @@ func (m *Model) openWorktreeRow() tea.Cmd {
 	}
 	m.changed("diff")
 	m.log.Info("diff opened", "worktree", r.worktree.Name, "tab", r.key())
-	return m.refreshWorktrees(r.worktree.Name)
+	return m.refreshWorktrees(r.worktree.Name, true)
 }
 
 // refreshWorktrees asks the daemon to read the worktree called name again, or all
-// of them when it is "". What it finds comes with the stream.
-func (m *Model) refreshWorktrees(name string) tea.Cmd {
+// of them when it is "", and with pullRequests what gh says of their PRs, which only
+// what the user asks for may do, as it uses the network. What it finds comes with the
+// stream.
+func (m *Model) refreshWorktrees(name string, pullRequests bool) tea.Cmd {
 	f := m.following
 	if f == nil || f.project == nil || m.client == nil {
 		return nil
 	}
 	ref := "id:" + f.project.Id
 	return func() tea.Msg {
-		if err := m.client.RefreshWorktrees(m.ctx, ref, name); err != nil {
+		if err := m.client.RefreshWorktrees(m.ctx, ref, name, pullRequests); err != nil {
 			m.log.Info("worktrees not refreshed", "err", err)
 		}
 		return nil
@@ -206,7 +208,7 @@ func (m *Model) worktreesSync() tea.Cmd {
 	if !came {
 		return nil
 	}
-	return m.refreshWorktrees("")
+	return m.refreshWorktrees("", false)
 }
 
 // worktreeRowActive reports whether the tab shown is the row's; a folded worktree
@@ -243,7 +245,7 @@ func worktreeSummary(w api.WorktreeStatus) string {
 	case w.Missing:
 		return "missing"
 	case w.Ahead == nil:
-		return ""
+		return pullRequestSummary(w)
 	case *w.Ahead == 0:
 		if len(w.Files) > 0 || w.Base == nil || strings.HasPrefix(*w.Base, "origin/") {
 			return "" // compared with its own branch on origin, nothing is unpushed
@@ -253,6 +255,9 @@ func worktreeSummary(w api.WorktreeStatus) string {
 	s := fmt.Sprintf("↑%d", *w.Ahead)
 	if w.Added != nil && w.Removed != nil {
 		s += fmt.Sprintf(" +%d −%d", *w.Added, *w.Removed)
+	}
+	if pr := pullRequestSummary(w); pr != "" {
+		return pr + " " + s
 	}
 	return s
 }
@@ -269,7 +274,7 @@ func (m *Model) removableWorktree() (removal, bool) {
 	if r.file != nil || w.Name == "main" {
 		return removal{}, false
 	}
-	if s := worktreeSummary(w); s != "landed" && s != "missing" {
+	if s := worktreeSummary(w); s != "landed" && s != "missing" && !mergedThroughPR(w) {
 		return removal{}, false
 	}
 	return m.worktreeRemovalOf(w), true
@@ -479,6 +484,9 @@ func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []strin
 	}
 	if w.Ahead != nil && *w.Ahead > 0 {
 		short = fmt.Sprintf("↑%d", *w.Ahead)
+		if w.PullRequest != nil {
+			short = fmt.Sprintf("PR #%d", w.PullRequest.Number)
+		}
 	}
 	if s := landingShort(w); s != "" {
 		short = s // a landing matters more than how far ahead it is, in a narrow pane too

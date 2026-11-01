@@ -140,7 +140,7 @@ func (st *projectStream) next() (event string, data []byte, err error) {
 		// Read from what is kept: a stream never runs git, so a change that has
 		// nothing to do with them costs none.
 		if list := st.s.tracker.Statuses(st.id); list != nil {
-			views := st.s.withLandings(st.id, worktreeStatusViews(list))
+			views := st.s.withLandings(st.ctx, st.id, worktreeStatusViews(list))
 			v.WorktreeStatuses = &views
 		}
 	}

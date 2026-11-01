@@ -292,6 +292,10 @@ paths:
           in: query
           description: The worktree's name; all of them when not given or not known.
           schema: { type: string }
+        - name: pull_requests
+          in: query
+          description: Have gh say how their pull requests stand too, which uses the network. The streams send what it finds.
+          schema: { type: boolean }
       responses:
         "202": { description: The read was asked for. }
         default: { $ref: "#/components/responses/Problem" }
@@ -385,15 +389,22 @@ paths:
       operationId: landWorktree
       summary: Start landing a worktree on its base
       description: |
-        Rebases it if the base has moved on, runs the project's check, moves the
-        base forward to the commit checked and pushes it if the project says so. It
-        goes on in the background: "landing" in the worktree's status says how far
-        it got and how it ended, in the codes base_moved, check_failed,
-        fast_forward_failed and rebase_failed. Each leaves the base where it was.
+        By rebase, it rebases if the base has moved on, runs the project's check,
+        moves the base forward to the commit checked and pushes it if the project
+        says so. By PR, it runs the check, pushes the branch and opens a PR, or adds
+        to the one open. It goes on in the background: "landing" in the worktree's
+        status says how far it got and how it ended, in the codes base_moved,
+        check_failed, fast_forward_failed, pr_failed, push_failed and rebase_failed.
+        Each leaves the base where it was.
 
-        Errors: agent_working, invalid_path, land_not_configured, landing_running,
-        no_local_base, not_committed, not_found, nothing_to_land, project_closed,
-        usage, worktree_busy, worktree_is_clone.
+        Errors: agent_working, dependency_missing, detached_head, invalid_path,
+        land_not_configured, landing_running, no_local_base, not_committed, not_found,
+        nothing_to_land, project_closed, usage, worktree_busy, worktree_is_clone.
+      parameters:
+        - name: method
+          in: query
+          description: How to land this once; what the project says when not given.
+          schema: { type: string, enum: [rebase, pr] }
       responses:
         "202":
           description: It started, with result started.
@@ -1282,7 +1293,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened]
 
     Worktree:
       type: object
@@ -1333,6 +1344,10 @@ components:
         branch: { type: string, nullable: true, description: "Null when HEAD is detached." }
         head: { type: string, nullable: true, description: "Null with no commit yet." }
         missing: { type: boolean, description: "Its directory is gone." }
+        pull_request:
+          nullable: true
+          description: What gh last said of its PR; null when none is known. It is asked only when the user looks.
+          allOf: [{ $ref: "#/components/schemas/WorktreePullRequest" }]
         landing:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/WorktreeLanding" }]
@@ -1478,10 +1493,11 @@ components:
 
     ProjectLanding:
       type: object
-      required: [configured, check, push]
+      required: [configured, method, check, push]
       properties:
         result: { $ref: "#/components/schemas/Result" }
         configured: { type: boolean, description: "False until it is set: landing needs it." }
+        method: { type: string, enum: [rebase, pr], description: "How it lands: moving the base, or opening a PR." }
         check: { type: string, nullable: true, description: "The command run before landing; null for none." }
         push: { type: boolean, description: "Whether a base that moved is pushed to origin." }
 
@@ -1489,17 +1505,18 @@ components:
       type: object
       required: [push]
       properties:
+        method: { type: string, enum: [rebase, pr], description: "What is saved already when not given, rebase at first." }
         check: { type: string, nullable: true, description: "The command run before landing; null or empty for none." }
         push: { type: boolean }
 
     WorktreeLanding:
       type: object
-      required: [id, state, code, detail, conflicts, terminal, base, commit, head, pushed, push_error]
+      required: [id, state, code, detail, conflicts, terminal, base, commit, head, pushed, push_error, pull_request]
       description: A landing of the worktree, the one running or the last. A restarted daemon forgets it.
       properties:
         id: { type: string }
-        state: { type: string, enum: [rebasing, checking, moving, landed, failed] }
-        code: { type: string, nullable: true, description: "When failed: base_moved, check_failed, fast_forward_failed or rebase_failed." }
+        state: { type: string, enum: [rebasing, checking, moving, pushing, opening, landed, opened, failed], description: "It ends in landed, opened by a landing by PR, or failed." }
+        code: { type: string, nullable: true, description: "When failed: base_moved, check_failed, fast_forward_failed, pr_failed, push_failed or rebase_failed." }
         detail: { type: string, nullable: true, description: What went wrong. }
         conflicts:
           type: array
@@ -1511,6 +1528,20 @@ components:
         head: { type: string, nullable: true, description: "The commit the worktree was on when it failed." }
         pushed: { type: boolean }
         push_error: { type: string, nullable: true, description: "A push that failed: it landed all the same." }
+        pull_request:
+          nullable: true
+          description: The PR a landing by PR opened or found open.
+          allOf: [{ $ref: "#/components/schemas/WorktreePullRequest" }]
+
+    WorktreePullRequest:
+      type: object
+      required: [number, url, state, head]
+      description: What gh last said of a PR.
+      properties:
+        number: { type: integer }
+        url: { type: string }
+        state: { type: string, enum: [open, merged, closed] }
+        head: { type: string, description: "The commit it is at." }
 
     WorktreeLandResult:
       type: object
@@ -2016,6 +2047,9 @@ components:
         - check_failed
         - base_moved
         - fast_forward_failed
+        - push_failed
+        - pr_failed
+        - detached_head
         - worktree_is_clone
         - worktree_not_landed
         - worktree_not_removed

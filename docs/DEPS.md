@@ -24,6 +24,7 @@ Agreed with the human:
 | `git` | yes | projects (create, open, clone, worktrees), and so terminals | `git` 2.31 or later is on the PATH (`rev-parse --path-format=absolute`) | `sudo apt-get install -y git` | `brew install git` |
 | `clipboard` | no | tide's copy on release | Wayland: `wl-copy`; X11: `xclip` or `xsel`; macOS: `pbcopy`, always there | `wl-clipboard` on Wayland, `xclip` on X11 | none needed |
 | `container` (installed as `docker` or `podman`) | no | `wdx observe` | `docker` or `podman` is installed and answers (`info`) | `docker`: `sudo apt-get install -y docker.io`, `sudo usermod -aG docker $USER`, then log in again; `podman`: `sudo apt-get install -y podman` | `docker`: `brew install --cask docker`, then open Docker once; `podman`: `brew install podman`, `podman machine init`, `podman machine start` |
+| `gh` | no | landing a worktree by PR (docs/TIDE_WORKTREES.md) | `gh` is on the PATH. Whether it is logged in shows when it is used, as asking would reach GitHub | `sudo apt-get install -y gh` | `brew install gh` |
 
 Later, with the agents: each agent's CLI (`claude`, `codex`, …), optional, enabling its agent, ready when installed and logged in.
 

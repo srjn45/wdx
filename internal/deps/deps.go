@@ -40,6 +40,7 @@ var Dependencies = []Dependency{
 	{Name: "git", Mandatory: true, Features: []string{"projects", "terminals"}},
 	{Name: "clipboard", Features: []string{"tide copy"}},
 	{Name: "container", Features: []string{"observe"}},
+	{Name: "gh", Features: []string{"landing by PR"}},
 }
 
 // MinGit is the oldest git wdx works with: it uses rev-parse
@@ -160,6 +161,8 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 		c = checkClipboard(p)
 	case "container":
 		c = checkContainer(ctx, p, "docker", "podman")
+	case "gh":
+		c = checkGH(ctx, p)
 	}
 	c.Dependency = d
 	logging.FromContext(ctx).Info("dependency checked", "name", d.Name, "status", c.Status, "program", c.Program, "version", c.Version, "detail", c.Detail)
@@ -218,6 +221,23 @@ func checkGit(ctx context.Context, p Probe) Check {
 	if older(c.Version, MinGit) {
 		c.Status, c.Detail = TooOld, fmt.Sprintf("wdx needs git %d.%d or later", MinGit[0], MinGit[1])
 	}
+	return c
+}
+
+// checkGH says whether gh is there. Whether it is logged in shows when it is used, as
+// asking would reach GitHub.
+func checkGH(ctx context.Context, p Probe) Check {
+	name, path, ok := find(p, "gh")
+	if !ok {
+		return Check{Status: Missing, Detail: "gh is not installed"}
+	}
+	c := Check{Status: Ready, Program: name, Path: path}
+	out, err := output(ctx, p, path, "--version")
+	if err != nil {
+		c.Status, c.Detail = NotReady, fmt.Sprintf("gh --version failed: %v", err)
+		return c
+	}
+	c.Version = version(out)
 	return c
 }
 

@@ -53,6 +53,9 @@ type Options struct {
 	Executable string
 	// ShellEnv holds the variables shells inherit, as KEY=value.
 	ShellEnv []string
+	// GH is the program that speaks to GitHub; "" for none, as on a machine without
+	// it, which keeps a test from reaching the network.
+	GH string
 	// TerminalShell is the shell terminals run; "" for the login shell.
 	TerminalShell string
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
@@ -147,6 +150,8 @@ type Daemon struct {
 	stopTracker context.CancelFunc
 	// lander lands worktrees, each in the background.
 	lander *worktree.Lander
+	// pullRequests keeps what gh said of the worktrees' PRs.
+	pullRequests *worktree.PullRequests
 	// trackerNotices is what tells it of the changes.
 	trackerNotices sync.WaitGroup
 	changes        sync.Mutex    // one request changing state at a time
@@ -469,7 +474,10 @@ func (d *Daemon) close() {
 		d.listener.Close()
 	}
 	if d.lander != nil {
-		d.lander.Close() // it uses the terminals and the tracker
+		d.lander.Close() // it uses the terminals, the tracker and the pull requests
+	}
+	if d.pullRequests != nil {
+		d.pullRequests.Close()
 	}
 	if d.tracker != nil {
 		d.stopTracker()

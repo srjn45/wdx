@@ -7,7 +7,7 @@ import (
 
 // Installable are the names wdx deps install takes: a dependency, or for
 // container the program that provides it.
-var Installable = []string{"git", "clipboard", "docker", "podman"}
+var Installable = []string{"git", "clipboard", "docker", "podman", "gh"}
 
 // DependencyOf returns the dependency the installable name provides.
 func DependencyOf(name string) (Dependency, bool) {
@@ -118,6 +118,8 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 			}, nil
 		case "podman":
 			return Plan{Commands: apt("podman")}, nil
+		case "gh":
+			return Plan{Commands: apt("gh")}, nil
 		}
 	case "brew":
 		switch name {
@@ -136,6 +138,8 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 				{"podman", "machine", "init"},
 				{"podman", "machine", "start"},
 			}}, nil
+		case "gh":
+			return Plan{Commands: [][]string{{"brew", "install", "gh"}}}, nil
 		}
 	}
 	if sys.OS == "darwin" {
@@ -147,6 +151,7 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 		"clipboard": "wl-clipboard on Wayland, xclip on X11",
 		"docker":    "Docker: https://docs.docker.com/engine/install/",
 		"podman":    "Podman: https://podman.io/docs/installation",
+		"gh":        "GitHub CLI: https://cli.github.com",
 	}[name]
 	distribution := sys.Distribution
 	if distribution == "" {

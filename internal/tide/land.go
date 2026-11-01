@@ -23,6 +23,7 @@ const (
 // landBox says what is about to land, and how the project lands.
 type landBox struct {
 	worktree string
+	method   api.ProjectLandingMethod
 	check    string
 	push     bool
 	editing  bool // the settings are being typed: the first time, or after m
@@ -48,7 +49,7 @@ type landStarted struct {
 }
 
 func landingRunning(w api.WorktreeStatus) bool {
-	return w.Landing != nil && w.Landing.State != api.WorktreeLandingStateLanded && w.Landing.State != api.WorktreeLandingStateFailed
+	return w.Landing != nil && w.Landing.State != api.WorktreeLandingStateLanded && w.Landing.State != api.WorktreeLandingStateOpened && w.Landing.State != api.WorktreeLandingStateFailed
 }
 
 // landingFailed is the failure of the last landing, while it still says something
@@ -66,6 +67,10 @@ func landingSummary(w api.WorktreeStatus) string {
 			return "landing: rebase"
 		case api.WorktreeLandingStateChecking:
 			return "landing: check"
+		case api.WorktreeLandingStatePushing:
+			return "landing: push"
+		case api.WorktreeLandingStateOpening:
+			return "landing: PR"
 		}
 		return "landing"
 	case landingFailed(w):
@@ -76,6 +81,10 @@ func landingSummary(w api.WorktreeStatus) string {
 			return "check failed"
 		case string(api.ErrorCodeBaseMoved):
 			return "base moved"
+		case string(api.ErrorCodePushFailed):
+			return "push failed"
+		case string(api.ErrorCodePrFailed):
+			return "PR failed"
 		}
 		return "not landed"
 	}
@@ -85,13 +94,34 @@ func landingSummary(w api.WorktreeStatus) string {
 // landingShort is landingSummary where the row has little room.
 func landingShort(w api.WorktreeStatus) string {
 	switch s := landingSummary(w); s {
-	case "landing: rebase", "landing: check":
+	case "landing: rebase", "landing: check", "landing: push", "landing: PR":
 		return "landing"
 	case "rebase conflict":
 		return "conflict"
 	default:
 		return s
 	}
+}
+
+// pullRequestSummary is what a row says of the worktree's PR; "" when none is known.
+func pullRequestSummary(w api.WorktreeStatus) string {
+	if w.PullRequest == nil {
+		return ""
+	}
+	return fmt.Sprintf("PR #%d %s", w.PullRequest.Number, w.PullRequest.State)
+}
+
+// pullRequestHolds reports whether the worktree's PR is at the commit it is on, so
+// that landing again would add nothing.
+func pullRequestHolds(w api.WorktreeStatus, state api.WorktreePullRequestState) bool {
+	return w.PullRequest != nil && w.PullRequest.State == state && w.Head != nil && w.PullRequest.Head == *w.Head
+}
+
+// mergedThroughPR reports whether nothing keeps the worktree from counting as landed
+// but commits that a PR took there, which a squash leaves looking ahead. The daemon
+// asks gh again before removing it.
+func mergedThroughPR(w api.WorktreeStatus) bool {
+	return pullRequestHolds(w, api.WorktreePullRequestStateMerged) && len(w.Files) == 0
 }
 
 func deref(s *string) string {
@@ -122,8 +152,10 @@ func (m *Model) landBarKey(name string) (barKey, bool) {
 		return barKey{landKey, "landing…", 8}, true
 	case len(w.Files) > 0:
 		return barKey{landKey, commitFirst, 8}, true
-	case w.Ahead == nil || *w.Ahead == 0 || w.Base == nil || strings.HasPrefix(*w.Base, "origin/"):
+	case w.Ahead == nil || *w.Ahead == 0 || w.Base == nil || mergedThroughPR(w):
 		return barKey{}, false
+	case pullRequestHolds(w, api.WorktreePullRequestStateOpen):
+		return barKey{landKey, pullRequestSummary(w), 8}, true
 	}
 	return barKey{landKey, "land", 8}, true
 }
@@ -193,7 +225,7 @@ func (m *Model) landSettingsRead(msg landSettingsRead) {
 		return
 	}
 	s := msg.settings
-	m.land = &landBox{worktree: msg.worktree, check: deref(s.Check), push: s.Push, editing: !s.Configured}
+	m.land = &landBox{worktree: msg.worktree, method: s.Method, check: deref(s.Check), push: s.Push, editing: !s.Configured}
 	m.log.Info("landing asked", "worktree", msg.worktree, "configured", s.Configured)
 }
 
@@ -210,6 +242,8 @@ func (m *Model) landBoxKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.land = nil
 		case name == "tab":
 			b.push = !b.push
+		case name == "left" || name == "right":
+			b.method = otherMethod(b.method)
 		case name == "enter":
 			b.busy, b.err = true, ""
 			return m.saveLandSettings(b)
@@ -228,7 +262,7 @@ func (m *Model) landBoxKey(msg tea.KeyPressMsg) tea.Cmd {
 		worktree := b.worktree
 		m.log.Info("landing confirmed", "worktree", worktree)
 		return func() tea.Msg {
-			r, err := m.client.LandWorktree(m.ctx, worktree, ref, "")
+			r, err := m.client.LandWorktree(m.ctx, worktree, ref, "", "")
 			return landStarted{worktree: worktree, id: r.Landing.Id, err: err}
 		}
 	case "m":
@@ -239,10 +273,18 @@ func (m *Model) landBoxKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+func otherMethod(method api.ProjectLandingMethod) api.ProjectLandingMethod {
+	if method == api.ProjectLandingMethodPr {
+		return api.ProjectLandingMethodRebase
+	}
+	return api.ProjectLandingMethodPr
+}
+
 func (m *Model) saveLandSettings(b *landBox) tea.Cmd {
 	ref := "id:" + m.following.project.Id
 	check := strings.TrimSpace(b.check)
-	body := api.ProjectLandingUpdate{Push: b.push}
+	method := api.ProjectLandingUpdateMethod(b.method)
+	body := api.ProjectLandingUpdate{Method: &method, Push: b.push}
 	if check != "" {
 		body.Check = &check
 	}
@@ -305,6 +347,14 @@ func (m *Model) landingsChanged() {
 			m.log.Info("landing failed", "worktree", w.Name, "code", deref(w.Landing.Code))
 			continue
 		}
+		if w.Landing.State == api.WorktreeLandingStateOpened {
+			m.statusNotice = w.Name + ": PR open"
+			if pr := w.Landing.PullRequest; pr != nil {
+				m.statusNotice = fmt.Sprintf("%s: PR #%d open, %s", w.Name, pr.Number, pr.Url)
+			}
+			m.log.Info("pull request opened", "worktree", w.Name)
+			continue
+		}
 		m.statusNotice = "landed " + w.Name + " on " + w.Landing.Base
 		if w.Landing.PushError != nil {
 			m.statusNotice += ", not pushed: " + *w.Landing.PushError
@@ -351,14 +401,17 @@ func (m *Model) landPopup() popup {
 		pushed = "yes"
 	}
 	if b.editing {
-		body := []string{"How this project lands, for every worktree:", "", "Check to run first, empty for none:", "> " + b.check + "_", "", "Push the base to origin: " + pushed}
+		body := []string{"How this project lands, for every worktree:", "", "Method: " + st.Muted("< ") + methodName(b.method) + st.Muted(" >"), "", "Check to run first, empty for none:", "> " + b.check + "_"}
+		if b.method != api.ProjectLandingMethodPr {
+			body = append(body, "", "Push the base to origin: "+pushed)
+		}
 		if b.err != "" {
 			body = append(body, "", st.Failure(b.err))
 		}
 		return popup{
 			title:  "Landing settings",
 			body:   body,
-			footer: st.Command("Enter") + " save  " + st.Command("Tab") + " push  " + st.Command("Esc") + " cancel",
+			footer: st.Command("Enter") + " save  " + st.Command("← →") + " method  " + st.Command("Tab") + " push  " + st.Command("Esc") + " cancel",
 		}
 	}
 	w, _ := m.worktreeNamed(b.worktree)
@@ -367,16 +420,25 @@ func (m *Model) landPopup() popup {
 	if w.Added != nil && w.Removed != nil {
 		lines += fmt.Sprintf(" +%d −%d", *w.Added, *w.Removed)
 	}
-	body := []string{"Land " + st.Name(b.worktree) + " on " + st.Name(base) + "?", lines}
+	byPR := b.method == api.ProjectLandingMethodPr
+	question := "Land " + st.Name(b.worktree) + " on " + st.Name(base) + "?"
+	if byPR {
+		question = "Open a PR of " + st.Name(b.worktree) + " onto " + st.Name(strings.TrimPrefix(base, "origin/")) + "?"
+	}
+	body := []string{question, lines}
 	if s := verifiedProgress(w); s != "" {
 		body = append(body, s)
 	}
 	if n := len(m.draftComments(b.worktree)); n > 0 {
 		body = append(body, st.Warning(countOf(n)+" not sent"))
 	}
-	body = append(body, "", "Rebases first if "+base+" has moved on.", "Check: "+check, "Push: "+pushed)
+	if byPR {
+		body = append(body, "", "Pushes the branch, and adds to a PR already open.", "Check: "+check)
+	} else {
+		body = append(body, "", "Rebases first if "+base+" has moved on.", "Check: "+check, "Push: "+pushed)
+	}
 	for _, a := range m.agents() {
-		if a.State == api.AgentStateRunning && a.Activity != nil && *a.Activity == api.AgentActivityWorking && m.worktreeOf(a) != b.worktree && m.baseCheckoutHolds(a, base) {
+		if !byPR && a.State == api.AgentStateRunning && a.Activity != nil && *a.Activity == api.AgentActivityWorking && m.worktreeOf(a) != b.worktree && m.baseCheckoutHolds(a, base) {
 			body = append(body, st.Warning(a.Name+" is working in "+base+": its files move, its changes stay"))
 		}
 	}
@@ -386,11 +448,22 @@ func (m *Model) landPopup() popup {
 	if b.err != "" {
 		body = append(body, "", st.Failure(b.err))
 	}
+	action := " land  "
+	if byPR {
+		action = " open PR  "
+	}
 	return popup{
 		title:  "Land worktree",
 		body:   body,
-		footer: st.Command("y") + " land  " + st.Command("m") + " change settings  " + st.Command("n") + " or " + st.Command("Esc") + " cancel",
+		footer: st.Command("y") + action + st.Command("m") + " change settings  " + st.Command("n") + " or " + st.Command("Esc") + " cancel",
 	}
+}
+
+func methodName(method api.ProjectLandingMethod) string {
+	if method == api.ProjectLandingMethodPr {
+		return "open a PR"
+	}
+	return "rebase and move the base"
 }
 
 func aheadOf(w api.WorktreeStatus) int {

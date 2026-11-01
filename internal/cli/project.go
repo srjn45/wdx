@@ -191,22 +191,24 @@ func newProjectListCmd() *cobra.Command {
 
 func newProjectLandingCmd() *cobra.Command {
 	var ref projectRef
-	var check string
+	var check, method string
 	var noCheck, push bool
 	cmd := &cobra.Command{
-		Use:   "landing (--id <id> | --name <name>) [--check <command> | --no-check] [--push]",
+		Use:   "landing (--id <id> | --name <name>) [--check <command> | --no-check] [--push] [--method <method>]",
 		Short: "Show or say how a project lands its worktrees",
 		Long: "With --check or --no-check, saves it: the command wdx worktree land runs before\n" +
 			"moving the base, and with --push whether it then pushes the base to origin.\n" +
+			"With --method pr too, it opens a PR with gh rather than moving the base.\n" +
 			"Without them, it shows what is saved. Landing needs it to have been said once.",
 		Example: examples(
 			"Show how a project lands", identity.Name+" project landing --name app",
 			"Check before landing", identity.Name+" project landing --name app --check make-test",
 			"No check, and push", identity.Name+" project landing --name app --no-check --push --json",
+			"Land through PRs", identity.Name+" project landing --name app --no-check --method pr",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "How the project lands.\n" + `With --json: {"configured": true, "check": "...", "push": false}`,
+			outputNote: "How the project lands.\n" + `With --json: {"configured": true, "method": "rebase", "check": "...", "push": false}`,
 			resultList: "updated",
 			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
@@ -215,12 +217,22 @@ func newProjectLandingCmd() *cobra.Command {
 			if push && !setting {
 				return &usageError{errors.New("--push needs --check or --no-check")}
 			}
+			if method != "" && !setting {
+				return &usageError{errors.New("--method needs --check or --no-check")}
+			}
+			if err := checkLandingMethod(method); err != nil {
+				return err
+			}
 			var s api.ProjectLanding
 			var err error
 			if setting {
 				body := api.ProjectLandingUpdate{Push: push}
 				if check != "" {
 					body.Check = &check
+				}
+				if method != "" {
+					m := api.ProjectLandingUpdateMethod(method)
+					body.Method = &m
 				}
 				s, err = clientOf(cmd).SetProjectLanding(cmd.Context(), ref.path(), body)
 			} else {
@@ -236,6 +248,8 @@ func newProjectLandingCmd() *cobra.Command {
 	cmd.Flags().StringVar(&check, "check", "", "`command` to run before landing")
 	cmd.Flags().BoolVar(&noCheck, "no-check", false, "run nothing before landing")
 	cmd.Flags().BoolVar(&push, "push", false, "push the base to origin once it moved")
+	cmd.Flags().StringVar(&method, "method", "", "`method` of landing, rebase or pr; what is saved when not given")
+	cmd.RegisterFlagCompletionFunc("method", landingMethods)
 	cmd.MarkFlagsMutuallyExclusive("check", "no-check")
 	cmd.RegisterFlagCompletionFunc("check", cobra.NoFileCompletions)
 	return cmd
@@ -252,7 +266,7 @@ func (l projectLanding) text(w io.Writer, st style.Style) {
 	if l.Check != nil {
 		check = st.Command(*l.Check)
 	}
-	fmt.Fprintf(w, "check: %s\npush: %v\n", check, l.Push)
+	fmt.Fprintf(w, "method: %s\ncheck: %s\npush: %v\n", l.Method, check, l.Push)
 }
 
 func newProjectGetCmd() *cobra.Command {

@@ -197,18 +197,18 @@ func TestRemovable(t *testing.T) {
 	c := Checkouts{Clone: dir, Paths: []string{dir, lost}}
 
 	for _, name := range []string{"ahead", "dirty"} {
-		if _, err := Removable(t.Context(), c, name); !isNotLanded(err) {
+		if _, err := Removable(t.Context(), c, name, nil); !isNotLanded(err) {
 			t.Errorf("%s: want not landed, got %v", name, err)
 		}
 	}
-	if _, err := Removable(t.Context(), c, "main"); !errors.Is(err, ErrIsClone) {
+	if _, err := Removable(t.Context(), c, "main", nil); !errors.Is(err, ErrIsClone) {
 		t.Errorf("the clone: %v", err)
 	}
-	if _, err := Removable(t.Context(), c, "nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := Removable(t.Context(), c, "nope", nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown: %v", err)
 	}
 	for name, path := range map[string]string{"clean": clean, "gone": gone, "lost": lost} {
-		if s, err := Removable(t.Context(), c, name); err != nil || s.Path != path {
+		if s, err := Removable(t.Context(), c, name, nil); err != nil || s.Path != path {
 			t.Errorf("%s: %+v, %v", name, s, err)
 		}
 	}
@@ -224,7 +224,7 @@ func TestRemove(t *testing.T) {
 	dir := repo(t)
 	clean := linked(t, dir, "clean")
 	c := Checkouts{Clone: dir, Paths: []string{dir}}
-	s, err := Removable(t.Context(), c, "clean")
+	s, err := Removable(t.Context(), c, "clean", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestRemoveLosesNothingWrittenAfterTheCheck(t *testing.T) {
 	c := Checkouts{Clone: dir, Paths: []string{dir}}
 
 	late := linked(t, dir, "late")
-	s, err := Removable(t.Context(), c, "late")
+	s, err := Removable(t.Context(), c, "late", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestRemoveLosesNothingWrittenAfterTheCheck(t *testing.T) {
 	}
 
 	committed := linked(t, dir, "committed")
-	if s, err = Removable(t.Context(), c, "committed"); err != nil {
+	if s, err = Removable(t.Context(), c, "committed", nil); err != nil {
 		t.Fatal(err)
 	}
 	commit(t, committed, "more", "committed since\n")
@@ -287,7 +287,7 @@ func TestRemoveKeepsWhatMustStay(t *testing.T) {
 	if err := os.RemoveAll(gone); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Removable(t.Context(), c, "gone")
+	s, err := Removable(t.Context(), c, "gone", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

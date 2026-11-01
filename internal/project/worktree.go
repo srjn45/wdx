@@ -155,22 +155,24 @@ func (s *Store) recordWorktree(ctx context.Context, projectID, path string) (str
 
 // LandSettings is how a project lands its worktrees.
 type LandSettings struct {
-	Check string // the command run first; "" for none
-	Push  bool
+	Method string // rebase or pr
+	Check  string // the command run first; "" for none
+	Push   bool
 }
 
 // LandSettings returns how the project lands, and false when it was never asked.
 func (s *Store) LandSettings(ctx context.Context, projectID string) (LandSettings, bool, error) {
 	var check sql.NullString
 	var push bool
-	err := s.db.QueryRowContext(ctx, "SELECT check_command, push FROM project_landing WHERE project_id = ?", projectID).Scan(&check, &push)
+	var method string
+	err := s.db.QueryRowContext(ctx, "SELECT method, check_command, push FROM project_landing WHERE project_id = ?", projectID).Scan(&method, &check, &push)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LandSettings{}, false, nil
 	}
 	if err != nil {
 		return LandSettings{}, false, err
 	}
-	return LandSettings{Check: check.String, Push: push}, true, nil
+	return LandSettings{Method: method, Check: check.String, Push: push}, true, nil
 }
 
 // SetLandSettings saves how the project lands.
@@ -180,12 +182,12 @@ func (s *Store) SetLandSettings(ctx context.Context, projectID string, v LandSet
 		check = v.Check
 	}
 	if _, err := db.Exec(ctx, s.db, `
-		INSERT INTO project_landing (project_id, check_command, push, updated_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT (project_id) DO UPDATE SET check_command = excluded.check_command, push = excluded.push, updated_at = excluded.updated_at`,
-		projectID, check, v.Push, time.Now().UnixMilli()); err != nil {
+		INSERT INTO project_landing (project_id, method, check_command, push, updated_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (project_id) DO UPDATE SET method = excluded.method, check_command = excluded.check_command, push = excluded.push, updated_at = excluded.updated_at`,
+		projectID, v.Method, check, v.Push, time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	logging.FromContext(ctx).Info("land settings saved", "project_id", projectID, "has_check", v.Check != "", "push", v.Push)
+	logging.FromContext(ctx).Info("land settings saved", "project_id", projectID, "method", v.Method, "has_check", v.Check != "", "push", v.Push)
 	return nil
 }
 

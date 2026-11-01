@@ -27,6 +27,7 @@ import (
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db/dbtest"
+	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -137,7 +138,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 	log := logging.New(logs, slog.LevelDebug).With("process", "daemon")
 	ctx, stop := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
-		Home: home, Log: log,
+		Home: home, Log: log, GH: ghtest.New(t, home).Program,
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
 		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),

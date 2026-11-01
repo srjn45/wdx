@@ -167,35 +167,41 @@ func newWorktreeCommentsCmd() *cobra.Command {
 
 func newWorktreeLandCmd() *cobra.Command {
 	var scope projectScope
-	var name string
+	var name, method string
 	cmd := &cobra.Command{
-		Use:   "land --name <worktree> [--project-id <id> | --project-name <name>]",
-		Short: "Land a worktree's commits on its base, with no merge commit",
+		Use:   "land --name <worktree> [--method <method>] [--project-id <id> | --project-name <name>]",
+		Short: "Land a worktree's commits on its base, with no merge commit or through a PR",
 		Long: "Rebases it if the base has moved on, undoing that on a conflict; runs the\n" +
 			"project's check in a terminal named land-<worktree>, which stays if it fails;\n" +
 			"moves the base forward to the commit checked, and pushes it if the project\n" +
 			"says so. On any failure the base is where it was. This waits for the end, and\n" +
-			"leaving does not stop it. wdx project landing says how a project lands.",
+			"leaving does not stop it. wdx project landing says how a project lands.\n\n" +
+			"By PR it runs the check, pushes the branch and opens a PR with gh, or adds to\n" +
+			"the one open. It never rebases or forces, and the base stays where it is.",
 		Example: examples(
 			"Land a worktree", identity.Name+" worktree land --name auth-fix",
+			"Open a PR this once", identity.Name+" worktree land --name auth-fix --method pr",
 			"As JSON", identity.Name+" worktree land --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "What landed, and on what.\n" + `With --json: {"result": "landed", "worktree": "...", ...}`,
-			resultList: "landed",
-			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeFastForwardFailed,
+			outputNote: "What landed and on what, or the PR opened.\n" + `With --json: {"result": "landed", "worktree": "...", ...}`,
+			resultList: "landed, pr_opened",
+			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeFastForwardFailed,
 				api.ErrorCodeInvalidPath, api.ErrorCodeLandNotConfigured, api.ErrorCodeLandingRunning, api.ErrorCodeNoLocalBase,
-				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeNothingToLand, api.ErrorCodeProjectClosed,
+				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeNothingToLand, api.ErrorCodePrFailed, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed,
 				api.ErrorCodeRebaseFailed, api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := checkLandingMethod(method); err != nil {
+				return err
+			}
 			ref, dir, err := worktreeScopeOf(cmd, scope)
 			if err != nil {
 				return err
 			}
 			c := clientOf(cmd)
-			started, err := c.LandWorktree(cmd.Context(), name, ref, dir)
+			started, err := c.LandWorktree(cmd.Context(), name, ref, dir, method)
 			if err != nil {
 				if problemCode(err) == api.ErrorCodeLandNotConfigured {
 					return &hinted{err, "say how with " + identity.Name + " project landing --check <command> or --no-check"}
@@ -209,16 +215,35 @@ func newWorktreeLandCmd() *cobra.Command {
 			if l.State == api.WorktreeLandingStateFailed {
 				return landingProblem(l)
 			}
+			result := api.ResultLanded
+			if l.State == api.WorktreeLandingStateOpened {
+				result = api.ResultPrOpened
+			}
 			return printResult(cmd, worktreeLanded{
-				Result: api.ResultLanded, Worktree: name, Base: l.Base, Commit: l.Commit, Pushed: l.Pushed, PushError: l.PushError,
+				Result: result, Worktree: name, Base: l.Base, Commit: l.Commit, Pushed: l.Pushed, PushError: l.PushError, PullRequest: l.PullRequest,
 			})
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
+	cmd.Flags().StringVar(&method, "method", "", "`method` for this landing, rebase or pr; what the project says when not given")
 	cmd.MarkFlagRequired("name")
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	cmd.RegisterFlagCompletionFunc("method", landingMethods)
 	return cmd
+}
+
+// landingMethods completes how a worktree can land.
+func landingMethods(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return []string{"rebase", "pr"}, cobra.ShellCompDirectiveNoFileComp
+}
+
+// checkLandingMethod is a usage error unless method is empty or a way to land.
+func checkLandingMethod(method string) error {
+	if method != "" && method != "rebase" && method != "pr" {
+		return &usageError{fmt.Errorf("--method must be rebase or pr, not %q", method)}
+	}
+	return nil
 }
 
 // waitLanding follows the project until the landing started has ended. The daemon
@@ -244,7 +269,7 @@ func waitLanding(cmd *cobra.Command, started api.WorktreeLandResult) (api.Worktr
 			if w.Landing == nil || w.Landing.Id != started.Landing.Id {
 				continue
 			}
-			if w.Landing.State == api.WorktreeLandingStateLanded || w.Landing.State == api.WorktreeLandingStateFailed {
+			if w.Landing.State == api.WorktreeLandingStateLanded || w.Landing.State == api.WorktreeLandingStateOpened || w.Landing.State == api.WorktreeLandingStateFailed {
 				return *w.Landing, nil
 			}
 		}
@@ -277,6 +302,8 @@ func landingProblem(l api.WorktreeLanding) error {
 		}
 	case api.ErrorCodeBaseMoved:
 		err = &hinted{err, "land again: it rebases and checks again"}
+	case api.ErrorCodePushFailed:
+		err = &hinted{err, "nothing was forced: bring the branch up to date with origin, then land again"}
 	}
 	return err
 }
@@ -288,9 +315,15 @@ type worktreeLanded struct {
 	Commit    *string    `json:"commit"`
 	Pushed    bool       `json:"pushed"`
 	PushError *string    `json:"push_error"`
+
+	PullRequest *api.WorktreePullRequest `json:"pull_request"`
 }
 
 func (r worktreeLanded) text(w io.Writer, st style.Style) {
+	if r.PullRequest != nil {
+		fmt.Fprintf(w, "%s worktree %s onto %s\n%s\n", st.Success(fmt.Sprintf("PR #%d open:", r.PullRequest.Number)), st.Name(r.Worktree), st.Name(r.Base), r.PullRequest.Url)
+		return
+	}
 	fmt.Fprintln(w, st.Success("landed")+" worktree "+st.Name(r.Worktree)+" on "+st.Name(r.Base))
 	if r.Pushed {
 		fmt.Fprintln(w, "pushed to origin")

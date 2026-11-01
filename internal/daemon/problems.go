@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
@@ -49,6 +50,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	}
 	if _, ok := errors.AsType[*git.MissingError](err); ok {
 		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "git"}
+	}
+	if errors.Is(err, gh.ErrMissing) {
+		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "gh"}
 	}
 	if e, ok := errors.AsType[*project.NameTakenError](err); ok {
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "project": projectView(e.Project)}
@@ -165,6 +169,8 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeNothingToLand, nil
 	case errors.Is(err, worktree.ErrNoLocalBase):
 		return api.ErrorCodeNoLocalBase, nil
+	case errors.Is(err, worktree.ErrDetachedHead):
+		return api.ErrorCodeDetachedHead, nil
 	case errors.Is(err, worktree.ErrLandingRunning):
 		return api.ErrorCodeLandingRunning, nil
 	case errors.Is(err, worktree.ErrWorktreeBusy):

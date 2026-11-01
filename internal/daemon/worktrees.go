@@ -10,6 +10,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
@@ -50,12 +51,14 @@ func (d *Daemon) startTracker() {
 		Comments: d.comments,
 		Changed:  d.notices.notify,
 	})
+	d.pullRequests = worktree.NewPullRequests(logging.NewContext(context.Background(), d.log), d.db, gh.CLI{Program: d.opts.GH}, func(string) { d.notices.notify() })
 	d.lander = worktree.NewLander(logging.NewContext(context.Background(), d.log), worktree.LanderOptions{
 		Check: d.runLandCheck,
 		Changed: func(projectID string) {
 			d.tracker.Refresh(projectID, "") // it moved branches, which a watch may not see at once
 			d.notices.notify()
 		},
+		PullRequests: d.pullRequests,
 	})
 	changed, stop := d.notices.subscribe()
 	d.trackerNotices.Go(func() {
@@ -193,18 +196,33 @@ func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequest
 	if err != nil {
 		return nil, err
 	}
-	return api.ListWorktrees200JSONResponse{Worktrees: s.withLandings(p.ID, worktreeStatusViews(list))}, nil
+	return api.ListWorktrees200JSONResponse{Worktrees: s.withLandings(ctx, p.ID, worktreeStatusViews(list))}, nil
 }
 
-// withLandings says how far each worktree's landing got, which only the lander knows.
-func (s *server) withLandings(projectID string, views []api.WorktreeStatus) []api.WorktreeStatus {
+// withLandings says how far each worktree's landing got, which only the lander knows,
+// and what gh last said of its PR.
+func (s *server) withLandings(ctx context.Context, projectID string, views []api.WorktreeStatus) []api.WorktreeStatus {
+	prs, err := s.pullRequests.List(ctx, projectID)
+	if err != nil {
+		logging.FromContext(ctx).Error("pull requests not read", "project_id", projectID, "err", err)
+	}
 	for i := range views {
 		if l, ok := s.lander.Of(projectID, views[i].Path); ok {
 			v := landingView(l)
 			views[i].Landing = &v
 		}
+		if pr, ok := prs[views[i].Path]; ok {
+			views[i].PullRequest = pullRequestView(&pr)
+		}
 	}
 	return views
+}
+
+func pullRequestView(pr *gh.PullRequest) *api.WorktreePullRequest {
+	if pr == nil {
+		return nil
+	}
+	return &api.WorktreePullRequest{Number: pr.Number, Url: pr.URL, State: api.WorktreePullRequestState(pr.State), Head: pr.Head}
 }
 
 func landingView(l worktree.Landing) api.WorktreeLanding {
@@ -220,6 +238,8 @@ func landingView(l worktree.Landing) api.WorktreeLanding {
 		Head:      textOrNull(l.Head),
 		Pushed:    l.Pushed,
 		PushError: textOrNull(l.PushError),
+
+		PullRequest: pullRequestView(l.PullRequest),
 	}
 	if v.Conflicts == nil {
 		v.Conflicts = []string{}
@@ -247,7 +267,11 @@ func (s *server) LandWorktree(ctx context.Context, req api.LandWorktreeRequestOb
 	if err != nil {
 		return nil, err
 	}
-	l, err := s.lander.Start(ctx, p.ID, c, req.Worktree, workingAgents(agents), worktree.LandSettings{Check: settings.Check, Push: settings.Push})
+	method := settings.Method
+	if req.Params.Method != nil {
+		method = string(*req.Params.Method)
+	}
+	l, err := s.lander.Start(ctx, p.ID, c, req.Worktree, workingAgents(agents), worktree.LandSettings{Method: method, Check: settings.Check, Push: settings.Push})
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +287,10 @@ func (s *server) GetProjectLanding(ctx context.Context, req api.GetProjectLandin
 	if err != nil {
 		return nil, err
 	}
-	return api.GetProjectLanding200JSONResponse{Configured: ok, Check: textOrNull(v.Check), Push: v.Push}, nil
+	if !ok {
+		v.Method = worktree.MethodRebase
+	}
+	return api.GetProjectLanding200JSONResponse{Configured: ok, Method: api.ProjectLandingMethod(v.Method), Check: textOrNull(v.Check), Push: v.Push}, nil
 }
 
 func (s *server) SetProjectLanding(ctx context.Context, req api.SetProjectLandingRequestObject) (api.SetProjectLandingResponseObject, error) {
@@ -271,12 +298,22 @@ func (s *server) SetProjectLanding(ctx context.Context, req api.SetProjectLandin
 	if err != nil {
 		return nil, err
 	}
-	v := project.LandSettings{Check: strings.TrimSpace(deref(req.Body.Check)), Push: req.Body.Push}
+	saved, ok, err := s.projects.LandSettings(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	v := project.LandSettings{Method: worktree.MethodRebase, Check: strings.TrimSpace(deref(req.Body.Check)), Push: req.Body.Push}
+	switch {
+	case req.Body.Method != nil:
+		v.Method = string(*req.Body.Method)
+	case ok:
+		v.Method = saved.Method
+	}
 	if err := s.projects.SetLandSettings(ctx, p.ID, v); err != nil {
 		return nil, err
 	}
 	result := api.ResultUpdated
-	return api.SetProjectLanding200JSONResponse{Result: &result, Configured: true, Check: textOrNull(v.Check), Push: v.Push}, nil
+	return api.SetProjectLanding200JSONResponse{Result: &result, Configured: true, Method: api.ProjectLandingMethod(v.Method), Check: textOrNull(v.Check), Push: v.Push}, nil
 }
 
 // RemoveWorktree removes a worktree that landed. Its agents are told once it is
@@ -286,7 +323,7 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 	if err != nil {
 		return nil, err
 	}
-	w, err := worktree.Removable(ctx, c, req.Worktree)
+	w, err := worktree.Removable(ctx, c, req.Worktree, s.pullRequests)
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +335,9 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 		return nil, err
 	}
 	s.lander.Forget(p.ID, w.Path)
+	if err := s.pullRequests.Forget(ctx, p.ID, w.Path); err != nil {
+		logging.FromContext(ctx).Error("pull request not forgotten", "path", w.Path, "err", err)
+	}
 	notified, err := s.tellRemoved(ctx, p.ID, w, c.Clone)
 	if err != nil {
 		return nil, err
@@ -518,7 +558,11 @@ func (s *server) RefreshWorktrees(ctx context.Context, req api.RefreshWorktreesR
 	if err != nil {
 		return nil, err
 	}
-	s.tracker.Refresh(p.ID, deref(req.Params.Worktree))
+	name := deref(req.Params.Worktree)
+	s.tracker.Refresh(p.ID, name)
+	if deref(req.Params.PullRequests) {
+		s.pullRequests.Ask(p.ID, p.ClonePath(), name, s.tracker.Statuses(p.ID))
+	}
 	return api.RefreshWorktrees202Response{}, nil
 }
 

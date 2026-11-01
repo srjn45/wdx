@@ -24,13 +24,19 @@ type landerUnderTest struct {
 
 func newLander(t *testing.T, check func(ctx context.Context, projectID, name, dir, command string, started func(string)) error) *landerUnderTest {
 	t.Helper()
+	return newLanderWith(t, LanderOptions{Check: check})
+}
+
+func newLanderWith(t *testing.T, opts LanderOptions) *landerUnderTest {
+	t.Helper()
 	l := &landerUnderTest{changed: make(chan struct{}, 1)}
-	l.Lander = NewLander(t.Context(), LanderOptions{Check: check, Changed: func(string) {
+	opts.Changed = func(string) {
 		select {
 		case l.changed <- struct{}{}:
 		default:
 		}
-	}})
+	}
+	l.Lander = NewLander(t.Context(), opts)
 	t.Cleanup(l.Close)
 	return l
 }
@@ -64,6 +70,10 @@ func head(t *testing.T, dir, ref string) string {
 
 func noCheck(context.Context, string, string, string, string, func(string)) error {
 	return errors.New("no check was asked for")
+}
+
+func failingCheck(context.Context, string, string, string, string, func(string)) error {
+	return errors.New("the check failed")
 }
 
 func TestLandMovesTheBase(t *testing.T) {

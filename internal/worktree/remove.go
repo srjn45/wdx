@@ -26,8 +26,9 @@ func (e *NotLandedError) Error() string {
 
 // Removable returns the checkout called name, read now, unless removing it could
 // lose work. One whose directory is gone always can be removed: only git's entry
-// for it goes, and its branch keeps its commits.
-func Removable(ctx context.Context, c Checkouts, name string) (Status, error) {
+// for it goes, and its branch keeps its commits. One whose commits got there through
+// a pull request that merged counts as landed, if prs is given to ask about it.
+func Removable(ctx context.Context, c Checkouts, name string, prs *PullRequests) (Status, error) {
 	list, err := List(ctx, c)
 	if err != nil {
 		return Status{}, err
@@ -50,6 +51,9 @@ func Removable(ctx context.Context, c Checkouts, name string) (Status, error) {
 		return Status{}, err
 	}
 	if reason := notLanded(s); reason != "" {
+		if len(s.Files) == 0 && prs != nil && prs.Merged(ctx, s) {
+			return s, nil
+		}
 		return Status{}, &NotLandedError{Name: name, Reason: reason}
 	}
 	return s, nil

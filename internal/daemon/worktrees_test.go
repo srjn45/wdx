@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -483,9 +485,160 @@ func landing(t *testing.T, events <-chan event, name, id string) api.WorktreeLan
 			return false
 		}
 		last = *w.Landing
-		return last.State == api.WorktreeLandingStateLanded || last.State == api.WorktreeLandingStateFailed
+		return last.State == api.WorktreeLandingStateLanded || last.State == api.WorktreeLandingStateOpened || last.State == api.WorktreeLandingStateFailed
 	})
 	return last
+}
+
+// A worktree lands through a PR, its row says what gh says only when asked, and once
+// the PR merged it can go, though its commits are still ahead.
+func TestLandWorktreeByPR(t *testing.T) {
+	t.Parallel()
+	fake := ghtest.New(t, t.TempDir())
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.GH = fake.Program })
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeIn(t, dir, "file", "one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	gittest.Git(t, dir, "init", "-q", "--bare", origin)
+	gittest.Git(t, dir, "remote", "add", "origin", origin)
+	gittest.Git(t, dir, "push", "-q", "origin", "main")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeIn(t, work, "more", "committed\n")
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "work")
+	here := strings.TrimSpace(gitOutput(t, work, "rev-parse", "HEAD"))
+	on := true
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: &on})
+	waitEvent(t, events, "the worktree", func(e event) bool { w, ok := worktreeStatus(e, "work"); return ok && w.Ahead != nil })
+
+	ctx := t.Context()
+	project := "api"
+	method := api.ProjectLandingUpdateMethodPr
+	saved, err := td.client.SetProjectLandingWithResponse(ctx, "api", api.ProjectLandingUpdate{Method: &method})
+	if err != nil || saved.JSON200 == nil || saved.JSON200.Method != api.ProjectLandingMethodPr {
+		t.Fatalf("settings: %v, %s", err, saved.Body)
+	}
+	// Saying the rest again keeps the method.
+	saved, err = td.client.SetProjectLandingWithResponse(ctx, "api", api.ProjectLandingUpdate{Push: true})
+	if err != nil || saved.JSON200 == nil || saved.JSON200.Method != api.ProjectLandingMethodPr {
+		t.Fatalf("settings again: %v, %s", err, saved.Body)
+	}
+
+	r, err := td.client.LandWorktreeWithResponse(ctx, "work", &api.LandWorktreeParams{Project: &project})
+	if err != nil || r.JSON202 == nil {
+		t.Fatalf("land: %v, %s", err, r.Body)
+	}
+	opened := landing(t, events, "work", r.JSON202.Landing.Id)
+	if opened.State != api.WorktreeLandingStateOpened || opened.PullRequest == nil || opened.PullRequest.Number != 12 {
+		t.Fatalf("opened: %+v", opened)
+	}
+	listed, err := td.client.ListWorktreesWithResponse(ctx, &api.ListWorktreesParams{Project: &project})
+	if err != nil || listed.JSON200 == nil {
+		t.Fatalf("list: %v", err)
+	}
+	if i := slices.IndexFunc(listed.JSON200.Worktrees, func(w api.WorktreeStatus) bool { return w.Name == "work" }); i < 0 ||
+		listed.JSON200.Worktrees[i].PullRequest == nil || listed.JSON200.Worktrees[i].PullRequest.State != api.WorktreePullRequestStateOpen {
+		t.Fatalf("the row says no PR: %s", listed.Body)
+	}
+
+	// Not yet merged, it stays.
+	remove := func() *api.RemoveWorktreeResponse {
+		t.Helper()
+		r, err := td.client.RemoveWorktreeWithResponse(ctx, "work", &api.RemoveWorktreeParams{Project: &project})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	if r := remove(); r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeWorktreeNotLanded {
+		t.Fatalf("open: %s", r.Body)
+	}
+
+	// One that asks for PRs uses the network.
+	fake.Set(t, "MERGED", here)
+	calls := len(fake.Calls(t))
+	if r, err := td.client.RefreshWorktreesWithResponse(ctx, "api", &api.RefreshWorktreesParams{PullRequests: &on}); err != nil || r.StatusCode() != http.StatusAccepted {
+		t.Fatalf("refresh with PRs: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "the row to say it merged", func(e event) bool {
+		w, ok := worktreeStatus(e, "work")
+		return ok && w.PullRequest != nil && w.PullRequest.State == api.WorktreePullRequestStateMerged
+	})
+	if got := len(fake.Calls(t)) - calls; got != 1 {
+		t.Errorf("gh asked %d times: %q", got, fake.Calls(t))
+	}
+
+	removed := remove()
+	if removed.JSON200 == nil {
+		t.Fatalf("merged: %s", removed.Body)
+	}
+	if removed.JSON200.BranchKept == nil || *removed.JSON200.BranchKept != "work" {
+		t.Errorf("git cannot tell a squash merged, so the branch stays: %+v", removed.JSON200)
+	}
+}
+
+// A refresh that does not ask for PRs, as focus coming back to the list, uses no
+// network. Stopping the daemon waits for anything that asked gh, so none can be late.
+func TestRefreshWithoutPullRequestsAsksNoGh(t *testing.T) {
+	t.Parallel()
+	fake := ghtest.New(t, t.TempDir())
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.GH = fake.Program })
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	gittest.Git(t, work, "commit", "-q", "--allow-empty", "-m", "work")
+	on := true
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: &on})
+	waitEvent(t, events, "the worktree ahead", func(e event) bool {
+		w, ok := worktreeStatus(e, "work")
+		return ok && w.Ahead != nil && *w.Ahead == 1
+	})
+
+	writeIn(t, work, "edit", "not committed\n") // what only the refresh's read can find
+	if r, err := td.client.RefreshWorktreesWithResponse(t.Context(), "api", &api.RefreshWorktreesParams{}); err != nil || r.StatusCode() != http.StatusAccepted {
+		t.Fatalf("refresh: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "the refresh's read", func(e event) bool {
+		w, ok := worktreeStatus(e, "work")
+		return ok && len(w.Files) == 1
+	})
+	td.stop()
+	if calls := fake.Calls(t); len(calls) != 0 {
+		t.Errorf("gh was asked: %q", calls)
+	}
+}
+
+func TestLandWorktreeByPRWithoutGh(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	gittest.Git(t, work, "commit", "-q", "--allow-empty", "-m", "work")
+	ctx := t.Context()
+	if r, err := td.client.SetProjectLandingWithResponse(ctx, "api", api.ProjectLandingUpdate{}); err != nil || r.JSON200 == nil {
+		t.Fatalf("settings: %v, %s", err, r.Body)
+	}
+	project := "api"
+	method := api.LandWorktreeParamsMethodPr
+	r, err := td.client.LandWorktreeWithResponse(ctx, "work", &api.LandWorktreeParams{Project: &project, Method: &method})
+	if err != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeDependencyMissing {
+		t.Fatalf("land: %v, %s", err, r.Body)
+	}
+	if d := r.ApplicationproblemJSONDefault.Details; d == nil || (*d)["dependency"] != "gh" {
+		t.Errorf("details: %+v", d)
+	}
 }
 
 func TestLandWorktree(t *testing.T) {

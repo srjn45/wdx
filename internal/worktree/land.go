@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -22,17 +23,27 @@ var (
 	ErrAgentWorking   = errors.New("an agent is working in the worktree")
 	ErrLandingRunning = errors.New("the worktree is already landing")
 	ErrWorktreeBusy   = errors.New("a rebase, merge or the like is in progress in the worktree")
+	ErrDetachedHead   = errors.New("the worktree is on no branch, so there is none to push")
+)
+
+// How a project lands.
+const (
+	MethodRebase = "rebase"
+	MethodPR     = "pr"
 )
 
 // LandState is how far a landing got.
 type LandState string
 
-// The states of a landing: the last two end it.
+// The states of a landing: the last three end it.
 const (
 	LandRebasing LandState = "rebasing"
 	LandChecking LandState = "checking"
 	LandMoving   LandState = "moving"
+	LandPushing  LandState = "pushing"
+	LandOpening  LandState = "opening"
 	LandLanded   LandState = "landed"
+	LandOpened   LandState = "opened"
 	LandFailed   LandState = "failed"
 )
 
@@ -45,6 +56,8 @@ const (
 	LandCheckFailed       LandFailure = "check_failed"
 	LandBaseMoved         LandFailure = "base_moved"
 	LandFastForwardFailed LandFailure = "fast_forward_failed"
+	LandPushFailed        LandFailure = "push_failed"
+	LandPRFailed          LandFailure = "pr_failed"
 )
 
 // Landing is a landing of a worktree, the last one or the one running.
@@ -60,15 +73,20 @@ type Landing struct {
 	Head      string // the commit the worktree was on when it failed
 	Pushed    bool
 	PushError string // a push that failed: it landed all the same
+	// PullRequest is the one a landing by PR opened or found open.
+	PullRequest *gh.PullRequest
 }
 
 // Finished reports whether the landing has ended.
-func (l Landing) Finished() bool { return l.State == LandLanded || l.State == LandFailed }
+func (l Landing) Finished() bool {
+	return l.State == LandLanded || l.State == LandOpened || l.State == LandFailed
+}
 
 // LandSettings is how a project lands.
 type LandSettings struct {
-	Check string // the command run first; "" for none
-	Push  bool
+	Method string // MethodRebase when ""
+	Check  string // the command run first; "" for none
+	Push   bool
 }
 
 // LanderOptions is what a Lander needs of the rest of the daemon.
@@ -78,6 +96,8 @@ type LanderOptions struct {
 	Check func(ctx context.Context, projectID, name, dir, command string, started func(terminal string)) error
 	// Changed is told of every change of a landing, and of the repository's.
 	Changed func(projectID string)
+	// PullRequests keeps what a landing by PR opened, and through them it reaches gh.
+	PullRequests *PullRequests
 }
 
 // Lander lands worktrees, each in the background, as a check can take many minutes.
@@ -125,15 +145,21 @@ func (l *Lander) Forget(projectID, path string) {
 // Start lands the checkout called name, or says why it will not: what comes after
 // that is in its Landing, ending with its state.
 func (l *Lander) Start(ctx context.Context, projectID string, c Checkouts, name string, agents []Agent, settings LandSettings) (Landing, error) {
-	s, err := landable(ctx, c, name, agents)
+	s, err := landable(ctx, c, name, agents, settings.Method)
 	if err != nil {
 		return Landing{}, err
+	}
+	if settings.Method == MethodPR && (l.opts.PullRequests == nil || !l.opts.PullRequests.gh.Available()) {
+		return Landing{}, gh.ErrMissing
 	}
 	id := make([]byte, 8)
 	if _, err := rand.Read(id); err != nil {
 		return Landing{}, err
 	}
 	v := Landing{ID: "land-" + hex.EncodeToString(id), State: LandRebasing, Base: s.Base}
+	if settings.Method == MethodPR {
+		v.State = LandPushing
+	}
 	key := landingKey(projectID, s.Path)
 
 	l.mu.Lock()
@@ -150,13 +176,17 @@ func (l *Lander) Start(ctx context.Context, projectID string, c Checkouts, name 
 	run := logging.NewContext(l.ctx, logging.FromContext(ctx))
 	go func() {
 		defer l.running.Done()
+		if settings.Method == MethodPR {
+			l.runPR(run, projectID, s, settings, v)
+			return
+		}
 		l.run(run, projectID, c, s, settings, v)
 	}()
 	return v, nil
 }
 
 // landable returns the checkout called name, read now, if it can land.
-func landable(ctx context.Context, c Checkouts, name string, agents []Agent) (Status, error) {
+func landable(ctx context.Context, c Checkouts, name string, agents []Agent, method string) (Status, error) {
 	s, err := Find(ctx, c, name)
 	if err != nil {
 		return Status{}, err
@@ -179,8 +209,10 @@ func landable(ctx context.Context, c Checkouts, name string, agents []Agent) (St
 		return Status{}, ErrWorktreeBusy
 	case len(s.Files) > 0:
 		return Status{}, fmt.Errorf("%w: %d in %s", ErrNotCommitted, len(s.Files), name)
-	case s.Base == "" || strings.HasPrefix(s.Base, "origin/"):
+	case s.Base == "" || (method != MethodPR && strings.HasPrefix(s.Base, "origin/")):
 		return Status{}, ErrNoLocalBase
+	case method == MethodPR && s.Branch == "":
+		return Status{}, ErrDetachedHead
 	case s.Ahead == nil || *s.Ahead == 0:
 		return Status{}, ErrNothingToLand
 	}
@@ -272,6 +304,75 @@ func (l *Lander) run(ctx context.Context, projectID string, c Checkouts, s Statu
 	}
 	v.State = LandLanded
 	log.Info("landed", "base", s.Base, "commit", commit)
+	l.set(projectID, s.Path, v)
+}
+
+// runPR takes a landing by PR through its steps: the check, what gh knows, the push,
+// and the PR. It never rebases: a branch already pushed could then only go up forced.
+func (l *Lander) runPR(ctx context.Context, projectID string, s Status, settings LandSettings, v Landing) {
+	log := logging.FromContext(ctx).With("project_id", projectID, "worktree", s.Name, "landing_id", v.ID)
+	prs := l.opts.PullRequests
+	fail := func(failure LandFailure, detail string) {
+		log.Info("landing failed", "failure", failure, "detail", detail)
+		v.State, v.Failure, v.Detail, v.Head = LandFailed, failure, detail, s.Head
+		l.set(projectID, s.Path, v)
+	}
+	gitCtx := context.WithoutCancel(ctx)
+	v.Commit = s.Head
+
+	if settings.Check != "" {
+		v.State = LandChecking
+		l.set(projectID, s.Path, v)
+		err := l.opts.Check(ctx, projectID, s.Name, s.Path, settings.Check, func(terminal string) {
+			v.Terminal = terminal
+			l.set(projectID, s.Path, v)
+		})
+		if err != nil {
+			fail(LandCheckFailed, err.Error())
+			return
+		}
+	}
+
+	// Asked before anything is pushed: a repository gh cannot work with changes nothing.
+	open, err := prs.gh.View(ctx, s.Path, s.Branch)
+	found := err == nil
+	switch {
+	case errors.Is(err, gh.ErrNoPullRequest):
+	case err != nil:
+		fail(LandPRFailed, err.Error())
+		return
+	case open.State == gh.Merged && open.Head == s.Head:
+		fail(LandPRFailed, fmt.Sprintf("PR #%d has merged with this commit: nothing is left to land", open.Number))
+		return
+	}
+
+	v.State = LandPushing
+	l.set(projectID, s.Path, v)
+	if err := git.Push(gitCtx, s.Path, s.Branch); err != nil {
+		fail(LandPushFailed, err.Error())
+		return
+	}
+	v.Pushed = true
+
+	var pr gh.PullRequest
+	if found && open.State == gh.Open {
+		log.Info("pull request already open", "number", open.Number)
+		pr = open
+		pr.Head = s.Head // the push just took it there
+	} else {
+		v.State = LandOpening
+		l.set(projectID, s.Path, v)
+		pr, err = prs.gh.Create(ctx, s.Path, strings.TrimPrefix(s.Base, "origin/"), s.Branch, s.Head)
+		if err != nil {
+			fail(LandPRFailed, err.Error())
+			return
+		}
+		log.Info("pull request opened", "number", pr.Number, "url", pr.URL)
+	}
+	if err := prs.set(gitCtx, projectID, s.Path, pr); err != nil {
+		log.Error("pull request not saved", "number", pr.Number, "err", err)
+	}
+	v.State, v.PullRequest = LandOpened, &pr
 	l.set(projectID, s.Path, v)
 }
 

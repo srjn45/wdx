@@ -3,12 +3,14 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
 )
 
@@ -297,6 +299,78 @@ func TestWorktreeLand(t *testing.T) {
 	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
 	if exit != api.ExitRejected || v.Code != api.ErrorCodeNothingToLand {
 		t.Fatalf("again: exit %d, %+v", exit, v)
+	}
+}
+
+func TestWorktreeLandByPR(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	gittest.Git(t, app, "init", "-q", "--bare", filepath.Join(home, "origin.git"))
+	gittest.Git(t, app, "remote", "add", "origin", filepath.Join(home, "origin.git"))
+
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--method", "pr"); out.exit != api.ExitUsage {
+		t.Fatalf("--method alone: %+v", out)
+	}
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "squash"); out.exit != api.ExitUsage {
+		t.Fatalf("an unknown method: %+v", out)
+	}
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "pr"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "method: pr") {
+		t.Fatalf("set: %+v", out)
+	}
+
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--json")
+	var r worktreeLanded
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+		t.Fatalf("land: %+v, %v", out, err)
+	}
+	if r.Result != api.ResultPrOpened || r.PullRequest == nil || r.PullRequest.Number != 12 || r.PullRequest.Url == "" {
+		t.Errorf("answer: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(app, "landing")); !os.IsNotExist(err) {
+		t.Errorf("it reached the clone: %v", err)
+	}
+
+	// The PR at this commit merged: there is no more to land, and it can go.
+	headOf, err := exec.Command("git", "-C", work, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(string(headOf))
+	fake := ghtest.In(home)
+	fake.Set(t, "MERGED", head)
+	v, exit := wdxWorktree(t, home, app, "land", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodePrFailed {
+		t.Fatalf("merged: exit %d, %+v", exit, v)
+	}
+	removed := wdxWith(t, home, in(app), "worktree", "remove", "--name", "work")
+	if removed.exit != api.ExitOK {
+		t.Fatalf("remove: %+v", removed)
+	}
+}
+
+// --method overrides the project's for one landing, and text says what opened.
+func TestWorktreeLandMethodOnce(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	gittest.Git(t, app, "init", "-q", "--bare", filepath.Join(home, "origin.git"))
+	gittest.Git(t, app, "remote", "add", "origin", filepath.Join(home, "origin.git"))
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+		t.Fatalf("set: %+v", out)
+	}
+	if out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--method", "nope"); out.exit != api.ExitUsage {
+		t.Fatalf("an unknown method: %+v", out)
+	}
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--method", "pr")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "PR #12 open: worktree work onto main") || !strings.Contains(out.stdout, "/pull/12") {
+		t.Fatalf("land: %+v", out)
+	}
+	shown := wdxWith(t, home, in(app), "project", "landing", "--name", "app")
+	if !strings.Contains(shown.stdout, "method: rebase") {
+		t.Errorf("saved: %+v", shown)
 	}
 }
 

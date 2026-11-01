@@ -40,6 +40,7 @@ internal/config/   the settings, loaded once at startup from their sources, and 
 internal/db/    opens the single SQLite DB, runs embedded migrations
 internal/db/dbtest/  puts a migrated database where a test home's daemon or store opens one, so that each need not migrate its own
 internal/git/   thin wrapper over the git CLI
+internal/gh/    thin wrapper over GitHub's CLI, which runs only when asked, as it uses the network; gh/ghtest stands in for it in tests
 internal/holder/   the process that owns a terminal's PTY and shell (wdx holder), its screen, spool and history, its protocol, clients and inbox; docs/TERMINALS.md, docs/ATTACH.md, docs/SEND.md
 internal/holder/holdertest/  lets a test binary be its own holder, for the tests that start terminals
 internal/pty/   opens pseudo-terminals and starts commands in them
@@ -73,11 +74,11 @@ internal/runtest/  gives a test binary a scope of its own: a directory, a clean 
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
 internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
 internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md; docs/ACA.md lists every place specific to an ACA, in this package or not, and a change to one updates it
-internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository but for landing and removing a worktree, when asked to; docs/TIDE_WORKTREES.md
+internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository or asking GitHub but for landing and removing a worktree, or reading its PR, when asked to; docs/TIDE_WORKTREES.md
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> aca, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/holder -> pty/screen, agent -> aca/terminal/screen/holder, aca -> screen, and cli/daemon -> telemetry; every package may use identity; config, db, update, aca and agent -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt, the holder never uses aca.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> update -> db, cli -> holder, cli -> aca, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/gh/holder -> pty/screen, agent -> aca/terminal/screen/holder, aca -> screen, and cli/daemon -> telemetry; every package may use identity; config, db, update, aca and agent -> atomicfile. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, only screen uses the vt, the holder never uses aca.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.

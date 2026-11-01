@@ -15,18 +15,19 @@ import (
 // server implements the API on the project store, the terminals' supervisor
 // and the agents' manager.
 type server struct {
-	projects  *project.Store
-	terminals *terminal.Supervisor
-	agents    *agent.Manager
-	self      api.Daemon
-	notices   *notices        // tells the streams about changes
-	stopping  <-chan struct{} // closed when the daemon starts stopping: the streams end
-	reload    func(context.Context) error
-	settings  SettingStore // nil when it has none
-	tracker   *worktree.Tracker
-	marks     *worktree.Marks
-	comments  *worktree.Comments
-	lander    *worktree.Lander
+	projects     *project.Store
+	terminals    *terminal.Supervisor
+	agents       *agent.Manager
+	self         api.Daemon
+	notices      *notices        // tells the streams about changes
+	stopping     <-chan struct{} // closed when the daemon starts stopping: the streams end
+	reload       func(context.Context) error
+	settings     SettingStore // nil when it has none
+	tracker      *worktree.Tracker
+	marks        *worktree.Marks
+	comments     *worktree.Comments
+	lander       *worktree.Lander
+	pullRequests *worktree.PullRequests
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

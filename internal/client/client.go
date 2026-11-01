@@ -367,8 +367,14 @@ func (c *Client) ListWorktrees(ctx context.Context, ref, dir string) (api.Worktr
 }
 
 // LandWorktree starts landing the worktree name: its status says how it ends.
-func (c *Client) LandWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeLandResult, error) {
-	r, err := c.api.LandWorktreeWithResponse(ctx, name, &api.LandWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+// A method of "" is what the project says.
+func (c *Client) LandWorktree(ctx context.Context, name, ref, dir, method string) (api.WorktreeLandResult, error) {
+	params := &api.LandWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)}
+	if method != "" {
+		m := api.LandWorktreeParamsMethod(method)
+		params.Method = &m
+	}
+	r, err := c.api.LandWorktreeWithResponse(ctx, name, params)
 	if err != nil {
 		return api.WorktreeLandResult{}, err
 	}
@@ -539,8 +545,12 @@ func (c *Client) DiscardMessage(ctx context.Context, id string) (api.MessageDisc
 
 // RefreshWorktrees asks for the worktree name of the project ref to be read
 // again, or all of them when name is "".
-func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string) error {
-	r, err := c.api.RefreshWorktreesWithResponse(ctx, ref, &api.RefreshWorktreesParams{Worktree: nonEmpty(name)})
+func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string, pullRequests bool) error {
+	params := &api.RefreshWorktreesParams{Worktree: nonEmpty(name)}
+	if pullRequests {
+		params.PullRequests = &pullRequests
+	}
+	r, err := c.api.RefreshWorktreesWithResponse(ctx, ref, params)
 	if err != nil {
 		return err
 	}

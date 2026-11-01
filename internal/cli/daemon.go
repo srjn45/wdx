@@ -125,6 +125,7 @@ func runForeground(cmd *cobra.Command) error {
 
 	settings := daemonSettings(cfg)
 	d, err := daemon.Listen(ctx, daemon.Options{
+		GH:                   "gh",
 		Home:                 cfg.Home,
 		Log:                  log,
 		Metrics:              settings.Metrics,

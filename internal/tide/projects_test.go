@@ -19,6 +19,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
@@ -86,7 +87,7 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
-		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"),
+		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"), GH: ghtest.New(t, h.home).Program,
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
 		ACA:        &acatest.ACA{},
 		StopReport: holdertest.Patience(t), HolderLimits: holdertest.Limits(t),
