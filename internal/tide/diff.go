@@ -2,6 +2,7 @@ package tide
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -33,6 +34,7 @@ const (
 	uncommittedPrefix = "uncommitted:"
 	diffWheelLines    = 3
 	diffTabStop       = "    "
+	verifyKey         = "v"
 	// jumpContext is how many lines stay above what a key goes to.
 	jumpContext = 2
 )
@@ -120,14 +122,19 @@ type diffView struct {
 	unified []string
 	cutOff  bool // the daemon left out the rest
 
-	width   int // of what lines was drawn for, 0 before
-	lines   []string
-	rows    []int    // the row of the source each line shows
-	numbers []int    // the file's line number each line shows; 0 on a line wrapped or of no number
-	changes []int    // the lines changes start on, which [ and ] go to
-	files   []int    // the lines files start on, which { and } go to
-	text    []string // what each row of the source says, which a search reads
-	starts  []int    // the line each row starts on
+	width    int // of what lines was drawn for, 0 before
+	lines    []string
+	rows     []int           // the row of the source each line shows
+	numbers  []int           // the file's line number each line shows; 0 on a line wrapped or of no number
+	changes  []int           // the lines changes start on, which [ and ] go to
+	files    []int           // the lines files start on, which { and } go to
+	text     []string        // what each row of the source says, which a search reads
+	starts   []int           // the line each row starts on
+	spans    []fileSpan      // where each file of a worktree's patch starts
+	marks    map[string]bool // the files verified, as the lines were worked out for
+	content  string          // the id of the file's content in a file's patch
+	top      int             // the rows above the lines in the last draw
+	verified string          // what the bar says of how much is verified
 
 	cursor int  // the current line
 	offset int  // the first line shown
@@ -140,6 +147,12 @@ type diffView struct {
 	query   string // what search was made from, for the bar
 	notice  string // what the last key found, until the next
 	keyHelp bool   // ? shows the keys in place of the lines
+}
+
+// fileSpan is a file of a worktree's patch, from the line it starts on.
+type fileSpan struct {
+	start    int
+	path, id string
 }
 
 // diffLoaded is the answer to reading a diff.
@@ -275,6 +288,9 @@ func (v *diffView) setFile(d api.WorktreeFileDiff) {
 	default:
 		v.split = splitPatch(d.Patch)
 	}
+	if h := indexLine.FindStringSubmatch(d.Patch); h != nil {
+		v.content = h[3]
+	}
 }
 
 func (v *diffView) setUncommitted(d api.WorktreeDiff) {
@@ -333,6 +349,21 @@ type splitRow struct {
 	leftNo, rightNo int
 	left, right     string
 	changed         bool
+}
+
+// indexLine is a patch's line naming the file's content before and after.
+var indexLine = regexp.MustCompile(`(?m)^(index )([0-9a-f]+)\.\.([0-9a-f]+)`)
+
+// patchPath returns the file of a patch's "diff --git a/x b/x" line. git quotes a
+// path it cannot show, which is not one a mark can name. With renames off the two
+// paths are the same, which tells where they part, whatever spaces they have.
+func patchPath(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "diff --git a/")
+	if !ok || (len(rest)-len(" b/"))%2 != 0 {
+		return "", false
+	}
+	path := rest[:(len(rest)-len(" b/"))/2]
+	return path, rest == path+" b/"+path
 }
 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
@@ -410,7 +441,7 @@ func (v *diffView) prepare(width int, st style.Style) {
 		return
 	}
 	v.width = width
-	v.lines, v.rows, v.numbers, v.changes, v.files, v.text, v.starts = nil, nil, nil, nil, nil, nil, nil
+	v.lines, v.rows, v.numbers, v.changes, v.files, v.text, v.starts, v.spans = nil, nil, nil, nil, nil, nil, nil, nil
 	switch {
 	case v.split != nil:
 		v.prepareSplit(width, st)
@@ -516,10 +547,24 @@ func (v *diffView) prepareUnified(width int, st style.Style) {
 		case strings.HasPrefix(line, "diff --git "):
 			v.files = append(v.files, len(v.lines))
 			paint = st.Name
+			if path, ok := patchPath(line); ok {
+				v.spans = append(v.spans, fileSpan{start: len(v.lines), path: path})
+				if v.marks[path] {
+					line = "✓ " + line
+				}
+			}
 		case strings.HasPrefix(line, "@@"):
 			v.changes = append(v.changes, len(v.lines))
 			paint = st.Muted
-		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "), strings.HasPrefix(line, "index "),
+		case indexLine.MatchString(line):
+			paint = st.Muted
+			h := indexLine.FindStringSubmatch(line)
+			if n := len(v.spans); n > 0 && v.spans[n-1].id == "" {
+				v.spans[n-1].id = h[3]
+			}
+			// The full ids are for the marks; seven say as much to a reader.
+			line = "index " + shortID(h[2]) + ".." + shortID(h[3]) + line[len(h[0]):]
+		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "),
 			strings.HasPrefix(line, "new file "), strings.HasPrefix(line, "deleted file "):
 			paint = st.Muted
 		case strings.HasPrefix(line, "+"):
@@ -537,6 +582,29 @@ func (v *diffView) prepareUnified(width int, st style.Style) {
 			v.add(v.paint(piece, paint, st), row, 0)
 		}
 	}
+}
+
+func shortID(id string) string {
+	if len(id) > 7 {
+		return id[:7]
+	}
+	return id
+}
+
+// currentFile returns the file the current line is of, and the content seen of it.
+func (v *diffView) currentFile(tab string) (path, id string, ok bool) {
+	if _, file := diffTabOf(tab); file != "" {
+		return file, v.content, true
+	}
+	for _, span := range slices.Backward(v.spans) {
+		if span.start <= v.cursor {
+			return span.path, span.id, true
+		}
+	}
+	if len(v.spans) > 0 {
+		return v.spans[0].path, v.spans[0].id, true
+	}
+	return "", "", false
 }
 
 // barKey is what the bar says of a key.
@@ -568,13 +636,21 @@ func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 // there are two, and committing while it shows what is not.
 func (m *Model) worktreeBarKeys(tab string) []barKey {
 	worktree, file := diffTabOf(tab)
+	var keys []barKey
+	if v := m.shownDiff(); v != nil && (len(v.split) > 0 || len(v.unified) > 0) {
+		label := "verified"
+		if path, _, ok := v.currentFile(tab); ok && m.verifiedIn(worktree)[path] {
+			label = "unverified"
+		}
+		keys = append(keys, barKey{verifyKey, label, 7})
+	}
 	if file != "" || !m.hasUncommitted(worktree) {
-		return nil
+		return keys
 	}
 	if strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix) {
-		return []barKey{{"Tab", "commits", 7}, {commitKey, "commit", 8}}
+		return append(keys, barKey{"Tab", "commits", 7}, barKey{commitKey, "commit", 8})
 	}
-	return []barKey{{"Tab", "uncommitted", 7}}
+	return append(keys, barKey{"Tab", "uncommitted", 7})
 }
 
 // allKeys are what ? shows.
@@ -592,6 +668,7 @@ func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
 		keys = append(keys, barKey{k.keys, "shows or does: " + k.label, 0})
 	}
 	return append(keys,
+		barKey{verifyKey, "mark the file verified, or not; an edit takes the mark away", 0},
 		barKey{"/ and text", "search; capitals make it exact", 0}, barKey{"n N", "the next or last match", 0},
 		barKey{"Esc", "end the search", 0}, barKey{"C-q -", "close the tab", 0}, barKey{"Alt+←", "the tab before", 0})
 }
@@ -606,6 +683,9 @@ func (v *diffView) bar(file bool, extra []barKey, width int, st style.Style) str
 	place := v.notice
 	if place == "" {
 		place = v.position(file)
+		if v.verified != "" {
+			place = v.verified + " · " + place
+		}
 	}
 	keys := v.barKeys(file, extra)
 	used := func(keys []barKey, place string) int {
@@ -711,8 +791,18 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	}
 	_, file := diffTabOf(l.active)
 	isFile := file != ""
-	extra := m.worktreeBarKeys(l.active)
 	width := max(area.Dx()-1, 1) // the first column says which line is current
+	worktree, _ := diffTabOf(l.active)
+	if marks := m.verifiedIn(worktree); !maps.Equal(marks, v.marks) {
+		v.marks = marks
+		v.width = 0 // a file's heading says it
+	}
+	v.verified = ""
+	if !isFile {
+		if i := slices.IndexFunc(m.worktreeStatuses(), func(w api.WorktreeStatus) bool { return w.Name == worktree }); i >= 0 {
+			v.verified = verifiedProgress(m.worktreeStatuses()[i])
+		}
+	}
 	if v.split != nil || v.unified != nil {
 		v.prepare(width, st)
 		if v.jump {
@@ -724,6 +814,7 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	} else {
 		v.lines = nil
 	}
+	extra := m.worktreeBarKeys(l.active) // after the lines: it says of the current file
 	content := area
 	if area.Dy() >= 3 { // too small for it, the lines come first
 		content.Max.Y--
@@ -745,11 +836,14 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		top = append(top, st.Muted(ansi.Truncate(v.heading, area.Dx(), "…")))
 	}
 	if v.split != nil {
+		if v.marks[file] {
+			top = append(top, st.Success("✓ verified"))
+		}
 		side := (width - 1) / 2
 		top = append(top, " "+st.Heading(ansi.Truncate(padded(" HEAD", side), side, ""))+st.Muted("│")+st.Heading(ansi.Truncate(" uncommitted", width-side-1, "")))
 	}
 	body := max(content.Dy()-len(top), 1)
-	v.height = body
+	v.height, v.top = body, len(top)
 	v.offset = max(min(v.offset, len(v.lines)-body), 0)
 	v.offset = max(min(v.offset, v.cursor), v.cursor-body+1)
 	shown := top
@@ -920,6 +1014,11 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		m.flipWorktreeView(l.active)
 	case name == commitKey:
 		m.askCommit(l.active, v)
+	case name == verifyKey:
+		if path, id, ok := v.currentFile(l.active); ok && (len(v.split) > 0 || len(v.unified) > 0) {
+			worktree, _ := diffTabOf(l.active)
+			return m.sendVerify(worktree, path, id)
+		}
 	}
 	return nil
 }
@@ -979,23 +1078,8 @@ func (m *Model) diffClick(row int) {
 	if v == nil || v.keyHelp {
 		return
 	}
-	line := v.offset + row - v.topRows()
+	line := v.offset + row - v.top
 	if line >= v.offset && line < min(v.offset+v.height, len(v.lines)) {
 		v.cursor = line
 	}
-}
-
-// topRows is how many rows above the lines the last draw took.
-func (v *diffView) topRows() int {
-	rows := 0
-	if v.err != "" {
-		rows++
-	}
-	if v.heading != "" {
-		rows++
-	}
-	if v.split != nil {
-		rows++
-	}
-	return rows
 }

@@ -604,6 +604,103 @@ func TestCommitBox(t *testing.T) {
 	}
 }
 
+func TestPatchPath(t *testing.T) {
+	t.Parallel()
+	for line, want := range map[string]string{
+		"diff --git a/f b/f":                   "f",
+		"diff --git a/with space b/with space": "with space",
+		"diff --git a/dir/b/x b/dir/b/x":       "dir/b/x",
+		`diff --git "a/odd\t" "b/odd\t"`:       "",
+	} {
+		got, ok := patchPath(line)
+		if !ok {
+			got = ""
+		}
+		if got != want {
+			t.Errorf("%s: %q, want %q", line, got, want)
+		}
+	}
+}
+
+func TestVerifiedProgress(t *testing.T) {
+	t.Parallel()
+	yes := changed("a", api.WorktreeFileStatusM)
+	yes.Verified = true
+	no := changed("b", api.WorktreeFileStatusM)
+	for _, tc := range []struct {
+		w    api.WorktreeStatus
+		want string
+	}{
+		{api.WorktreeStatus{Files: []api.WorktreeFile{no}}, ""},
+		{api.WorktreeStatus{Files: []api.WorktreeFile{yes, no}}, "1/2 ✓"},
+		{api.WorktreeStatus{CommittedFiles: []api.WorktreeCommittedFile{{Path: "a", Verified: true}, {Path: "b"}, {Path: "c"}}}, "1/3 ✓"},
+		// What is not committed comes first: its files are what the tab shows.
+		{api.WorktreeStatus{Files: []api.WorktreeFile{no}, CommittedFiles: []api.WorktreeCommittedFile{{Path: "a", Verified: true}}}, ""},
+	} {
+		if got := verifiedProgress(tc.w); got != tc.want {
+			t.Errorf("%+v: want %q, got %q", tc.w, tc.want, got)
+		}
+	}
+}
+
+// TestVerifyInATide goes through a real daemon and git: v on what is on the screen, a
+// commit, and an edit that takes it away.
+func TestVerifyInATide(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeFile(t, filepath.Join(dir, "file"), "one\n")
+	writeFile(t, filepath.Join(dir, "other"), "one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeFile(t, filepath.Join(work, "file"), "two\n")
+	writeFile(t, filepath.Join(work, "other"), "two\n")
+
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the worktree", func(m *Model) bool { return m.hasUncommitted("work") })
+	m := p.m
+	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.worktree.Name == "work" }))
+	p.keys("enter")
+	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "v verified") })
+
+	// v marks the file the current line is in.
+	p.keys(verifyKey)
+	p.until(t, "the mark", func(m *Model) bool {
+		got := text(m)
+		return m.verifiedIn("work")["file"] && strings.Contains(got, "✓ diff --git a/file b/file") && strings.Contains(got, "1/2 ✓") && strings.Contains(got, "v unverified")
+	})
+	if m.verifiedIn("work")["other"] {
+		t.Error("another file was marked")
+	}
+
+	// It holds through a commit of what was verified.
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "two")
+	p.until(t, "the commits, with the mark", func(m *Model) bool {
+		got := text(m) // the first draw of a view: the bar knows the current file then too
+		return strings.Contains(got, "pr: work") && strings.Contains(got, "✓ diff --git a/file b/file") && strings.Contains(got, "v unverified")
+	})
+
+	// An edit takes it away.
+	writeFile(t, filepath.Join(work, "file"), "three\n")
+	gittest.Git(t, work, "add", "file")
+	p.until(t, "the mark gone", func(m *Model) bool { return !m.verifiedIn("work")["file"] })
+	gittest.Git(t, work, "reset", "-q", "--hard")
+	p.until(t, "all committed", func(m *Model) bool { return !m.hasUncommitted("work") })
+
+	// v again takes a mark away.
+	p.keys(verifyKey)
+	p.until(t, "the mark", func(m *Model) bool { return len(m.verifiedIn("work")) == 1 })
+	p.keys(verifyKey)
+	p.until(t, "no mark", func(m *Model) bool { return len(m.verifiedIn("work")) == 0 })
+}
+
 // TestBarOnlyInDiffs: the bar is the diff tabs', not tide's.
 func TestBarOnlyInDiffs(t *testing.T) {
 	t.Parallel()

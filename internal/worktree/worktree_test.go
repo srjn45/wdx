@@ -75,7 +75,7 @@ func TestRead(t *testing.T) {
 	}
 
 	// Only the clone is registered: the others come from git.
-	list, err := Read(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}})
+	list, err := Read(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

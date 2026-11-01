@@ -454,6 +454,8 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		s.m.foldRight()
 	case name == "enter" && l.onWorktrees:
 		return s.m.openWorktreeRow()
+	case name == verifyKey && l.onWorktrees:
+		return s.m.verifyRow()
 	case name == "enter":
 		s.m.activate()
 	}

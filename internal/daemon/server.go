@@ -24,6 +24,7 @@ type server struct {
 	reload    func(context.Context) error
 	settings  SettingStore // nil when it has none
 	tracker   *worktree.Tracker
+	marks     *worktree.Marks
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

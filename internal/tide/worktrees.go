@@ -19,7 +19,7 @@ import (
 
 const (
 	refreshKey   = "f" // of the menu
-	worktreeHint = "↑↓ select  ←→ files  Enter diff  f refresh  Alt+arrows move  C-q menu"
+	worktreeHint = "↑↓ select  ←→ files  Enter diff  v verified  f refresh  Alt+arrows move  C-q menu"
 	rowSeparator = "\x00"
 )
 
@@ -300,7 +300,11 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 		if cursor || active {
 			p = st.Name(p)
 		}
-		row = pointer + "  " + worktreeMark(st, r.file.Status) + " " + p + strings.Repeat(" ", max(room-ansi.StringWidth(stripped(p)), 0)) + end
+		check := "  "
+		if r.file.Verified {
+			check = st.Success("✓") + " "
+		}
+		row = pointer + check + worktreeMark(st, r.file.Status) + " " + p + strings.Repeat(" ", max(room-ansi.StringWidth(stripped(p)), 0)) + end
 	} else {
 		row = pointer + m.worktreeHeading(r.worktree, room, cursor || active) + end
 	}
@@ -360,6 +364,7 @@ func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) str
 // it would look clean.
 func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []string {
 	summary, short := worktreeSummary(w), worktreeSummary(w)
+	progress := verifiedProgress(w)
 	if w.Ahead != nil && *w.Ahead > 0 {
 		short = fmt.Sprintf("↑%d", *w.Ahead)
 	}
@@ -379,7 +384,95 @@ func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []strin
 		kept := slices.DeleteFunc(parts, func(p string) bool { return p == "" })
 		return strings.Join(kept, " · ")
 	}
-	return []string{joined(summary, files, mark), joined(summary, files), joined(short, files), joined(summary), joined(files), ""}
+	return []string{
+		joined(summary, files, progress, mark), joined(summary, files, progress), joined(short, files, progress),
+		joined(short, progress), joined(summary, files), joined(short, files), joined(summary), joined(files), "",
+	}
+}
+
+// verifiedProgress says how much of what the worktree's tab shows is verified: what
+// is not committed, while there is any, else its commits. Nothing before any is, as
+// most reviews have no use for it.
+func verifiedProgress(w api.WorktreeStatus) string {
+	done, all := 0, len(w.Files)
+	for _, f := range w.Files {
+		if f.Verified {
+			done++
+		}
+	}
+	if all == 0 {
+		all = len(w.CommittedFiles)
+		for _, f := range w.CommittedFiles {
+			if f.Verified {
+				done++
+			}
+		}
+	}
+	if done == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d/%d ✓", done, all)
+}
+
+// verifiedIn returns the files of the worktree called name that are verified.
+func (m *Model) verifiedIn(name string) map[string]bool {
+	verified := map[string]bool{}
+	for _, w := range m.worktreeStatuses() {
+		if w.Name != name {
+			continue
+		}
+		for _, f := range w.Files {
+			if f.Verified {
+				verified[f.Path] = true
+			}
+		}
+		for _, f := range w.CommittedFiles {
+			if f.Verified {
+				verified[f.Path] = true
+			}
+		}
+	}
+	return verified
+}
+
+// verifyAnswered is the answer to marking a file.
+type verifyAnswered struct{ err error }
+
+// sendVerify marks the file at path of the worktree called name, with the content
+// seen as id, or takes its mark away when it has one. The stream shows the outcome.
+func (m *Model) sendVerify(name, path, id string) tea.Cmd {
+	f := m.following
+	if f == nil || f.project == nil || m.client == nil {
+		return nil
+	}
+	ref := "id:" + f.project.Id
+	unmark := m.verifiedIn(name)[path]
+	m.log.Info("file mark asked", "worktree", name, "file", path, "unmark", unmark)
+	return func() tea.Msg {
+		if unmark {
+			return verifyAnswered{m.client.UnverifyWorktreeFile(m.ctx, name, path, ref)}
+		}
+		return verifyAnswered{m.client.VerifyWorktreeFile(m.ctx, name, path, id, ref)}
+	}
+}
+
+// verifyAnsweredMsg says why a mark was not made.
+func (m *Model) verifyAnsweredMsg(msg verifyAnswered) {
+	if msg.err != nil {
+		m.log.Info("file not marked", "err", msg.err)
+		m.statusNotice = msg.err.Error()
+	}
+}
+
+// verifyRow marks the file under the cursor in the list: no diff was on the screen,
+// so what it has now is what is marked.
+func (m *Model) verifyRow() tea.Cmd {
+	l, rows := m.list(), m.worktreeRows()
+	if !l.onWorktrees || l.worktreeRow >= len(rows) || rows[l.worktreeRow].file == nil {
+		return nil
+	}
+	r := rows[l.worktreeRow]
+	return m.sendVerify(r.worktree.Name, r.file.Path, "")
 }
 
 // tabLeaf is the end of a path, as a tab's title has room for.

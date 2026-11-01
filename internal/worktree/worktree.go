@@ -46,6 +46,16 @@ type Status struct {
 	// Added and Removed are the lines of those commits; nil when not known.
 	Added, Removed *int
 	Files          []File
+	// Committed are the files its commits changed since it left Base.
+	Committed []CommittedFile
+}
+
+// CommittedFile is a file a checkout's commits changed.
+type CommittedFile struct {
+	Path string
+	// Status is one letter: M changed, A added, D deleted.
+	Status   string
+	Verified bool
 }
 
 // File is a file with uncommitted changes.
@@ -58,6 +68,7 @@ type File struct {
 	// edited twice stays M. A deleted file has neither.
 	Size       int64
 	ModifiedAt *time.Time
+	Verified   bool
 }
 
 // Checkouts are the checkouts a project knows of.
@@ -66,8 +77,9 @@ type Checkouts struct {
 	Paths []string
 }
 
-// Read returns everything known of the project's checkouts, reading it all now.
-func Read(ctx context.Context, c Checkouts) ([]Status, error) {
+// Read returns everything known of the project's checkouts, reading it all now, with
+// the marks that still hold.
+func Read(ctx context.Context, c Checkouts, marks []Mark) ([]Status, error) {
 	list, err := List(ctx, c)
 	if err != nil {
 		return nil, err
@@ -79,6 +91,7 @@ func Read(ctx context.Context, c Checkouts) ([]Status, error) {
 		if err := readCommits(ctx, &list[i]); err != nil {
 			return nil, err
 		}
+		applyMarks(ctx, &list[i], marks)
 	}
 	return list, nil
 }
@@ -165,7 +178,7 @@ func readFiles(ctx context.Context, s *Status) error {
 
 // readCommits reads how the commits of s differ from its base.
 func readCommits(ctx context.Context, s *Status) error {
-	s.Base, s.Ahead, s.Added, s.Removed = "", nil, nil, nil
+	s.Base, s.Ahead, s.Added, s.Removed, s.Committed = "", nil, nil, nil, nil
 	if s.Missing || s.Head == "" {
 		return nil
 	}
@@ -188,6 +201,18 @@ func readCommits(ctx context.Context, s *Status) error {
 	s.Ahead = &sum.Ahead
 	if sum.Lines {
 		s.Added, s.Removed = &sum.Added, &sum.Removed
+	}
+	files, err := git.CommittedFiles(ctx, s.Path, base)
+	if err != nil {
+		if _, ok := errors.AsType[*git.ReadError](err); ok {
+			logging.FromContext(ctx).Info("committed files of a worktree not known", "path", s.Path, "base", base, "err", err)
+			s.Ahead = nil // not all is known, so no mark may go by it
+			return nil
+		}
+		return err
+	}
+	for _, f := range files {
+		s.Committed = append(s.Committed, CommittedFile{Path: f.Path, Status: f.Status})
 	}
 	return nil
 }

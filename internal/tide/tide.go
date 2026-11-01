@@ -270,6 +270,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffLoaded(msg)
 	case commitSent:
 		m.commitSent(msg)
+	case verifyAnswered:
+		m.verifyAnsweredMsg(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()

@@ -141,6 +141,7 @@ type Daemon struct {
 	backups   *agent.Backups
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
+	marks     *worktree.Marks
 	// stopTracker ends what the tracker does, once no stream follows.
 	stopTracker context.CancelFunc
 	// trackerNotices is what tells it of the changes.

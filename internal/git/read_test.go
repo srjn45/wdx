@@ -368,6 +368,48 @@ func TestUncommittedDiff(t *testing.T) {
 	}
 }
 
+// TestContentIDLastsThroughACommit is what a verified mark holds on to.
+func TestContentIDLastsThroughACommit(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	id, err := ContentID(t.Context(), dir, "kept")
+	if err != nil || id == "" {
+		t.Fatalf("%q, %v", id, err)
+	}
+	p, err := FileDiff(t.Context(), dir, "kept")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.Text, ".."+id) {
+		t.Errorf("the patch does not say the id %s:\n%s", id, p.Text)
+	}
+	gittest.Git(t, dir, "add", "kept")
+	gittest.Git(t, dir, "commit", "-qm", "kept")
+	if after, err := ContentID(t.Context(), dir, "kept"); err != nil || after != id {
+		t.Errorf("committed: %q, %v, want %q", after, err, id)
+	}
+	write(t, dir, "kept", "edited\n")
+	if after, err := ContentID(t.Context(), dir, "kept"); err != nil || after == id {
+		t.Errorf("edited: %q, %v", after, err)
+	}
+}
+
+func TestCommittedFiles(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	gittest.Git(t, dir, "add", "kept")
+	gittest.Git(t, dir, "rm", "-q", "bare.txt")
+	gittest.Git(t, dir, "commit", "-qm", "more")
+	got, err := CommittedFiles(t.Context(), dir, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CommittedFile{{"bare.txt", "D"}, {"kept", "M"}, {"landing", "A"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestFileDiffBeforeTheFirstCommit(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "empty")

@@ -164,3 +164,95 @@ func TestWorktreeRequests(t *testing.T) {
 		}
 	}
 }
+
+// TestVerifiedMark follows a mark from the API to the stream, through a commit, and
+// away when the file is edited.
+func TestVerifiedMark(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeIn(t, dir, "file", "one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeIn(t, work, "file", "two\n")
+
+	on := true
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: &on})
+	file := func(e event) (api.WorktreeFile, bool) {
+		w, ok := worktreeStatus(e, "work")
+		if !ok || len(w.Files) != 1 {
+			return api.WorktreeFile{}, false
+		}
+		return w.Files[0], true
+	}
+	waitEvent(t, events, "the file", func(e event) bool { _, ok := file(e); return ok })
+
+	ctx := t.Context()
+	project := "api"
+	params := &api.VerifyWorktreeFileParams{Project: &project, Path: "file"}
+	r, err := td.client.VerifyWorktreeFileWithResponse(ctx, "work", params, api.WorktreeFileVerify{})
+	if err != nil || r.JSON200 == nil || !r.JSON200.Verified {
+		t.Fatalf("verify: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "the mark", func(e event) bool { f, ok := file(e); return ok && f.Verified })
+
+	// A commit of what was verified keeps it.
+	gittest.Git(t, work, "add", "file")
+	gittest.Git(t, work, "commit", "-qm", "two")
+	waitEvent(t, events, "the mark on the commit", func(e event) bool {
+		w, ok := worktreeStatus(e, "work")
+		return ok && len(w.Files) == 0 && len(w.CommittedFiles) == 1 && w.CommittedFiles[0].Verified
+	})
+
+	// An edit takes it away, and going back does not bring it.
+	writeIn(t, work, "file", "three\n")
+	gittest.Git(t, work, "add", "file")
+	waitEvent(t, events, "the mark gone", func(e event) bool { f, ok := file(e); return ok && !f.Verified })
+	writeIn(t, work, "file", "two\n")
+	gittest.Git(t, work, "add", "file")
+	waitEvent(t, events, "the file as committed", func(e event) bool {
+		w, ok := worktreeStatus(e, "work")
+		return ok && len(w.Files) == 0
+	})
+	list, err := td.client.ListWorktreesWithResponse(ctx, &api.ListWorktreesParams{Project: &project})
+	if err != nil || list.JSON200 == nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, w := range list.JSON200.Worktrees {
+		for _, f := range w.CommittedFiles {
+			if f.Verified {
+				t.Errorf("the mark came back: %+v", f)
+			}
+		}
+	}
+
+	// What was on the screen is what it holds: an edit since makes it stale at once.
+	stale := "0123456789abcdef0123456789abcdef01234567"
+	writeIn(t, work, "file", "four\n")
+	if r, err = td.client.VerifyWorktreeFileWithResponse(ctx, "work", params, api.WorktreeFileVerify{ContentId: &stale}); err != nil || r.JSON200 == nil {
+		t.Fatalf("verify: %v, %s", err, r.Body)
+	}
+	if u, err := td.client.RefreshWorktreesWithResponse(ctx, "api", &api.RefreshWorktreesParams{}); err != nil || u.StatusCode() != http.StatusAccepted {
+		t.Fatalf("refresh: %v", err)
+	}
+	waitEvent(t, events, "the edit", func(e event) bool { f, ok := file(e); return ok && !f.Verified && f.Size == 5 })
+
+	// Taken away by hand, and refused for what is not a file of the worktree.
+	if r, err = td.client.VerifyWorktreeFileWithResponse(ctx, "work", params, api.WorktreeFileVerify{}); err != nil || r.JSON200 == nil {
+		t.Fatalf("verify: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "the mark again", func(e event) bool { f, ok := file(e); return ok && f.Verified })
+	d, err := td.client.UnverifyWorktreeFileWithResponse(ctx, "work", &api.UnverifyWorktreeFileParams{Project: &project, Path: "file"})
+	if err != nil || d.JSON200 == nil || d.JSON200.Verified {
+		t.Fatalf("unverify: %v, %s", err, d.Body)
+	}
+	waitEvent(t, events, "no mark", func(e event) bool { f, ok := file(e); return ok && !f.Verified })
+	outside := &api.VerifyWorktreeFileParams{Project: &project, Path: "../x"}
+	if r, err := td.client.VerifyWorktreeFileWithResponse(ctx, "work", outside, api.WorktreeFileVerify{}); err != nil || r.StatusCode() != http.StatusUnprocessableEntity {
+		t.Errorf("outside: %v, %s", err, r.Body)
+	}
+}

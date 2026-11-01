@@ -33,6 +33,8 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | What a worktree has committed | `worktree diff` | its tab | Same | |
 | Everything a worktree has not committed | `worktree diff --uncommitted` | its tab | Same | |
 | Ask an agent to commit | `agent send` | `C` in a worktree's tab | Same | |
+| See which files are verified | `worktree list --json` | a `✓` in the list and the diffs | Same | |
+| Mark a file verified | none, only the API | `v` | By design | It says a person looked at the file, so an agent or a script should not be saying it |
 | Read the worktrees again | not needed | `C-q f`, `f` in the list | By design | Each command reads anew |
 
 ## Agents

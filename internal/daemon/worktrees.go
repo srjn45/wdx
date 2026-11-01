@@ -21,6 +21,7 @@ var errProjectOrDir = errors.New("give project or dir")
 // for them, and tells it of every change: it finds which agents stopped working.
 // Its reads run as long as the daemon, not as a request: they serve every stream.
 func (d *Daemon) startTracker() {
+	d.marks = worktree.NewMarks(d.db)
 	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), d.log))
 	d.stopTracker = cancel
 	d.tracker = worktree.NewTracker(ctx, worktree.Options{
@@ -38,6 +39,7 @@ func (d *Daemon) startTracker() {
 			}
 			return workingAgents(list), nil
 		},
+		Marks:   d.marks,
 		Changed: d.notices.notify,
 	})
 	changed, stop := d.notices.subscribe()
@@ -96,11 +98,15 @@ func (s *server) worktreeScope(ctx context.Context, ref, dir *string) (project.P
 }
 
 func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequestObject) (api.ListWorktreesResponseObject, error) {
-	_, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
 	if err != nil {
 		return nil, err
 	}
-	list, err := worktree.Read(ctx, c)
+	marks, err := s.marks.List(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := worktree.Read(ctx, c, marks)
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +156,30 @@ func fileDiffView(name, path string, p git.Patch) api.WorktreeFileDiff {
 	return api.WorktreeFileDiff{Worktree: name, Path: path, Patch: p.Text, Binary: p.Binary, Truncated: p.Truncated}
 }
 
+func (s *server) VerifyWorktreeFile(ctx context.Context, req api.VerifyWorktreeFileRequestObject) (api.VerifyWorktreeFileResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := worktree.Verify(ctx, s.marks, p.ID, c, req.Worktree, req.Params.Path, deref(req.Body.ContentId)); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.VerifyWorktreeFile200JSONResponse{Worktree: req.Worktree, Path: req.Params.Path, Verified: true}, nil
+}
+
+func (s *server) UnverifyWorktreeFile(ctx context.Context, req api.UnverifyWorktreeFileRequestObject) (api.UnverifyWorktreeFileResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := worktree.Unverify(ctx, s.marks, p.ID, c, req.Worktree, req.Params.Path); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.UnverifyWorktreeFile200JSONResponse{Worktree: req.Worktree, Path: req.Params.Path, Verified: false}, nil
+}
+
 func (s *server) RefreshWorktrees(ctx context.Context, req api.RefreshWorktreesRequestObject) (api.RefreshWorktreesResponseObject, error) {
 	p, err := s.find(ctx, req.Project)
 	if err != nil {
@@ -163,16 +193,20 @@ func worktreeStatusViews(list []worktree.Status) []api.WorktreeStatus {
 	views := make([]api.WorktreeStatus, 0, len(list))
 	for _, w := range list {
 		v := api.WorktreeStatus{
-			Name:    w.Name,
-			Path:    w.Path,
-			Branch:  textOrNull(w.Branch),
-			Head:    textOrNull(w.Head),
-			Missing: w.Missing,
-			Base:    textOrNull(w.Base),
-			Ahead:   w.Ahead,
-			Added:   w.Added,
-			Removed: w.Removed,
-			Files:   make([]api.WorktreeFile, 0, len(w.Files)),
+			Name:           w.Name,
+			Path:           w.Path,
+			Branch:         textOrNull(w.Branch),
+			Head:           textOrNull(w.Head),
+			Missing:        w.Missing,
+			Base:           textOrNull(w.Base),
+			Ahead:          w.Ahead,
+			Added:          w.Added,
+			Removed:        w.Removed,
+			Files:          make([]api.WorktreeFile, 0, len(w.Files)),
+			CommittedFiles: make([]api.WorktreeCommittedFile, 0, len(w.Committed)),
+		}
+		for _, f := range w.Committed {
+			v.CommittedFiles = append(v.CommittedFiles, api.WorktreeCommittedFile{Path: f.Path, Status: api.WorktreeCommittedFileStatus(f.Status), Verified: f.Verified})
 		}
 		for _, f := range w.Files {
 			var at *time.Time
@@ -180,7 +214,7 @@ func worktreeStatusViews(list []worktree.Status) []api.WorktreeStatus {
 				t := f.ModifiedAt.UTC()
 				at = &t
 			}
-			v.Files = append(v.Files, api.WorktreeFile{Path: f.Path, Status: api.WorktreeFileStatus(f.Status), Size: f.Size, ModifiedAt: at})
+			v.Files = append(v.Files, api.WorktreeFile{Path: f.Path, Status: api.WorktreeFileStatus(f.Status), Size: f.Size, ModifiedAt: at, Verified: f.Verified})
 		}
 		views = append(views, v)
 	}

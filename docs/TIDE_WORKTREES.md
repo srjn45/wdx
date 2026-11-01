@@ -196,6 +196,19 @@ So:
 - It warns when the agent chosen is working, as a commit then may take in unfinished work, and lets it be sent.
 - A send that fails leaves the box open, with the text and why.
 
+## Verified
+
+`v` marks a file verified, and pressed again takes the mark away: in a file's diff, in a worktree's tab for the file of the current line, and on a file's row in the list. It is only a label, which committing and landing do not depend on. A `✓` shows it on the file's row and its diff, and `2/5 ✓` on the worktree's row and bar, counting what the tab shows.
+
+Nothing watches for a file to change. A mark holds the id of the content that was on the screen, taken from the patch, in the table `verified_files`. Each read of a worktree, on the events above, compares it with `git hash-object`, which stores nothing, for marked files alone:
+
+- A file that differs loses its mark, for good: going back to the same content does not bring it back.
+- That id stays the same once committed, so a commit of what was verified keeps the mark.
+- An edit between reading a diff and pressing `v` has an id that differs, so the mark goes at the next read: it cannot claim what was not seen.
+- A file left in neither list, as when landed, or a worktree git no longer lists, loses its marks.
+- A mark can outlast an edit until the next event: one by an agent shows when it stops or the user looks, as the file's row does.
+- A symbolic link or a submodule keeps its mark, as it has no such content to compare.
+
 ## Moving around a diff
 
 The arrows move a current line, marked `▸`, and the view follows it.
@@ -211,6 +224,7 @@ The arrows move a current line, marked `▸`, and the view follows it.
 | `/` and text | search, with no regular expressions; capitals make it exact | yes | yes |
 | `n` `N` | the next or last match, going round | yes | yes |
 | `Esc` | ends the search | yes | yes |
+| `v` | marks the file verified, or not | yes | yes |
 | `?` | shows these keys | yes | yes |
 
 A click makes a line current, and the wheel scrolls with the current line staying in view.
@@ -223,12 +237,7 @@ The order below is agreed; "proposed" marks what is not.
 
 The bar will list `L` on a worktree's tab while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has no `L`.
 
-### 1. Verified
-
-- `v` marks a file verified. It is only a label: committing and landing do not depend on it. Editing the file removes it.
-- Proposed: a mark holds the file's blob id from `git hash-object`, which writes nothing and is the same id once committed, so a mark survives the commit of what was verified.
-
-### 2. Comments, sent as a review
+### 1. Comments, sent as a review
 
 - `c` comments, `Esc` cancels, `Enter` adds it. Comments are sent together as a review, so that an agent does not start acting too early, to the agent working in that worktree.
 - They are saved until delivered, because no agent may be running.

@@ -27,6 +27,7 @@ var (
 	readConfig = []string{
 		"-c", "diff.autoRefreshIndex=false",
 		"-c", "core.fsmonitor=false", // a read never starts a daemon
+		"-c", "core.quotepath=off", // a path is shown as it is
 	}
 )
 
@@ -328,7 +329,9 @@ func patchOf(out []byte, truncated bool) Patch {
 	return Patch{Text: string(out), Binary: binaryPatch.Match(out), Truncated: truncated}
 }
 
-var diffFlags = []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames"}
+// diffFlags ask for full ids on a patch's index lines: what was on the screen is
+// what a file's verified mark holds.
+var diffFlags = []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--full-index"}
 
 // FileDiff returns the uncommitted changes of the file at path, relative to the
 // checkout at dir, whole: every line of the file is in the patch. A user asked
@@ -358,7 +361,7 @@ func FileDiff(ctx context.Context, dir, path string) (Patch, error) {
 // untrackedDiff is an untracked file compared with nothing, all added: git diff
 // never shows one.
 func untrackedDiff(ctx context.Context, dir, path string, flags ...string) (Patch, error) {
-	args := append(append([]string{"diff", "--no-index", "--no-color", "--no-ext-diff"}, flags...), "--", "/dev/null", path)
+	args := append(append([]string{"diff", "--no-index", "--no-color", "--no-ext-diff", "--full-index"}, flags...), "--", "/dev/null", path)
 	out, truncated, err := read(ctx, dir, noDownload, args...)
 	if e, ok := errors.AsType[*ReadError](err); ok && e.Exit == 1 {
 		err = nil // differing is what --no-index reports with it
@@ -416,6 +419,38 @@ func headTree(ctx context.Context, dir string) (string, error) {
 		return "", err
 	}
 	return readText(ctx, dir, "hash-object", "-t", "tree", "--stdin", "--no-filters")
+}
+
+// ContentID returns the id git would store the file at path in the checkout at dir
+// with, which it does not store: the same before and after it is committed.
+func ContentID(ctx context.Context, dir, path string) (string, error) {
+	return readText(ctx, dir, "hash-object", "--", path)
+}
+
+// CommittedFile is a file a checkout's commits changed.
+type CommittedFile struct {
+	Path string
+	// Status is one letter: M changed, A added, D deleted.
+	Status string
+}
+
+// CommittedFiles lists the files the checkout at dir changed since it left base. It
+// reads trees alone, so it downloads nothing a partial clone lacks.
+func CommittedFiles(ctx context.Context, dir, base string) ([]CommittedFile, error) {
+	out, _, err := read(ctx, dir, noDownload, "diff", "--name-status", "-z", "--no-renames", "--no-ext-diff", base+"...HEAD")
+	if err != nil {
+		return nil, err
+	}
+	fields := strings.Split(strings.TrimRight(string(out), "\x00"), "\x00")
+	var list []CommittedFile
+	for i := 0; i+1 < len(fields); i += 2 {
+		status := "M"
+		if fields[i] == "A" || fields[i] == "D" {
+			status = fields[i]
+		}
+		list = append(list, CommittedFile{Path: fields[i+1], Status: status})
+	}
+	return list, nil
 }
 
 // MergeBase returns where the checkout at dir left base, "" when they have no

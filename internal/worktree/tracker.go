@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,8 @@ type Options struct {
 	Checkouts func(ctx context.Context, projectID string) (Checkouts, error)
 	// Agents returns the project's agents.
 	Agents func(ctx context.Context, projectID string) ([]Agent, error)
+	// Marks are the files marked verified; nil keeps none.
+	Marks *Marks
 	// Changed is called when what is kept of a project changed.
 	Changed func()
 	// Settle is DefaultSettle when 0.
@@ -308,7 +311,7 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			continue
 		}
 		was := known[s.Path]
-		s.Files, s.Base, s.Ahead, s.Added, s.Removed = was.Files, was.Base, was.Ahead, was.Added, was.Removed
+		s.Files, s.Base, s.Ahead, s.Added, s.Removed, s.Committed = was.Files, was.Base, was.Ahead, was.Added, was.Removed, was.Committed
 	}
 
 	dirs := p.dirsOf(ctx, list)
@@ -355,10 +358,12 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 				log.Info("commits of a worktree not read", "path", s.Path, "err", err)
 			}
 		}
+		p.markRead(ctx, s)
 		if ctx.Err() != nil {
 			return
 		}
 	}
+	p.forgetGone(ctx, list)
 
 	if p.t.opts.readDone != nil {
 		p.t.opts.readDone()
@@ -373,6 +378,47 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 	p.mu.Unlock()
 	if changed {
 		p.t.opts.Changed()
+	}
+}
+
+// markRead sets what the checkout read has verified, and takes away the marks that
+// no longer hold: this comparison is all that notices a file edited after it was
+// verified, so a mark goes when the checkout is next read.
+func (p *tracked) markRead(ctx context.Context, s *Status) {
+	marks := p.t.opts.Marks
+	if marks == nil {
+		return
+	}
+	list, err := marks.List(ctx, p.id)
+	if err != nil {
+		logging.FromContext(ctx).Info("verified marks not read", "project_id", p.id, "err", err)
+		return
+	}
+	s.Files, s.Committed = slices.Clone(s.Files), slices.Clone(s.Committed) // what was kept may be read
+	for _, m := range applyMarks(ctx, s, list) {
+		logging.FromContext(ctx).Info("verified mark no longer holds", "path", m.Worktree, "file", m.File)
+		if err := marks.Remove(ctx, p.id, m.Worktree, m.File); err != nil {
+			logging.FromContext(ctx).Info("verified mark not removed", "file", m.File, "err", err)
+		}
+	}
+}
+
+// forgetGone takes away the marks of checkouts git no longer lists.
+func (p *tracked) forgetGone(ctx context.Context, list []Status) {
+	marks := p.t.opts.Marks
+	if marks == nil {
+		return
+	}
+	all, err := marks.List(ctx, p.id)
+	if err != nil {
+		return
+	}
+	for _, m := range all {
+		if !slices.ContainsFunc(list, func(s Status) bool { return s.Path == m.Worktree }) {
+			if err := marks.Remove(ctx, p.id, m.Worktree, m.File); err != nil {
+				logging.FromContext(ctx).Info("verified mark not removed", "file", m.File, "err", err)
+			}
+		}
 	}
 }
 

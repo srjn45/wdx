@@ -375,6 +375,27 @@ func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir stri
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// VerifyWorktreeFile marks the file at path of the worktree name verified, with the
+// content seen as contentID, or as it is now when that is "".
+func (c *Client) VerifyWorktreeFile(ctx context.Context, name, path, contentID, ref string) error {
+	r, err := c.api.VerifyWorktreeFileWithResponse(ctx, name, &api.VerifyWorktreeFileParams{Path: path, Project: nonEmpty(ref)}, api.WorktreeFileVerify{ContentId: nonEmpty(contentID)})
+	if err != nil {
+		return err
+	}
+	_, err = result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	return err
+}
+
+// UnverifyWorktreeFile takes the mark of the file at path of the worktree name away.
+func (c *Client) UnverifyWorktreeFile(ctx context.Context, name, path, ref string) error {
+	r, err := c.api.UnverifyWorktreeFileWithResponse(ctx, name, &api.UnverifyWorktreeFileParams{Path: path, Project: nonEmpty(ref)})
+	if err != nil {
+		return err
+	}
+	_, err = result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	return err
+}
+
 // RefreshWorktrees asks for the worktree name of the project ref to be read
 // again, or all of them when name is "".
 func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string) error {
