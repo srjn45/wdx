@@ -88,6 +88,8 @@ type Hello struct {
 type Status struct {
 	Activity string `json:"activity"`
 	Draft    bool   `json:"draft"`
+	// Queued is how many messages wait in the inbox.
+	Queued int `json:"queued"`
 }
 
 // Size is a terminal's size in cells.

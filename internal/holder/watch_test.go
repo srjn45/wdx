@@ -802,3 +802,27 @@ func TestConnStatus(t *testing.T) {
 	}
 	f.endHolder(t, "term-00000213", other)
 }
+
+// TestStatusQueued: a message held behind a draft is told, and that it went.
+func TestStatusQueued(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := "term-00000214"
+	dir, s := f.watched(t, id, `
+drafted one
+wait_for clear
+idle two
+wait_for end
+`, stillVar+"=100ms")
+	c := f.dial(t, id)
+	// Settled, with nothing more to tell: only the message can bring a frame now.
+	waittest.For(t, "the draft to be read", func() bool { return c.Status() == Status{Activity: "idle", Draft: true} })
+	if err := c.SendAgent("hello", false); err != nil {
+		t.Fatal(err)
+	}
+	waittest.For(t, "the message told as queued", func() bool { return c.Status().Queued == 1 })
+	step(t, dir, "clear")
+	waittest.For(t, "the message told as gone", func() bool { return c.Status().Queued == 0 && !c.Status().Draft })
+	step(t, dir, "end")
+	f.endHolder(t, id, s)
+}

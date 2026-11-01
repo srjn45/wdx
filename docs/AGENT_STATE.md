@@ -175,7 +175,7 @@ watchScreen ─► holder ─► frameStatus ─► Conn ─► Supervisor ─�
 More attributes will come from watching a terminal, so instead of an event type for each, the holder sends one complete object over its existing connection on every change, as the project stream does for tide: `frameStatus`, frame 12, carrying a `Status`. The name avoids `state`, which means whether the process is alive, and `ScreenState`, as later fields will not come from the screen.
 
 ```json
-{"activity":"waiting","draft":false}
+{"activity":"waiting","draft":false,"queued":0}
 ```
 
 `Hello` carries the same object, so a daemon that restarts learns it on connecting. `input_box` and `in_turn` stay in the holder, for the fallback and the `inboxReader`, so a change only to them sends nothing. Only the daemon's connection gets the frame, not attached clients.
@@ -198,7 +198,7 @@ ALTER TABLE agents ADD COLUMN draft INTEGER;
 - **No change is missed.** The holder updates the latest status before taking `h.mu` to write, so a change during a connect goes out in `Hello`, the next frame or both. A repeat is harmless.
 - **`terminal` still knows nothing of agents.** The Supervisor gets a function in its options, as with `AgentLaunch`, which the daemon connects to `agent.Store` and then to the streams' notice.
 - **No new protocol version,** decided by the human. The version stays 4, as the daemon asks nothing new of the holder: a holder with no status in its `Hello` is too old to send one, and the released daemon skips the frame and the field. Version 5 would need a release of its own first, since `drives` stops at 4 and a rollback would lose every newer holder.
-- **The queue's length** comes straight after, in a commit of its own: a field of `Status` and a column, with no `frameInbox` (docs/SEND.md, step 6). Until then `draft: true` is the only sign of a message held.
+- **The queue's length** is `queued`, a field of `Status` and a column, told when a message comes and when it goes (docs/SEND.md, step 6). `wdx agent get` shows it in text only when it is not 0.
 
 Checked on real Claude Code 2.1.316 on 2026-11-01, through a real daemon in a throwaway home, against `wdx agent list` and `get`:
 

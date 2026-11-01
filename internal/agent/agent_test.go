@@ -471,9 +471,9 @@ func TestSetStatus(t *testing.T) {
 	f := newFixture(t, "")
 	a := f.create(t, "helper")
 	store := f.agents.Store()
-	set := func(activity string, draft, wantChanged bool) Agent {
+	set := func(activity string, draft bool, queued int, wantChanged bool) Agent {
 		t.Helper()
-		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft)
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft, queued)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -486,21 +486,24 @@ func TestSetStatus(t *testing.T) {
 		}
 		return got
 	}
-	if got := set("waiting", false, true); got.Activity != "waiting" || got.Draft {
+	if got := set("waiting", false, 0, true); got.Activity != "waiting" || got.Draft {
 		t.Errorf("after waiting: %q %v", got.Activity, got.Draft)
 	}
-	set("waiting", false, false)
-	if got := set("waiting", true, true); !got.Draft {
+	set("waiting", false, 0, false)
+	if got := set("waiting", true, 0, true); !got.Draft {
 		t.Error("the draft not kept")
 	}
-	if got := set("limited", true, true); got.Activity != "unknown" {
+	if got := set("waiting", true, 2, true); got.Queued != 2 {
+		t.Errorf("the queue's length not kept: %d", got.Queued)
+	}
+	if got := set("limited", true, 2, true); got.Activity != "unknown" {
 		t.Errorf("a value not known reads %q", got.Activity)
 	}
 
 	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := store.SetStatus(ctx, "term-none", "idle", false); err != nil || changed {
+	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0); err != nil || changed {
 		t.Errorf("no agent: changed %v, %v", changed, err)
 	}
 }
@@ -512,13 +515,13 @@ func TestStatusOnlyWhileRunning(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "until [ -f end ]; do sleep 0.01; done; exit 0")
 	a := f.create(t, "helper")
-	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true); err != nil {
+	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true, 3); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(f.dir, "end"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft {
-		t.Errorf("an exited agent shows %q, draft %v", got.Activity, got.Draft)
+	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft || got.Queued != 0 {
+		t.Errorf("an exited agent shows %q, draft %v, queued %d", got.Activity, got.Draft, got.Queued)
 	}
 }

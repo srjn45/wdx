@@ -204,7 +204,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Limits:       opts.HolderLimits,
 		AgentLaunch:  agent.Launches(agents, []aca.AiCodingAgent{opts.ACA}),
 		AgentStatus: func(ctx context.Context, id string, status holder.Status) {
-			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft)
+			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft, status.Queued)
 			if err != nil {
 				logging.FromContext(ctx).Error("agent status not recorded", "terminal_id", id, "err", err)
 			}

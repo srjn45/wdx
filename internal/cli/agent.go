@@ -558,6 +558,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.Draft != nil && *a.Draft {
 		field("draft", "yes")
 	}
+	if a.Queued != nil && *a.Queued > 0 {
+		field("queued", strconv.Itoa(*a.Queued))
+	}
 	if a.Error != nil {
 		field("error", st.Failure(*a.Error))
 	}

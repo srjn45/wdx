@@ -741,3 +741,33 @@ func TestAgentStatusOfAHolderThatSaysNothing(t *testing.T) {
 		t.Errorf("got %s, %v", activityOf(a), a.Draft)
 	}
 }
+
+// TestAgentQueued: a message held behind a draft shows until it is delivered.
+func TestAgentQueued(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(statusScript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app, "draft"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createAgent(t, "", app, "helper")
+	td.waitActivity(t, "helper", "working", true)
+	r, err := td.client.SendAgentWithResponse(context.Background(), "id:"+a.Id, nil, api.SendAgentJSONRequestBody{Prompt: "hello"})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("send: %v %s", err, r.Body)
+	}
+	queued := func(n int) func(event) bool {
+		return func(e event) bool {
+			list := agentsIn(e)
+			return len(list) == 1 && list[0].Queued != nil && *list[0].Queued == n
+		}
+	}
+	td.waitProject(t, "app", "the message queued", queued(1))
+	if err := os.WriteFile(filepath.Join(app, "idle"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	td.waitProject(t, "app", "the message delivered", queued(0))
+}

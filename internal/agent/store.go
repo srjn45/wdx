@@ -27,6 +27,7 @@ type Agent struct {
 	RemovedAt time.Time // when it was removed, keeping it as a tombstone; zero otherwise
 	Activity  string    // what its process is doing, as a screen.Activity; "" unless it is running
 	Draft     bool      // whether a human left text in its input box
+	Queued    int       // how many messages wait to go into it
 	Terminal  terminal.Terminal
 }
 
@@ -41,7 +42,7 @@ func (a Agent) OnRow(t terminal.Terminal) Agent {
 	a.Terminal = t
 	switch {
 	case t.State != terminal.StateRunning:
-		a.Activity, a.Draft = "", false
+		a.Activity, a.Draft, a.Queued = "", false, 0
 	case a.Activity == "":
 		a.Activity = string(screen.ActivityUnknown)
 	}
@@ -97,19 +98,19 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Agent, erro
 // SetStatus records what the process of the agent on terminalID is doing, and
 // reports whether that changes anything. A running holder can be newer than this
 // daemon, so an activity it does not know is unknown.
-func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool) (bool, error) {
+func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool, queued int) (bool, error) {
 	switch screen.Activity(activity) {
 	case screen.ActivityWorking, screen.ActivityIdle, screen.ActivityWaiting, screen.ActivityUnknown:
 	default:
 		logging.FromContext(ctx).Warn("unknown activity read as unknown", "terminal_id", terminalID, "activity", activity)
 		activity = string(screen.ActivityUnknown)
 	}
-	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2 WHERE terminal_id = ?3 AND (activity IS NOT ?1 OR draft IS NOT ?2)", activity, draft, terminalID)
+	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3 WHERE terminal_id = ?4 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3)", activity, draft, queued, terminalID)
 	if err != nil {
 		return false, err
 	}
 	if rows > 0 {
-		logging.FromContext(ctx).Info("agent status changed", "terminal_id", terminalID, "activity", activity, "draft", draft)
+		logging.FromContext(ctx).Info("agent status changed", "terminal_id", terminalID, "activity", activity, "draft", draft, "queued", queued)
 	}
 	return rows > 0, nil
 }
@@ -131,6 +132,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		SELECT a.id, a.aca, a.session_id, a.parent_agent_id, a.removed_at, (`+worktreeOfDir+`),
 			CASE WHEN t.state = 'running' THEN COALESCE(a.activity, 'unknown') END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
+			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			`+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
@@ -148,11 +150,12 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var removed sql.NullInt64
 		var worktree, activity sql.NullString
 		var draft sql.NullBool
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree, &activity, &draft); err != nil {
+		var queued sql.NullInt64
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &removed, &worktree, &activity, &draft, &queued); err != nil {
 			return nil, err
 		}
 		a.ParentID = parent.String
-		a.Activity, a.Draft = activity.String, draft.Bool
+		a.Activity, a.Draft, a.Queued = activity.String, draft.Bool, int(queued.Int64)
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
 		}

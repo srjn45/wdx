@@ -643,7 +643,7 @@ func (h *holder) sendStatuses() {
 		}
 		h.mu.Lock()
 		if h.conn != nil {
-			if err := h.write(h.conn, frameStatus, h.watch.status()); err != nil {
+			if err := h.write(h.conn, frameStatus, h.status()); err != nil {
 				h.log.Info("status not sent", "err", err)
 				// A write cut short leaves the frames out of step. Dialling again,
 				// the daemon gets the current status in the hello.
@@ -652,6 +652,16 @@ func (h *holder) sendStatuses() {
 		}
 		h.mu.Unlock()
 	}
+}
+
+// status is what the daemon is told; nil when nothing reads the screen.
+func (h *holder) status() *Status {
+	if h.watch == nil {
+		return nil
+	}
+	status := statusOf(h.watch.state())
+	status.Queued = h.inbox.length()
+	return &status
 }
 
 // write sends a frame to c; h.mu must be held.
@@ -753,7 +763,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 
 // hello is what the holder says to whoever connects; h.mu is held.
 func (h *holder) hello() Hello {
-	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.watch.status()}
+	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.status()}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills

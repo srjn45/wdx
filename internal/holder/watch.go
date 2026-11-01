@@ -59,8 +59,7 @@ type screenWatch struct {
 	latest    atomic.Pointer[screen.ScreenState]
 	// published is told after latest changes, for the inboxReader.
 	published chan struct{}
-	// statusChanged is told after a change of what latest says in a Status, for
-	// sendStatuses.
+	// statusChanged is told after a change of what a Status says, for sendStatuses.
 	statusChanged chan struct{}
 	panicked      atomic.Bool // a panic in the parser is logged once
 
@@ -163,16 +162,6 @@ func (w *screenWatch) stateChanged() <-chan struct{} {
 
 // state is the latest state read.
 func (w *screenWatch) state() screen.ScreenState { return *w.latest.Load() }
-
-// status is the latest state as the daemon is told it; nil when nothing reads
-// the screen.
-func (w *screenWatch) status() *Status {
-	if w == nil {
-		return nil
-	}
-	status := statusOf(w.state())
-	return &status
-}
 
 func statusOf(state screen.ScreenState) Status {
 	return Status{Activity: string(state.Activity), Draft: state.Draft}

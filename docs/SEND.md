@@ -1,6 +1,6 @@
 # Sending to terminals and agents
 
-Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing). The queue length on `agent get` waits for the state channel to the daemon (docs/AGENT_STATE.md, Syncing to the daemon).
+Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing). The queue length is on `agent get`, through the state channel to the daemon (docs/AGENT_STATE.md, Syncing to the daemon).
 
 Lets scripts and ACAs give a running terminal or agent a message without attaching.
 
@@ -94,7 +94,7 @@ Each step passes `make test` on its own and works in the worktree `send`. Nothin
 3. **`agent send`.** `AiCodingAgent`'s `Deliver`, the delivery table, Claude Code's paste and Enter. Built with step 4, in one commit.
 4. **`--instant`.** The instant queue, `InTurn` and the interrupt key. Built.
 5. **Docs and the real thing.** Done; see below. A narrow pane was not checked, as a footer too cut off to say only costs the interrupt.
-6. **The queue length on `agent get`.** In a commit of its own, straight after the state channel to the daemon.
+6. **The queue length on `agent get`.** Built, in `queued`, on the state channel to the daemon. Only the agent has one: a shell's holder reads no screen and sends no status.
 
 ## Checked on the real thing
 

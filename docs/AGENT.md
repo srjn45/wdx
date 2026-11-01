@@ -110,7 +110,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 ```json
 {"id": "agent-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "wdx",
  "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx", "worktree": "main",
- "state": "running", "activity": "idle", "draft": false, "pid": 4242, "exit_code": null, "error": null,
+ "state": "running", "activity": "idle", "draft": false, "queued": 0, "pid": 4242, "exit_code": null, "error": null,
  "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null, "removed_at": null}
 ```
 

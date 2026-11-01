@@ -176,10 +176,10 @@ func TestAgentGet(t *testing.T) {
 // running has no status to show.
 func TestAgentStatusText(t *testing.T) {
 	t.Parallel()
-	waiting, yes := api.AgentActivityWaiting, true
+	waiting, yes, two := api.AgentActivityWaiting, true, 2
 	var out bytes.Buffer
-	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes}}.text(&out, style.New(false))
-	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) {
+	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
 		t.Errorf("running: %s", out.String())
 	}
 	out.Reset()

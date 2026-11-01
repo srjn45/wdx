@@ -271,7 +271,7 @@ func agentView(a agent.Agent) api.Agent {
 	}
 	if a.Activity != "" {
 		activity := api.AgentActivity(a.Activity)
-		v.Activity, v.Draft = &activity, &a.Draft
+		v.Activity, v.Draft, v.Queued = &activity, &a.Draft, &a.Queued
 	}
 	if a.Tombstone() {
 		v.State = api.AgentStateRemoved

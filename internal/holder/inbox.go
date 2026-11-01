@@ -72,6 +72,13 @@ func (i *inbox) remove(m message) {
 	}
 }
 
+// length is how many messages wait.
+func (i *inbox) length() int {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return len(i.instantQueue) + len(i.generalQueue)
+}
+
 // close refuses later messages and returns how many were left undelivered.
 func (i *inbox) close() int {
 	i.mu.Lock()
@@ -90,6 +97,14 @@ func (h *holder) queue(m message) {
 		return
 	}
 	h.log.Info("message queued", "prompt_bytes", len(m.text), "instant", m.instant)
+	h.queueChanged()
+}
+
+// queueChanged says the inbox's length is not what the daemon was last told.
+func (h *holder) queueChanged() {
+	if h.watch != nil {
+		wake(h.watch.statusChanged)
+	}
 }
 
 // dropMessages closes the inbox once the shell has ended. It is not left to
@@ -157,6 +172,7 @@ func (h *holder) inboxReader() {
 		switch next {
 		case actionDeliver:
 			h.inbox.remove(m)
+			h.queueChanged()
 			h.deliver(m)
 			interrupted, held = false, ""
 		case actionInterrupt:
