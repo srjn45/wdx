@@ -74,7 +74,7 @@ func TestAStartGoesOnWithTheLatestSession(t *testing.T) {
 	if err := os.WriteFile(f.aca.Session, []byte("after-clear\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Start(ctx, a.ID); err != nil {
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := f.aca.Sessions()
@@ -113,7 +113,7 @@ func TestARemovedAgentsBackupGoesToTheTrash(t *testing.T) {
 	if err := os.WriteFile(f.aca.Conversation, []byte("said\nat the very end\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(identity.AgentDir(f.home, a.ID)); !os.IsNotExist(err) {
@@ -148,13 +148,13 @@ func TestATombstoneKeepsItsBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(identity.AgentDir(f.home, parent.ID)); err != nil {
 		t.Errorf("a tombstone lost its backup: %v", err)
 	}
-	if _, err := f.agents.Remove(ctx, child.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, child.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{parent.ID, child.ID} {

@@ -70,7 +70,7 @@ func newFixture(t *testing.T, script string) fixture {
 	t.Cleanup(func() {
 		list, _ := store.List(ctx, "")
 		for _, a := range list {
-			_, _ = agents.Remove(ctx, a.ID, true) // no holder is left to fail the test: each is stopped, or killed past the grace
+			_, _, _ = agents.Remove(ctx, a.ID, true) // no holder is left to fail the test: each is stopped, or killed past the grace
 		}
 		terminals.Close()
 		backups.Close()
@@ -138,7 +138,7 @@ func TestRename(t *testing.T) {
 		t.Fatalf("the child's parent name: %+v, %v", got, err)
 	}
 
-	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.agents.Rename(ctx, parent.ID, "ghost"); !isRemoved(err) {
@@ -196,7 +196,7 @@ func TestAStartKeepsTheSession(t *testing.T) {
 	if exited.Terminal.ExitCode == nil || *exited.Terminal.ExitCode != 4 {
 		t.Fatalf("exit code = %v", exited.Terminal.ExitCode)
 	}
-	again, err := f.agents.Start(ctx, a.ID)
+	again, _, err := f.agents.Start(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestStartLive(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, "")
 	a := f.create(t, "helper")
-	_, err := f.agents.Start(context.Background(), a.ID)
+	_, _, err := f.agents.Start(context.Background(), a.ID)
 	if e, ok := errors.AsType[*RunningError](err); !ok || e.Agent.ID != a.ID {
 		t.Fatalf("Start: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestLostAgentStartsAgain(t *testing.T) {
 	if _, err := f.db.Exec("UPDATE terminals SET state = 'lost' WHERE id = ?", a.Terminal.ID); err != nil {
 		t.Fatal(err)
 	}
-	again, err := f.agents.Start(ctx, a.ID)
+	again, _, err := f.agents.Start(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,11 +247,11 @@ func TestRemove(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "")
 	a := f.create(t, "helper")
-	_, err := f.agents.Remove(ctx, a.ID, false)
+	_, _, err := f.agents.Remove(ctx, a.ID, false)
 	if e, ok := errors.AsType[*RunningError](err); !ok || e.Agent.ID != a.ID {
 		t.Fatalf("Remove without stopRunning: %v", err)
 	}
-	removed, err := f.agents.Remove(ctx, a.ID, true)
+	removed, _, err := f.agents.Remove(ctx, a.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestUnknownACAFails(t *testing.T) {
 	if _, err := f.db.Exec("UPDATE agents SET aca = 'gone' WHERE id = ?", a.ID); err != nil {
 		t.Fatal(err)
 	}
-	_, err := f.agents.Start(ctx, a.ID)
+	_, _, err := f.agents.Start(ctx, a.ID)
 	e, ok := errors.AsType[*StartError](err)
 	if !ok {
 		t.Fatalf("Start: %v", err)
@@ -378,10 +378,10 @@ func TestTombstone(t *testing.T) {
 	leaf := f.createChild(t, "leaf", middle.ID)
 	kept := identity.TerminalDir(f.home, top.Terminal.ID)
 
-	if _, err := f.agents.Remove(ctx, top.ID, false); !isRunning(err) {
+	if _, _, err := f.agents.Remove(ctx, top.ID, false); !isRunning(err) {
 		t.Fatalf("remove live parent: %v", err)
 	}
-	got, err := f.agents.Remove(ctx, top.ID, true)
+	got, _, err := f.agents.Remove(ctx, top.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,8 +396,8 @@ func TestTombstone(t *testing.T) {
 	}
 
 	for what, err := range map[string]error{
-		"start":  second(f.agents.Start(ctx, top.ID)),
-		"remove": second(f.agents.Remove(ctx, top.ID, true)),
+		"start":  third(f.agents.Start(ctx, top.ID)),
+		"remove": third(f.agents.Remove(ctx, top.ID, true)),
 		"child":  second(f.agents.Create(ctx, f.project, "x", f.dir, top.ID)),
 	} {
 		if _, ok := errors.AsType[*RemovedError](err); !ok {
@@ -409,13 +409,13 @@ func TestTombstone(t *testing.T) {
 		t.Fatal("want the name taken")
 	}
 
-	if _, err := f.agents.Remove(ctx, middle.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, middle.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if a, err := f.agents.Store().Get(ctx, top.ID); err != nil || !a.Tombstone() {
 		t.Fatalf("top with a tombstone under it: %+v, %v", a, err)
 	}
-	if _, err := f.agents.Remove(ctx, leaf.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, leaf.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	f.gone(t, leaf.ID)
@@ -433,7 +433,7 @@ func TestRemoveChildKeepsLiveParent(t *testing.T) {
 	f := newFixture(t, "")
 	parent := f.create(t, "parent")
 	child := f.createChild(t, "child", parent.ID)
-	if _, err := f.agents.Remove(ctx, child.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, child.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if a, err := f.agents.Store().Get(ctx, parent.ID); err != nil || a.Tombstone() || a.Terminal.State != terminal.StateRunning {
@@ -452,7 +452,7 @@ func TestTombstoneOfStoppedAgentIsNotRelaunched(t *testing.T) {
 	if _, err := f.terminals.StopProject(ctx, f.project); err != nil {
 		t.Fatal(err)
 	}
-	got, err := f.agents.Remove(ctx, parent.ID, false)
+	got, _, err := f.agents.Remove(ctx, parent.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,14 +475,14 @@ func TestEmptyTombstoneCanBeRemoved(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "")
 	a := f.create(t, "left")
-	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	b := f.create(t, "over")
 	if _, err := f.db.Exec("UPDATE agents SET removed_at = 1 WHERE id = ?", b.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Remove(ctx, b.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, b.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	f.gone(t, b.ID)
@@ -506,6 +506,8 @@ func isRunning(err error) bool {
 }
 
 func second[T any](_ T, err error) error { return err }
+
+func third[T, U any](_ T, _ U, err error) error { return err }
 
 // TestSetStatus: a change is told apart from a repeat, a value this daemon does
 // not know reads unknown, and only a running agent shows any.
@@ -568,7 +570,7 @@ func TestSetStatus(t *testing.T) {
 		t.Errorf("a value not known reads %q", got.Activity)
 	}
 
-	if _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0, ""); err != nil || changed {
@@ -657,7 +659,7 @@ func TestARestartBeginsASessionThatSticks(t *testing.T) {
 		t.Fatalf("restarted = %+v", again)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
-	later, err := f.agents.Start(ctx, a.ID)
+	later, _, err := f.agents.Start(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,6 +711,118 @@ func TestARestartStopsWhatRunsOutsideTheTerminal(t *testing.T) {
 	if !slices.Equal(stopped, []string{"s-bg2"}) {
 		t.Errorf("forced: stopped = %q", stopped)
 	}
+}
+
+// Starting an agent goes on with a conversation that a session outside the terminal still
+// holds, so that session stops first; at work, it is refused, stopping nothing.
+func TestStartStopsWhatRunsOutsideTheTerminal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	a := f.create(t, "helper")
+	f.waitState(t, a.ID, terminal.StateExited)
+
+	f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg", Working: true}}
+	var busy *BusyError
+	if _, _, err := f.agents.Start(ctx, a.ID); !errors.As(err, &busy) || busy.Detached != "s-bg" {
+		t.Fatalf("start with a working session = %v", err)
+	}
+	if len(f.aca.Stopped) != 0 {
+		t.Errorf("stopped %q when refusing", f.aca.Stopped)
+	}
+
+	f.aca.Running[0].Working = false
+	_, stopped, err := f.agents.Start(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stopped, []string{"s-bg"}) || !slices.Equal(f.aca.Stopped, []string{"s-bg"}) {
+		t.Errorf("stopped = %q, the ACA saw %q", stopped, f.aca.Stopped)
+	}
+}
+
+// A start refused as the agent is live stops nothing: it goes on working where it is.
+func TestStartOfALiveAgentStopsNothing(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg"}}
+	var running *RunningError
+	if _, _, err := f.agents.Start(context.Background(), a.ID); !errors.As(err, &running) {
+		t.Fatalf("start = %v", err)
+	}
+	if len(f.aca.Stopped) != 0 {
+		t.Errorf("stopped %q", f.aca.Stopped)
+	}
+}
+
+func TestRemoveStopsWhatRunsOutsideTheTerminal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("a live agent's removal refused stops nothing", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "")
+		a := f.create(t, "helper")
+		f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg"}}
+		var running *RunningError
+		if _, _, err := f.agents.Remove(ctx, a.ID, false); !errors.As(err, &running) {
+			t.Fatalf("remove = %v", err)
+		}
+		if len(f.aca.Stopped) != 0 {
+			t.Errorf("stopped %q", f.aca.Stopped)
+		}
+		_, stopped, err := f.agents.Remove(ctx, a.ID, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(stopped, []string{"s-bg"}) {
+			t.Errorf("stopped = %q", stopped)
+		}
+	})
+
+	t.Run("one at work is the same question", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "exit 0")
+		a := f.create(t, "helper")
+		f.waitState(t, a.ID, terminal.StateExited)
+		f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg", Working: true}}
+		var running *RunningError
+		if _, _, err := f.agents.Remove(ctx, a.ID, false); !errors.As(err, &running) || running.Detached != "s-bg" {
+			t.Fatalf("remove = %v", err)
+		}
+		if len(f.aca.Stopped) != 0 {
+			t.Errorf("stopped %q when refusing", f.aca.Stopped)
+		}
+		if _, stopped, err := f.agents.Remove(ctx, a.ID, true); err != nil || !slices.Equal(stopped, []string{"s-bg"}) {
+			t.Errorf("stopped = %q, %v", stopped, err)
+		}
+	})
+
+	t.Run("one idle goes with an ended agent", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "exit 0")
+		a := f.create(t, "helper")
+		f.waitState(t, a.ID, terminal.StateExited)
+		f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg"}}
+		if _, stopped, err := f.agents.Remove(ctx, a.ID, false); err != nil || !slices.Equal(stopped, []string{"s-bg"}) {
+			t.Errorf("stopped = %q, %v", stopped, err)
+		}
+	})
+
+	t.Run("a tombstone's too", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "exit 0")
+		parent := f.create(t, "parent")
+		if _, err := f.agents.Create(ctx, f.project, "child", f.dir, parent.ID); err != nil {
+			t.Fatal(err)
+		}
+		f.waitState(t, parent.ID, terminal.StateExited)
+		f.aca.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg"}}
+		if _, stopped, err := f.agents.Remove(ctx, parent.ID, false); err != nil || !slices.Equal(stopped, []string{"s-bg"}) {
+			t.Errorf("stopped = %q, %v", stopped, err)
+		}
+	})
 }
 
 // messagesOf is what waits for the agent, in the order it goes.
@@ -804,7 +918,7 @@ func TestARelaunchRunsWhereTheAgentLastWorked(t *testing.T) {
 	if err := os.WriteFile(f.aca.Dir, []byte(worktree+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Start(ctx, a.ID); err != nil {
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	f.waitState(t, a.ID, terminal.StateExited)
@@ -844,7 +958,7 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	f := newFixture(t, "exit 0")
 	parent := f.create(t, "parent")
 	f.createChild(t, "child", parent.ID)
-	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
+	if _, _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := f.agents.Restart(ctx, parent.ID, true); !isRemoved(err) {

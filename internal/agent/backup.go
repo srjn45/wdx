@@ -473,6 +473,23 @@ func (b *Backups) detached(ctx context.Context, a Agent) []aca.DetachedSession {
 	return detached
 }
 
+// stop brings a's backup up to date, stops what of a runs outside its terminal, and backs
+// up what that wrote until it stopped.
+func (b *Backups) stop(ctx context.Context, a Agent) []string {
+	b.work.Lock()
+	defer b.work.Unlock()
+	if _, err := b.up(ctx, a); err != nil {
+		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+	}
+	stopped := b.stopDetached(ctx, a)
+	if len(stopped) > 0 {
+		if _, err := b.up(ctx, a); err != nil {
+			logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+		}
+	}
+	return stopped
+}
+
 // stopDetached stops what of a runs outside its terminal and returns the sessions it
 // stopped. One that will not stop is logged and left, which should not cost the restart.
 func (b *Backups) stopDetached(ctx context.Context, a Agent) []string {

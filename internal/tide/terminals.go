@@ -209,10 +209,11 @@ type confirmBox struct {
 
 // removed is the answer to a removal.
 type removed struct {
-	r      removal
-	err    error
-	branch string // the worktree's branch that stayed
-	told   []string
+	r       removal
+	stopped *[]string
+	err     error
+	branch  string // the worktree's branch that stayed
+	told    []string
 }
 
 // confirmKey takes a key while the confirmation is open: y removes, n or
@@ -239,12 +240,15 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 		}
 		return func() tea.Msg {
 			var err error
+			var stopped *[]string
 			if r.kind == "agent" {
-				_, err = m.client.DeleteAgent(m.ctx, "id:"+r.id, "", "", true)
+				var result api.AgentResult
+				result, err = m.client.DeleteAgent(m.ctx, "id:"+r.id, "", "", true)
+				stopped = result.StoppedSessions
 			} else {
 				_, err = m.client.DeleteTerminal(m.ctx, "id:"+r.id, "", "", true)
 			}
-			return removed{r: r, err: err}
+			return removed{r: r, stopped: stopped, err: err}
 		}
 	case "n", "esc":
 		m.log.Info("confirmation declined", "kind", c.r.kind, "name", c.r.name)
@@ -266,6 +270,7 @@ func (m *Model) removed(msg removed) {
 	}
 	// Its tab or row goes with the stream's next event.
 	m.log.Info("removed", "kind", msg.r.kind, "name", msg.r.name)
+	m.noticeStopped(msg.stopped)
 	if msg.r.worktree != nil {
 		m.worktreeRemoved(msg)
 	}

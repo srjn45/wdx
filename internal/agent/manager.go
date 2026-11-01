@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/db"
@@ -21,9 +22,14 @@ import (
 // request needs it not to be.
 type RunningError struct {
 	Agent Agent
+	// Detached is the session working outside the agent's terminal, if that is why.
+	Detached string
 }
 
 func (e *RunningError) Error() string {
+	if e.Detached != "" {
+		return fmt.Sprintf("agent %s has a background session at work: %s", e.Agent.Terminal.Name, e.Detached)
+	}
 	return fmt.Sprintf("agent %s is %s", e.Agent.Terminal.Name, e.Agent.Terminal.State)
 }
 
@@ -206,19 +212,67 @@ func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID str
 
 // Start starts an agent whose AI coding agent ended, in the same session; a
 // live agent fails with a *RunningError and a tombstone with a *RemovedError.
-func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
+//
+// A session of it still running outside its terminal holds the conversation that start
+// goes on with, and is stopped first; it returns those it stopped. One at work fails with
+// a *BusyError, as stopping it could lose the work.
+func (m *Manager) Start(ctx context.Context, id string) (Agent, []string, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
 	}
 	if a.Tombstone() {
-		return Agent{}, &RemovedError{Agent: a}
+		return Agent{}, nil, &RemovedError{Agent: a}
+	}
+	var stopped []string
+	if !a.Terminal.State.Live() {
+		for _, d := range m.backups.detached(ctx, a) {
+			if d.Working {
+				return Agent{}, nil, &BusyError{Agent: a, Detached: d.Session}
+			}
+		}
+		stopped = m.backups.stop(ctx, a)
+		if a, err = m.store.Get(ctx, id); err != nil {
+			return Agent{}, nil, err
+		}
 	}
 	t, err := m.terminals.StartAgent(ctx, a.Terminal.ID)
 	if err != nil {
-		return Agent{}, m.agentError(ctx, err)
+		return Agent{}, nil, m.agentError(ctx, err)
 	}
-	return a.OnRow(t), nil
+	return a.OnRow(t), stopped, nil
+}
+
+// DetachedAtWork returns the project's agents with a session at work outside their
+// terminal, which closing or removing the project would stop.
+func (m *Manager) DetachedAtWork(ctx context.Context, projectID string) ([]Agent, error) {
+	list, err := m.store.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var working []Agent
+	for _, a := range list {
+		if !a.Tombstone() && slices.ContainsFunc(m.backups.detached(ctx, a), func(d aca.DetachedSession) bool { return d.Working }) {
+			working = append(working, a)
+		}
+	}
+	return working, nil
+}
+
+// StopDetached stops what of the project's agents runs outside their terminals, and
+// returns the sessions it stopped.
+func (m *Manager) StopDetached(ctx context.Context, projectID string) ([]string, error) {
+	list, err := m.store.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var stopped []string
+	for _, a := range list {
+		if !a.Tombstone() {
+			stopped = append(stopped, m.backups.stop(ctx, a)...)
+		}
+	}
+	return stopped, nil
 }
 
 // Restart starts an agent in a new session under the same id, whose first message tells
@@ -303,40 +357,58 @@ func (m *Manager) Rename(ctx context.Context, id, name string) (Agent, error) {
 // tombstones above it then may. A tombstone that has children returns a
 // *RemovedError; one left without any, by a daemon that died between the two
 // deletions, is deleted.
-func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agent, error) {
+//
+// A session of it running outside its terminal is stopped with it, and returned; at work,
+// it counts as running.
+func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agent, []string, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
 	}
 	children, err := m.store.children(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, nil, err
+	}
+	if children > 0 && a.Tombstone() {
+		return Agent{}, nil, &RemovedError{Agent: a}
+	}
+	// Left for the removal to refuse when the agent is live and stopRunning is not given,
+	// so that a refused removal stops nothing. Without the answer one at work is the same
+	// question.
+	var stopped []string
+	if !a.Tombstone() && (stopRunning || !a.Terminal.State.Live()) {
+		if !stopRunning {
+			for _, d := range m.backups.detached(ctx, a) {
+				if d.Working {
+					return Agent{}, nil, &RunningError{Agent: a, Detached: d.Session}
+				}
+			}
+		}
+		stopped = m.backups.stop(ctx, a)
 	}
 	if children > 0 {
-		if a.Tombstone() {
-			return Agent{}, &RemovedError{Agent: a}
-		}
 		_, err := m.terminals.TombstoneAgent(ctx, a.Terminal.ID, stopRunning, func(ctx context.Context, tx db.Execer) error {
 			return m.store.markRemoved(ctx, tx, id)
 		})
 		if err != nil {
-			return Agent{}, m.agentError(ctx, err)
+			return Agent{}, nil, m.agentError(ctx, err)
 		}
-		return m.store.Get(ctx, id)
+		a, err = m.store.Get(ctx, id)
+		return a, stopped, err
 	}
 	t, err := m.terminals.RemoveAgent(ctx, a.Terminal.ID, stopRunning)
 	if err != nil {
-		return Agent{}, m.agentError(ctx, err)
+		return Agent{}, nil, m.agentError(ctx, err)
 	}
 	a = a.OnRow(t)
-	logging.FromContext(ctx).Info("agent removed", "agent_id", a.ID)
+	logging.FromContext(ctx).Info("agent removed", "agent_id", a.ID, "detached_stopped", len(stopped))
 	if err := m.removeEmptyTombstones(ctx, a.ParentID); err != nil {
 		logging.FromContext(ctx).Error("tombstones not removed", "agent_id", a.ID, "err", err)
 	}
 	if err := m.backups.Sweep(ctx); err != nil {
 		logging.FromContext(ctx).Error("agent backups not swept", "err", err)
 	}
-	return a, nil
+	return a, stopped, nil
 }
 
 // removeEmptyTombstones deletes the agent with id if it is a tombstone with no

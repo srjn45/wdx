@@ -241,7 +241,7 @@ func newAgentStartCmd() *cobra.Command {
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "started", "agent": {...}}`,
 			resultList:    "started",
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
-				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeAgentBusy, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -249,6 +249,9 @@ func newAgentStartCmd() *cobra.Command {
 				return err
 			}
 			r, err := clientOf(cmd).StartAgent(cmd.Context(), path, project, dir)
+			if problemCode(err) == api.ErrorCodeAgentBusy {
+				return &hinted{err, "wait for its background session, or start again in a new session with " + identity.Name + " agent restart --force"}
+			}
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
@@ -271,7 +274,8 @@ func newAgentRestartCmd() *cobra.Command {
 			"message tells it to read agent transcript --brief. Messages not yet delivered\n" +
 			"reach it after that one, general even if they were instant; one delivered just\n" +
 			"before may come again. What the old session held only in memory goes with it.\n" +
-			"A background session its AI coding agent moved it to is stopped too, and named.\n" +
+			"A background session its AI coding agent moved it to is stopped too, and named,\n" +
+			"as agent start and agent remove do.\n" +
 			"Unless it is idle with an empty input box, and no such session is at work, it\n" +
 			"takes --force, which can leave work half done.",
 		Example: examples(

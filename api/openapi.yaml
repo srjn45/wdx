@@ -983,7 +983,7 @@ paths:
         is left failed and returns start_failed with the agent under
         details.agent.
 
-        Errors: agent_removed, agent_running, invalid_path, not_found, project_closed,
+        Errors: agent_busy, agent_removed, agent_running, invalid_path, not_found, project_closed,
         start_failed.
       responses:
         "200":
@@ -1673,6 +1673,10 @@ components:
           type: array
           description: The terminals opening the project relaunched, in the state each reached.
           items: { $ref: "#/components/schemas/Terminal" }
+        stopped_sessions:
+          type: array
+          description: The sessions of its agents that closing or removing the project stopped outside their terminals, where their AI coding agent had moved them; left out when there were none.
+          items: { type: string }
         stopped:
           type: array
           description: The terminals closing or removing the project stopped.
@@ -1962,7 +1966,7 @@ components:
         stopped_sessions:
           type: array
           items: { type: string }
-          description: The sessions of the agent a restart stopped outside its terminal, where its AI coding agent had moved them; left out when there were none.
+          description: The sessions of the agent that starting, restarting or removing it stopped outside its terminal, where its AI coding agent had moved them; left out when there were none.
 
     UpdateAgent:
       type: object

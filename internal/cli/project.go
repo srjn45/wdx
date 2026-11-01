@@ -778,6 +778,11 @@ func (r projectResult) text(w io.Writer, st style.Style) {
 			fmt.Fprintf(w, "  %s %s\n", st.Warning("dropped missing checkout"), wt.Path)
 		}
 	}
+	if r.StoppedSessions != nil {
+		for _, session := range *r.StoppedSessions {
+			fmt.Fprintf(w, "  %s %s\n", st.Warning("stopped background session"), session)
+		}
+	}
 	if r.Stopped != nil {
 		for _, t := range *r.Stopped {
 			fmt.Fprintf(w, "  %s %s %s\n", st.Warning("stopped terminal"), st.Name(t.Name), st.Muted("("+t.Id+")"))

@@ -60,7 +60,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeAgentRunning:       {http.StatusConflict, ExitRejected, "the agent is already starting or running"},
 	ErrorCodeAgentRemoved:       {http.StatusConflict, ExitRejected, "the agent was removed and stays only for its children"},
 	ErrorCodeAgentNotRunning:    {http.StatusConflict, ExitRejected, "the agent's AI coding agent is not running"},
-	ErrorCodeAgentBusy:          {http.StatusConflict, ExitRejected, "the agent is in the middle of something, which a restart would lose"},
+	ErrorCodeAgentBusy:          {http.StatusConflict, ExitRejected, "the agent is in the middle of something, which this would lose"},
 	ErrorCodeAttachUnsupported:  {http.StatusConflict, ExitRejected, "the terminal was started by a wdx too old to attach to"},
 	ErrorCodeConnectionLost:     {http.StatusServiceUnavailable, ExitSystem, "the connection to the terminal ended before its shell did"},
 	ErrorCodeDaemonUnavailable:  {http.StatusServiceUnavailable, ExitSystem, "the daemon is not running or not answering"},

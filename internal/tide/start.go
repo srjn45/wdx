@@ -1,7 +1,6 @@
 package tide
 
 import (
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -46,8 +45,9 @@ func agentEnded(s api.AgentState) bool {
 
 // startedAgain is the answer to C-q g.
 type startedAgain struct {
-	target startTarget
-	err    error
+	target  startTarget
+	stopped *[]string
+	err     error
 }
 
 // startAgain asks the daemon to start s. Its state comes with the stream, which
@@ -56,12 +56,15 @@ func (m *Model) startAgain(s startTarget) tea.Cmd {
 	m.log.Info("start requested", "kind", s.kind, "name", s.name)
 	return func() tea.Msg {
 		var err error
+		var stopped *[]string
 		if s.kind == "agent" {
-			_, err = m.client.StartAgent(m.ctx, "id:"+s.id, "", "")
+			var result api.AgentResult
+			result, err = m.client.StartAgent(m.ctx, "id:"+s.id, "", "")
+			stopped = result.StoppedSessions
 		} else {
 			_, err = m.client.StartTerminal(m.ctx, "id:"+s.id, "", "")
 		}
-		return startedAgain{target: s, err: err}
+		return startedAgain{target: s, stopped: stopped, err: err}
 	}
 }
 
@@ -69,6 +72,7 @@ func (m *Model) startedAgain(msg startedAgain) {
 	s := msg.target
 	if msg.err == nil {
 		m.log.Info("started", "kind", s.kind, "name", s.name)
+		m.noticeStopped(msg.stopped)
 		return
 	}
 	m.log.Info("not started", "kind", s.kind, "name", s.name, "err", msg.err)
@@ -76,6 +80,13 @@ func (m *Model) startedAgain(msg startedAgain) {
 		m.statusNotice = msg.err.Error()
 	} else {
 		m.terminalNotice = msg.err.Error()
+	}
+}
+
+// noticeStopped says on the status line which background sessions an answer stopped.
+func (m *Model) noticeStopped(stopped *[]string) {
+	if stopped != nil {
+		m.statusNotice = "stopped background session: " + strings.Join(*stopped, ", ")
 	}
 }
 
@@ -109,7 +120,7 @@ func (m *Model) restartable() (removal, bool) {
 // restarted is the answer to a restart.
 type restarted struct {
 	r       removal
-	stopped []string
+	stopped *[]string
 	err     error
 }
 
@@ -119,11 +130,7 @@ func (m *Model) restart(r removal) tea.Cmd {
 	m.log.Info("restart confirmed", "name", r.name)
 	return func() tea.Msg {
 		result, err := m.client.RestartAgent(m.ctx, "id:"+r.id, "", "", true)
-		var stopped []string
-		if result.StoppedSessions != nil {
-			stopped = *result.StoppedSessions
-		}
-		return restarted{r: r, stopped: stopped, err: err}
+		return restarted{r: r, stopped: result.StoppedSessions, err: err}
 	}
 }
 
@@ -134,10 +141,8 @@ func (m *Model) restarted(msg restarted) {
 		m.statusNotice = msg.err.Error()
 		return
 	}
-	m.log.Info("restarted", "name", msg.r.name, "stopped", len(msg.stopped))
-	if len(msg.stopped) > 0 {
-		m.statusNotice = fmt.Sprintf("stopped its background session: %s", strings.Join(msg.stopped, ", "))
-	}
+	m.log.Info("restarted", "name", msg.r.name)
+	m.noticeStopped(msg.stopped)
 }
 
 // restartPopup is the confirmation of a restart.

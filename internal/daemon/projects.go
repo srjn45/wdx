@@ -88,7 +88,7 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		return nil, err
 	}
 	if req.Body.State == api.ProjectStateClosed {
-		stopped, stoppedAgents, err := s.stopRunning(ctx, p, deref(req.Body.StopRunning))
+		stopped, stoppedAgents, sessions, err := s.stopRunning(ctx, p, deref(req.Body.StopRunning))
 		if err != nil {
 			return nil, err
 		}
@@ -98,6 +98,7 @@ func (s *server) UpdateProject(ctx context.Context, req api.UpdateProjectRequest
 		r := result(api.ResultClosed, p)
 		r.Stopped = optionalTerminals(stopped)
 		r.StoppedAgents = optionalAgents(stoppedAgents)
+		r.StoppedSessions = optionalSessions(sessions)
 		return api.UpdateProject200JSONResponse(r), nil
 	}
 	o, err := s.projects.Open(ctx, p.ID)
@@ -126,7 +127,7 @@ func (s *server) DeleteProject(ctx context.Context, req api.DeleteProjectRequest
 // remove stops the project's live terminals and agents, refusing without
 // stopRunning, then deletes it.
 func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool) (api.ProjectResult, error) {
-	stopped, stoppedAgents, err := s.stopRunning(ctx, p, stopRunning)
+	stopped, stoppedAgents, sessions, err := s.stopRunning(ctx, p, stopRunning)
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
@@ -143,6 +144,7 @@ func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool
 	r := result(api.ResultRemoved, p)
 	r.Stopped = optionalTerminals(stopped)
 	r.StoppedAgents = optionalAgents(stoppedAgents)
+	r.StoppedSessions = optionalSessions(sessions)
 	return r, nil
 }
 
@@ -367,23 +369,40 @@ func (e *projectInUseError) Error() string {
 // stopRunning stops the project's live terminals and agents before it is
 // closed or removed; without stop it refuses when there are any. The agents
 // are read while their rows still exist: removing the project deletes them.
-func (s *server) stopRunning(ctx context.Context, p project.Project, stop bool) ([]terminal.Terminal, []agent.Agent, error) {
+func (s *server) stopRunning(ctx context.Context, p project.Project, stop bool) ([]terminal.Terminal, []agent.Agent, []string, error) {
 	live, err := s.terminals.Live(ctx, p.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(live) > 0 && !stop {
 		terminals, agents, err := s.byKind(ctx, live)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return nil, nil, &projectInUseError{project: p, terminals: terminals, agents: agents}
+		return nil, nil, nil, &projectInUseError{project: p, terminals: terminals, agents: agents}
+	}
+	if !stop {
+		working, err := s.agents.DetachedAtWork(ctx, p.ID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(working) > 0 {
+			return nil, nil, nil, &projectInUseError{project: p, agents: working}
+		}
 	}
 	rows, err := s.terminals.StopProject(ctx, p.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return s.byKind(ctx, rows)
+	terminals, agents, err := s.byKind(ctx, rows)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	sessions, err := s.agents.StopDetached(ctx, p.ID)
+	if err != nil {
+		logging.FromContext(ctx).Error("agent background sessions not stopped", "project_id", p.ID, "err", err)
+	}
+	return terminals, agents, sessions, nil
 }
 
 // byKind splits what the supervisor did to a project's rows of both kinds

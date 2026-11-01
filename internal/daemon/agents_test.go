@@ -1149,6 +1149,40 @@ func TestRestartSaysWhatItStoppedOutsideTheTerminal(t *testing.T) {
 	}
 }
 
+// TestClosingAProjectStopsWhatRunsOutsideItsTerminals: at work with nothing else live it
+// is what the question is about, and the answer names what stopped.
+func TestClosingAProjectStopsWhatRunsOutsideItsTerminals(t *testing.T) {
+	t.Parallel()
+	test := &acatest.ACA{Script: "exit 0"}
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = test })
+	ctx := context.Background()
+	a := td.createAgent(t, "", td.create(t, "app").Worktrees[0].Path, "helper")
+	waittest.For(t, "the agent to exit", func() bool {
+		r, err := td.client.GetAgentWithResponse(ctx, "id:"+a.Id, nil)
+		return err == nil && r.JSON200 != nil && r.JSON200.Agent.State != api.AgentStateRunning
+	})
+	closing := func(stop bool) *api.UpdateProjectResponse {
+		t.Helper()
+		r, err := td.client.UpdateProjectWithResponse(ctx, "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(stop)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	test.Running = []aca.DetachedSession{{ID: "bg", Session: "s-bg", Working: true}}
+	if r := closing(false); r.JSON200 != nil || len(test.Stopped) != 0 {
+		t.Fatalf("with a session at work: %s, stopped %q", r.Body, test.Stopped)
+	}
+	r := closing(true)
+	if r.JSON200 == nil {
+		t.Fatalf("close: %s", r.Body)
+	}
+	if got := r.JSON200.StoppedSessions; got == nil || !slices.Equal(*got, []string{"s-bg"}) {
+		t.Errorf("stopped_sessions = %v in %s", got, r.Body)
+	}
+}
+
 // TestRestartDeliversItsFirstMessageFirst: with a general and an instant message waiting
 // for a holder that goes, the new session hears of its history first, and then of them in
 // the order they were sent. A held one stays, and the request logs no message.

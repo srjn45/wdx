@@ -130,10 +130,19 @@ func (s *server) StartAgent(ctx context.Context, req api.StartAgentRequestObject
 	if p.State == project.StateClosed {
 		return nil, &projectClosedError{project: p}
 	}
-	if a, err = s.agents.Start(ctx, a.ID); err != nil {
+	a, stopped, err := s.agents.Start(ctx, a.ID)
+	if err != nil {
 		return nil, err
 	}
-	return api.StartAgent200JSONResponse{Result: api.ResultStarted, Agent: agentView(a)}, nil
+	return api.StartAgent200JSONResponse{Result: api.ResultStarted, Agent: agentView(a), StoppedSessions: optionalSessions(stopped)}, nil
+}
+
+// optionalSessions leaves stopped_sessions out when there were none.
+func optionalSessions(stopped []string) *[]string {
+	if len(stopped) == 0 {
+		return nil
+	}
+	return &stopped
 }
 
 func (s *server) RestartAgent(ctx context.Context, req api.RestartAgentRequestObject) (api.RestartAgentResponseObject, error) {
@@ -153,11 +162,7 @@ func (s *server) RestartAgent(ctx context.Context, req api.RestartAgentRequestOb
 	if err != nil {
 		return nil, err
 	}
-	response := api.RestartAgent200JSONResponse{Result: api.ResultRestarted, Agent: agentView(a)}
-	if len(stopped) > 0 {
-		response.StoppedSessions = &stopped
-	}
-	return response, nil
+	return api.RestartAgent200JSONResponse{Result: api.ResultRestarted, Agent: agentView(a), StoppedSessions: optionalSessions(stopped)}, nil
 }
 
 func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) (api.SendAgentResponseObject, error) {
@@ -176,10 +181,11 @@ func (s *server) DeleteAgent(ctx context.Context, req api.DeleteAgentRequestObje
 	if err != nil {
 		return nil, err
 	}
-	if a, err = s.agents.Remove(ctx, a.ID, deref(req.Params.StopRunning)); err != nil {
+	a, stopped, err := s.agents.Remove(ctx, a.ID, deref(req.Params.StopRunning))
+	if err != nil {
 		return nil, err
 	}
-	return api.DeleteAgent200JSONResponse{Result: api.ResultRemoved, Agent: agentView(a)}, nil
+	return api.DeleteAgent200JSONResponse{Result: api.ResultRemoved, Agent: agentView(a), StoppedSessions: optionalSessions(stopped)}, nil
 }
 
 func (s *server) GetAgentHistory(ctx context.Context, req api.GetAgentHistoryRequestObject) (api.GetAgentHistoryResponseObject, error) {

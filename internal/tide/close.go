@@ -46,8 +46,9 @@ func (m *Model) projectRunning() bool {
 
 // projectClosed is the answer to closing a project.
 type projectClosed struct {
-	name string
-	err  error
+	name    string
+	stopped *[]string
+	err     error
 }
 
 // closeProject asks the daemon to close the project. Without stopRunning it
@@ -56,8 +57,8 @@ type projectClosed struct {
 func (m *Model) closeProject(r removal, stopRunning bool) tea.Cmd {
 	m.log.Info("project closing", "name", r.name, "stop_running", stopRunning)
 	return func() tea.Msg {
-		_, err := m.client.UpdateProject(m.ctx, "id:"+r.id, api.ProjectStateClosed, stopRunning)
-		return projectClosed{name: r.name, err: err}
+		result, err := m.client.UpdateProject(m.ctx, "id:"+r.id, api.ProjectStateClosed, stopRunning)
+		return projectClosed{name: r.name, stopped: result.StoppedSessions, err: err}
 	}
 }
 
@@ -71,6 +72,7 @@ func (m *Model) closed(msg projectClosed) tea.Cmd {
 		return nil
 	}
 	m.log.Info("project closed", "name", msg.name)
+	m.noticeStopped(msg.stopped)
 	m.projects.markClosed(msg.name)
 	if m.previous == msg.name {
 		m.previous = ""
