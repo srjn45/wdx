@@ -285,7 +285,7 @@ Supported, though most users will mostly use the keyboard.
 - **Phase B2, the live project (implemented, docs/TIDE_B2.md):** the daemon streams the project shown, whole on every change; tide's terminal tabs come from it, with a state symbol each; `C-q t` creates a terminal and `C-q x` removes the entity in focus after a confirmation. Tabs stay placeholders.
 - **Phase B3, terminals in the terminal pane (implemented, docs/TIDE_B3.md):** the selected tab's terminal attached through termview, taking keys, mouse and scrolling; only that one attached, switching tabs or projects attaching the one selected (after a project switch rests); kept attached while the pane is hidden; a terminal not running shows its last screen from history, read-only.
 - **Phase B4, the Agents list (implemented, docs/TIDE_B4.md):** the project pane lists the project's agents; `Enter` or a click makes one active, live in the agent pane through termview; `C-q a` creates an agent and `C-q x` removes one. The list is linear; child agents came next (docs/CHILD_AGENTS.md).
-- **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves.
+- **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves. docs/IDE.md holds the wider direction: tabs in the right pane, worktrees and diffs, code, docs and plans.
 
 ## Open questions
 
