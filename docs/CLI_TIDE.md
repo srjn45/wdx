@@ -1,6 +1,6 @@
 # CLI and tide: what each can do
 
-Status: decided with the human on 2026-11-01, unless a row says Open. Nothing under "Planned" is built yet; both are approved to be built.
+Status: decided with the human on 2026-11-01, unless a row says Open. Nothing under "Planned" is built yet; it is approved to be built.
 
 The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AIs as well as people; tide serves a person looking at a screen. So a feature is on both unless there is a reason, and that reason is written here. A new feature that reaches only one of them adds a row saying why.
 
@@ -40,7 +40,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Scroll back through its output | `agent attach` | its tab | Same | |
 | Print its history for a script | none | not needed | Open (CLI) | `terminal history` serves shells only. An `agent history` would not give a script the conversation; see [An agent's history](#an-agents-history) |
 | Send a message from a script | `agent send` | not needed | By design | A person types into the ACA, which queues messages itself. `send` is how scripts and other agents reach an agent |
-| Start one that ended | `agent start` | none | Planned (tide) | Never added to tide; see [Start again](#start-again-in-tide) |
+| Start one that ended | `agent start` | `C-q g` | Same | |
 | Remove an agent | `agent remove` | `C-q x` | Same | |
 
 ## Terminals
@@ -56,7 +56,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Scroll back through its output | `terminal attach` | its tab | Same | |
 | Print its history for a script | `terminal history` | not needed | By design | tide scrolls back; the command exists for scripts and AIs |
 | Send a message from a script | `terminal send` | not needed | By design | A person types directly |
-| Start one that ended | `terminal start` | none | Planned (tide) | Never added to tide; see [Start again](#start-again-in-tide) |
+| Start one that ended | `terminal start` | `C-q g` | Same | |
 | Remove a terminal | `terminal remove` | `C-q x` | Same | |
 
 ## Settings
@@ -96,16 +96,6 @@ wdx project open --local .    # open the repository at a path
 - **No checkout left:** the flags above still ask, as `--git` does today: clone it again, when it has an origin, or remove it. `--reclone` and `--remove` answer in advance and, as with `--git`, one of them is required with `--json`.
 
 No use that works today changes: `project open` without `--local` or `--git` is a `usage` error now.
-
-### Start again in tide
-
-An agent or terminal whose process ended stays in the list as `exited`, `failed` or `lost`, the last being what a reboot leaves. Starting it again keeps its id and name. An agent resumes the same ACA session, so its conversation comes back; a terminal gets a fresh shell and keeps its history.
-
-Without this, tide has no way back for an ended agent: closing and opening the project relaunches only `stopped` ones, and removing it and creating another starts a new session, leaving the old conversation out of reach from wdx.
-
-- It starts only what has ended. A running agent or terminal is refused, so this is not a restart that stops anything first.
-- `C-q g`, or plain `g` with the left pane focused, offered only when the agent under the cursor in the left pane, or the tab in focus, has ended. The menu says `g  start <name> again`. `r` and `s` are taken by reload and settings.
-- No confirmation: nothing is lost by starting it.
 
 ## An agent's history
 

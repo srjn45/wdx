@@ -22,6 +22,9 @@ func (m *Model) menuItems() []menuItem {
 	if _, ok := m.checkoutDir(); ok {
 		items = append(items, menuItem{"t", "new terminal", "terminal"}, menuItem{"a", "new agent", "agent"})
 	}
+	if s, ok := m.startable(); ok {
+		items = append(items, menuItem{startKey, "start " + s.name + " again", "start"})
+	}
 	if a, ok := m.childParent(); ok {
 		items = append(items, menuItem{"c", "new child of " + a.Name, "child"})
 	}
