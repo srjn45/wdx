@@ -147,7 +147,19 @@ func (b *Backups) up(ctx context.Context, a Agent) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return a.SessionID, err
 	}
-	session, err := known.BackUp(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: dir})
+	backup, err := known.BackUp(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: dir})
+	session := backup.Session
+	if backup.Dir != "" && backup.Dir != a.CurrentDir {
+		changed, serr := b.store.setCurrentDir(ctx, a.ID, backup.Dir)
+		if serr != nil {
+			return a.SessionID, errors.Join(err, serr)
+		}
+		logging.FromContext(ctx).Info("agent moved", "agent_id", a.ID, "from", a.CurrentDir, "dir", backup.Dir)
+		if changed && b.OnChange != nil {
+			b.OnChange()
+		}
+		a.CurrentDir = backup.Dir
+	}
 	if session != "" && session != a.SessionID {
 		changed, serr := b.store.setSession(ctx, a.ID, session)
 		if serr != nil {

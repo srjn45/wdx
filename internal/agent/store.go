@@ -20,17 +20,21 @@ import (
 // Agent is an agent's row with its terminal row.
 type Agent struct {
 	ID        string
-	ACA       string    // which AI coding agent it runs: aca.AiCodingAgent's ID
-	SessionID string    // the AI coding agent's latest session, which it goes on with
-	ParentID  string    // the agent it was created under, or "" at the top level
-	Parent    string    // that agent's name
-	Worktree  string    // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
-	RemovedAt time.Time // when it was removed, keeping it as a tombstone; zero otherwise
-	Activity  string    // what its process is doing, as a screen.Activity; "" unless it is running
-	Draft     bool      // whether a human left text in its input box
-	Queued    int       // how many messages wait to go into it
-	Model     string    // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
-	Terminal  terminal.Terminal
+	ACA       string // which AI coding agent it runs: aca.AiCodingAgent's ID
+	SessionID string // the AI coding agent's latest session, which it goes on with
+	ParentID  string // the agent it was created under, or "" at the top level
+	Parent    string // that agent's name
+	Worktree  string // the name of the project's worktree holding its dir, "main" for the clone; "" when none does
+	// CurrentDir is where its ACA last said it worked, which may not be its
+	// terminal's dir: it may have moved into a worktree it made itself. "" until it
+	// has, or when its ACA does not say.
+	CurrentDir string
+	RemovedAt  time.Time // when it was removed, keeping it as a tombstone; zero otherwise
+	Activity   string    // what its process is doing, as a screen.Activity; "" unless it is running
+	Draft      bool      // whether a human left text in its input box
+	Queued     int       // how many messages wait to go into it
+	Model      string    // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
+	Terminal   terminal.Terminal
 }
 
 // Tombstone reports whether a was removed and stays only for its children.
@@ -129,6 +133,13 @@ const worktreeOfDir = `
 // query returns the agents matching where, a constant condition on a, the
 // agents, t, their terminal rows, and p, their projects. Going by the terminal's
 // state, the status needs nothing done when the process ends, however it ends.
+// setCurrentDir records where the agent last worked, and reports whether that
+// changed anything.
+func (s *Store) setCurrentDir(ctx context.Context, id, dir string) (bool, error) {
+	n, err := db.Exec(ctx, s.db, "UPDATE agents SET current_dir = ?1 WHERE id = ?2 AND current_dir IS NOT ?1", dir, id)
+	return n > 0, err
+}
+
 // setSession records the session the agent is in now, and reports whether that
 // changed anything: /clear starts another.
 func (s *Store) setSession(ctx context.Context, id, session string) (bool, error) {
@@ -149,6 +160,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			CASE WHEN t.state = 'running' THEN a.model END,
+			a.current_dir,
 			`+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
@@ -164,14 +176,15 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent, parentName sql.NullString
 		var removed sql.NullInt64
-		var worktree, activity, model sql.NullString
+		var worktree, activity, model, currentDir sql.NullString
 		var draft sql.NullBool
 		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model); err != nil {
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued, a.Model = activity.String, draft.Bool, int(queued.Int64), model.String
+		a.CurrentDir = currentDir.String
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
 		}

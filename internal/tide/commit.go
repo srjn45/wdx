@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -55,11 +56,35 @@ func (m *Model) flipWorktreeView(tab string) {
 func (m *Model) runningAgentsIn(name string) []api.Agent {
 	var agents []api.Agent
 	for _, a := range m.agents() {
-		if a.State == api.AgentStateRunning && m.worktreeHolding(a.Dir) == name {
+		if a.State == api.AgentStateRunning && m.worktreeOf(a) == name {
 			agents = append(agents, a)
 		}
 	}
 	return agents
+}
+
+// agentsToAsk returns every running agent of the project, as one elsewhere may well
+// be the one that worked here: it may not have said it moved, or its AI CLI may not
+// say. Those in the worktree come first. chosen is the one to offer first: the one
+// last sent to from this worktree, while it runs.
+func (m *Model) agentsToAsk(name string) (agents []api.Agent, chosen int) {
+	here, elsewhere := []api.Agent{}, []api.Agent{}
+	for _, a := range m.agents() {
+		switch {
+		case a.State != api.AgentStateRunning:
+		case m.worktreeOf(a) == name:
+			here = append(here, a)
+		default:
+			elsewhere = append(elsewhere, a)
+		}
+	}
+	agents = append(here, elsewhere...)
+	if l := m.list(); l != nil {
+		if i := slices.IndexFunc(agents, func(a api.Agent) bool { return a.Id == l.lastAsked[name] }); i >= 0 {
+			chosen = i
+		}
+	}
+	return agents, chosen
 }
 
 // askCommit opens the box, or says why it cannot: only on a view of what is not
@@ -69,13 +94,22 @@ func (m *Model) askCommit(tab string, v *diffView) {
 		return
 	}
 	worktree, _ := diffTabOf(tab)
-	agents := m.runningAgentsIn(worktree)
+	agents, chosen := m.agentsToAsk(worktree)
 	if len(agents) == 0 {
-		v.notice = "no agent is running in " + worktree
+		v.notice = "no agent is running in this project"
 		return
 	}
-	m.commit = &commitBox{worktree: worktree, agents: agents, text: commitPrompt}
+	m.commit = &commitBox{worktree: worktree, agents: agents, chosen: chosen, text: commitPrompt + " in " + m.worktreePath(worktree)}
 	m.log.Info("commit asked", "worktree", worktree)
+}
+
+// worktreePath is where the worktree called name is, which what is sent says: the
+// agent may be working elsewhere.
+func (m *Model) worktreePath(name string) string {
+	if i := slices.IndexFunc(m.worktreeStatuses(), func(w api.WorktreeStatus) bool { return w.Name == name }); i >= 0 {
+		return m.worktreeStatuses()[i].Path
+	}
+	return name
 }
 
 // commitKey takes a key while the box is open.
@@ -94,6 +128,12 @@ func (m *Model) commitKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		c.sending, c.err = true, ""
 		a := c.agents[c.chosen]
+		if l := m.list(); l != nil {
+			if l.lastAsked == nil {
+				l.lastAsked = map[string]string{}
+			}
+			l.lastAsked[c.worktree] = a.Id
+		}
 		if c.review > 0 {
 			ref := "id:" + m.following.project.Id
 			m.log.Info("review sent", "worktree", c.worktree, "agent_id", a.Id)
@@ -141,6 +181,9 @@ func (m *Model) commitPopup() popup {
 	c, st := m.commit, m.st
 	a := c.agents[c.chosen]
 	to := st.Name(a.Name)
+	if where := m.worktreeOf(a); where != c.worktree && where != "" {
+		to += st.Muted(" (in " + where + ")")
+	}
 	if len(c.agents) > 1 {
 		to = st.Muted("← ") + to + st.Muted(" →")
 	}

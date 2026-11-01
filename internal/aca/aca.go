@@ -24,10 +24,19 @@ type AiCodingAgent interface {
 	// Interrupt is the input that stops its turn.
 	Interrupt() []byte
 	// BackUp brings the backup in l.BackupDir up to date with what it keeps of
-	// the conversation, TranscriptFile among it, and returns the session it is
-	// in now, which a command that resumes goes on with. What it keeps and how
-	// it says so differ per AI coding agent. docs/AGENT_RESUME.md.
-	BackUp(ctx context.Context, l Launch) (session string, err error)
+	// the conversation, TranscriptFile among it, and says what it learned. What it
+	// keeps and how it says so differ per AI coding agent. docs/AGENT_RESUME.md.
+	BackUp(ctx context.Context, l Launch) (Backup, error)
+}
+
+// Backup is what bringing a backup up to date learned.
+type Backup struct {
+	// Session is the session it is in now, which a command that resumes goes on
+	// with.
+	Session string
+	// Dir is where it last worked, which may not be where it started; "" when it
+	// does not say.
+	Dir string
 }
 
 // TranscriptFile is the name of the conversation as text in a backup, oldest

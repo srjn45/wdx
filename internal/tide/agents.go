@@ -54,6 +54,7 @@ type agentList struct {
 	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
 	diffs         map[string]*diffView // what the diffs' tabs hold, by view: a worktree's tab has two
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
+	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first
 }
 
 // agentListRow is a row of the Agents list.

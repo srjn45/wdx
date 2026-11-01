@@ -160,18 +160,18 @@ func claudeCodeProjectDir(dir string) string {
 // BackUp implements AiCodingAgent: it copies what is new in the transcripts of
 // the agent's sessions, with their subagents and spilled tool results, and
 // appends it to TranscriptFile as text.
-func (ClaudeCode) BackUp(ctx context.Context, l Launch) (string, error) {
+func (ClaudeCode) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	sessions, current, err := claudeCodeSessions(l)
 	if err != nil {
-		return l.SessionID, err
+		return Backup{Session: l.SessionID}, err
 	}
 	raw := filepath.Join(l.BackupDir, claudeCodeRawDir)
 	if err := os.MkdirAll(raw, 0o700); err != nil {
-		return current, err
+		return Backup{Session: current}, err
 	}
 	state, err := readClaudeCodeRendered(l.BackupDir)
 	if err != nil {
-		return current, err
+		return Backup{Session: current}, err
 	}
 	var failed []error
 	for _, s := range sessions {
@@ -187,7 +187,7 @@ func (ClaudeCode) BackUp(ctx context.Context, l Launch) (string, error) {
 	if err := state.write(l.BackupDir); err != nil {
 		failed = append(failed, err)
 	}
-	return current, errors.Join(failed...)
+	return Backup{Session: current, Dir: state.Dir}, errors.Join(failed...)
 }
 
 // claudeCodeCopySession copies what is new of session s to dest and what lies in
@@ -309,6 +309,8 @@ type claudeCodeRendered struct {
 	Offsets map[string]int64 `json:"offsets"`
 	Session string           `json:"session"`
 	Message string           `json:"message"`
+	// Dir is where the agent last worked, which each line of a transcript says.
+	Dir string `json:"dir,omitempty"`
 }
 
 func readClaudeCodeRendered(backup string) (*claudeCodeRendered, error) {
@@ -384,6 +386,7 @@ type claudeCodeLine struct {
 	Meta      bool   `json:"isMeta"`
 	Sidechain bool   `json:"isSidechain"`
 	Compacted bool   `json:"isCompactSummary"`
+	Cwd       string `json:"cwd"`
 	Message   struct {
 		ID      string          `json:"id"`
 		Content json.RawMessage `json:"content"`
@@ -406,6 +409,10 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 	var line claudeCodeLine
 	if json.Unmarshal(raw, &line) != nil {
 		return 1
+	}
+	// A subagent's lines say where it works, which is not where the agent is.
+	if line.Cwd != "" && !line.Sidechain {
+		r.Dir = line.Cwd
 	}
 	if line.Type != "user" && line.Type != "assistant" || line.Meta || line.Sidechain {
 		return 0

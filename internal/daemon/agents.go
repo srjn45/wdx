@@ -297,6 +297,9 @@ func agentView(a agent.Agent) api.Agent {
 	if a.ParentID != "" {
 		v.ParentAgentId, v.ParentAgentName = &a.ParentID, &a.Parent
 	}
+	if a.CurrentDir != "" {
+		v.CurrentDir = &a.CurrentDir
+	}
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree
 	}

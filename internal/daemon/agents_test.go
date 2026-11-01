@@ -975,3 +975,26 @@ func TestRemovingAProjectMovesItsAgentsBackups(t *testing.T) {
 		t.Errorf("not in the trash: %v", err)
 	}
 }
+
+// TestAgentCurrentDirFollowsTheBackup: an agent's ACA says it moved, into a worktree
+// wdx never heard of, and the API and the stream say so. Its dir stays.
+func TestAgentCurrentDirFollowsTheBackup(t *testing.T) {
+	t.Parallel()
+	said := filepath.Join(t.TempDir(), "dir")
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Dir: said} })
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	a := td.createAgent(t, "api", dir, "mover")
+	if a.CurrentDir != nil {
+		t.Errorf("before it said: %q", *a.CurrentDir)
+	}
+	work := filepath.Join(t.TempDir(), "work")
+	if err := os.WriteFile(said, []byte(work+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	td.daemon.backups.Request(a.TerminalId)
+	waittest.For(t, "the agent to say it moved", func() bool {
+		r, err := td.client.GetAgentWithResponse(context.Background(), "id:"+a.Id, &api.GetAgentParams{})
+		return err == nil && r.JSON200 != nil && r.JSON200.Agent.CurrentDir != nil && *r.JSON200.Agent.CurrentDir == work && r.JSON200.Agent.Dir == dir
+	})
+}

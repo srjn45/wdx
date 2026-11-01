@@ -277,6 +277,23 @@ func TestTrackerAgentStops(t *testing.T) {
 	h.waitFor("the agent's edit", func(list []Status) bool { return fileIn(list, "work", "edited") })
 }
 
+// TestTrackerAgentMoved reads the worktree an agent turns out to have moved to: it
+// is learned of only after the agent stopped, when the stop read the old one.
+func TestTrackerAgentMoved(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	h := track(t, dir)
+	h.setAgents(Agent{ID: "a", Dir: dir})
+	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.tracker.AgentsChanged()
+
+	write(t, work, "edited", "e\n") // says nothing to git's files
+	h.setAgents(Agent{ID: "a", Dir: work})
+	h.tracker.AgentsChanged()
+	h.waitFor("its edit", func(list []Status) bool { return fileIn(list, "work", "edited") })
+}
+
 func (h *trackerHarness) setAgents(agents ...Agent) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -266,11 +266,23 @@ func (m *Model) worktreeHolding(dir string) string {
 	return name
 }
 
+// worktreeOf names the worktree the agent works in: where its AI CLI last said, as
+// it may have moved into one it made itself, or where it started, when that says
+// nothing or is in no worktree.
+func (m *Model) worktreeOf(a api.Agent) string {
+	if a.CurrentDir != nil {
+		if name := m.worktreeHolding(*a.CurrentDir); name != "" {
+			return name
+		}
+	}
+	return m.worktreeHolding(a.Dir)
+}
+
 // agentsIn names the running agents in the worktree called name.
 func (m *Model) agentsIn(name string) []string {
 	var names []string
 	for _, a := range m.agents() {
-		if a.State == api.AgentStateRunning && m.worktreeHolding(a.Dir) == name {
+		if a.State == api.AgentStateRunning && m.worktreeOf(a) == name {
 			names = append(names, a.Name)
 		}
 	}

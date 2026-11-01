@@ -214,15 +214,16 @@ func applyComments(ctx context.Context, s *Status, drafts []Comment) {
 	}
 }
 
-// ReviewMessage is what an agent gets for a review: every comment by file, with the
-// line as it was seen, and the note first if there is one.
-func ReviewMessage(name, note string, comments []Comment) string {
+// ReviewMessage is what an agent gets for a review: where the worktree is, as the
+// agent may be working elsewhere, every comment by file, with the line as it was
+// seen, and the note first if there is one.
+func ReviewMessage(name, path, note string, comments []Comment) string {
 	var b strings.Builder
 	what := "1 comment"
 	if len(comments) != 1 {
 		what = fmt.Sprintf("%d comments", len(comments))
 	}
-	fmt.Fprintf(&b, "Review of %s, %s. Please address them.\n", name, what)
+	fmt.Fprintf(&b, "Review of %s (%s), %s. Please address them.\n", name, path, what)
 	if note = strings.TrimSpace(note); note != "" {
 		fmt.Fprintf(&b, "\n%s\n", note)
 	}

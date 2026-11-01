@@ -259,11 +259,11 @@ func (m *Model) askReview(tab string, v *diffView) {
 	if n == 0 {
 		return
 	}
-	agents := m.runningAgentsIn(worktree)
+	agents, chosen := m.agentsToAsk(worktree)
 	if len(agents) == 0 {
-		v.notice = "no agent is running in " + worktree + ": the comments stay"
+		v.notice = "no agent is running in this project: the comments stay"
 		return
 	}
-	m.commit = &commitBox{worktree: worktree, agents: agents, review: n}
+	m.commit = &commitBox{worktree: worktree, agents: agents, chosen: chosen, review: n}
 	m.log.Info("review asked", "worktree", worktree, "comments", n)
 }

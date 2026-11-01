@@ -61,9 +61,13 @@ func (d *Daemon) startTracker() {
 func workingAgents(list []agent.Agent) []worktree.Agent {
 	agents := make([]worktree.Agent, 0, len(list))
 	for _, a := range list {
+		dir := a.CurrentDir
+		if dir == "" {
+			dir = a.Terminal.Dir
+		}
 		agents = append(agents, worktree.Agent{
 			ID:  a.ID,
-			Dir: a.Terminal.Dir,
+			Dir: dir,
 			Working: a.Terminal.State == terminal.StateRunning &&
 				a.Activity == string(screen.ActivityWorking),
 		})
@@ -271,7 +275,7 @@ func (s *server) SendWorktreeReview(ctx context.Context, req api.SendWorktreeRev
 	if err != nil {
 		return nil, err
 	}
-	if a, err = s.agents.Send(ctx, a.ID, worktree.ReviewMessage(w.Name, deref(req.Body.Note), comments), false); err != nil {
+	if a, err = s.agents.Send(ctx, a.ID, worktree.ReviewMessage(w.Name, w.Path, deref(req.Body.Note), comments), false); err != nil {
 		return nil, err
 	}
 	if err := s.comments.MarkSent(ctx, p.ID, comments, a.ID); err != nil {

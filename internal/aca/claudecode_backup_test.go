@@ -67,11 +67,11 @@ func appendFile(t *testing.T, path, text string) {
 
 func (b claudeBackup) backUp(t *testing.T) string {
 	t.Helper()
-	session, err := aca.ClaudeCode{}.BackUp(context.Background(), b.launch)
+	backup, err := aca.ClaudeCode{}.BackUp(context.Background(), b.launch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return session
+	return backup.Session
 }
 
 func (b claudeBackup) text(t *testing.T) string {
@@ -271,5 +271,42 @@ func TestClaudeCodeSettingsRecordEachSession(t *testing.T) {
 	}
 	if got := b.backUp(t); got != "s-2" {
 		t.Errorf("session = %q", got)
+	}
+}
+
+// TestClaudeCodeBackupSaysWhereItWorks follows an agent that moved into a worktree it
+// made itself, which its transcript alone tells. A subagent elsewhere does not move it.
+func TestClaudeCodeBackupSaysWhereItWorks(t *testing.T) {
+	t.Parallel()
+	b := newClaudeBackup(t)
+	dirOf := func() string {
+		t.Helper()
+		backup, err := aca.ClaudeCode{}.BackUp(context.Background(), b.launch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return backup.Dir
+	}
+	if got := dirOf(); got != "" {
+		t.Errorf("nothing written yet: %q", got)
+	}
+	line := func(cwd string, sidechain bool) string {
+		return jsonLine(t, map[string]any{"type": "user", "cwd": cwd, "isSidechain": sidechain, "timestamp": "t", "message": map[string]any{"content": "hello"}})
+	}
+	appendFile(t, b.transcript(b.launch.SessionID), line("/r", false))
+	if got := dirOf(); got != "/r" {
+		t.Errorf("first: %q", got)
+	}
+	appendFile(t, b.transcript(b.launch.SessionID), line("/r/.worktrees/auth-fix", false))
+	if got := dirOf(); got != "/r/.worktrees/auth-fix" {
+		t.Errorf("moved: %q", got)
+	}
+	appendFile(t, b.transcript(b.launch.SessionID), line("/elsewhere", true))
+	if got := dirOf(); got != "/r/.worktrees/auth-fix" {
+		t.Errorf("a subagent moved it: %q", got)
+	}
+	// Nothing new: it remembers, as it reads only what is new.
+	if got := dirOf(); got != "/r/.worktrees/auth-fix" {
+		t.Errorf("read again: %q", got)
 	}
 }

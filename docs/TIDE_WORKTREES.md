@@ -188,11 +188,17 @@ So:
 - `Tab` flips between them while both have something to show. Having turned to the commits, it stays there until flipped back, or there is nothing uncommitted left.
 - Each view keeps its own place. Only the view shown is read.
 
+### Which agent is in a worktree
+
+An agent's `dir` is where it starts, and an agent can move, as into a worktree it made itself. So `current_dir` says where its AI CLI last said it worked: for Claude Code, the last `cwd` in its transcript, which `BackUp` reads as it goes through the new lines. It is only known when the backup runs, as when the agent goes idle or waiting, and is a best guess for one that works in several. An agent's row and tide's list go by `current_dir` when that is in a worktree, else `dir`. Other AI CLIs that do not say stay where they started.
+
+So nothing depends on it: `C` and `s` offer every running agent of the project, those in the worktree first, then the one last sent to from it. What they send says where the worktree is, as the agent may be elsewhere. They refuse only with no agent running in the project.
+
 `C`, on the uncommitted view, asks the agent to commit:
 
-- A box opens with `Commit all uncommitted changes`, which can be edited. `Enter` sends it to the agent's inbox, and `Esc` cancels.
+- A box opens with `Commit all uncommitted changes in <path>`, which can be edited. `Enter` sends it to the agent's inbox, and `Esc` cancels.
 - The agent writes the message and follows the repository's rules, so wdx commits nothing itself. The tab follows by itself: a commit fires the watch.
-- Agents are those whose directory is in the worktree, the deepest one holding it, so one in a worktree wdx did not register counts. With several, `←` `→` choose. With none, `C` refuses and says so.
+- With several agents, `←` `→` choose.
 - It warns when the agent chosen is working, as a commit then may take in unfinished work, and lets it be sent.
 - A send that fails leaves the box open, with the text and why.
 
@@ -213,7 +219,7 @@ Nothing watches for a file to change. A mark holds the id of the content that wa
 
 `c` comments on the current line, `e` and `d` edit and delete the comment on it, `Esc` cancels and `Enter` saves. A comment shows under its line, and on the worktree's row as `3 comments`. It belongs to the diff it was written on: uncommitted, which a file's diff is too, or committed, as their line numbers differ.
 
-`s`, with comments to send, sends all of the worktree's together, with a note if any, so that an agent does not start acting on the first. With several agents `←` and `→` choose; with none it refuses and they stay. `C` warns of comments not sent.
+`s`, with comments to send, sends all of the worktree's together, with a note if any, so that an agent does not start acting on the first. With several agents `←` and `→` choose; with none in the project it refuses and they stay. `C` warns of comments not sent.
 
 - Comments are in the table `review_comments`, so they survive tide and the daemon.
 - A comment holds the line as it was seen, which the message quotes, so the agent can find it after the numbers moved. When the file changes it stays, saying `file changed`.

@@ -554,17 +554,17 @@ func TestCommitBox(t *testing.T) {
 	t.Parallel()
 	m, _ := worktreeTabModel(t, changed("f", api.WorktreeFileStatusM))
 
-	// None running: it says so.
+	// None running in the project: it says so.
 	*m.following.project.Agents = nil
 	keys(m, commitKey)
-	if m.commit != nil || !strings.Contains(text(m), "no agent is running in w") {
+	if m.commit != nil || !strings.Contains(text(m), "no agent is running in this project") {
 		t.Fatalf("with no agent:\n%s", text(m))
 	}
 
-	// One idle, in the worktree; one elsewhere is not asked.
-	*m.following.project.Agents = []api.Agent{runningAgent("a", "/w/sub", api.AgentActivityIdle), runningAgent("x", "/other", api.AgentActivityIdle)}
+	// One idle, in the worktree; what is sent says where it is.
+	*m.following.project.Agents = []api.Agent{runningAgent("a", "/w/sub", api.AgentActivityIdle)}
 	keys(m, commitKey)
-	if m.commit == nil || len(m.commit.agents) != 1 || m.commit.text != commitPrompt {
+	if m.commit == nil || len(m.commit.agents) != 1 || m.commit.text != commitPrompt+" in /w" {
 		t.Fatalf("box: %+v", m.commit)
 	}
 	got := text(m)
@@ -574,7 +574,7 @@ func TestCommitBox(t *testing.T) {
 
 	// The text can be edited, and Esc leaves it unsent.
 	keys(m, "backspace", "!")
-	if m.commit.text != strings.TrimSuffix(commitPrompt, "s")+"!" {
+	if m.commit.text != commitPrompt+" in /!" {
 		t.Errorf("text: %q", m.commit.text)
 	}
 	keys(m, "esc")
@@ -903,6 +903,57 @@ func TestReviewInATide(t *testing.T) {
 	v.cursor = v.starts[line]
 	p.keys(deleteKey)
 	p.until(t, "it deleted", func(m *Model) bool { return len(m.draftComments("main")) == 0 })
+}
+
+// TestAgentsToAsk is an agent that made a worktree itself: it counts by where it says
+// it is, and one that does not say can still be asked, from anywhere in the project.
+func TestAgentsToAsk(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(api.WorktreeStatus{Name: "main", Path: "/r"}, api.WorktreeStatus{Name: "work", Path: "/r/.worktrees/work"})
+	moved := runningAgent("moved", "/r", api.AgentActivityIdle)
+	dir := "/r/.worktrees/work/sub"
+	moved.CurrentDir = &dir
+	silent := runningAgent("silent", "/r", api.AgentActivityIdle)
+	away := runningAgent("away", "/r", api.AgentActivityIdle)
+	outside := "/tmp"
+	away.CurrentDir = &outside
+	stopped := runningAgent("stopped", "/r/.worktrees/work", api.AgentActivityIdle)
+	stopped.State = api.AgentStateExited
+	*m.following.project.Agents = []api.Agent{silent, away, moved, stopped}
+
+	if got := m.worktreeOf(moved); got != "work" {
+		t.Errorf("moved: %q", got)
+	}
+	if got := m.worktreeOf(away); got != "main" {
+		t.Errorf("somewhere that is no worktree falls back to where it started: %q", got)
+	}
+	if got := m.agentsIn("work"); !slices.Equal(got, []string{"moved"}) {
+		t.Errorf("on the row: %v", got)
+	}
+
+	agents, chosen := m.agentsToAsk("work")
+	var ids []string
+	for _, a := range agents {
+		ids = append(ids, a.Id)
+	}
+	if !slices.Equal(ids, []string{"moved", "silent", "away"}) || chosen != 0 {
+		t.Errorf("order %v, chosen %d", ids, chosen)
+	}
+
+	// The one sent to is offered next time.
+	m.list().lastAsked = map[string]string{"work": "away"}
+	if _, chosen = m.agentsToAsk("work"); chosen != 2 {
+		t.Errorf("remembered: %d", chosen)
+	}
+	if _, chosen = m.agentsToAsk("main"); chosen != 0 {
+		t.Errorf("another worktree's: %d", chosen)
+	}
+
+	// It says when one is elsewhere.
+	m.commit = &commitBox{worktree: "work", agents: agents, chosen: 1}
+	if got := text(m); !strings.Contains(got, "silent (in main)") || !strings.Contains(got, "← ") {
+		t.Errorf("box:\n%s", got)
+	}
 }
 
 // TestBarOnlyInDiffs: the bar is the diff tabs', not tide's.

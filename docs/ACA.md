@@ -11,6 +11,7 @@ An ACA cannot compile without these.
 | Its id in the database and the API | `ID()`, `internal/aca/claudecode.go` | `claude_code` |
 | The command that starts or resumes a session | `Command()`, `internal/aca/claudecode.go` | `claude --session-id <id>`, or `claude --resume <id>` once a transcript exists |
 | Where it keeps transcripts | `claudeCodeSessions`, `internal/aca/claudecode_backup.go` | the path its `SessionStart` hook tells, else `~/.claude/projects/*/<id>.jsonl` |
+| Where it last worked | `Backup.Dir` from `BackUp()`, `internal/aca/claudecode_backup.go`; docs/TIDE_WORKTREES.md | the last `cwd` of a transcript's lines, not a subagent's |
 | Keeping its conversation | `BackUp()`, `internal/aca/claudecode_backup.go`; docs/AGENT_RESUME.md | copies the raw transcripts, renders `transcript.md`, follows `/clear` through a hook given with `--settings`, and puts back a transcript Claude Code deleted |
 | Giving it a message | `Deliver()`, `internal/aca/claudecode.go`; docs/SEND.md | bracketed paste, about 150 ms, then Enter as a separate key; a paste-end marker in the message is taken out |
 | Stopping its turn | `Interrupt()`, `internal/aca/claudecode.go`; docs/SEND.md | Esc |

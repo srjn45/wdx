@@ -29,6 +29,8 @@ type ACA struct {
 	// Session the one holding the session it says it is in now.
 	Conversation string
 	Session      string
+	// Dir, when set, is the file holding where it says it last worked.
+	Dir string
 }
 
 // ID implements aca.AiCodingAgent.
@@ -47,19 +49,22 @@ func (a *ACA) Deliver(w io.Writer, message string) error { return aca.ClaudeCode
 func (a *ACA) Interrupt() []byte { return aca.ClaudeCode{}.Interrupt() }
 
 // BackUp implements aca.AiCodingAgent.
-func (a *ACA) BackUp(_ context.Context, l aca.Launch) (string, error) {
-	session := l.SessionID
+func (a *ACA) BackUp(_ context.Context, l aca.Launch) (aca.Backup, error) {
+	backup := aca.Backup{Session: l.SessionID}
 	if data, err := os.ReadFile(a.Session); err == nil {
-		session = strings.TrimSpace(string(data))
+		backup.Session = strings.TrimSpace(string(data))
+	}
+	if data, err := os.ReadFile(a.Dir); err == nil {
+		backup.Dir = strings.TrimSpace(string(data))
 	}
 	data, err := os.ReadFile(a.Conversation)
 	if errors.Is(err, os.ErrNotExist) || a.Conversation == "" {
-		return session, nil
+		return backup, nil
 	}
 	if err != nil {
-		return "", err
+		return aca.Backup{}, err
 	}
-	return session, os.WriteFile(filepath.Join(l.BackupDir, aca.TranscriptFile), data, 0o600)
+	return backup, os.WriteFile(filepath.Join(l.BackupDir, aca.TranscriptFile), data, 0o600)
 }
 
 // Command implements aca.AiCodingAgent.

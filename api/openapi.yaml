@@ -1540,7 +1540,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, worktree, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, worktree, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1556,6 +1556,7 @@ components:
         aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
         session_id: { type: string, description: "The AI coding agent's latest session, which it goes on with when started again; changes when the conversation is cleared." }
         dir: { type: string, description: "Where it starts, now and on every relaunch." }
+        current_dir: { type: string, nullable: true, description: "Where its AI CLI last said it worked, as after it moved into a worktree it made itself; null until it has, or when it does not say." }
         worktree: { type: string, nullable: true, description: "The name of the project's worktree holding dir, main for the clone; null when none does." }
         state: { $ref: "#/components/schemas/AgentState" }
         activity:

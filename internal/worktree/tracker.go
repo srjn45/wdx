@@ -159,6 +159,7 @@ type tracked struct {
 	mu         sync.Mutex
 	statuses   []Status
 	agents     map[string]Agent   // as last seen, those working
+	agentDirs  map[string]string  // as last seen, where each is
 	pending    map[string]reading // by path
 	everything bool               // every checkout is to be read
 	forced     bool               // a user asked: do not wait for a lock
@@ -215,13 +216,22 @@ func (p *tracked) agentsChanged() {
 		return
 	}
 	working := map[string]Agent{}
+	dirs := map[string]string{}
 	for _, a := range agents {
+		dirs[a.ID] = a.Dir
 		if a.Working {
 			working[a.ID] = a
 		}
 	}
 	p.mu.Lock()
 	var stopped []Agent
+	// One that moved is learned of after it stopped: where it is now is read.
+	for _, a := range agents {
+		if was, seen := p.agentDirs[a.ID]; seen && was != a.Dir {
+			stopped = append(stopped, a)
+		}
+	}
+	p.agentDirs = dirs
 	for id, a := range p.agents {
 		if _, still := working[id]; !still {
 			stopped = append(stopped, a)

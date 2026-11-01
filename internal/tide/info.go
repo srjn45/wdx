@@ -72,6 +72,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "model", values: present(a.Model, identical)},
 		{key: "project_name", values: []string{a.ProjectName}, gap: true},
 		{key: "dir", values: []string{a.Dir}},
+		{key: "current_dir", values: present(a.CurrentDir, identical)},
 		{key: "worktree", values: present(a.Worktree, identical)},
 		{key: "parent_agent_name", values: present(a.ParentAgentName, identical)},
 		{key: "children", values: children},
