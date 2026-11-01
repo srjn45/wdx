@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -42,7 +45,18 @@ func TestWorktreesListed(t *testing.T) {
 		api.WorktreeStatus{Name: "old-try", Path: "/r/o", Missing: true},
 	)
 	got := text(m)
-	for _, want := range []string{"Worktrees", "main", "landed", "auth-fix", "↑3 +120 −8", "M internal/tabs.go", "? new", "old-try", "missing"} {
+	// Folded to begin with, a worktree with files says so: it would look clean.
+	for _, want := range []string{"Worktrees", "main", "landed", "auth-fix", "↑3 · 2 files", "old-try", "missing"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "M internal/tabs.go") {
+		t.Errorf("a worktree started open:\n%s", got)
+	}
+	m.foldWorktree("auth-fix", false)
+	got = text(m)
+	for _, want := range []string{"↑3 +120 −8", "M internal/tabs.go", "? new"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
@@ -89,22 +103,22 @@ func TestWorktreeCursorMovesFromTheAgents(t *testing.T) {
 	if _, ok := m.cursorAgent(); ok {
 		t.Error("an agent is under the cursor on a worktree: C-q x would remove it")
 	}
-	keys(m, "down")
+	if rows := m.worktreeRows(); len(rows) != 2 {
+		t.Errorf("a worktree starts folded: %+v", rows)
+	}
+	keys(m, "right", "down")
 	if l.worktreeKey != "main"+rowSeparator+"a" {
-		t.Errorf("down to its file: %q", l.worktreeKey)
+		t.Errorf("down to its file, once opened: %q", l.worktreeKey)
 	}
 	keys(m, "left")
 	if l.worktreeKey != "main" {
 		t.Errorf("left goes to the file's worktree: %q", l.worktreeKey)
 	}
 	keys(m, "left")
-	if !l.worktreesClosed["main"] {
+	if l.worktreesOpen["main"] {
 		t.Error("left on a worktree folds it")
 	}
-	if rows := m.worktreeRows(); len(rows) != 2 {
-		t.Errorf("folded: %+v", rows)
-	}
-	keys(m, "right", "up")
+	keys(m, "up")
 	if l.onWorktrees || l.row != last {
 		t.Errorf("up from the first worktree: %+v", l)
 	}
@@ -234,28 +248,234 @@ func TestDiffShowsNothingOfAProgram(t *testing.T) {
 	}
 }
 
+// diffShowing is a model with the focus on a diff's tab, holding v.
+func diffShowing(t *testing.T, tab string, v *diffView) *Model {
+	t.Helper()
+	m := worktreesModel(api.WorktreeStatus{Name: "w", Path: "/w"})
+	m.layout.setFocus(agent)
+	l := m.list()
+	l.openTab(tab)
+	v.asked, v.seen = true, m.diffSeen(tab)
+	l.diffs = map[string]*diffView{tab: v}
+	text(m) // works out its lines
+	return m
+}
+
+// longFile is a file of n lines with the given lines changed.
+func longFile(n int, changed ...int) []splitRow {
+	var rows []splitRow
+	for i := 1; i <= n; i++ {
+		r := splitRow{leftNo: i, rightNo: i, left: fmt.Sprintf("line%d", i), right: fmt.Sprintf("line%d", i)}
+		if slices.Contains(changed, i) {
+			r.right, r.changed = fmt.Sprintf("Edited%d", i), true
+		}
+		rows = append(rows, r)
+	}
+	return rows
+}
+
 func TestDiffJumpsBetweenChanges(t *testing.T) {
 	t.Parallel()
-	v := &diffView{changes: []int{10, 30}, lines: make([]string, 50)}
-	v.nextChange()
-	if v.offset != 8 {
-		t.Errorf("first: %d", v.offset)
+	v := &diffView{split: longFile(200, 50, 150), jump: true}
+	m := diffShowing(t, fileDiffTab("w", "f"), v)
+	if v.numbers[v.cursor] != 50 {
+		t.Errorf("opens on the first change: line %d", v.numbers[v.cursor])
 	}
-	v.nextChange()
-	if v.offset != 28 {
-		t.Errorf("second: %d", v.offset)
+	for _, tc := range []struct {
+		key  string
+		line int
+	}{{"]", 150}, {"]", 150}, {"[", 50}, {"[", 50}} {
+		keys(m, tc.key)
+		if got := v.numbers[v.cursor]; got != tc.line {
+			t.Errorf("%s: line %d, want %d", tc.key, got, tc.line)
+		}
 	}
-	v.nextChange()
-	if v.offset != 28 {
-		t.Errorf("past the last: %d", v.offset)
+	if got := text(m); !strings.Contains(got, "change 1 of 2 · line 50 of 200") || !strings.Contains(got, "▸") {
+		t.Errorf("where it is not said:\n%s", got)
 	}
-	v.previousChange()
-	if v.offset != 8 {
-		t.Errorf("back: %d", v.offset)
+}
+
+func TestDiffCursorMovesTheView(t *testing.T) {
+	t.Parallel()
+	v := &diffView{split: longFile(200)}
+	m := diffShowing(t, fileDiffTab("w", "f"), v)
+	if v.cursor != 0 || v.offset != 0 {
+		t.Fatalf("start: %d, %d", v.cursor, v.offset)
 	}
-	v.previousChange()
-	if v.offset != 8 {
-		t.Errorf("before the first: %d", v.offset)
+	keys(m, "down", "down")
+	if v.cursor != 2 {
+		t.Errorf("down: %d", v.cursor)
+	}
+	keys(m, "pgdown")
+	page := v.cursor
+	if page <= 2 {
+		t.Errorf("a page: %d", page)
+	}
+	keys(m, " ")
+	if v.cursor <= page {
+		t.Errorf("Space pages too: %d", v.cursor)
+	}
+	keys(m, "b")
+	if v.cursor != page {
+		t.Errorf("b pages back: %d, want %d", v.cursor, page)
+	}
+	keys(m, "G")
+	got := text(m)
+	if !strings.Contains(got, "line200") || v.cursor != len(v.lines)-1 {
+		t.Errorf("the last line is out of view:\n%s", got)
+	}
+	keys(m, "g")
+	text(m)
+	if v.cursor != 0 || v.offset != 0 {
+		t.Errorf("g: %d, %d", v.cursor, v.offset)
+	}
+	m.Update(tea.MouseWheelMsg{X: 60, Y: 5, Button: tea.MouseWheelDown})
+	if v.offset != diffWheelLines || v.cursor != v.offset {
+		t.Errorf("the wheel leaves the current line in view: %d, %d", v.cursor, v.offset)
+	}
+}
+
+func TestDiffGoToLine(t *testing.T) {
+	t.Parallel()
+	v := &diffView{split: longFile(200)}
+	m := diffShowing(t, fileDiffTab("w", "f"), v)
+	keys(m, ":")
+	if !strings.Contains(text(m), ":_") {
+		t.Errorf("no prompt:\n%s", text(m))
+	}
+	keys(m, "120", "enter")
+	if got := v.numbers[v.cursor]; got != 120 {
+		t.Errorf("line %d", got)
+	}
+	keys(m, ":", "9999", "enter")
+	if got := v.numbers[v.cursor]; got != 200 {
+		t.Errorf("past the end: line %d", got)
+	}
+	keys(m, ":", "12x", "enter")
+	if got := text(m); !strings.Contains(got, "not a line number: 12x") {
+		t.Errorf("no notice:\n%s", got)
+	}
+	keys(m, ":", "5", "esc")
+	if got := v.numbers[v.cursor]; got != 200 {
+		t.Errorf("Esc went: line %d", got)
+	}
+}
+
+func TestDiffSearch(t *testing.T) {
+	t.Parallel()
+	v := &diffView{split: longFile(30, 5, 20)}
+	m := diffShowing(t, fileDiffTab("w", "f"), v)
+	keys(m, "/", "edited", "enter")
+	if got := v.numbers[v.cursor]; got != 5 {
+		t.Fatalf("first match: line %d", got)
+	}
+	if got := text(m); !strings.Contains(got, "n N match") {
+		t.Errorf("the bar does not offer the matches:\n%s", got)
+	}
+	keys(m, "n")
+	if got := v.numbers[v.cursor]; got != 20 {
+		t.Errorf("n: line %d", got)
+	}
+	keys(m, "n")
+	if got := v.numbers[v.cursor]; got != 5 {
+		t.Errorf("n goes round: line %d", got)
+	}
+	keys(m, "N")
+	if got := v.numbers[v.cursor]; got != 20 {
+		t.Errorf("N goes round: line %d", got)
+	}
+
+	// Capitals make it exact.
+	keys(m, "/", "EDITED", "enter")
+	if got := text(m); !strings.Contains(got, "no match: EDITED") {
+		t.Errorf("no notice:\n%s", got)
+	}
+	keys(m, "esc")
+	if got := text(m); v.search != nil || strings.Contains(got, "n N match") {
+		t.Errorf("Esc did not end the search:\n%s", got)
+	}
+
+	// A query is text, not a pattern.
+	keys(m, "/", "line.", "enter")
+	if got := text(m); !strings.Contains(got, "no match: line.") {
+		t.Errorf("a pattern was applied:\n%s", got)
+	}
+}
+
+func TestDiffKeysAreItsOwn(t *testing.T) {
+	t.Parallel()
+	file := diffShowing(t, fileDiffTab("w", "f"), &diffView{split: longFile(30, 5)})
+	got := text(file)
+	for _, want := range []string{"[ ] change", ": line", "/ search", "? keys"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("file diff: no %q in\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "{ } file") || strings.Contains(got, "n N") {
+		t.Errorf("file diff offers what it cannot do:\n%s", got)
+	}
+
+	v := &diffView{unified: []string{
+		"diff --git a/f b/f", "--- a/f", "+++ b/f", "@@ -1 +1 @@", "-a", "+b", "@@ -9 +9 @@", "-c", "+d",
+		"diff --git a/g b/g", "--- a/g", "+++ b/g", "@@ -1 +1 @@", "-e", "+f",
+	}}
+	worktree := diffShowing(t, committedTab("w"), v)
+	got = text(worktree)
+	if !strings.Contains(got, "{ } file") || strings.Contains(got, ": line") {
+		t.Errorf("worktree diff:\n%s", got)
+	}
+	if !strings.Contains(got, "change 0 of 3 · file 1 of 2") {
+		t.Errorf("no position:\n%s", got)
+	}
+	keys(worktree, "]")
+	if v.cursor != 3 {
+		t.Errorf("] goes by change: %d", v.cursor)
+	}
+	keys(worktree, "}")
+	if v.cursor != 9 {
+		t.Errorf("} goes by file: %d", v.cursor)
+	}
+	keys(worktree, "{")
+	if v.cursor != 0 {
+		t.Errorf("{ goes back: %d", v.cursor)
+	}
+	keys(worktree, ":")
+	if v.prompt != "" {
+		t.Error("a line number means nothing across files")
+	}
+
+	keys(worktree, "?")
+	if got := text(worktree); !strings.Contains(got, "the file before or after") {
+		t.Errorf("? shows no keys:\n%s", got)
+	}
+	keys(worktree, "esc")
+	if v.keyHelp {
+		t.Error("Esc leaves the keys")
+	}
+}
+
+// TestDiffBarNarrow keeps what is needed most in a pane short of room.
+func TestDiffBarNarrow(t *testing.T) {
+	t.Parallel()
+	v := &diffView{split: longFile(30, 5)}
+	v.prepare(100, style.New(false))
+	for _, width := range []int{100, 60, 40, 30, 12} {
+		got := ansi.Strip(v.bar(true, width, style.New(false)))
+		if ansi.StringWidth(got) > max(width, 8) {
+			t.Errorf("%d: %d wide: %q", width, ansi.StringWidth(got), got)
+		}
+		if width >= 12 && !strings.Contains(got, "?") {
+			t.Errorf("%d: the full list cannot be reached: %q", width, got)
+		}
+	}
+}
+
+// TestBarOnlyInDiffs: the bar is the diff tabs', not tide's.
+func TestBarOnlyInDiffs(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(api.WorktreeStatus{Name: "w", Path: "/w"})
+	if got := text(m); strings.Contains(got, "[ ] change") || strings.Contains(got, "? keys") {
+		t.Errorf("another tab has the bar:\n%s", got)
 	}
 }
 
@@ -304,8 +524,11 @@ func TestWorktreeDiffsLive(t *testing.T) {
 	p := h.follow(t)
 	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
 	p.keys("enter")
-	p.until(t, "the file under its worktree", func(m *Model) bool { return strings.Contains(text(m), "M file") })
+	p.until(t, "the worktree with its file", func(m *Model) bool {
+		return strings.Contains(text(m), "2 files") || strings.Contains(text(m), "1 file")
+	})
 	m := p.m
+	m.foldWorktree("work", false)
 
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file != nil && r.file.Path == "file" }))
 	p.keys("enter")

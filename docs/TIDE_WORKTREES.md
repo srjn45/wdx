@@ -26,7 +26,7 @@ One scrolling list with two headings, Agents first and Worktrees after it.
 
 - Every worktree `git worktree list` gives is listed, whether wdx made it or not, which also shows the stale ones to clean up. `missing` marks one whose directory is gone.
 - A worktree's children are its files with uncommitted changes: staged, unstaged and untracked, with git's status letter.
-- `←→` folds a worktree, as in the Agents list.
+- A worktree starts folded, since it can have many files, and its row says how many. `←→` folds it, as in the Agents list.
 - `Enter` on a file opens its file diff; `Enter` on a worktree opens its PR view. If that tab is open, it goes to it.
 
 The worktree row shows the commits ahead of the base with their added and removed lines, `landed` when none are ahead and nothing is uncommitted, and the agents running there. A new worktree with nothing in it also says `landed`: it has nothing to lose.
@@ -50,7 +50,7 @@ One tab per file, showing its uncommitted changes split in two: the whole commit
 
 Proposed:
 
-- Both sides are aligned and scroll together. `n` and `p` go to the next and previous change, and the tab opens on the first change.
+- Both sides are aligned and scroll together, and the tab opens on the first change.
 - Long lines wrap, keeping both sides aligned; zoom gives more width.
 - A new file has an empty left side, a deleted one an empty right side. A binary file says so.
 - A file with no uncommitted changes left, committed since for example, says so and its tab stays until closed.
@@ -178,3 +178,50 @@ So:
 - `GET /v1/worktrees/{worktree}/files/diff?path=`, and `wdx worktree diff --name --path`: a file's patch with every line, which tide lays out in two columns.
 - A name is `main` for the clone, else the last part of the path, with a number if that is taken, so that a name is one checkout.
 - A path outside the worktree is `invalid_path`.
+
+## Moving around a diff
+
+The arrows move a current line, marked `▸`, and the view follows it.
+
+| Key | Does | File diff | Worktree diff |
+|---|---|---|---|
+| `↑` `↓` | the line above or below | yes | yes |
+| `PgUp` `PgDn`, `b` `Space` | a page up or down, for keyboards without the first two | yes | yes |
+| `g` `G` | the first or last line | yes | yes |
+| `[` `]` | the change before or after | yes | yes, by hunk |
+| `{` `}` | the file before or after | | yes |
+| `:` and a number | that line of the file, or the nearest | yes | |
+| `/` and text | search, with no regular expressions; capitals make it exact | yes | yes |
+| `n` `N` | the next or last match, going round | yes | yes |
+| `Esc` | ends the search | yes | yes |
+| `?` | shows these keys | yes | yes |
+
+A click makes a line current, and the wheel scrolls with the current line staying in view.
+
+A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` and `p` went unnoticed in the status line's hint. It lists only what can act now, and says where the current line is: `change 2 of 5 · line 120 of 900`, or `· file 1 of 3`. What does not fit goes, the least needed first, and `?` stays.
+
+## Next: agreed with the human, not built (2026-11-01)
+
+The order below is agreed; "proposed" marks what is not.
+
+The bar will list `C` on the worktree diff while it shows uncommitted changes, and `L` while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has neither.
+
+### 1. From uncommitted to landed
+
+- A worktree shows a complete diff of its uncommitted changes, from where it can be committed, and once all is committed the PR diff, from where it can be landed.
+- Committing is a command sent to the agent.
+- Proposed: one tab per worktree, showing the uncommitted changes while there are any.
+
+### 2. Verified
+
+- `v` marks a file verified. It is only a label: committing and landing do not depend on it. Editing the file removes it.
+- Proposed: a mark holds the file's blob id from `git hash-object`, which writes nothing and is the same id once committed, so a mark survives the commit of what was verified.
+
+### 3. Comments, sent as a review
+
+- `c` comments, `Esc` cancels, `Enter` adds it. Comments are sent together as a review, so that an agent does not start acting too early, to the agent working in that worktree.
+- They are saved until delivered, because no agent may be running.
+
+### Then
+
+`wdx agent create --prompt`, then landing. Landing differs by project: rebasing onto main, a PR on the remote, a local merge. Proposed: a method saved per project, starting with `rebase` and `pr`.

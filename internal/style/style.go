@@ -62,6 +62,15 @@ func (s Style) Added(text string) string { return s.apply(text, green) }
 // Removed styles what a diff removes.
 func (s Style) Removed(text string) string { return s.apply(text, red) }
 
+// Match styles what a search found: in reverse video with color off too, since a
+// mark beside it would change the text.
+func (s Style) Match(text string) string {
+	if !s.on {
+		return "\x1b[7m" + text + "\x1b[0m"
+	}
+	return s.apply(text, bold, "30", "43")
+}
+
 // Failure styles an error.
 func (s Style) Failure(text string) string { return s.apply(text, bold, red) }
 

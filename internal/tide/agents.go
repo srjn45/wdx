@@ -48,11 +48,11 @@ type agentList struct {
 	created    string          // the tab of an agent created here, current once the stream brings it
 	closed     map[string]bool // the ids of the parents folded; what is open inside them stays so
 
-	onWorktrees     bool                 // the cursor is in the Worktrees section, not on an agent
-	worktreeRow     int                  // its row there
-	worktreeKey     string               // what that row is, which the cursor stays on as rows come and go
-	worktreesClosed map[string]bool      // the names of the worktrees folded
-	diffs           map[string]*diffView // what the diffs' tabs hold, by tab
+	onWorktrees   bool                 // the cursor is in the Worktrees section, not on an agent
+	worktreeRow   int                  // its row there
+	worktreeKey   string               // what that row is, which the cursor stays on as rows come and go
+	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
+	diffs         map[string]*diffView // what the diffs' tabs hold, by tab
 }
 
 // agentListRow is a row of the Agents list.
@@ -550,7 +550,7 @@ func (s *projectScreen) clickWorktree(i, col int) tea.Cmd {
 	rows := s.m.worktreeRows()
 	r := rows[i]
 	if r.file == nil && len(r.worktree.Files) > 0 && col == ansi.StringWidth("▸ ") {
-		s.m.foldWorktree(r.worktree.Name, !s.m.list().worktreesClosed[r.worktree.Name])
+		s.m.foldWorktree(r.worktree.Name, s.m.list().worktreesOpen[r.worktree.Name])
 		s.m.worktreesChanged()
 		return nil
 	}
@@ -591,7 +591,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		case it.worktree >= 0:
 			r := worktrees[it.worktree]
 			cursor := l.onWorktrees && it.worktree == l.worktreeRow && m.layout.focus == project
-			lines = append(lines, m.worktreeLine(r, cursor, r.tab() == l.active, width))
+			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
 		case it.note == "agents":
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
 		case m.worktreeStatuses() == nil:

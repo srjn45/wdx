@@ -28,9 +28,8 @@ const (
 	committedLabel  = "pr: "
 	diffWheelLines  = 3
 	diffTabStop     = "    "
-	// jumpContext is how many lines stay above a change gone to.
+	// jumpContext is how many lines stay above what a key goes to.
 	jumpContext = 2
-	diffHint    = "↑↓ PgUp PgDn scroll  n p change  C-q - close  Alt+← back  C-q menu"
 )
 
 func fileDiffTab(worktree, file string) string {
@@ -83,10 +82,24 @@ type diffView struct {
 
 	width   int // of what lines was drawn for, 0 before
 	lines   []string
-	changes []int // the lines changes start on, which n and p go to
-	offset  int
-	height  int  // of the last draw
-	jump    bool // the first draw goes to the first change
+	rows    []int    // the row of the source each line shows
+	numbers []int    // the file's line number each line shows; 0 on a line wrapped or of no number
+	changes []int    // the lines changes start on, which [ and ] go to
+	files   []int    // the lines files start on, which { and } go to
+	text    []string // what each row of the source says, which a search reads
+	starts  []int    // the line each row starts on
+
+	cursor int  // the current line
+	offset int  // the first line shown
+	height int  // how many lines the last draw had room for
+	jump   bool // the first draw goes to the first change
+
+	prompt  string // what a key opened, ":" or "/", while it is typed; "" when none is
+	typed   string // what was typed of it
+	search  *regexp.Regexp
+	query   string // what search was made from, for the bar
+	notice  string // what the last key found, until the next
+	keyHelp bool   // ? shows the keys in place of the lines
 }
 
 // diffLoaded is the answer to reading a diff.
@@ -326,7 +339,7 @@ func (v *diffView) prepare(width int, st style.Style) {
 		return
 	}
 	v.width = width
-	v.lines, v.changes = nil, nil
+	v.lines, v.rows, v.numbers, v.changes, v.files, v.text, v.starts = nil, nil, nil, nil, nil, nil, nil
 	switch {
 	case v.split != nil:
 		v.prepareSplit(width, st)
@@ -334,11 +347,35 @@ func (v *diffView) prepare(width int, st style.Style) {
 		v.prepareUnified(width, st)
 	}
 	if v.cutOff {
-		v.lines = append(v.lines, st.Warning("too long: the rest is left out"))
+		v.add(st.Warning("too long: the rest is left out"), len(v.text)-1, 0)
 	}
 	if v.lines == nil {
 		v.lines = []string{}
 	}
+	v.cursor = max(min(v.cursor, len(v.lines)-1), 0)
+}
+
+// add appends a line showing row of the source.
+func (v *diffView) add(line string, row, number int) {
+	v.lines = append(v.lines, line)
+	v.rows = append(v.rows, row)
+	v.numbers = append(v.numbers, number)
+}
+
+// paint styles a piece of a line, with what the search finds standing out.
+func (v *diffView) paint(piece string, paint func(string) string, st style.Style) string {
+	if v.search == nil {
+		return paint(piece)
+	}
+	var b strings.Builder
+	at := 0
+	for _, m := range v.search.FindAllStringIndex(piece, -1) {
+		b.WriteString(paint(piece[at:m[0]]))
+		b.WriteString(st.Match(piece[m[0]:m[1]]))
+		at = m[1]
+	}
+	b.WriteString(paint(piece[at:]))
+	return b.String()
 }
 
 // prepareSplit lays the rows out in two columns; a long line wraps, and its side
@@ -351,7 +388,7 @@ func (v *diffView) prepareSplit(width int, st style.Style) {
 	digits := len(strconv.Itoa(last))
 	side := (width - 1) / 2
 	text := max(side-digits-3, 1) // the number, a space, the sign, a space
-	cell := func(no int, content, sign string, paint func(string) string, wrapped []string, i int) string {
+	cell := func(no int, sign string, paint func(string) string, wrapped []string, i int) string {
 		number, mark := strings.Repeat(" ", digits), " "
 		if i == 0 && no > 0 {
 			number, mark = fmt.Sprintf("%*d", digits, no), sign
@@ -361,14 +398,16 @@ func (v *diffView) prepareSplit(width int, st style.Style) {
 			piece = wrapped[i]
 		}
 		pad := strings.Repeat(" ", max(text-ansi.StringWidth(piece), 0))
-		return st.Muted(number) + " " + paint(mark+" "+piece) + pad
+		return st.Muted(number) + " " + paint(mark+" ") + v.paint(piece, paint, st) + pad
 	}
 	inChange := false
-	for _, r := range v.split {
+	for row, r := range v.split {
 		if r.changed && !inChange {
 			v.changes = append(v.changes, len(v.lines))
 		}
 		inChange = r.changed
+		v.text = append(v.text, shownText(r.left)+"\n"+shownText(r.right))
+		v.starts = append(v.starts, len(v.lines))
 		lefts, rights := wrapText(r.left, text), wrapText(r.right, text)
 		same := func(s string) string { return s }
 		removed, added := same, same
@@ -376,8 +415,17 @@ func (v *diffView) prepareSplit(width int, st style.Style) {
 		if r.changed {
 			removed, added, leftSign, rightSign = st.Removed, st.Added, "-", "+"
 		}
-		for i := range max(len(lefts), len(rights)) {
-			v.lines = append(v.lines, cell(r.leftNo, r.left, leftSign, removed, lefts, i)+st.Muted("│")+cell(r.rightNo, r.right, rightSign, added, rights, i))
+		number := r.rightNo
+		if number == 0 {
+			number = r.leftNo
+		}
+		for i := range max(len(lefts), len(rights), 1) {
+			line := cell(r.leftNo, leftSign, removed, lefts, i) + st.Muted("│") + cell(r.rightNo, rightSign, added, rights, i)
+			shown := 0
+			if i == 0 {
+				shown = number
+			}
+			v.add(line, row, shown)
 		}
 	}
 }
@@ -389,33 +437,174 @@ func wrapText(s string, width int) []string {
 	return strings.Split(ansi.Hardwrap(shownText(s), width, true), "\n")
 }
 
-// prepareUnified shows a commit's patch as git writes it, each file's start being
-// what n and p go to.
+// prepareUnified shows a commit's patch as git writes it.
 func (v *diffView) prepareUnified(width int, st style.Style) {
-	for _, line := range v.unified {
+	for row, line := range v.unified {
 		paint := func(s string) string { return s }
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
-			v.changes = append(v.changes, len(v.lines))
+			v.files = append(v.files, len(v.lines))
 			paint = st.Name
+		case strings.HasPrefix(line, "@@"):
+			v.changes = append(v.changes, len(v.lines))
+			paint = st.Muted
 		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "), strings.HasPrefix(line, "index "),
-			strings.HasPrefix(line, "new file "), strings.HasPrefix(line, "deleted file "), strings.HasPrefix(line, "@@"):
+			strings.HasPrefix(line, "new file "), strings.HasPrefix(line, "deleted file "):
 			paint = st.Muted
 		case strings.HasPrefix(line, "+"):
 			paint = st.Added
 		case strings.HasPrefix(line, "-"):
 			paint = st.Removed
 		}
-		for _, piece := range wrapText(line, width) {
-			v.lines = append(v.lines, paint(piece))
+		v.text = append(v.text, shownText(line))
+		v.starts = append(v.starts, len(v.lines))
+		pieces := wrapText(line, width)
+		if len(pieces) == 0 {
+			pieces = []string{""}
 		}
-		if line == "" {
-			v.lines = append(v.lines, "")
+		for _, piece := range pieces {
+			v.add(v.paint(piece, paint, st), row, 0)
 		}
 	}
 }
 
-// drawDiff draws the diff of the tab shown in area, or why there is none.
+// barKey is what the bar says of a key.
+type barKey struct {
+	keys, label string
+	keep        int // the higher, the longer it stays when the bar is short of room
+}
+
+// barKeys are the keys that can act on the tab now, in the order the bar shows
+// them. file says whether it is a file's diff.
+func (v *diffView) barKeys(file bool) []barKey {
+	if len(v.lines) == 0 {
+		return []barKey{{"C-q -", "close", 1}}
+	}
+	keys := []barKey{{"↑↓", "scroll", 1}, {"[ ]", "change", 5}}
+	if file {
+		keys = append(keys, barKey{":", "line", 3})
+	} else {
+		keys = append(keys, barKey{"{ }", "file", 3})
+	}
+	keys = append(keys, barKey{"/", "search", 4})
+	if v.search != nil {
+		keys = append(keys, barKey{"n N", "match", 6})
+	}
+	return append(keys, barKey{"?", "keys", 9})
+}
+
+// allKeys are what ? shows.
+func (v *diffView) allKeys(file bool) []barKey {
+	keys := []barKey{
+		{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
+		{"g G", "the first or last line", 0}, {"[ ]", "the change before or after", 0},
+	}
+	if file {
+		keys = append(keys, barKey{": and a number", "go to that line of the file", 0})
+	} else {
+		keys = append(keys, barKey{"{ }", "the file before or after", 0})
+	}
+	return append(keys,
+		barKey{"/ and text", "search; capitals make it exact", 0}, barKey{"n N", "the next or last match", 0},
+		barKey{"Esc", "end the search", 0}, barKey{"C-q -", "close the tab", 0}, barKey{"Alt+←", "the tab before", 0})
+}
+
+// bar is the bar of shortcuts at the bottom of the tab: what can act on it now and,
+// at its right end, where the current line is. What does not fit goes, the least
+// needed first.
+func (v *diffView) bar(file bool, width int, st style.Style) string {
+	if v.prompt != "" {
+		return v.prompt + v.typed + "_" + st.Muted("  Enter go  Esc cancel")
+	}
+	place := v.notice
+	if place == "" {
+		place = v.position(file)
+	}
+	keys := v.barKeys(file)
+	used := func(keys []barKey, place string) int {
+		n := 1 + ansi.StringWidth(place)
+		for _, k := range keys {
+			n += ansi.StringWidth(k.keys) + 1 + ansi.StringWidth(k.label) + 2
+		}
+		return n
+	}
+	for used(keys, place) > width && place != "" && len(keys) > 3 {
+		keys = dropLeast(keys)
+	}
+	if used(keys, place) > width {
+		place = ""
+	}
+	for used(keys, place) > width && len(keys) > 1 {
+		keys = dropLeast(keys)
+	}
+	var parts []string
+	for _, k := range keys {
+		parts = append(parts, st.Command(k.keys)+" "+st.Muted(k.label))
+	}
+	line := " " + strings.Join(parts, "  ")
+	if place != "" {
+		line += strings.Repeat(" ", max(width-style.Width(line)-ansi.StringWidth(place), 1)) + st.Muted(place)
+	}
+	return line
+}
+
+func dropLeast(keys []barKey) []barKey {
+	least := 0
+	for i, k := range keys {
+		if k.keep < keys[least].keep {
+			least = i
+		}
+	}
+	return slices.Delete(slices.Clone(keys), least, least+1)
+}
+
+// position says where the current line is.
+func (v *diffView) position(file bool) string {
+	if len(v.lines) == 0 {
+		return ""
+	}
+	if file {
+		return ofAll("change", v.changes, v.cursor) + " · " + fmt.Sprintf("line %d of %d", v.lineNumber(), v.lastNumber())
+	}
+	return ofAll("change", v.changes, v.cursor) + " · " + ofAll("file", v.files, v.cursor)
+}
+
+// ofAll says which of the starts the line is at or past.
+func ofAll(what string, starts []int, line int) string {
+	n := 0
+	for _, s := range starts {
+		if s <= line {
+			n++
+		}
+	}
+	return fmt.Sprintf("%s %d of %d", what, n, len(starts))
+}
+
+// lineNumber is the number of the file's line the current line is part of.
+func (v *diffView) lineNumber() int {
+	for i := v.cursor; i >= 0; i-- {
+		if v.numbers[i] > 0 {
+			return v.numbers[i]
+		}
+	}
+	return 0
+}
+
+func (v *diffView) lastNumber() int {
+	last := 0
+	for _, r := range v.split {
+		last = max(last, r.rightNo)
+	}
+	if last == 0 {
+		for _, r := range v.split {
+			last = max(last, r.leftNo)
+		}
+	}
+	return last
+}
+
+// drawDiff draws the diff of the tab shown in area, with its bar at the bottom, or
+// why there is none.
 func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	l := m.list()
 	v := l.diffs[l.active]
@@ -429,88 +618,255 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	case v.message != "":
 		top = append(top, st.Muted(v.message))
 	}
-	if v == nil || v.split == nil && v.unified == nil {
+	if v == nil {
 		uv.NewStyledString(strings.Join(top, "\n")).Draw(buf, area)
+		return
+	}
+	_, file := diffTabOf(l.active)
+	isFile := file != ""
+	width := max(area.Dx()-1, 1) // the first column says which line is current
+	if v.split != nil || v.unified != nil {
+		v.prepare(width, st)
+		if v.jump {
+			v.jump = false
+			if len(v.changes) > 0 {
+				v.goTo(v.changes[0])
+			}
+		}
+	} else {
+		v.lines = nil
+	}
+	content := area
+	if area.Dy() >= 3 { // too small for it, the lines come first
+		content.Max.Y--
+		uv.NewStyledString(v.bar(isFile, area.Dx(), st)).Draw(buf, uv.Rect(area.Min.X, content.Max.Y, area.Dx(), 1))
+	}
+	if v.keyHelp {
+		lines := []string{st.Heading(" Keys") + st.Muted("  Esc or ? closes"), ""}
+		for _, k := range v.allKeys(isFile) {
+			lines = append(lines, " "+st.Command(padded(k.keys, 16))+" "+st.Muted(k.label))
+		}
+		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, content)
+		return
+	}
+	if v.split == nil && v.unified == nil {
+		uv.NewStyledString(strings.Join(top, "\n")).Draw(buf, content)
 		return
 	}
 	if v.heading != "" {
 		top = append(top, st.Muted(ansi.Truncate(v.heading, area.Dx(), "…")))
 	}
 	if v.split != nil {
-		side := (area.Dx() - 1) / 2
-		top = append(top, st.Heading(ansi.Truncate(padded(" HEAD", side), side, ""))+st.Muted("│")+st.Heading(ansi.Truncate(" uncommitted", area.Dx()-side-1, "")))
+		side := (width - 1) / 2
+		top = append(top, " "+st.Heading(ansi.Truncate(padded(" HEAD", side), side, ""))+st.Muted("│")+st.Heading(ansi.Truncate(" uncommitted", width-side-1, "")))
 	}
-	v.prepare(area.Dx(), st)
-	body := max(area.Dy()-len(top), 1)
+	body := max(content.Dy()-len(top), 1)
 	v.height = body
-	if v.jump {
-		v.jump = false
-		if len(v.changes) > 0 {
-			v.offset = v.changes[0] - jumpContext
+	v.offset = max(min(v.offset, len(v.lines)-body), 0)
+	v.offset = max(min(v.offset, v.cursor), v.cursor-body+1)
+	shown := top
+	for i := v.offset; i < min(v.offset+body, len(v.lines)); i++ {
+		if i == v.cursor {
+			shown = append(shown, st.Focused("▸")+st.ActiveRow(v.lines[i]))
+		} else {
+			shown = append(shown, " "+v.lines[i])
 		}
 	}
-	v.offset = max(min(v.offset, len(v.lines)-body), 0)
-	shown := append(top, v.lines[v.offset:min(v.offset+body, len(v.lines))]...)
-	uv.NewStyledString(strings.Join(shown, "\n")).Draw(buf, area)
+	uv.NewStyledString(strings.Join(shown, "\n")).Draw(buf, content)
 }
 
 func padded(s string, width int) string {
 	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
 }
 
+// goTo makes line current, with what comes before it in view.
+func (v *diffView) goTo(line int) {
+	v.cursor = max(min(line, len(v.lines)-1), 0)
+	v.offset = max(v.cursor-jumpContext, 0)
+}
+
+// moveBy moves the current line; the view follows it when it is drawn.
+func (v *diffView) moveBy(by int) {
+	v.cursor = max(min(v.cursor+by, len(v.lines)-1), 0)
+}
+
+// next goes to the first of starts past the current line.
+func (v *diffView) next(starts []int) {
+	if i := slices.IndexFunc(starts, func(s int) bool { return s > v.cursor }); i >= 0 {
+		v.goTo(starts[i])
+	}
+}
+
+// previous goes to the last of starts before the current line.
+func (v *diffView) previous(starts []int) {
+	for _, s := range slices.Backward(starts) {
+		if s < v.cursor {
+			v.goTo(s)
+			return
+		}
+	}
+}
+
+// goToNumber goes to the line of the file numbered n, or the nearest there is.
+func (v *diffView) goToNumber(n int) {
+	best := -1
+	for i, no := range v.numbers {
+		if no == 0 {
+			continue
+		}
+		best = i
+		if no >= n {
+			break
+		}
+	}
+	if best >= 0 {
+		v.goTo(best)
+	}
+}
+
+// setSearch searches for query: a query with capitals is exact, one without is not.
+func (v *diffView) setSearch(query string) {
+	pattern := regexp.QuoteMeta(query)
+	if strings.ToLower(query) == query {
+		pattern = "(?i)" + pattern
+	}
+	v.search, v.query = regexp.MustCompile(pattern), query
+	v.width = 0 // the lines are worked out again, for the matches to stand out
+}
+
+// clearSearch ends the search.
+func (v *diffView) clearSearch() {
+	v.search, v.query = nil, ""
+	v.width = 0
+}
+
+// nextMatch goes to the next row the search finds, going round at the ends; step
+// is 1 or -1. from says to count from the current row itself, as a new search does.
+func (v *diffView) nextMatch(step int, from bool) {
+	if v.search == nil || len(v.text) == 0 {
+		return
+	}
+	n := len(v.text)
+	at := 0
+	if v.cursor < len(v.rows) {
+		at = v.rows[v.cursor]
+	}
+	if !from {
+		at += step
+	}
+	for range n {
+		row := ((at % n) + n) % n
+		if v.search.MatchString(v.text[row]) {
+			v.goTo(v.starts[row])
+			return
+		}
+		at += step
+	}
+	v.notice = "no match: " + v.query
+}
+
 // diffKey takes a key while the agent pane shows a diff.
 func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
-	key, ok := msg.(tea.KeyPressMsg)
 	l := m.list()
 	v := l.diffs[l.active]
-	if !ok || v == nil {
+	if v == nil {
+		return nil
+	}
+	if paste, ok := msg.(tea.PasteMsg); ok {
+		if v.prompt != "" {
+			v.typed += strings.Join(strings.Fields(paste.Content), " ")
+		}
+		return nil
+	}
+	key, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	_, file := diffTabOf(l.active)
+	v.notice = ""
+	if v.prompt != "" {
+		v.promptKey(key)
+		return nil
+	}
+	if v.keyHelp {
+		if name := key.String(); name == "esc" || name == "?" {
+			v.keyHelp = false
+		}
 		return nil
 	}
 	page := max(v.height-1, 1)
 	switch name := key.String(); {
 	case slices.Contains(upKeys, name):
-		v.scroll(-1)
+		v.moveBy(-1)
 	case slices.Contains(downKeys, name):
-		v.scroll(1)
-	case name == "pgup":
-		v.scroll(-page)
+		v.moveBy(1)
+	case name == "pgup", name == "b":
+		v.moveBy(-page)
 	case name == "pgdown", name == "space", name == " ":
-		v.scroll(page)
+		v.moveBy(page)
 	case name == "home", name == "g":
-		v.offset = 0
+		v.cursor = 0
 	case name == "end", name == "G":
-		v.offset = len(v.lines)
+		v.cursor = max(len(v.lines)-1, 0)
+	case name == "[":
+		v.previous(v.changes)
+	case name == "]":
+		v.next(v.changes)
+	case name == "{" && file == "":
+		v.previous(v.files)
+	case name == "}" && file == "":
+		v.next(v.files)
+	case name == ":" && file != "":
+		v.prompt, v.typed = ":", ""
+	case name == "/":
+		v.prompt, v.typed = "/", ""
 	case name == "n":
-		v.nextChange()
-	case name == "p":
-		v.previousChange()
+		v.nextMatch(1, false)
+	case name == "N":
+		v.nextMatch(-1, false)
+	case name == "?":
+		v.keyHelp = true
+	case name == "esc":
+		v.clearSearch()
 	}
 	return nil
 }
 
-func (v *diffView) scroll(by int) { v.offset = max(min(v.offset+by, len(v.lines)-1), 0) }
-
-// nextChange goes to the first change below the top of what is shown, past the
-// lines it keeps above the one it goes to.
-func (v *diffView) nextChange() {
-	for _, c := range v.changes {
-		if c-jumpContext > v.offset {
-			v.offset = c - jumpContext
-			return
-		}
+// promptKey takes a key while : or / is typed.
+func (v *diffView) promptKey(key tea.KeyPressMsg) {
+	switch name := key.String(); {
+	case name == "esc":
+		v.prompt = ""
+	case name == "enter":
+		v.finishPrompt()
+	case name == "backspace" && v.typed != "":
+		r := []rune(v.typed)
+		v.typed = string(r[:len(r)-1])
+	case typed(key):
+		v.typed += key.Text
 	}
 }
 
-func (v *diffView) previousChange() {
-	for _, c := range slices.Backward(v.changes) {
-		if c-jumpContext < v.offset {
-			v.offset = max(c-jumpContext, 0)
+// finishPrompt does what was typed.
+func (v *diffView) finishPrompt() {
+	prompt, text := v.prompt, strings.TrimSpace(v.typed)
+	v.prompt, v.typed = "", ""
+	switch {
+	case text == "":
+	case prompt == ":":
+		n, err := strconv.Atoi(text)
+		if err != nil || n < 1 {
+			v.notice = "not a line number: " + text
 			return
 		}
+		v.goToNumber(n)
+	default:
+		v.setSearch(text)
+		v.nextMatch(1, true)
 	}
 }
 
-// diffWheel scrolls the diff shown.
+// diffWheel scrolls the diff shown, the current line staying in view.
 func (m *Model) diffWheel(msg tea.MouseWheelMsg) {
 	l := m.list()
 	v := l.diffs[l.active]
@@ -519,8 +875,37 @@ func (m *Model) diffWheel(msg tea.MouseWheelMsg) {
 	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		v.scroll(-diffWheelLines)
+		v.offset = max(v.offset-diffWheelLines, 0)
 	case tea.MouseWheelDown:
-		v.scroll(diffWheelLines)
+		v.offset = max(min(v.offset+diffWheelLines, len(v.lines)-v.height), 0)
 	}
+	v.cursor = max(min(v.cursor, v.offset+max(v.height, 1)-1), v.offset)
+}
+
+// diffClick makes the line clicked current; row counts from the pane's top.
+func (m *Model) diffClick(row int) {
+	l := m.list()
+	v := l.diffs[l.active]
+	if v == nil || v.keyHelp {
+		return
+	}
+	line := v.offset + row - v.topRows()
+	if line >= v.offset && line < min(v.offset+v.height, len(v.lines)) {
+		v.cursor = line
+	}
+}
+
+// topRows is how many rows above the lines the last draw took.
+func (v *diffView) topRows() int {
+	rows := 0
+	if v.err != "" {
+		rows++
+	}
+	if v.heading != "" {
+		rows++
+	}
+	if v.split != nil {
+		rows++
+	}
+	return rows
 }

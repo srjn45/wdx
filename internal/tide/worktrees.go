@@ -19,7 +19,7 @@ import (
 
 const (
 	refreshKey   = "f" // of the menu
-	worktreeHint = "↑↓ select  ←→ fold  Enter diff  f refresh  Alt+arrows move  C-q menu"
+	worktreeHint = "↑↓ select  ←→ files  Enter diff  f refresh  Alt+arrows move  C-q menu"
 	rowSeparator = "\x00"
 )
 
@@ -64,7 +64,7 @@ func (m *Model) worktreeRows() []worktreeRow {
 	var rows []worktreeRow
 	for _, w := range m.worktreeStatuses() {
 		rows = append(rows, worktreeRow{worktree: w})
-		if l.worktreesClosed[w.Name] {
+		if !l.worktreesOpen[w.Name] {
 			continue
 		}
 		for i := range w.Files {
@@ -140,9 +140,7 @@ func (m *Model) worktreeFoldLeft() {
 		m.moveToWorktree(slices.IndexFunc(rows, func(o worktreeRow) bool { return o.file == nil && o.worktree.Name == r.worktree.Name }))
 		return
 	}
-	if len(r.worktree.Files) > 0 {
-		m.foldWorktree(r.worktree.Name, true)
-	}
+	m.foldWorktree(r.worktree.Name, true)
 }
 
 // worktreeFoldRight opens the worktree under the cursor.
@@ -155,13 +153,13 @@ func (m *Model) worktreeFoldRight() {
 
 func (m *Model) foldWorktree(name string, closed bool) {
 	l := m.list()
-	if l.worktreesClosed == nil {
-		l.worktreesClosed = map[string]bool{}
+	if l.worktreesOpen == nil {
+		l.worktreesOpen = map[string]bool{}
 	}
 	if closed {
-		l.worktreesClosed[name] = true
+		delete(l.worktreesOpen, name)
 	} else {
-		delete(l.worktreesClosed, name)
+		l.worktreesOpen[name] = true
 	}
 }
 
@@ -208,6 +206,19 @@ func (m *Model) worktreesSync() tea.Cmd {
 		return nil
 	}
 	return m.refreshWorktrees("")
+}
+
+// worktreeRowActive reports whether the tab shown is the row's; a folded worktree
+// carries the mark of its file's tab.
+func (m *Model) worktreeRowActive(r worktreeRow) bool {
+	l := m.list()
+	if r.tab() == l.active {
+		return true
+	}
+	if worktree, file := diffTabOf(l.active); r.file == nil && isDiffTab(l.active) && file != "" {
+		return worktree == r.worktree.Name && !l.worktreesOpen[worktree]
+	}
+	return false
 }
 
 // worktreeMark is a file's status, which tells it with color off too.
@@ -294,27 +305,20 @@ func stripped(s string) string { return ansi.Strip(s) }
 func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) string {
 	st := m.st
 	fold := "  "
+	folded := !m.list().worktreesOpen[w.Name]
 	if len(w.Files) > 0 {
 		fold = foldOpen + " "
-		if m.list().worktreesClosed[w.Name] {
+		if folded {
 			fold = foldClosed + " "
 		}
 	}
 	room -= ansi.StringWidth(fold)
-	summary := worktreeSummary(w)
-	mark := ""
-	if agents := m.agentsIn(w.Name); len(agents) > 0 {
-		mark = "● " + agents[0]
-		if len(agents) > 1 {
-			mark = fmt.Sprintf("● %d agents", len(agents))
+	detail := ""
+	for _, d := range worktreeDetails(w, folded, m.agentsIn(w.Name)) {
+		if room-ansi.StringWidth(d)-1 >= minAgentName {
+			detail = d
+			break
 		}
-	}
-	detail := strings.TrimSpace(summary + "  " + mark)
-	if room-ansi.StringWidth(detail)-1 < minAgentName {
-		detail = summary
-	}
-	if room-ansi.StringWidth(detail)-1 < minAgentName {
-		detail = ""
 	}
 	if detail != "" {
 		room -= ansi.StringWidth(detail) + 1
@@ -336,6 +340,33 @@ func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) str
 		}
 	}
 	return st.Muted(fold) + name + gap + styled
+}
+
+// worktreeDetails are what a worktree's row may say at its end, the most first: a
+// narrow pane takes the longest that fits. A folded row must say it has files, or
+// it would look clean.
+func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []string {
+	summary, short := worktreeSummary(w), worktreeSummary(w)
+	if w.Ahead != nil && *w.Ahead > 0 {
+		short = fmt.Sprintf("↑%d", *w.Ahead)
+	}
+	files := ""
+	if folded && len(w.Files) == 1 {
+		files = "1 file"
+	} else if folded && len(w.Files) > 1 {
+		files = fmt.Sprintf("%d files", len(w.Files))
+	}
+	mark := ""
+	if len(agents) == 1 {
+		mark = "● " + agents[0]
+	} else if len(agents) > 1 {
+		mark = fmt.Sprintf("● %d agents", len(agents))
+	}
+	joined := func(parts ...string) string {
+		kept := slices.DeleteFunc(parts, func(p string) bool { return p == "" })
+		return strings.Join(kept, " · ")
+	}
+	return []string{joined(summary, files, mark), joined(summary, files), joined(short, files), joined(summary), joined(files), ""}
 }
 
 // tabLeaf is the end of a path, as a tab's title has room for.

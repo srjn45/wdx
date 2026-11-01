@@ -661,6 +661,9 @@ func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 				cmd = s.click(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Dx()-2, f.Dy()-2)
 			}
 			if p == agent && m.confirm == nil {
+				if m.diffShown() {
+					m.diffClick(at.Y - f.Min.Y - 1)
+				}
 				cmd = m.valueClick(at.X-f.Min.X-1, at.Y-f.Min.Y-1, f.Inset(1))
 			}
 		}
