@@ -396,6 +396,63 @@ func (c *Client) UnverifyWorktreeFile(ctx context.Context, name, path, ref strin
 	return err
 }
 
+// WorktreeComments lists the comments of the worktree name, in every state.
+func (c *Client) WorktreeComments(ctx context.Context, name, ref, dir string) (api.WorktreeCommentList, error) {
+	r, err := c.api.ListWorktreeCommentsWithResponse(ctx, name, &api.ListWorktreeCommentsParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeCommentList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// AddWorktreeComment saves a comment on a line of a diff of the worktree name.
+func (c *Client) AddWorktreeComment(ctx context.Context, name, ref string, body api.WorktreeCommentCreate) error {
+	r, err := c.api.CreateWorktreeCommentWithResponse(ctx, name, &api.CreateWorktreeCommentParams{Project: nonEmpty(ref)}, body)
+	if err != nil {
+		return err
+	}
+	if r.StatusCode() == http.StatusCreated {
+		return nil
+	}
+	_, err = result[struct{}](r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault)
+	return err
+}
+
+// EditWorktreeComment changes the text of a comment not sent yet.
+func (c *Client) EditWorktreeComment(ctx context.Context, name, id, ref, body string) error {
+	r, err := c.api.EditWorktreeCommentWithResponse(ctx, name, id, &api.EditWorktreeCommentParams{Project: nonEmpty(ref)}, api.WorktreeCommentEdit{Body: body})
+	if err != nil {
+		return err
+	}
+	if r.StatusCode() == http.StatusOK {
+		return nil
+	}
+	_, err = result[struct{}](r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault)
+	return err
+}
+
+// DeleteWorktreeComment deletes a comment not sent yet.
+func (c *Client) DeleteWorktreeComment(ctx context.Context, name, id, ref string) error {
+	r, err := c.api.DeleteWorktreeCommentWithResponse(ctx, name, id, &api.DeleteWorktreeCommentParams{Project: nonEmpty(ref)})
+	if err != nil {
+		return err
+	}
+	if r.StatusCode() == http.StatusOK {
+		return nil
+	}
+	_, err = result[struct{}](r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault)
+	return err
+}
+
+// SendWorktreeReview sends the comments of the worktree name not sent yet to agent.
+func (c *Client) SendWorktreeReview(ctx context.Context, name, ref, agent, note string) (api.WorktreeReviewResult, error) {
+	r, err := c.api.SendWorktreeReviewWithResponse(ctx, name, &api.SendWorktreeReviewParams{Project: nonEmpty(ref)}, api.WorktreeReview{Agent: agent, Note: nonEmpty(note)})
+	if err != nil {
+		return api.WorktreeReviewResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // RefreshWorktrees asks for the worktree name of the project ref to be read
 // again, or all of them when name is "".
 func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string) error {

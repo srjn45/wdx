@@ -256,3 +256,93 @@ func TestVerifiedMark(t *testing.T) {
 		t.Errorf("outside: %v, %s", err, r.Body)
 	}
 }
+
+// TestWorktreeReview follows comments from a draft through a review: nothing is sent
+// with no agent to take it, and they go together when one does.
+func TestWorktreeReview(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	writeIn(t, dir, "file", "one\n")
+	on := true
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: &on})
+	waitEvent(t, events, "the clone", func(e event) bool { _, ok := worktreeStatus(e, "main"); return ok })
+
+	ctx := t.Context()
+	project := "api"
+	quote := "one"
+	create := &api.CreateWorktreeCommentParams{Project: &project}
+	add := func(body string, line int) api.WorktreeComment {
+		t.Helper()
+		r, err := td.client.CreateWorktreeCommentWithResponse(ctx, "main", create, api.WorktreeCommentCreate{
+			File: "file", Line: line, Side: api.WorktreeCommentCreateSideNew, View: api.WorktreeCommentCreateViewUncommitted, Quote: &quote, Body: body,
+		})
+		if err != nil || r.JSON201 == nil {
+			t.Fatalf("add: %v, %s", err, r.Body)
+		}
+		return r.JSON201.Comment
+	}
+	if r, err := td.client.CreateWorktreeCommentWithResponse(ctx, "main", create, api.WorktreeCommentCreate{File: "file", Line: 1, Side: api.WorktreeCommentCreateSideNew, View: api.WorktreeCommentCreateViewUncommitted, Body: "  "}); err != nil || r.StatusCode() != http.StatusUnprocessableEntity {
+		t.Errorf("empty: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.CreateWorktreeCommentWithResponse(ctx, "main", create, api.WorktreeCommentCreate{File: "../x", Line: 1, Side: api.WorktreeCommentCreateSideNew, View: api.WorktreeCommentCreateViewUncommitted, Body: "x"}); err != nil || r.StatusCode() != http.StatusUnprocessableEntity {
+		t.Errorf("outside: %v, %s", err, r.Body)
+	}
+	first := add("keep it", 1)
+	second := add("to delete", 2)
+	waitEvent(t, events, "both", func(e event) bool {
+		w, ok := worktreeStatus(e, "main")
+		return ok && len(w.Comments) == 2
+	})
+
+	// Edited and deleted before it goes.
+	if r, err := td.client.EditWorktreeCommentWithResponse(ctx, "main", first.Id, &api.EditWorktreeCommentParams{Project: &project}, api.WorktreeCommentEdit{Body: "keep the check"}); err != nil || r.StatusCode() != http.StatusOK {
+		t.Fatalf("edit: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.DeleteWorktreeCommentWithResponse(ctx, "main", second.Id, &api.DeleteWorktreeCommentParams{Project: &project}); err != nil || r.StatusCode() != http.StatusOK {
+		t.Fatalf("delete: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "one, edited", func(e event) bool {
+		w, ok := worktreeStatus(e, "main")
+		return ok && len(w.Comments) == 1 && w.Comments[0].Body == "keep the check"
+	})
+
+	// An edit to the file says so.
+	writeIn(t, dir, "file", "two\n")
+	if r, err := td.client.RefreshWorktreesWithResponse(ctx, "api", &api.RefreshWorktreesParams{}); err != nil || r.StatusCode() != http.StatusAccepted {
+		t.Fatalf("refresh: %v", err)
+	}
+	waitEvent(t, events, "the file changed", func(e event) bool {
+		w, ok := worktreeStatus(e, "main")
+		return ok && len(w.Comments) == 1 && w.Comments[0].Changed
+	})
+
+	// With no agent to take it, it stays a draft.
+	review := &api.SendWorktreeReviewParams{Project: &project}
+	if r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", review, api.WorktreeReview{Agent: "nobody"}); err != nil || r.StatusCode() != http.StatusNotFound {
+		t.Fatalf("no agent: %v, %s", err, r.Body)
+	}
+	list, err := td.client.ListWorktreeCommentsWithResponse(ctx, "main", &api.ListWorktreeCommentsParams{Project: &project})
+	if err != nil || list.JSON200 == nil || len(list.JSON200.Comments) != 1 || list.JSON200.Comments[0].State != api.WorktreeCommentStateDraft {
+		t.Fatalf("after a refusal: %v, %s", err, list.Body)
+	}
+
+	// Sent, it leaves the drafts, and there is nothing left to send.
+	a := td.createAgent(t, "api", dir, "reviewer")
+	r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", review, api.WorktreeReview{Agent: "id:" + a.Id})
+	if err != nil || r.JSON200 == nil || r.JSON200.Comments != 1 || r.JSON200.Result != api.ResultQueued {
+		t.Fatalf("send: %v, %s", err, r.Body)
+	}
+	waitEvent(t, events, "no drafts", func(e event) bool {
+		w, ok := worktreeStatus(e, "main")
+		return ok && len(w.Comments) == 0
+	})
+	list, err = td.client.ListWorktreeCommentsWithResponse(ctx, "main", &api.ListWorktreeCommentsParams{Project: &project})
+	if err != nil || list.JSON200 == nil || len(list.JSON200.Comments) != 1 || list.JSON200.Comments[0].State != api.WorktreeCommentStateSent {
+		t.Fatalf("after sending: %v, %s", err, list.Body)
+	}
+	if r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", review, api.WorktreeReview{Agent: "id:" + a.Id}); err != nil || r.StatusCode() != http.StatusUnprocessableEntity {
+		t.Errorf("nothing to send: %v, %s", err, r.Body)
+	}
+}

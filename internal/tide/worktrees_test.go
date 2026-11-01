@@ -701,6 +701,210 @@ func TestVerifyInATide(t *testing.T) {
 	p.until(t, "no mark", func(m *Model) bool { return len(m.verifiedIn("work")) == 0 })
 }
 
+func TestUnifiedAnchors(t *testing.T) {
+	t.Parallel()
+	v := &diffView{unified: []string{
+		"diff --git a/f b/f", "index 1..abc 100644", "--- a/f", "+++ b/f", "@@ -5,3 +5,3 @@ fn",
+		" same", "-old", "+new", `\ No newline at end of file`,
+	}}
+	v.prepare(80, style.New(false))
+	want := map[int]lineAnchor{
+		5: {"f", 5, api.WorktreeCommentSideNew, "same", "abc"},
+		6: {"f", 6, api.WorktreeCommentSideOld, "old", "abc"},
+		7: {"f", 6, api.WorktreeCommentSideNew, "new", "abc"},
+	}
+	for i, a := range v.anchors {
+		if a != want[i] {
+			t.Errorf("line %d (%q): %+v, want %+v", i, v.unified[i], a, want[i])
+		}
+	}
+}
+
+// TestCommentsShowUnderTheirLines keeps the current line on its row as comments come,
+// and only shows those written on this view.
+func TestCommentsShowUnderTheirLines(t *testing.T) {
+	t.Parallel()
+	main := "main"
+	comment := func(id string, line int, view api.WorktreeCommentView, changed bool) api.WorktreeComment {
+		return api.WorktreeComment{Id: id, File: "f", Line: line, Side: api.WorktreeCommentSideNew, View: view, Body: "text of " + id, Changed: changed}
+	}
+	m := worktreesModel(api.WorktreeStatus{
+		Name: "w", Path: "/w", Base: &main, Ahead: aheadBy(0),
+		Comments: []api.WorktreeComment{comment("one", 3, api.WorktreeCommentViewUncommitted, false), comment("two", 10, api.WorktreeCommentViewUncommitted, true), comment("gone", 90, api.WorktreeCommentViewUncommitted, false), comment("other", 5, api.WorktreeCommentViewCommitted, false)},
+	})
+	m.layout.setFocus(agent)
+	l := m.list()
+	tab := fileDiffTab("w", "f")
+	l.openTab(tab)
+	v := &diffView{asked: true, file: "f", split: longFile(30)}
+	v.seen = m.diffSeen(tab)
+	l.diffs = map[string]*diffView{tab: v}
+	got := text(m)
+	for _, want := range []string{"✎ text of one", "✎ text of two", "file changed", "1 comment on lines not shown here", "s send (4)", "c comment"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "text of other") {
+		t.Errorf("a comment of the other view shows:\n%s", got)
+	}
+	keys(m, "down", "down")
+	if c, ok := v.commentOf(); !ok || c.Id != "one" {
+		t.Errorf("on line 3: %+v, %v", c, ok)
+	}
+	if got := text(m); !strings.Contains(got, "e edit") || !strings.Contains(got, "d delete") {
+		t.Errorf("no keys for it:\n%s", got)
+	}
+	keys(m, "down")
+	if c, ok := v.commentOf(); !ok || c.Id != "one" {
+		t.Errorf("on the comment itself: %+v, %v", c, ok)
+	}
+	if _, ok := v.anchorOf(); ok {
+		t.Error("a comment's own line can be commented on")
+	}
+	keys(m, commentKey)
+	if m.comment != nil || !strings.Contains(text(m), "not on a line of a file") {
+		t.Errorf("c on a comment:\n%s", text(m))
+	}
+	keys(m, "up")
+
+	// c opens a box on the line, and Esc leaves it.
+	keys(m, commentKey)
+	if m.comment == nil || m.comment.anchor.line != 3 || m.comment.anchor.quote != "line3" {
+		t.Fatalf("box: %+v", m.comment)
+	}
+	got = text(m)
+	if !strings.Contains(got, "f, line 3") || !strings.Contains(got, "line3") {
+		t.Errorf("the box does not say the line:\n%s", got)
+	}
+	keys(m, "hello", "backspace")
+	if m.comment.text != "hell" {
+		t.Errorf("text: %q", m.comment.text)
+	}
+	keys(m, "esc")
+	if m.comment != nil {
+		t.Error("Esc left the box")
+	}
+
+	// A comment coming above leaves the current line on its row.
+	keys(m, "G")
+	text(m)
+	row := v.rows[v.cursor]
+	(*m.following.project.WorktreeStatuses)[0].Comments = append((*m.following.project.WorktreeStatuses)[0].Comments, comment("new", 1, api.WorktreeCommentViewUncommitted, false))
+	text(m)
+	if v.rows[v.cursor] != row {
+		t.Errorf("the current line moved from row %d to %d", row, v.rows[v.cursor])
+	}
+
+	// e opens on its text.
+	v.cursor = v.starts[2]
+	keys(m, editKey)
+	if m.comment == nil || m.comment.editing != "one" || m.comment.text != "text of one" {
+		t.Errorf("edit: %+v", m.comment)
+	}
+	keys(m, "esc")
+
+	// A failure leaves the box with its text, and why.
+	m.comment = &commentBox{worktree: "w", anchor: lineAnchor{file: "f", line: 1}, text: "keep me", sending: true}
+	m.Update(commentAnswered{err: errors.New("no such worktree")})
+	if m.comment == nil || m.comment.text != "keep me" || !strings.Contains(text(m), "no such worktree") {
+		t.Errorf("failure: %+v", m.comment)
+	}
+	m.Update(commentAnswered{})
+	if m.comment != nil {
+		t.Error("a success left the box")
+	}
+}
+
+func TestReviewBox(t *testing.T) {
+	t.Parallel()
+	main := "main"
+	drafts := []api.WorktreeComment{{Id: "a", File: "f", Line: 1, Side: api.WorktreeCommentSideNew, View: api.WorktreeCommentViewUncommitted, Body: "x"}}
+	m := worktreesModel(api.WorktreeStatus{Name: "w", Path: "/w", Base: &main, Ahead: aheadBy(0), Comments: drafts, Files: []api.WorktreeFile{changed("f", api.WorktreeFileStatusM)}})
+	m.layout.setFocus(agent)
+	l := m.list()
+	l.openTab(committedTab("w"))
+	view := uncommittedPrefix + "w"
+	v := &diffView{asked: true, uncommitted: true, unified: []string{"diff --git a/f b/f", "@@ -1 +1 @@", "-a", "+b"}}
+	v.seen = m.diffSeen(view)
+	l.diffs = map[string]*diffView{view: v}
+
+	*m.following.project.Agents = nil
+	keys(m, reviewKey)
+	if m.commit != nil || !strings.Contains(text(m), "the comments stay") {
+		t.Fatalf("no agent:\n%s", text(m))
+	}
+	*m.following.project.Agents = []api.Agent{runningAgent("a", "/w", api.AgentActivityIdle)}
+	keys(m, reviewKey)
+	if m.commit == nil || m.commit.review != 1 {
+		t.Fatalf("box: %+v", m.commit)
+	}
+	if got := text(m); !strings.Contains(got, "Send review") || !strings.Contains(got, "1 comment to a") {
+		t.Errorf("box:\n%s", got)
+	}
+	keys(m, "esc")
+
+	// Asking to commit warns of them.
+	keys(m, commitKey)
+	if got := text(m); !strings.Contains(got, "1 comment not sent") {
+		t.Errorf("no warning:\n%s", got)
+	}
+}
+
+// TestReviewInATide goes through a real daemon, to a real agent's inbox.
+func TestReviewInATide(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	writeFile(t, filepath.Join(dir, "file"), "one\n")
+	if _, err := h.client().CreateAgent(t.Context(), api.CreateAgent{Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the worktree and its agent", func(m *Model) bool { return m.hasUncommitted("main") && len(m.runningAgentsIn("main")) == 1 })
+	m := p.m
+	m.moveToWorktree(0)
+	p.keys("enter")
+	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "+one") })
+	v := m.shownDiff()
+	line := slices.IndexFunc(v.unified, func(s string) bool { return s == "+one" })
+	v.cursor = v.starts[line]
+
+	p.keys(commentKey, "keep this", "enter")
+	p.until(t, "the comment under its line", func(m *Model) bool {
+		got := text(m)
+		return m.comment == nil && strings.Contains(got, "✎ keep this") && strings.Contains(got, "s send (1)")
+	})
+	v.cursor = v.starts[line]
+	p.keys(editKey, "!", "enter")
+	p.until(t, "the comment edited", func(m *Model) bool { return strings.Contains(text(m), "✎ keep this!") })
+
+	p.keys(reviewKey, "first note", "enter")
+	p.until(t, "the comment sent", func(m *Model) bool { return m.commit == nil && len(m.draftComments("main")) == 0 })
+	if got := text(m); strings.Contains(got, "keep this") || strings.Contains(got, "s send") {
+		t.Errorf("a sent comment shows:\n%s", got)
+	}
+	list, err := h.client().WorktreeComments(t.Context(), "main", "app", "")
+	if err != nil || len(list.Comments) != 1 || list.Comments[0].State != api.WorktreeCommentStateSent || list.Comments[0].Body != "keep this!" || list.Comments[0].Line != 1 {
+		t.Errorf("kept: %+v, %v", list, err)
+	}
+
+	// d deletes one not sent.
+	v = m.shownDiff()
+	line = slices.IndexFunc(v.unified, func(s string) bool { return s == "+one" })
+	v.cursor = v.starts[line]
+	p.keys(commentKey, "to go", "enter")
+	p.until(t, "another", func(m *Model) bool {
+		return m.comment == nil && len(m.draftComments("main")) == 1 && strings.Contains(text(m), "✎ to go")
+	})
+	v.cursor = v.starts[line]
+	p.keys(deleteKey)
+	p.until(t, "it deleted", func(m *Model) bool { return len(m.draftComments("main")) == 0 })
+}
+
 // TestBarOnlyInDiffs: the bar is the diff tabs', not tide's.
 func TestBarOnlyInDiffs(t *testing.T) {
 	t.Parallel()

@@ -414,6 +414,96 @@ func (e TerminalState) Valid() bool {
 	}
 }
 
+// Defines values for WorktreeCommentSide.
+const (
+	WorktreeCommentSideNew WorktreeCommentSide = "new"
+	WorktreeCommentSideOld WorktreeCommentSide = "old"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeCommentSide enum.
+func (e WorktreeCommentSide) Valid() bool {
+	switch e {
+	case WorktreeCommentSideNew:
+		return true
+	case WorktreeCommentSideOld:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorktreeCommentState.
+const (
+	WorktreeCommentStateDraft WorktreeCommentState = "draft"
+	WorktreeCommentStateSent  WorktreeCommentState = "sent"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeCommentState enum.
+func (e WorktreeCommentState) Valid() bool {
+	switch e {
+	case WorktreeCommentStateDraft:
+		return true
+	case WorktreeCommentStateSent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorktreeCommentView.
+const (
+	WorktreeCommentViewCommitted   WorktreeCommentView = "committed"
+	WorktreeCommentViewUncommitted WorktreeCommentView = "uncommitted"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeCommentView enum.
+func (e WorktreeCommentView) Valid() bool {
+	switch e {
+	case WorktreeCommentViewCommitted:
+		return true
+	case WorktreeCommentViewUncommitted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorktreeCommentCreateSide.
+const (
+	WorktreeCommentCreateSideNew WorktreeCommentCreateSide = "new"
+	WorktreeCommentCreateSideOld WorktreeCommentCreateSide = "old"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeCommentCreateSide enum.
+func (e WorktreeCommentCreateSide) Valid() bool {
+	switch e {
+	case WorktreeCommentCreateSideNew:
+		return true
+	case WorktreeCommentCreateSideOld:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorktreeCommentCreateView.
+const (
+	WorktreeCommentCreateViewCommitted   WorktreeCommentCreateView = "committed"
+	WorktreeCommentCreateViewUncommitted WorktreeCommentCreateView = "uncommitted"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeCommentCreateView enum.
+func (e WorktreeCommentCreateView) Valid() bool {
+	switch e {
+	case WorktreeCommentCreateViewCommitted:
+		return true
+	case WorktreeCommentCreateViewUncommitted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorktreeCommittedFileStatus.
 const (
 	WorktreeCommittedFileStatusA WorktreeCommittedFileStatus = "A"
@@ -960,6 +1050,73 @@ type Worktree struct {
 	Present *bool `json:"present,omitempty"`
 }
 
+// WorktreeComment defines model for WorktreeComment.
+type WorktreeComment struct {
+	Body string `json:"body"`
+
+	// Changed The file differs from what was seen. Set on drafts.
+	Changed   bool      `json:"changed"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// File Relative to the worktree.
+	File string `json:"file"`
+	Id   string `json:"id"`
+	Line int    `json:"line"`
+
+	// Quote The line as it was seen.
+	Quote string `json:"quote"`
+
+	// Side The file now, or a line removed from it.
+	Side  WorktreeCommentSide  `json:"side"`
+	State WorktreeCommentState `json:"state"`
+
+	// View Which diff it was written on.
+	View WorktreeCommentView `json:"view"`
+}
+
+// WorktreeCommentSide The file now, or a line removed from it.
+type WorktreeCommentSide string
+
+// WorktreeCommentState defines model for WorktreeComment.State.
+type WorktreeCommentState string
+
+// WorktreeCommentView Which diff it was written on.
+type WorktreeCommentView string
+
+// WorktreeCommentCreate defines model for WorktreeCommentCreate.
+type WorktreeCommentCreate struct {
+	Body string `json:"body"`
+
+	// ContentId The file's blob id as the patch looked at says it; as it is now when not given.
+	ContentId *string                   `json:"content_id,omitempty"`
+	File      string                    `json:"file"`
+	Line      int                       `json:"line"`
+	Quote     *string                   `json:"quote,omitempty"`
+	Side      WorktreeCommentCreateSide `json:"side"`
+	View      WorktreeCommentCreateView `json:"view"`
+}
+
+// WorktreeCommentCreateSide defines model for WorktreeCommentCreate.Side.
+type WorktreeCommentCreateSide string
+
+// WorktreeCommentCreateView defines model for WorktreeCommentCreate.View.
+type WorktreeCommentCreateView string
+
+// WorktreeCommentEdit defines model for WorktreeCommentEdit.
+type WorktreeCommentEdit struct {
+	Body string `json:"body"`
+}
+
+// WorktreeCommentEnvelope defines model for WorktreeCommentEnvelope.
+type WorktreeCommentEnvelope struct {
+	Comment WorktreeComment `json:"comment"`
+}
+
+// WorktreeCommentList defines model for WorktreeCommentList.
+type WorktreeCommentList struct {
+	Comments []WorktreeComment `json:"comments"`
+}
+
 // WorktreeCommittedFile defines model for WorktreeCommittedFile.
 type WorktreeCommittedFile struct {
 	// Path Relative to the worktree.
@@ -1047,6 +1204,26 @@ type WorktreeList struct {
 	Worktrees []WorktreeStatus `json:"worktrees"`
 }
 
+// WorktreeReview defines model for WorktreeReview.
+type WorktreeReview struct {
+	// Agent The agent to send it to: its name, or id: and its id.
+	Agent string `json:"agent"`
+
+	// Note Said before the comments.
+	Note *string `json:"note,omitempty"`
+}
+
+// WorktreeReviewResult defines model for WorktreeReviewResult.
+type WorktreeReviewResult struct {
+	Agent Agent `json:"agent"`
+
+	// Comments How many comments went.
+	Comments int `json:"comments"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
 // WorktreeStatus defines model for WorktreeStatus.
 type WorktreeStatus struct {
 	// Added Lines those commits add; null when not known, as in a partial clone.
@@ -1060,6 +1237,9 @@ type WorktreeStatus struct {
 
 	// Branch Null when HEAD is detached.
 	Branch *string `json:"branch"`
+
+	// Comments Its comments not sent yet, by file and line.
+	Comments []WorktreeComment `json:"comments"`
 
 	// CommittedFiles The files its commits changed since it left base, by path.
 	CommittedFiles []WorktreeCommittedFile `json:"committed_files"`
@@ -1300,6 +1480,42 @@ type ListWorktreesParams struct {
 	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
 
+// ListWorktreeCommentsParams defines parameters for ListWorktreeComments.
+type ListWorktreeCommentsParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// CreateWorktreeCommentParams defines parameters for CreateWorktreeComment.
+type CreateWorktreeCommentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// DeleteWorktreeCommentParams defines parameters for DeleteWorktreeComment.
+type DeleteWorktreeCommentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// EditWorktreeCommentParams defines parameters for EditWorktreeComment.
+type EditWorktreeCommentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // GetWorktreeDiffParams defines parameters for GetWorktreeDiff.
 type GetWorktreeDiffParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -1348,6 +1564,15 @@ type VerifyWorktreeFileParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// SendWorktreeReviewParams defines parameters for SendWorktreeReview.
+type SendWorktreeReviewParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgent
 
@@ -1372,8 +1597,17 @@ type CreateTerminalJSONRequestBody = CreateTerminal
 // SendTerminalJSONRequestBody defines body for SendTerminal for application/json ContentType.
 type SendTerminalJSONRequestBody = TerminalMessage
 
+// CreateWorktreeCommentJSONRequestBody defines body for CreateWorktreeComment for application/json ContentType.
+type CreateWorktreeCommentJSONRequestBody = WorktreeCommentCreate
+
+// EditWorktreeCommentJSONRequestBody defines body for EditWorktreeComment for application/json ContentType.
+type EditWorktreeCommentJSONRequestBody = WorktreeCommentEdit
+
 // VerifyWorktreeFileJSONRequestBody defines body for VerifyWorktreeFile for application/json ContentType.
 type VerifyWorktreeFileJSONRequestBody = WorktreeFileVerify
+
+// SendWorktreeReviewJSONRequestBody defines body for SendWorktreeReview for application/json ContentType.
+type SendWorktreeReviewJSONRequestBody = WorktreeReview
 
 // AsNewSource returns the union data inside the Source as a NewSource
 func (t Source) AsNewSource() (NewSource, error) {
@@ -2145,6 +2379,56 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
 	ListWorktrees(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListWorktreeComments List a worktree's comments in every state, by file and line
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/comments (the `ListWorktreeComments` operationId).
+	ListWorktreeComments(ctx context.Context, worktree WorktreeRef, params *ListWorktreeCommentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWorktreeCommentWithBody Save a comment on a line of a diff, not sent until its review is
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+	CreateWorktreeCommentWithBody(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWorktreeComment Save a comment on a line of a diff, not sent until its review is
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+	CreateWorktreeComment(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, body CreateWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteWorktreeComment Delete a comment not sent yet
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with DELETE /v1/worktrees/{worktree}/comments/{comment} (the `DeleteWorktreeComment` operationId).
+	DeleteWorktreeComment(ctx context.Context, worktree WorktreeRef, comment string, params *DeleteWorktreeCommentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EditWorktreeCommentWithBody Change the text of a comment not sent yet
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+	EditWorktreeCommentWithBody(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EditWorktreeComment Change the text of a comment not sent yet
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+	EditWorktreeComment(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, body EditWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	//
 	// Measured from the merge base, so that later commits on the base are not
@@ -2203,6 +2487,30 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 	VerifyWorktreeFile(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendWorktreeReviewWithBody Send a worktree's comments not sent yet to an agent, as one message
+	//
+	// The message is queued in the agent's inbox, as agent send does. With no
+	// agent to take it, the comments stay as they are.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+	SendWorktreeReviewWithBody(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
+	//
+	// The message is queued in the agent's inbox, as agent send does. With no
+	// agent to take it, the comments stay as they are.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+	SendWorktreeReview(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // ListAgents List agents as trees, by project name, then name
@@ -3144,6 +3452,116 @@ func (c *Client) ListWorktrees(ctx context.Context, params *ListWorktreesParams,
 	return c.Client.Do(req)
 }
 
+// ListWorktreeComments List a worktree's comments in every state, by file and line
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/worktrees/{worktree}/comments (the `ListWorktreeComments` operationId).
+func (c *Client) ListWorktreeComments(ctx context.Context, worktree WorktreeRef, params *ListWorktreeCommentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWorktreeCommentsRequest(c.Server, worktree, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWorktreeCommentWithBody Save a comment on a line of a diff, not sent until its review is
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+func (c *Client) CreateWorktreeCommentWithBody(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorktreeCommentRequestWithBody(c.Server, worktree, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWorktreeComment Save a comment on a line of a diff, not sent until its review is
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+func (c *Client) CreateWorktreeComment(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, body CreateWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorktreeCommentRequest(c.Server, worktree, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteWorktreeComment Delete a comment not sent yet
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with DELETE /v1/worktrees/{worktree}/comments/{comment} (the `DeleteWorktreeComment` operationId).
+func (c *Client) DeleteWorktreeComment(ctx context.Context, worktree WorktreeRef, comment string, params *DeleteWorktreeCommentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteWorktreeCommentRequest(c.Server, worktree, comment, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// EditWorktreeCommentWithBody Change the text of a comment not sent yet
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+func (c *Client) EditWorktreeCommentWithBody(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEditWorktreeCommentRequestWithBody(c.Server, worktree, comment, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// EditWorktreeComment Change the text of a comment not sent yet
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+func (c *Client) EditWorktreeComment(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, body EditWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEditWorktreeCommentRequest(c.Server, worktree, comment, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 //
 // Measured from the merge base, so that later commits on the base are not
@@ -3243,6 +3661,50 @@ func (c *Client) VerifyWorktreeFileWithBody(ctx context.Context, worktree Worktr
 // Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 func (c *Client) VerifyWorktreeFile(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVerifyWorktreeFileRequest(c.Server, worktree, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendWorktreeReviewWithBody Send a worktree's comments not sent yet to an agent, as one message
+//
+// The message is queued in the agent's inbox, as agent send does. With no
+// agent to take it, the comments stay as they are.
+//
+// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+func (c *Client) SendWorktreeReviewWithBody(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendWorktreeReviewRequestWithBody(c.Server, worktree, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
+//
+// The message is queued in the agent's inbox, as agent send does. With no
+// agent to take it, the comments stay as they are.
+//
+// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+func (c *Client) SendWorktreeReview(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendWorktreeReviewRequest(c.Server, worktree, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5125,6 +5587,338 @@ func NewListWorktreesRequest(server string, params *ListWorktreesParams) (*http.
 	return req, nil
 }
 
+// NewListWorktreeCommentsRequest constructs an http.Request for the ListWorktreeComments method
+func NewListWorktreeCommentsRequest(server string, worktree WorktreeRef, params *ListWorktreeCommentsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/comments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateWorktreeCommentRequest calls the generic CreateWorktreeComment builder with application/json body
+func NewCreateWorktreeCommentRequest(server string, worktree WorktreeRef, params *CreateWorktreeCommentParams, body CreateWorktreeCommentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateWorktreeCommentRequestWithBody(server, worktree, params, "application/json", bodyReader)
+}
+
+// NewCreateWorktreeCommentRequestWithBody constructs an http.Request for the CreateWorktreeComment method, with any body, and a specified content type
+func NewCreateWorktreeCommentRequestWithBody(server string, worktree WorktreeRef, params *CreateWorktreeCommentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/comments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteWorktreeCommentRequest constructs an http.Request for the DeleteWorktreeComment method
+func NewDeleteWorktreeCommentRequest(server string, worktree WorktreeRef, comment string, params *DeleteWorktreeCommentParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "comment", comment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/comments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewEditWorktreeCommentRequest calls the generic EditWorktreeComment builder with application/json body
+func NewEditWorktreeCommentRequest(server string, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, body EditWorktreeCommentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEditWorktreeCommentRequestWithBody(server, worktree, comment, params, "application/json", bodyReader)
+}
+
+// NewEditWorktreeCommentRequestWithBody constructs an http.Request for the EditWorktreeComment method, with any body, and a specified content type
+func NewEditWorktreeCommentRequestWithBody(server string, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "comment", comment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/comments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetWorktreeDiffRequest constructs an http.Request for the GetWorktreeDiff method
 func NewGetWorktreeDiffRequest(server string, worktree WorktreeRef, params *GetWorktreeDiffParams) (*http.Request, error) {
 	var err error
@@ -5457,6 +6251,92 @@ func NewVerifyWorktreeFileRequestWithBody(server string, worktree WorktreeRef, p
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSendWorktreeReviewRequest calls the generic SendWorktreeReview builder with application/json body
+func NewSendWorktreeReviewRequest(server string, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendWorktreeReviewRequestWithBody(server, worktree, params, "application/json", bodyReader)
+}
+
+// NewSendWorktreeReviewRequestWithBody constructs an http.Request for the SendWorktreeReview method, with any body, and a specified content type
+func NewSendWorktreeReviewRequestWithBody(server string, worktree WorktreeRef, params *SendWorktreeReviewParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/reviews", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -6113,6 +6993,60 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/worktrees (the `ListWorktrees` operationId).
 	ListWorktreesWithResponse(ctx context.Context, params *ListWorktreesParams, reqEditors ...RequestEditorFn) (*ListWorktreesResponse, error)
 
+	// ListWorktreeCommentsWithResponse List a worktree's comments in every state, by file and line
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/worktrees/{worktree}/comments (the `ListWorktreeComments` operationId).
+	ListWorktreeCommentsWithResponse(ctx context.Context, worktree WorktreeRef, params *ListWorktreeCommentsParams, reqEditors ...RequestEditorFn) (*ListWorktreeCommentsResponse, error)
+
+	// CreateWorktreeCommentWithBodyWithResponse Save a comment on a line of a diff, not sent until its review is
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+	CreateWorktreeCommentWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorktreeCommentResponse, error)
+
+	// CreateWorktreeCommentWithResponse Save a comment on a line of a diff, not sent until its review is
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+	CreateWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, body CreateWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorktreeCommentResponse, error)
+
+	// DeleteWorktreeCommentWithResponse Delete a comment not sent yet
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/worktrees/{worktree}/comments/{comment} (the `DeleteWorktreeComment` operationId).
+	DeleteWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *DeleteWorktreeCommentParams, reqEditors ...RequestEditorFn) (*DeleteWorktreeCommentResponse, error)
+
+	// EditWorktreeCommentWithBodyWithResponse Change the text of a comment not sent yet
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+	EditWorktreeCommentWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EditWorktreeCommentResponse, error)
+
+	// EditWorktreeCommentWithResponse Change the text of a comment not sent yet
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+	EditWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, body EditWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*EditWorktreeCommentResponse, error)
+
 	// GetWorktreeDiffWithResponse What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	//
 	// Measured from the merge base, so that later commits on the base are not
@@ -6177,6 +7111,30 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 	VerifyWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyWorktreeFileResponse, error)
+
+	// SendWorktreeReviewWithBodyWithResponse Send a worktree's comments not sent yet to an agent, as one message
+	//
+	// The message is queued in the agent's inbox, as agent send does. With no
+	// agent to take it, the comments stay as they are.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+	SendWorktreeReviewWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendWorktreeReviewResponse, error)
+
+	// SendWorktreeReviewWithResponse Send a worktree's comments not sent yet to an agent, as one message
+	//
+	// The message is queued in the agent's inbox, as agent send does. With no
+	// agent to take it, the comments stay as they are.
+	//
+	// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+	SendWorktreeReviewWithResponse(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*SendWorktreeReviewResponse, error)
 }
 
 type ListAgentsResponse struct {
@@ -7612,6 +8570,184 @@ func (r ListWorktreesResponse) ContentType() string {
 	return ""
 }
 
+type ListWorktreeCommentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeCommentList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWorktreeCommentsResponse) GetJSON200() *WorktreeCommentList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListWorktreeCommentsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWorktreeCommentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWorktreeCommentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWorktreeCommentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWorktreeCommentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateWorktreeCommentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *WorktreeCommentEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateWorktreeCommentResponse) GetJSON201() *WorktreeCommentEnvelope {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateWorktreeCommentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateWorktreeCommentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateWorktreeCommentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateWorktreeCommentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateWorktreeCommentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteWorktreeCommentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteWorktreeCommentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteWorktreeCommentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteWorktreeCommentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteWorktreeCommentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteWorktreeCommentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type EditWorktreeCommentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r EditWorktreeCommentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r EditWorktreeCommentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r EditWorktreeCommentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EditWorktreeCommentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r EditWorktreeCommentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetWorktreeDiffResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -7798,6 +8934,54 @@ func (r VerifyWorktreeFileResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r VerifyWorktreeFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendWorktreeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeReviewResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SendWorktreeReviewResponse) GetJSON200() *WorktreeReviewResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SendWorktreeReviewResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SendWorktreeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendWorktreeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendWorktreeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendWorktreeReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8635,6 +9819,96 @@ func (c *ClientWithResponses) ListWorktreesWithResponse(ctx context.Context, par
 	return ParseListWorktreesResponse(rsp)
 }
 
+// ListWorktreeCommentsWithResponse List a worktree's comments in every state, by file and line
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/worktrees/{worktree}/comments (the `ListWorktreeComments` operationId).
+func (c *ClientWithResponses) ListWorktreeCommentsWithResponse(ctx context.Context, worktree WorktreeRef, params *ListWorktreeCommentsParams, reqEditors ...RequestEditorFn) (*ListWorktreeCommentsResponse, error) {
+	rsp, err := c.ListWorktreeComments(ctx, worktree, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWorktreeCommentsResponse(rsp)
+}
+
+// CreateWorktreeCommentWithBodyWithResponse Save a comment on a line of a diff, not sent until its review is
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+func (c *ClientWithResponses) CreateWorktreeCommentWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorktreeCommentResponse, error) {
+	rsp, err := c.CreateWorktreeCommentWithBody(ctx, worktree, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWorktreeCommentResponse(rsp)
+}
+
+// CreateWorktreeCommentWithResponse Save a comment on a line of a diff, not sent until its review is
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/comments (the `CreateWorktreeComment` operationId).
+func (c *ClientWithResponses) CreateWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeCommentParams, body CreateWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorktreeCommentResponse, error) {
+	rsp, err := c.CreateWorktreeComment(ctx, worktree, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWorktreeCommentResponse(rsp)
+}
+
+// DeleteWorktreeCommentWithResponse Delete a comment not sent yet
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/worktrees/{worktree}/comments/{comment} (the `DeleteWorktreeComment` operationId).
+func (c *ClientWithResponses) DeleteWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *DeleteWorktreeCommentParams, reqEditors ...RequestEditorFn) (*DeleteWorktreeCommentResponse, error) {
+	rsp, err := c.DeleteWorktreeComment(ctx, worktree, comment, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteWorktreeCommentResponse(rsp)
+}
+
+// EditWorktreeCommentWithBodyWithResponse Change the text of a comment not sent yet
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+func (c *ClientWithResponses) EditWorktreeCommentWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EditWorktreeCommentResponse, error) {
+	rsp, err := c.EditWorktreeCommentWithBody(ctx, worktree, comment, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEditWorktreeCommentResponse(rsp)
+}
+
+// EditWorktreeCommentWithResponse Change the text of a comment not sent yet
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/comments/{comment} (the `EditWorktreeComment` operationId).
+func (c *ClientWithResponses) EditWorktreeCommentWithResponse(ctx context.Context, worktree WorktreeRef, comment string, params *EditWorktreeCommentParams, body EditWorktreeCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*EditWorktreeCommentResponse, error) {
+	rsp, err := c.EditWorktreeComment(ctx, worktree, comment, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEditWorktreeCommentResponse(rsp)
+}
+
 // GetWorktreeDiffWithResponse What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 //
 // Measured from the merge base, so that later commits on the base are not
@@ -8728,6 +10002,42 @@ func (c *ClientWithResponses) VerifyWorktreeFileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseVerifyWorktreeFileResponse(rsp)
+}
+
+// SendWorktreeReviewWithBodyWithResponse Send a worktree's comments not sent yet to an agent, as one message
+//
+// The message is queued in the agent's inbox, as agent send does. With no
+// agent to take it, the comments stay as they are.
+//
+// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+func (c *ClientWithResponses) SendWorktreeReviewWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendWorktreeReviewResponse, error) {
+	rsp, err := c.SendWorktreeReviewWithBody(ctx, worktree, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendWorktreeReviewResponse(rsp)
+}
+
+// SendWorktreeReviewWithResponse Send a worktree's comments not sent yet to an agent, as one message
+//
+// The message is queued in the agent's inbox, as agent send does. With no
+// agent to take it, the comments stay as they are.
+//
+// Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/reviews (the `SendWorktreeReview` operationId).
+func (c *ClientWithResponses) SendWorktreeReviewWithResponse(ctx context.Context, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*SendWorktreeReviewResponse, error) {
+	rsp, err := c.SendWorktreeReview(ctx, worktree, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendWorktreeReviewResponse(rsp)
 }
 
 // ParseListAgentsResponse parses an HTTP response from a ListAgentsWithResponse call
@@ -9716,6 +11026,130 @@ func ParseListWorktreesResponse(rsp *http.Response) (*ListWorktreesResponse, err
 	return response, nil
 }
 
+// ParseListWorktreeCommentsResponse parses an HTTP response from a ListWorktreeCommentsWithResponse call
+func ParseListWorktreeCommentsResponse(rsp *http.Response) (*ListWorktreeCommentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWorktreeCommentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeCommentList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateWorktreeCommentResponse parses an HTTP response from a CreateWorktreeCommentWithResponse call
+func ParseCreateWorktreeCommentResponse(rsp *http.Response) (*CreateWorktreeCommentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateWorktreeCommentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest WorktreeCommentEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteWorktreeCommentResponse parses an HTTP response from a DeleteWorktreeCommentWithResponse call
+func ParseDeleteWorktreeCommentResponse(rsp *http.Response) (*DeleteWorktreeCommentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteWorktreeCommentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEditWorktreeCommentResponse parses an HTTP response from a EditWorktreeCommentWithResponse call
+func ParseEditWorktreeCommentResponse(rsp *http.Response) (*EditWorktreeCommentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EditWorktreeCommentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetWorktreeDiffResponse parses an HTTP response from a GetWorktreeDiffWithResponse call
 func ParseGetWorktreeDiffResponse(rsp *http.Response) (*GetWorktreeDiffResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9848,6 +11282,39 @@ func ParseVerifyWorktreeFileResponse(rsp *http.Response) (*VerifyWorktreeFileRes
 	return response, nil
 }
 
+// ParseSendWorktreeReviewResponse parses an HTTP response from a SendWorktreeReviewWithResponse call
+func ParseSendWorktreeReviewResponse(rsp *http.Response) (*SendWorktreeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendWorktreeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeReviewResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListAgents List agents as trees, by project name, then name
@@ -9940,6 +11407,18 @@ type ServerInterface interface {
 	// ListWorktrees List every checkout git lists for a project, with its changes
 	// (GET /v1/worktrees)
 	ListWorktrees(w http.ResponseWriter, r *http.Request, params ListWorktreesParams)
+	// ListWorktreeComments List a worktree's comments in every state, by file and line
+	// (GET /v1/worktrees/{worktree}/comments)
+	ListWorktreeComments(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params ListWorktreeCommentsParams)
+	// CreateWorktreeComment Save a comment on a line of a diff, not sent until its review is
+	// (POST /v1/worktrees/{worktree}/comments)
+	CreateWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params CreateWorktreeCommentParams)
+	// DeleteWorktreeComment Delete a comment not sent yet
+	// (DELETE /v1/worktrees/{worktree}/comments/{comment})
+	DeleteWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, comment string, params DeleteWorktreeCommentParams)
+	// EditWorktreeComment Change the text of a comment not sent yet
+	// (PATCH /v1/worktrees/{worktree}/comments/{comment})
+	EditWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, comment string, params EditWorktreeCommentParams)
 	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	// (GET /v1/worktrees/{worktree}/diff)
 	GetWorktreeDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeDiffParams)
@@ -9952,6 +11431,9 @@ type ServerInterface interface {
 	// VerifyWorktreeFile Mark a file verified
 	// (PUT /v1/worktrees/{worktree}/files/verified)
 	VerifyWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params VerifyWorktreeFileParams)
+	// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
+	// (POST /v1/worktrees/{worktree}/reviews)
+	SendWorktreeReview(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params SendWorktreeReviewParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -11265,6 +12747,244 @@ func (siw *ServerInterfaceWrapper) ListWorktrees(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorktreeComments operation middleware
+func (siw *ServerInterfaceWrapper) ListWorktreeComments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorktreeCommentsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorktreeComments(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorktreeComment operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorktreeComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorktreeCommentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorktreeComment(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorktreeComment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorktreeComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "comment" -------------
+	var comment string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "comment", r.PathValue("comment"), &comment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "comment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteWorktreeCommentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorktreeComment(w, r, worktree, comment, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EditWorktreeComment operation middleware
+func (siw *ServerInterfaceWrapper) EditWorktreeComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "comment" -------------
+	var comment string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "comment", r.PathValue("comment"), &comment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "comment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params EditWorktreeCommentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EditWorktreeComment(w, r, worktree, comment, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWorktreeDiff operation middleware
 func (siw *ServerInterfaceWrapper) GetWorktreeDiff(w http.ResponseWriter, r *http.Request) {
 
@@ -11537,6 +13257,61 @@ func (siw *ServerInterfaceWrapper) VerifyWorktreeFile(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// SendWorktreeReview operation middleware
+func (siw *ServerInterfaceWrapper) SendWorktreeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendWorktreeReviewParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendWorktreeReview(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -11675,6 +13450,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/diff", wrapper.GetWorktreeFileDiff)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/verified", wrapper.UnverifyWorktreeFile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/verified", wrapper.VerifyWorktreeFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/comments", wrapper.ListWorktreeComments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/worktrees/{worktree}/comments", wrapper.CreateWorktreeComment)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}/comments/{comment}", wrapper.DeleteWorktreeComment)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/worktrees/{worktree}/comments/{comment}", wrapper.EditWorktreeComment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/worktrees/{worktree}/reviews", wrapper.SendWorktreeReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/terminals", wrapper.ListTerminals)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/terminals", wrapper.CreateTerminal)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/terminals/{terminal}", wrapper.DeleteTerminal)
@@ -12920,6 +14700,158 @@ func (response ListWorktreesdefaultApplicationProblemPlusJSONResponse) VisitList
 	return err
 }
 
+type ListWorktreeCommentsRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   ListWorktreeCommentsParams
+}
+
+type ListWorktreeCommentsResponseObject interface {
+	VisitListWorktreeCommentsResponse(w http.ResponseWriter) error
+}
+
+type ListWorktreeComments200JSONResponse WorktreeCommentList
+
+func (response ListWorktreeComments200JSONResponse) VisitListWorktreeCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorktreeCommentsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListWorktreeCommentsdefaultApplicationProblemPlusJSONResponse) VisitListWorktreeCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorktreeCommentRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   CreateWorktreeCommentParams
+	Body     *CreateWorktreeCommentJSONRequestBody
+}
+
+type CreateWorktreeCommentResponseObject interface {
+	VisitCreateWorktreeCommentResponse(w http.ResponseWriter) error
+}
+
+type CreateWorktreeComment201JSONResponse WorktreeCommentEnvelope
+
+func (response CreateWorktreeComment201JSONResponse) VisitCreateWorktreeCommentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorktreeCommentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateWorktreeCommentdefaultApplicationProblemPlusJSONResponse) VisitCreateWorktreeCommentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorktreeCommentRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Comment  string      `json:"comment"`
+	Params   DeleteWorktreeCommentParams
+}
+
+type DeleteWorktreeCommentResponseObject interface {
+	VisitDeleteWorktreeCommentResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorktreeComment200Response struct {
+}
+
+func (response DeleteWorktreeComment200Response) VisitDeleteWorktreeCommentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DeleteWorktreeCommentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteWorktreeCommentdefaultApplicationProblemPlusJSONResponse) VisitDeleteWorktreeCommentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EditWorktreeCommentRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Comment  string      `json:"comment"`
+	Params   EditWorktreeCommentParams
+	Body     *EditWorktreeCommentJSONRequestBody
+}
+
+type EditWorktreeCommentResponseObject interface {
+	VisitEditWorktreeCommentResponse(w http.ResponseWriter) error
+}
+
+type EditWorktreeComment200Response struct {
+}
+
+func (response EditWorktreeComment200Response) VisitEditWorktreeCommentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type EditWorktreeCommentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response EditWorktreeCommentdefaultApplicationProblemPlusJSONResponse) VisitEditWorktreeCommentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorktreeDiffRequestObject struct {
 	Worktree WorktreeRef `json:"worktree"`
 	Params   GetWorktreeDiffParams
@@ -13081,6 +15013,47 @@ func (response VerifyWorktreeFiledefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type SendWorktreeReviewRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   SendWorktreeReviewParams
+	Body     *SendWorktreeReviewJSONRequestBody
+}
+
+type SendWorktreeReviewResponseObject interface {
+	VisitSendWorktreeReviewResponse(w http.ResponseWriter) error
+}
+
+type SendWorktreeReview200JSONResponse WorktreeReviewResult
+
+func (response SendWorktreeReview200JSONResponse) VisitSendWorktreeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorktreeReviewdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SendWorktreeReviewdefaultApplicationProblemPlusJSONResponse) VisitSendWorktreeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAgents List agents as trees, by project name, then name
@@ -13173,6 +15146,18 @@ type StrictServerInterface interface {
 	// ListWorktrees List every checkout git lists for a project, with its changes
 	// (GET /v1/worktrees)
 	ListWorktrees(ctx context.Context, request ListWorktreesRequestObject) (ListWorktreesResponseObject, error)
+	// ListWorktreeComments List a worktree's comments in every state, by file and line
+	// (GET /v1/worktrees/{worktree}/comments)
+	ListWorktreeComments(ctx context.Context, request ListWorktreeCommentsRequestObject) (ListWorktreeCommentsResponseObject, error)
+	// CreateWorktreeComment Save a comment on a line of a diff, not sent until its review is
+	// (POST /v1/worktrees/{worktree}/comments)
+	CreateWorktreeComment(ctx context.Context, request CreateWorktreeCommentRequestObject) (CreateWorktreeCommentResponseObject, error)
+	// DeleteWorktreeComment Delete a comment not sent yet
+	// (DELETE /v1/worktrees/{worktree}/comments/{comment})
+	DeleteWorktreeComment(ctx context.Context, request DeleteWorktreeCommentRequestObject) (DeleteWorktreeCommentResponseObject, error)
+	// EditWorktreeComment Change the text of a comment not sent yet
+	// (PATCH /v1/worktrees/{worktree}/comments/{comment})
+	EditWorktreeComment(ctx context.Context, request EditWorktreeCommentRequestObject) (EditWorktreeCommentResponseObject, error)
 	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	// (GET /v1/worktrees/{worktree}/diff)
 	GetWorktreeDiff(ctx context.Context, request GetWorktreeDiffRequestObject) (GetWorktreeDiffResponseObject, error)
@@ -13185,6 +15170,9 @@ type StrictServerInterface interface {
 	// VerifyWorktreeFile Mark a file verified
 	// (PUT /v1/worktrees/{worktree}/files/verified)
 	VerifyWorktreeFile(ctx context.Context, request VerifyWorktreeFileRequestObject) (VerifyWorktreeFileResponseObject, error)
+	// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
+	// (POST /v1/worktrees/{worktree}/reviews)
+	SendWorktreeReview(ctx context.Context, request SendWorktreeReviewRequestObject) (SendWorktreeReviewResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -14063,6 +16051,130 @@ func (sh *strictHandler) ListWorktrees(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// ListWorktreeComments operation middleware
+func (sh *strictHandler) ListWorktreeComments(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params ListWorktreeCommentsParams) {
+	var request ListWorktreeCommentsRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorktreeComments(ctx, request.(ListWorktreeCommentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorktreeComments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorktreeCommentsResponseObject); ok {
+		if err := validResponse.VisitListWorktreeCommentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorktreeComment operation middleware
+func (sh *strictHandler) CreateWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params CreateWorktreeCommentParams) {
+	var request CreateWorktreeCommentRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	var body CreateWorktreeCommentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorktreeComment(ctx, request.(CreateWorktreeCommentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorktreeComment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorktreeCommentResponseObject); ok {
+		if err := validResponse.VisitCreateWorktreeCommentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorktreeComment operation middleware
+func (sh *strictHandler) DeleteWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, comment string, params DeleteWorktreeCommentParams) {
+	var request DeleteWorktreeCommentRequestObject
+
+	request.Worktree = worktree
+	request.Comment = comment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorktreeComment(ctx, request.(DeleteWorktreeCommentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorktreeComment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorktreeCommentResponseObject); ok {
+		if err := validResponse.VisitDeleteWorktreeCommentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EditWorktreeComment operation middleware
+func (sh *strictHandler) EditWorktreeComment(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, comment string, params EditWorktreeCommentParams) {
+	var request EditWorktreeCommentRequestObject
+
+	request.Worktree = worktree
+	request.Comment = comment
+	request.Params = params
+
+	var body EditWorktreeCommentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EditWorktreeComment(ctx, request.(EditWorktreeCommentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EditWorktreeComment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EditWorktreeCommentResponseObject); ok {
+		if err := validResponse.VisitEditWorktreeCommentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetWorktreeDiff operation middleware
 func (sh *strictHandler) GetWorktreeDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeDiffParams) {
 	var request GetWorktreeDiffRequestObject
@@ -14178,186 +16290,231 @@ func (sh *strictHandler) VerifyWorktreeFile(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// SendWorktreeReview operation middleware
+func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params SendWorktreeReviewParams) {
+	var request SendWorktreeReviewRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	var body SendWorktreeReviewJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendWorktreeReview(ctx, request.(SendWorktreeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendWorktreeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendWorktreeReviewResponseObject); ok {
+		if err := validResponse.VisitSendWorktreeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"BMp4f39///8DAAD//w==",
+	"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",
+	"c83gqjYC4tP/DQAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

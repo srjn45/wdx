@@ -121,3 +121,15 @@ func TestWorktreeDiffRefused(t *testing.T) {
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "worktree", "diff", "--name", "work")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
+
+func TestWorktreeComments(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, _ := worktreeProject(t, home)
+	v, exit := wdxWorktree(t, home, app, "comments", "--name", "work")
+	if exit != api.ExitOK || !strings.Contains(wdxWith(t, home, in(app), "worktree", "comments", "--name", "work").stdout, "no comments") {
+		t.Errorf("none: exit %d, %+v", exit, v)
+	}
+	e, exit := wdxJSONWith(t, home, in(app), "worktree", "comments", "--name", "nope")
+	wantError(t, e, exit, api.ErrorCodeNotFound, api.ExitRejected)
+}

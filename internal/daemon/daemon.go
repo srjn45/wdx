@@ -142,6 +142,7 @@ type Daemon struct {
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
 	marks     *worktree.Marks
+	comments  *worktree.Comments
 	// stopTracker ends what the tracker does, once no stream follows.
 	stopTracker context.CancelFunc
 	// trackerNotices is what tells it of the changes.

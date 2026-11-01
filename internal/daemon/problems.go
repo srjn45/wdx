@@ -148,7 +148,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil
-	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin):
+	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
 		return api.ErrorCodeInvalidArgument, nil
 	}
 	return api.ErrorCodeInternal, nil

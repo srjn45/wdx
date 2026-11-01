@@ -209,6 +209,19 @@ Nothing watches for a file to change. A mark holds the id of the content that wa
 - A mark can outlast an edit until the next event: one by an agent shows when it stops or the user looks, as the file's row does.
 - A symbolic link or a submodule keeps its mark, as it has no such content to compare.
 
+## Comments and reviews
+
+`c` comments on the current line, `e` and `d` edit and delete the comment on it, `Esc` cancels and `Enter` saves. A comment shows under its line, and on the worktree's row as `3 comments`. It belongs to the diff it was written on: uncommitted, which a file's diff is too, or committed, as their line numbers differ.
+
+`s`, with comments to send, sends all of the worktree's together, with a note if any, so that an agent does not start acting on the first. With several agents `←` and `→` choose; with none it refuses and they stay. `C` warns of comments not sent.
+
+- Comments are in the table `review_comments`, so they survive tide and the daemon.
+- A comment holds the line as it was seen, which the message quotes, so the agent can find it after the numbers moved. When the file changes it stays, saying `file changed`.
+- Once sent, it no longer shows in the diffs: the agent is about to change that code. It stays in the table, and `wdx worktree comments` lists it.
+- A comment on a line no longer in the diff is counted above the lines, and `s` still sends it.
+- A comment is one paragraph, as `Enter` saves it.
+- Comments of a worktree git no longer lists go with it.
+
 ## Moving around a diff
 
 The arrows move a current line, marked `▸`, and the view follows it.
@@ -225,6 +238,8 @@ The arrows move a current line, marked `▸`, and the view follows it.
 | `n` `N` | the next or last match, going round | yes | yes |
 | `Esc` | ends the search | yes | yes |
 | `v` | marks the file verified, or not | yes | yes |
+| `c` `e` `d` | comment on the current line; edit or delete the comment on it | yes | yes |
+| `s` | sends the comments, together | yes | yes |
 | `?` | shows these keys | yes | yes |
 
 A click makes a line current, and the wheel scrolls with the current line staying in view.
@@ -237,10 +252,9 @@ The order below is agreed; "proposed" marks what is not.
 
 The bar will list `L` on a worktree's tab while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has no `L`.
 
-### 1. Comments, sent as a review
+### 1. Knowing a review was delivered
 
-- `c` comments, `Esc` cancels, `Enter` adds it. Comments are sent together as a review, so that an agent does not start acting too early, to the agent working in that worktree.
-- They are saved until delivered, because no agent may be running.
+Comments stop at `sent` for now, which means the agent's holder took the message. Proposed: a daemon table holding every message until the holder says it typed it, in place of confirming them alone. A message is then safe once stored, and goes when an agent next runs. It may come twice, if a holder types it and dies before saying so, and it needs a rule for when an old one no longer goes.
 
 ### Then
 

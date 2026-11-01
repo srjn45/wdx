@@ -36,6 +36,8 @@ type Options struct {
 	Agents func(ctx context.Context, projectID string) ([]Agent, error)
 	// Marks are the files marked verified; nil keeps none.
 	Marks *Marks
+	// Comments are the comments on the diffs; nil keeps none.
+	Comments *Comments
 	// Changed is called when what is kept of a project changed.
 	Changed func()
 	// Settle is DefaultSettle when 0.
@@ -311,7 +313,7 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			continue
 		}
 		was := known[s.Path]
-		s.Files, s.Base, s.Ahead, s.Added, s.Removed, s.Committed = was.Files, was.Base, was.Ahead, was.Added, was.Removed, was.Committed
+		s.Files, s.Base, s.Ahead, s.Added, s.Removed, s.Committed, s.Comments = was.Files, was.Base, was.Ahead, was.Added, was.Removed, was.Committed, was.Comments
 	}
 
 	dirs := p.dirsOf(ctx, list)
@@ -359,6 +361,7 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			}
 		}
 		p.markRead(ctx, s)
+		p.commentsRead(ctx, s)
 		if ctx.Err() != nil {
 			return
 		}
@@ -403,8 +406,33 @@ func (p *tracked) markRead(ctx context.Context, s *Status) {
 	}
 }
 
-// forgetGone takes away the marks of checkouts git no longer lists.
+// commentsRead gives the checkout read its comments not sent yet.
+func (p *tracked) commentsRead(ctx context.Context, s *Status) {
+	store := p.t.opts.Comments
+	if store == nil {
+		return
+	}
+	drafts, err := store.Drafts(ctx, p.id)
+	if err != nil {
+		logging.FromContext(ctx).Info("comments not read", "project_id", p.id, "err", err)
+		return
+	}
+	applyComments(ctx, s, drafts)
+}
+
+// forgetGone takes away the marks and comments of checkouts git no longer lists.
 func (p *tracked) forgetGone(ctx context.Context, list []Status) {
+	if store := p.t.opts.Comments; store != nil {
+		if drafts, err := store.Drafts(ctx, p.id); err == nil {
+			for _, c := range drafts {
+				if !slices.ContainsFunc(list, func(s Status) bool { return s.Path == c.Worktree }) {
+					if err := store.RemoveWorktree(ctx, p.id, c.Worktree); err != nil {
+						logging.FromContext(ctx).Info("comments not removed", "path", c.Worktree, "err", err)
+					}
+				}
+			}
+		}
+	}
 	marks := p.t.opts.Marks
 	if marks == nil {
 		return

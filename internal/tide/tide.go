@@ -96,8 +96,9 @@ type Model struct {
 	settings    []api.Setting // what the daemon last said, while a settings tab reads them
 	settingsErr string        // why it could not read them
 
-	commit    *commitBox // what C asks the agent, while it does
-	lastFocus pane       // the pane in focus at the last update: coming to the list reads the worktrees
+	commit    *commitBox  // what C asks the agent, or s sends it, while it does
+	comment   *commentBox // the comment c or e asks for, while it does
+	lastFocus pane        // the pane in focus at the last update: coming to the list reads the worktrees
 }
 
 // content is what a pane shows.
@@ -272,6 +273,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commitSent(msg)
 	case verifyAnswered:
 		m.verifyAnsweredMsg(msg)
+	case commentAnswered:
+		m.commentAnsweredMsg(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -306,6 +309,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.commit != nil && !m.menu {
 			m.commit.text += msg.Content
+			return m, nil
+		}
+		if m.comment != nil && !m.menu {
+			m.comment.text += strings.Join(strings.Split(msg.Content, "\n"), " ")
 			return m, nil
 		}
 		if f, ok := m.openTop().(*fieldScreen); ok && !m.menu && m.confirm == nil {
@@ -463,6 +470,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.commit != nil {
 		return m.commitKey(msg)
+	}
+	if m.comment != nil {
+		return m.commentBoxKey(msg)
 	}
 	if m.confirm != nil {
 		return m.confirmKey(name)
@@ -632,7 +642,7 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil {
+	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil {
 		return nil
 	}
 	if m.confirm == nil {

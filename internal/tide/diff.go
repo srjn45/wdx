@@ -3,6 +3,7 @@ package tide
 import (
 	"fmt"
 	"maps"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -122,19 +123,24 @@ type diffView struct {
 	unified []string
 	cutOff  bool // the daemon left out the rest
 
-	width    int // of what lines was drawn for, 0 before
-	lines    []string
-	rows     []int           // the row of the source each line shows
-	numbers  []int           // the file's line number each line shows; 0 on a line wrapped or of no number
-	changes  []int           // the lines changes start on, which [ and ] go to
-	files    []int           // the lines files start on, which { and } go to
-	text     []string        // what each row of the source says, which a search reads
-	starts   []int           // the line each row starts on
-	spans    []fileSpan      // where each file of a worktree's patch starts
-	marks    map[string]bool // the files verified, as the lines were worked out for
-	content  string          // the id of the file's content in a file's patch
-	top      int             // the rows above the lines in the last draw
-	verified string          // what the bar says of how much is verified
+	width     int // of what lines was drawn for, 0 before
+	lines     []string
+	rows      []int                 // the row of the source each line shows
+	numbers   []int                 // the file's line number each line shows; 0 on a line wrapped or of no number
+	changes   []int                 // the lines changes start on, which [ and ] go to
+	files     []int                 // the lines files start on, which { and } go to
+	text      []string              // what each row of the source says, which a search reads
+	starts    []int                 // the line each row starts on
+	file      string                // the file of a file's diff
+	anchors   []lineAnchor          // the line of a file each line shows; line 0 when none
+	commentAt []string              // the comment each line is, or is on
+	comments  []api.WorktreeComment // those on this view, as the lines were worked out for
+	placed    int                   // how many of them found their line
+	spans     []fileSpan            // where each file of a worktree's patch starts
+	marks     map[string]bool       // the files verified, as the lines were worked out for
+	content   string                // the id of the file's content in a file's patch
+	top       int                   // the rows above the lines in the last draw
+	verified  string                // what the bar says of how much is verified
 
 	cursor int  // the current line
 	offset int  // the first line shown
@@ -216,7 +222,8 @@ func (m *Model) diffSync() tea.Cmd {
 	view := m.diffViewOf(l.active)
 	v, ok := l.diffs[view]
 	if !ok {
-		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix)}
+		_, file := diffTabOf(view)
+		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), file: file}
 		l.diffs[view] = v
 	}
 	seen := m.diffSeen(view)
@@ -441,7 +448,18 @@ func (v *diffView) prepare(width int, st style.Style) {
 		return
 	}
 	v.width = width
+	// The current line stays on its row of the source: a comment above adds lines.
+	row := -1
+	if v.cursor < len(v.rows) && v.cursor >= 0 {
+		row = v.rows[v.cursor]
+	}
 	v.lines, v.rows, v.numbers, v.changes, v.files, v.text, v.starts, v.spans = nil, nil, nil, nil, nil, nil, nil, nil
+	v.anchors, v.commentAt, v.placed = nil, nil, 0
+	defer func() {
+		if row >= 0 && row < len(v.starts) {
+			v.cursor = v.starts[row]
+		}
+	}()
 	switch {
 	case v.split != nil:
 		v.prepareSplit(width, st)
@@ -462,6 +480,8 @@ func (v *diffView) add(line string, row, number int) {
 	v.lines = append(v.lines, line)
 	v.rows = append(v.rows, row)
 	v.numbers = append(v.numbers, number)
+	v.anchors = append(v.anchors, lineAnchor{})
+	v.commentAt = append(v.commentAt, "")
 }
 
 // paint styles a piece of a line, with what the search finds standing out.
@@ -529,6 +549,18 @@ func (v *diffView) prepareSplit(width int, st style.Style) {
 			}
 			v.add(line, row, shown)
 		}
+		first := v.starts[row]
+		a := lineAnchor{file: v.file, line: r.rightNo, side: api.WorktreeCommentSideNew, quote: r.right, id: v.content}
+		if r.rightNo == 0 {
+			a.line, a.side, a.quote = r.leftNo, api.WorktreeCommentSideOld, r.left
+		}
+		for i := first; i < len(v.anchors); i++ {
+			v.anchors[i] = a
+		}
+		v.addComments(first, a, row, width, st)
+		if a.side == api.WorktreeCommentSideNew && r.changed && r.leftNo > 0 {
+			v.addComments(first, lineAnchor{file: v.file, line: r.leftNo, side: api.WorktreeCommentSideOld}, row, width, st)
+		}
 	}
 }
 
@@ -541,21 +573,36 @@ func wrapText(s string, width int) []string {
 
 // prepareUnified shows a commit's patch as git writes it.
 func (v *diffView) prepareUnified(width int, st style.Style) {
+	inHunk := false
+	left, right := 0, 0
 	for row, line := range v.unified {
 		paint := func(s string) string { return s }
+		var a lineAnchor
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
 			v.files = append(v.files, len(v.lines))
 			paint = st.Name
+			inHunk = false
 			if path, ok := patchPath(line); ok {
 				v.spans = append(v.spans, fileSpan{start: len(v.lines), path: path})
 				if v.marks[path] {
 					line = "✓ " + line
 				}
 			}
-		case strings.HasPrefix(line, "@@"):
+		case hunkHeader.MatchString(line):
 			v.changes = append(v.changes, len(v.lines))
 			paint = st.Muted
+			inHunk = true
+			h := hunkHeader.FindStringSubmatch(line)
+			left, _ = strconv.Atoi(h[1])
+			right, _ = strconv.Atoi(h[2])
+		case inHunk:
+			a = v.hunkAnchor(line, &left, &right)
+			if strings.HasPrefix(line, "+") {
+				paint = st.Added
+			} else if strings.HasPrefix(line, "-") {
+				paint = st.Removed
+			}
 		case indexLine.MatchString(line):
 			paint = st.Muted
 			h := indexLine.FindStringSubmatch(line)
@@ -567,10 +614,6 @@ func (v *diffView) prepareUnified(width int, st style.Style) {
 		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "),
 			strings.HasPrefix(line, "new file "), strings.HasPrefix(line, "deleted file "):
 			paint = st.Muted
-		case strings.HasPrefix(line, "+"):
-			paint = st.Added
-		case strings.HasPrefix(line, "-"):
-			paint = st.Removed
 		}
 		v.text = append(v.text, shownText(line))
 		v.starts = append(v.starts, len(v.lines))
@@ -578,10 +621,39 @@ func (v *diffView) prepareUnified(width int, st style.Style) {
 		if len(pieces) == 0 {
 			pieces = []string{""}
 		}
+		first := len(v.lines)
 		for _, piece := range pieces {
 			v.add(v.paint(piece, paint, st), row, 0)
+			v.anchors[len(v.anchors)-1] = a
+		}
+		if a.line > 0 {
+			v.addComments(first, a, row, width, st)
 		}
 	}
+}
+
+// hunkAnchor is the line of the file a line of a hunk shows, moving the numbers on.
+func (v *diffView) hunkAnchor(line string, left, right *int) lineAnchor {
+	if line == "" || len(v.spans) == 0 {
+		return lineAnchor{}
+	}
+	span := v.spans[len(v.spans)-1]
+	a := lineAnchor{file: span.path, quote: line[1:], id: span.id}
+	switch line[0] {
+	case '+':
+		a.line, a.side = *right, api.WorktreeCommentSideNew
+		*right++
+	case '-':
+		a.line, a.side = *left, api.WorktreeCommentSideOld
+		*left++
+	case ' ':
+		a.line, a.side = *right, api.WorktreeCommentSideNew
+		*left++
+		*right++
+	default:
+		return lineAnchor{} // \ No newline at end of file
+	}
+	return a
 }
 
 func shortID(id string) string {
@@ -643,6 +715,7 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 			label = "unverified"
 		}
 		keys = append(keys, barKey{verifyKey, label, 7})
+		keys = append(keys, m.commentBarKeys(tab, v)...)
 	}
 	if file != "" || !m.hasUncommitted(worktree) {
 		return keys
@@ -668,6 +741,8 @@ func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
 		keys = append(keys, barKey{k.keys, "shows or does: " + k.label, 0})
 	}
 	return append(keys,
+		barKey{commentKey, "comment on the current line", 0}, barKey{"e d", "edit or delete the comment on it", 0},
+		barKey{reviewKey, "send the comments to an agent, together", 0},
 		barKey{verifyKey, "mark the file verified, or not; an edit takes the mark away", 0},
 		barKey{"/ and text", "search; capitals make it exact", 0}, barKey{"n N", "the next or last match", 0},
 		barKey{"Esc", "end the search", 0}, barKey{"C-q -", "close the tab", 0}, barKey{"Alt+←", "the tab before", 0})
@@ -797,6 +872,10 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		v.marks = marks
 		v.width = 0 // a file's heading says it
 	}
+	if comments := m.viewComments(m.diffViewOf(l.active)); !reflect.DeepEqual(comments, v.comments) {
+		v.comments = comments
+		v.width = 0 // they show under their lines
+	}
 	v.verified = ""
 	if !isFile {
 		if i := slices.IndexFunc(m.worktreeStatuses(), func(w api.WorktreeStatus) bool { return w.Name == worktree }); i >= 0 {
@@ -841,6 +920,9 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		}
 		side := (width - 1) / 2
 		top = append(top, " "+st.Heading(ansi.Truncate(padded(" HEAD", side), side, ""))+st.Muted("│")+st.Heading(ansi.Truncate(" uncommitted", width-side-1, "")))
+	}
+	if n := len(v.comments) - v.placed; n > 0 {
+		top = append(top, st.Muted(countOf(n)+" on lines not shown here: s still sends them"))
 	}
 	body := max(content.Dy()-len(top), 1)
 	v.height, v.top = body, len(top)
@@ -1014,6 +1096,14 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		m.flipWorktreeView(l.active)
 	case name == commitKey:
 		m.askCommit(l.active, v)
+	case name == commentKey:
+		m.askComment(l.active, v)
+	case name == editKey:
+		m.askEdit(l.active, v)
+	case name == deleteKey:
+		return m.deleteComment(l.active, v)
+	case name == reviewKey:
+		m.askReview(l.active, v)
 	case name == verifyKey:
 		if path, id, ok := v.currentFile(l.active); ok && (len(v.split) > 0 || len(v.unified) > 0) {
 			worktree, _ := diffTabOf(l.active)

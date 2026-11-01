@@ -20,7 +20,7 @@ func newWorktreeCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newWorktreeDiffCmd(), newWorktreeListCmd())
+	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeListCmd())
 	return cmd
 }
 
@@ -123,6 +123,57 @@ func newWorktreeDiffCmd() *cobra.Command {
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
 	cmd.RegisterFlagCompletionFunc("path", cobra.NoFileCompletions)
 	return cmd
+}
+
+func newWorktreeCommentsCmd() *cobra.Command {
+	var scope projectScope
+	var name string
+	cmd := &cobra.Command{
+		Use:   "comments --name <worktree> [--project-id <id> | --project-name <name>]",
+		Short: "List the comments left on a worktree's diffs",
+		Long: "Comments are written in tide, and sent to an agent together as a review.\n" +
+			"Each says whether it was sent.",
+		Example: examples(
+			"The comments on a worktree", identity.Name+" worktree comments --name auth-fix",
+			"As JSON", identity.Name+" worktree comments --name auth-fix --project-name app --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The comments by file and line.\n" + `With --json: {"comments": [...]}`,
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ref, dir, err := worktreeScopeOf(cmd, scope)
+			if err != nil {
+				return err
+			}
+			list, err := clientOf(cmd).WorktreeComments(cmd.Context(), name, ref, dir)
+			if err != nil {
+				return outsideHint(err, scope, "")
+			}
+			return printResult(cmd, worktreeComments(list))
+		},
+	}
+	scope.addFlags(cmd)
+	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree, main for the clone")
+	cmd.MarkFlagRequired("name")
+	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	return cmd
+}
+
+type worktreeComments api.WorktreeCommentList
+
+func (l worktreeComments) text(w io.Writer, st style.Style) {
+	if len(l.Comments) == 0 {
+		fmt.Fprintln(w, "no comments")
+		return
+	}
+	var table style.Table
+	table.Row(st.Heading("FILE"), st.Heading("LINE"), st.Heading("STATE"), st.Heading("COMMENT"))
+	for _, c := range l.Comments {
+		table.Row(st.Name(c.File), fmt.Sprint(c.Line), string(c.State), c.Body)
+	}
+	table.Write(w)
 }
 
 type worktreeList api.WorktreeList

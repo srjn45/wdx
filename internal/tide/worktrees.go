@@ -365,6 +365,10 @@ func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) str
 func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []string {
 	summary, short := worktreeSummary(w), worktreeSummary(w)
 	progress := verifiedProgress(w)
+	comments := ""
+	if len(w.Comments) > 0 {
+		comments = countOf(len(w.Comments))
+	}
 	if w.Ahead != nil && *w.Ahead > 0 {
 		short = fmt.Sprintf("↑%d", *w.Ahead)
 	}
@@ -385,8 +389,8 @@ func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []strin
 		return strings.Join(kept, " · ")
 	}
 	return []string{
-		joined(summary, files, progress, mark), joined(summary, files, progress), joined(short, files, progress),
-		joined(short, progress), joined(summary, files), joined(short, files), joined(summary), joined(files), "",
+		joined(summary, files, progress, comments, mark), joined(summary, files, progress, comments), joined(short, files, progress, comments),
+		joined(short, progress, comments), joined(short, comments), joined(summary, files), joined(short, files), joined(summary), joined(files), "",
 	}
 }
 

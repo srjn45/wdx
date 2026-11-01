@@ -22,6 +22,7 @@ var errProjectOrDir = errors.New("give project or dir")
 // Its reads run as long as the daemon, not as a request: they serve every stream.
 func (d *Daemon) startTracker() {
 	d.marks = worktree.NewMarks(d.db)
+	d.comments = worktree.NewComments(d.db)
 	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), d.log))
 	d.stopTracker = cancel
 	d.tracker = worktree.NewTracker(ctx, worktree.Options{
@@ -39,8 +40,9 @@ func (d *Daemon) startTracker() {
 			}
 			return workingAgents(list), nil
 		},
-		Marks:   d.marks,
-		Changed: d.notices.notify,
+		Marks:    d.marks,
+		Comments: d.comments,
+		Changed:  d.notices.notify,
 	})
 	changed, stop := d.notices.subscribe()
 	d.trackerNotices.Go(func() {
@@ -106,7 +108,11 @@ func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequest
 	if err != nil {
 		return nil, err
 	}
-	list, err := worktree.Read(ctx, c, marks)
+	drafts, err := s.comments.Drafts(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := worktree.Read(ctx, c, marks, drafts)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +186,116 @@ func (s *server) UnverifyWorktreeFile(ctx context.Context, req api.UnverifyWorkt
 	return api.UnverifyWorktreeFile200JSONResponse{Worktree: req.Worktree, Path: req.Params.Path, Verified: false}, nil
 }
 
+func (s *server) ListWorktreeComments(ctx context.Context, req api.ListWorktreeCommentsRequestObject) (api.ListWorktreeCommentsResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	w, err := worktree.Find(ctx, c, req.Worktree)
+	if err != nil {
+		return nil, err
+	}
+	list, err := s.comments.List(ctx, p.ID, w.Path)
+	if err != nil {
+		return nil, err
+	}
+	return api.ListWorktreeComments200JSONResponse{Comments: commentViews(list)}, nil
+}
+
+func (s *server) CreateWorktreeComment(ctx context.Context, req api.CreateWorktreeCommentRequestObject) (api.CreateWorktreeCommentResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	b := req.Body
+	added, err := worktree.AddComment(ctx, s.comments, p.ID, c, req.Worktree, worktree.Comment{
+		File: b.File, Line: b.Line, Side: string(b.Side), View: string(b.View), Quote: deref(b.Quote), Body: b.Body, ContentID: deref(b.ContentId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.CreateWorktreeComment201JSONResponse{Comment: commentView(added)}, nil
+}
+
+func (s *server) EditWorktreeComment(ctx context.Context, req api.EditWorktreeCommentRequestObject) (api.EditWorktreeCommentResponseObject, error) {
+	p, _, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.comments.Edit(ctx, p.ID, req.Comment, req.Body.Body); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.EditWorktreeComment200Response{}, nil
+}
+
+func (s *server) DeleteWorktreeComment(ctx context.Context, req api.DeleteWorktreeCommentRequestObject) (api.DeleteWorktreeCommentResponseObject, error) {
+	p, _, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.comments.Remove(ctx, p.ID, req.Comment); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.DeleteWorktreeComment200Response{}, nil
+}
+
+// SendWorktreeReview gives the agent the worktree's comments as one message. They
+// are sent only once the agent's inbox took it: with no agent they stay drafts.
+func (s *server) SendWorktreeReview(ctx context.Context, req api.SendWorktreeReviewRequestObject) (api.SendWorktreeReviewResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	w, err := worktree.Find(ctx, c, req.Worktree)
+	if err != nil {
+		return nil, err
+	}
+	drafts, err := s.comments.Drafts(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	var comments []worktree.Comment
+	for _, d := range drafts {
+		if d.Worktree == w.Path {
+			comments = append(comments, d)
+		}
+	}
+	if len(comments) == 0 {
+		return nil, worktree.ErrNoComments
+	}
+	ref := "id:" + p.ID
+	a, err := s.findAgent(ctx, req.Body.Agent, &ref, nil)
+	if err != nil {
+		return nil, err
+	}
+	if a, err = s.agents.Send(ctx, a.ID, worktree.ReviewMessage(w.Name, deref(req.Body.Note), comments), false); err != nil {
+		return nil, err
+	}
+	if err := s.comments.MarkSent(ctx, p.ID, comments, a.ID); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.SendWorktreeReview200JSONResponse{Result: api.ResultQueued, Agent: agentView(a), Comments: len(comments)}, nil
+}
+
+func commentViews(list []worktree.Comment) []api.WorktreeComment {
+	views := make([]api.WorktreeComment, 0, len(list))
+	for _, c := range list {
+		views = append(views, commentView(c))
+	}
+	return views
+}
+
+func commentView(c worktree.Comment) api.WorktreeComment {
+	return api.WorktreeComment{
+		Id: c.ID, File: c.File, Line: c.Line, Side: api.WorktreeCommentSide(c.Side), View: api.WorktreeCommentView(c.View),
+		Quote: c.Quote, Body: c.Body, State: api.WorktreeCommentState(c.State), Changed: c.Changed, CreatedAt: c.CreatedAt,
+	}
+}
+
 func (s *server) RefreshWorktrees(ctx context.Context, req api.RefreshWorktreesRequestObject) (api.RefreshWorktreesResponseObject, error) {
 	p, err := s.find(ctx, req.Project)
 	if err != nil {
@@ -202,6 +318,7 @@ func worktreeStatusViews(list []worktree.Status) []api.WorktreeStatus {
 			Ahead:          w.Ahead,
 			Added:          w.Added,
 			Removed:        w.Removed,
+			Comments:       commentViews(w.Comments),
 			Files:          make([]api.WorktreeFile, 0, len(w.Files)),
 			CommittedFiles: make([]api.WorktreeCommittedFile, 0, len(w.Committed)),
 		}

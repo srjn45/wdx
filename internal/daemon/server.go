@@ -25,6 +25,7 @@ type server struct {
 	settings  SettingStore // nil when it has none
 	tracker   *worktree.Tracker
 	marks     *worktree.Marks
+	comments  *worktree.Comments
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

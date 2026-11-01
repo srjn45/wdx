@@ -420,6 +420,98 @@ paths:
               schema: { $ref: "#/components/schemas/WorktreeFileMark" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/worktrees/{worktree}/comments:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    get:
+      operationId: listWorktreeComments
+      summary: List a worktree's comments in every state, by file and line
+      description: |
+        Errors: invalid_path, not_found, usage.
+      responses:
+        "200":
+          description: The comments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeCommentList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createWorktreeComment
+      summary: Save a comment on a line of a diff, not sent until its review is
+      description: |
+        Errors: invalid_argument, invalid_path, not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorktreeCommentCreate" }
+      responses:
+        "201":
+          description: The comment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeCommentEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/comments/{comment}:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - name: comment
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    patch:
+      operationId: editWorktreeComment
+      summary: Change the text of a comment not sent yet
+      description: |
+        Errors: invalid_argument, invalid_path, not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorktreeCommentEdit" }
+      responses:
+        "200": { description: The comment was changed. }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteWorktreeComment
+      summary: Delete a comment not sent yet
+      description: |
+        Errors: invalid_path, not_found, usage.
+      responses:
+        "200": { description: The comment was deleted. }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/reviews:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    post:
+      operationId: sendWorktreeReview
+      summary: Send a worktree's comments not sent yet to an agent, as one message
+      description: |
+        The message is queued in the agent's inbox, as agent send does. With no
+        agent to take it, the comments stay as they are.
+
+        Errors: agent_not_running, agent_removed, invalid_argument, invalid_path, not_found, send_failed, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorktreeReview" }
+      responses:
+        "200":
+          description: The agent, with result queued, and how many comments went.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeReviewResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/terminals:
     get:
       operationId: listTerminals
@@ -1025,7 +1117,7 @@ components:
 
     WorktreeStatus:
       type: object
-      required: [name, path, branch, head, missing, base, ahead, added, removed, files, committed_files]
+      required: [name, path, branch, head, missing, base, ahead, added, removed, files, committed_files, comments]
       properties:
         name: { type: string, description: "main for the clone, else the last part of its path, with a number if that is taken." }
         path: { type: string }
@@ -1044,6 +1136,84 @@ components:
           type: array
           items: { $ref: "#/components/schemas/WorktreeCommittedFile" }
           description: The files its commits changed since it left base, by path.
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/WorktreeComment" }
+          description: Its comments not sent yet, by file and line.
+
+    WorktreeComment:
+      type: object
+      required: [id, file, line, side, view, quote, body, state, changed, created_at]
+      properties:
+        id: { type: string }
+        file: { type: string, description: "Relative to the worktree." }
+        line: { type: integer }
+        side:
+          type: string
+          enum: [new, old]
+          description: The file now, or a line removed from it.
+        view:
+          type: string
+          enum: [uncommitted, committed]
+          description: Which diff it was written on.
+        quote: { type: string, description: "The line as it was seen." }
+        body: { type: string }
+        state:
+          type: string
+          enum: [draft, sent]
+        changed: { type: boolean, description: "The file differs from what was seen. Set on drafts." }
+        created_at: { type: string, format: date-time }
+
+    WorktreeCommentCreate:
+      type: object
+      required: [file, line, side, view, body]
+      properties:
+        file: { type: string, minLength: 1 }
+        line: { type: integer, minimum: 1 }
+        side:
+          type: string
+          enum: [new, old]
+        view:
+          type: string
+          enum: [uncommitted, committed]
+        quote: { type: string }
+        body: { type: string }
+        content_id: { type: string, description: "The file's blob id as the patch looked at says it; as it is now when not given." }
+
+    WorktreeCommentEdit:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string }
+
+    WorktreeCommentEnvelope:
+      type: object
+      required: [comment]
+      properties:
+        comment: { $ref: "#/components/schemas/WorktreeComment" }
+
+    WorktreeCommentList:
+      type: object
+      required: [comments]
+      properties:
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/WorktreeComment" }
+
+    WorktreeReview:
+      type: object
+      required: [agent]
+      properties:
+        agent: { type: string, minLength: 1, description: "The agent to send it to: its name, or id: and its id." }
+        note: { type: string, description: "Said before the comments." }
+
+    WorktreeReviewResult:
+      type: object
+      required: [result, agent, comments]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        agent: { $ref: "#/components/schemas/Agent" }
+        comments: { type: integer, description: "How many comments went." }
 
     WorktreeCommittedFile:
       type: object

@@ -19,6 +19,7 @@ const (
 
 // commitBox asks what to send, and to which agent.
 type commitBox struct {
+	review   int // how many comments it sends, with text as their note; 0 asks to commit
 	worktree string
 	agents   []api.Agent
 	chosen   int
@@ -88,11 +89,19 @@ func (m *Model) commitKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.commit = nil
 	case name == "enter":
 		text := strings.TrimSpace(c.text)
-		if text == "" {
+		if text == "" && c.review == 0 {
 			return nil
 		}
 		c.sending, c.err = true, ""
 		a := c.agents[c.chosen]
+		if c.review > 0 {
+			ref := "id:" + m.following.project.Id
+			m.log.Info("review sent", "worktree", c.worktree, "agent_id", a.Id)
+			return func() tea.Msg {
+				_, err := m.client.SendWorktreeReview(m.ctx, c.worktree, ref, "id:"+a.Id, text)
+				return commitSent{agent: a.Name, err: err}
+			}
+		}
 		m.log.Info("commit sent", "worktree", c.worktree, "agent_id", a.Id)
 		return func() tea.Msg {
 			_, err := m.client.SendAgent(m.ctx, "id:"+a.Id, "", "", text, false)
@@ -135,7 +144,14 @@ func (m *Model) commitPopup() popup {
 	if len(c.agents) > 1 {
 		to = st.Muted("← ") + to + st.Muted(" →")
 	}
+	title := "Ask to commit"
 	body := []string{"To " + to + ", in " + c.worktree + ":", "", "> " + c.text + "_"}
+	if c.review > 0 {
+		title = "Send review"
+		body = []string{countOf(c.review) + " to " + to + ", in " + c.worktree + ".", "A note to go first, if any:", "", "> " + c.text + "_"}
+	} else if n := len(m.draftComments(c.worktree)); n > 0 {
+		body = append(body, "", st.Warning(countOf(n)+" not sent: s sends them, and a commit now leaves them out"))
+	}
 	if a.Activity != nil && *a.Activity == api.AgentActivityWorking {
 		body = append(body, "", st.Warning(a.Name+" is working: a commit now may take in unfinished work"))
 	}
@@ -146,7 +162,7 @@ func (m *Model) commitPopup() popup {
 		body = append(body, "", st.Failure(c.err))
 	}
 	return popup{
-		title:  "Ask to commit",
+		title:  title,
 		body:   body,
 		footer: st.Command("Enter") + " send  " + st.Command("Esc") + " cancel",
 	}

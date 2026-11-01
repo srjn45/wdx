@@ -48,6 +48,8 @@ type Status struct {
 	Files          []File
 	// Committed are the files its commits changed since it left Base.
 	Committed []CommittedFile
+	// Comments are its comments not sent yet.
+	Comments []Comment
 }
 
 // CommittedFile is a file a checkout's commits changed.
@@ -79,7 +81,7 @@ type Checkouts struct {
 
 // Read returns everything known of the project's checkouts, reading it all now, with
 // the marks that still hold.
-func Read(ctx context.Context, c Checkouts, marks []Mark) ([]Status, error) {
+func Read(ctx context.Context, c Checkouts, marks []Mark, drafts []Comment) ([]Status, error) {
 	list, err := List(ctx, c)
 	if err != nil {
 		return nil, err
@@ -92,6 +94,7 @@ func Read(ctx context.Context, c Checkouts, marks []Mark) ([]Status, error) {
 			return nil, err
 		}
 		applyMarks(ctx, &list[i], marks)
+		applyComments(ctx, &list[i], drafts)
 	}
 	return list, nil
 }
