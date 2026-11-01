@@ -54,6 +54,9 @@ const (
 	// the frame. docs/AGENT_STATE.md.
 	frameStatus frameType = 12 // holder to daemon: its Status, when it changes
 	frameSend   frameType = 13 // daemon to holder: a sendRequest for the inbox
+	// Takes no version of its own either: a holder too old for it leaves Confirms
+	// out of its hello, and a daemon before it skips the frame. docs/SEND.md.
+	frameDelivered frameType = 14 // holder to daemon: a deliveredReport, of messages it typed
 )
 
 // Roles a connecting side gives in its hello; a hello without one is a
@@ -81,6 +84,12 @@ type Hello struct {
 	// Status is nil on a holder that does not read its screen, or is too old to
 	// say.
 	Status *Status `json:"status,omitempty"`
+	// Confirms says it tells which messages it typed, and goes by their ids. One
+	// too old to says nothing, and a message handed to it is not known to arrive.
+	Confirms bool `json:"confirms,omitempty"`
+	// Delivered are the ids of the messages it typed last, including while no
+	// daemon was there to be told.
+	Delivered []string `json:"delivered,omitempty"`
 }
 
 // Status is everything a holder tells the daemon about what its program is
@@ -139,6 +148,14 @@ type stopRequest struct {
 type sendRequest struct {
 	Prompt  string `json:"prompt"`
 	Instant bool   `json:"instant,omitempty"`
+	// ID names the message for a report that it was typed, and makes sending it
+	// again harmless. A sender too old to give one gets no report.
+	ID string `json:"id,omitempty"`
+}
+
+// deliveredReport says which messages a holder typed.
+type deliveredReport struct {
+	IDs []string `json:"ids"`
 }
 
 func writeFrame(w io.Writer, t frameType, payload any) error {

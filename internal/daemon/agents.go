@@ -129,7 +129,7 @@ func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	if a, err = s.agents.Send(ctx, a.ID, req.Body.Prompt, deref(req.Body.Instant)); err != nil {
+	if a, _, err = s.agents.Send(ctx, a.ID, req.Body.Prompt, deref(req.Body.Instant)); err != nil {
 		return nil, err
 	}
 	return api.SendAgent200JSONResponse{Result: api.ResultQueued, Agent: agentView(a)}, nil
@@ -300,6 +300,7 @@ func agentView(a agent.Agent) api.Agent {
 	if a.CurrentDir != "" {
 		v.CurrentDir = &a.CurrentDir
 	}
+	v.Held = a.Held
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree
 	}

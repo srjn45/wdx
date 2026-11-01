@@ -98,7 +98,7 @@ func (s *server) SendTerminal(ctx context.Context, req api.SendTerminalRequestOb
 	if err != nil {
 		return nil, err
 	}
-	if t, err = s.terminals.Send(ctx, t.ID, req.Body.Prompt); err != nil {
+	if t, _, err = s.terminals.Send(ctx, t.ID, req.Body.Prompt); err != nil {
 		return nil, err
 	}
 	return api.SendTerminal200JSONResponse{Result: api.ResultQueued, Terminal: terminalView(t)}, nil

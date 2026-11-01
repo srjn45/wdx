@@ -232,6 +232,8 @@ func (p *tracked) agentsChanged() {
 		}
 	}
 	p.agentDirs = dirs
+	// A review whose message went gives its comments back with nothing else to say so.
+	drafts := p.draftsChanged()
 	for id, a := range p.agents {
 		if _, still := working[id]; !still {
 			stopped = append(stopped, a)
@@ -240,12 +242,39 @@ func (p *tracked) agentsChanged() {
 	p.agents = working
 	statuses := p.statuses
 	p.mu.Unlock()
+	for _, path := range drafts {
+		p.mark(path, reading{files: true})
+	}
 	for _, a := range stopped {
 		if path, ok := holding(statuses, a.Dir); ok {
 			logging.FromContext(p.t.ctx).Debug("worktree to read", "path", path, "reason", "agent stopped working", "agent_id", a.ID)
 			p.mark(path, reading{files: true, commits: true})
 		}
 	}
+}
+
+// draftsChanged returns the checkouts whose comments not sent are not those kept; it
+// reads the table alone, and p.mu is held.
+func (p *tracked) draftsChanged() []string {
+	store := p.t.opts.Comments
+	if store == nil {
+		return nil
+	}
+	list, err := store.Drafts(p.t.ctx, p.id)
+	if err != nil {
+		return nil
+	}
+	now := map[string]int{}
+	for _, c := range list {
+		now[c.Worktree]++
+	}
+	var changed []string
+	for _, s := range p.statuses {
+		if now[s.Path] != len(s.Comments) {
+			changed = append(changed, s.Path)
+		}
+	}
+	return changed
 }
 
 // holding returns the checkout dir is in: the deepest, since worktrees are often

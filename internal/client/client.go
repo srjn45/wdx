@@ -453,6 +453,34 @@ func (c *Client) SendWorktreeReview(ctx context.Context, name, ref, agent, note 
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// ListMessages lists the messages still waiting in the project named by ref or
+// holding dir.
+func (c *Client) ListMessages(ctx context.Context, ref, dir string) (api.MessageList, error) {
+	r, err := c.api.ListMessagesWithResponse(ctx, &api.ListMessagesParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.MessageList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// ResendMessage sends a message still waiting.
+func (c *Client) ResendMessage(ctx context.Context, id string) (api.MessageResult, error) {
+	r, err := c.api.ResendMessageWithResponse(ctx, id)
+	if err != nil {
+		return api.MessageResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// DiscardMessage discards a message still waiting.
+func (c *Client) DiscardMessage(ctx context.Context, id string) (api.MessageDiscarded, error) {
+	r, err := c.api.DiscardMessageWithResponse(ctx, id)
+	if err != nil {
+		return api.MessageDiscarded{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // RefreshWorktrees asks for the worktree name of the project ref to be read
 // again, or all of them when name is "".
 func (c *Client) RefreshWorktrees(ctx context.Context, ref, name string) error {

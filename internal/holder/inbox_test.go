@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -186,7 +187,7 @@ func TestInboxOrder(t *testing.T) {
 	t.Parallel()
 	i := newInbox()
 	for _, m := range []message{{text: "general 1"}, {text: "instant 1", instant: true}, {text: "general 2"}, {text: "instant 2", instant: true}} {
-		if !i.add(m) {
+		if i.add(m) != addQueued {
 			t.Fatal("refused")
 		}
 	}
@@ -211,7 +212,7 @@ func TestInboxOrder(t *testing.T) {
 	if left := i.close(); left != 1 {
 		t.Fatalf("%d left", left)
 	}
-	if i.add(message{text: "late"}) {
+	if i.add(message{text: "late"}) != addClosed {
 		t.Fatal("a closed inbox took a message")
 	}
 }
@@ -404,4 +405,109 @@ func (f fixture) waitLoggedCount(t *testing.T, msg string, want int) {
 		}
 		return n >= want
 	})
+}
+
+// TestSendMessageIsConfirmed follows ids: a holder says what it typed, ignores what it
+// has seen, and says what it typed with nobody there to the next that connects.
+func TestSendMessageIsConfirmed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	got := filepath.Join(f.dir, "got")
+	f.start(t, "term-00000310", f.script(t, `read first; read second; echo "$first, $second" > `+got+`; read third; read fourth`))
+	c := f.dial(t, "term-00000310")
+	if !c.Confirms() {
+		t.Fatal("it does not say it confirms")
+	}
+	take := func(c *Conn, want ...string) {
+		t.Helper()
+		var have []string
+		timeout := waittest.After(t)
+		for {
+			have = append(have, c.TakeDelivered()...)
+			missing := false
+			for _, id := range want {
+				missing = missing || !slices.Contains(have, id)
+			}
+			if !missing {
+				return
+			}
+			select {
+			case <-c.Delivered():
+			case <-timeout:
+				t.Fatalf("told of %v, want %v", have, want)
+			}
+		}
+	}
+	if err := c.SendMessage("m1", "one"); err != nil {
+		t.Fatal(err)
+	}
+	take(c, "m1")
+	// Sent again, as after a daemon restart: only one goes in.
+	for _, m := range []struct{ id, text string }{{"m1", "repeated"}, {"m2", "two"}} {
+		if err := c.SendMessage(m.id, m.text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	take(c, "m2")
+	if !waittest.Until(t, func() bool { b, err := os.ReadFile(got); return err == nil && len(b) > 0 }) {
+		t.Fatal("the shell did not read them")
+	}
+	if b, _ := os.ReadFile(got); string(b) != "one, two\n" {
+		t.Errorf("the shell read %q", b)
+	}
+
+	// The daemon goes as soon as it has sent. The holder may never read that frame:
+	// the next connection closes this one. So the next daemon sends all it was not
+	// told of, which goes in once whether or not the first arrived, and is told.
+	if err := c.SendMessage("m3", "three"); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	next := f.dial(t, "term-00000310")
+	if h := next.Hello(); !h.Confirms || !slices.Contains(h.Delivered, "m1") || !slices.Contains(h.Delivered, "m2") {
+		t.Errorf("hello: %+v", h)
+	}
+	if err := next.SendMessage("m3", "three"); err != nil {
+		t.Fatal(err)
+	}
+	take(next, "m3")
+
+	// One from an older daemon has no id, and still goes in.
+	if err := next.Send("four"); err != nil {
+		t.Fatal(err)
+	}
+	if e := waitExit(t, next); e.Code != 0 {
+		t.Errorf("exit code %d", e.Code)
+	}
+}
+
+func TestInboxRemembersSoManyIDs(t *testing.T) {
+	t.Parallel()
+	i := newInbox()
+	if i.add(message{id: "a"}) != addQueued || i.add(message{id: "a"}) != addRepeated {
+		t.Fatal("a repeat was queued")
+	}
+	for range 2 {
+		if i.add(message{}) != addQueued {
+			t.Error("no id is not a repeat")
+		}
+	}
+	for n := range rememberedSeen {
+		i.add(message{id: fmt.Sprint("m", n)})
+	}
+	if i.add(message{id: "a"}) != addQueued {
+		t.Error("the oldest id was not forgotten")
+	}
+	for n := range rememberedDelivered + 5 {
+		i.typed(fmt.Sprint("t", n))
+	}
+	if ids := i.typedIDs(); len(ids) != rememberedDelivered || ids[0] != "t5" {
+		t.Errorf("%d typed, first %s", len(ids), ids[0])
+	}
+	i.notTyped("t0")
+	i.add(message{id: "again"})
+	i.notTyped("again")
+	if i.add(message{id: "again"}) != addQueued {
+		t.Error("one that could not go in cannot be sent again")
+	}
 }

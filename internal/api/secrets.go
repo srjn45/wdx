@@ -18,6 +18,12 @@ func WorktreeResponseLogged(b []byte) any {
 			}
 		}
 	}
+	if list, ok := v["messages"].([]any); ok {
+		v["messages"] = len(list)
+	}
+	if m, ok := v["message"].(map[string]any); ok {
+		v["message"] = map[string]any{"id": m["id"], "state": m["state"]}
+	}
 	if c, ok := v["comment"].(map[string]any); ok {
 		v["comment"] = map[string]any{"id": c["id"], "file": c["file"], "line": c["line"], "state": c["state"]}
 	}

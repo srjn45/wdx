@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"slices"
 	"testing"
@@ -36,7 +37,7 @@ func TestSendAgentOnlyFindsAnAgentsRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SendAgent(ctx, row.ID, "hello", false); !errors.Is(err, ErrNotFound) {
+	if _, _, err := s.SendAgent(ctx, row.ID, "hello", false); !errors.Is(err, ErrNotFound) {
 		t.Errorf("SendAgent: %v", err)
 	}
 }
@@ -67,7 +68,7 @@ func TestShellEntriesDoNotFindAnAgentsRow(t *testing.T) {
 	if _, err := s.Start(ctx, row.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Start: %v", err)
 	}
-	if _, err := s.Send(ctx, row.ID, "hello"); !errors.Is(err, ErrNotFound) {
+	if _, _, err := s.Send(ctx, row.ID, "hello"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Send: %v", err)
 	}
 	if _, err := s.Remove(ctx, row.ID, true); !errors.Is(err, ErrNotFound) {
@@ -249,5 +250,157 @@ func waitRowState(t *testing.T, s *Supervisor, id string, want State) {
 		return err == nil && got.State == want
 	}) {
 		t.Fatalf("row %s: %+v, %v; want %s", id, got, err, want)
+	}
+}
+
+func TestAMessageDeliveredIsClearedAndOffTheList(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	p := f.project(t, "app")
+	term := create(t, s, p, "shell", t.TempDir())
+	_, id, err := s.Send(ctx, term.ID, "secret text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waittest.For(t, "the message to be delivered", func() bool {
+		list, err := s.Store().Undelivered(ctx, p)
+		return err == nil && len(list) == 0
+	})
+	var text, state string
+	if err := s.store.db.QueryRow("SELECT text, state FROM messages WHERE id = ?", id).Scan(&text, &state); err != nil {
+		t.Fatal(err)
+	}
+	if text != "" || state != MessageDelivered {
+		t.Errorf("text %q, state %q", text, state)
+	}
+	if _, err := s.Store().Message(ctx, id); !errors.Is(err, ErrMessageNotFound) {
+		t.Errorf("a delivered one: %v", err)
+	}
+}
+
+// TestCatchUp is what a holder just connected to gets of what is pending. This one
+// types what it gets at once, so what was sent may be pending or delivered by now, and
+// attempts is what says it was sent.
+func TestCatchUp(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	_, s, p := agentFixture(t)
+	s.opts.AgentSession = func(context.Context, string) (string, error) { return "now", nil }
+	row, err := s.CreateAgent(ctx, p, "helper", t.TempDir(), noLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRowState(t, s, row.ID, StateRunning)
+	conn, ok := s.currentConn(row.ID)
+	if !ok {
+		t.Fatal("no connection")
+	}
+	pid := conn.Hello().HolderPID
+	add := func(session string, forwardedTo int) string {
+		t.Helper()
+		id, err := s.store.addMessage(ctx, row.ID, "text", false, session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if forwardedTo != 0 {
+			if err := s.store.messageForwarded(ctx, id, forwardedTo); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	const oldHolder = 1
+	never := add("old", 0)
+	same := add("old", pid)
+	resumed := add("now", oldHolder)
+	fresh := add("old", oldHolder)
+	review := add("old", oldHolder)
+	if _, err := s.store.db.Exec(`INSERT INTO review_comments (id, project_id, worktree, file, line, side, view, quote, content_id, body, state, agent_id, created_at, sent_at, message_id)
+		VALUES ('cmt-1', ?, '/w', 'f', 1, 'new', 'committed', '', '', 'b', 'sent', 'a', 1, 1, ?)`, p, review); err != nil {
+		t.Fatal(err)
+	}
+
+	s.catchUp(ctx, row, conn)
+
+	states := map[string]Message{}
+	list, err := s.store.messages(ctx, "m.terminal_id = ?", row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range list {
+		states[m.ID] = m
+	}
+	for _, tc := range []struct {
+		what, id string
+		attempts int
+	}{
+		{"never forwarded", never, 1},
+		{"its holder's", same, 2},
+		{"for the conversation resumed", resumed, 2},
+	} {
+		if m := states[tc.id]; m.State == MessageHeld || m.Attempts != tc.attempts {
+			t.Errorf("%s: %+v", tc.what, m)
+		}
+	}
+	if m := states[fresh]; m.State != MessageHeld || m.Attempts != 1 {
+		t.Errorf("for a conversation gone: %+v", m)
+	}
+	if a := states[never]; a.State == MessageDelivered && a.Text != "" {
+		t.Errorf("delivered, with its text: %+v", a)
+	}
+	if _, kept := states[review]; kept {
+		t.Error("a review's message was held, not given back")
+	}
+	var state string
+	var message sql.NullString
+	if err := s.store.db.QueryRow("SELECT state, message_id FROM review_comments WHERE id = 'cmt-1'").Scan(&state, &message); err != nil {
+		t.Fatal(err)
+	}
+	if state != "draft" || message.Valid {
+		t.Errorf("its comment: %s, %v", state, message)
+	}
+
+	// Held, a person decides: sent, in the conversation of now.
+	if _, err := s.ResendMessage(ctx, "msg-nope"); !errors.Is(err, ErrMessageNotFound) {
+		t.Errorf("resend of none: %v", err)
+	}
+	if m, err := s.ResendMessage(ctx, fresh); err != nil || m.State != MessagePending || m.SessionID != "now" || m.Attempts != 2 {
+		t.Errorf("resent: %+v, %v", m, err)
+	}
+	// Or discarded.
+	gone := add("old", oldHolder)
+	s.catchUp(ctx, row, conn)
+	if err := s.Store().DiscardMessage(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store().DiscardMessage(ctx, gone); !errors.Is(err, ErrMessageNotFound) {
+		t.Errorf("discarded twice: %v", err)
+	}
+}
+
+// TestShellMessageIsHeldForAShellAnew: there is no conversation to go on with.
+func TestShellMessageIsHeldForAShellAnew(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	s := f.supervisor(t)
+	p := f.project(t, "app")
+	term := create(t, s, p, "shell", t.TempDir())
+	conn, ok := s.currentConn(term.ID)
+	if !ok {
+		t.Fatal("no connection")
+	}
+	id, err := s.store.addMessage(ctx, term.ID, "rm -rf build", false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.messageForwarded(ctx, id, conn.Hello().HolderPID+1); err != nil {
+		t.Fatal(err)
+	}
+	s.catchUp(ctx, term, conn)
+	if m, err := s.Store().Message(ctx, id); err != nil || m.State != MessageHeld {
+		t.Errorf("%+v, %v", m, err)
 	}
 }

@@ -144,7 +144,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeProjectInUse, details
 	}
 	switch {
-	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound):
+	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound):
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil

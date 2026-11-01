@@ -133,3 +133,52 @@ func TestWorktreeComments(t *testing.T) {
 	e, exit := wdxJSONWith(t, home, in(app), "worktree", "comments", "--name", "nope")
 	wantError(t, e, exit, api.ErrorCodeNotFound, api.ExitRejected)
 }
+
+func TestMessageCommands(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	send := func() {
+		t.Helper()
+		if out := wdxWith(t, home, in(app), "agent", "send", "--name", "helper", "--prompt", "a secret text"); out.exit != api.ExitOK {
+			t.Fatalf("send: %+v", out)
+		}
+	}
+	if out := wdxWith(t, home, in(app), "agent", "create", "--name", "helper"); out.exit != api.ExitOK {
+		t.Fatalf("create: %+v", out)
+	}
+	if out := wdxWith(t, home, in(app), "message", "list"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "no messages waiting") {
+		t.Errorf("none: %+v", out)
+	}
+	send()
+	out := wdxWith(t, home, in(app), "message", "list", "--json")
+	var list api.MessageList
+	if err := json.Unmarshal([]byte(out.stdout), &list); err != nil || len(list.Messages) != 1 || list.Messages[0].Text != "a secret text" {
+		t.Fatalf("list: %v, %s", err, out.stdout)
+	}
+	id := list.Messages[0].Id
+	if out := wdxWith(t, home, in(app), "message", "list"); !strings.Contains(out.stdout, "a secret text") || !strings.Contains(out.stdout, "pending") {
+		t.Errorf("text: %+v", out)
+	}
+	v, exit := wdxJSONWith(t, home, in(app), "message", "resend", "--id", id)
+	if exit != api.ExitOK || v.Result != "queued" {
+		t.Errorf("resend: %d, %+v", exit, v)
+	}
+	if out := wdxWith(t, home, in(app), "message", "resend", "--id", id); out.exit != api.ExitOK || !strings.Contains(out.stdout, "queued for helper") {
+		t.Errorf("resend text: %+v", out)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "message", "discard", "--id", id)
+	if exit != api.ExitOK || v.Result != "removed" {
+		t.Errorf("discard: %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "message", "discard", "--id", id)
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(app), "message", "resend", "--id", "msg-nope")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "message", "list")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	send()
+	if out := wdxWith(t, home, in(app), "message", "discard", "--id", "msg-nope"); out.exit != api.ExitRejected {
+		t.Errorf("text failure: %+v", out)
+	}
+}

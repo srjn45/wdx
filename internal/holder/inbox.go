@@ -2,46 +2,81 @@ package holder
 
 import (
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/srjn45/wdx/internal/screen"
+)
+
+// How many ids of messages a holder remembers. Typed, to tell a daemon that was
+// away; seen, to ignore a message sent again. A daemon that was away for more than
+// this may have one typed twice, which is the least of what that would mean.
+const (
+	rememberedDelivered = 1024
+	rememberedSeen      = 4096
 )
 
 // message is one message in the inbox.
 type message struct {
 	text    string
 	instant bool
+	id      string // "" from a sender too old to give one
 }
 
-// inbox holds the messages waiting to go into the shell or the ACA, in the
-// order they came, instant ones first. It lives in memory: the shell it serves
-// ends with the holder. See docs/SEND.md.
+// inbox holds the messages on their way into the shell or the ACA, in the order
+// they came, instant ones first. It lives in memory: the shell it serves ends with
+// the holder, and the daemon keeps what must outlive it, so this is no record of
+// them. See docs/SEND.md.
 type inbox struct {
 	mu           sync.Mutex
-	instantQueue []string
-	generalQueue []string
+	instantQueue []message
+	generalQueue []message
 	closed       bool
 	arrived      chan struct{} // told when a message comes, for the inboxReader
+	seen         map[string]bool
+	seenOrder    []string
+	delivered    []string // the last ids typed, oldest first
 }
 
 func newInbox() *inbox {
-	return &inbox{arrived: make(chan struct{}, 1)}
+	return &inbox{arrived: make(chan struct{}, 1), seen: map[string]bool{}}
 }
 
-// add queues m; false once the inbox is closed.
-func (i *inbox) add(m message) bool {
+// addResult is what came of adding a message.
+type addResult int
+
+const (
+	addQueued addResult = iota
+	addRepeated
+	addClosed
+)
+
+// add queues m, unless the inbox is closed or m has come before: a daemon sends again
+// what it was not told of, and goes by a holder dropping what it has.
+func (i *inbox) add(m message) addResult {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if i.closed {
-		return false
+		return addClosed
+	}
+	if m.id != "" {
+		if i.seen[m.id] {
+			return addRepeated
+		}
+		i.seen[m.id] = true
+		i.seenOrder = append(i.seenOrder, m.id)
+		if len(i.seenOrder) > rememberedSeen {
+			delete(i.seen, i.seenOrder[0])
+			i.seenOrder = i.seenOrder[1:]
+		}
 	}
 	if m.instant {
-		i.instantQueue = append(i.instantQueue, m.text)
+		i.instantQueue = append(i.instantQueue, m)
 	} else {
-		i.generalQueue = append(i.generalQueue, m.text)
+		i.generalQueue = append(i.generalQueue, m)
 	}
 	wake(i.arrived)
-	return true
+	return addQueued
 }
 
 // head is the message next in line, left in the inbox; false when there is none.
@@ -49,10 +84,10 @@ func (i *inbox) head() (message, bool) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if len(i.instantQueue) > 0 {
-		return message{text: i.instantQueue[0], instant: true}, true
+		return i.instantQueue[0], true
 	}
 	if len(i.generalQueue) > 0 {
-		return message{text: i.generalQueue[0]}, true
+		return i.generalQueue[0], true
 	}
 	return message{}, false
 }
@@ -70,6 +105,30 @@ func (i *inbox) remove(m message) {
 	if len(*queue) > 0 {
 		*queue = (*queue)[1:]
 	}
+}
+
+// typed remembers that the message with id went in.
+func (i *inbox) typed(id string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.delivered = append(i.delivered, id)
+	if len(i.delivered) > rememberedDelivered {
+		i.delivered = i.delivered[1:]
+	}
+}
+
+// notTyped forgets a message that could not go in, so that it can be sent again.
+func (i *inbox) notTyped(id string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	delete(i.seen, id)
+}
+
+// typedIDs are the last ids typed.
+func (i *inbox) typedIDs() []string {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return slices.Clone(i.delivered)
 }
 
 // length is how many messages wait.
@@ -92,11 +151,15 @@ func (i *inbox) close() int {
 // queue puts a message in the inbox. It never writes to the PTY: a program
 // that stops reading its input must not hold up the daemon's frames.
 func (h *holder) queue(m message) {
-	if !h.inbox.add(m) {
-		h.log.Info("message dropped: the shell has ended", "prompt_bytes", len(m.text), "instant", m.instant)
+	switch h.inbox.add(m) {
+	case addClosed:
+		h.log.Info("message dropped: the shell has ended", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
+		return
+	case addRepeated:
+		h.log.Info("message already here", "message_id", m.id)
 		return
 	}
-	h.log.Info("message queued", "prompt_bytes", len(m.text), "instant", m.instant)
+	h.log.Info("message queued", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
 	h.queueChanged()
 }
 
@@ -209,10 +272,33 @@ func (h *holder) waitForInbox() bool {
 // deliver puts one message into the shell or the ACA.
 func (h *holder) deliver(m message) {
 	if err := h.deliverTo(ptyInput{h}, m.text); err != nil {
-		h.log.Info("message not delivered", "prompt_bytes", len(m.text), "instant", m.instant, "err", err)
+		h.log.Info("message not delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant, "err", err)
+		if m.id != "" {
+			h.inbox.notTyped(m.id)
+		}
 		return
 	}
-	h.log.Info("message delivered", "prompt_bytes", len(m.text), "instant", m.instant)
+	h.log.Info("message delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
+	if m.id != "" {
+		h.inbox.typed(m.id)
+		h.reportDelivered(m.id)
+	}
+}
+
+// reportDelivered tells the daemon the message went in. With none there, or a write
+// that fails, the next one's hello says it: typed is remembered first.
+func (h *holder) reportDelivered(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.conn == nil {
+		return
+	}
+	if err := h.write(h.conn, frameDelivered, deliveredReport{IDs: []string{id}}); err != nil {
+		h.log.Info("delivery not reported", "message_id", id, "err", err)
+		// A write cut short leaves the frames out of step. Dialling again, the
+		// daemon gets it in the hello.
+		h.conn.Close()
+	}
 }
 
 // typeMessage delivers to a shell: the text, then the carriage return the

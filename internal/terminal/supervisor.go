@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
+
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -95,6 +96,9 @@ type Options struct {
 	// AgentLaunch is what a row of KindAgent runs, asked at each launch,
 	// since an AI coding agent may start differently the second time.
 	AgentLaunch func(ctx context.Context, t Terminal) (AgentLaunch, error)
+	// AgentSession returns the conversation of the agent on a row of KindAgent now:
+	// what is waiting for it goes on when a holder dies only if that is the same.
+	AgentSession func(ctx context.Context, id string) (string, error)
 	// AgentStatus records what a row of KindAgent's process is doing, as its
 	// holder told. Nothing is recorded when nil.
 	AgentStatus func(ctx context.Context, id string, status holder.Status)
@@ -303,6 +307,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 		conn.Close()
 		return Terminal{}, err
 	}
+	s.catchUp(ctx, t, conn)
 	s.follow(t, conn)
 	return s.store.row(ctx, t.ID)
 }
@@ -391,41 +396,133 @@ func (s *Supervisor) history(ctx context.Context, kind Kind, id string, from *in
 
 // Send puts prompt in the inbox of a running terminal's holder and returns the
 // terminal. An agent's row is not found.
-func (s *Supervisor) Send(ctx context.Context, id, prompt string) (Terminal, error) {
+func (s *Supervisor) Send(ctx context.Context, id, prompt string) (Terminal, string, error) {
 	return s.send(ctx, KindShell, id, prompt, false)
 }
 
 // SendAgent is Send for an agent's row; instant says the message may interrupt
 // its turn.
-func (s *Supervisor) SendAgent(ctx context.Context, id, prompt string, instant bool) (Terminal, error) {
+func (s *Supervisor) SendAgent(ctx context.Context, id, prompt string, instant bool) (Terminal, string, error) {
 	return s.send(ctx, KindAgent, id, prompt, instant)
 }
 
-func (s *Supervisor) send(ctx context.Context, kind Kind, id, prompt string, instant bool) (Terminal, error) {
+// send stores the message, then hands it to the holder, whose inbox goes on as it
+// always has: the table is what recovers it if that holder dies. It returns the
+// message's id.
+func (s *Supervisor) send(ctx context.Context, kind Kind, id, prompt string, instant bool) (Terminal, string, error) {
 	t, err := s.store.ofKind(ctx, kind, id)
 	if err != nil {
-		return Terminal{}, err
+		return Terminal{}, "", err
 	}
 	if t.State != StateRunning {
-		return Terminal{}, &NotRunningError{Terminal: t}
+		return Terminal{}, "", &NotRunningError{Terminal: t}
 	}
+	conn, ok := s.currentConn(id)
+	if !ok {
+		return Terminal{}, "", &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
+	}
+	messageID, err := s.store.addMessage(ctx, id, prompt, instant, s.sessionOf(ctx, kind, id))
+	if err != nil {
+		return Terminal{}, "", err
+	}
+	if err := s.store.sendOne(ctx, kind, conn, Message{ID: messageID, Text: prompt, Instant: instant}); err != nil {
+		// The sender is told it failed, and will send it again if it still wants to.
+		if derr := s.store.DiscardMessage(ctx, messageID); derr != nil {
+			logging.FromContext(ctx).Error("message not taken back", "message_id", messageID, "err", derr)
+		}
+		return Terminal{}, "", &SendError{Terminal: t, Err: err}
+	}
+	logging.FromContext(ctx).Info("message queued", "message_id", messageID, "terminal_id", id, "prompt_bytes", len(prompt), "instant", instant)
+	return t, messageID, nil
+}
+
+// currentConn returns the connection to the terminal's holder.
+func (s *Supervisor) currentConn(id string) (*holder.Conn, bool) {
 	s.mu.Lock()
 	w := s.watches[id]
 	s.mu.Unlock()
 	if w == nil {
-		return Terminal{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
+		return nil, false
 	}
-	conn := w.current()
-	if kind == KindAgent {
-		err = conn.SendAgent(prompt, instant)
-	} else {
-		err = conn.Send(prompt)
+	return w.current(), true
+}
+
+// sessionOf is the agent's conversation now, "" for a shell.
+func (s *Supervisor) sessionOf(ctx context.Context, kind Kind, id string) string {
+	if kind != KindAgent || s.opts.AgentSession == nil {
+		return ""
 	}
+	session, err := s.opts.AgentSession(ctx, id)
 	if err != nil {
-		return Terminal{}, &SendError{Terminal: t, Err: err}
+		logging.FromContext(ctx).Info("agent session not read", "terminal_id", id, "err", err)
 	}
-	logging.FromContext(ctx).Info("message queued", "terminal_id", id, "prompt_bytes", len(prompt), "instant", instant)
-	return t, nil
+	return session
+}
+
+// catchUp brings the table and a holder just connected to in line: what it typed
+// while nobody was there to be told, then what it should have. A holder ignores a
+// message it already has, so one it may have is simply sent again. Messages for a
+// holder that died go on only if they still mean something: to the same conversation
+// of an agent. Else, as in a shell started anew, a human decides.
+func (s *Supervisor) catchUp(ctx context.Context, t Terminal, conn *holder.Conn) {
+	log := logging.FromContext(ctx).With("terminal_id", t.ID)
+	if err := s.store.messagesDelivered(ctx, conn.TakeDelivered()); err != nil {
+		log.Error("deliveries not recorded", "err", err)
+	}
+	if !conn.Confirms() {
+		return // nothing it says can be gone by, so it is not sent anything twice
+	}
+	pending, err := s.store.pendingMessages(ctx, t.ID)
+	if err != nil {
+		log.Error("messages not read", "err", err)
+		return
+	}
+	holderPID := conn.Hello().HolderPID
+	session := s.sessionOf(ctx, t.Kind, t.ID)
+	for _, m := range pending {
+		sameHolder := m.HolderPID == 0 || m.HolderPID == holderPID
+		if !sameHolder && (t.Kind != KindAgent || m.SessionID == "" || m.SessionID != session) {
+			if err := s.store.holdMessage(ctx, m.ID); err != nil {
+				log.Error("message not held", "message_id", m.ID, "err", err)
+			}
+			continue
+		}
+		if err := s.store.sendOne(ctx, t.Kind, conn, m); err != nil {
+			log.Info("message not sent again", "message_id", m.ID, "err", err)
+			return // the connection went: the next one comes back here
+		}
+		log.Info("message sent again", "message_id", m.ID, "attempts", m.Attempts+1)
+	}
+}
+
+// ResendMessage sends a message still waiting to its terminal or agent as it is now.
+func (s *Supervisor) ResendMessage(ctx context.Context, id string) (Message, error) {
+	m, err := s.store.Message(ctx, id)
+	if err != nil {
+		return Message{}, err
+	}
+	t, err := s.store.row(ctx, m.TerminalID)
+	if err != nil {
+		return Message{}, err
+	}
+	if t.State != StateRunning {
+		return Message{}, &NotRunningError{Terminal: t}
+	}
+	conn, ok := s.currentConn(t.ID)
+	if !ok {
+		return Message{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
+	}
+	session := s.sessionOf(ctx, t.Kind, t.ID)
+	if _, err := db.Exec(ctx, s.store.db, "UPDATE messages SET state = ?, session_id = NULLIF(?, ''), holder_pid = NULL WHERE id = ?", MessagePending, session, id); err != nil {
+		return Message{}, err
+	}
+	if err := s.store.sendOne(ctx, t.Kind, conn, m); err != nil {
+		return Message{}, &SendError{Terminal: t, Err: err}
+	}
+	s.store.changed()
+	// As sent, not read back: it may be delivered by now, and its text cleared.
+	m.State, m.SessionID, m.Attempts = MessagePending, session, m.Attempts+1
+	return m, nil
 }
 
 // Sweep deletes what terminals that no longer exist kept on disk: removing
@@ -667,6 +764,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 				return err
 			}
 		}
+		s.catchUp(ctx, t, conn)
 		// The watcher records an exit the holder kept.
 		s.follow(t, conn)
 		if t.State == StateStopped && hello.Exited == nil {
@@ -718,6 +816,10 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 				return
 			case <-c.StatusChanged():
 				s.recordStatus(ctx, t.Kind, id, c)
+			case <-c.Delivered():
+				if err := s.store.messagesDelivered(ctx, c.TakeDelivered()); err != nil {
+					log.Error("deliveries not recorded", "err", err)
+				}
 			case <-c.Done():
 				if ctx.Err() != nil {
 					return // the daemon is stopping; the holder runs on
@@ -750,6 +852,7 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 				}
 				w.mu.Unlock()
 				s.recordStatus(ctx, t.Kind, id, next)
+				s.catchUp(ctx, t, next)
 			}
 		}
 	}()

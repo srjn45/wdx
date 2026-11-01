@@ -725,6 +725,8 @@ func agentDetail(r agentListRow) string {
 		return fmt.Sprintf("%d waiting", r.waiting)
 	case r.below > 0:
 		return fmt.Sprintf("%d below", r.below)
+	case a.State == api.AgentStateRunning && a.Held > 0:
+		return fmt.Sprintf("%d held", a.Held)
 	case a.State == api.AgentStateRunning:
 		if a.Activity != nil && (*a.Activity == api.AgentActivityWorking || *a.Activity == api.AgentActivityWaiting) {
 			return string(*a.Activity)

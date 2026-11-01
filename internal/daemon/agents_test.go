@@ -998,3 +998,86 @@ func TestAgentCurrentDirFollowsTheBackup(t *testing.T) {
 		return err == nil && r.JSON200 != nil && r.JSON200.Agent.CurrentDir != nil && *r.JSON200.Agent.CurrentDir == work && r.JSON200.Agent.Dir == dir
 	})
 }
+
+// TestMessageOutlivesItsHolder kills an agent's holder with a message still on its way,
+// as a test agent's holder holds them: starting the agent, in the same conversation,
+// sends it again.
+func TestMessageOutlivesItsHolder(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	ctx := context.Background()
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	if r, err := td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, api.SendAgentJSONRequestBody{Prompt: "still wanted"}); err != nil || r.JSON200 == nil {
+		t.Fatalf("send: %v, %s", err, r.Body)
+	}
+	project := "app"
+	messages := func() []api.Message {
+		t.Helper()
+		r, err := td.client.ListMessagesWithResponse(ctx, &api.ListMessagesParams{Project: &project})
+		if err != nil || r.JSON200 == nil {
+			t.Fatalf("list: %v, %s", err, r.Body)
+		}
+		return r.JSON200.Messages
+	}
+	if list := messages(); len(list) != 1 || list[0].Text != "still wanted" || list[0].State != api.MessageStatePending || list[0].Attempts != 1 {
+		t.Fatalf("before: %+v", list)
+	}
+	row, err := td.daemon.agents.Store().Get(ctx, a.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(row.Terminal.HolderPID, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	td.waitAgentState(t, a.Id, api.AgentStateLost)
+	if list := messages(); len(list) != 1 || list[0].State != api.MessageStatePending {
+		t.Fatalf("with the holder gone: %+v", list)
+	}
+	if r, err := td.client.StartAgentWithResponse(ctx, "id:"+a.Id, nil); err != nil || r.JSON200 == nil {
+		t.Fatalf("start: %v, %s", err, r.Body)
+	}
+	td.waitAgentState(t, a.Id, api.AgentStateRunning)
+	waittest.For(t, "the message to be sent again", func() bool {
+		list := messages()
+		return len(list) == 1 && list[0].State == api.MessageStatePending && list[0].Attempts == 2
+	})
+}
+
+// TestRemovingAnAgentGivesItsReviewBack: what was written is not lost with it.
+func TestRemovingAnAgentGivesItsReviewBack(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	ctx := context.Background()
+	project := "app"
+	app := td.create(t, project).Worktrees[0].Path
+	if err := os.WriteFile(filepath.Join(app, "file"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createAgent(t, "", app, "helper")
+	if r, err := td.client.CreateWorktreeCommentWithResponse(ctx, "main", &api.CreateWorktreeCommentParams{Project: &project}, api.WorktreeCommentCreate{
+		File: "file", Line: 1, Side: api.WorktreeCommentCreateSideNew, View: api.WorktreeCommentCreateViewUncommitted, Body: "keep me",
+	}); err != nil || r.JSON201 == nil {
+		t.Fatalf("comment: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", &api.SendWorktreeReviewParams{Project: &project}, api.WorktreeReview{Agent: "id:" + a.Id}); err != nil || r.JSON200 == nil {
+		t.Fatalf("review: %v, %s", err, r.Body)
+	}
+	stateOf := func() api.WorktreeCommentState {
+		t.Helper()
+		r, err := td.client.ListWorktreeCommentsWithResponse(ctx, "main", &api.ListWorktreeCommentsParams{Project: &project})
+		if err != nil || r.JSON200 == nil || len(r.JSON200.Comments) != 1 {
+			t.Fatalf("comments: %v, %s", err, r.Body)
+		}
+		return r.JSON200.Comments[0].State
+	}
+	if got := stateOf(); got != api.WorktreeCommentStateSent {
+		t.Fatalf("sent: %s", got)
+	}
+	if r, err := td.client.DeleteAgentWithResponse(ctx, "id:"+a.Id, &api.DeleteAgentParams{StopRunning: optional(true)}); err != nil || r.JSON200 == nil {
+		t.Fatalf("remove: %v, %s", err, r.Body)
+	}
+	if got := stateOf(); got != api.WorktreeCommentStateDraft {
+		t.Errorf("after: %s", got)
+	}
+}

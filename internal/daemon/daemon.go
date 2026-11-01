@@ -248,6 +248,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		Limits:       opts.HolderLimits,
 		AgentLaunch:  agent.Launches(d.backups),
 		AgentEnded:   d.backups.Request,
+		AgentSession: func(ctx context.Context, id string) (string, error) {
+			a, err := agents.GetByTerminal(ctx, id)
+			return a.SessionID, err
+		},
 		AgentStatus: func(ctx context.Context, id string, status holder.Status) {
 			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft, status.Queued, status.Model)
 			if err != nil {

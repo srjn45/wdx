@@ -58,7 +58,10 @@ type Comments struct {
 // NewComments returns the comments kept in db.
 func NewComments(db *sql.DB) *Comments { return &Comments{db: db} }
 
-const commentColumns = "id, worktree, file, line, side, view, quote, content_id, body, state, created_at"
+const commentColumns = `c.id, c.worktree, c.file, c.line, c.side, c.view, c.quote, c.content_id, c.body,
+	CASE WHEN m.state = 'delivered' THEN 'delivered' ELSE c.state END, c.created_at`
+
+const commentsFrom = " FROM review_comments c LEFT JOIN messages m ON m.id = c.message_id "
 
 func scanComments(rows *sql.Rows) ([]Comment, error) {
 	defer rows.Close()
@@ -77,7 +80,7 @@ func scanComments(rows *sql.Rows) ([]Comment, error) {
 
 // Drafts returns the project's comments not sent yet, by file and line.
 func (s *Comments) Drafts(ctx context.Context, projectID string) ([]Comment, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+commentColumns+" FROM review_comments WHERE project_id = ? AND state = ? ORDER BY file, line, created_at", projectID, CommentDraft)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+commentColumns+commentsFrom+"WHERE c.project_id = ? AND c.state = ? ORDER BY c.file, c.line, c.created_at", projectID, CommentDraft)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +90,7 @@ func (s *Comments) Drafts(ctx context.Context, projectID string) ([]Comment, err
 // List returns the comments of the checkout at path, in every state, by file and
 // line.
 func (s *Comments) List(ctx context.Context, projectID, path string) ([]Comment, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+commentColumns+" FROM review_comments WHERE project_id = ? AND worktree = ? ORDER BY file, line, created_at", projectID, path)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+commentColumns+commentsFrom+"WHERE c.project_id = ? AND c.worktree = ? ORDER BY c.file, c.line, c.created_at", projectID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +160,7 @@ func (s *Comments) RemoveWorktree(ctx context.Context, projectID, path string) e
 }
 
 // MarkSent records that the comments went to the agent.
-func (s *Comments) MarkSent(ctx context.Context, projectID string, comments []Comment, agentID string) error {
+func (s *Comments) MarkSent(ctx context.Context, projectID string, comments []Comment, agentID, messageID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -165,7 +168,7 @@ func (s *Comments) MarkSent(ctx context.Context, projectID string, comments []Co
 	defer tx.Rollback()
 	now := time.Now().UnixMilli()
 	for _, c := range comments {
-		if _, err := db.Exec(ctx, tx, "UPDATE review_comments SET state = ?, agent_id = ?, sent_at = ? WHERE id = ? AND project_id = ?", CommentSent, agentID, now, c.ID, projectID); err != nil {
+		if _, err := db.Exec(ctx, tx, "UPDATE review_comments SET state = ?, agent_id = ?, sent_at = ?, message_id = ? WHERE id = ? AND project_id = ?", CommentSent, agentID, now, messageID, c.ID, projectID); err != nil {
 			return err
 		}
 	}

@@ -29,6 +29,7 @@ type Agent struct {
 	// terminal's dir: it may have moved into a worktree it made itself. "" until it
 	// has, or when its ACA does not say.
 	CurrentDir string
+	Held       int       // how many messages for it wait for a human: docs/SEND.md
 	RemovedAt  time.Time // when it was removed, keeping it as a tombstone; zero otherwise
 	Activity   string    // what its process is doing, as a screen.Activity; "" unless it is running
 	Draft      bool      // whether a human left text in its input box
@@ -161,6 +162,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			CASE WHEN t.state = 'running' THEN a.model END,
 			a.current_dir,
+			(SELECT COUNT(*) FROM messages m WHERE m.terminal_id = a.terminal_id AND m.state = 'held'),
 			`+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
@@ -179,7 +181,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var worktree, activity, model, currentDir sql.NullString
 		var draft sql.NullBool
 		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir); err != nil {
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &a.Held); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String

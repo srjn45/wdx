@@ -512,6 +512,66 @@ paths:
               schema: { $ref: "#/components/schemas/WorktreeReviewResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/messages:
+    get:
+      operationId: listMessages
+      summary: List a project's messages still waiting, oldest first
+      description: |
+        The messages of the project named by project, or of the project whose
+        worktree holds dir; one of them must be given.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+      responses:
+        "200":
+          description: The messages.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/messages/{message}:
+    parameters:
+      - name: message
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+    delete:
+      operationId: discardMessage
+      summary: Discard a message still waiting
+      description: |
+        A review's comments go back to being drafts.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageDiscarded" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/messages/{message}/resend:
+    parameters:
+      - name: message
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+    post:
+      operationId: resendMessage
+      summary: Send a message still waiting to its terminal or agent, as it is now
+      description: |
+        Errors: agent_not_running, not_found, send_failed, terminal_not_running.
+      responses:
+        "200":
+          description: The message, with result queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/terminals:
     get:
       operationId: listTerminals
@@ -1160,7 +1220,8 @@ components:
         body: { type: string }
         state:
           type: string
-          enum: [draft, sent]
+          enum: [draft, sent, delivered]
+          description: sent is with the agent's holder; delivered is typed in.
         changed: { type: boolean, description: "The file differs from what was seen. Set on drafts." }
         created_at: { type: string, format: date-time }
 
@@ -1214,6 +1275,43 @@ components:
         result: { $ref: "#/components/schemas/Result" }
         agent: { $ref: "#/components/schemas/Agent" }
         comments: { type: integer, description: "How many comments went." }
+
+    Message:
+      type: object
+      required: [id, terminal_id, name, text, instant, state, attempts, created_at]
+      properties:
+        id: { type: string }
+        terminal_id: { type: string }
+        name: { type: string, description: "The terminal's or agent's." }
+        text: { type: string }
+        instant: { type: boolean }
+        state:
+          type: string
+          enum: [pending, delivered, held, unconfirmed]
+          description: "pending is on its way; held waits for a human, as its holder died and what it was meant for is gone."
+        attempts: { type: integer, description: "How many times it was handed to a holder. Above 1 it may have come twice." }
+        created_at: { type: string, format: date-time }
+
+    MessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/Message" }
+
+    MessageResult:
+      type: object
+      required: [result, message]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        message: { $ref: "#/components/schemas/Message" }
+
+    MessageDiscarded:
+      type: object
+      required: [result]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
 
     WorktreeCommittedFile:
       type: object
@@ -1540,7 +1638,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, worktree, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1556,6 +1654,7 @@ components:
         aca: { type: string, description: "Which AI coding agent it runs, as claude_code." }
         session_id: { type: string, description: "The AI coding agent's latest session, which it goes on with when started again; changes when the conversation is cleared." }
         dir: { type: string, description: "Where it starts, now and on every relaunch." }
+        held: { type: integer, description: "Messages for it that wait for a human: their holder died, and what they were meant for is gone." }
         current_dir: { type: string, nullable: true, description: "Where its AI CLI last said it worked, as after it moved into a worktree it made itself; null until it has, or when it does not say." }
         worktree: { type: string, nullable: true, description: "The name of the project's worktree holding dir, main for the clone; null when none does." }
         state: { $ref: "#/components/schemas/AgentState" }

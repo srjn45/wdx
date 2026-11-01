@@ -275,10 +275,11 @@ func (s *server) SendWorktreeReview(ctx context.Context, req api.SendWorktreeRev
 	if err != nil {
 		return nil, err
 	}
-	if a, err = s.agents.Send(ctx, a.ID, worktree.ReviewMessage(w.Name, w.Path, deref(req.Body.Note), comments), false); err != nil {
+	var messageID string
+	if a, messageID, err = s.agents.Send(ctx, a.ID, worktree.ReviewMessage(w.Name, w.Path, deref(req.Body.Note), comments), false); err != nil {
 		return nil, err
 	}
-	if err := s.comments.MarkSent(ctx, p.ID, comments, a.ID); err != nil {
+	if err := s.comments.MarkSent(ctx, p.ID, comments, a.ID, messageID); err != nil {
 		return nil, err
 	}
 	s.tracker.Refresh(p.ID, req.Worktree)

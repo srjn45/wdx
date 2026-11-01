@@ -262,19 +262,19 @@ func (m *Manager) removeEmptyTombstones(ctx context.Context, id string) error {
 // Send queues a message for a running agent; instant says it may interrupt the
 // agent's turn. A tombstone fails with a *RemovedError, one not running with a
 // *NotRunningError and one whose holder does not take it with a *SendError.
-func (m *Manager) Send(ctx context.Context, id, prompt string, instant bool) (Agent, error) {
+func (m *Manager) Send(ctx context.Context, id, prompt string, instant bool) (Agent, string, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return Agent{}, "", err
 	}
 	if a.Tombstone() {
-		return Agent{}, &RemovedError{Agent: a}
+		return Agent{}, "", &RemovedError{Agent: a}
 	}
-	t, err := m.terminals.SendAgent(ctx, a.Terminal.ID, prompt, instant)
+	t, messageID, err := m.terminals.SendAgent(ctx, a.Terminal.ID, prompt, instant)
 	if err != nil {
-		return Agent{}, m.agentError(ctx, err)
+		return Agent{}, "", m.agentError(ctx, err)
 	}
-	return a.OnRow(t), nil
+	return a.OnRow(t), messageID, nil
 }
 
 // History reads count lines of the agent's history from line from on, or its

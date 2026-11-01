@@ -18,6 +18,29 @@ wdx agent send    (--id <id> | --name <name>) [--project-id <id> | --project-nam
 - Enter is always pressed.
 - There is no size limit of our own. The one ceiling is the protocol's 1 MiB frame, which the CLI cannot reach (Linux caps one argument at about 128 KiB); a larger request through the API gets `send_failed`.
 
+## Keeping a message until it arrives
+
+Decided with the human on 2026-11-01. Every message is first stored in the table `messages` in the daemon's database, then forwarded to the holder as it always was. A holder's inbox still decides when to type, with the rules below, so it stays what it was, and works with no daemon there; the table is the record, and the only thing recovered from.
+
+```
+send -> daemon stores it -> forwards it to the holder's inbox -> typed -> holder reports its id -> daemon marks it delivered
+```
+
+| State | Means |
+|---|---|
+| `pending` | stored, and on its way |
+| `delivered` | the holder typed it in. Its text is cleared, as it can hold secrets |
+| `held` | its holder died, and what it was meant for is gone: it waits for a human |
+| `unconfirmed` | handed to a holder too old to say what became of it. It is not sent again |
+
+- **The holder confirms.** A hello says `confirms`, and a message has an id. `frameDelivered` reports what it typed, and a hello lists the last ones typed, including with no daemon there. Neither takes a protocol version: an older holder says nothing, an older daemon skips the frame, and an older holder ignores the id.
+- **Sending again is harmless.** A holder ignores an id it has seen. So on connecting to any holder, as at every daemon start, the daemon just sends all that is `pending`.
+- **A holder that died.** What was forwarded to another holder goes on when the agent resumes the same conversation, by `session_id`. Otherwise, or in a shell started anew, it is `held`: an old "commit" must not arrive out of nowhere. `wdx message list`, `resend` and `discard` deal with it, and an agent's row says `1 held`.
+- **A review** follows its message, by `review_comments.message_id`. Its comments are `delivered` when it is, and held it goes, giving them back as drafts to send again. So does its agent being removed, through a trigger.
+- **With no daemon.** Holders go on typing what they have, and report it when one comes. A new message cannot be sent. The holders of agents go on either way.
+- **It may come twice.** A holder that typed a message and died before it could say has it sent again. `attempts` above 1 says so. Losing one is worse.
+- `queued` on an agent still comes from its holder: how many wait in its inbox.
+
 ## Delivery
 
 ```

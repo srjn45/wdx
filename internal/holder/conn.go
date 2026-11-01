@@ -28,12 +28,15 @@ var ErrMessageTooLarge = fmt.Errorf("the message does not fit in the %d bytes th
 // pushes the shell's exit and its status, and the connection ending means the holder is
 // gone or replaced it with a newer one.
 type Conn struct {
-	c            net.Conn
-	writeTimeout time.Duration
-	hello        Hello
-	exited       chan Exit
-	done         chan struct{}
-	wmu          sync.Mutex
+	deliveredMu      sync.Mutex
+	delivered        []string // ids told and not taken yet
+	deliveredChanged chan struct{}
+	c                net.Conn
+	writeTimeout     time.Duration
+	hello            Hello
+	exited           chan Exit
+	done             chan struct{}
+	wmu              sync.Mutex
 	// status is the latest told, kept here so that the reader never waits for
 	// who records it.
 	status        atomic.Pointer[Status]
@@ -69,6 +72,11 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 	}
 	if hello.Exited != nil {
 		conn.exited <- *hello.Exited
+	}
+	conn.delivered = hello.Delivered
+	conn.deliveredChanged = make(chan struct{}, 1)
+	if len(hello.Delivered) > 0 {
+		wake(conn.deliveredChanged)
 	}
 	go conn.read()
 	return conn, nil
@@ -127,6 +135,28 @@ func (c *Conn) StatusChanged() <-chan struct{} {
 	return c.statusChanged
 }
 
+// Delivered tells when TakeDelivered has something; a wake pending is enough, as it
+// gives all there is.
+func (c *Conn) Delivered() <-chan struct{} {
+	return c.deliveredChanged
+}
+
+// TakeDelivered returns the ids of the messages the holder typed since it was last
+// asked, those of its hello first.
+func (c *Conn) TakeDelivered() []string {
+	c.deliveredMu.Lock()
+	defer c.deliveredMu.Unlock()
+	ids := c.delivered
+	c.delivered = nil
+	return ids
+}
+
+// Confirms reports whether the holder tells which messages it typed, and ignores one
+// sent again.
+func (c *Conn) Confirms() bool {
+	return c.hello.Confirms
+}
+
 // Done is closed when the connection ends.
 func (c *Conn) Done() <-chan struct{} {
 	return c.done
@@ -156,6 +186,15 @@ func (c *Conn) read() {
 			}
 			c.status.Store(&status)
 			wake(c.statusChanged)
+		case frameDelivered:
+			var report deliveredReport
+			if json.Unmarshal(body, &report) != nil {
+				continue
+			}
+			c.deliveredMu.Lock()
+			c.delivered = append(c.delivered, report.IDs...)
+			c.deliveredMu.Unlock()
+			wake(c.deliveredChanged)
 		}
 	}
 }
@@ -173,6 +212,23 @@ func (c *Conn) Send(prompt string) error {
 		return ErrSendUnsupported
 	}
 	return c.send(sendRequest{Prompt: prompt})
+}
+
+// SendMessage is Send with an id, which a holder that Confirms reports it by, and
+// ignores it sent again by.
+func (c *Conn) SendMessage(id, prompt string) error {
+	if c.hello.Version < inboxVersion {
+		return ErrSendUnsupported
+	}
+	return c.send(sendRequest{Prompt: prompt, ID: id})
+}
+
+// SendAgentMessage is SendAgent with an id.
+func (c *Conn) SendAgentMessage(id, prompt string, instant bool) error {
+	if c.hello.Version < agentInboxVersion {
+		return ErrAgentSendUnsupported
+	}
+	return c.send(sendRequest{Prompt: prompt, Instant: instant, ID: id})
 }
 
 // SendAgent is Send for a terminal running an ACA, for whom instant says the

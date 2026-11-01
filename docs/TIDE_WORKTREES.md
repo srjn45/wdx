@@ -223,6 +223,7 @@ Nothing watches for a file to change. A mark holds the id of the content that wa
 
 - Comments are in the table `review_comments`, so they survive tide and the daemon.
 - A comment holds the line as it was seen, which the message quotes, so the agent can find it after the numbers moved. When the file changes it stays, saying `file changed`.
+- A review follows its message (docs/SEND.md): `sent`, then `delivered` once typed in. If its message goes undelivered, as with an agent that starts a new conversation or is removed, its comments are drafts again.
 - Once sent, it no longer shows in the diffs: the agent is about to change that code. It stays in the table, and `wdx worktree comments` lists it.
 - A comment on a line no longer in the diff is counted above the lines, and `s` still sends it.
 - A comment is one paragraph, as `Enter` saves it.
@@ -257,10 +258,6 @@ A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` a
 The order below is agreed; "proposed" marks what is not.
 
 The bar will list `L` on a worktree's tab while it shows the final commits against the base branch, with `commit first` while changes remain; the file diff has no `L`.
-
-### 1. Knowing a review was delivered
-
-Comments stop at `sent` for now, which means the agent's holder took the message. Proposed: a daemon table holding every message until the holder says it typed it, in place of confirming them alone. A message is then safe once stored, and goes when an agent next runs. It may come twice, if a holder types it and dies before saying so, and it needs a rule for when an old one no longer goes.
 
 ### Then
 

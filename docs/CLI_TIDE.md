@@ -24,6 +24,13 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Project details | `project get` | no screen | By design | The agent, terminal and worktree lists already show a project |
 | Switch between projects | not needed | `C-q p`, `Alt+Shift+←/→` | By design | A command names its project with a flag, or takes it from the directory |
 
+## Messages
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| See a message waiting | `message list` | `1 held` on the agent's row and its info tab | Later (tide) | A held one is rare, so tide says it exists and the CLI deals with it for now |
+| Send or discard a held one | `message resend`, `message discard` | none | Later (tide) | As above |
+
 ## Worktrees
 
 | Feature | CLI | tide | Status | Why they differ |
