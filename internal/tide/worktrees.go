@@ -81,6 +81,7 @@ func (m *Model) worktreesChanged() {
 	if l == nil {
 		return
 	}
+	m.landingsChanged()
 	if i := slices.IndexFunc(rows, func(r worktreeRow) bool { return r.key() == l.worktreeKey }); i >= 0 {
 		l.worktreeRow = i
 		return
@@ -235,6 +236,9 @@ func worktreeMark(st style.Style, status api.WorktreeFileStatus) string {
 // worktreeSummary is what a worktree's row says of its commits. "landed" is for a
 // worktree with nothing of its own: one with changes not committed is still at work.
 func worktreeSummary(w api.WorktreeStatus) string {
+	if s := landingSummary(w); s != "" {
+		return s
+	}
 	switch {
 	case w.Missing:
 		return "missing"
@@ -268,11 +272,16 @@ func (m *Model) removableWorktree() (removal, bool) {
 	if s := worktreeSummary(w); s != "landed" && s != "missing" {
 		return removal{}, false
 	}
+	return m.worktreeRemovalOf(w), true
+}
+
+// worktreeRemovalOf is what removing the worktree w comes to.
+func (m *Model) worktreeRemovalOf(w api.WorktreeStatus) removal {
 	return removal{kind: "worktree", name: w.Name, worktree: &worktreeRemoval{
 		missing:   w.Missing,
 		agents:    m.agentsIn(w.Name),
 		terminals: m.terminalsIn(w.Path),
-	}}, true
+	}}
 }
 
 // terminalsIn names the running terminals that started in the worktree at path.
@@ -470,6 +479,9 @@ func worktreeDetails(w api.WorktreeStatus, folded bool, agents []string) []strin
 	}
 	if w.Ahead != nil && *w.Ahead > 0 {
 		short = fmt.Sprintf("↑%d", *w.Ahead)
+	}
+	if s := landingShort(w); s != "" {
+		short = s // a landing matters more than how far ahead it is, in a narrow pane too
 	}
 	files := ""
 	if folded && len(w.Files) == 1 {

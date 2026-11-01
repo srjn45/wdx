@@ -145,6 +145,8 @@ type Daemon struct {
 	comments  *worktree.Comments
 	// stopTracker ends what the tracker does, once no stream follows.
 	stopTracker context.CancelFunc
+	// lander lands worktrees, each in the background.
+	lander *worktree.Lander
 	// trackerNotices is what tells it of the changes.
 	trackerNotices sync.WaitGroup
 	changes        sync.Mutex    // one request changing state at a time
@@ -465,6 +467,9 @@ func (d *Daemon) cancelChanges() {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.lander != nil {
+		d.lander.Close() // it uses the terminals and the tracker
 	}
 	if d.tracker != nil {
 		d.stopTracker()

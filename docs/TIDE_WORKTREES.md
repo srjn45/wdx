@@ -255,7 +255,7 @@ A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` a
 
 ## Landing and removing: agreed with the human (2026-11-01)
 
-"Proposed" marks what came from the AI and the human let stand. Three commits: removing, which is built, then landing by rebase with its check, and landing by PR, which are not. So only `wdx worktree remove` and `C-q x` exist; `L` does not yet, and a PR that merged does not count as landed yet.
+"Proposed" marks what came from the AI and the human let stand. Three commits: removing and landing by rebase with its check are built; landing by PR is not. So a PR that merged does not count as landed yet, and a project has no method to choose: it lands by rebase.
 
 Landing and removing are the one place wdx writes to a repository. They run only when asked for, so they take git's locks like any command the user types, and the lock rule above still holds for everything that runs by itself. wdx never stashes and never uses `--force`.
 
@@ -271,15 +271,17 @@ Proposed:
 
 - `L` opens a box with the method, the commits and lines, how many files are verified and how many comments are not sent, for information only. Nothing depends on those.
 - A base that is not a local branch, as `origin/main` with no `main`, cannot land by rebase: only by PR.
-- The first `L` in a project asks for its method, its check command and whether to push, saved on the project: `land_method`, `land_check`, `land_push`, nullable columns. `m` in the box changes them.
+- The first `L` in a project asks for its check command and whether to push, saved in the table `project_landing`, and `m` in the box changes them. The PR commit adds the method. `wdx project landing --check <command>`, or `--no-check`, with `--push` if wanted, does the same, and `wdx worktree land` refuses with `land_not_configured` until one of them has.
+- The whole of a landing runs in the background, the rebase too, so that a long one does not hold up the daemon's other changes. It is kept in memory, and the worktree's `landing` says how far it got and how it ended. A daemon restarted forgets one running, so nothing lands that nobody is there to see; its check runs on in its terminal, which the next `L` replaces once it has ended.
+- A rebase, merge, cherry-pick, revert or bisect in progress in the worktree refuses `L` with `worktree_busy`, so that aborting a stopped rebase can never be an agent's or a person's own.
 
 The `rebase` method, once the worktree sits on the base:
 
-1. Runs the check, if there is one, in a wdx terminal named `land-<name>`, since it can take many minutes and requests run one at a time. Its exit code decides, its output stays to read, and the worktree's row says `landing: check`.
+1. Runs the check, if there is one, through `sh -c` in a wdx terminal named `land-<name>`, since it can take many minutes. Its exit code decides, and the worktree's row says `landing: check`. One that passes takes its terminal with it; one that fails stays to read, until the next landing replaces it. A terminal of that name still running is never touched: the check fails, saying so.
 2. Moves the base to the commit that was checked, not to whatever the branch holds by then, with no merge commit. `git merge --ff-only` in the checkout that has the base, `git update-ref` with the old value when none has it. Local changes that overlap make git refuse, and nothing has moved.
 3. If the base moved during the check, it stops and says so; `L` starts again, with a rebase.
 4. Pushes only if the project asked for that.
-5. Offers to remove the worktree.
+5. Offers to remove the worktree, in the tide that started the landing.
 
 An agent working in the base's checkout gets a warning, not a refusal: the fast-forward keeps its uncommitted changes, and an agent always working there would block landing for good.
 
@@ -307,6 +309,6 @@ Then, proposed:
 
 Proposed:
 
-- `wdx worktree land --name [--method rebase|pr]`, which waits for the check and returns `landed`, `pr_created`, or a code: `agent_working`, `not_committed`, `needs_rebase`, `check_failed`, `base_moved`.
+- `wdx worktree land --name`, which waits for the end and returns `landed`, or a code. Before it starts: `land_not_configured`, `agent_working`, `not_committed`, `nothing_to_land`, `no_local_base`, `landing_running`, `worktree_busy`, `worktree_is_clone`. After: `rebase_failed`, `check_failed`, `base_moved`, `fast_forward_failed`. Leaving does not stop it. The PR commit adds `--method`.
 - `wdx worktree remove --name`, which returns `removed` with what became of the branch and who was told, or `worktree_not_landed`, `worktree_is_clone`, `worktree_not_removed`. It asks nothing, as only what landed can go.
 - `POST /v1/worktrees/{worktree}/land` starts it and returns, so that a long check does not hold up the daemon's other changes; `DELETE /v1/worktrees/{worktree}` removes.

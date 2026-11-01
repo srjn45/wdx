@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -150,6 +151,42 @@ func (s *Store) recordWorktree(ctx context.Context, projectID, path string) (str
 	}
 	logging.FromContext(ctx).Info("worktree recorded", "project_id", projectID, "path", root, "git_common_dir", commonDir)
 	return root, nil
+}
+
+// LandSettings is how a project lands its worktrees.
+type LandSettings struct {
+	Check string // the command run first; "" for none
+	Push  bool
+}
+
+// LandSettings returns how the project lands, and false when it was never asked.
+func (s *Store) LandSettings(ctx context.Context, projectID string) (LandSettings, bool, error) {
+	var check sql.NullString
+	var push bool
+	err := s.db.QueryRowContext(ctx, "SELECT check_command, push FROM project_landing WHERE project_id = ?", projectID).Scan(&check, &push)
+	if errors.Is(err, sql.ErrNoRows) {
+		return LandSettings{}, false, nil
+	}
+	if err != nil {
+		return LandSettings{}, false, err
+	}
+	return LandSettings{Check: check.String, Push: push}, true, nil
+}
+
+// SetLandSettings saves how the project lands.
+func (s *Store) SetLandSettings(ctx context.Context, projectID string, v LandSettings) error {
+	var check any
+	if v.Check != "" {
+		check = v.Check
+	}
+	if _, err := db.Exec(ctx, s.db, `
+		INSERT INTO project_landing (project_id, check_command, push, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (project_id) DO UPDATE SET check_command = excluded.check_command, push = excluded.push, updated_at = excluded.updated_at`,
+		projectID, check, v.Push, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("land settings saved", "project_id", projectID, "has_check", v.Check != "", "push", v.Push)
+	return nil
 }
 
 // ForgetWorktree removes the project's record of the checkout at path, if it has one:

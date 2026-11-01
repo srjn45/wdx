@@ -73,6 +73,7 @@ type Model struct {
 	tabResting     bool                                                                 // another was switched to soon after: no agent attaches
 	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
 	child          *childBox                                                            // the worktree C-q c asks for, while it does
+	land           *landBox                                                             // what L asks, while it is open
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
 	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
@@ -271,6 +272,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffLoaded(msg)
 	case commitSent:
 		m.commitSent(msg)
+	case landSettingsRead:
+		m.landSettingsRead(msg)
+	case landSettingsSaved:
+		m.landSettingsSaved(msg)
+	case landStarted:
+		m.landStarted(msg)
 	case verifyAnswered:
 		m.verifyAnsweredMsg(msg)
 	case commentAnswered:
@@ -309,6 +316,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.commit != nil && !m.menu {
 			m.commit.text += msg.Content
+			return m, nil
+		}
+		if m.land != nil && m.land.editing && !m.menu {
+			m.land.check += strings.Join(strings.Split(msg.Content, "\n"), " ")
 			return m, nil
 		}
 		if m.comment != nil && !m.menu {
@@ -470,6 +481,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.commit != nil {
 		return m.commitKey(msg)
+	}
+	if m.land != nil {
+		return m.landBoxKey(msg)
 	}
 	if m.comment != nil {
 		return m.commentBoxKey(msg)
@@ -642,7 +656,7 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil {
+	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil || m.land != nil {
 		return nil
 	}
 	if m.confirm == nil {

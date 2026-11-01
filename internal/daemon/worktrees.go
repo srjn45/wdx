@@ -3,7 +3,10 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
+
+	"strings"
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
@@ -15,7 +18,10 @@ import (
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
-var errProjectOrDir = errors.New("give project or dir")
+var (
+	errProjectOrDir      = errors.New("give project or dir")
+	errLandNotConfigured = errors.New("the project has not said how it lands")
+)
 
 // startTracker starts what keeps the worktrees' statuses for the streams asking
 // for them, and tells it of every change: it finds which agents stopped working.
@@ -44,6 +50,13 @@ func (d *Daemon) startTracker() {
 		Comments: d.comments,
 		Changed:  d.notices.notify,
 	})
+	d.lander = worktree.NewLander(logging.NewContext(context.Background(), d.log), worktree.LanderOptions{
+		Check: d.runLandCheck,
+		Changed: func(projectID string) {
+			d.tracker.Refresh(projectID, "") // it moved branches, which a watch may not see at once
+			d.notices.notify()
+		},
+	})
 	changed, stop := d.notices.subscribe()
 	d.trackerNotices.Go(func() {
 		defer stop()
@@ -56,6 +69,62 @@ func (d *Daemon) startTracker() {
 			}
 		}
 	})
+}
+
+// landTerminal names the terminal that runs a worktree's check.
+func landTerminal(worktreeName string) string { return "land-" + worktreeName }
+
+// runLandCheck runs the project's check in a terminal of its own, so that it can be
+// watched and its output stays, and waits for it. One that passes takes its terminal
+// with it. A terminal of that name still running is left alone: it may not be ours.
+func (d *Daemon) runLandCheck(ctx context.Context, projectID, worktreeName, dir, command string, started func(terminal string)) error {
+	store := d.terminals.Store()
+	name := landTerminal(worktreeName)
+	old, err := store.GetByName(ctx, projectID, name)
+	switch {
+	case err == nil && (old.Kind != terminal.KindShell || old.State.Live()):
+		return fmt.Errorf("terminal %s is still running: remove it first", name)
+	case err == nil:
+		if _, err := d.terminals.Remove(ctx, old.ID, false); err != nil {
+			return err
+		}
+	case !errors.Is(err, terminal.ErrNotFound):
+		return err
+	}
+	// Subscribed before it starts, so that its end cannot go unseen.
+	changed, stop := d.notices.subscribe()
+	defer stop()
+	t, err := d.terminals.CreateCommand(ctx, projectID, name, dir, []string{"sh", "-c", command})
+	if err != nil {
+		return fmt.Errorf("the check did not start: %w", err)
+	}
+	started(t.Name)
+	for {
+		row, err := store.Get(ctx, t.ID)
+		if errors.Is(err, terminal.ErrNotFound) {
+			return fmt.Errorf("terminal %s was removed before the check ended", name)
+		}
+		if err != nil {
+			return err
+		}
+		if !row.State.Live() {
+			if row.State == terminal.StateExited && row.ExitCode != nil && *row.ExitCode == 0 {
+				if _, err := d.terminals.Remove(ctx, t.ID, false); err != nil {
+					logging.FromContext(ctx).Error("the check's terminal not removed", "terminal_id", t.ID, "err", err)
+				}
+				return nil
+			}
+			if row.ExitCode != nil {
+				return fmt.Errorf("the check exited with %d: terminal %s has its output", *row.ExitCode, name)
+			}
+			return fmt.Errorf("the check ended as %s: terminal %s has its output", row.State, name)
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return fmt.Errorf("the daemon stopped during the check: %w", ctx.Err())
+		}
+	}
 }
 
 func workingAgents(list []agent.Agent) []worktree.Agent {
@@ -124,7 +193,90 @@ func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequest
 	if err != nil {
 		return nil, err
 	}
-	return api.ListWorktrees200JSONResponse{Worktrees: worktreeStatusViews(list)}, nil
+	return api.ListWorktrees200JSONResponse{Worktrees: s.withLandings(p.ID, worktreeStatusViews(list))}, nil
+}
+
+// withLandings says how far each worktree's landing got, which only the lander knows.
+func (s *server) withLandings(projectID string, views []api.WorktreeStatus) []api.WorktreeStatus {
+	for i := range views {
+		if l, ok := s.lander.Of(projectID, views[i].Path); ok {
+			v := landingView(l)
+			views[i].Landing = &v
+		}
+	}
+	return views
+}
+
+func landingView(l worktree.Landing) api.WorktreeLanding {
+	v := api.WorktreeLanding{
+		Id:        l.ID,
+		State:     api.WorktreeLandingState(l.State),
+		Code:      textOrNull(string(l.Failure)),
+		Detail:    textOrNull(l.Detail),
+		Conflicts: l.Conflicts,
+		Terminal:  textOrNull(l.Terminal),
+		Base:      l.Base,
+		Commit:    textOrNull(l.Commit),
+		Head:      textOrNull(l.Head),
+		Pushed:    l.Pushed,
+		PushError: textOrNull(l.PushError),
+	}
+	if v.Conflicts == nil {
+		v.Conflicts = []string{}
+	}
+	return v
+}
+
+// LandWorktree starts landing a worktree, once the project has said how.
+func (s *server) LandWorktree(ctx context.Context, req api.LandWorktreeRequestObject) (api.LandWorktreeResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if p.State == project.StateClosed {
+		return nil, &projectClosedError{project: p}
+	}
+	settings, ok, err := s.projects.LandSettings(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errLandNotConfigured
+	}
+	agents, err := s.agents.Store().List(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	l, err := s.lander.Start(ctx, p.ID, c, req.Worktree, workingAgents(agents), worktree.LandSettings{Check: settings.Check, Push: settings.Push})
+	if err != nil {
+		return nil, err
+	}
+	return api.LandWorktree202JSONResponse{Result: api.ResultStarted, Worktree: req.Worktree, ProjectId: p.ID, Landing: landingView(l)}, nil
+}
+
+func (s *server) GetProjectLanding(ctx context.Context, req api.GetProjectLandingRequestObject) (api.GetProjectLandingResponseObject, error) {
+	p, err := s.find(ctx, req.Project)
+	if err != nil {
+		return nil, err
+	}
+	v, ok, err := s.projects.LandSettings(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetProjectLanding200JSONResponse{Configured: ok, Check: textOrNull(v.Check), Push: v.Push}, nil
+}
+
+func (s *server) SetProjectLanding(ctx context.Context, req api.SetProjectLandingRequestObject) (api.SetProjectLandingResponseObject, error) {
+	p, err := s.find(ctx, req.Project)
+	if err != nil {
+		return nil, err
+	}
+	v := project.LandSettings{Check: strings.TrimSpace(deref(req.Body.Check)), Push: req.Body.Push}
+	if err := s.projects.SetLandSettings(ctx, p.ID, v); err != nil {
+		return nil, err
+	}
+	result := api.ResultUpdated
+	return api.SetProjectLanding200JSONResponse{Result: &result, Configured: true, Check: textOrNull(v.Check), Push: v.Push}, nil
 }
 
 // RemoveWorktree removes a worktree that landed. Its agents are told once it is
@@ -145,6 +297,7 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 	if err := s.projects.ForgetWorktree(ctx, p.ID, w.Path); err != nil {
 		return nil, err
 	}
+	s.lander.Forget(p.ID, w.Path)
 	notified, err := s.tellRemoved(ctx, p.ID, w, c.Clone)
 	if err != nil {
 		return nil, err

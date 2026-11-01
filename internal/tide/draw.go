@@ -72,6 +72,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.commit != nil {
 		m.drawPopup(buf, m.commitPopup())
 	}
+	if m.land != nil {
+		m.drawPopup(buf, m.landPopup())
+	}
 	if m.comment != nil {
 		m.drawPopup(buf, m.commentPopup())
 	}
@@ -386,6 +389,9 @@ func (m *Model) statusLine() string {
 	case m.commit != nil:
 		state = style.StatusPrefix
 		right = "Enter send  Esc cancel"
+	case m.land != nil:
+		state = style.StatusPrefix
+		right = "landing: answer the box"
 	case m.comment != nil:
 		state = style.StatusPrefix
 		right = "comment: type it  Enter save  Esc cancel"

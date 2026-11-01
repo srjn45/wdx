@@ -73,7 +73,7 @@ internal/runtest/  gives a test binary a scope of its own: a directory, a clean 
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout
 internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
 internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md; docs/ACA.md lists every place specific to an ACA, in this package or not, and a change to one updates it
-internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository but for removing a worktree that landed, when asked to; docs/TIDE_WORKTREES.md
+internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository but for landing and removing a worktree, when asked to; docs/TIDE_WORKTREES.md
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 

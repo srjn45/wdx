@@ -296,6 +296,41 @@ paths:
         "202": { description: The read was asked for. }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/projects/{project}/landing:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: getProjectLanding
+      summary: How a project lands its worktrees
+      description: |
+        "configured" is false until it is set: landing needs it.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectLanding" }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: setProjectLanding
+      summary: Set how a project lands its worktrees
+      description: |
+        Errors: not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectLandingUpdate" }
+      responses:
+        "200":
+          description: The settings, with result updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectLanding" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/worktrees:
     get:
       operationId: listWorktrees
@@ -339,6 +374,32 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/WorktreeRemoved" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/land:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    post:
+      operationId: landWorktree
+      summary: Start landing a worktree on its base
+      description: |
+        Rebases it if the base has moved on, runs the project's check, moves the
+        base forward to the commit checked and pushes it if the project says so. It
+        goes on in the background: "landing" in the worktree's status says how far
+        it got and how it ended, in the codes base_moved, check_failed,
+        fast_forward_failed and rebase_failed. Each leaves the base where it was.
+
+        Errors: agent_working, invalid_path, land_not_configured, landing_running,
+        no_local_base, not_committed, not_found, nothing_to_land, project_closed,
+        usage, worktree_busy, worktree_is_clone.
+      responses:
+        "202":
+          description: It started, with result started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeLandResult" }
         default: { $ref: "#/components/responses/Problem" }
 
   /v1/worktrees/{worktree}/diff:
@@ -1157,7 +1218,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed]
 
     Worktree:
       type: object
@@ -1208,6 +1269,9 @@ components:
         branch: { type: string, nullable: true, description: "Null when HEAD is detached." }
         head: { type: string, nullable: true, description: "Null with no commit yet." }
         missing: { type: boolean, description: "Its directory is gone." }
+        landing:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/WorktreeLanding" }]
         base: { type: string, nullable: true, description: "What its commits are measured against: the default branch, or the same on origin when it is on that branch; null when there is neither." }
         ahead: { type: integer, nullable: true, description: "Commits it has that base has not; null when not known." }
         added: { type: integer, nullable: true, description: "Lines those commits add; null when not known, as in a partial clone." }
@@ -1347,6 +1411,51 @@ components:
           enum: [M, A, D]
           description: M changed, A added, D deleted.
         verified: { type: boolean, description: "A human marked it verified, and it has not changed since." }
+
+    ProjectLanding:
+      type: object
+      required: [configured, check, push]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        configured: { type: boolean, description: "False until it is set: landing needs it." }
+        check: { type: string, nullable: true, description: "The command run before landing; null for none." }
+        push: { type: boolean, description: "Whether a base that moved is pushed to origin." }
+
+    ProjectLandingUpdate:
+      type: object
+      required: [push]
+      properties:
+        check: { type: string, nullable: true, description: "The command run before landing; null or empty for none." }
+        push: { type: boolean }
+
+    WorktreeLanding:
+      type: object
+      required: [id, state, code, detail, conflicts, terminal, base, commit, head, pushed, push_error]
+      description: A landing of the worktree, the one running or the last. A restarted daemon forgets it.
+      properties:
+        id: { type: string }
+        state: { type: string, enum: [rebasing, checking, moving, landed, failed] }
+        code: { type: string, nullable: true, description: "When failed: base_moved, check_failed, fast_forward_failed or rebase_failed." }
+        detail: { type: string, nullable: true, description: What went wrong. }
+        conflicts:
+          type: array
+          description: The files a rebase stopped on.
+          items: { type: string }
+        terminal: { type: string, nullable: true, description: "The terminal running the check; one that failed stays to read." }
+        base: { type: string }
+        commit: { type: string, nullable: true, description: "The commit that lands, once it is known." }
+        head: { type: string, nullable: true, description: "The commit the worktree was on when it failed." }
+        pushed: { type: boolean }
+        push_error: { type: string, nullable: true, description: "A push that failed: it landed all the same." }
+
+    WorktreeLandResult:
+      type: object
+      required: [result, worktree, project_id, landing]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        worktree: { type: string }
+        project_id: { type: string }
+        landing: { $ref: "#/components/schemas/WorktreeLanding" }
 
     WorktreeRemoved:
       type: object
@@ -1828,6 +1937,17 @@ components:
         - agent_removed
         - branch_exists
         - worktree_failed
+        - land_not_configured
+        - agent_working
+        - not_committed
+        - nothing_to_land
+        - no_local_base
+        - landing_running
+        - worktree_busy
+        - rebase_failed
+        - check_failed
+        - base_moved
+        - fast_forward_failed
         - worktree_is_clone
         - worktree_not_landed
         - worktree_not_removed

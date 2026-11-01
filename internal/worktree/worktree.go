@@ -1,8 +1,8 @@
 // Package worktree reads what git knows of a project's checkouts: every one
 // `git worktree list` gives, the files with uncommitted changes and the commits
 // ahead of a base. It reads with the reads of internal/git, so that it can run
-// beside any git command of a human or an agent (docs/TIDE_WORKTREES.md). The one
-// thing it writes is the removal of a worktree that landed, when asked to.
+// beside any git command of a human or an agent (docs/TIDE_WORKTREES.md). It writes
+// only to land or remove a worktree, when asked to.
 package worktree
 
 import (

@@ -242,3 +242,78 @@ func TestWorktreeRemoveForgetsWhatWdxMade(t *testing.T) {
 		t.Errorf("list: exit %d, %+v", exit, v.Worktrees)
 	}
 }
+
+func TestWorktreeLand(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+
+	// Nothing is said yet of how it lands.
+	v, exit := wdxWorktree(t, home, app, "land", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeLandNotConfigured || v.Hint == nil || !strings.Contains(*v.Hint, "project landing") {
+		t.Fatalf("not configured: exit %d, %+v", exit, v)
+	}
+	shown := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--json")
+	var s api.ProjectLanding
+	if err := json.Unmarshal([]byte(shown.stdout), &s); err != nil || shown.exit != api.ExitOK || s.Configured {
+		t.Fatalf("shown: %+v, %v", shown, err)
+	}
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--push"); out.exit != api.ExitUsage {
+		t.Fatalf("--push alone: %+v", out)
+	}
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "check: none") {
+		t.Fatalf("set: %+v", out)
+	}
+
+	// With a file changed, it does not start.
+	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotCommitted {
+		t.Fatalf("not committed: exit %d, %+v", exit, v)
+	}
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+
+	// A check that fails stops it, with the code and what to read.
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "exit 4", "--json"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "exit 4") {
+		t.Fatalf("set: %+v", out)
+	}
+	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeCheckFailed || v.Hint == nil || !strings.Contains(*v.Hint, "land-work") {
+		t.Fatalf("check failed: exit %d, %+v", exit, v)
+	}
+
+	// It lands, and says so.
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "true"); out.exit != api.ExitOK {
+		t.Fatalf("set: %+v", out)
+	}
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "landed worktree work on main") {
+		t.Fatalf("land: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(app, "landing")); err != nil {
+		t.Errorf("not in the clone: %v", err)
+	}
+
+	// Nothing is left, and the JSON of landing was a result.
+	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeNothingToLand {
+		t.Fatalf("again: exit %d, %+v", exit, v)
+	}
+}
+
+func TestWorktreeLandJSON(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+		t.Fatalf("set: %+v", out)
+	}
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--json")
+	var r worktreeLanded
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+		t.Fatalf("land: %+v, %v", out, err)
+	}
+	if r.Result != api.ResultLanded || r.Worktree != "work" || r.Base != "main" || r.Commit == nil {
+		t.Errorf("answer: %+v", r)
+	}
+}

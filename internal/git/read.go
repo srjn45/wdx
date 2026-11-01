@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -451,6 +453,39 @@ func CommittedFiles(ctx context.Context, dir, base string) ([]CommittedFile, err
 		list = append(list, CommittedFile{Path: fields[i+1], Status: status})
 	}
 	return list, nil
+}
+
+// Resolve returns the commit ref names in the repository of dir.
+func Resolve(ctx context.Context, dir, ref string) (string, error) {
+	return readText(ctx, dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+}
+
+// IsAncestor reports whether every commit of ancestor is in commit: a fast-forward
+// from one to the other is possible.
+func IsAncestor(ctx context.Context, dir, ancestor, commit string) (bool, error) {
+	_, err := readText(ctx, dir, "merge-base", "--is-ancestor", ancestor, commit)
+	if err == nil {
+		return true, nil
+	}
+	if isAnswer(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// OperationInProgress reports whether the checkout at dir is in the middle of
+// something git can be told to go on with, which HEAD and the files say nothing of.
+func OperationInProgress(ctx context.Context, dir string) (bool, error) {
+	gitDir, _, err := Dirs(ctx, dir)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range []string{"rebase-merge", "rebase-apply", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"} {
+		if _, err := os.Stat(filepath.Join(gitDir, name)); err == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // MergeBase returns where the checkout at dir left base, "" when they have no

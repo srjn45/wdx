@@ -122,10 +122,13 @@ const (
 	ErrorCodeAgentNotRunning    ErrorCode = "agent_not_running"
 	ErrorCodeAgentRemoved       ErrorCode = "agent_removed"
 	ErrorCodeAgentRunning       ErrorCode = "agent_running"
+	ErrorCodeAgentWorking       ErrorCode = "agent_working"
 	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
 	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
+	ErrorCodeBaseMoved          ErrorCode = "base_moved"
 	ErrorCodeBranchExists       ErrorCode = "branch_exists"
 	ErrorCodeCancelled          ErrorCode = "cancelled"
+	ErrorCodeCheckFailed        ErrorCode = "check_failed"
 	ErrorCodeCheckoutMissing    ErrorCode = "checkout_missing"
 	ErrorCodeChecksumMismatch   ErrorCode = "checksum_mismatch"
 	ErrorCodeCloneFailed        ErrorCode = "clone_failed"
@@ -133,16 +136,22 @@ const (
 	ErrorCodeDaemonUnavailable  ErrorCode = "daemon_unavailable"
 	ErrorCodeDependencyMissing  ErrorCode = "dependency_missing"
 	ErrorCodeDownloadFailed     ErrorCode = "download_failed"
+	ErrorCodeFastForwardFailed  ErrorCode = "fast_forward_failed"
 	ErrorCodeInstallFailed      ErrorCode = "install_failed"
 	ErrorCodeInternal           ErrorCode = "internal"
 	ErrorCodeInvalidArgument    ErrorCode = "invalid_argument"
 	ErrorCodeInvalidName        ErrorCode = "invalid_name"
 	ErrorCodeInvalidPath        ErrorCode = "invalid_path"
 	ErrorCodeInvalidSetting     ErrorCode = "invalid_setting"
+	ErrorCodeLandNotConfigured  ErrorCode = "land_not_configured"
+	ErrorCodeLandingRunning     ErrorCode = "landing_running"
 	ErrorCodeNameTaken          ErrorCode = "name_taken"
+	ErrorCodeNoLocalBase        ErrorCode = "no_local_base"
 	ErrorCodeNoPreviousVersion  ErrorCode = "no_previous_version"
+	ErrorCodeNotCommitted       ErrorCode = "not_committed"
 	ErrorCodeNotFound           ErrorCode = "not_found"
 	ErrorCodeNotGitRepo         ErrorCode = "not_git_repo"
+	ErrorCodeNothingToLand      ErrorCode = "nothing_to_land"
 	ErrorCodeOlderVersion       ErrorCode = "older_version"
 	ErrorCodePathExists         ErrorCode = "path_exists"
 	ErrorCodePortInUse          ErrorCode = "port_in_use"
@@ -150,6 +159,7 @@ const (
 	ErrorCodeProjectClosed      ErrorCode = "project_closed"
 	ErrorCodeProjectInUse       ErrorCode = "project_in_use"
 	ErrorCodeProjectMismatch    ErrorCode = "project_mismatch"
+	ErrorCodeRebaseFailed       ErrorCode = "rebase_failed"
 	ErrorCodeReloadFailed       ErrorCode = "reload_failed"
 	ErrorCodeRepoExists         ErrorCode = "repo_exists"
 	ErrorCodeRestoreRequired    ErrorCode = "restore_required"
@@ -164,6 +174,7 @@ const (
 	ErrorCodeUpdateFailed       ErrorCode = "update_failed"
 	ErrorCodeUpdateRunning      ErrorCode = "update_running"
 	ErrorCodeUsage              ErrorCode = "usage"
+	ErrorCodeWorktreeBusy       ErrorCode = "worktree_busy"
 	ErrorCodeWorktreeFailed     ErrorCode = "worktree_failed"
 	ErrorCodeWorktreeIsClone    ErrorCode = "worktree_is_clone"
 	ErrorCodeWorktreeNotLanded  ErrorCode = "worktree_not_landed"
@@ -179,13 +190,19 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeAgentRunning:
 		return true
+	case ErrorCodeAgentWorking:
+		return true
 	case ErrorCodeAlreadyRunning:
 		return true
 	case ErrorCodeAttachUnsupported:
 		return true
+	case ErrorCodeBaseMoved:
+		return true
 	case ErrorCodeBranchExists:
 		return true
 	case ErrorCodeCancelled:
+		return true
+	case ErrorCodeCheckFailed:
 		return true
 	case ErrorCodeCheckoutMissing:
 		return true
@@ -201,6 +218,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeDownloadFailed:
 		return true
+	case ErrorCodeFastForwardFailed:
+		return true
 	case ErrorCodeInstallFailed:
 		return true
 	case ErrorCodeInternal:
@@ -213,13 +232,23 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeInvalidSetting:
 		return true
+	case ErrorCodeLandNotConfigured:
+		return true
+	case ErrorCodeLandingRunning:
+		return true
 	case ErrorCodeNameTaken:
 		return true
+	case ErrorCodeNoLocalBase:
+		return true
 	case ErrorCodeNoPreviousVersion:
+		return true
+	case ErrorCodeNotCommitted:
 		return true
 	case ErrorCodeNotFound:
 		return true
 	case ErrorCodeNotGitRepo:
+		return true
+	case ErrorCodeNothingToLand:
 		return true
 	case ErrorCodeOlderVersion:
 		return true
@@ -234,6 +263,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeProjectInUse:
 		return true
 	case ErrorCodeProjectMismatch:
+		return true
+	case ErrorCodeRebaseFailed:
 		return true
 	case ErrorCodeReloadFailed:
 		return true
@@ -262,6 +293,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeUpdateRunning:
 		return true
 	case ErrorCodeUsage:
+		return true
+	case ErrorCodeWorktreeBusy:
 		return true
 	case ErrorCodeWorktreeFailed:
 		return true
@@ -370,6 +403,7 @@ const (
 	ResultCreated    Result = "created"
 	ResultDetached   Result = "detached"
 	ResultExited     Result = "exited"
+	ResultLanded     Result = "landed"
 	ResultOpened     Result = "opened"
 	ResultQueued     Result = "queued"
 	ResultRegistered Result = "registered"
@@ -393,6 +427,8 @@ func (e Result) Valid() bool {
 	case ResultDetached:
 		return true
 	case ResultExited:
+		return true
+	case ResultLanded:
 		return true
 	case ResultOpened:
 		return true
@@ -582,6 +618,33 @@ func (e WorktreeFileStatus) Valid() bool {
 	case WorktreeFileStatusM:
 		return true
 	case WorktreeFileStatusU:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorktreeLandingState.
+const (
+	WorktreeLandingStateChecking WorktreeLandingState = "checking"
+	WorktreeLandingStateFailed   WorktreeLandingState = "failed"
+	WorktreeLandingStateLanded   WorktreeLandingState = "landed"
+	WorktreeLandingStateMoving   WorktreeLandingState = "moving"
+	WorktreeLandingStateRebasing WorktreeLandingState = "rebasing"
+)
+
+// Valid indicates whether the value is a known member of the WorktreeLandingState enum.
+func (e WorktreeLandingState) Valid() bool {
+	switch e {
+	case WorktreeLandingStateChecking:
+		return true
+	case WorktreeLandingStateFailed:
+		return true
+	case WorktreeLandingStateLanded:
+		return true
+	case WorktreeLandingStateMoving:
+		return true
+	case WorktreeLandingStateRebasing:
 		return true
 	default:
 		return false
@@ -921,6 +984,28 @@ type Project struct {
 // ProjectEnvelope defines model for ProjectEnvelope.
 type ProjectEnvelope struct {
 	Project Project `json:"project"`
+}
+
+// ProjectLanding defines model for ProjectLanding.
+type ProjectLanding struct {
+	// Check The command run before landing; null for none.
+	Check *string `json:"check"`
+
+	// Configured False until it is set: landing needs it.
+	Configured bool `json:"configured"`
+
+	// Push Whether a base that moved is pushed to origin.
+	Push bool `json:"push"`
+
+	// Result The most significant thing that happened.
+	Result *Result `json:"result,omitempty"`
+}
+
+// ProjectLandingUpdate defines model for ProjectLandingUpdate.
+type ProjectLandingUpdate struct {
+	// Check The command run before landing; null or empty for none.
+	Check *string `json:"check,omitempty"`
+	Push  bool    `json:"push"`
 }
 
 // ProjectList defines model for ProjectList.
@@ -1288,6 +1373,49 @@ type WorktreeFileVerify struct {
 	ContentId *string `json:"content_id,omitempty"`
 }
 
+// WorktreeLandResult defines model for WorktreeLandResult.
+type WorktreeLandResult struct {
+	// Landing A landing of the worktree, the one running or the last. A restarted daemon forgets it.
+	Landing   WorktreeLanding `json:"landing"`
+	ProjectId string          `json:"project_id"`
+
+	// Result The most significant thing that happened.
+	Result   Result `json:"result"`
+	Worktree string `json:"worktree"`
+}
+
+// WorktreeLanding A landing of the worktree, the one running or the last. A restarted daemon forgets it.
+type WorktreeLanding struct {
+	Base string `json:"base"`
+
+	// Code When failed: base_moved, check_failed, fast_forward_failed or rebase_failed.
+	Code *string `json:"code"`
+
+	// Commit The commit that lands, once it is known.
+	Commit *string `json:"commit"`
+
+	// Conflicts The files a rebase stopped on.
+	Conflicts []string `json:"conflicts"`
+
+	// Detail What went wrong.
+	Detail *string `json:"detail"`
+
+	// Head The commit the worktree was on when it failed.
+	Head *string `json:"head"`
+	Id   string  `json:"id"`
+
+	// PushError A push that failed: it landed all the same.
+	PushError *string              `json:"push_error"`
+	Pushed    bool                 `json:"pushed"`
+	State     WorktreeLandingState `json:"state"`
+
+	// Terminal The terminal running the check; one that failed stays to read.
+	Terminal *string `json:"terminal"`
+}
+
+// WorktreeLandingState defines model for WorktreeLanding.State.
+type WorktreeLandingState string
+
 // WorktreeList defines model for WorktreeList.
 type WorktreeList struct {
 	Worktrees []WorktreeStatus `json:"worktrees"`
@@ -1354,7 +1482,8 @@ type WorktreeStatus struct {
 	Files []WorktreeFile `json:"files"`
 
 	// Head Null with no commit yet.
-	Head *string `json:"head"`
+	Head    *string          `json:"head"`
+	Landing *WorktreeLanding `json:"landing,omitempty"`
 
 	// Missing Its directory is gone.
 	Missing bool `json:"missing"`
@@ -1688,6 +1817,15 @@ type VerifyWorktreeFileParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// LandWorktreeParams defines parameters for LandWorktree.
+type LandWorktreeParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // SendWorktreeReviewParams defines parameters for SendWorktreeReview.
 type SendWorktreeReviewParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -1711,6 +1849,9 @@ type CreateProjectJSONRequestBody = CreateProject
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProject
+
+// SetProjectLandingJSONRequestBody defines body for SetProjectLanding for application/json ContentType.
+type SetProjectLandingJSONRequestBody = ProjectLandingUpdate
 
 // UpdateSettingJSONRequestBody defines body for UpdateSetting for application/json ContentType.
 type UpdateSettingJSONRequestBody = UpdateSetting
@@ -2330,6 +2471,33 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
 	StreamProject(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetProjectLanding How a project lands its worktrees
+	//
+	// "configured" is false until it is set: landing needs it.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/projects/{project}/landing (the `GetProjectLanding` operationId).
+	GetProjectLanding(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectLandingWithBody Set how a project lands its worktrees
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+	SetProjectLandingWithBody(ctx context.Context, project ProjectRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectLanding Set how a project lands its worktrees
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+	SetProjectLanding(ctx context.Context, project ProjectRef, body SetProjectLandingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	//
 	// Relaunches the terminals closing the project stopped, as opening it
@@ -2650,6 +2818,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 	VerifyWorktreeFile(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LandWorktree Start landing a worktree on its base
+	//
+	// Rebases it if the base has moved on, runs the project's check, moves the
+	// base forward to the commit checked and pushes it if the project says so. It
+	// goes on in the background: "landing" in the worktree's status says how far
+	// it got and how it ended, in the codes base_moved, check_failed,
+	// fast_forward_failed and rebase_failed. Each leaves the base where it was.
+	//
+	// Errors: agent_working, invalid_path, land_not_configured, landing_running,
+	// no_local_base, not_committed, not_found, nothing_to_land, project_closed,
+	// usage, worktree_busy, worktree_is_clone.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/land (the `LandWorktree` operationId).
+	LandWorktree(ctx context.Context, worktree WorktreeRef, params *LandWorktreeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SendWorktreeReviewWithBody Send a worktree's comments not sent yet to an agent, as one message
 	//
@@ -3312,6 +3495,63 @@ func (c *Client) StreamProject(ctx context.Context, project ProjectRef, params *
 	return c.Client.Do(req)
 }
 
+// GetProjectLanding How a project lands its worktrees
+//
+// "configured" is false until it is set: landing needs it.
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/projects/{project}/landing (the `GetProjectLanding` operationId).
+func (c *Client) GetProjectLanding(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProjectLandingRequest(c.Server, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectLandingWithBody Set how a project lands its worktrees
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+func (c *Client) SetProjectLandingWithBody(ctx context.Context, project ProjectRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectLandingRequestWithBody(c.Server, project, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectLanding Set how a project lands its worktrees
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+func (c *Client) SetProjectLanding(ctx context.Context, project ProjectRef, body SetProjectLandingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectLandingRequest(c.Server, project, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // RecloneProject Clone a project with no checkout left back into its clone path
 //
 // Relaunches the terminals closing the project stopped, as opening it
@@ -3903,6 +4143,31 @@ func (c *Client) VerifyWorktreeFileWithBody(ctx context.Context, worktree Worktr
 // Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 func (c *Client) VerifyWorktreeFile(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVerifyWorktreeFileRequest(c.Server, worktree, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LandWorktree Start landing a worktree on its base
+//
+// Rebases it if the base has moved on, runs the project's check, moves the
+// base forward to the commit checked and pushes it if the project says so. It
+// goes on in the background: "landing" in the worktree's status says how far
+// it got and how it ended, in the codes base_moved, check_failed,
+// fast_forward_failed and rebase_failed. Each leaves the base where it was.
+//
+// Errors: agent_working, invalid_path, land_not_configured, landing_running,
+// no_local_base, not_committed, not_found, nothing_to_land, project_closed,
+// usage, worktree_busy, worktree_is_clone.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/land (the `LandWorktree` operationId).
+func (c *Client) LandWorktree(ctx context.Context, worktree WorktreeRef, params *LandWorktreeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLandWorktreeRequest(c.Server, worktree, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5165,6 +5430,87 @@ func NewStreamProjectRequest(server string, project ProjectRef, params *StreamPr
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetProjectLandingRequest constructs an http.Request for the GetProjectLanding method
+func NewGetProjectLandingRequest(server string, project ProjectRef) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/projects/%s/landing", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetProjectLandingRequest calls the generic SetProjectLanding builder with application/json body
+func NewSetProjectLandingRequest(server string, project ProjectRef, body SetProjectLandingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProjectLandingRequestWithBody(server, project, "application/json", bodyReader)
+}
+
+// NewSetProjectLandingRequestWithBody constructs an http.Request for the SetProjectLanding method, with any body, and a specified content type
+func NewSetProjectLandingRequestWithBody(server string, project ProjectRef, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/projects/%s/landing", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6709,6 +7055,79 @@ func NewVerifyWorktreeFileRequestWithBody(server string, worktree WorktreeRef, p
 	return req, nil
 }
 
+// NewLandWorktreeRequest constructs an http.Request for the LandWorktree method
+func NewLandWorktreeRequest(server string, worktree WorktreeRef, params *LandWorktreeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/land", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSendWorktreeReviewRequest calls the generic SendWorktreeReview builder with application/json body
 func NewSendWorktreeReviewRequest(server string, worktree WorktreeRef, params *SendWorktreeReviewParams, body SendWorktreeReviewJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -7255,6 +7674,35 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/projects/{project}/events (the `StreamProject` operationId).
 	StreamProjectWithResponse(ctx context.Context, project ProjectRef, params *StreamProjectParams, reqEditors ...RequestEditorFn) (*StreamProjectResponse, error)
 
+	// GetProjectLandingWithResponse How a project lands its worktrees
+	//
+	// "configured" is false until it is set: landing needs it.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/projects/{project}/landing (the `GetProjectLanding` operationId).
+	GetProjectLandingWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*GetProjectLandingResponse, error)
+
+	// SetProjectLandingWithBodyWithResponse Set how a project lands its worktrees
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+	SetProjectLandingWithBodyWithResponse(ctx context.Context, project ProjectRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectLandingResponse, error)
+
+	// SetProjectLandingWithResponse Set how a project lands its worktrees
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+	SetProjectLandingWithResponse(ctx context.Context, project ProjectRef, body SetProjectLandingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectLandingResponse, error)
+
 	// RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 	//
 	// Relaunches the terminals closing the project stopped, as opening it
@@ -7607,6 +8055,23 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/worktrees/{worktree}/files/verified (the `VerifyWorktreeFile` operationId).
 	VerifyWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *VerifyWorktreeFileParams, body VerifyWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyWorktreeFileResponse, error)
+
+	// LandWorktreeWithResponse Start landing a worktree on its base
+	//
+	// Rebases it if the base has moved on, runs the project's check, moves the
+	// base forward to the commit checked and pushes it if the project says so. It
+	// goes on in the background: "landing" in the worktree's status says how far
+	// it got and how it ended, in the codes base_moved, check_failed,
+	// fast_forward_failed and rebase_failed. Each leaves the base where it was.
+	//
+	// Errors: agent_working, invalid_path, land_not_configured, landing_running,
+	// no_local_base, not_committed, not_found, nothing_to_land, project_closed,
+	// usage, worktree_busy, worktree_is_clone.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/land (the `LandWorktree` operationId).
+	LandWorktreeWithResponse(ctx context.Context, worktree WorktreeRef, params *LandWorktreeParams, reqEditors ...RequestEditorFn) (*LandWorktreeResponse, error)
 
 	// SendWorktreeReviewWithBodyWithResponse Send a worktree's comments not sent yet to an agent, as one message
 	//
@@ -8587,6 +9052,102 @@ func (r StreamProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r StreamProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetProjectLandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectLanding
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetProjectLandingResponse) GetJSON200() *ProjectLanding {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetProjectLandingResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetProjectLandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProjectLandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProjectLandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetProjectLandingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProjectLandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectLanding
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProjectLandingResponse) GetJSON200() *ProjectLanding {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetProjectLandingResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProjectLandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProjectLandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProjectLandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProjectLandingResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9628,6 +10189,54 @@ func (r VerifyWorktreeFileResponse) ContentType() string {
 	return ""
 }
 
+type LandWorktreeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *WorktreeLandResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r LandWorktreeResponse) GetJSON202() *WorktreeLandResult {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LandWorktreeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LandWorktreeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LandWorktreeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LandWorktreeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LandWorktreeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SendWorktreeReviewResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10242,6 +10851,53 @@ func (c *ClientWithResponses) StreamProjectWithResponse(ctx context.Context, pro
 	return ParseStreamProjectResponse(rsp)
 }
 
+// GetProjectLandingWithResponse How a project lands its worktrees
+//
+// "configured" is false until it is set: landing needs it.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/projects/{project}/landing (the `GetProjectLanding` operationId).
+func (c *ClientWithResponses) GetProjectLandingWithResponse(ctx context.Context, project ProjectRef, reqEditors ...RequestEditorFn) (*GetProjectLandingResponse, error) {
+	rsp, err := c.GetProjectLanding(ctx, project, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProjectLandingResponse(rsp)
+}
+
+// SetProjectLandingWithBodyWithResponse Set how a project lands its worktrees
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+func (c *ClientWithResponses) SetProjectLandingWithBodyWithResponse(ctx context.Context, project ProjectRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectLandingResponse, error) {
+	rsp, err := c.SetProjectLandingWithBody(ctx, project, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectLandingResponse(rsp)
+}
+
+// SetProjectLandingWithResponse Set how a project lands its worktrees
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/projects/{project}/landing (the `SetProjectLanding` operationId).
+func (c *ClientWithResponses) SetProjectLandingWithResponse(ctx context.Context, project ProjectRef, body SetProjectLandingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectLandingResponse, error) {
+	rsp, err := c.SetProjectLanding(ctx, project, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectLandingResponse(rsp)
+}
+
 // RecloneProjectWithResponse Clone a project with no checkout left back into its clone path
 //
 // Relaunches the terminals closing the project stopped, as opening it
@@ -10761,6 +11417,29 @@ func (c *ClientWithResponses) VerifyWorktreeFileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseVerifyWorktreeFileResponse(rsp)
+}
+
+// LandWorktreeWithResponse Start landing a worktree on its base
+//
+// Rebases it if the base has moved on, runs the project's check, moves the
+// base forward to the commit checked and pushes it if the project says so. It
+// goes on in the background: "landing" in the worktree's status says how far
+// it got and how it ended, in the codes base_moved, check_failed,
+// fast_forward_failed and rebase_failed. Each leaves the base where it was.
+//
+// Errors: agent_working, invalid_path, land_not_configured, landing_running,
+// no_local_base, not_committed, not_found, nothing_to_land, project_closed,
+// usage, worktree_busy, worktree_is_clone.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/land (the `LandWorktree` operationId).
+func (c *ClientWithResponses) LandWorktreeWithResponse(ctx context.Context, worktree WorktreeRef, params *LandWorktreeParams, reqEditors ...RequestEditorFn) (*LandWorktreeResponse, error) {
+	rsp, err := c.LandWorktree(ctx, worktree, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLandWorktreeResponse(rsp)
 }
 
 // SendWorktreeReviewWithBodyWithResponse Send a worktree's comments not sent yet to an agent, as one message
@@ -11447,6 +12126,72 @@ func ParseStreamProjectResponse(rsp *http.Response) (*StreamProjectResponse, err
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProjectLandingResponse parses an HTTP response from a GetProjectLandingWithResponse call
+func ParseGetProjectLandingResponse(rsp *http.Response) (*GetProjectLandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProjectLandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectLanding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProjectLandingResponse parses an HTTP response from a SetProjectLandingWithResponse call
+func ParseSetProjectLandingResponse(rsp *http.Response) (*SetProjectLandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProjectLandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectLanding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -12173,6 +12918,39 @@ func ParseVerifyWorktreeFileResponse(rsp *http.Response) (*VerifyWorktreeFileRes
 	return response, nil
 }
 
+// ParseLandWorktreeResponse parses an HTTP response from a LandWorktreeWithResponse call
+func ParseLandWorktreeResponse(rsp *http.Response) (*LandWorktreeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LandWorktreeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest WorktreeLandResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseSendWorktreeReviewResponse parses an HTTP response from a SendWorktreeReviewWithResponse call
 func ParseSendWorktreeReviewResponse(rsp *http.Response) (*SendWorktreeReviewResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -12268,6 +13046,12 @@ type ServerInterface interface {
 	// StreamProject Follow a project, sent whole every time it changes
 	// (GET /v1/projects/{project}/events)
 	StreamProject(w http.ResponseWriter, r *http.Request, project ProjectRef, params StreamProjectParams)
+	// GetProjectLanding How a project lands its worktrees
+	// (GET /v1/projects/{project}/landing)
+	GetProjectLanding(w http.ResponseWriter, r *http.Request, project ProjectRef)
+	// SetProjectLanding Set how a project lands its worktrees
+	// (PUT /v1/projects/{project}/landing)
+	SetProjectLanding(w http.ResponseWriter, r *http.Request, project ProjectRef)
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(w http.ResponseWriter, r *http.Request, project ProjectRef)
@@ -12334,6 +13118,9 @@ type ServerInterface interface {
 	// VerifyWorktreeFile Mark a file verified
 	// (PUT /v1/worktrees/{worktree}/files/verified)
 	VerifyWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params VerifyWorktreeFileParams)
+	// LandWorktree Start landing a worktree on its base
+	// (POST /v1/worktrees/{worktree}/land)
+	LandWorktree(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params LandWorktreeParams)
 	// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
 	// (POST /v1/worktrees/{worktree}/reviews)
 	SendWorktreeReview(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params SendWorktreeReviewParams)
@@ -13184,6 +13971,58 @@ func (siw *ServerInterfaceWrapper) StreamProject(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StreamProject(w, r, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectLanding operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectLanding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectLanding(w, r, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectLanding operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectLanding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectLanding(w, r, project)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14313,6 +15152,61 @@ func (siw *ServerInterfaceWrapper) VerifyWorktreeFile(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// LandWorktree operation middleware
+func (siw *ServerInterfaceWrapper) LandWorktree(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LandWorktreeParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LandWorktree(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SendWorktreeReview operation middleware
 func (siw *ServerInterfaceWrapper) SendWorktreeReview(w http.ResponseWriter, r *http.Request) {
 
@@ -14501,8 +15395,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}/events", wrapper.StreamProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees", wrapper.RecloneProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/projects/{project}/worktrees/refresh", wrapper.RefreshWorktrees)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/projects/{project}/landing", wrapper.GetProjectLanding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/projects/{project}/landing", wrapper.SetProjectLanding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees", wrapper.ListWorktrees)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}", wrapper.RemoveWorktree)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/worktrees/{worktree}/land", wrapper.LandWorktree)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/diff", wrapper.GetWorktreeDiff)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/diff", wrapper.GetWorktreeFileDiff)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/verified", wrapper.UnverifyWorktreeFile)
@@ -15359,6 +16256,85 @@ type StreamProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response StreamProjectdefaultApplicationProblemPlusJSONResponse) VisitStreamProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectLandingRequestObject struct {
+	Project ProjectRef `json:"project"`
+}
+
+type GetProjectLandingResponseObject interface {
+	VisitGetProjectLandingResponse(w http.ResponseWriter) error
+}
+
+type GetProjectLanding200JSONResponse ProjectLanding
+
+func (response GetProjectLanding200JSONResponse) VisitGetProjectLandingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectLandingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetProjectLandingdefaultApplicationProblemPlusJSONResponse) VisitGetProjectLandingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectLandingRequestObject struct {
+	Project ProjectRef `json:"project"`
+	Body    *SetProjectLandingJSONRequestBody
+}
+
+type SetProjectLandingResponseObject interface {
+	VisitSetProjectLandingResponse(w http.ResponseWriter) error
+}
+
+type SetProjectLanding200JSONResponse ProjectLanding
+
+func (response SetProjectLanding200JSONResponse) VisitSetProjectLandingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectLandingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SetProjectLandingdefaultApplicationProblemPlusJSONResponse) VisitSetProjectLandingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -16230,6 +17206,46 @@ func (response VerifyWorktreeFiledefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type LandWorktreeRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   LandWorktreeParams
+}
+
+type LandWorktreeResponseObject interface {
+	VisitLandWorktreeResponse(w http.ResponseWriter) error
+}
+
+type LandWorktree202JSONResponse WorktreeLandResult
+
+func (response LandWorktree202JSONResponse) VisitLandWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LandWorktreedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response LandWorktreedefaultApplicationProblemPlusJSONResponse) VisitLandWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SendWorktreeReviewRequestObject struct {
 	Worktree WorktreeRef `json:"worktree"`
 	Params   SendWorktreeReviewParams
@@ -16333,6 +17349,12 @@ type StrictServerInterface interface {
 	// StreamProject Follow a project, sent whole every time it changes
 	// (GET /v1/projects/{project}/events)
 	StreamProject(ctx context.Context, request StreamProjectRequestObject) (StreamProjectResponseObject, error)
+	// GetProjectLanding How a project lands its worktrees
+	// (GET /v1/projects/{project}/landing)
+	GetProjectLanding(ctx context.Context, request GetProjectLandingRequestObject) (GetProjectLandingResponseObject, error)
+	// SetProjectLanding Set how a project lands its worktrees
+	// (PUT /v1/projects/{project}/landing)
+	SetProjectLanding(ctx context.Context, request SetProjectLandingRequestObject) (SetProjectLandingResponseObject, error)
 	// RecloneProject Clone a project with no checkout left back into its clone path
 	// (POST /v1/projects/{project}/worktrees)
 	RecloneProject(ctx context.Context, request RecloneProjectRequestObject) (RecloneProjectResponseObject, error)
@@ -16399,6 +17421,9 @@ type StrictServerInterface interface {
 	// VerifyWorktreeFile Mark a file verified
 	// (PUT /v1/worktrees/{worktree}/files/verified)
 	VerifyWorktreeFile(ctx context.Context, request VerifyWorktreeFileRequestObject) (VerifyWorktreeFileResponseObject, error)
+	// LandWorktree Start landing a worktree on its base
+	// (POST /v1/worktrees/{worktree}/land)
+	LandWorktree(ctx context.Context, request LandWorktreeRequestObject) (LandWorktreeResponseObject, error)
 	// SendWorktreeReview Send a worktree's comments not sent yet to an agent, as one message
 	// (POST /v1/worktrees/{worktree}/reviews)
 	SendWorktreeReview(ctx context.Context, request SendWorktreeReviewRequestObject) (SendWorktreeReviewResponseObject, error)
@@ -16992,6 +18017,65 @@ func (sh *strictHandler) StreamProject(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StreamProjectResponseObject); ok {
 		if err := validResponse.VisitStreamProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectLanding operation middleware
+func (sh *strictHandler) GetProjectLanding(w http.ResponseWriter, r *http.Request, project ProjectRef) {
+	var request GetProjectLandingRequestObject
+
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectLanding(ctx, request.(GetProjectLandingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectLanding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectLandingResponseObject); ok {
+		if err := validResponse.VisitGetProjectLandingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectLanding operation middleware
+func (sh *strictHandler) SetProjectLanding(w http.ResponseWriter, r *http.Request, project ProjectRef) {
+	var request SetProjectLandingRequestObject
+
+	request.Project = project
+
+	var body SetProjectLandingJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectLanding(ctx, request.(SetProjectLandingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectLanding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectLandingResponseObject); ok {
+		if err := validResponse.VisitSetProjectLandingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -17624,6 +18708,33 @@ func (sh *strictHandler) VerifyWorktreeFile(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// LandWorktree operation middleware
+func (sh *strictHandler) LandWorktree(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params LandWorktreeParams) {
+	var request LandWorktreeRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LandWorktree(ctx, request.(LandWorktreeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LandWorktree")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LandWorktreeResponseObject); ok {
+		if err := validResponse.VisitLandWorktreeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SendWorktreeReview operation middleware
 func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params SendWorktreeReviewParams) {
 	var request SendWorktreeReviewRequestObject
@@ -17663,207 +18774,222 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
-	"NvmAb4KAwipZdoNQogRO61IBMGyJ9F7OV7B1lZa1uxDGRmWUlC85n6sN3Lg+u+R2UyXCUBZBUNL0ilgr",
-	"7S9u3zTJKaog2aNH9j2oGOK6aXFNTuthfoJnbeAyBDY8gZt8TtWhv8EFxDy2xwT2SP6Q2+aYYP80C9RA",
-	"ehRQsA6bSpR8GxepvkZ4lOgaQdiKjCZckcQbU4kiyC89Wbd31j1cTwSmHsf4JW6cvUat9nNBita35lbV",
-	"dqMyClfQwyZI5nunQJ8Ozvm9dn5gPvzrMTpBDhI3DAoLSTh/VWlAZ7RlRbjYRNcHVRvnpcmQ2X9asdCN",
+	"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",
-	"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",
+	"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",
-	"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",
+	"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",
-	"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",
+	"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",
+	"YQUXfgu4C2v69H8DAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

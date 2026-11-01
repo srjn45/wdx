@@ -26,6 +26,7 @@ type server struct {
 	tracker   *worktree.Tracker
 	marks     *worktree.Marks
 	comments  *worktree.Comments
+	lander    *worktree.Lander
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

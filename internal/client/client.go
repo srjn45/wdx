@@ -346,6 +346,33 @@ func (c *Client) ListWorktrees(ctx context.Context, ref, dir string) (api.Worktr
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// LandWorktree starts landing the worktree name: its status says how it ends.
+func (c *Client) LandWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeLandResult, error) {
+	r, err := c.api.LandWorktreeWithResponse(ctx, name, &api.LandWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeLandResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON202)
+}
+
+// ProjectLanding returns how the project ref lands its worktrees.
+func (c *Client) ProjectLanding(ctx context.Context, ref string) (api.ProjectLanding, error) {
+	r, err := c.api.GetProjectLandingWithResponse(ctx, ref)
+	if err != nil {
+		return api.ProjectLanding{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// SetProjectLanding says how the project ref lands its worktrees.
+func (c *Client) SetProjectLanding(ctx context.Context, ref string, body api.ProjectLandingUpdate) (api.ProjectLanding, error) {
+	r, err := c.api.SetProjectLandingWithResponse(ctx, ref, body)
+	if err != nil {
+		return api.ProjectLanding{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // RemoveWorktree removes the worktree name, which must have landed.
 func (c *Client) RemoveWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeRemoved, error) {
 	r, err := c.api.RemoveWorktreeWithResponse(ctx, name, &api.RemoveWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})

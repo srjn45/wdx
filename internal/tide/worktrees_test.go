@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -1186,6 +1187,194 @@ func TestRemoveWorktreeInATide(t *testing.T) {
 	if !strings.Contains(m.statusNotice, "removed work") {
 		t.Errorf("notice: %q", m.statusNotice)
 	}
+}
+
+func TestLandingSummary(t *testing.T) {
+	t.Parallel()
+	code := func(c api.ErrorCode) *string { s := string(c); return &s }
+	for _, tc := range []struct {
+		state api.WorktreeLandingState
+		code  *string
+		ahead int
+		want  string
+	}{
+		{api.WorktreeLandingStateRebasing, nil, 1, "landing: rebase"},
+		{api.WorktreeLandingStateChecking, nil, 1, "landing: check"},
+		{api.WorktreeLandingStateMoving, nil, 1, "landing"},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodeRebaseFailed), 1, "rebase conflict"},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodeCheckFailed), 1, "check failed"},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodeBaseMoved), 1, "base moved"},
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodeFastForwardFailed), 1, "not landed"},
+		// What failed says nothing once its commits got there another way.
+		{api.WorktreeLandingStateFailed, code(api.ErrorCodeCheckFailed), 0, ""},
+		{api.WorktreeLandingStateLanded, nil, 0, ""},
+	} {
+		w := api.WorktreeStatus{Ahead: aheadBy(tc.ahead), Landing: &api.WorktreeLanding{State: tc.state, Code: tc.code}}
+		if got := landingSummary(w); got != tc.want {
+			t.Errorf("%s %v: %q, want %q", tc.state, deref(tc.code), got, tc.want)
+		}
+	}
+}
+
+func TestLandBarKey(t *testing.T) {
+	t.Parallel()
+	main, origin := "main", "origin/main"
+	m := worktreesModel(
+		api.WorktreeStatus{Name: "main", Path: "/r", Ahead: aheadBy(2), Base: &main},
+		api.WorktreeStatus{Name: "ready", Path: "/r/a", Ahead: aheadBy(1), Base: &main},
+		api.WorktreeStatus{Name: "dirty", Path: "/r/b", Ahead: aheadBy(1), Base: &main, Files: []api.WorktreeFile{changed("f", api.WorktreeFileStatusM)}},
+		api.WorktreeStatus{Name: "nothing", Path: "/r/c", Ahead: aheadBy(0), Base: &main},
+		api.WorktreeStatus{Name: "remote", Path: "/r/d", Ahead: aheadBy(1), Base: &origin},
+		api.WorktreeStatus{Name: "going", Path: "/r/e", Ahead: aheadBy(1), Base: &main, Landing: &api.WorktreeLanding{State: api.WorktreeLandingStateChecking}},
+	)
+	for name, want := range map[string]string{"main": "", "ready": "land", "dirty": commitFirst, "nothing": "", "remote": "", "going": "landing…", "gone": ""} {
+		key, ok := m.landBarKey(name)
+		if ok != (want != "") || key.label != want {
+			t.Errorf("%s: %+v, %v, want %q", name, key, ok, want)
+		}
+	}
+	// A file's diff has none, and the keys say so.
+	for _, key := range m.worktreeBarKeys(fileDiffTab("ready", "f")) {
+		if key.keys == landKey {
+			t.Errorf("a file's diff offers %+v", key)
+		}
+	}
+	if !slices.ContainsFunc(m.worktreeBarKeys(committedTab("ready")), func(k barKey) bool { return k.keys == landKey && k.label == "land" }) {
+		t.Errorf("no L: %+v", m.worktreeBarKeys(committedTab("ready")))
+	}
+	m.flipWorktreeView(committedTab("dirty")) // on what is not committed, C is there instead
+	if !slices.ContainsFunc(m.worktreeBarKeys(committedTab("dirty")), func(k barKey) bool { return k.keys == landKey && k.label == commitFirst }) {
+		t.Errorf("no commit first: %+v", m.worktreeBarKeys(committedTab("dirty")))
+	}
+}
+
+// landInTide is a tide showing a project with a worktree ready to land, on its tab.
+func landInTide(t *testing.T) (*program, string, string) {
+	t.Helper()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	gittest.Git(t, dir, "branch", "-M", "main")
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeFile(t, filepath.Join(work, "more"), "a\n")
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "work")
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the worktree, ahead", func(m *Model) bool {
+		w, ok := m.worktreeNamed("work")
+		return ok && w.Ahead != nil && *w.Ahead == 1
+	})
+	m := p.m
+	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.worktree.Name == "work" }))
+	p.keys("enter")
+	p.until(t, "the bar", func(m *Model) bool { return strings.Contains(text(m), "L land") })
+	return p, dir, work
+}
+
+func TestLandInATide(t *testing.T) {
+	t.Parallel()
+	p, dir, work := landInTide(t)
+	m := p.m
+
+	// The first time, it asks how the project lands.
+	p.keys(landKey)
+	p.until(t, "the box", func(m *Model) bool { return m.land != nil })
+	if !m.land.editing {
+		t.Fatalf("not asked: %+v", m.land)
+	}
+	wantText(t, m, "Landing settings", "Check to run first")
+	p.keys("enter") // no check: a test's shell runs no command
+	p.until(t, "the settings saved", func(m *Model) bool { return m.land != nil && !m.land.editing && !m.land.busy })
+	wantText(t, m, "Land work on main?", "↑1", "Check: none", "Push: no")
+	p.keys("n")
+	if m.land != nil {
+		t.Fatalf("n: %+v", m.land)
+	}
+	if out := gitLog(t, dir); strings.Contains(out, "work") {
+		t.Fatalf("n landed it: %s", out)
+	}
+
+	// The second time, it knows, and lands; what landed is offered for removal.
+	p.keys(landKey)
+	p.until(t, "the box", func(m *Model) bool { return m.land != nil })
+	if m.land.editing {
+		t.Fatalf("asked again: %+v", m.land)
+	}
+	p.keys("y")
+	p.until(t, "the offer to remove", func(m *Model) bool { return m.land == nil && m.confirm != nil })
+	wantText(t, m, "Remove work?")
+	if !strings.Contains(gitLog(t, dir), "work") {
+		t.Errorf("not on main: %s", gitLog(t, dir))
+	}
+	p.keys("y")
+	p.until(t, "removed", func(m *Model) bool { _, ok := m.worktreeNamed("work"); return !ok && m.confirm == nil })
+	if _, err := os.Stat(work); !os.IsNotExist(err) {
+		t.Errorf("the directory: %v", err)
+	}
+}
+
+// wdx's own rebase stopping leads to asking an agent, which is what L then does.
+func TestLandAsksAnAgentAfterAConflict(t *testing.T) {
+	t.Parallel()
+	p, dir, work := landInTide(t)
+	m := p.m
+	writeFile(t, filepath.Join(dir, "more"), "ours\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "ours")
+	if _, err := m.client.SetProjectLanding(t.Context(), "app", api.ProjectLandingUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.client.CreateAgent(t.Context(), api.CreateAgent{Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	p.keys(landKey)
+	p.until(t, "the box", func(m *Model) bool { return m.land != nil })
+	p.keys("y")
+	p.until(t, "the conflict", func(m *Model) bool {
+		w, ok := m.worktreeNamed("work")
+		return ok && landingFailed(w) && m.land == nil && len(m.agents()) == 1
+	})
+	if !strings.Contains(m.statusNotice, "L asks an agent") {
+		t.Errorf("notice: %q", m.statusNotice)
+	}
+	if !strings.Contains(text(m), "conflict ") {
+		t.Errorf("row:\n%s", text(m))
+	}
+	p.keys(landKey)
+	if m.commit == nil {
+		t.Fatalf("no box:\n%s", text(m))
+	}
+	if !strings.HasPrefix(m.commit.text, "Rebase work onto main in "+work) {
+		t.Errorf("text: %q", m.commit.text)
+	}
+	wantText(t, m, "Ask to rebase", "Stopped on: more")
+	p.keys("enter")
+	p.until(t, "sent", func(m *Model) bool { return m.commit == nil })
+
+	// Rebased by someone, it lands again rather than asking again.
+	gittest.Git(t, work, "reset", "-q", "--hard", "main")
+	writeFile(t, filepath.Join(work, "again"), "b\n")
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "again")
+	p.until(t, "the new commit", func(m *Model) bool {
+		w, ok := m.worktreeNamed("work")
+		return ok && deref(w.Head) != deref(w.Landing.Head)
+	})
+	p.keys(landKey)
+	p.until(t, "the land box", func(m *Model) bool { return m.land != nil })
+}
+
+func gitLog(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "log", "--format=%s", "main").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 func writeFile(t *testing.T, path, content string) {

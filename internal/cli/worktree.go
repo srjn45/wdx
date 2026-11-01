@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -17,13 +18,13 @@ import (
 func newWorktreeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worktree",
-		Short: "Read a project's worktrees, what is uncommitted and what a PR would show, and remove those that landed",
-		Long: "All but remove only read, so they can run beside any git command: they take\n" +
+		Short: "Read a project's worktrees, what is uncommitted and what a PR would show, land them and remove them",
+		Long: "All but land and remove only read, so they can run beside any git command: they take\n" +
 			"no lock on the repository. wdx agent create --worktree creates a worktree.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeListCmd(), newWorktreeRemoveCmd())
+	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeLandCmd(), newWorktreeListCmd(), newWorktreeRemoveCmd())
 	return cmd
 }
 
@@ -162,6 +163,141 @@ func newWorktreeCommentsCmd() *cobra.Command {
 	cmd.MarkFlagRequired("name")
 	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
 	return cmd
+}
+
+func newWorktreeLandCmd() *cobra.Command {
+	var scope projectScope
+	var name string
+	cmd := &cobra.Command{
+		Use:   "land --name <worktree> [--project-id <id> | --project-name <name>]",
+		Short: "Land a worktree's commits on its base, with no merge commit",
+		Long: "Rebases it if the base has moved on, undoing that on a conflict; runs the\n" +
+			"project's check in a terminal named land-<worktree>, which stays if it fails;\n" +
+			"moves the base forward to the commit checked, and pushes it if the project\n" +
+			"says so. On any failure the base is where it was. This waits for the end, and\n" +
+			"leaving does not stop it. wdx project landing says how a project lands.",
+		Example: examples(
+			"Land a worktree", identity.Name+" worktree land --name auth-fix",
+			"As JSON", identity.Name+" worktree land --name auth-fix --project-name app --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "What landed, and on what.\n" + `With --json: {"result": "landed", "worktree": "...", ...}`,
+			resultList: "landed",
+			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeFastForwardFailed,
+				api.ErrorCodeInvalidPath, api.ErrorCodeLandNotConfigured, api.ErrorCodeLandingRunning, api.ErrorCodeNoLocalBase,
+				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeNothingToLand, api.ErrorCodeProjectClosed,
+				api.ErrorCodeRebaseFailed, api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ref, dir, err := worktreeScopeOf(cmd, scope)
+			if err != nil {
+				return err
+			}
+			c := clientOf(cmd)
+			started, err := c.LandWorktree(cmd.Context(), name, ref, dir)
+			if err != nil {
+				if problemCode(err) == api.ErrorCodeLandNotConfigured {
+					return &hinted{err, "say how with " + identity.Name + " project landing --check <command> or --no-check"}
+				}
+				return outsideHint(err, scope, "")
+			}
+			l, err := waitLanding(cmd, started)
+			if err != nil {
+				return err
+			}
+			if l.State == api.WorktreeLandingStateFailed {
+				return landingProblem(l)
+			}
+			return printResult(cmd, worktreeLanded{
+				Result: api.ResultLanded, Worktree: name, Base: l.Base, Commit: l.Commit, Pushed: l.Pushed, PushError: l.PushError,
+			})
+		},
+	}
+	scope.addFlags(cmd)
+	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
+	cmd.MarkFlagRequired("name")
+	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	return cmd
+}
+
+// waitLanding follows the project until the landing started has ended. The daemon
+// keeps how it ended, so that following only now misses nothing.
+func waitLanding(cmd *cobra.Command, started api.WorktreeLandResult) (api.WorktreeLanding, error) {
+	stream, err := clientOf(cmd).ProjectEventsWithWorktrees(cmd.Context(), "id:"+started.ProjectId)
+	if err != nil {
+		return api.WorktreeLanding{}, err
+	}
+	defer stream.Close()
+	for {
+		event, err := stream.Next()
+		if err != nil {
+			return api.WorktreeLanding{}, fmt.Errorf("stopped following the landing, which may go on: %w", err)
+		}
+		if event.Removed {
+			return api.WorktreeLanding{}, fmt.Errorf("the project was removed during the landing")
+		}
+		if event.Project.WorktreeStatuses == nil {
+			continue
+		}
+		for _, w := range *event.Project.WorktreeStatuses {
+			if w.Landing == nil || w.Landing.Id != started.Landing.Id {
+				continue
+			}
+			if w.Landing.State == api.WorktreeLandingStateLanded || w.Landing.State == api.WorktreeLandingStateFailed {
+				return *w.Landing, nil
+			}
+		}
+	}
+}
+
+// landingProblem is a landing that failed, as the error the code says.
+func landingProblem(l api.WorktreeLanding) error {
+	code := api.ErrorCode("")
+	if l.Code != nil {
+		code = api.ErrorCode(*l.Code)
+	}
+	detail := ""
+	if l.Detail != nil {
+		detail = *l.Detail
+	}
+	p := api.NewProblem(code, detail)
+	details := map[string]any{"conflicts": l.Conflicts}
+	if l.Terminal != nil {
+		details["terminal"] = *l.Terminal
+	}
+	p.Details = &details
+	var err error = &client.ProblemError{Problem: p}
+	switch code {
+	case api.ErrorCodeRebaseFailed:
+		err = &hinted{err, "nothing changed; ask an agent to rebase with " + identity.Name + " agent send, then land again"}
+	case api.ErrorCodeCheckFailed:
+		if l.Terminal != nil {
+			err = &hinted{err, "read its output in terminal " + *l.Terminal}
+		}
+	case api.ErrorCodeBaseMoved:
+		err = &hinted{err, "land again: it rebases and checks again"}
+	}
+	return err
+}
+
+type worktreeLanded struct {
+	Result    api.Result `json:"result"`
+	Worktree  string     `json:"worktree"`
+	Base      string     `json:"base"`
+	Commit    *string    `json:"commit"`
+	Pushed    bool       `json:"pushed"`
+	PushError *string    `json:"push_error"`
+}
+
+func (r worktreeLanded) text(w io.Writer, st style.Style) {
+	fmt.Fprintln(w, st.Success("landed")+" worktree "+st.Name(r.Worktree)+" on "+st.Name(r.Base))
+	if r.Pushed {
+		fmt.Fprintln(w, "pushed to origin")
+	}
+	if r.PushError != nil {
+		fmt.Fprintln(w, st.Warning("not pushed: ")+*r.PushError)
+	}
 }
 
 func newWorktreeRemoveCmd() *cobra.Command {

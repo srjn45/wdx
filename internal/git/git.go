@@ -181,6 +181,103 @@ func DeleteBranch(ctx context.Context, dir, branch string) (bool, error) {
 	return answered(run(ctx, dir, "branch", "-d", "--", branch))
 }
 
+// RebaseError is a rebase that did not finish, undone. Conflicts are the files it
+// stopped on, none when it failed for another reason.
+type RebaseError struct {
+	Onto      string
+	Conflicts []string
+	Output    string // what git said
+}
+
+func (e *RebaseError) Error() string {
+	if len(e.Conflicts) > 0 {
+		return fmt.Sprintf("rebase onto %s stopped on a conflict in %s", e.Onto, strings.Join(e.Conflicts, ", "))
+	}
+	return fmt.Sprintf("rebase onto %s failed: %s", e.Onto, e.Output)
+}
+
+// writeRepo runs a git command that changes the repository, on a request of the user,
+// and returns what it said on stderr when it fails.
+func writeRepo(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	log := logging.FromContext(ctx).With("dir", dir, "args", args)
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(cmd.Environ(), env...)
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	err := cmd.Run()
+	if _, ok := errors.AsType[*exec.ExitError](err); err != nil && !ok {
+		log.Error("git could not run", "err", err)
+		return "", missing(fmt.Errorf("run git: %w", err))
+	}
+	said := strings.TrimSpace(output.String())
+	if err != nil {
+		log.Info("git refused", "err", err, "output", said, logging.Duration(start))
+		return said, err
+	}
+	log.Info("git wrote", logging.Duration(start))
+	return said, nil
+}
+
+// Rebase rebases the checkout at dir onto onto. One that does not finish is aborted,
+// leaving all as it was, and is a *RebaseError. It asks for nothing: an editor would
+// have nobody to answer it.
+func Rebase(ctx context.Context, dir, onto string) error {
+	said, err := writeRepo(ctx, dir, []string{"GIT_EDITOR=true"}, "rebase", onto)
+	if err == nil {
+		return nil
+	}
+	e := &RebaseError{Onto: onto, Output: said}
+	if files, ferr := run(ctx, dir, "diff", "--name-only", "--diff-filter=U"); ferr == nil && files != "" {
+		e.Conflicts = strings.Split(files, "\n")
+	}
+	if aborted, aerr := writeRepo(ctx, dir, nil, "rebase", "--abort"); aerr != nil {
+		logging.FromContext(ctx).Info("no rebase to abort", "dir", dir, "output", aborted)
+	}
+	return e
+}
+
+// FastForward moves the branch of the checkout at dir to commit, with its files. git
+// refuses when local changes are in the way, or when it would not be a fast-forward.
+func FastForward(ctx context.Context, dir, commit string) error {
+	said, err := writeRepo(ctx, dir, nil, "merge", "--ff-only", "--quiet", commit)
+	if err != nil {
+		return fmt.Errorf("git merge --ff-only: %s", said)
+	}
+	return nil
+}
+
+// MoveBranch moves a branch no checkout has to commit, if that is a fast-forward by
+// the value it reads now and it holds that value when it moves.
+func MoveBranch(ctx context.Context, dir, branch, commit string) error {
+	ref := "refs/heads/" + branch
+	old, err := Resolve(ctx, dir, ref)
+	if err != nil {
+		return err
+	}
+	ok, err := IsAncestor(ctx, dir, old, commit)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%s moved to %s, which %s does not follow", branch, old, commit)
+	}
+	said, err := writeRepo(ctx, dir, nil, "update-ref", "-m", "wdx: land", ref, commit, old)
+	if err != nil {
+		return fmt.Errorf("git update-ref: %s", said)
+	}
+	return nil
+}
+
+// Push pushes a branch to origin, asking for no password: nobody is there to type it.
+func Push(ctx context.Context, dir, branch string) error {
+	said, err := writeRepo(ctx, dir, []string{"GIT_TERMINAL_PROMPT=0"}, "push", "--quiet", "origin", "refs/heads/"+branch+":refs/heads/"+branch)
+	if err != nil {
+		return fmt.Errorf("git push: %s", said)
+	}
+	return nil
+}
+
 // BranchExists reports whether the repository holding dir has a local branch
 // named branch.
 func BranchExists(ctx context.Context, dir, branch string) (bool, error) {

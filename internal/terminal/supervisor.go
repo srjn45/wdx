@@ -212,6 +212,12 @@ func (s *Supervisor) Create(ctx context.Context, projectID, name, dir string) (T
 	return s.create(ctx, KindShell, projectID, name, dir, nil)
 }
 
+// CreateCommand is Create for a terminal that runs command through the shell and
+// ends with it, so that its exit code is the command's. Started again, it is a shell.
+func (s *Supervisor) CreateCommand(ctx context.Context, projectID, name, dir string, command []string) (Terminal, error) {
+	return s.createRunning(ctx, KindShell, projectID, name, dir, nil, command)
+}
+
 // CreateAgent is Create for an agent's row: linked inserts what points at the
 // new row, in the transaction that inserts it.
 func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
@@ -225,6 +231,10 @@ func (s *Supervisor) RenameAgent(ctx context.Context, id, name string) (Terminal
 }
 
 func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
+	return s.createRunning(ctx, kind, projectID, name, dir, linked, nil)
+}
+
+func (s *Supervisor) createRunning(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error, command []string) (Terminal, error) {
 	shell, _ := s.newTerminals()
 	if shell == "" {
 		account, err := holder.LookupAccount(ctx)
@@ -238,7 +248,7 @@ func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir
 	if err != nil {
 		return Terminal{}, err
 	}
-	return s.launch(ctx, t)
+	return s.launchRunning(ctx, t, command)
 }
 
 // Start starts a fresh shell for a terminal whose last one ended; a live
@@ -268,6 +278,11 @@ func (s *Supervisor) start(ctx context.Context, kind Kind, id string) (Terminal,
 
 // launch starts the holder of t, which is starting.
 func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
+	return s.launchRunning(ctx, t, nil)
+}
+
+// launchRunning is launch with command to run in place of the shell, if any.
+func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []string) (Terminal, error) {
 	log := logging.FromContext(ctx)
 	var agent AgentLaunch
 	var started holder.Started
@@ -275,11 +290,12 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	_, historyLines := s.newTerminals()
 	if t.Kind == KindAgent {
 		agent, err = s.opts.AgentLaunch(ctx, t)
+		command = agent.Command
 	}
 	if err == nil {
 		started, err = holder.Start(holder.WithLimits(ctx, s.opts.Limits), holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
-			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, ACA: agent.ACA, Command: agent.Command, Env: s.opts.Env,
+			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, ACA: agent.ACA, Command: command, Env: s.opts.Env,
 			HistoryLines: historyLines,
 		})
 	}

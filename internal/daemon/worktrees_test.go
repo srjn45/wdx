@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -470,4 +471,130 @@ func TestRemoveWorktree(t *testing.T) {
 	if err != nil || list.JSON200 == nil || len(list.JSON200.Worktrees) != 1 {
 		t.Errorf("list: %v, %s", err, list.Body)
 	}
+}
+
+// landing follows the stream until the worktree's landing with id has ended.
+func landing(t *testing.T, events <-chan event, name, id string) api.WorktreeLanding {
+	t.Helper()
+	var last api.WorktreeLanding
+	waitEvent(t, events, "the landing to end", func(e event) bool {
+		w, ok := worktreeStatus(e, name)
+		if !ok || w.Landing == nil || w.Landing.Id != id {
+			return false
+		}
+		last = *w.Landing
+		return last.State == api.WorktreeLandingStateLanded || last.State == api.WorktreeLandingStateFailed
+	})
+	return last
+}
+
+func TestLandWorktree(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeIn(t, dir, "file", "one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeIn(t, work, "more", "committed\n")
+	gittest.Git(t, work, "add", ".")
+	gittest.Git(t, work, "commit", "-qm", "work")
+	on := true
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: &on})
+	waitEvent(t, events, "the worktree", func(e event) bool { _, ok := worktreeStatus(e, "work"); return ok })
+
+	ctx := t.Context()
+	project := "api"
+	params := &api.LandWorktreeParams{Project: &project}
+	land := func() api.WorktreeLandResult {
+		t.Helper()
+		r, err := td.client.LandWorktreeWithResponse(ctx, "work", params)
+		if err != nil || r.JSON202 == nil || r.JSON202.Result != api.ResultStarted {
+			t.Fatalf("land: %v, %s", err, r.Body)
+		}
+		return *r.JSON202
+	}
+	settings := func(check string) {
+		t.Helper()
+		r, err := td.client.SetProjectLandingWithResponse(ctx, "api", api.ProjectLandingUpdate{Check: &check})
+		if err != nil || r.JSON200 == nil || !r.JSON200.Configured {
+			t.Fatalf("settings: %v, %s", err, r.Body)
+		}
+	}
+
+	// It waits until the project has said how.
+	if r, err := td.client.LandWorktreeWithResponse(ctx, "work", params); err != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeLandNotConfigured {
+		t.Fatalf("not configured: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.GetProjectLandingWithResponse(ctx, "api"); err != nil || r.JSON200 == nil || r.JSON200.Configured {
+		t.Fatalf("get: %v, %s", err, r.Body)
+	}
+
+	// A check that fails leaves the base, and its terminal to read.
+	base := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "main"))
+	settings("echo failing; exit 3")
+	failed := landing(t, events, "work", land().Landing.Id)
+	if failed.State != api.WorktreeLandingStateFailed || failed.Code == nil || *failed.Code != string(api.ErrorCodeCheckFailed) || failed.Terminal == nil || *failed.Terminal != "land-work" {
+		t.Fatalf("failed: %+v", failed)
+	}
+	if !strings.Contains(*failed.Detail, "exited with 3") {
+		t.Errorf("detail: %q", *failed.Detail)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "main")); got != base {
+		t.Errorf("main moved to %s", got)
+	}
+	kept, err := td.client.GetTerminalWithResponse(ctx, "land-work", &api.GetTerminalParams{Project: &project})
+	if err != nil || kept.JSON200 == nil || kept.JSON200.Terminal.State != api.TerminalStateExited {
+		t.Fatalf("its terminal: %v, %s", err, kept.Body)
+	}
+
+	// Running again takes the place of that terminal, and one that passes goes.
+	settings("test -f more")
+	passed := landing(t, events, "work", land().Landing.Id)
+	if passed.State != api.WorktreeLandingStateLanded || passed.Commit == nil {
+		t.Fatalf("passed: %+v", passed)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "main")); got != *passed.Commit {
+		t.Errorf("main is at %s, want %s", got, *passed.Commit)
+	}
+	gone, err := td.client.GetTerminalWithResponse(ctx, "land-work", &api.GetTerminalParams{Project: &project})
+	if err != nil || gone.StatusCode() != http.StatusNotFound {
+		t.Errorf("its terminal stayed: %v, %s", err, gone.Body)
+	}
+
+	// Having landed, it can go, which takes what is known of its landing.
+	if r, err := td.client.LandWorktreeWithResponse(ctx, "work", params); err != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeNothingToLand {
+		t.Errorf("landed already: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.RemoveWorktreeWithResponse(ctx, "work", &api.RemoveWorktreeParams{Project: &project}); err != nil || r.JSON200 == nil {
+		t.Errorf("remove: %v, %s", err, r.Body)
+	}
+}
+
+func TestLandWorktreeRefusesTheClone(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	project := "api"
+	check := "true"
+	if r, err := td.client.SetProjectLandingWithResponse(t.Context(), "api", api.ProjectLandingUpdate{Check: &check}); err != nil || r.JSON200 == nil {
+		t.Fatalf("settings: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.LandWorktreeWithResponse(t.Context(), "main", &api.LandWorktreeParams{Project: &project}); err != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeWorktreeIsClone {
+		t.Errorf("the clone: %v, %s", err, r.Body)
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }

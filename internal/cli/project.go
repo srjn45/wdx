@@ -25,7 +25,7 @@ func newProjectCmd(home string) *cobra.Command {
 		Args:  noArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectRemoveCmd())
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectLandingCmd(), newProjectRemoveCmd())
 	return cmd
 }
 
@@ -187,6 +187,72 @@ func newProjectListCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&closed, "closed", false, "list only closed projects")
 	cmd.MarkFlagsMutuallyExclusive("all", "open", "closed")
 	return cmd
+}
+
+func newProjectLandingCmd() *cobra.Command {
+	var ref projectRef
+	var check string
+	var noCheck, push bool
+	cmd := &cobra.Command{
+		Use:   "landing (--id <id> | --name <name>) [--check <command> | --no-check] [--push]",
+		Short: "Show or say how a project lands its worktrees",
+		Long: "With --check or --no-check, saves it: the command wdx worktree land runs before\n" +
+			"moving the base, and with --push whether it then pushes the base to origin.\n" +
+			"Without them, it shows what is saved. Landing needs it to have been said once.",
+		Example: examples(
+			"Show how a project lands", identity.Name+" project landing --name app",
+			"Check before landing", identity.Name+" project landing --name app --check make-test",
+			"No check, and push", identity.Name+" project landing --name app --no-check --push --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "How the project lands.\n" + `With --json: {"configured": true, "check": "...", "push": false}`,
+			resultList: "updated",
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			setting := cmd.Flags().Changed("check") || noCheck
+			if push && !setting {
+				return &usageError{errors.New("--push needs --check or --no-check")}
+			}
+			var s api.ProjectLanding
+			var err error
+			if setting {
+				body := api.ProjectLandingUpdate{Push: push}
+				if check != "" {
+					body.Check = &check
+				}
+				s, err = clientOf(cmd).SetProjectLanding(cmd.Context(), ref.path(), body)
+			} else {
+				s, err = clientOf(cmd).ProjectLanding(cmd.Context(), ref.path())
+			}
+			if err != nil {
+				return projectNotFoundHint(err)
+			}
+			return printResult(cmd, projectLanding(s))
+		},
+	}
+	ref.addFlags(cmd, "")
+	cmd.Flags().StringVar(&check, "check", "", "`command` to run before landing")
+	cmd.Flags().BoolVar(&noCheck, "no-check", false, "run nothing before landing")
+	cmd.Flags().BoolVar(&push, "push", false, "push the base to origin once it moved")
+	cmd.MarkFlagsMutuallyExclusive("check", "no-check")
+	cmd.RegisterFlagCompletionFunc("check", cobra.NoFileCompletions)
+	return cmd
+}
+
+type projectLanding api.ProjectLanding
+
+func (l projectLanding) text(w io.Writer, st style.Style) {
+	if !l.Configured {
+		fmt.Fprintln(w, "not said yet: "+st.Command(identity.Name+" project landing --check <command>")+" or "+st.Command("--no-check"))
+		return
+	}
+	check := st.Muted("none")
+	if l.Check != nil {
+		check = st.Command(*l.Check)
+	}
+	fmt.Fprintf(w, "check: %s\npush: %v\n", check, l.Push)
 }
 
 func newProjectGetCmd() *cobra.Command {

@@ -152,6 +152,20 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	switch {
 	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound):
 		return api.ErrorCodeNotFound, nil
+	case errors.Is(err, errLandNotConfigured):
+		return api.ErrorCodeLandNotConfigured, nil
+	case errors.Is(err, worktree.ErrAgentWorking):
+		return api.ErrorCodeAgentWorking, nil
+	case errors.Is(err, worktree.ErrNotCommitted):
+		return api.ErrorCodeNotCommitted, nil
+	case errors.Is(err, worktree.ErrNothingToLand):
+		return api.ErrorCodeNothingToLand, nil
+	case errors.Is(err, worktree.ErrNoLocalBase):
+		return api.ErrorCodeNoLocalBase, nil
+	case errors.Is(err, worktree.ErrLandingRunning):
+		return api.ErrorCodeLandingRunning, nil
+	case errors.Is(err, worktree.ErrWorktreeBusy):
+		return api.ErrorCodeWorktreeBusy, nil
 	case errors.Is(err, worktree.ErrIsClone):
 		return api.ErrorCodeWorktreeIsClone, nil
 	case errors.Is(err, project.ErrNotGitRepo):

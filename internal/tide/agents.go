@@ -52,6 +52,7 @@ type agentList struct {
 	worktreeRow   int                  // its row there
 	worktreeKey   string               // what that row is, which the cursor stays on as rows come and go
 	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
+	landAsked     map[string]string    // the landing this tide started, by worktree, until it ends
 	diffs         map[string]*diffView // what the diffs' tabs hold, by view: a worktree's tab has two
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
 	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first

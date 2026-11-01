@@ -717,13 +717,19 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 		keys = append(keys, barKey{verifyKey, label, 7})
 		keys = append(keys, m.commentBarKeys(tab, v)...)
 	}
-	if file != "" || !m.hasUncommitted(worktree) {
+	if file != "" {
 		return keys
 	}
-	if strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix) {
-		return append(keys, barKey{"Tab", "commits", 7}, barKey{commitKey, "commit", 8})
+	if m.hasUncommitted(worktree) {
+		if strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix) {
+			return append(keys, barKey{"Tab", "commits", 7}, barKey{commitKey, "commit", 8})
+		}
+		keys = append(keys, barKey{"Tab", "uncommitted", 7})
 	}
-	return append(keys, barKey{"Tab", "uncommitted", 7})
+	if key, ok := m.landBarKey(worktree); ok {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // allKeys are what ? shows.
@@ -1096,6 +1102,8 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		m.flipWorktreeView(l.active)
 	case name == commitKey:
 		m.askCommit(l.active, v)
+	case name == landKey:
+		return m.askLand(l.active, v)
 	case name == commentKey:
 		m.askComment(l.active, v)
 	case name == editKey:

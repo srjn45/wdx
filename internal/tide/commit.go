@@ -20,7 +20,8 @@ const (
 
 // commitBox asks what to send, and to which agent.
 type commitBox struct {
-	review   int // how many comments it sends, with text as their note; 0 asks to commit
+	review   int      // how many comments it sends, with text as their note; 0 asks to commit
+	rebase   []string // the files a rebase stopped on, when it asks for that instead
 	worktree string
 	agents   []api.Agent
 	chosen   int
@@ -189,7 +190,10 @@ func (m *Model) commitPopup() popup {
 	}
 	title := "Ask to commit"
 	body := []string{"To " + to + ", in " + c.worktree + ":", "", "> " + c.text + "_"}
-	if c.review > 0 {
+	if c.rebase != nil {
+		title = "Ask to rebase"
+		body = append(body, "", "Stopped on: "+strings.Join(c.rebase, ", "))
+	} else if c.review > 0 {
 		title = "Send review"
 		body = []string{countOf(c.review) + " to " + to + ", in " + c.worktree + ".", "A note to go first, if any:", "", "> " + c.text + "_"}
 	} else if n := len(m.draftComments(c.worktree)); n > 0 {

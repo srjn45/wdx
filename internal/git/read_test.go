@@ -63,14 +63,17 @@ func staleIndex(t *testing.T, dir string, n int) {
 func reads(dir string) map[string]func(context.Context) error {
 	ignoring := func(_ any, err error) error { return err }
 	return map[string]func(context.Context) error{
-		"Checkouts":     func(ctx context.Context) error { return ignoring(Checkouts(ctx, dir)) },
-		"Dirs":          func(ctx context.Context) error { _, _, err := Dirs(ctx, dir); return err },
-		"Changes":       func(ctx context.Context) error { return ignoring(Changes(ctx, dir)) },
-		"DefaultBranch": func(ctx context.Context) error { return ignoring(DefaultBranch(ctx, dir)) },
-		"BaseOf":        func(ctx context.Context) error { return ignoring(BaseOf(ctx, dir, "work")) },
-		"Summarize":     func(ctx context.Context) error { return ignoring(Summarize(ctx, dir, "main")) },
-		"FileDiff":      func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "kept")) },
-		"FileDiff new":  func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "new")) },
+		"Checkouts":           func(ctx context.Context) error { return ignoring(Checkouts(ctx, dir)) },
+		"Dirs":                func(ctx context.Context) error { _, _, err := Dirs(ctx, dir); return err },
+		"Changes":             func(ctx context.Context) error { return ignoring(Changes(ctx, dir)) },
+		"DefaultBranch":       func(ctx context.Context) error { return ignoring(DefaultBranch(ctx, dir)) },
+		"BaseOf":              func(ctx context.Context) error { return ignoring(BaseOf(ctx, dir, "work")) },
+		"Resolve":             func(ctx context.Context) error { return ignoring(Resolve(ctx, dir, "HEAD")) },
+		"IsAncestor":          func(ctx context.Context) error { return ignoring(IsAncestor(ctx, dir, "main", "HEAD")) },
+		"OperationInProgress": func(ctx context.Context) error { return ignoring(OperationInProgress(ctx, dir)) },
+		"Summarize":           func(ctx context.Context) error { return ignoring(Summarize(ctx, dir, "main")) },
+		"FileDiff":            func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "kept")) },
+		"FileDiff new":        func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "new")) },
 		// git refreshes the index when more than one file it compares proves unchanged.
 		"FileDiff several": func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "several")) },
 		"MergeBase":        func(ctx context.Context) error { return ignoring(MergeBase(ctx, dir, "main")) },
