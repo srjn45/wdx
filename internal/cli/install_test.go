@@ -212,3 +212,48 @@ func TestInstallSavesChannel(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallFindsNewestOnGitHub checks which release the installer goes for
+// when GitHub's list of releases is out of order, pretty-printed or not. curl
+// is a stub that answers only the API, so the install ends at its download.
+func TestInstallFindsNewestOnGitHub(t *testing.T) {
+	t.Parallel()
+	const outOfOrder = `[
+  {"tag_name": "v0.3.0-dev.9", "body": "a,\\"tag_name\\": \\"v9.9.9\\""},
+  {"tag_name": "v0.3.0-dev.4"},
+  {"tag_name": "v0.3.0-dev.11"},
+  {"tag_name": "v0.2.0"}
+]`
+	for _, tc := range []struct {
+		name, channel, releases, want string
+	}{
+		{"dev", "dev", outOfOrder, "v0.3.0-dev.11"},
+		{"dev on one line", "dev", strings.ReplaceAll(outOfOrder, "\n", ""), "v0.3.0-dev.11"},
+		{"dev below stable", "dev", `[{"tag_name": "v0.3.0-dev.11"}, {"tag_name": "v0.3.0"}]`, "v0.3.0"},
+		{"stable", "stable", outOfOrder, "v0.2.0"},
+	} {
+		home := t.TempDir()
+		answer := filepath.Join(home, "releases.json")
+		writeFile(t, answer, tc.releases)
+		stubs := t.TempDir()
+		stub(t, stubs, "curl", `case "$*" in
+	*releases/latest*) echo '{"tag_name": "v0.2.0"}' ;;
+	*api.github.com*) cat `+answer+` ;;
+	*) exit 22 ;;
+esac`)
+		cmd := exec.Command("sh", "../../scripts/install.sh")
+		cmd.Env = []string{
+			"HOME=" + home,
+			"PATH=" + stubs + ":/usr/bin:/bin",
+			"WDX_BIN_DIR=" + filepath.Join(home, "bin"),
+			"WDX_CHANNEL=" + tc.channel,
+		}
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("%s: want the install to end at its download, got\n%s", tc.name, out)
+		}
+		if !strings.Contains(string(out), "downloading wdx "+tc.want+" ") {
+			t.Errorf("%s: want it to download %s, got\n%s", tc.name, tc.want, out)
+		}
+	}
+}

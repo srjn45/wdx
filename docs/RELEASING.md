@@ -43,7 +43,7 @@ A breaking change is anything a user or script can notice: the `--json` output, 
 
 A dev release is tagged with the stable version it leads to and `N`, the number of commits since the last stable tag, so `v0.2.0-dev.7` comes before `v0.2.0`. Dev releases may be buggy. A stable release usually promotes a commit that has run as a dev release: `make release` commits only `CHANGELOG.md` on top of it and tags that commit.
 
-The dev channel installs the newest release of either kind, so dev users get each stable release too. `dist.sh` writes `dist/LATEST-dev` for every release and `dist/LATEST` for stable ones only; on GitHub, the latest release is never a pre-release.
+The dev channel installs the newest release of either kind, so dev users get each stable release too. `dist.sh` writes `dist/LATEST-dev` for every release and `dist/LATEST` for stable ones only; on GitHub, the latest release is never a pre-release, and the list of releases is in no promised order, having held a new release below older ones, so `wdx update` and `install.sh` take the highest version on its first page.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | sh                   # stable

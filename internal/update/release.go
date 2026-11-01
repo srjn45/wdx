@@ -58,15 +58,16 @@ func newReleases(base string) releases {
 }
 
 // latest returns the newest release on channel: the newest stable one, or
-// for dev the newest of either kind. GitHub answers through its API; any
-// other base holds the tag in LATEST and LATEST-dev, as scripts/dist.sh
-// writes them.
+// for dev the newest of either kind. GitHub answers through its API, whose
+// list of releases is in no promised order and has held a new release below
+// older ones, so the newest is worked out from a page of it. Any other base
+// holds the tag in LATEST and LATEST-dev, as scripts/dist.sh writes them.
 func (r releases) latest(ctx context.Context, channel string) (string, error) {
 	var tag string
 	if r.base == identity.ReleasesURL {
 		url := r.api + "/latest"
 		if channel == "dev" {
-			url = r.api + "?per_page=1"
+			url = r.api + "?per_page=100"
 		}
 		body, err := r.get(ctx, url)
 		if err != nil {
@@ -78,10 +79,17 @@ func (r releases) latest(ctx context.Context, channel string) (string, error) {
 		if channel != "dev" {
 			body = append(append([]byte("["), body...), ']')
 		}
-		if err := json.Unmarshal(body, &list); err != nil || len(list) == 0 {
+		if err := json.Unmarshal(body, &list); err != nil {
 			return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %s", body)}
 		}
-		tag = list[0].TagName
+		for _, release := range list {
+			if newer(release.TagName, tag) {
+				tag = release.TagName
+			}
+		}
+		if tag == "" {
+			return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %s", body)}
+		}
 	} else {
 		file := "LATEST"
 		if channel == "dev" {

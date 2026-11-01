@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/identity"
@@ -110,38 +113,56 @@ func TestComparePre(t *testing.T) {
 }
 
 // TestLatestGitHub asks GitHub's API, served in the test, for the newest
-// release of each channel.
+// release of each channel. The server cuts its list to the page asked for, so
+// a client trusting the list's order gets what it would from GitHub.
 func TestLatestGitHub(t *testing.T) {
 	t.Parallel()
-	answers := map[string]string{
-		"/releases/latest":        `{"tag_name": "v0.3.0"}`,
-		"/releases?per_page=1":    `[{"tag_name": "v0.4.0-dev.2"}]`,
-		"/no-releases?per_page=1": `[]`,
+	lists := map[string][]string{
+		// As GitHub listed them on 2026-11-01, with the newest fourth.
+		"/out-of-order": {"v0.3.0-dev.9", "v0.3.0-dev.8", "v0.3.0-dev.4", "v0.3.0-dev.11", "v0.2.0", "v0.2.0-dev.184"},
+		"/stable-below": {"v0.3.0-dev.11", "v0.3.0"},
+		"/no-releases":  {},
+		"/not-versions": {"nightly"},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := r.URL.Path
-		if r.URL.RawQuery != "" {
-			key += "?" + r.URL.RawQuery
+		if strings.HasSuffix(r.URL.Path, "/latest") {
+			_, _ = w.Write([]byte(`{"tag_name": "v0.3.0"}`))
+			return
 		}
-		answer, ok := answers[key]
+		list, ok := lists[r.URL.Path]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(answer))
+		page, err := strconv.Atoi(r.URL.Query().Get("per_page"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		answer := []map[string]string{}
+		for _, tag := range list[:min(page, len(list))] {
+			answer = append(answer, map[string]string{"tag_name": tag})
+		}
+		_ = json.NewEncoder(w).Encode(answer)
 	}))
 	defer srv.Close()
-	r := releases{base: identity.ReleasesURL, api: srv.URL + "/releases", http: srv.Client()}
 	ctx := context.Background()
-	for channel, want := range map[string]string{"stable": "0.3.0", "dev": "0.4.0-dev.2"} {
-		if got, err := r.latest(ctx, channel); err != nil || got != want {
-			t.Errorf("%s: got %q, %v; want %q", channel, got, err, want)
+	for _, tc := range []struct{ api, channel, want string }{
+		{"/out-of-order", "dev", "0.3.0-dev.11"},
+		{"/stable-below", "dev", "0.3.0"},
+		{"/out-of-order", "stable", "0.3.0"},
+	} {
+		r := releases{base: identity.ReleasesURL, api: srv.URL + tc.api, http: srv.Client()}
+		if got, err := r.latest(ctx, tc.channel); err != nil || got != tc.want {
+			t.Errorf("%s on %s: got %q, %v; want %q", tc.channel, tc.api, got, err, tc.want)
 		}
 	}
 
-	r.api = srv.URL + "/no-releases"
-	_, err := r.latest(ctx, "dev")
-	if _, ok := errors.AsType[*DownloadError](err); !ok {
-		t.Fatalf("want a DownloadError for no release, got %v", err)
+	for _, api := range []string{"/no-releases", "/not-versions"} {
+		r := releases{base: identity.ReleasesURL, api: srv.URL + api, http: srv.Client()}
+		_, err := r.latest(ctx, "dev")
+		if _, ok := errors.AsType[*DownloadError](err); !ok {
+			t.Errorf("%s: want a DownloadError for no release, got %v", api, err)
+		}
 	}
 }
