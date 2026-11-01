@@ -3,10 +3,12 @@
 # archives with the tag's own scripts/dist.sh, then upload them with
 # checksums.txt and the tag's install.sh, the tag's notes as the body. A dev
 # tag is a pre-release, so GitHub's latest release stays the newest stable
-# one, as the installer and wdx update expect.
+# one, as the installer and wdx update expect, and scripts/publish-latest.sh
+# then points the dev channel at the new release.
 #
 # The release is created as a draft and published once every file is up, so
-# a failure leaves a draft, which the next run replaces.
+# a failure leaves a draft, which the next run replaces. A run on a release
+# already published only points the channel at it.
 #
 # Usage: scripts/publish.sh <tag>    (.github/workflows/release.yml runs it)
 # Env: GH_TOKEN  a token that may write the repository's releases
@@ -29,7 +31,9 @@ if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = true
 	info "deleting the draft a failed run left"
 	gh release delete "$TAG" --yes
 elif gh release view "$TAG" >/dev/null 2>&1; then
-	die "$TAG is already published"
+	info "$TAG is already published"
+	scripts/publish-latest.sh "$TAG"
+	exit 0
 fi
 
 tmp="$(mktemp -d)"
@@ -52,3 +56,4 @@ gh release create "$TAG" --draft --verify-tag $kind \
 	"$out"/*.tar.gz "$out/checksums.txt" "$tmp/src/scripts/install.sh"
 gh release edit "$TAG" --draft=false
 info "published $TAG"
+scripts/publish-latest.sh "$TAG"

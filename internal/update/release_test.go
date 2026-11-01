@@ -5,14 +5,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/identity"
@@ -112,57 +109,54 @@ func TestComparePre(t *testing.T) {
 	}
 }
 
-// TestLatestGitHub asks GitHub's API, served in the test, for the newest
-// release of each channel. The server cuts its list to the page asked for, so
-// a client trusting the list's order gets what it would from GitHub.
+// TestLatestGitHub asks GitHub, served in the test, for the newest release of
+// each channel: its API for stable, the file a published release moves for dev.
 func TestLatestGitHub(t *testing.T) {
 	t.Parallel()
-	lists := map[string][]string{
-		// As GitHub listed them on 2026-11-01, with the newest fourth.
-		"/out-of-order": {"v0.3.0-dev.9", "v0.3.0-dev.8", "v0.3.0-dev.4", "v0.3.0-dev.11", "v0.2.0", "v0.2.0-dev.184"},
-		"/stable-below": {"v0.3.0-dev.11", "v0.3.0"},
-		"/no-releases":  {},
-		"/not-versions": {"nightly"},
+	answers := map[string]string{
+		"/releases/latest":     `{"tag_name": "v0.3.0"}`,
+		"/no-tag/latest":       `{}`,
+		"/not-json/latest":     `<html>`,
+		"/channels/LATEST-dev": "v0.4.0-dev.2\n",
+		"/channels/page":       "<html>not found</html>\n",
+		"/channels/empty":      "\n",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/latest") {
-			_, _ = w.Write([]byte(`{"tag_name": "v0.3.0"}`))
-			return
-		}
-		list, ok := lists[r.URL.Path]
+		answer, ok := answers[r.URL.Path]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		page, err := strconv.Atoi(r.URL.Query().Get("per_page"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		answer := []map[string]string{}
-		for _, tag := range list[:min(page, len(list))] {
-			answer = append(answer, map[string]string{"tag_name": tag})
-		}
-		_ = json.NewEncoder(w).Encode(answer)
+		_, _ = w.Write([]byte(answer))
 	}))
 	defer srv.Close()
 	ctx := context.Background()
-	for _, tc := range []struct{ api, channel, want string }{
-		{"/out-of-order", "dev", "0.3.0-dev.11"},
-		{"/stable-below", "dev", "0.3.0"},
-		{"/out-of-order", "stable", "0.3.0"},
-	} {
-		r := releases{base: identity.ReleasesURL, api: srv.URL + tc.api, http: srv.Client()}
-		if got, err := r.latest(ctx, tc.channel); err != nil || got != tc.want {
-			t.Errorf("%s on %s: got %q, %v; want %q", tc.channel, tc.api, got, err, tc.want)
+	github := func(api, devLatest string) releases {
+		return releases{base: identity.ReleasesURL, api: srv.URL + api, devLatest: srv.URL + devLatest, http: srv.Client()}
+	}
+
+	r := github("/releases", "/channels/LATEST-dev")
+	for channel, want := range map[string]string{"stable": "0.3.0", "dev": "0.4.0-dev.2"} {
+		if got, err := r.latest(ctx, channel); err != nil || got != want {
+			t.Errorf("%s: got %q, %v; want %q", channel, got, err, want)
 		}
 	}
 
-	for _, api := range []string{"/no-releases", "/not-versions"} {
-		r := releases{base: identity.ReleasesURL, api: srv.URL + api, http: srv.Client()}
-		_, err := r.latest(ctx, "dev")
+	// None of these may read as up to date: that would stop updates silently.
+	for _, tc := range []struct {
+		name, channel string
+		r             releases
+	}{
+		{"file missing", "dev", github("/releases", "/channels/missing")},
+		{"file holds a page", "dev", github("/releases", "/channels/page")},
+		{"file empty", "dev", github("/releases", "/channels/empty")},
+		{"no stable release", "stable", github("/missing", "/channels/LATEST-dev")},
+		{"no tag in the answer", "stable", github("/no-tag", "/channels/LATEST-dev")},
+		{"answer not JSON", "stable", github("/not-json", "/channels/LATEST-dev")},
+	} {
+		got, err := tc.r.latest(ctx, tc.channel)
 		if _, ok := errors.AsType[*DownloadError](err); !ok {
-			t.Errorf("%s: want a DownloadError for no release, got %v", api, err)
+			t.Errorf("%s: want a DownloadError, got %q, %v", tc.name, got, err)
 		}
 	}
 }

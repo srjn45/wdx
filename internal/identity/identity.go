@@ -100,8 +100,11 @@ func LogsDir(home string) string {
 var (
 	// ReleasesURL holds the releases, as <ReleasesURL>/v<version>/<archive>.
 	ReleasesURL = "https://github.com/srjn45/wdx/releases/download"
-	// ReleasesAPI lists the releases, in no promised order.
+	// ReleasesAPI answers which stable release is the latest.
 	ReleasesAPI = "https://api.github.com/repos/srjn45/wdx/releases"
+	// DevLatestURL names the newest release of either kind, kept by
+	// scripts/publish-latest.sh; GitHub has no such answer of its own.
+	DevLatestURL = "https://raw.githubusercontent.com/srjn45/wdx/channels/LATEST-dev"
 )
 
 // PreviousDir holds the version an update replaced, and the database as it

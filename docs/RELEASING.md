@@ -15,7 +15,7 @@ Both release targets need a clean working tree on `main`, not behind `origin/mai
 
 ## Publishing
 
-`.github/workflows/release.yml` publishes the GitHub Release of each `v*` tag pushed: it runs the jobs of `ci.yml` on the tag, then `scripts/publish.sh`, which checks that the tag is annotated and on `main`, builds the archives with the tag's own `scripts/dist.sh`, and uploads them with `checksums.txt` and the tag's `install.sh`. The tag's notes are the release's. A dev tag is a pre-release, so GitHub's latest release is always the newest stable one. A failed run leaves a draft at most; running it again replaces it. A tag pushed before releases were published is published by running the workflow by hand with that tag (`gh workflow run release.yml -f tag=v0.2.0-dev.20`), without the checks.
+`.github/workflows/release.yml` publishes the GitHub Release of each `v*` tag pushed: it runs the jobs of `ci.yml` on the tag, then `scripts/publish.sh`, which checks that the tag is annotated and on `main`, builds the archives with the tag's own `scripts/dist.sh`, and uploads them with `checksums.txt` and the tag's `install.sh`. The tag's notes are the release's. A dev tag is a pre-release, so GitHub's latest release is always the newest stable one. Once it is public, `scripts/publish-latest.sh` writes the tag to `LATEST-dev` on the `channels` branch, which holds nothing else, and which only ever moves forward. A failed run leaves a draft at most; running it again replaces it, and on a release already published does only that last step. A tag pushed before releases were published is published by running the workflow by hand with that tag (`gh workflow run release.yml -f tag=v0.2.0-dev.20`), without the checks.
 
 `dist/` keeps every release built here: `make install` installs from it, and `update.base_url: file://<repo>/dist` makes `wdx update` read it instead of GitHub.
 
@@ -43,7 +43,7 @@ A breaking change is anything a user or script can notice: the `--json` output, 
 
 A dev release is tagged with the stable version it leads to and `N`, the number of commits since the last stable tag, so `v0.2.0-dev.7` comes before `v0.2.0`. Dev releases may be buggy. A stable release usually promotes a commit that has run as a dev release: `make release` commits only `CHANGELOG.md` on top of it and tags that commit.
 
-The dev channel installs the newest release of either kind, so dev users get each stable release too. `dist.sh` writes `dist/LATEST-dev` for every release and `dist/LATEST` for stable ones only; on GitHub, the latest release is never a pre-release, and the list of releases is in no promised order, having held a new release below older ones, so `wdx update` and `install.sh` take the highest version on its first page.
+The dev channel installs the newest release of either kind, so dev users get each stable release too. `dist.sh` writes `dist/LATEST-dev` for every release and `dist/LATEST` for stable ones only; on GitHub, stable comes from its latest release, which is never a pre-release, and dev from `LATEST-dev` on the `channels` branch, as nothing of GitHub's says which dev release is the newest: its list of releases is in no promised order, and has held a new release below older ones. That file's raw URL is cached for up to 5 minutes, so a release can take that long to be offered.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | sh                   # stable

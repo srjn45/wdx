@@ -46,63 +46,76 @@ func (e *ChecksumError) Error() string {
 // releases are the releases published under base, laid out as GitHub
 // Releases: <base>/v<version>/<archive> and checksums.txt.
 type releases struct {
-	base string
-	api  string // GitHub's list of them, when base is GitHub's
-	http *http.Client
+	base      string
+	api       string // GitHub's answer to the latest stable release, when base is GitHub's
+	devLatest string // the file naming the newest of either kind, when base is GitHub's
+	http      *http.Client
 }
 
 func newReleases(base string) releases {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
-	return releases{base: base, api: identity.ReleasesAPI, http: &http.Client{Transport: transport, Timeout: downloadTimeout}}
+	return releases{
+		base:      base,
+		api:       identity.ReleasesAPI,
+		devLatest: identity.DevLatestURL,
+		http:      &http.Client{Transport: transport, Timeout: downloadTimeout},
+	}
 }
 
 // latest returns the newest release on channel: the newest stable one, or
-// for dev the newest of either kind. GitHub answers through its API, whose
-// list of releases is in no promised order and has held a new release below
-// older ones, so the newest is worked out from a page of it. Any other base
-// holds the tag in LATEST and LATEST-dev, as scripts/dist.sh writes them.
+// for dev the newest of either kind. On GitHub, stable comes from its API and
+// dev from the file scripts/publish-latest.sh moves. Any other base holds the
+// tag in LATEST and LATEST-dev, as scripts/dist.sh writes them.
 func (r releases) latest(ctx context.Context, channel string) (string, error) {
-	var tag string
-	if r.base == identity.ReleasesURL {
-		url := r.api + "/latest"
+	var url, tag string
+	var err error
+	switch {
+	case r.base != identity.ReleasesURL:
+		url = r.base + "/LATEST"
 		if channel == "dev" {
-			url = r.api + "?per_page=100"
+			url += "-dev"
 		}
-		body, err := r.get(ctx, url)
-		if err != nil {
-			return "", err
-		}
-		var list []struct {
-			TagName string `json:"tag_name"`
-		}
-		if channel != "dev" {
-			body = append(append([]byte("["), body...), ']')
-		}
-		if err := json.Unmarshal(body, &list); err != nil {
-			return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %s", body)}
-		}
-		for _, release := range list {
-			if newer(release.TagName, tag) {
-				tag = release.TagName
-			}
-		}
-		if tag == "" {
-			return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %s", body)}
-		}
-	} else {
-		file := "LATEST"
-		if channel == "dev" {
-			file = "LATEST-dev"
-		}
-		body, err := r.get(ctx, r.base+"/"+file)
-		if err != nil {
-			return "", err
-		}
-		tag = strings.TrimSpace(string(body))
+		tag, err = r.getTag(ctx, url)
+	case channel == "dev":
+		url = r.devLatest
+		tag, err = r.getTag(ctx, url)
+	default:
+		url = r.api + "/latest"
+		tag, err = r.getLatestAPI(ctx, url)
+	}
+	if err != nil {
+		return "", err
+	}
+	// Anything else would read as older than the installed version, and so
+	// as up to date.
+	if _, ok := parseVersion(tag); !ok {
+		return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %q", tag)}
 	}
 	logging.FromContext(ctx).Info("latest release found", "channel", channel, "tag", tag, "base", r.base)
 	return strings.TrimPrefix(tag, "v"), nil
+}
+
+func (r releases) getTag(ctx context.Context, url string) (string, error) {
+	body, err := r.get(ctx, url)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(body)), nil
+}
+
+func (r releases) getLatestAPI(ctx context.Context, url string) (string, error) {
+	body, err := r.get(ctx, url)
+	if err != nil {
+		return "", err
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &release); err != nil {
+		return "", &DownloadError{URL: url, Err: fmt.Errorf("no release in the answer: %s", body)}
+	}
+	return release.TagName, nil
 }
 
 // archive is the name of the release archive of version for this machine.

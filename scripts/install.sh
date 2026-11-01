@@ -170,29 +170,25 @@ case "$arch" in
 esac
 
 # --- version --------------------------------------------------------------
-# GitHub's latest release is never a pre-release. Its list of releases is in no
-# promised order, so the newest of either kind is worked out from a page of it.
+# GitHub's latest release is never a pre-release, so the newest of either kind
+# is named by a file that each published release moves (scripts/publish-latest.sh).
 channel="${WDX_CHANNEL:-stable}"
 case "$channel" in
-	stable) latest_api=releases/latest latest_file=LATEST ;;
-	dev) latest_api='releases?per_page=100' latest_file=LATEST-dev ;;
+	stable) latest_file=LATEST ;;
+	dev) latest_file=LATEST-dev ;;
 	*) die "unknown WDX_CHANNEL '$channel' (stable or dev)" ;;
 esac
-# newest_tag prints the highest of the tags it reads, vX.Y.Z or vX.Y.Z-dev.N,
-# a stable release after the dev ones leading to it.
-newest_tag() {
-	sed -n -e 's/^v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)$/\1 \2 \3 1 0 &/p' \
-		-e 's/^v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)-dev\.\([0-9]*\)$/\1 \2 \3 0 \4 &/p' |
-		sort -n -k1,1 -k2,2 -k3,3 -k4,4 -k5,5 | tail -n 1 | cut -d' ' -f6
-}
 if [ -n "${WDX_VERSION:-}" ]; then
 	tag="v${WDX_VERSION#v}"
-elif [ "$BASE" = "$GITHUB_BASE" ]; then
-	tag="$(curl -fsSL "https://api.github.com/repos/$REPO/$latest_api" |
-		tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | newest_tag)" ||
+elif [ "$BASE" != "$GITHUB_BASE" ]; then
+	tag="$(curl -fsSL "$BASE/$latest_file")" || die "failed to read $BASE/$latest_file"
+elif [ "$channel" = dev ]; then
+	tag="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/channels/$latest_file")" ||
 		die "failed to resolve the latest $channel release"
 else
-	tag="$(curl -fsSL "$BASE/$latest_file")" || die "failed to read $BASE/$latest_file"
+	tag="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
+		sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)" ||
+		die "failed to resolve the latest $channel release"
 fi
 [ -n "$tag" ] || die "could not determine which version to install"
 version="${tag#v}"

@@ -213,32 +213,27 @@ func TestInstallSavesChannel(t *testing.T) {
 	}
 }
 
-// TestInstallFindsNewestOnGitHub checks which release the installer goes for
-// when GitHub's list of releases is out of order, pretty-printed or not. curl
-// is a stub that answers only the API, so the install ends at its download.
+// TestInstallFindsNewestOnGitHub checks which release the installer goes for.
+// curl is a stub that answers only where the newest is found, so the install
+// ends at its download.
 func TestInstallFindsNewestOnGitHub(t *testing.T) {
 	t.Parallel()
-	const outOfOrder = `[
-  {"tag_name": "v0.3.0-dev.9", "body": "a,\\"tag_name\\": \\"v9.9.9\\""},
-  {"tag_name": "v0.3.0-dev.4"},
-  {"tag_name": "v0.3.0-dev.11"},
-  {"tag_name": "v0.2.0"}
-]`
 	for _, tc := range []struct {
-		name, channel, releases, want string
+		name, channel, note, want string
 	}{
-		{"dev", "dev", outOfOrder, "v0.3.0-dev.11"},
-		{"dev on one line", "dev", strings.ReplaceAll(outOfOrder, "\n", ""), "v0.3.0-dev.11"},
-		{"dev below stable", "dev", `[{"tag_name": "v0.3.0-dev.11"}, {"tag_name": "v0.3.0"}]`, "v0.3.0"},
-		{"stable", "stable", outOfOrder, "v0.2.0"},
+		{"dev", "dev", "v0.3.0-dev.11", "downloading wdx v0.3.0-dev.11 "},
+		{"stable", "stable", "v0.3.0-dev.11", "downloading wdx v0.2.0 "},
+		{"dev with no file", "dev", "", "failed to resolve the latest dev release"},
 	} {
 		home := t.TempDir()
-		answer := filepath.Join(home, "releases.json")
-		writeFile(t, answer, tc.releases)
 		stubs := t.TempDir()
+		note := "exit 22"
+		if tc.note != "" {
+			note = "echo " + tc.note
+		}
 		stub(t, stubs, "curl", `case "$*" in
-	*releases/latest*) echo '{"tag_name": "v0.2.0"}' ;;
-	*api.github.com*) cat `+answer+` ;;
+	*api.github.com/repos/srjn45/wdx/releases/latest*) echo '{"tag_name": "v0.2.0"}' ;;
+	*raw.githubusercontent.com/srjn45/wdx/channels/LATEST-dev*) `+note+` ;;
 	*) exit 22 ;;
 esac`)
 		cmd := exec.Command("sh", "../../scripts/install.sh")
@@ -250,10 +245,73 @@ esac`)
 		}
 		out, err := cmd.CombinedOutput()
 		if err == nil {
-			t.Fatalf("%s: want the install to end at its download, got\n%s", tc.name, out)
+			t.Fatalf("%s: want the install to stop before installing, got\n%s", tc.name, out)
 		}
-		if !strings.Contains(string(out), "downloading wdx "+tc.want+" ") {
-			t.Errorf("%s: want it to download %s, got\n%s", tc.name, tc.want, out)
+		if !strings.Contains(string(out), tc.want) {
+			t.Errorf("%s: want %q, got\n%s", tc.name, tc.want, out)
 		}
+	}
+}
+
+// TestPublishLatest moves the dev channel's file through the releases of a
+// repository served from a directory, and checks it only moves forward.
+func TestPublishLatest(t *testing.T) {
+	t.Parallel()
+	script, err := filepath.Abs("../../scripts/publish-latest.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := t.TempDir()
+	clone := t.TempDir()
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git(origin, "init", "-q", "--bare")
+	git(clone, "init", "-q")
+	git(clone, "remote", "add", "origin", origin)
+	publishLatest := func(tag string) ([]byte, error) {
+		cmd := exec.Command("sh", script, tag)
+		cmd.Dir = clone
+		return cmd.CombinedOutput()
+	}
+
+	commits := 0
+	for _, tc := range []struct {
+		tag, want string
+		moves     bool
+	}{
+		{"v0.3.0-dev.9", "v0.3.0-dev.9", true}, // the first makes the branch
+		{"v0.3.0-dev.11", "v0.3.0-dev.11", true},
+		{"v0.3.0-dev.11", "v0.3.0-dev.11", false}, // a run again
+		{"v0.3.0-dev.4", "v0.3.0-dev.11", false},  // an old tag again
+		{"v0.2.0", "v0.3.0-dev.11", false},
+		{"v0.3.0", "v0.3.0", true}, // stable comes after its dev releases
+		{"v0.3.0-dev.12", "v0.3.0", false},
+		{"v0.4.0-dev.1", "v0.4.0-dev.1", true},
+	} {
+		if out, err := publishLatest(tc.tag); err != nil {
+			t.Fatalf("%s: %v\n%s", tc.tag, err, out)
+		}
+		if tc.moves {
+			commits++
+		}
+		if got := git(origin, "show", "channels:LATEST-dev"); got != tc.want {
+			t.Errorf("after %s: file names %q, want %q", tc.tag, got, tc.want)
+		}
+		if got := git(origin, "rev-list", "--count", "channels"); got != fmt.Sprint(commits) {
+			t.Errorf("after %s: %s commits, want %d", tc.tag, got, commits)
+		}
+	}
+
+	if out, err := publishLatest("nightly"); err == nil {
+		t.Errorf("want a tag that is no release refused, got\n%s", out)
+	}
+	if got := git(origin, "show", "channels:LATEST-dev"); got != "v0.4.0-dev.1" {
+		t.Errorf("a refused tag moved the file to %q", got)
 	}
 }
