@@ -1,12 +1,11 @@
 # CLI and tide: what each can do
 
-Status: decided with the human on 2026-11-01, unless a row says Open. Nothing under "Planned" is built yet; it is approved to be built.
+Status: decided with the human on 2026-11-01, unless a row says Open.
 
 The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AIs as well as people; tide serves a person looking at a screen. So a feature is on both unless there is a reason, and that reason is written here. A new feature that reaches only one of them adds a row saying why.
 
 - **Same:** both can do it, perhaps in different ways.
 - **By design:** the difference is meant to stay.
-- **Planned:** to be built; see [Planned](#planned).
 - **Later:** waits for something else, or for a real need.
 - **Open:** not decided.
 
@@ -19,7 +18,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Open a local repository | `project open --local` | `C-q o`, local | Same | |
 | Clone a repository | `project open --git` | `C-q o`, clone | Same | |
 | Answer a missing checkout | `--reclone`, `--remove` or a prompt | a choice screen | Same | |
-| Reopen a closed project | only through `--local` or `--git` | `C-q o`, then `Enter` on it | Planned (CLI) | The CLI cannot name a closed project today |
+| Reopen a closed project | `project open --name`, `--id`, or the list | `C-q o`, then `Enter` on it | Same | |
 | Close a project | `project close` | `C-q w` | Same | |
 | Remove a project | `project remove` | only when no checkout is left | Later (tide) | Comes after close |
 | Project details and checkouts | `project get` | no screen | By design | The agent and terminal lists already show a project; checkouts will show with the worktrees work |
@@ -74,28 +73,22 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Panes, tabs, focus, zoom, folding, selection, `C-q r` | tide | By design | They are tide's own interface |
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
 
-## Planned
+## `wdx project open`
 
-### Reopen a project by id or name
-
-`wdx project open` becomes the CLI's version of tide's `Open Project`.
+The CLI's version of tide's `Open Project`.
 
 ```
-wdx project open              # interactive: choose from the list
+wdx project open              # choose from a list: create, local, git, the closed projects
 wdx project open --name app   # open a known project by name
 wdx project open --id <id>    # open a known project by id
 wdx project open --git <url>  # clone a repository and open it
 wdx project open --local .    # open the repository at a path
 ```
 
-- **With no flags, on a terminal:** an interactive list of create, local, git and the closed projects.
 - **With no flags and no terminal, or with `--json`:** a `usage` error naming the flags.
-- **`--id <id>` or `--name <name>` alone:** opens that known project, whichever state it is in. Completion offers the closed ones.
-- **`--name` with `--local` or `--git`:** names the new project, as it does today.
-- **`--id` with `--local` or `--git`:** a `usage` error.
-- **No checkout left:** the flags above still ask, as `--git` does today: clone it again, when it has an origin, or remove it. `--reclone` and `--remove` answer in advance and, as with `--git`, one of them is required with `--json`.
-
-No use that works today changes: `project open` without `--local` or `--git` is a `usage` error now.
+- **`--id` or `--name` alone:** opens that known project, whichever state it is in. Completion offers the closed ones.
+- **`--name` with `--local` or `--git`:** names the new project.
+- **No checkout left:** `--id`, `--name` and `--git` ask whether to clone it again, offered only when it has an origin, or to remove it. `--reclone` and `--remove` answer in advance; with `--json` one of them is required.
 
 ## An agent's history
 

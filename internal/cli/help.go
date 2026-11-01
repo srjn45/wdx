@@ -142,6 +142,8 @@ type flagRule struct {
 	Rule  string   `json:"rule"`
 	Flags []string `json:"flags"`
 	When  *string  `json:"when"` // the flag that must be given for the rule to apply
+	// Unless is a flag that, given too, keeps the rule from applying.
+	Unless *string `json:"unless"`
 }
 
 type commandSummary struct {
@@ -277,26 +279,31 @@ func flagRules(cmd *cobra.Command) []flagRule {
 			}
 		})
 	}
-	if rule, ok := jsonRule(cmd); ok {
+	return append(rules, jsonRules(cmd)...)
+}
+
+// jsonRules reads the jsonRequires annotation: one rule for each flag it applies
+// with, or one that always applies.
+func jsonRules(cmd *cobra.Command) []flagRule {
+	value, ok := cmd.Annotations[jsonRequires]
+	if !ok {
+		return nil
+	}
+	whens, flags, found := strings.Cut(value, ":")
+	if !found {
+		return []flagRule{{Rule: "one_required_with_json", Flags: strings.Fields(whens)}}
+	}
+	var rules []flagRule
+	for _, condition := range strings.Split(whens, ",") {
+		rule := flagRule{Rule: "one_required_with_json", Flags: strings.Fields(flags)}
+		when, unless, found := strings.Cut(condition, "!")
+		rule.When = &when
+		if found {
+			rule.Unless = &unless
+		}
 		rules = append(rules, rule)
 	}
 	return rules
-}
-
-func jsonRule(cmd *cobra.Command) (flagRule, bool) {
-	value, ok := cmd.Annotations[jsonRequires]
-	if !ok {
-		return flagRule{}, false
-	}
-	rule := flagRule{Rule: "one_required_with_json"}
-	when, flags, found := strings.Cut(value, ":")
-	if found {
-		rule.When = &when
-	} else {
-		flags = when
-	}
-	rule.Flags = strings.Fields(flags)
-	return rule, true
 }
 
 // ruleLines says the rules in as few lines as they can be: a group that is
@@ -368,22 +375,20 @@ func ruleLines(st style.Style, rules []flagRule) []string {
 		others := slices.Compact(slices.Sorted(slices.Values(conflicts[f])))
 		lines = append(lines, st.Flag("--"+f)+": not with "+flagList(st, others))
 	}
-	if r, ok := lastJSONRule(rules); ok {
+	for _, r := range rules {
+		if r.Rule != "one_required_with_json" {
+			continue
+		}
 		given := st.Flag("--json")
 		if r.When != nil {
 			given += " and " + st.Flag("--"+*r.When)
 		}
+		if r.Unless != nil {
+			given += ", unless " + st.Flag("--"+*r.Unless)
+		}
 		lines = append(lines, "with "+given+": one of "+flagList(st, r.Flags))
 	}
 	return lines
-}
-
-func lastJSONRule(rules []flagRule) (flagRule, bool) {
-	i := slices.IndexFunc(rules, func(r flagRule) bool { return r.Rule == "one_required_with_json" })
-	if i < 0 {
-		return flagRule{}, false
-	}
-	return rules[i], true
 }
 
 func flagList(st style.Style, flags []string) string {

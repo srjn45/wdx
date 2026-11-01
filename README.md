@@ -23,6 +23,7 @@ wdx daemon status                          # the installer started it; wdx daemo
 wdx project create --name app              # a new git repository under ~/.wdx/projects
 wdx project open --local ~/code/api        # a repository you already have
 wdx project open --git https://github.com/acme/web.git
+wdx project open --name app                # one closed earlier; with no flags, choose from a list
 wdx project list
 
 cd ~/code/api

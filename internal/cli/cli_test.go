@@ -506,9 +506,10 @@ type jsonOutput struct {
 			Name string `json:"name"`
 		} `json:"topics"`
 		FlagRules []struct {
-			Rule  string   `json:"rule"`
-			Flags []string `json:"flags"`
-			When  *string  `json:"when"`
+			Rule   string   `json:"rule"`
+			Flags  []string `json:"flags"`
+			When   *string  `json:"when"`
+			Unless *string  `json:"unless"`
 		} `json:"flag_rules"`
 		Results []string `json:"results"`
 		Errors  []struct {
@@ -746,6 +747,9 @@ func TestCommandDocs(t *testing.T) {
 			if r.When != nil {
 				names = append(names, *r.When)
 			}
+			if r.Unless != nil {
+				names = append(names, *r.Unless)
+			}
 			for _, name := range names {
 				if cmd.Flags().Lookup(name) == nil {
 					t.Errorf("%s: rule %s names unknown flag %q", path, r.Rule, name)
@@ -772,10 +776,10 @@ func TestHelp(t *testing.T) {
 		{[]string{"daemon", "-h"}, []string{"wdx daemon <command> [flags]", "restart ", "start ", "status ", "stop ", "Global flags: --color <mode>, --json, --no-input, -h/--help"}, []string{"Errors:", "[command]", "Examples:"}},
 		{[]string{"project", "-h"}, []string{"close ", "create ", "get ", "list ", "open ", "remove ", "Run wdx project <command> --help"}, []string{"Errors:", "\n  --json"}},
 		{[]string{"project", "open", "--help"}, []string{
-			"wdx project open: open a git repository as a project\n\nA path inside",
+			"wdx project open: open a project: a known one, a local repository or a clone\n\nWith no flags",
 			"Examples:\n  # Open the repository you are in\n  wdx project open --local .\n",
 			"--local <path>", "--git <url>", "--reclone ",
-			"Flag rules:\n  exactly one of --local, --git\n  --reclone: not with --local, --remove\n  --remove: not with --local, --reclone\n  with --json and --git: one of --reclone, --remove\n",
+			"--id: not with --git, --local, --name\n  --local: not with --git, --id, --reclone, --remove\n  --name: not with --id\n  --reclone: not with --local, --remove\n  --remove: not with --local, --reclone\n  with --json and --git: one of --reclone, --remove\n  with --json and --id: one of --reclone, --remove\n  with --json and --name, unless --local: one of --reclone, --remove\n",
 			"Output:", "result: cloned", "checkout_missing    1", "daemon_unavailable  3", "internal            3", "Global flags:",
 		}, []string{"Commands:", "Help topics:", "\n  --json"}},
 		{[]string{"project", "create", "--help"}, []string{"Flag rules:\n  --name is required\n  at most one of --open, --cancel\n  with --json: one of --open, --cancel\n"}, nil},
@@ -825,7 +829,7 @@ func TestHelpJSON(t *testing.T) {
 		t.Fatalf("unexpected topics: %+v", c.Topics)
 	}
 	v, _ = wdxJSON(t, t.TempDir(), "help", "project", "open")
-	if c := v.Command; len(c.Examples) != 3 || c.Examples[0].Command != "wdx project open --local ." || c.Examples[0].Description != "Open the repository you are in" || c.Topics != nil {
+	if c := v.Command; len(c.Examples) != 5 || c.Examples[0].Command != "wdx project open --local ." || c.Examples[0].Description != "Open the repository you are in" || c.Topics != nil {
 		t.Fatalf("unexpected examples or topics: %+v", c)
 	}
 	for _, f := range v.Command.Flags {
@@ -838,10 +842,10 @@ func TestHelpJSON(t *testing.T) {
 		}
 	}
 	rule := v.Command.FlagRules[len(v.Command.FlagRules)-1]
-	if rule.Rule != "one_required_with_json" || *rule.When != "git" || !slices.Equal(rule.Flags, []string{"reclone", "remove"}) {
+	if rule.Rule != "one_required_with_json" || *rule.When != "name" || *rule.Unless != "local" || !slices.Equal(rule.Flags, []string{"reclone", "remove"}) {
 		t.Fatalf("unexpected json rule: %+v", rule)
 	}
-	if !slices.Equal(v.Command.Results, []string{"cloned", "opened", "registered", "removed"}) {
+	if !slices.Equal(v.Command.Results, []string{"cloned", "created", "opened", "registered", "removed"}) {
 		t.Fatalf("unexpected results: %v", v.Command.Results)
 	}
 }

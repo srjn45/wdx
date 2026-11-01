@@ -42,7 +42,8 @@ const (
 	// and internal.
 	errorList = "errors"
 	// jsonRequires holds flags one of which --json requires, after
-	// "<flag>:" when only together with that flag.
+	// "<flag>,<flag>:" when only together with one of those, each "<flag>!<other>"
+	// when not also with other.
 	jsonRequires = "jsonRequires"
 )
 
@@ -385,21 +386,24 @@ func (e *panicError) Error() string { return fmt.Sprintf("panic: %v", e.value) }
 // checkJSONRequires fails when --json is given without one of the flags that
 // answer the command's prompts.
 func checkJSONRequires(cmd *cobra.Command) error {
-	rule, ok := jsonRule(cmd)
-	if !ok || !jsonMode(cmd) || (rule.When != nil && !cmd.Flags().Changed(*rule.When)) {
+	if !jsonMode(cmd) {
 		return nil
 	}
-	for _, name := range rule.Flags {
-		if cmd.Flags().Changed(name) {
-			return nil
+	for _, rule := range jsonRules(cmd) {
+		if rule.When != nil && !cmd.Flags().Changed(*rule.When) || rule.Unless != nil && cmd.Flags().Changed(*rule.Unless) {
+			continue
 		}
+		if slices.ContainsFunc(rule.Flags, cmd.Flags().Changed) {
+			continue
+		}
+		flags := "--" + strings.Join(rule.Flags, " or --")
+		given := "--json"
+		if rule.When != nil {
+			given += " with --" + *rule.When
+		}
+		return &hinted{&usageError{fmt.Errorf("%s requires %s", given, flags)}, "pass " + flags}
 	}
-	flags := "--" + strings.Join(rule.Flags, " or --")
-	given := "--json"
-	if rule.When != nil {
-		given += " with --" + *rule.When
-	}
-	return &hinted{&usageError{fmt.Errorf("%s requires %s", given, flags)}, "pass " + flags}
+	return nil
 }
 
 func withHelpHint(hint *string, cmd *cobra.Command) *string {

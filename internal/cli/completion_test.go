@@ -54,7 +54,8 @@ func TestCompleteProjects(t *testing.T) {
 		{[]string{"project", "get", "--name", ""}, []string{"app\topen, " + appID, "beta\tclosed, " + betaID}},
 		{[]string{"project", "remove", "--id", ""}, []string{appID + "\tapp", betaID + "\tbeta"}},
 		{[]string{"project", "close", "--name", ""}, []string{"app\topen, " + appID}},
-		{[]string{"project", "open", "--name", ""}, nil},
+		{[]string{"project", "open", "--name", ""}, []string{"beta\tclosed, " + betaID}},
+		{[]string{"project", "open", "--id", ""}, []string{betaID + "\tbeta"}},
 	} {
 		if got := complete(t, home, tc.args...); !slices.Equal(got, tc.want) {
 			t.Errorf("%v: got %q, want %q", tc.args, got, tc.want)
@@ -79,7 +80,7 @@ func TestCompleteStatic(t *testing.T) {
 		{[]string{"--color", ""}, []string{"auto", "always", "never"}},
 		{[]string{"project", "c"}, []string{"close\tClose a project", "create\tCreate a project in a new git repository"}},
 		{[]string{"help", "s"}, []string{"setting\tShow and change the settings", "settings\tevery setting, its default and where it is read from"}},
-		{[]string{"help", "project", "o"}, []string{"open\tOpen a git repository as a project"}},
+		{[]string{"help", "project", "o"}, []string{"open\tOpen a project: a known one, a local repository or a clone"}},
 		{[]string{"project", "list", ""}, nil},
 	} {
 		got := complete(t, home, tc.args...)

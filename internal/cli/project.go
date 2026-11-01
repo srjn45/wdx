@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -61,7 +62,9 @@ func newProjectCreateCmd(home string) *cobra.Command {
 				api.ErrorCodeNameTaken, api.ErrorCodeProjectInUse, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
 			jsonRequires: annotation("open", "cancel"),
 		},
-		RunE: func(cmd *cobra.Command, _ []string) error { return runCreate(cmd, opts) },
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runCreate(cmd, opts, bufio.NewScanner(cmd.InOrStdin()))
+		},
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of the project, also the repository directory name")
 	cmd.Flags().StringVar(&opts.parent, "path", "", "parent `dir` of the repository (default "+identity.ProjectsDir(home)+")")
@@ -76,7 +79,7 @@ func newProjectCreateCmd(home string) *cobra.Command {
 
 const createConflictQuestion = "create conflict"
 
-func runCreate(cmd *cobra.Command, opts createOptions) error {
+func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) error {
 	parent, err := absolute(cmd, opts.parent)
 	if err != nil {
 		return err
@@ -89,7 +92,6 @@ func runCreate(cmd *cobra.Command, opts createOptions) error {
 		logAnswer(cmd, createConflictQuestion, "open", "--open")
 	}
 
-	answers := bufio.NewScanner(cmd.InOrStdin())
 	for {
 		r, conflict := clientOf(cmd).CreateProject(cmd.Context(), req)
 		if conflict == nil {
@@ -105,7 +107,7 @@ func runCreate(cmd *cobra.Command, opts createOptions) error {
 		case api.ErrorCodeInvalidName:
 			return &hinted{conflict, retry}
 		case api.ErrorCodeCheckoutMissing:
-			if req.OnMissingCheckout, err = askMissingCheckout(cmd, conflict, ""); err != nil {
+			if req.OnMissingCheckout, err = askMissingCheckout(cmd, conflict, "", answers); err != nil {
 				return err
 			}
 			continue
@@ -251,25 +253,38 @@ func (r projectRef) path() string {
 	return r.name
 }
 
+// openOptions are the flags of project open.
+type openOptions struct {
+	local, gitURL, id, name string
+	reclone, remove         bool
+}
+
 func newProjectOpenCmd(home string) *cobra.Command {
-	var local, gitURL, name string
-	var reclone, remove bool
+	var opts openOptions
 	cmd := &cobra.Command{
-		Use:   "open (--local <path> | --git <url>)",
-		Short: "Open a git repository as a project",
-		Long: "A path inside a repository opens the repository root. Worktrees and other\n" +
-			"clones of a known repository join its project. Opening a known project\n" +
-			"marks it open again and drops its checkouts that are no longer on disk.\n\n" +
+		Use:   "open [--local <path> | --git <url> | --id <id> | --name <name>]",
+		Short: "Open a project: a known one, a local repository or a clone",
+		Long: "With no flags on a terminal, you choose from a list: create a project, open a\n" +
+			"local repository, clone one, or any closed project. Without a terminal, or\n" +
+			"with --json, a flag is required.\n\n" +
+			"--id or --name alone opens a known project. It is marked open again, its\n" +
+			"checkouts no longer on disk are dropped, and the terminals and agents closing\n" +
+			"it stopped start again.\n\n" +
+			"--local opens the repository a path is in, at its root. Worktrees and other\n" +
+			"clones of a known repository join its project.\n\n" +
 			"--git opens the project with that origin, or clones it into\n" +
-			identity.ProjectsDir(home) + "/<name> if it is unknown. If none of a known\n" +
-			"project's checkouts are left, you are asked to clone it again or remove it;\n" +
-			"--reclone and --remove answer in advance; with --json one of them is required.\n\n" +
-			"Projects are named after their root directory or URL unless --name is\n" +
-			"given. Names are unique.",
+			identity.ProjectsDir(home) + "/<name> if it is unknown.\n\n" +
+			"If none of a known project's checkouts are left, you are asked to clone it\n" +
+			"again or remove it; --reclone and --remove answer in advance, and with --json\n" +
+			"one of them is required, except with --local.\n\n" +
+			"With --local or --git, --name names the project, by default after its root\n" +
+			"directory or URL. Names are unique.",
 		Example: examples(
 			"Open the repository you are in", identity.Name+" project open --local .",
+			"Choose from a list", identity.Name+" project open",
+			"Open a closed project by name", identity.Name+" project open --name app",
 			"Clone a repository and open it under another name", identity.Name+" project open --git https://github.com/acme/api.git --name acme-api",
-			"From a script: clone again if no checkout is left, never prompt", identity.Name+" project open --git https://github.com/acme/api.git --reclone --json",
+			"From a script: clone again if no checkout is left, never prompt", identity.Name+" project open --id proj-1a2b3c4d --reclone --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -277,66 +292,227 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\",\n" +
 				"and the terminals closing it stopped, started again, under \"started\".\n" +
 				`With --json: {"result": ..., "project": {...}, "dropped": [...], "started": [...]}`,
-			resultList: annotation("cloned", "opened", "registered", "removed"),
-			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
-				api.ErrorCodeNameTaken, api.ErrorCodeNotGitRepo, api.ErrorCodePathExists, api.ErrorCodeProjectInUse, api.ErrorCodeProjectMismatch, api.ErrorCodeDaemonUnavailable),
-			jsonRequires: "git:" + annotation("reclone", "remove"),
+			resultList: annotation("cloned", "created", "opened", "registered", "removed"),
+			errorList: codeList(api.ErrorCodeCancelled, api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+				api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeNotGitRepo, api.ErrorCodePathExists, api.ErrorCodeProjectInUse, api.ErrorCodeProjectMismatch, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
+			jsonRequires: "git,id,name!local:" + annotation("reclone", "remove"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var source api.Source
-			if cmd.Flags().Changed("local") {
-				path, err := absolute(cmd, local)
-				if err != nil {
-					return err
-				}
-				_ = source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
-			} else {
-				_ = source.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: gitURL})
+			answers := bufio.NewScanner(cmd.InOrStdin())
+			switch flags := cmd.Flags(); {
+			case flags.Changed("local"):
+				return openLocal(cmd, opts.local, opts, answers)
+			case flags.Changed("git"):
+				return openGit(cmd, opts.gitURL, opts, answers)
+			case flags.Changed("id") || flags.Changed("name"):
+				return reopen(cmd, projectRef{id: opts.id, name: opts.name}, opts, answers)
 			}
-			req := api.CreateProject{Source: source, Name: optional(name)}
-			if reclone {
-				req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutReclone)
-				logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
-			} else if remove {
-				req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutRemove)
-				logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
-			}
-			for {
-				r, err := clientOf(cmd).CreateProject(cmd.Context(), req)
-				if err == nil {
-					return printResult(cmd, projectResult(r))
-				}
-				if problemCode(err) != api.ErrorCodeCheckoutMissing || req.OnMissingCheckout != nil {
-					return openHint(err)
-				}
-				if req.OnMissingCheckout, err = askMissingCheckout(cmd, err, "pass --reclone or --remove"); err != nil {
-					return err
-				}
-			}
+			return openChosen(cmd, opts, answers)
 		},
 	}
-	cmd.Flags().StringVar(&local, "local", "", "`path` to a local git repository")
-	cmd.Flags().StringVar(&gitURL, "git", "", "`url` of a git repository to clone")
-	cmd.Flags().StringVar(&name, "name", "", "`name` of the project (default: the repository directory or URL name)")
+	cmd.Flags().StringVar(&opts.local, "local", "", "`path` to a local git repository")
+	cmd.Flags().StringVar(&opts.gitURL, "git", "", "`url` of a git repository to clone")
+	cmd.Flags().StringVar(&opts.id, "id", "", "`id` of a known project")
+	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of a known project; with --local or --git, the name to give it (default: the repository directory or URL name)")
 	cmd.RegisterFlagCompletionFunc("local", completeDirs)
 	cmd.RegisterFlagCompletionFunc("git", cobra.NoFileCompletions)
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
-	cmd.Flags().BoolVar(&reclone, "reclone", false, "with --git, if no checkout is left, clone it again without asking")
-	cmd.Flags().BoolVar(&remove, "remove", false, "with --git, if no checkout is left, remove the project without asking")
-	cmd.MarkFlagsOneRequired("local", "git")
-	cmd.MarkFlagsMutuallyExclusive("local", "git")
+	cmd.RegisterFlagCompletionFunc("id", completeProjects("id", api.ProjectStateClosed))
+	cmd.RegisterFlagCompletionFunc("name", completeProjects("name", api.ProjectStateClosed))
+	cmd.Flags().BoolVar(&opts.reclone, "reclone", false, "if no checkout is left, clone it again without asking")
+	cmd.Flags().BoolVar(&opts.remove, "remove", false, "if no checkout is left, remove the project without asking")
+	cmd.MarkFlagsMutuallyExclusive("local", "git", "id")
+	cmd.MarkFlagsMutuallyExclusive("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("reclone", "remove")
 	cmd.MarkFlagsMutuallyExclusive("local", "reclone")
 	cmd.MarkFlagsMutuallyExclusive("local", "remove")
 	return cmd
 }
 
+func openLocal(cmd *cobra.Command, local string, opts openOptions, answers *bufio.Scanner) error {
+	path, err := absolute(cmd, local)
+	if err != nil {
+		return err
+	}
+	var source api.Source
+	_ = source.FromLocalSource(api.LocalSource{Type: api.LocalSourceTypeLocal, Path: path})
+	return openSource(cmd, source, opts, answers)
+}
+
+func openGit(cmd *cobra.Command, url string, opts openOptions, answers *bufio.Scanner) error {
+	var source api.Source
+	_ = source.FromGitSource(api.GitSource{Type: api.GitSourceTypeGit, Url: url})
+	return openSource(cmd, source, opts, answers)
+}
+
+// openSource opens what source says, asking about a missing checkout unless
+// opts answers.
+func openSource(cmd *cobra.Command, source api.Source, opts openOptions, answers *bufio.Scanner) error {
+	req := api.CreateProject{Source: source, Name: optional(opts.name)}
+	if opts.reclone {
+		req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutReclone)
+		logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
+	} else if opts.remove {
+		req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutRemove)
+		logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
+	}
+	for {
+		r, err := clientOf(cmd).CreateProject(cmd.Context(), req)
+		if err == nil {
+			return printResult(cmd, projectResult(r))
+		}
+		if problemCode(err) != api.ErrorCodeCheckoutMissing || req.OnMissingCheckout != nil {
+			return openHint(err)
+		}
+		if req.OnMissingCheckout, err = askMissingCheckout(cmd, err, "pass --reclone or --remove", answers); err != nil {
+			return err
+		}
+	}
+}
+
+// reopen opens a project wdx knows, asking about a missing checkout unless opts
+// answers.
+func reopen(cmd *cobra.Command, ref projectRef, opts openOptions, answers *bufio.Scanner) error {
+	if ref.path() == "" {
+		return &usageError{errors.New("--id or --name is empty")}
+	}
+	c := clientOf(cmd)
+	r, err := c.UpdateProject(cmd.Context(), ref.path(), api.ProjectStateOpen, false)
+	if err == nil {
+		return printResult(cmd, projectResult(r))
+	}
+	if problemCode(err) != api.ErrorCodeCheckoutMissing {
+		return projectNotFoundHint(err)
+	}
+	var answer *api.CreateProjectOnMissingCheckout
+	switch {
+	case opts.reclone:
+		answer = ptr(api.CreateProjectOnMissingCheckoutReclone)
+		logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
+	case opts.remove:
+		answer = ptr(api.CreateProjectOnMissingCheckoutRemove)
+		logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
+	default:
+		if answer, err = askMissingCheckout(cmd, err, "", answers); err != nil {
+			return err
+		}
+	}
+	if *answer == api.CreateProjectOnMissingCheckoutRemove {
+		r, err = c.DeleteProject(cmd.Context(), ref.path(), false)
+	} else {
+		r, err = c.RecloneProject(cmd.Context(), ref.path())
+	}
+	if err != nil {
+		return openHint(err)
+	}
+	return printResult(cmd, projectResult(r))
+}
+
+const openQuestion = "what to open"
+
+// openChosen lists what can be opened and opens what is chosen.
+func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) error {
+	if opts.reclone || opts.remove || !canPrompt(cmd) {
+		if !opts.reclone && !opts.remove {
+			logUnanswered(cmd, openQuestion)
+		}
+		return &hinted{&usageError{errors.New("nothing to open")}, "pass --local, --git, --id or --name"}
+	}
+	list, err := clientOf(cmd).ListProjects(cmd.Context(), api.ProjectStateClosed)
+	if err != nil {
+		return err
+	}
+	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	fmt.Fprintln(prompt, "Open a project:")
+	choices := []string{"", "1", "2", "3"}
+	fmt.Fprintln(prompt, st.Command("[1]"), "create a new project")
+	fmt.Fprintln(prompt, st.Command("[2]"), "open a local repository")
+	fmt.Fprintln(prompt, st.Command("[3]"), "clone a git repository")
+	for i, p := range list.Projects {
+		number := strconv.Itoa(i + 4)
+		choices = append(choices, number)
+		fmt.Fprintln(prompt, st.Command("["+number+"]"), st.Name(p.Name), st.Muted("closed"))
+	}
+	choice, err := ask(prompt, answers, "choose "+st.Command("[1-"+choices[len(choices)-1]+"]")+" (empty to cancel): ", choices...)
+	if err != nil {
+		return err
+	}
+	field := func(question string) (string, error) {
+		value, err := ask(prompt, answers, question)
+		if err != nil {
+			return "", err
+		}
+		logAnswer(cmd, question, value, "prompt")
+		return value, nil
+	}
+	var value string
+	switch choice {
+	case "":
+		logAnswer(cmd, openQuestion, "cancel", "prompt")
+		return openCancelled()
+	case "1":
+		logAnswer(cmd, openQuestion, "create", "prompt")
+		if value, err = field("name (empty to cancel): "); err != nil {
+			return err
+		}
+		if value == "" {
+			return openCancelled()
+		}
+		parent, err := field("parent directory (empty for the default): ")
+		if err != nil {
+			return err
+		}
+		return runCreate(cmd, createOptions{name: value, parent: expandHome(cmd, parent)}, answers)
+	case "2":
+		logAnswer(cmd, openQuestion, "local", "prompt")
+		if value, err = field("path (empty to cancel): "); err != nil {
+			return err
+		}
+		if value == "" {
+			return openCancelled()
+		}
+		return openLocal(cmd, expandHome(cmd, value), opts, answers)
+	case "3":
+		logAnswer(cmd, openQuestion, "git", "prompt")
+		if value, err = field("url (empty to cancel): "); err != nil {
+			return err
+		}
+		if value == "" {
+			return openCancelled()
+		}
+		return openGit(cmd, value, opts, answers)
+	}
+	number, _ := strconv.Atoi(choice)
+	p := list.Projects[number-4]
+	logAnswer(cmd, openQuestion, p.Name, "prompt")
+	return reopen(cmd, projectRef{id: p.Id}, opts, answers)
+}
+
+func openCancelled() error {
+	return &client.ProblemError{Problem: api.NewProblem(api.ErrorCodeCancelled, "nothing was chosen")}
+}
+
+// expandHome expands a leading ~ of a path typed at a prompt, where no shell
+// has.
+func expandHome(cmd *cobra.Command, path string) string {
+	home := invocationOf(cmd).env.UserHome
+	if home == "" {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	return path
+}
+
 const missingCheckoutQuestion = "missing checkout"
 
 // askMissingCheckout asks whether to clone the project of the
-// checkout_missing problem in err again or to remove it. hint tells how to
-// answer without a prompt; the project's own hint when empty.
-func askMissingCheckout(cmd *cobra.Command, err error, hint string) (*api.CreateProjectOnMissingCheckout, error) {
+// checkout_missing problem in err again, when it has an origin, or to remove it.
+// hint tells how to answer without a prompt; the project's own hint when empty.
+func askMissingCheckout(cmd *cobra.Command, err error, hint string, answers *bufio.Scanner) (*api.CreateProjectOnMissingCheckout, error) {
 	var problem api.Problem
 	if e, ok := errors.AsType[*client.ProblemError](err); ok {
 		problem = e.Problem
@@ -354,10 +530,25 @@ func askMissingCheckout(cmd *cobra.Command, err error, hint string) (*api.Create
 		clonePath, _ = (*problem.Details)["clone_path"].(string)
 	}
 	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	if p.Origin == nil {
+		fmt.Fprintln(prompt, err)
+		fmt.Fprintf(prompt, "%s remove from %s\n", st.Command("[r]"), identity.Name)
+		fmt.Fprintf(prompt, "%s cancel\n", st.Command("[c]"))
+		choice, askErr := ask(prompt, answers, "choose "+st.Command("[r/c]")+": ", "r", "c")
+		if askErr != nil {
+			return nil, askErr
+		}
+		if choice == "c" {
+			logAnswer(cmd, missingCheckoutQuestion, "cancel", "prompt")
+			return nil, &hinted{err, missingCheckoutHint(p)}
+		}
+		logAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
+		return ptr(api.CreateProjectOnMissingCheckoutRemove), nil
+	}
 	fmt.Fprintf(prompt, "%s (was %s)\n", err, clonePath)
 	fmt.Fprintf(prompt, "%s clone again to %s\n", st.Command("[c]"), clonePath)
 	fmt.Fprintf(prompt, "%s remove from %s\n", st.Command("[r]"), identity.Name)
-	choice, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "choose "+st.Command("[c/r]")+": ", "c", "r")
+	choice, err := ask(prompt, answers, "choose "+st.Command("[c/r]")+": ", "c", "r")
 	if err != nil {
 		return nil, err
 	}
