@@ -37,6 +37,10 @@ type Options struct {
 	Changed func()
 	// Settle is DefaultSettle when 0.
 	Settle time.Duration
+
+	// readDone is called when a read has read the checkouts, before it tells of
+	// them: a test holds that step open to act during a read.
+	readDone func()
 }
 
 // Tracker keeps the status of the checkouts of the projects being followed. No
@@ -155,7 +159,7 @@ type tracked struct {
 	forced     bool               // a user asked: do not wait for a lock
 	gitDirs    map[string]gitDirs // of each checkout, by path
 	commonDirs map[string]bool
-	bases      map[string]bool // the base reflogs' file names, relative to logs
+	bases      map[string]bool // the files that say a base moved: its ref and its reflog
 	watching   bool            // the watcher works, so the end of a lock will be seen
 }
 
@@ -291,31 +295,41 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		return
 	}
 
-	dirs := p.dirsOf(ctx, list)
-	// Before reading: a change made during the read must fire a read of its own.
-	if watcher != nil {
-		p.syncWatches(ctx, watcher, list, dirs)
-	}
 	p.mu.Lock()
-	pending, everything, forced := p.pending, p.everything, p.forced
-	p.pending, p.everything, p.forced = map[string]reading{}, false, false
 	before := p.statuses
-	watching := p.watching
-	p.gitDirs = dirs
 	p.mu.Unlock()
-
 	known := make(map[string]Status, len(before))
 	for _, s := range before {
 		known[s.Path] = s
 	}
 	for i := range list {
 		s := &list[i]
-		was, seen := known[s.Path]
-		s.Files, s.Base, s.Ahead, s.Added, s.Removed = was.Files, was.Base, was.Ahead, was.Added, was.Removed
 		if s.Missing {
-			s.Files, s.Base, s.Ahead, s.Added, s.Removed = nil, "", nil, nil, nil
 			continue
 		}
+		was := known[s.Path]
+		s.Files, s.Base, s.Ahead, s.Added, s.Removed = was.Files, was.Base, was.Ahead, was.Added, was.Removed
+	}
+
+	dirs := p.dirsOf(ctx, list)
+	// Before reading, with the bases known so far: a change made during the read
+	// must fire a read of its own.
+	if watcher != nil {
+		p.syncWatches(ctx, watcher, list, dirs)
+	}
+	p.mu.Lock()
+	pending, everything, forced := p.pending, p.everything, p.forced
+	p.pending, p.everything, p.forced = map[string]reading{}, false, false
+	watching := p.watching
+	p.gitDirs = dirs
+	p.mu.Unlock()
+
+	for i := range list {
+		s := &list[i]
+		if s.Missing {
+			continue
+		}
+		was, seen := known[s.Path]
 		want := pending[s.Path]
 		if everything || !seen || was.Head != s.Head || was.Branch != s.Branch {
 			want = reading{files: true, commits: true}
@@ -346,7 +360,10 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		}
 	}
 
-	// A base read for the first time, or a new one, has a reflog to watch.
+	if p.t.opts.readDone != nil {
+		p.t.opts.readDone()
+	}
+	// A base read for the first time, or a new one, has its files to watch.
 	if watcher != nil {
 		p.syncWatches(ctx, watcher, list, dirs)
 	}
@@ -395,8 +412,8 @@ func exists(path string) bool {
 }
 
 // syncWatches watches what git changes for each checkout, and never its files,
-// which would take a watch per directory: its git directory and logs, and what
-// the repository's checkouts share. A directory not there yet is added when its
+// which would take a watch per directory: its git directory and logs, what the
+// repository's checkouts share, and where its base's ref and reflog are. A directory not there yet is added when its
 // parent says it came, or at the next read.
 func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, list []Status, dirs map[string]gitDirs) {
 	want := map[string]bool{}
@@ -411,9 +428,13 @@ func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, li
 		commons[d.common] = true
 		want[d.common], want[filepath.Join(d.common, "worktrees")] = true, true
 		if s.Base != "" {
+			// git writes the reflog before it moves the ref, so a read on the reflog
+			// alone can find the old value. Neither is enough alone: a repository may
+			// keep no reflogs, and a packed ref may have no directory to watch.
+			ref := filepath.Join(d.common, baseRef(s.Base))
 			log := filepath.Join(d.common, "logs", baseRef(s.Base))
-			bases[log] = true
-			want[filepath.Dir(log)] = true
+			bases[ref], bases[log] = true, true
+			want[filepath.Dir(ref)], want[filepath.Dir(log)] = true, true
 		}
 	}
 	for _, have := range watcher.WatchList() {
@@ -431,7 +452,8 @@ func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, li
 	p.mu.Unlock()
 }
 
-// baseRef is the reference a base names, as its reflog's place under logs.
+// baseRef is the reference a base names, as its place in a git directory, and of
+// its reflog under logs.
 func baseRef(base string) string {
 	if rest, ok := strings.CutPrefix(base, "origin/"); ok {
 		return filepath.Join("refs", "remotes", "origin", rest)

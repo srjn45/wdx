@@ -80,7 +80,7 @@ Agreed on 2026-11-01: no continuous git polling, because of long `git pull` and 
 | An agent stops working: idle, waiting or ended | agents compared with those last seen, on each notice | its worktree |
 | `index`, `HEAD` or `logs/HEAD` changed in a worktree's git directory | file watch | that worktree |
 | The directory `<common>/worktrees` changed: a worktree added or removed | file watch | the list |
-| The base branch's reflog changed | file watch | the commit summary of every worktree |
+| The base branch's ref or reflog changed | file watch | the commit summary of every worktree |
 | The user looks: the focus moves to the left pane, a diff tab opens, the refresh key (`C-q f`, or plain `f` in the left pane) | a request from tide | that worktree, or all of them |
 | The watcher lost events | the watcher says so | the list and every worktree |
 
@@ -97,7 +97,7 @@ What each git operation touched in a linked worktree, measured on git 2.53.0:
 | `fetch`, nothing new | `FETCH_HEAD`, ignored | `origin/HEAD` |
 | `update-ref` on the base | nothing | its ref and reflog |
 
-So a repository takes 2 watches per worktree, on its git directory and its `logs`, plus 2: `worktrees` and the directory of the base's reflog. The main checkout's base is on `origin`, so its reflog is under `logs/refs/remotes/origin`, which is to be measured when built. A repository with no reflogs or in the reftable format has none of these files: it gets the other events only, and the log says so.
+So a repository takes 2 watches per worktree, on its git directory and its `logs`, plus 3: `worktrees` and the directories of the base's ref and reflog. Both are watched because git writes the reflog before it moves the ref, seen with `strace` on git 2.53.0, so a read on the reflog alone can find the old value, and only the ref's move says to read again. The ref alone is not enough either: once packed it may have no directory to watch. The watches also hold through a read, so a base that moves during one fires another. The main checkout's base is on `origin`, so its reflog is under `logs/refs/remotes/origin`, which is to be measured when built. A repository in the reftable format has none of these files: it gets the other events only, and the log says so.
 
 ### How it fits the daemon
 

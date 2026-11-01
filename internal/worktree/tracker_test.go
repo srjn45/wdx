@@ -23,7 +23,8 @@ type trackerHarness struct {
 
 	mu     sync.Mutex
 	agents []Agent
-	reads  int // how many times the checkouts were read
+	reads  int    // how many times the checkouts were read
+	during func() // run once at the end of a read, holding it open
 }
 
 func track(t *testing.T, dir string) *trackerHarness {
@@ -49,6 +50,15 @@ func track(t *testing.T, dir string) *trackerHarness {
 			}
 		},
 		Settle: time.Millisecond,
+		readDone: func() {
+			h.mu.Lock()
+			during := h.during
+			h.during = nil
+			h.mu.Unlock()
+			if during != nil {
+				during()
+			}
+		},
 	})
 	stop := h.tracker.Follow("p")
 	t.Cleanup(func() {
@@ -165,8 +175,77 @@ func TestTrackerSeesTheBaseMove(t *testing.T) {
 		return intOf(s.Ahead) == 1
 	})
 
-	// Landed by moving main, which no checkout has checked out: only its reflog says.
+	// Landed by moving main, which no checkout has checked out: only its ref and reflog say.
 	gittest.Git(t, dir, "update-ref", "refs/heads/main", "work")
+	h.waitFor("landed", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 0
+	})
+}
+
+// oneAheadOfMain returns a repository whose worktree "work" is a commit ahead of
+// main, which no checkout has checked out.
+func oneAheadOfMain(t *testing.T) string {
+	t.Helper()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	gittest.Git(t, dir, "switch", "-qc", "elsewhere")
+	commit(t, work, "mine", "m\n")
+	return dir
+}
+
+// TestTrackerSeesTheRefMoveAfterItsReflog takes the moment git is between writing
+// the reflog and moving the ref, when a read finds the old value: only the ref's
+// own move says it is time to read again. With no reflog to write, the move is
+// all there is.
+func TestTrackerSeesTheRefMoveAfterItsReflog(t *testing.T) {
+	t.Parallel()
+	dir := oneAheadOfMain(t)
+	gittest.Git(t, dir, "config", "core.logAllRefUpdates", "false")
+	if err := os.Remove(filepath.Join(dir, ".git", "logs", "refs", "heads", "main")); err != nil {
+		t.Fatal(err)
+	}
+	h := track(t, dir)
+	h.waitFor("one ahead", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 1
+	})
+
+	gittest.Git(t, dir, "update-ref", "refs/heads/main", "work")
+	h.waitFor("landed", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 0
+	})
+}
+
+// TestTrackerSeesTheBaseMoveDuringARead moves the base when a read has read the
+// commits and has not told of them yet: the watch must hold through the read, for
+// the move to fire a read of its own.
+func TestTrackerSeesTheBaseMoveDuringARead(t *testing.T) {
+	t.Parallel()
+	dir := oneAheadOfMain(t)
+	h := track(t, dir)
+	h.waitFor("one ahead", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 1
+	})
+
+	reading, moved := make(chan struct{}), make(chan struct{})
+	h.mu.Lock()
+	h.during = func() {
+		close(reading)
+		<-moved
+	}
+	h.mu.Unlock()
+	h.tracker.Refresh("p", "work")
+	select {
+	case <-reading:
+	case <-waittest.After(t):
+		close(moved)
+		t.Fatal("no read came of the refresh")
+	}
+	gittest.Git(t, dir, "update-ref", "refs/heads/main", "work")
+	close(moved)
 	h.waitFor("landed", func(list []Status) bool {
 		s, _ := named2(list, "work")
 		return intOf(s.Ahead) == 0
