@@ -351,6 +351,12 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			t.Fatalf("%v: stdout is not one JSON object: %s", args, out.stdout)
 		}
 		_ = json.Unmarshal(last.Response, &logged) // compared to stdout, checked to be JSON
+		if slices.Contains(args, "worktree") && out.exit == api.ExitOK {
+			// A file's contents and comments are measured, not logged.
+			if b, err := json.Marshal(api.WorktreeResponseLogged([]byte(out.stdout))); err == nil {
+				_ = json.Unmarshal(b, &printed)
+			}
+		}
 		if obj, ok := printed.(map[string]any); ok {
 			if h, ok := obj["history"].(map[string]any); ok {
 				h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged

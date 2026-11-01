@@ -180,6 +180,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = historyLogged(rec.body.Bytes())
 			case operation == "getAgentTranscript" && rec.status == http.StatusOK:
 				response = transcriptLogged(rec.body.Bytes())
+			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
+				response = api.WorktreeResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
 				response = "event stream"
 			}
@@ -189,9 +191,18 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 	})
 }
 
+// The worktree operations that carry a file's contents, or what is said of them.
+var (
+	worktreeRequests  = map[string]bool{"createWorktreeComment": true, "editWorktreeComment": true, "sendWorktreeReview": true}
+	worktreeResponses = map[string]bool{"listWorktrees": true, "getWorktreeDiff": true, "getWorktreeFileDiff": true, "listWorktreeComments": true, "createWorktreeComment": true}
+)
+
 // requestLogged is a request's body as logged: a prompt can hold secrets, so
 // it is measured, never logged, even in a body too broken to read.
 func requestLogged(operation string, b []byte) any {
+	if worktreeRequests[operation] {
+		return map[string]any{"body_bytes": len(b)} // a comment, or a review's note
+	}
 	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)
 	}

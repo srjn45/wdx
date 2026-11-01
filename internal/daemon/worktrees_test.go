@@ -11,6 +11,8 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func worktreeStatus(e event, name string) (api.WorktreeStatus, bool) {
@@ -344,5 +346,70 @@ func TestWorktreeReview(t *testing.T) {
 	}
 	if r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", review, api.WorktreeReview{Agent: "id:" + a.Id}); err != nil || r.StatusCode() != http.StatusUnprocessableEntity {
 		t.Errorf("nothing to send: %v, %s", err, r.Body)
+	}
+}
+
+// A file's contents and what is said of them reach the logs no more than a terminal's
+// output does, at the debug level too, which logs what SQL is given.
+func TestWorktreeContentsAreNotLogged(t *testing.T) {
+	t.Parallel()
+	const inFile, inComment, inNote = "the-secret-in-a-file", "the-secret-in-a-comment", "the-secret-in-a-note"
+	td := start(t)
+	p := td.create(t, "api")
+	dir := p.Worktrees[0].Path
+	writeIn(t, dir, "file", inFile+"\n")
+	ctx := t.Context()
+	project := "api"
+	quote := inFile
+	if r, err := td.client.CreateWorktreeCommentWithResponse(ctx, "main", &api.CreateWorktreeCommentParams{Project: &project}, api.WorktreeCommentCreate{
+		File: "file", Line: 1, Side: api.WorktreeCommentCreateSideNew, View: api.WorktreeCommentCreateViewUncommitted, Quote: &quote, Body: inComment,
+	}); err != nil || r.JSON201 == nil {
+		t.Fatalf("comment: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.GetWorktreeFileDiffWithResponse(ctx, "main", &api.GetWorktreeFileDiffParams{Project: &project, Path: "file"}); err != nil || r.JSON200 == nil || !strings.Contains(r.JSON200.Patch, inFile) {
+		t.Fatalf("file diff: %v, %s", err, r.Body)
+	}
+	on := true
+	if r, err := td.client.GetWorktreeDiffWithResponse(ctx, "main", &api.GetWorktreeDiffParams{Project: &project, Uncommitted: &on}); err != nil || r.JSON200 == nil || !strings.Contains(r.JSON200.Patch, inFile) {
+		t.Fatalf("diff: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.ListWorktreeCommentsWithResponse(ctx, "main", &api.ListWorktreeCommentsParams{Project: &project}); err != nil || r.JSON200 == nil || r.JSON200.Comments[0].Body != inComment {
+		t.Fatalf("comments: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.ListWorktreesWithResponse(ctx, &api.ListWorktreesParams{Project: &project}); err != nil || r.JSON200 == nil || len(r.JSON200.Worktrees[0].Comments) != 1 {
+		t.Fatalf("list: %v, %s", err, r.Body)
+	}
+	a := td.createAgent(t, "api", dir, "reviewer")
+	if r, err := td.client.SendWorktreeReviewWithResponse(ctx, "main", &api.SendWorktreeReviewParams{Project: &project}, api.WorktreeReview{Agent: "id:" + a.Id, Note: optional(inNote)}); err != nil || r.JSON200 == nil {
+		t.Fatalf("review: %v, %s", err, r.Body)
+	}
+	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() string {
+		var all strings.Builder
+		for _, name := range logs {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			all.Write(data)
+		}
+		return all.String()
+	}
+	waittest.For(t, "the review's answer to be logged", func() bool {
+		var ok bool
+		logs, _ = filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+		for line := range strings.Lines(read()) {
+			ok = ok || (strings.Contains(line, "request returned") && strings.Contains(line, "/reviews"))
+		}
+		return ok
+	})
+	got := read()
+	for _, secret := range []string{inFile, inComment, inNote} {
+		if strings.Contains(got, secret) {
+			t.Errorf("%s is in the logs", secret)
+		}
 	}
 }

@@ -105,7 +105,8 @@ func (s *Comments) Add(ctx context.Context, projectID string, c Comment) (Commen
 		return Comment{}, err
 	}
 	c.ID, c.State, c.CreatedAt = "cmt-"+hex.EncodeToString(raw), CommentDraft, time.Now().UTC()
-	_, err := db.Exec(ctx, s.db, `
+	// Not db.Exec, which logs what it is given: a comment can hold secrets.
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO review_comments (id, project_id, worktree, file, line, side, view, quote, content_id, body, state, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, projectID, c.Worktree, c.File, c.Line, c.Side, c.View, c.Quote, c.ContentID, c.Body, c.State, c.CreatedAt.UnixMilli())
@@ -122,11 +123,14 @@ func (s *Comments) Edit(ctx context.Context, projectID, id, body string) error {
 	if body == "" {
 		return ErrEmptyComment
 	}
-	n, err := db.Exec(ctx, s.db, "UPDATE review_comments SET body = ? WHERE id = ? AND project_id = ? AND state = ?", body, id, projectID, CommentDraft)
+	// Not db.Exec, which logs what it is given: a comment can hold secrets.
+	res, err := s.db.ExecContext(ctx, "UPDATE review_comments SET body = ? WHERE id = ? AND project_id = ? AND state = ?", body, id, projectID, CommentDraft)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
 		return fmt.Errorf("%w: comment %s", ErrNotFound, id)
 	}
 	logging.FromContext(ctx).Info("comment edited", "comment_id", id)

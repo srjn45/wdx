@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -211,3 +213,24 @@ func writePatch(w io.Writer, patch string, truncated bool) {
 		fmt.Fprintln(w, "\n(too long: the rest is left out)")
 	}
 }
+
+// loggedWorktree keeps a file's contents and what is said of them out of the log.
+func loggedWorktree(v any) slog.Value {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return slog.StringValue("unreadable response")
+	}
+	return slog.AnyValue(api.WorktreeResponseLogged(b))
+}
+
+// LogValue keeps what it holds out of the log.
+func (l worktreeList) LogValue() slog.Value { return loggedWorktree(l) }
+
+// LogValue keeps what it holds out of the log.
+func (d worktreeDiff) LogValue() slog.Value { return loggedWorktree(d) }
+
+// LogValue keeps what it holds out of the log.
+func (d worktreeFileDiff) LogValue() slog.Value { return loggedWorktree(d) }
+
+// LogValue keeps what it holds out of the log.
+func (l worktreeComments) LogValue() slog.Value { return loggedWorktree(l) }
