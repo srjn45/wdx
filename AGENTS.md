@@ -7,6 +7,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Never start coding until the human explicitly says so.
 - Brainstorm with the human first: work out the complete solution (structure, tables, commands, names, edge cases) and get it approved before writing any code.
 - Work on one feature at a time. Do not add scope the human did not ask for; suggest it instead.
+- The CLI and tide stay in sync, but not one to one: the CLI also serves scripts and AIs, tide a person at a screen. A feature that touches either is checked against the other in the same design, and is on both unless there is a reason. `docs/CLI_TIDE.md` lists each feature on both sides and why they differ; a change to what either can do updates its row.
 - Commit only when the human asks. Before committing, run `make check && make test` in one shell. CI runs both on every push to `main` and every pull request.
 - `make test-changed` is a hunt for flaky tests, run by hand now and then when the human asks, never on each commit, push or rebase. Name the commits since the last run, as `origin/main..HEAD` is empty once they are pushed, and give it a worktree of its own, since it builds the code again and again and the checkout goes on changing: `git worktree add --detach .worktrees/changed HEAD && (cd .worktrees/changed && nice make test-changed RANGE=<last run>..HEAD); git worktree remove --force .worktrees/changed`. If it fails, finding out why comes before the next feature, with a row in `docs/FLAKES.md`. Never release while one is running or has failed.
 
