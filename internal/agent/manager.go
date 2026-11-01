@@ -1,16 +1,19 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
@@ -46,6 +49,25 @@ func (e *StartError) Error() string {
 }
 
 func (e *StartError) Unwrap() error { return e.Err }
+
+// BusyError is returned when a restart would stop an agent in the middle of
+// something, and was not told to.
+type BusyError struct {
+	Agent Agent
+}
+
+func (e *BusyError) Error() string {
+	doing := e.Agent.Activity
+	if e.Agent.Draft {
+		doing = "holding a draft in its input box"
+	}
+	return fmt.Sprintf("agent %s is %s", e.Agent.Terminal.Name, cmp.Or(doing, string(e.Agent.Terminal.State)))
+}
+
+// busy reports whether a restart would stop a in the middle of something.
+func (a Agent) busy() bool {
+	return a.Terminal.State.Live() && (a.Activity != string(screen.ActivityIdle) || a.Draft)
+}
 
 // NotRunningError is returned when a request needs an agent's AI coding agent
 // running.
@@ -92,15 +114,34 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
-			command, err := candidate.Command(aca.Launch{Dir: t.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID)})
+			// Again, as the backup may just have said it moved.
+			if a, err = b.store.GetByTerminal(ctx, t.ID); err != nil {
+				return terminal.AgentLaunch{}, err
+			}
+			a.SessionID = session
+			dir, _ := runDir(a)
+			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID)})
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
-			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "command", command)
-			return terminal.AgentLaunch{AgentID: a.ID, ACA: a.ACA, Command: command}, nil
+			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "dir", dir, "command", command)
+			return terminal.AgentLaunch{AgentID: a.ID, ACA: a.ACA, Command: command, Dir: dir}, nil
 		}
 		return terminal.AgentLaunch{}, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
 	}
+}
+
+// runDir is where a relaunch of a runs: where it last worked if that is still there,
+// else its own dir, as a conversation that thinks it is in a worktree must not wake up
+// in another checkout. gone is a place that was not there.
+func runDir(a Agent) (dir, gone string) {
+	if a.CurrentDir == "" || a.CurrentDir == a.Terminal.Dir {
+		return a.Terminal.Dir, ""
+	}
+	if info, err := os.Stat(a.CurrentDir); err != nil || !info.IsDir() {
+		return a.Terminal.Dir, a.CurrentDir
+	}
+	return a.CurrentDir, ""
 }
 
 // Manager creates, starts and removes agents, through the terminals'
@@ -173,6 +214,51 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, error) {
 		return Agent{}, m.agentError(ctx, err)
 	}
 	return a.OnRow(t), nil
+}
+
+// Restart starts an agent in a new session under the same id, whose first message tells
+// it to read its history. A tombstone fails with a *RemovedError, one in the middle of
+// something with a *BusyError unless force, and one that does not start with a
+// *StartError, leaving it failed in the new session.
+func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
+	}
+	if a.busy() && !force {
+		return Agent{}, &BusyError{Agent: a}
+	}
+	session, err := newSessionID()
+	if err != nil {
+		return Agent{}, err
+	}
+	t, err := m.terminals.RestartAgent(ctx, a.Terminal.ID, func(ctx context.Context) error {
+		return m.backups.beginSession(ctx, a.ID, session, func(ctx context.Context, tx db.Querier, a Agent) error {
+			return m.terminals.Store().BeginSession(ctx, tx, a.Terminal.ID, session, firstMessage(a))
+		})
+	})
+	if err != nil {
+		return Agent{}, m.agentError(ctx, err)
+	}
+	if a, err = m.store.Get(ctx, id); err != nil {
+		return Agent{}, err
+	}
+	logging.FromContext(ctx).Info("agent restarted", "agent_id", id, "session_id", session, "forced", force)
+	return a.OnRow(t), nil
+}
+
+// firstMessage is what tells a restarted agent to read its history.
+func firstMessage(a Agent) string {
+	text := fmt.Sprintf("You were restarted in a new session, so you have none of your earlier conversation. "+
+		"Before anything else, run `%s agent transcript --id %s --brief` and read it; it says how to read more. Then go on with the work.",
+		identity.Name, a.ID)
+	if dir, gone := runDir(a); gone != "" {
+		text += fmt.Sprintf(" You were last in %s, which no longer exists; you are in %s.", gone, dir)
+	}
+	return text
 }
 
 // Rename gives an agent a new name; a tombstone fails with a *RemovedError.
@@ -301,6 +387,15 @@ func (m *Manager) Transcript(ctx context.Context, id string, from *int64, count 
 		return Transcript{}, err
 	}
 	return m.backups.transcript(ctx, a, from, count)
+}
+
+// Brief reads the agent's conversation in brief, in any state.
+func (m *Manager) Brief(ctx context.Context, id string) (Transcript, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Transcript{}, err
+	}
+	return m.backups.brief(ctx, a)
 }
 
 // withTerminal returns the agent on row t.

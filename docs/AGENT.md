@@ -75,7 +75,8 @@ CREATE TABLE agents (
 | Action | Effect |
 |---|---|
 | `agent create` | inserts both rows, then starts the holder; `start_failed` leaves the row `failed` |
-| `agent start` | from `exited`, `failed` or `lost`: starts it again, in the same session, so the conversation comes back |
+| `agent start` | from `exited`, `failed` or `lost`: starts it again, in the same session, so the conversation comes back, in the directory it last worked in if that is still there, else its own |
+| `agent restart` | from any state but removed: a new session under the same id, whose first message tells it to read its history; docs/AGENT_RESUME.md |
 | `agent rename` | changes the name on its terminal row; the process and session go by id and do not notice. A tombstone cannot be renamed |
 | `agent remove` | stops a live process (`--stop-running`), deletes both rows, moves wdx's backup of the conversation to the trash for 7 days (docs/AGENT_RESUME.md); the ACA's own transcript stays on disk |
 | `project close` | stops its agents along with its terminals, under the same `--stop-running` |
@@ -104,6 +105,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 | `GET /v1/agents?project=<ref>` or `?dir=/abs`, neither for all | 200 `{"agents": [...]}`, by project then name | `not_found` |
 | `GET /v1/agents/{agent}` | 200 `{"agent": {...}}` | `not_found` |
 | `POST /v1/agents/{agent}/start` | 200 `{"result": "started", "agent": {...}}` | `not_found`, `project_closed`, `agent_running`, `start_failed` |
+| `POST /v1/agents/{agent}/restart` with `{"force": false}` | 200 `{"result": "restarted", "agent": {...}}` | `not_found`, `project_closed`, `agent_busy`, `agent_removed`, `start_failed` |
 | `DELETE /v1/agents/{agent}?stop_running=true` | 200 `{"result": "removed", "agent": {...}}` | `not_found`, `agent_running` |
 | `GET /v1/agents/{agent}/history?tail=` or `?from=&count=` | 200 `{"history": {...}}`, as for terminals; what attach scrolls through | `not_found` |
 | `GET /v1/agents/{agent}/transcript?tail=` or `?from=&count=` | 200 `{"transcript": {...}}`; the conversation as text, docs/AGENT_RESUME.md | `not_found` |
@@ -130,6 +132,7 @@ New codes in `internal/api/codes.go`:
 | Code | Status | Exit | |
 |---|---|---|---|
 | `agent_running` | 409 | 1 | the agent is already starting or running |
+| `agent_busy` | 409 | 1 | the agent is in the middle of something, which a restart would lose |
 | `agent_not_running` | | 1 | attach's, reported by the CLI, as `terminal_not_running` |
 | `agent_removed` | 409 | 1 | the agent is a tombstone, kept only for its children |
 | `branch_exists` | 409 | 1 | a new worktree's branch already exists |
@@ -146,7 +149,8 @@ wdx agent get    (--id <id> | --name <name>) [--project-id <id> | --project-name
 wdx agent start  (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
 wdx agent rename (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --new-name <name>
 wdx agent attach (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]
-wdx agent transcript (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--tail <lines> | [--from <line>] [--count <lines>] | --path]: docs/AGENT_RESUME.md
+wdx agent restart (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--force]: docs/AGENT_RESUME.md
+wdx agent transcript (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--tail <lines> | [--from <line>] [--count <lines>] | --path | --brief]: docs/AGENT_RESUME.md
 wdx agent send   (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [--instant]: docs/SEND.md
 wdx agent remove (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--stop-running | --cancel]
 ```

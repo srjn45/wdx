@@ -65,8 +65,10 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Scroll back through its output | `agent attach` | its tab | Same | |
 | Print its history for a script | none | not needed | Open (CLI) | `terminal history` serves shells only. An `agent history` would not give a script the conversation; see [An agent's history](#an-agents-history) |
 | Read or grep its conversation | `agent transcript` | none | Open (tide) | Not needed in tide yet: docs/AGENT_RESUME.md is about keeping it. |
+| Read its conversation in brief | `agent transcript --brief` | not needed | By design | The agent reads it, in a new session, not a person |
 | Send a message from a script | `agent send` | not needed | By design | A person types into the ACA, which queues messages itself. `send` is how scripts and other agents reach an agent |
 | Start one that ended | `agent start` | `C-q g` | Same | |
+| Start it again in a new session | `agent restart`, with `--force` while it is busy | `C-q n`, after a confirmation | Same | The CLI refuses a busy agent, as a script cannot see it; tide says what it is doing and `y` goes on |
 | Remove an agent | `agent remove` | `C-q x` | Same | |
 
 ## Terminals

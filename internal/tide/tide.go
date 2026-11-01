@@ -260,6 +260,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.removed(msg)
 	case startedAgain:
 		m.startedAgain(msg)
+	case restarted:
+		m.restarted(msg)
 	case projectClosed:
 		return m, m.closed(msg)
 	case valueSaved:
@@ -584,6 +586,12 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		if s, ok := m.startable(); ok {
 			m.switcher, m.opening = nil, nil
 			return m.startAgain(s)
+		}
+	case restartKey:
+		if r, ok := m.restartable(); ok {
+			m.switcher, m.opening = nil, nil
+			m.confirm = &confirmBox{r: r}
+			m.log.Info("restart asked", "name", r.name)
 		}
 	case closeProjectKey:
 		if r, ok := m.closableProject(); ok {

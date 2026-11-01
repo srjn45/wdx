@@ -22,6 +22,10 @@ const (
 	MessageUnconfirmed = "unconfirmed"
 )
 
+// restartMessagePrefix starts the id of the first message of a restart, which the next
+// restart replaces if it has not gone yet.
+const restartMessagePrefix = "msg-restart-"
+
 // Message is a message to a terminal or an agent. The table is its record: a
 // holder's inbox only holds what is on its way, and ends with the holder.
 type Message struct {
@@ -107,6 +111,42 @@ func (s *Store) addMessage(ctx context.Context, terminalID, text string, instant
 	}
 	logging.FromContext(ctx).Info("message stored", "message_id", id, "terminal_id", terminalID, "prompt_bytes", len(text), "instant", instant)
 	return id, nil
+}
+
+// BeginSession prepares what is waiting for the agent on terminalID for its new session,
+// in e, the transaction that gives it that session: first goes ahead of what is pending,
+// and the first message of a restart that never got there goes. Pending messages go on
+// to the new session, which SEND.md otherwise holds them from, as a human asked for this
+// and it is the same agent going on; those held stay held. They become general, or they
+// would interrupt the agent reading its history. first is instant so that nothing sent
+// later overtakes it while the agent starts.
+func (s *Store) BeginSession(ctx context.Context, e db.Querier, terminalID, session, first string) error {
+	raw := make([]byte, 4)
+	if _, err := rand.Read(raw); err != nil {
+		return err
+	}
+	id := restartMessagePrefix + hex.EncodeToString(raw)
+	if _, err := db.Exec(ctx, e, "DELETE FROM messages WHERE terminal_id = ? AND id LIKE ? AND state IN (?, ?)", terminalID, restartMessagePrefix+"%", MessagePending, MessageHeld); err != nil {
+		return err
+	}
+	carried, err := db.Exec(ctx, e, "UPDATE messages SET session_id = ?, holder_pid = NULL, instant = 0 WHERE terminal_id = ? AND state = ?", session, terminalID, MessagePending)
+	if err != nil {
+		return err
+	}
+	created := time.Now().UnixMilli()
+	var oldest sql.NullInt64
+	if err := e.QueryRowContext(ctx, "SELECT MIN(created_at) FROM messages WHERE terminal_id = ? AND state = ?", terminalID, MessagePending).Scan(&oldest); err != nil {
+		return err
+	}
+	if oldest.Valid {
+		created = oldest.Int64 - 1
+	}
+	if _, err := e.ExecContext(ctx, `INSERT INTO messages (id, terminal_id, text, instant, state, session_id, created_at) VALUES (?, ?, ?, 1, ?, ?, ?)`,
+		id, terminalID, first, MessagePending, session, created); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("messages moved to the new session", "terminal_id", terminalID, "session_id", session, "message_id", id, "carried", carried)
+	return nil
 }
 
 func (s *Store) messageForwarded(ctx context.Context, id string, holderPID int) error {

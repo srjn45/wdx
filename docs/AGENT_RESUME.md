@@ -1,6 +1,6 @@
 # Keeping an agent's ACA running
 
-Status: an agent's history is built for Claude Code. Resuming an ACA that ended and restarting an agent in a new session are decided and not built.
+Status: an agent's history and restarting an agent in a new session are built for Claude Code. Resuming an ACA that ended is decided and not built.
 
 ## Resuming an ACA that ended
 
@@ -33,12 +33,22 @@ Parked on 2026-11-01 until an agent's history is built.
 
 ## Restarting an agent in a new session
 
-Decided by the human on 2026-11-01; not built. `agent start` goes on with the same conversation, whatever its size. `wdx agent restart` keeps the agent and begins a new session, in which the agent reads only what it needs of its history. This replaces the earlier decision to have no restart command. Rotating, handing off and switching ACA are still not being built.
+Decided by the human on 2026-11-01; built. `agent start` goes on with the same conversation, whatever its size. `wdx agent restart` keeps the agent and begins a new session, in which the agent reads only what it needs of its history. This replaces the earlier decision to have no restart command. Rotating, handing off and switching ACA are still not being built.
 
 - **The steps.** The ACA is stopped, the backup is brought up to date, a new session starts under the same agent id, and its first message tells the agent to read `wdx agent transcript --brief`, and older lines if it needs them. `transcript.md` goes on growing, with a heading for the new session.
 - **Who asks.** A person or a script: `wdx agent restart (--id | --name) [project flags] [--force]`, and a key in tide with a confirmation. Nothing restarts an agent by itself, though auto-resume could later fall back on it when a resume keeps failing.
 - **While the agent is working** it is refused with a conflict, unless `--force` is given, as a stop in the middle of a turn can leave work half done.
 - **Where.** In the worktree the agent was last in if it still exists, or else its own directory, which the first message then says.
+
+Decided by the human when building it, on 2026-11-01:
+
+- **What counts as working.** Without `--force`, anything but `idle` with an empty input box is refused with `agent_busy`, a conflict whose hint names `--force`: `working`, `waiting`, `unknown` and a draft. There is no prompt. An agent that is not running just restarts.
+- **Every relaunch runs in the last directory.** `agent start` and opening a project too: the directory the agent last worked in if it still exists, else its own. A conversation that thinks it is in a worktree must not wake up in another checkout.
+- **Carried `--instant` messages become general,** so that they cannot interrupt the agent reading its brief. The first message is instant, so that a later `--instant` cannot overtake it during startup. One sent after that can still interrupt the brief: the sender asked for it.
+- **A second restart replaces the first message** of a restart whose launch failed. Its id starts `msg-restart-`, and a restart deletes any still undelivered.
+- **Names.** `POST /v1/agents/{agent}/restart` with `{force}`, the code `agent_busy`, the result `restarted`, and `BeginSession` and `Brief` on `AiCodingAgent`.
+- **In tide,** `C-q n`, for a new session. The confirmation says what the agent is doing, and `y` restarts it with force.
+- **`--brief`** answers in the shape of `agent transcript`: `from` is the line of `transcript.md` it starts at, and `lines` are the brief's own. It excludes `--tail`, `--from`, `--count` and `--path`.
 
 ### The brief
 
@@ -61,17 +71,21 @@ A compaction summary is written by the ACA and leaves things out, which is why t
 
 ### Messages across a restart
 
-Messages are moving to a queue the daemon keeps in the database, which sends again whatever was not acknowledged to a new holder (docs/SEND.md). A restart builds on it:
+A restart builds on the daemon's queue (docs/SEND.md). In one transaction with the new session on the agent's row:
 
-- Messages not yet delivered survive and reach the new session.
-- The first message goes through the same queue, ahead of them, so the agent reads its history before it hears anything else.
-- A message delivered but not acknowledged when the ACA stopped arrives again in the new session, which is the queue's at-least-once delivery.
+- **Pending messages go on to the new session,** with no holder and as general. Elsewhere a change of session holds them, so that an old "commit" cannot arrive out of nowhere; here a human asked for it and it is the same agent going on. `held` ones stay held, and a review's comments stay sent.
+- **The first message goes ahead of them,** instant and created just before the oldest, so that it leads in both the holder's queues and in the order they are sent in. It waits at a trust prompt like any other. If the launch fails it stays, and the agent's next start delivers it; a second restart deletes it and writes its own.
+- **A message typed but not yet reported** when the ACA stopped arrives again in the new session, which is the queue's at-least-once delivery. A message Claude Code had queued inside itself counts as delivered and goes with the old session.
+
+The order in which it happens matters. The backup is brought up to date once the ACA is gone, so that nothing is missed. The transaction comes before `BeginSession`, whose line in `sessions.jsonl` is what makes the session stick: a crash between leaves the agent in its old session with a message that says otherwise, which is better than a new session with nothing to tell it. All of it is under the backups' lock, or a backup between would put the row back.
 
 ### Known limits
 
-- What the old session held only in memory goes with it: background processes, and probably approvals given for the session and a `/model` choice. Not yet tried.
+- What the old session held only in memory goes with it: background processes, a mode or approval given for the session and a `/model` choice for the session; see below.
 - A fork of the session is not followed by the backup, so work done in one is not in the brief.
-- An agent started before the backup existed gets its session hook from the restart.
+- An agent started before the backup existed gets its session hook from the restart, or from any later start.
+- **Reading `transcript.md`.** Message text is not fenced, so the brief goes by strict headings. A quoted heading can split a message, and a compaction heading is only believed if it is not older than the one before it, which a quotation is. A message quoting `### Result` over an open fence while a tool call is unanswered could hide text from the brief up to the next such fence, though not from the file. Results are matched to calls in order, so parallel calls could show the wrong one as failed.
+- **Thinking.** It has no end but the next heading in lines rendered before `### Text` was added, so text after thinking in the same message is not in the brief of those lines. None of the 63 text blocks of the two backups measured on 2026-11-01 was such text.
 
 ## Keeping an agent's history
 
@@ -95,8 +109,8 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
 - **When.** The daemon brings the backup up to date, copying only new bytes, when an agent goes `idle` or `waiting`, when it exits, before a start, when its transcript is read, once its row is gone, and at startup. One at a time, across agents, and never in the way of the holder's connection.
 - **The latest conversation.** `BackUp` returns the session of the last `SessionStart`, a start goes on with it, and `agents.session_id` follows it.
 - **A file that shrank or was replaced** is kept and copied again beside it, as Claude documents setting transcripts aside.
-- **`transcript.md`.** Appended to, with a heading per session and per message: messages, thinking, tool calls and their results, in full, with escape codes stripped. Request records, other metadata and what subagents said are left out, and stay in the raw files. A line or content block it cannot read is skipped, counted and logged. A replaced transcript is rendered again from its start, so its text appears twice rather than go missing. `<home>/agents/` is 0700 and its files 0600, as transcripts hold whatever tools read.
-- **Reading.** `wdx agent transcript (--id | --name) [project flags] [--tail <n> | [--from <n>] [--count <n>] | --path]` and `GET /v1/agents/{agent}/transcript?tail=` or `?from=&count=`, lines as with a terminal's history, whose name is taken, plus the file's `path`. The text stays out of the logs. An agent's scrollback was being logged, unlike a terminal's, and no longer is.
+- **`transcript.md`.** Appended to, with a heading per session and per message: messages, thinking, tool calls and their results, in full, with escape codes stripped. Text after thinking in the same message has a `### Text` heading, as the brief needs to know where the thinking ends. Request records, other metadata and what subagents said are left out, and stay in the raw files. A line or content block it cannot read is skipped, counted and logged. A replaced transcript is rendered again from its start, so its text appears twice rather than go missing. `<home>/agents/` is 0700 and its files 0600, as transcripts hold whatever tools read.
+- **Reading.** `wdx agent transcript (--id | --name) [project flags] [--tail <n> | [--from <n>] [--count <n>] | --path]` and `GET /v1/agents/{agent}/transcript?tail=` or `?from=&count=`, lines as with a terminal's history, whose name is taken, plus the file's `path`. `--brief`, `?brief=true`, gives the brief instead. The text stays out of the logs. An agent's scrollback was being logged, unlike a terminal's, and no longer is.
 - **Staying resumable.** With Claude's file gone and a copy kept, `Command` puts it back at the recorded path and resumes, in place of silently starting an empty session.
 - **Removal.** When the agent's row goes (`agent remove`, a tombstone's last child, `project remove`), its directory is brought up to date and moved to the trash with `removed.json`: id, name, project, dir, ACA, sessions, removal time. The row is gone, so that is all that says what it was. Claude's own files stay. No command reads the trash yet.
 - **The trash** is deleted 7 days after removal, at daemon startup, on each removal and by one timer armed for the next expiry. Every removal ends the same way: a sweep moves any directory with no row, so a crash between the two is finished at startup.
@@ -110,6 +124,24 @@ Claude Code 2.1.316 on 2026-11-01, driven under tmux with Haiku:
 - **Claude appends in place:** the same inode through turns, `/compact`, `/clear` and a resume.
 - **Putting a file back resumes it.** With the file and session directory deleted and a copy restored at the path, `--resume` answered from the conversation, and went on appending to that file.
 - **Transcripts are mostly metadata:** the first turn's file is 366 KB, a later turn adds 6 KB, a compact 87 KB and a resume's first turn 298 KB, which is why `transcript.md` is what is read.
+
+Restart, on Claude Code 2.1.316 on 2026-11-01, driven with `wdx agent attach` under tmux, on a home and daemon of its own, with Haiku, with the user's settings:
+
+| Check | What happened |
+|---|---|
+| Background process across a restart | Gone: a `sleep` run by Claude's background Bash ended with the stop. The new session has no sign of it but the one line in its brief |
+| A mode approved for the session | Gone. `Yes, and switch to accept edits … for this session` made the next Write ask nothing; after the restart it asks again, and the footer is back to manual mode. The Bash prompt's offer, `always allow access to <dir> from this project`, was no such approval: the next `touch` asked again in the same session |
+| `/model` for the session (`s` in its menu) | Gone: `agent get` said Sonnet 5.5, and Haiku 5.5, what it was launched with, after the restart. A choice saved with Enter is in Claude's settings, so it stays (docs/AGENT_STATE.md); not tried here, as it changes them for everyone |
+| A restarted agent reads its brief and can say what it was doing | Yes: told only the first message, it ran the command, and gave the codeword and the task from its first turn when asked |
+| Pending messages arrive after the first message | Yes: a general and an instant one held behind a draft, restart with `--force`, then the first message, then both in the order sent, in one turn after the brief was read |
+| Restart in a worktree, `/exit`, `agent start` | Resumes the new session, in the worktree |
+| `agent start` in a worktree, of a session begun in the checkout | Resumes it. **`--resume` finds a session from any directory,** in `-p` and in the terminal UI, and goes on appending to its first file with `cwd` the new one. So where the session began need not be recorded |
+| Restart, `/clear`, restart | The brief starts at the `/clear`: nothing from before it, and the agent knew only what was said since |
+| `/compact` | The brief starts at the summary |
+| Restart of an agent from before the hook, made by leaving out `--settings` | Sessions followed afterwards: the old session listed, then the restart's, then `startup`, and a later `/clear` moved `session_id` |
+| Worktree removed | Starts in the agent's own dir, and the first message says so |
+| Trust prompt | In a worktree under a trusted checkout, none. In a directory never trusted, a restart is refused as `waiting` without `--force`, and with it the first message waits (`queued` 1) until a human answers the prompt with `wdx agent attach`, then goes in. Nothing else can answer it |
+| `cd` out of the project | Not followed: Claude resets the shell, and `cwd` stays. So the last directory is inside what it may work in |
 
 ## What each ACA keeps
 

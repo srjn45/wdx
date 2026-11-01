@@ -113,6 +113,8 @@ type AgentLaunch struct {
 	// as.
 	ACA     string
 	Command []string
+	// Dir is where it runs, which may not be the row's: it may have moved.
+	Dir string
 }
 
 // Supervisor starts terminals' holders, watches them and stops them. It
@@ -276,6 +278,28 @@ func (s *Supervisor) start(ctx context.Context, kind Kind, id string) (Terminal,
 	return s.launch(ctx, t)
 }
 
+// RestartAgent stops the process of an agent's row if it has one, has prepare move it to
+// a new session once nothing can write to the old one, and starts it. One that does not
+// start is failed, and returns a *StartError. A terminal's is not found.
+func (s *Supervisor) RestartAgent(ctx context.Context, id string, prepare func(ctx context.Context) error) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, KindAgent, id)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if t.State.Live() || s.watching(id) {
+		if err := s.stopOne(ctx, t); err != nil {
+			return Terminal{}, err
+		}
+	}
+	if err := prepare(ctx); err != nil {
+		return Terminal{}, err
+	}
+	if _, err := s.store.relaunch(ctx, id, StateExited, StateFailed, StateLost, StateStopped); err != nil {
+		return Terminal{}, err
+	}
+	return s.launch(ctx, t)
+}
+
 // launch starts the holder of t, which is starting.
 func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 	return s.launchRunning(ctx, t, nil)
@@ -295,7 +319,7 @@ func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []st
 	if err == nil {
 		started, err = holder.Start(holder.WithLimits(ctx, s.opts.Limits), holder.StartOptions{
 			Executable: s.opts.Executable, Home: s.opts.Home,
-			ID: t.ID, Project: t.ProjectName, Dir: t.Dir, Shell: t.Shell, AgentID: agent.AgentID, ACA: agent.ACA, Command: command, Env: s.opts.Env,
+			ID: t.ID, Project: t.ProjectName, Dir: cmp.Or(agent.Dir, t.Dir), Shell: t.Shell, AgentID: agent.AgentID, ACA: agent.ACA, Command: command, Env: s.opts.Env,
 			HistoryLines: historyLines,
 		})
 	}
@@ -824,6 +848,10 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 			c := w.current()
 			select {
 			case exit := <-c.Exited():
+				// What it typed last, or it would be sent again.
+				if err := s.store.messagesDelivered(ctx, c.TakeDelivered()); err != nil {
+					log.Error("deliveries not recorded", "err", err)
+				}
 				s.recordExit(ctx, id, exit)
 				s.agentEnded(t)
 				if err := c.Release(); err != nil {

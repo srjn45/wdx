@@ -27,7 +27,7 @@ func newAgentCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
+	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
 	return cmd
 }
 
@@ -229,7 +229,8 @@ func newAgentStartCmd() *cobra.Command {
 		Use:   "start (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
 		Short: "Start an agent that exited, failed or was lost, in the same session",
 		Long: "The agent keeps its id, name, dir and session, so its conversation comes\n" +
-			"back. Agents stopped by closing their project start again when it is opened.",
+			"back, in the directory it last worked in if that is still there, else its own.\n" +
+			"Agents stopped by closing their project start again when it is opened.",
 		Example: examples(
 			"Start an agent of the project you are in", identity.Name+" agent start --name reviewer",
 			"By id, as JSON", identity.Name+" agent start --id agent-1a2b3c4d --json",
@@ -255,6 +256,49 @@ func newAgentStartCmd() *cobra.Command {
 		},
 	}
 	ref.addFlags(cmd)
+	return cmd
+}
+
+func newAgentRestartCmd() *cobra.Command {
+	var ref agentRef
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "restart (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--force]",
+		Short: "Start an agent again in a new session, which reads its history in brief",
+		Long: "agent start goes on with the same conversation, whatever its size. This stops\n" +
+			"the AI coding agent if it runs and starts a new session under the same id, in\n" +
+			"the directory it last worked in if that is still there, else its own. Its first\n" +
+			"message tells it to read agent transcript --brief. Messages not yet delivered\n" +
+			"reach it after that one, general even if they were instant; one delivered just\n" +
+			"before may come again. What the old session held only in memory goes with it.\n" +
+			"Unless it is idle with an empty input box, it takes --force, which can leave\n" +
+			"work half done.",
+		Example: examples(
+			"Restart an idle agent of the project you are in", identity.Name+" agent restart --name reviewer",
+			"In the middle of its work, as JSON", identity.Name+" agent restart --id agent-1a2b3c4d --force --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not restarted",
+			outputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}`,
+			resultList:    "restarted",
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
+				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentBusy, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path, project, dir, err := ref.resolve(cmd)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).RestartAgent(cmd.Context(), path, project, dir, force)
+			if err != nil {
+				return agentHint(ref.notFoundHint(err))
+			}
+			return printResult(cmd, agentResult(r))
+		},
+	}
+	ref.addFlags(cmd)
+	cmd.Flags().BoolVar(&force, "force", false, "restart it even in the middle of its work")
 	return cmd
 }
 
@@ -312,8 +356,9 @@ func newAgentSendCmd() *cobra.Command {
 		Long: "The message is queued for the agent, in the order sent. It waits while text\n" +
 			"is in the agent's input box, a prompt is open or its screen cannot be read,\n" +
 			"for as long as that lasts. During a turn it goes in, for the agent to take\n" +
-			"up after it. This does not wait for it to go in or for a reply, and a message\n" +
-			"still queued when the agent ends is lost.\n\n" +
+			"up after it. This does not wait for it to go in or for a reply. A message still\n" +
+			"queued when the agent ends is kept: it goes on when the agent is started again\n" +
+			"in the same session or restarted, or else waits in wdx message list.\n\n" +
 			"--instant goes before the other messages, and interrupts the agent's turn\n" +
 			"first. It waits as they do, and in a pane too narrow to show that a turn is\n" +
 			"running it does not interrupt.",
@@ -493,6 +538,8 @@ func agentHint(err error) error {
 		return &hinted{err, "open the project first with " + identity.Name + " project open"}
 	case api.ErrorCodeAgentRemoved:
 		return &hinted{err, "it goes when its last child is removed; see them with " + identity.Name + " agent get"}
+	case api.ErrorCodeAgentBusy:
+		return &hinted{err, "see what it is doing with " + identity.Name + " agent attach, or restart it anyway with --force"}
 	case api.ErrorCodeAgentRunning:
 		return &hinted{err, "it is already running; attach to it with " + identity.Name + " agent attach"}
 	case api.ErrorCodeStartFailed:

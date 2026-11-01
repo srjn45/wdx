@@ -1121,3 +1121,93 @@ func TestCreateAgentWithAPrompt(t *testing.T) {
 		}
 	}
 }
+
+// TestRestartDeliversItsFirstMessageFirst: with a general and an instant message waiting
+// for a holder that goes, the new session hears of its history first, and then of them in
+// the order they were sent. A held one stays, and the request logs no message.
+func TestRestartDeliversItsFirstMessageFirst(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	ctx := context.Background()
+	project := "app"
+	app := td.create(t, project).Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	for _, m := range []api.AgentMessage{{Prompt: "the general one"}, {Prompt: "the instant one", Instant: optional(true)}} {
+		if r, err := td.client.SendAgentWithResponse(ctx, "id:"+a.Id, nil, m); err != nil || r.JSON200 == nil {
+			t.Fatalf("send: %v, %s", err, r.Body)
+		}
+	}
+	r, err := td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{})
+	if err != nil || r.JSON200 != nil || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != api.ErrorCodeAgentBusy {
+		t.Fatalf("while its activity is unknown: %v, %s", err, r.Body)
+	}
+
+	script := `rule=────────────────
+stty raw -echo
+printf '\033[2J\033[H%s\r\n❯ \r\n%s\r\n  ⏸ manual mode on · ? for shortcuts · ← 1 agent' "$rule" "$rule"
+exec cat > got
+`
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err = td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{Force: optional(true)})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultRestarted || r.JSON200.Agent.State != api.AgentStateRunning || r.JSON200.Agent.SessionId == a.SessionId {
+		t.Fatalf("restart: %v, %s", err, r.Body)
+	}
+	first := "wdx agent transcript --id " + a.Id + " --brief"
+	var got string
+	waittest.For(t, "the messages to arrive", func() bool {
+		data, err := os.ReadFile(filepath.Join(app, "got"))
+		got = string(data)
+		return err == nil && strings.Count(got, "\r") == 3
+	})
+	at := []int{strings.Index(got, first), strings.Index(got, "the general one"), strings.Index(got, "the instant one")}
+	if at[0] < 0 || at[1] < at[0] || at[2] < at[1] {
+		t.Errorf("arrived as %q", got)
+	}
+	waittest.For(t, "them to be delivered", func() bool {
+		l, err := td.client.ListMessagesWithResponse(ctx, &api.ListMessagesParams{Project: &project})
+		return err == nil && l.JSON200 != nil && len(l.JSON200.Messages) == 0
+	})
+}
+
+// TestAgentBrief: the API says where the brief starts, what the file holds, and how to read
+// what is left out; and it cannot be asked for with lines. Nothing of it is logged.
+func TestAgentBrief(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	const secret = "the-secret-in-a-conversation"
+	td := start(t)
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	if err := os.WriteFile(filepath.Join(identity.AgentDir(td.home, a.Id), aca.TranscriptFile),
+		[]byte("# Session s\n\n## User · 2026-11-01T13:09:49Z\n\n"+secret+"\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	brief := true
+	r, err := td.client.GetAgentTranscriptWithResponse(ctx, "id:"+a.Id, &api.GetAgentTranscriptParams{Brief: &brief})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("brief: %v, %s", err, r.Body)
+	}
+	b := r.JSON200.Transcript
+	if b.From != 2 || b.Next != 6 || !slices.Contains(b.Lines, secret) || !strings.Contains(b.Lines[0], "wdx agent transcript --id "+a.Id+" --from <line>") {
+		t.Errorf("brief = %+v", b)
+	}
+	from := int64(0)
+	if r, err := td.client.GetAgentTranscriptWithResponse(ctx, "id:"+a.Id, &api.GetAgentTranscriptParams{Brief: &brief, From: &from}); err != nil || r.JSON200 != nil {
+		t.Errorf("with from: %v, %s", err, r.Body)
+	}
+	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(td.home), "*.log"))
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("logs: %v, %v", logs, err)
+	}
+	for _, name := range logs {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Errorf("the conversation is in %s", name)
+		}
+	}
+}

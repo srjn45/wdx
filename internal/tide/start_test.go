@@ -102,3 +102,41 @@ func TestStartAgainRefused(t *testing.T) {
 		t.Fatalf("want it left attached:\n%s", text(p.m))
 	}
 }
+
+// TestRestartAgent: C-q n asks first, saying what the agent is doing, and starts it in a
+// new session, live in its pane.
+func TestRestartAgent(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newAgent(t, "api", dir, "a-one")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", agentAttached("a-one"))
+	before, ok := p.m.activeAgent()
+	if !ok {
+		t.Fatal("no agent")
+	}
+	p.keys("alt+right", "C-q")
+	wantText(t, p.m, "n  new session of a-one", "n restart")
+	p.keys("n")
+	wantText(t, p.m, "Restart agent", "again in a new session?", "It is in the middle of something (")
+	p.keys("n")
+	if p.m.confirm != nil {
+		t.Fatal("still asking")
+	}
+	if a, _ := p.m.activeAgent(); a.SessionId != before.SessionId {
+		t.Fatalf("declined, and yet a new session")
+	}
+	p.keys("C-q", "n", "y")
+	p.until(t, "a new session, live", func(m *Model) bool {
+		a, ok := m.activeAgent()
+		return ok && a.SessionId != before.SessionId && a.State == api.AgentStateRunning && agentAttached("a-one")(m) && m.agentTerm.live
+	})
+	// Directly: whether a project with no terminal has its pane open depends on what the
+	// stream said first, and Alt+Down goes nowhere when it is closed.
+	p.m.layout.setFocus(terminal)
+	if p.m.menuOffers(restartKey) {
+		t.Error("offered on a terminal's pane")
+	}
+}

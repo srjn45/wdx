@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/atomicfile"
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -381,5 +384,86 @@ func (b *Backups) transcript(ctx context.Context, a Agent, from *int64, count in
 	} else {
 		t.From = min(*from, t.Next)
 	}
+	return t, nil
+}
+
+// beginSession moves the agent to a new session, its process gone: its backup is brought
+// up to date, then linked and the row change in a transaction, and last the AI coding
+// agent is told, as it says which session a later backup finds. All under b.work, or a
+// backup between would put the row back. A crash before it is told leaves the agent in
+// its old session with a message that says otherwise; the other way round, it would be
+// in a new session with nothing to tell it so.
+func (b *Backups) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier, a Agent) error) error {
+	b.work.Lock()
+	defer b.work.Unlock()
+	a, err := b.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	previous, err := b.up(ctx, a)
+	if err != nil {
+		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
+	}
+	if a, err = b.store.Get(ctx, id); err != nil {
+		return err
+	}
+	known := b.known(a.ACA)
+	if known == nil {
+		return fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return err
+	}
+	if err := b.store.beginSession(ctx, id, session, func(ctx context.Context, tx db.Querier) error { return linked(ctx, tx, a) }); err != nil {
+		return err
+	}
+	dir := identity.AgentDir(b.home, id)
+	if err := known.BeginSession(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: previous, UserHome: account.Home, BackupDir: dir}, session); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("agent session begun", "agent_id", id, "from", previous, "session_id", session)
+	if b.OnChange != nil {
+		b.OnChange()
+	}
+	return nil
+}
+
+// briefLimit is how much of an agent's conversation its brief holds. docs/AGENT_RESUME.md.
+const briefLimit = 64 << 10
+
+// brief brings a's backup up to date, then reads its conversation in brief, with a line
+// on how to read what it leaves out.
+func (b *Backups) brief(ctx context.Context, a Agent) (Transcript, error) {
+	b.work.Lock()
+	defer b.work.Unlock()
+	if _, err := b.up(ctx, a); err != nil {
+		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+	}
+	dir := identity.AgentDir(b.home, a.ID)
+	t := Transcript{Path: filepath.Join(dir, aca.TranscriptFile), Lines: []string{}}
+	known := b.known(a.ACA)
+	if known == nil {
+		return t, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return Transcript{}, err
+	}
+	brief, err := known.Brief(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: dir}, briefLimit)
+	if err != nil {
+		return Transcript{}, err
+	}
+	t.From, t.Next = brief.From, brief.Next
+	if len(brief.Start) == 0 {
+		return t, nil
+	}
+	read := fmt.Sprintf("%s agent transcript --id %s --from <line> --count <lines>", identity.Name, a.ID)
+	t.Lines = append(t.Lines, "This is the conversation so far in brief, from line "+strconv.FormatInt(brief.From, 10)+" of "+t.Path+": each tool call is one line, with the line it is at. Read any of it in full with: "+read, "")
+	t.Lines = append(t.Lines, brief.Start...)
+	if brief.OmittedCount > 0 {
+		t.Lines = append(t.Lines, fmt.Sprintf("[Too long for a brief: read the %d lines left out here with: %s agent transcript --id %s --from %d --count %d]", brief.OmittedCount, identity.Name, a.ID, brief.OmittedFrom, min(brief.OmittedCount, 10_000)), "")
+	}
+	t.Lines = append(t.Lines, brief.Rest...)
 	return t, nil
 }

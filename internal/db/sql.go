@@ -25,6 +25,12 @@ type Execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// Querier is an Execer that can read too: a transaction, or the database.
+type Querier interface {
+	Execer
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Exec runs a statement that changes rows, logs it at debug and returns
 // the number of rows it changed.
 func Exec(ctx context.Context, e Execer, query string, args ...any) (int64, error) {

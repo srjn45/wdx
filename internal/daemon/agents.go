@@ -136,6 +136,25 @@ func (s *server) StartAgent(ctx context.Context, req api.StartAgentRequestObject
 	return api.StartAgent200JSONResponse{Result: api.ResultStarted, Agent: agentView(a)}, nil
 }
 
+func (s *server) RestartAgent(ctx context.Context, req api.RestartAgentRequestObject) (api.RestartAgentResponseObject, error) {
+	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.projects.GetByID(ctx, a.Terminal.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if p.State == project.StateClosed {
+		return nil, &projectClosedError{project: p}
+	}
+	force := req.Body != nil && deref(req.Body.Force)
+	if a, err = s.agents.Restart(ctx, a.ID, force); err != nil {
+		return nil, err
+	}
+	return api.RestartAgent200JSONResponse{Result: api.ResultRestarted, Agent: agentView(a)}, nil
+}
+
 func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) (api.SendAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {
@@ -187,9 +206,21 @@ func (s *server) GetAgentTranscript(ctx context.Context, req api.GetAgentTranscr
 	if tail != nil && (from != nil || count != nil) {
 		return nil, &requestError{err: errors.New("give tail, or from and count, not both")}
 	}
+	brief := deref(req.Params.Brief)
+	if brief && (tail != nil || from != nil || count != nil) {
+		return nil, &requestError{err: errors.New("give brief, or tail, or from and count")}
+	}
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {
 		return nil, err
+	}
+	if brief {
+		r, err := s.agents.Brief(ctx, a.ID)
+		if err != nil {
+			return nil, err
+		}
+		logging.FromContext(ctx).Info("brief read", "agent_id", a.ID, "from", r.From, "lines", len(r.Lines), "next", r.Next)
+		return api.GetAgentTranscript200JSONResponse{Transcript: api.AgentTranscript{Path: r.Path, From: r.From, Next: r.Next, Lines: r.Lines}}, nil
 	}
 	if count != nil && from == nil {
 		from = new(int64)

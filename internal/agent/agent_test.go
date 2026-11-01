@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -590,5 +591,253 @@ func TestStatusOnlyWhileRunning(t *testing.T) {
 	}
 	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft || got.Queued != 0 {
 		t.Errorf("an exited agent shows %q, draft %v, queued %d", got.Activity, got.Draft, got.Queued)
+	}
+}
+
+// setIdle has the agent read as idle, as its holder tells of a screen the test ACA's
+// shell does not draw.
+func (f fixture) setIdle(t *testing.T, a Agent, draft bool) {
+	t.Helper()
+	if _, err := f.agents.Store().SetStatus(context.Background(), a.Terminal.ID, "idle", draft, 0, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestartWaitsForAnIdleAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	if _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
+		t.Fatalf("activity %s: %v", a.Activity, err)
+	}
+	f.setIdle(t, a, true)
+	if _, err := f.agents.Restart(ctx, a.ID, false); !isBusy(err) {
+		t.Fatalf("a draft: %v", err)
+	}
+	f.setIdle(t, a, false)
+	again, err := f.agents.Restart(ctx, a.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Terminal.State != terminal.StateRunning || again.SessionID == a.SessionID {
+		t.Errorf("restarted = %+v", again)
+	}
+	forced, err := f.agents.Restart(ctx, a.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forced.SessionID == again.SessionID {
+		t.Errorf("forced = %+v", forced)
+	}
+}
+
+func isBusy(err error) bool {
+	_, ok := errors.AsType[*BusyError](err)
+	return ok
+}
+
+// The new session survives what a backup says: a later start goes on in it, however the
+// old session was what the ACA last said.
+func TestARestartBeginsASessionThatSticks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	f.aca.Session = filepath.Join(t.TempDir(), "session")
+	a := f.create(t, "helper")
+	if err := os.WriteFile(f.aca.Session, []byte(a.SessionID+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	again, err := f.agents.Restart(ctx, a.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != a.ID || again.SessionID == a.SessionID {
+		t.Fatalf("restarted = %+v", again)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	later, err := f.agents.Start(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if later.SessionID != again.SessionID {
+		t.Errorf("a later start is in %s, not %s", later.SessionID, again.SessionID)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	sessions, err := f.aca.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(sessions, []string{a.SessionID, again.SessionID, again.SessionID}) {
+		t.Errorf("sessions = %q", sessions)
+	}
+}
+
+// messagesOf is what waits for the agent, in the order it goes.
+func (f fixture) messagesOf(t *testing.T, a Agent) []terminal.Message {
+	t.Helper()
+	list, err := f.terminals.Store().Undelivered(context.Background(), a.Terminal.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
+}
+
+// What waits goes on to the new session behind the first message, which holds the way to
+// the history; what is held stays for a human. A message pending for a holder that is gone
+// would be held, but for the restart.
+func TestARestartCarriesWhatIsPendingBehindItsFirstMessage(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	a := f.create(t, "helper")
+	f.waitState(t, a.ID, terminal.StateExited)
+	insert := func(id string, instant int, state string, holderPID any) {
+		t.Helper()
+		if _, err := f.db.Exec(`INSERT INTO messages (id, terminal_id, text, instant, state, session_id, holder_pid, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1000)`,
+			id, a.Terminal.ID, id, instant, state, a.SessionID, holderPID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("msg-general", 0, "pending", 1)
+	insert("msg-instant", 1, "pending", 1)
+	insert("msg-held", 0, "held", 1)
+
+	again, err := f.agents.Restart(ctx, a.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	var first, general, instant, held terminal.Message
+	list := f.messagesOf(t, a)
+	for _, m := range list {
+		switch m.ID {
+		case "msg-general":
+			general = m
+		case "msg-instant":
+			instant = m
+		case "msg-held":
+			held = m
+		default:
+			first = m
+		}
+	}
+	if len(list) != 4 || list[0].ID != first.ID {
+		t.Fatalf("messages = %+v", list)
+	}
+	if !first.Instant || !strings.Contains(first.Text, "wdx agent transcript --id "+a.ID+" --brief") || first.SessionID != again.SessionID || !first.CreatedAt.Before(general.CreatedAt) {
+		t.Errorf("first = %+v", first)
+	}
+	if general.SessionID != again.SessionID || instant.SessionID != again.SessionID {
+		t.Errorf("not moved: %+v, %+v", general, instant)
+	}
+	if instant.Instant {
+		t.Errorf("an instant one would interrupt the brief: %+v", instant)
+	}
+	if held.State != terminal.MessageHeld || held.SessionID != a.SessionID {
+		t.Errorf("held = %+v", held)
+	}
+	if strings.Contains(first.Text, "no longer exists") {
+		t.Errorf("first = %q", first.Text)
+	}
+
+	// The next restart replaces a first message that has not gone.
+	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	next := f.messagesOf(t, a)
+	if len(next) != 4 || next[0].ID == first.ID {
+		t.Errorf("after a second restart: %+v", next)
+	}
+}
+
+// A relaunch runs where the agent last worked if it can, or a conversation in a worktree
+// would wake up in another checkout; and a restart says when it cannot.
+func TestARelaunchRunsWhereTheAgentLastWorked(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	where := filepath.Join(t.TempDir(), "where")
+	f.aca.Script = "pwd >> " + where + "; exit 0"
+	f.aca.Dir = filepath.Join(t.TempDir(), "dir")
+	a := f.create(t, "helper")
+	f.waitState(t, a.ID, terminal.StateExited)
+	worktree := t.TempDir()
+	if err := os.WriteFile(f.aca.Dir, []byte(worktree+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Start(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	if list := f.messagesOf(t, a); len(list) != 1 || strings.Contains(list[0].Text, "no longer exists") {
+		t.Errorf("messages = %+v", list)
+	}
+
+	if err := os.RemoveAll(worktree); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Restart(ctx, a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	list := f.messagesOf(t, a)
+	if len(list) != 1 || !strings.Contains(list[0].Text, "You were last in "+worktree+", which no longer exists; you are in "+f.dir+".") {
+		t.Errorf("messages = %+v", list)
+	}
+
+	data, err := os.ReadFile(where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Fields(string(data))
+	if want := []string{f.dir, worktree, worktree, f.dir}; !slices.Equal(got, want) {
+		t.Errorf("ran in %q, want %q", got, want)
+	}
+}
+
+func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	parent := f.create(t, "parent")
+	f.createChild(t, "child", parent.ID)
+	if _, err := f.agents.Remove(ctx, parent.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Restart(ctx, parent.ID, true); !isRemoved(err) {
+		t.Errorf("tombstone: %v", err)
+	}
+
+	dir := filepath.Join(t.TempDir(), "going")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a, err := f.agents.Create(ctx, f.project, "helper", dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.agents.Restart(ctx, a.ID, false)
+	failed, ok := errors.AsType[*StartError](err)
+	if !ok || failed.Agent.Terminal.State != terminal.StateFailed || failed.Agent.SessionID == a.SessionID {
+		t.Fatalf("failed launch: %v %+v", err, failed)
+	}
+	if list := f.messagesOf(t, a); len(list) != 1 || !strings.Contains(list[0].Text, "--brief") {
+		t.Errorf("its first message waits: %+v", list)
+	}
+	if _, err := f.agents.Restart(ctx, a.ID, false); !errors.As(err, &failed) {
+		t.Fatal(err)
+	}
+	if list := f.messagesOf(t, a); len(list) != 1 {
+		t.Errorf("two first messages: %+v", list)
 	}
 }

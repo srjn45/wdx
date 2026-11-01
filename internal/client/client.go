@@ -270,6 +270,16 @@ func (c *Client) GetAgentTranscript(ctx context.Context, ref, project, dir strin
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// GetAgentBrief reads the conversation of the agent ref names in brief, as GetAgent does.
+func (c *Client) GetAgentBrief(ctx context.Context, ref, project, dir string) (api.AgentTranscriptEnvelope, error) {
+	brief := true
+	r, err := c.api.GetAgentTranscriptWithResponse(ctx, ref, &api.GetAgentTranscriptParams{Project: nonEmpty(project), Dir: nonEmpty(dir), Brief: &brief})
+	if err != nil {
+		return api.AgentTranscriptEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // RenameAgent renames the agent ref names, as StartAgent does.
 func (c *Client) RenameAgent(ctx context.Context, ref, project, dir, name string) (api.AgentResult, error) {
 	r, err := c.api.UpdateAgentWithResponse(ctx, ref, &api.UpdateAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdateAgent{Name: name})
@@ -283,6 +293,16 @@ func (c *Client) RenameAgent(ctx context.Context, ref, project, dir, name string
 // project named by project or holding dir.
 func (c *Client) StartAgent(ctx context.Context, ref, project, dir string) (api.AgentResult, error) {
 	r, err := c.api.StartAgentWithResponse(ctx, ref, &api.StartAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// RestartAgent starts the agent ref names in a new session, as StartAgent does; force
+// does so in the middle of its work.
+func (c *Client) RestartAgent(ctx context.Context, ref, project, dir string, force bool) (api.AgentResult, error) {
+	r, err := c.api.RestartAgentWithResponse(ctx, ref, &api.RestartAgentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.RestartAgent{Force: &force})
 	if err != nil {
 		return api.AgentResult{}, err
 	}

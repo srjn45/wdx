@@ -27,6 +27,25 @@ type AiCodingAgent interface {
 	// the conversation, TranscriptFile among it, and says what it learned. What it
 	// keeps and how it says so differ per AI coding agent. docs/AGENT_RESUME.md.
 	BackUp(ctx context.Context, l Launch) (Backup, error)
+	// BeginSession makes session, which has not started, the one the agent goes on
+	// with from l.SessionID, and remembers that a restart began it, not the human. Its
+	// process is gone. docs/AGENT_RESUME.md.
+	BeginSession(ctx context.Context, l Launch, session string) error
+	// Brief is the conversation in about limit bytes, for an agent starting a new
+	// session to read: from the latest summary, or the first request, the messages
+	// since, and each tool call as one line. An AI coding agent with no summary starts
+	// from the first request. docs/AGENT_RESUME.md.
+	Brief(ctx context.Context, l Launch, limit int) (Brief, error)
+}
+
+// Brief is what AiCodingAgent.Brief found in TranscriptFile.
+type Brief struct {
+	From int64 // the line it starts at
+	Next int64 // the number the next line written will take
+	// Start is the message it starts at, and Rest what follows.
+	Start, Rest []string
+	// OmittedFrom and OmittedCount are the lines between them that did not fit, if any.
+	OmittedFrom, OmittedCount int64
 }
 
 // Backup is what bringing a backup up to date learned.

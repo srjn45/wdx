@@ -1,6 +1,6 @@
 # What an agent's history could be used for
 
-Status: possible future enhancements, written down on 2026-11-01. None is built, and only restart (use 1) is decided, in docs/AGENT_RESUME.md, which also describes the history itself. Showing the working directory or worktree in the transcript is being added separately.
+Status: possible future enhancements, written down on 2026-11-01. Only restart (use 1) is built, as docs/AGENT_RESUME.md says, which also describes the history itself. None of the others is decided. Showing the working directory or worktree in the transcript is being added separately.
 
 The order is a recommendation: restart first because it is nearly free, then the features only wdx can offer because it holds both a diff and the conversation behind it.
 

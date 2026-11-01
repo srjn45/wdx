@@ -28,6 +28,9 @@ func (m *Model) menuItems() []menuItem {
 	if a, ok := m.childParent(); ok {
 		items = append(items, menuItem{"c", "new child of " + a.Name, "child"})
 	}
+	if r, ok := m.restartable(); ok {
+		items = append(items, menuItem{restartKey, "new session of " + r.name, "restart"})
+	}
 	if r, ok := m.removable(); ok {
 		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
 	}
@@ -149,8 +152,9 @@ func (m *Model) closableTab() (agentTab, bool) {
 // removal is what C-q x would remove: the entity in focus.
 type removal struct {
 	kind, id, name string
-	running        bool // removing it stops what runs
-	hasChildren    bool // it stays as a tombstone
+	running        bool   // removing it stops what runs
+	doing          string // what a restart would interrupt, if anything
+	hasChildren    bool   // it stays as a tombstone
 	worktree       *worktreeRemoval
 }
 
@@ -226,6 +230,9 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 			m.log.Info("closing confirmed", "name", r.name)
 			return m.closeProject(r, true)
 		}
+		if r.kind == restartKind {
+			return m.restart(r)
+		}
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
 		if r.worktree != nil {
 			return m.removeWorktree(r)
@@ -269,6 +276,9 @@ func (m *Model) confirmPopup() popup {
 	c, st := m.confirm, m.st
 	if c.r.kind == projectKind {
 		return m.closePopup()
+	}
+	if c.r.kind == restartKind {
+		return m.restartPopup()
 	}
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
 	if c.r.worktree != nil {

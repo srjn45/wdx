@@ -67,6 +67,20 @@ func (a *ACA) BackUp(_ context.Context, l aca.Launch) (aca.Backup, error) {
 	return backup, os.WriteFile(filepath.Join(l.BackupDir, aca.TranscriptFile), data, 0o600)
 }
 
+// BeginSession implements aca.AiCodingAgent: what a says it is in, if it says.
+func (a *ACA) BeginSession(_ context.Context, _ aca.Launch, session string) error {
+	if a.Session == "" {
+		return nil
+	}
+	return os.WriteFile(a.Session, []byte(session+"\n"), 0o600)
+}
+
+// Brief implements aca.AiCodingAgent: Claude Code's, so that a test can give it what
+// Claude Code's backup writes.
+func (a *ACA) Brief(ctx context.Context, l aca.Launch, limit int) (aca.Brief, error) {
+	return aca.ClaudeCode{}.Brief(ctx, l, limit)
+}
+
 // Command implements aca.AiCodingAgent.
 func (a *ACA) Command(l aca.Launch) ([]string, error) {
 	if a.Launches != "" {

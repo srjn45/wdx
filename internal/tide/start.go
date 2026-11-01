@@ -75,3 +75,73 @@ func (m *Model) startedAgain(msg startedAgain) {
 		m.terminalNotice = msg.err.Error()
 	}
 }
+
+// restartKey is the menu's key for a new session of the agent in focus; r is taken by
+// reloading.
+const restartKey = "n"
+
+// restartKind is the kind of a removal that restarts an agent instead: it asks just the
+// same, as what the agent was doing is lost.
+const restartKind = "restart"
+
+// restartable returns what C-q n would restart: the agent in focus. Stopped is not
+// offered: only a closed project's are, which has to be opened first.
+func (m *Model) restartable() (removal, bool) {
+	if m.layout.focus == terminal {
+		return removal{}, false
+	}
+	a, ok := m.focusedAgent()
+	if !ok || a.State == api.AgentStateRemoved || a.State == api.AgentStateStopped {
+		return removal{}, false
+	}
+	r := removal{kind: restartKind, id: a.Id, name: a.Name, running: a.State == api.AgentStateRunning || a.State == api.AgentStateStarting}
+	if a.Draft != nil && *a.Draft {
+		r.doing = "text in its input box"
+	} else if a.Activity != nil && *a.Activity != api.AgentActivityIdle {
+		r.doing = string(*a.Activity)
+	}
+	return r, true
+}
+
+// restarted is the answer to a restart.
+type restarted struct {
+	r   removal
+	err error
+}
+
+// restart asks the daemon for a new session, with force as the person saw what it is
+// doing in the confirmation. Its state comes with the stream.
+func (m *Model) restart(r removal) tea.Cmd {
+	m.log.Info("restart confirmed", "name", r.name)
+	return func() tea.Msg {
+		_, err := m.client.RestartAgent(m.ctx, "id:"+r.id, "", "", true)
+		return restarted{r: r, err: err}
+	}
+}
+
+func (m *Model) restarted(msg restarted) {
+	m.confirm = nil
+	if msg.err != nil {
+		m.log.Info("not restarted", "name", msg.r.name, "err", msg.err)
+		m.statusNotice = msg.err.Error()
+		return
+	}
+	m.log.Info("restarted", "name", msg.r.name)
+}
+
+// restartPopup is the confirmation of a restart.
+func (m *Model) restartPopup() popup {
+	c, st := m.confirm, m.st
+	body := []string{"Start " + st.Name(c.r.name) + " again in a new session?", "It reads its history in brief, and what the old session held in memory is lost."}
+	if c.r.doing != "" {
+		body = append(body, "It is in the middle of something ("+c.r.doing+"): that may be left half done.")
+	}
+	if c.busy {
+		body = append(body, "", st.Muted("restarting…"))
+	}
+	return popup{
+		title:  "Restart agent",
+		body:   body,
+		footer: st.Command("y") + " restart  " + st.Command("n") + " or " + st.Command("Esc") + " keep",
+	}
+}

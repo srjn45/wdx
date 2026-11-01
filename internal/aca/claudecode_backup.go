@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ const (
 	claudeCodeRenderedFile = "rendered.json"
 	claudeCodeRawDir       = "transcripts"
 	claudeCodeTailCheck    = 4096
+	// Where a session came from, in what is appended to claudeCodeSessionsFile.
+	claudeCodeSourceClear   = "clear"
+	claudeCodeSourceRestart = "wdx_restart"
 )
 
 // claudeCodeWriteSettings writes the settings that have Claude Code append each
@@ -56,6 +60,85 @@ type claudeCodeSession struct {
 	Transcript string
 }
 
+// claudeCodeStart is a line of claudeCodeSessionsFile: a session the hook said started,
+// or BeginSession began.
+type claudeCodeStart struct {
+	SessionID  string `json:"session_id"`
+	Transcript string `json:"transcript_path,omitempty"`
+	Source     string `json:"source,omitempty"`
+}
+
+// readClaudeCodeStarts returns what claudeCodeSessionsFile holds, oldest first. A hook
+// killed while writing leaves half a value, which is skipped to the end of its line, so
+// that what was written after it is still read.
+func readClaudeCodeStarts(backup string) ([]claudeCodeStart, error) {
+	data, err := os.ReadFile(filepath.Join(backup, claudeCodeSessionsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var starts []claudeCodeStart
+	for len(bytes.TrimSpace(data)) > 0 {
+		var started claudeCodeStart
+		d := json.NewDecoder(bytes.NewReader(data))
+		if err := d.Decode(&started); err != nil {
+			end := bytes.IndexByte(data, '\n')
+			if end < 0 {
+				break
+			}
+			data = data[end+1:]
+			continue
+		}
+		data = data[d.InputOffset():]
+		if started.SessionID != "" && filepath.Base(started.SessionID) == started.SessionID {
+			starts = append(starts, started)
+		}
+	}
+	return starts, nil
+}
+
+// BeginSession implements AiCodingAgent. Its line is what makes it the session BackUp
+// says the agent is in, and what tells the brief a restart began it, not a /clear. It
+// comes on a line of its own after whatever a killed hook left. An agent from before
+// the hook has no line for the session it leaves, which would then go unfollowed.
+func (ClaudeCode) BeginSession(_ context.Context, l Launch, session string) error {
+	starts, err := readClaudeCodeStarts(l.BackupDir)
+	if err != nil {
+		return err
+	}
+	var text bytes.Buffer
+	path := filepath.Join(l.BackupDir, claudeCodeSessionsFile)
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 && data[len(data)-1] != '\n' {
+		text.WriteByte('\n')
+	}
+	lines := []claudeCodeStart{{SessionID: session, Source: claudeCodeSourceRestart}}
+	if !slices.ContainsFunc(starts, func(s claudeCodeStart) bool { return s.SessionID == l.SessionID }) {
+		lines = append([]claudeCodeStart{{SessionID: l.SessionID}}, lines...)
+	}
+	for _, line := range lines {
+		data, err := json.Marshal(line)
+		if err != nil {
+			return err
+		}
+		text.Write(data)
+		text.WriteByte('\n')
+	}
+	if err := os.MkdirAll(l.BackupDir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(text.Bytes()); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
 // claudeCodeSessions returns the agent's sessions, oldest first, and the one it
 // is in now. Before its first launch with the hook it has only l.SessionID.
 func claudeCodeSessions(l Launch) (sessions []claudeCodeSession, current string, err error) {
@@ -72,26 +155,13 @@ func claudeCodeSessions(l Launch) (sessions []claudeCodeSession, current string,
 		sessions = append(sessions, claudeCodeSession{ID: id, Transcript: transcript})
 	}
 	add(l.SessionID, "")
-	f, err := os.Open(filepath.Join(l.BackupDir, claudeCodeSessionsFile))
-	if err == nil {
-		defer f.Close()
-		// A decoder, as a hook still writing leaves half a value at the end.
-		for d := json.NewDecoder(f); ; {
-			var started struct {
-				SessionID  string `json:"session_id"`
-				Transcript string `json:"transcript_path"`
-			}
-			if d.Decode(&started) != nil {
-				break
-			}
-			if started.SessionID == "" || filepath.Base(started.SessionID) != started.SessionID {
-				continue
-			}
-			add(started.SessionID, started.Transcript)
-			current = started.SessionID
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	starts, err := readClaudeCodeStarts(l.BackupDir)
+	if err != nil {
 		return nil, "", err
+	}
+	for _, started := range starts {
+		add(started.SessionID, started.Transcript)
+		current = started.SessionID
 	}
 	for i, s := range sessions {
 		if s.Transcript != "" {
@@ -311,6 +381,9 @@ type claudeCodeRendered struct {
 	Message string           `json:"message"`
 	// Dir is where the agent last worked, which each line of a transcript says.
 	Dir string `json:"dir,omitempty"`
+	// Thinking says thinking was the last thing written, whose end the text after it
+	// has to mark, thinking not being fenced.
+	Thinking bool `json:"thinking,omitempty"`
 }
 
 func readClaudeCodeRendered(backup string) (*claudeCodeRendered, error) {
@@ -428,7 +501,7 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 		}
 		if r.Message != key {
 			fmt.Fprintf(w, "## %s · %s\n\n", name, line.Timestamp)
-			r.Message = key
+			r.Message, r.Thinking = key, false
 		}
 	}
 	name := "User"
@@ -452,15 +525,21 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 		switch b.Type {
 		case "text":
 			heading(name)
+			if r.Thinking {
+				fmt.Fprintf(w, "%s\n\n", claudeCodeTextHeading)
+				r.Thinking = false
+			}
 			fmt.Fprintf(w, "%s\n\n", ansi.Strip(b.Text))
 		case "thinking":
 			if b.Thinking != "" {
 				heading(name)
-				fmt.Fprintf(w, "### Thinking\n\n%s\n\n", ansi.Strip(b.Thinking))
+				fmt.Fprintf(w, "%s\n\n%s\n\n", claudeCodeThinkingHeading, ansi.Strip(b.Thinking))
+				r.Thinking = true
 			}
 		case "tool_use":
 			heading(name)
 			fmt.Fprintf(w, "### Tool: %s\n\n%s\n\n", ansi.Strip(b.Name), fenced(string(b.Input)))
+			r.Thinking = false
 		case "tool_result":
 			title := "Result"
 			if b.IsError {

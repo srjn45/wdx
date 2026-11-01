@@ -404,3 +404,52 @@ func TestShellMessageIsHeldForAShellAnew(t *testing.T) {
 		t.Errorf("%+v, %v", m, err)
 	}
 }
+
+// TestBeginSessionKeepsAReview: a message carried to a new session keeps its comments, as
+// a message held would give them back; and it goes on to a holder it was not sent to.
+func TestBeginSessionKeepsAReview(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	_, s, p := agentFixture(t)
+	s.opts.AgentSession = func(context.Context, string) (string, error) { return "new", nil }
+	row, err := s.CreateAgent(ctx, p, "helper", t.TempDir(), noLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRowState(t, s, row.ID, StateRunning)
+	conn, ok := s.currentConn(row.ID)
+	if !ok {
+		t.Fatal("no connection")
+	}
+	review, err := s.store.addMessage(ctx, row.ID, "text", false, "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const oldHolder = 1
+	if err := s.store.messageForwarded(ctx, review, oldHolder); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.store.db.Exec(`INSERT INTO review_comments (id, project_id, worktree, file, line, side, view, quote, content_id, body, state, agent_id, created_at, sent_at, message_id)
+		VALUES ('cmt-1', ?, '/w', 'f', 1, 'new', 'committed', '', '', 'b', 'sent', 'a', 1, 1, ?)`, p, review); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.BeginSession(ctx, s.store.db, row.ID, "new", "read your history"); err != nil {
+		t.Fatal(err)
+	}
+	s.catchUp(ctx, row, conn)
+	list, err := s.store.messages(ctx, "m.terminal_id = ?", row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Text != "read your history" || !list[0].Instant || list[1].ID != review || list[1].State == MessageHeld || list[1].SessionID != "new" {
+		t.Errorf("messages = %+v", list)
+	}
+	var state string
+	var message sql.NullString
+	if err := s.store.db.QueryRow(`SELECT state, message_id FROM review_comments WHERE id = 'cmt-1'`).Scan(&state, &message); err != nil {
+		t.Fatal(err)
+	}
+	if state != "sent" || message.String != review {
+		t.Errorf("the comment is %s, of %q", state, message.String)
+	}
+}

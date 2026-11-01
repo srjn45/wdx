@@ -152,6 +152,22 @@ func (s *Store) setSession(ctx context.Context, id, session string) (bool, error
 	return n > 0, err
 }
 
+// beginSession gives the agent the session in one transaction with what linked does.
+func (s *Store) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := db.Exec(ctx, tx, "UPDATE agents SET session_id = ? WHERE id = ?", session, id); err != nil {
+		return err
+	}
+	if err := linked(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT a.id, a.aca, a.session_id, a.parent_agent_id,

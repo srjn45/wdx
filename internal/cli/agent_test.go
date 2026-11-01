@@ -845,3 +845,106 @@ func TestAgentCreateWithAPrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentRestart(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	a := newAgent(t, home, app, "helper")
+
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "restart", "--name", "helper")
+	wantError(t, v, exit, api.ErrorCodeAgentBusy, api.ExitRejected)
+	wantHint(t, v, "--force")
+
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "restart", "--name", "helper", "--force")
+	if exit != api.ExitOK || v.Result != "restarted" || v.Agent.Id != a.Id || v.Agent.State != api.AgentStateRunning || v.Agent.SessionId == a.SessionId {
+		t.Fatalf("want helper restarted, got exit %d, %+v", exit, v)
+	}
+	if got := launches(t, home); !slices.Equal(got, []string{a.SessionId, v.Agent.SessionId}) {
+		t.Fatalf("sessions = %q", got)
+	}
+	v, exit = wdxJSON(t, home, "agent", "restart", "--id", "agent-nothing")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "restart")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+
+	out := wdxWith(t, home, in(app), "agent", "restart", "--name", "helper", "--force")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "restarted agent helper") {
+		t.Fatalf("text: %+v", out)
+	}
+
+	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
+	v, exit = wdxJSON(t, home, "agent", "restart", "--id", a.Id)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+}
+
+// An agent that is not running needs no --force, and one that does not start says so.
+func TestAgentRestartOfOneThatEnded(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	dir := filepath.Join(app, "gone")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run"), []byte("exit 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newExitedAgent(t, home, dir, "helper")
+	v, exit := wdxJSON(t, home, "agent", "restart", "--id", a.Id)
+	if exit != api.ExitOK || v.Result != "restarted" || v.Agent.SessionId == a.SessionId {
+		t.Fatalf("want it restarted, got exit %d, %+v", exit, v)
+	}
+	waitAgent(t, home, a.Id, api.AgentStateExited)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxJSON(t, home, "agent", "restart", "--id", a.Id)
+	wantError(t, v, exit, api.ErrorCodeStartFailed, api.ExitSystem)
+}
+
+func TestAgentRestartOfATombstone(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	parent := newAgent(t, home, app, "parent")
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "child", "--parent-name", "parent"); exit != api.ExitOK {
+		t.Fatalf("child: %d, %+v", exit, v)
+	}
+	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("remove: %d, %+v", exit, v)
+	}
+	v, exit := wdxJSON(t, home, "agent", "restart", "--id", parent.Id, "--force")
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+}
+
+func TestAgentTranscriptBrief(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	a := newAgent(t, home, app, "helper")
+	v, exit := wdxJSON(t, home, "agent", "transcript", "--id", a.Id, "--brief")
+	if exit != api.ExitOK || len(v.Transcript.Lines) != 0 {
+		t.Fatalf("nothing said yet: exit %d, %+v", exit, v.Transcript)
+	}
+	file := filepath.Join(identity.AgentDir(home, a.Id), aca.TranscriptFile)
+	text := "# Session s\n\n## User · 2026-11-01T13:09:49Z\n\nthe request\n\n" +
+		"## Assistant · 2026-11-01T13:09:50Z\n\n### Tool: Bash\n\n```\n{\"command\":\"ls\"}\n```\n\n### Result\n\n```\nthe output\n```\n\n"
+	if err := os.WriteFile(file, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxJSON(t, home, "agent", "transcript", "--id", a.Id, "--brief")
+	if exit != api.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.From != 2 || v.Transcript.Next != 20 || !slices.Contains(v.Transcript.Lines, "the request") || !slices.Contains(v.Transcript.Lines, "- Bash ls (line 8)") || slices.Contains(v.Transcript.Lines, "the output") {
+		t.Fatalf("exit %d, %+v", exit, v.Transcript)
+	}
+	for _, flags := range [][]string{{"--tail", "2"}, {"--from", "3"}, {"--count", "3"}, {"--path"}} {
+		v, exit = wdxJSON(t, home, append([]string{"agent", "transcript", "--id", a.Id, "--brief"}, flags...)...)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
+	v, exit = wdxJSON(t, home, "agent", "transcript", "--id", "agent-nothing", "--brief")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	out := wdxWith(t, home, in(app), "agent", "transcript", "--id", a.Id, "--brief")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "This is the conversation so far in brief") || !strings.Contains(out.stdout, "the request\n") {
+		t.Fatalf("text: %+v", out)
+	}
+}

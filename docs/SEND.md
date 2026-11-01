@@ -38,6 +38,7 @@ send -> daemon stores it -> forwards it to the holder's inbox -> typed -> holder
 - **The holder confirms.** A hello says `confirms`, and a message has an id. `frameDelivered` reports what it typed, and a hello lists the last ones typed, including with no daemon there. Neither takes a protocol version: an older holder says nothing, an older daemon skips the frame, and an older holder ignores the id.
 - **Sending again is harmless.** A holder ignores an id it has seen. So on connecting to any holder, as at every daemon start, the daemon just sends all that is `pending`.
 - **A holder that died.** What was forwarded to another holder goes on when the agent resumes the same conversation, by `session_id`. Otherwise, or in a shell started anew, it is `held`: an old "commit" must not arrive out of nowhere. `wdx message list`, `resend` and `discard` deal with it, and an agent's row says `1 held`.
+- **A restart is the exception.** `wdx agent restart` moves what is pending to the new session, as a human asked for it and it is the same agent going on, behind a first message that tells the agent to read its history. They become general, or they would interrupt that reading. docs/AGENT_RESUME.md.
 - **A review** follows its message, by `review_comments.message_id`. Its comments are `delivered` when it is, and held it goes, giving them back as drafts to send again. So does its agent being removed, through a trigger.
 - **With no daemon.** Holders go on typing what they have, and report it when one comes. A new message cannot be sent. The holders of agents go on either way.
 - **It may come twice.** A holder that typed a message and died before it could say has it sent again. `attempts` above 1 says so. Losing one is worse.
@@ -59,7 +60,7 @@ The words, decided by the human on 2026-10-31:
 
 - The daemon uses its existing connection to the holder (`holder.Conn`), with one new frame carrying the message. A holder too old for it gets `send_failed` with a hint to restart, known from its `hello`.
 - The holder's control loop only queues the message, and one goroutine writes to the PTY, so a program that stops reading cannot hold up `stop`.
-- The queues live in memory, and `instantQueue` is always emptied first. Queued messages survive a daemon restart, and die with the holder or when the terminal is stopped, which is logged with a count. A relaunch does not bring them back.
+- The queues live in memory, and `instantQueue` is always emptied first. Queued messages survive a daemon restart and die with the holder, which is logged with a count. What brings them back after that is the table (see Keeping a message until it arrives).
 - A message the PTY cannot take blocks only that goroutine. `make test` checks this with a program in raw mode that never reads.
 - A held message shows only in the holder's log (`message held`, with its reason), until the state channel to the daemon can carry the queue's length to `agent get`.
 
