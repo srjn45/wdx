@@ -598,12 +598,19 @@ func (h *holder) wait() {
 	exit := &Exit{Code: exitCode(h.cmd.ProcessState), At: time.Now()}
 	h.log.Info("shell exited", "exit_code", exit.Code)
 	h.keepScreen()
-	h.mu.Lock()
-	h.exit = exit
-	h.mu.Unlock()
-	close(h.ended)
+	h.markExited(exit)
 	h.dropMessages()
 	h.sendExit()
+}
+
+// markExited records the exit and ends the shell's time as one step: a client
+// told of the exit by hello releases at once, and a release counts only once
+// ended is closed.
+func (h *holder) markExited(exit *Exit) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.exit = exit
+	close(h.ended)
 }
 
 // keepScreen writes what the shell left on the main screen to history, as
