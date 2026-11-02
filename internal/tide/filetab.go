@@ -28,7 +28,8 @@ var sourceKeys = []barKey{
 	{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
 	{"g G", "the first or last line", 0}, {": and a number", "go to that line of the file", 0},
 	{"/ and text", "search; capitals make it exact", 0}, {"n N", "the next or last match", 0},
-	{"Esc", "end the search", 0}, {"C-q -", "close the tab", 0}, {"Alt+←", "the tab before", 0},
+	{"Esc", "end the search", 0}, {editFileKey, "edit it in the editor the editor setting names", 0},
+	{"C-q -", "close the tab", 0}, {"Alt+←", "the tab before", 0},
 }
 
 func fileTab(worktree, file string) string { return fileTabPrefix + worktree + rowSeparator + file }

@@ -291,6 +291,8 @@ Done on 2026-11-02, with these differences from the plan. The migration is `0015
 
 ### 8. Editing in tide
 
+Done on 2026-11-02, with these differences from the plan. `attachedAgent` became `attachedTerminal`, which also returns the history to read: an editor has none, so one not running, as while it stops, is not attached. `e` in the Code section first opens the file's tab, as `Enter` does. The read-only view's bar and `?` list `e`, and the Code section's hint says `e edit`. A refusal stays in the tab's bar until the next key, with `wdx deps install --name vi` for an editor not found. The editor's tab comes back only on the project's first event, so one closed afterwards stays closed until tide starts again. Tried in the tests with the test home's shell standing in for the editor, typed into through the attachment; the real `vi` in a real tide waits for step 10.
+
 - `e` on a file tab or a file row asks for the editor, and the focus moves to the tab. A refusal shows in the view.
 - `Project.editors` decides what the tab is: with one for its worktree and path, `agentPane.draw` shows the terminal, `paneInput` goes to it and `attachedAgent` becomes `attachedTerminal`. The title is `edit: <worktree>/<name>`.
 - When the editor leaves the stream, the tab detaches and `diffSync` reads the file anew.

@@ -152,9 +152,10 @@ func (m *Model) closableTab() (agentTab, bool) {
 // removal is what C-q x would remove: the entity in focus.
 type removal struct {
 	kind, id, name string
-	running        bool   // removing it stops what runs
-	doing          string // what a restart would interrupt, if anything
-	hasChildren    bool   // it stays as a tombstone
+	running        bool     // removing it stops what runs
+	doing          string   // what a restart would interrupt, if anything
+	hasChildren    bool     // it stays as a tombstone
+	editors        []string // the editors closing a project stops, by worktree and file
 	worktree       *worktreeRemoval
 }
 
@@ -163,6 +164,7 @@ type worktreeRemoval struct {
 	missing   bool
 	agents    []string
 	terminals []string
+	editors   []string
 }
 
 // removable returns what C-q x would remove now.

@@ -75,6 +75,9 @@ func (m *Model) diffTitle(tab string) string {
 	worktree, file := diffTabOf(tab)
 	switch {
 	case isFileTab(tab):
+		if _, ok := m.tabEditor(tab); ok {
+			return editTabLabel + worktree + "/" + tabLeaf(file)
+		}
 		return fileTabLabel + worktree + "/" + tabLeaf(file)
 	case file != "":
 		return fileDiffLabel + worktree + "/" + tabLeaf(file)
@@ -112,10 +115,10 @@ func (m *Model) shownDiff() *diffView {
 	return l.diffs[m.diffViewOf(l.active)]
 }
 
-// textShown reports whether the agent pane shows a diff or a file.
+// textShown reports whether the agent pane shows a diff or a file, read-only.
 func (m *Model) textShown() bool {
 	l := m.list()
-	return l != nil && isTextTab(l.active)
+	return l != nil && isTextTab(l.active) && !m.editShown()
 }
 
 // diffView is what a diff's tab holds, for the run.
@@ -126,6 +129,7 @@ type diffView struct {
 	err         string
 	uncommitted bool // the view of what is not committed, of a worktree's tab
 	source      bool // the view of a file as it is, not of changes
+	editing     bool // its tab showed the file's editor when last looked
 
 	message string // why there is nothing to show, instead of the rows
 	heading string // the line above the rows
@@ -245,9 +249,11 @@ func (m *Model) diffSync() tea.Cmd {
 		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), source: isFileTab(view), file: file}
 		l.diffs[view] = v
 	}
-	if came && v.source {
-		v.asked = false // a gitignored file, or one edited by another, says nothing in the stream
+	editing := m.editShown()
+	if (came || (v.editing && !editing)) && v.source {
+		v.asked = false // a gitignored file, or one edited by another or in its editor, says nothing in the stream
 	}
+	v.editing = editing
 	seen := m.diffSeen(view)
 	if v.loading || (v.asked && v.seen == seen) {
 		return nil
@@ -731,7 +737,9 @@ func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 		return append([]barKey{{"C-q -", "close", 1}}, extra...)
 	}
 	keys := []barKey{{"↑↓", "scroll", 1}}
-	if !v.source {
+	if v.source {
+		keys = append(keys, barKey{editFileKey, "edit", 2})
+	} else {
 		keys = append(keys, barKey{"[ ]", "change", 5})
 	}
 	if file {
@@ -1118,6 +1126,9 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 			v.keyHelp = false
 		}
 		return nil
+	}
+	if v.source && key.String() == editFileKey {
+		return m.askEditor(l.active)
 	}
 	if v.source && slices.Contains(diffOnlyKeys, key.String()) {
 		return nil

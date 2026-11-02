@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"context"
 	"slices"
 	"time"
 
@@ -147,13 +148,21 @@ func (m *Model) openTabs() []agentTab {
 	return tabs
 }
 
-// attachedAgent returns the agent the agent pane attaches: the current tab's,
-// unless it is the agent's info.
-func (m *Model) attachedAgent() (api.Agent, bool) {
-	if m.infoShown() {
-		return api.Agent{}, false
+// attachedTerminal returns what the agent pane attaches, with its history: the
+// current tab's editor while it runs, or its agent unless it is the agent's info.
+func (m *Model) attachedTerminal() (api.Terminal, historyFunc, bool) {
+	if l := m.list(); l != nil {
+		if e, ok := m.tabEditor(l.active); ok {
+			return editorTerminal(e, m.diffTitle(l.active)), noHistory, e.State == api.TerminalStateRunning
+		}
 	}
-	return m.activeAgent()
+	active, ok := m.activeAgent()
+	if !ok || m.infoShown() {
+		return api.Terminal{}, nil, false
+	}
+	return terminalOf(active), func(ctx context.Context, from *int64, count int) (api.TerminalHistoryEnvelope, error) {
+		return m.client.GetAgentHistory(ctx, "id:"+active.Id, "", "", from, count)
+	}, true
 }
 
 // tabKey moves along left pane - tab 1 - ... - tab n, as Alt+← and Alt+→ do in

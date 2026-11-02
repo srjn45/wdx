@@ -124,6 +124,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	f.project, f.ref, f.err, f.wait = &p, "id:"+p.Id, nil, 0
 	m.terminalsChanged()
 	m.agentsChanged()
+	m.editorsChanged()
 	m.worktreesChanged()
 	return m.next()
 }

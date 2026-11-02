@@ -122,7 +122,7 @@ func TestSettingsOpens(t *testing.T) {
 	if _, ok := m.focusedAgent(); ok {
 		t.Error("an agent has the focus")
 	}
-	if _, ok := m.attachedAgent(); ok {
+	if _, _, ok := m.attachedTerminal(); ok {
 		t.Error("an agent attaches")
 	}
 	for _, key := range []string{"x", "c", infoKey} {

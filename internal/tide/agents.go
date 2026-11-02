@@ -59,6 +59,8 @@ type agentList struct {
 
 	code       codeSection
 	lastActive string // the tab current when last looked, to tell one coming to show
+	// editorsSeen is set once the project came and its editors got their tabs.
+	editorsSeen bool
 }
 
 // agentListRow is a row of the Agents list.
@@ -467,7 +469,7 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 	case l.section == sectionWorktrees:
 		return s.updateWorktrees(name)
 	case l.section == sectionCode:
-		s.updateCode(name)
+		return s.updateCode(name)
 	case l.section == sectionAgents:
 		s.updateAgents(name)
 	}
@@ -824,6 +826,10 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	case !following:
 	case m.settingsShown():
 		m.drawSettings(buf, area, st)
+		return
+	case m.editShown():
+		e, _ := m.tabEditor(m.list().active)
+		m.drawShown(buf, area, st, agent, editorTerminal(e, m.diffTitle(m.list().active)), nil)
 		return
 	case m.textShown():
 		m.drawDiff(buf, area, st)

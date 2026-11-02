@@ -445,6 +445,16 @@ func (c *Client) WorktreeFileContent(ctx context.Context, name, path, ref, dir s
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// OpenEditor starts the editor the editor setting names on the file at path of the
+// worktree name, or returns the one running on it.
+func (c *Client) OpenEditor(ctx context.Context, name, path, ref string) (api.EditorResult, error) {
+	r, err := c.api.OpenEditorWithResponse(ctx, api.OpenEditor{Worktree: name, Path: path, Project: nonEmpty(ref)})
+	if err != nil {
+		return api.EditorResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200, r.JSON201)
+}
+
 // WorktreeFileDiff returns the uncommitted changes of the file at path in the
 // worktree name.
 func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileDiff, error) {

@@ -1,6 +1,8 @@
 package tide
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -26,7 +28,8 @@ func (m *Model) closableProject() (removal, bool) {
 		return removal{}, false
 	}
 	p := f.project
-	return removal{kind: projectKind, id: p.Id, name: p.Name, running: m.projectRunning()}, true
+	editors := m.editorsIn("")
+	return removal{kind: projectKind, id: p.Id, name: p.Name, running: m.projectRunning() || len(editors) > 0, editors: editors}, true
 }
 
 // projectRunning reports whether closing the project shown would stop anything.
@@ -110,6 +113,9 @@ func (m *Model) closePopup() popup {
 		"Close " + st.Name(c.r.name) + "?",
 		"Its running agents and terminals stop.",
 		"Opening it again resumes its agents and starts fresh shells.",
+	}
+	if len(c.r.editors) > 0 {
+		body = append(body, "Its editors stop, losing what they hold unsaved: "+strings.Join(c.r.editors, ", "))
 	}
 	if c.busy {
 		body = append(body, "", st.Muted("closing…"))

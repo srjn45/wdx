@@ -275,6 +275,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.diffLoaded(msg)
 	case fileHighlighted:
 		m.fileHighlighted(msg)
+	case editorOpened:
+		m.editorOpened(msg)
 	case codeLoaded:
 		m.codeLoaded(msg)
 	case commitSent:

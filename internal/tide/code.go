@@ -17,7 +17,7 @@ import (
 
 const (
 	codeSelectorHint = "↑↓ select  ←→ worktree  Alt+arrows move  C-q menu"
-	codeHint         = "↑↓ select  ←→ fold  Enter open  Alt+arrows move  C-q menu"
+	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  Alt+arrows move  C-q menu"
 	mainWorktree     = "main"
 )
 
@@ -237,7 +237,7 @@ func (m *Model) moveToCode(i int) {
 	l.section, l.code.row, l.code.cursor = sectionCode, i, rows[i].key()
 }
 
-func (s *projectScreen) updateCode(name string) {
+func (s *projectScreen) updateCode(name string) tea.Cmd {
 	switch name {
 	case "left", "h":
 		s.m.codeLeft()
@@ -252,7 +252,13 @@ func (s *projectScreen) updateCode(name string) {
 		default:
 			s.m.openCodeFile(r.node.path)
 		}
+	case editFileKey:
+		if r, ok := s.m.codeCursorRow(); ok && r.node != nil && !r.node.dir {
+			s.m.openCodeFile(r.node.path)
+			return s.m.askEditor(s.m.list().active)
+		}
 	}
+	return nil
 }
 
 // openCodeFile opens the tab of the file at p of the worktree chosen, or goes to it.

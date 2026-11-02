@@ -310,6 +310,7 @@ func (m *Model) worktreeRemovalOf(w api.WorktreeStatus) removal {
 		missing:   w.Missing,
 		agents:    m.agentsIn(w.Name),
 		terminals: m.terminalsIn(w.Path),
+		editors:   m.editorsIn(w.Name),
 	}}
 }
 
@@ -337,6 +338,9 @@ func (r *worktreeRemoval) lines() []string {
 	}
 	if len(r.terminals) > 0 {
 		lines = append(lines, "Left running, with no directory: "+strings.Join(r.terminals, ", "))
+	}
+	if len(r.editors) > 0 {
+		lines = append(lines, "Stopped, losing what they hold unsaved: "+strings.Join(r.editors, ", "))
 	}
 	return lines
 }

@@ -166,11 +166,11 @@ func TestInfoIsLive(t *testing.T) {
 func TestInfoAttachesNothing(t *testing.T) {
 	t.Parallel()
 	m := infoModel()
-	if a, ok := m.attachedAgent(); !ok || a.Name != "swift-falcon" {
+	if a, _, ok := m.attachedTerminal(); !ok || a.Name != "swift-falcon" {
 		t.Fatalf("attached %q, %v", a.Name, ok)
 	}
 	keys(m, "i")
-	if a, ok := m.attachedAgent(); ok {
+	if a, _, ok := m.attachedTerminal(); ok {
 		t.Fatalf("attached %q", a.Name)
 	}
 	if a, ok := m.activeAgent(); !ok || a.Name != "swift-falcon" {

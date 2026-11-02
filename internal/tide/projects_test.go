@@ -102,6 +102,14 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	go func() { served <- d.Serve(ctx) }()
 	stop = sync.OnceFunc(func() {
 		c, bg := h.client(), context.Background()
+		// Editors stop only with their project.
+		if list, err := c.ListProjects(bg, ""); err == nil {
+			for _, p := range list.Projects {
+				if got, err := c.GetProject(bg, "id:"+p.Id); err == nil && got.Project.Editors != nil && len(*got.Project.Editors) > 0 {
+					_, _ = c.UpdateProject(bg, "id:"+p.Id, api.ProjectStateClosed, true)
+				}
+			}
+		}
 		if list, err := c.ListTerminals(bg, "", ""); err == nil {
 			for _, term := range list.Terminals {
 				_, _ = c.DeleteTerminal(bg, "id:"+term.Id, "", "", true)
