@@ -65,6 +65,8 @@ Proposed:
 
 ## Docs and plans
 
+Docs are being designed in docs/DOCS.md, which holds where it differs from this section.
+
 Docs are tech docs such as RFCs, tech specs and one-pagers. Plans are DAG implementation plans, as in warden. Both must be shared across developers, so that everyone sees parallel plans and changes.
 
 Running a plan needs pipelines and the orchestrator and worker model first, so those come before plans.
