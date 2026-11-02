@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor; the filter, `tide.section_order`, the other editors and the Alt+arrows through the menu come next. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; `tide.section_order`, the other editors and the Alt+arrows through the menu come next. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -180,6 +180,20 @@ Tried and not supported, by the human's choice, since their save loses another p
 - While typing, plain keys such as `f` and `v` go into the filter.
 - A monorepo's cost is not measured: each key must not wait for the filter to finish, and the latest text wins.
 
+### As built
+
+Built on 2026-11-02 in `internal/tide/filter.go`, and tried in a real tide under tmux: typing `tide tabs` with the letters that are also menu keys, the parents opened, opening the match from the list, and `Esc` bringing the folds back with the cursor on the folded directory. The list's hints say `/ filter`. Decided while building, by the AI:
+
+- While the filter is on, the folds do not change: `←` only moves to the parent, `→`, `Enter` on a directory and a click on a fold mark do nothing. A matching agent whose children do not match shows no fold mark.
+- A worktree shows when its name or branch matches, or a file it changed does, and then with only the files that match. Matched by its name alone, it keeps `+` and says how many files it has.
+- `↑` and `↓` move the cursor while typing, so a match can be reached without leaving the line; `k` and `j` type.
+- The line counts the rows that match, not the parents kept for them, and shows `…` while the Code section's files are being matched.
+- A section with nothing matching says `no match`. The headings keep their totals.
+- When the filter is cleared, the cursor stays on its row, or goes to the nearest one above it that holds it, such as its folded directory.
+- A click on the line goes back to typing in it.
+- Each project has its own filter for the run; `C-q r` does not keep it.
+- The Code section's files are matched in a command, away from `Update`, and an answer for text typed before is dropped. The agents and worktrees are few, and are matched as they are drawn.
+
 ## The order of the sections
 
 `tide.section_order`, default `awc`: a letter per section, `a` Agents, `w` Worktrees, `c` Code.
@@ -201,7 +215,7 @@ Tried and not supported, by the human's choice, since their save loses another p
 
 Laid out on 2026-11-01. It covers the `Code` section, the highlighted read-only tab and editing with `vi`. Each step leaves `make check && make test` passing and can be its own commit, when the human asks for one. Start by rebasing `tide-code` onto `main`.
 
-After this plan, each its own piece of work: the filter, `tide.section_order`, the other editors one row each, and the Alt+arrows through the menu.
+After this plan, each its own piece of work: the filter (built, see [As built](#as-built)), `tide.section_order`, the other editors one row each, and the Alt+arrows through the menu.
 
 ### 0. Try `vi` in a real pane
 

@@ -16,8 +16,8 @@ import (
 // selector, as a tree (docs/TIDE_CODE.md).
 
 const (
-	codeSelectorHint = "↑↓ select  ←→ worktree  Alt+arrows move  C-q menu"
-	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  Alt+arrows move  C-q menu"
+	codeSelectorHint = "↑↓ select  ←→ worktree  / filter  Alt+arrows move  C-q menu"
+	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  / filter  Alt+arrows move  C-q menu"
 	mainWorktree     = "main"
 )
 
@@ -31,8 +31,12 @@ type codeSection struct {
 
 // codeFiles is what the section knows of a worktree's files.
 type codeFiles struct {
+	paths     []string
+	read      int // how many times they were read, to tell a match for these
 	tree      []*codeNode
 	open      map[string]bool // the directories unfolded: they start folded
+	match     *codeMatch      // the files the filter last matched
+	matching  codeMatchKey    // what a match is being found for, the zero value when none is
 	truncated bool
 	loaded    bool
 	failed    bool
@@ -92,6 +96,7 @@ type codeRow struct {
 	depth int
 	guide string // the tree's lines before the fold mark
 	fold  string // foldOpen, foldClosed or, for a file at the top level, blank
+	match bool   // it matches the filter
 }
 
 // key names the row across reads.
@@ -148,8 +153,16 @@ func (m *Model) codeRowsShown() []codeRow {
 		return nil
 	}
 	rows := []codeRow{{}}
-	if f := m.codeFilesShown(); f != nil {
+	f := m.codeFilesShown()
+	switch {
+	case f == nil:
+	case l.filter.words() == nil:
 		rows = append(rows, codeRows(f.tree, f.open)...)
+	case f.match != nil:
+		for _, r := range codeRows(f.match.tree, f.match.open) {
+			r.match = !r.node.dir
+			rows = append(rows, r)
+		}
 	}
 	return rows
 }
@@ -170,8 +183,12 @@ func (m *Model) codeNote() string {
 		return "cannot read the files"
 	case f == nil || !f.loaded:
 		return "loading…"
+	case l.filter.words() != nil && f.match == nil:
+		return "filtering…"
 	case f.truncated:
 		return "too many files: these are the first"
+	case l.filter.words() != nil && len(f.match.tree) == 0:
+		return "no match"
 	case len(f.tree) == 0:
 		return "no files"
 	}
@@ -291,7 +308,7 @@ func (m *Model) codeLeft() {
 	case !ok:
 	case r.node == nil:
 		m.chooseCodeWorktree(-1)
-	case r.fold == foldOpen:
+	case r.fold == foldOpen && !m.filtering():
 		m.toggleCodeDir(r.node.path)
 	default:
 		if parent := path.Dir(r.node.path); parent != "." {
@@ -330,8 +347,8 @@ func (m *Model) chooseCodeWorktree(by int) {
 // it closes.
 func (m *Model) toggleCodeDir(dir string) {
 	l, f := m.list(), m.codeFilesShown()
-	if f == nil {
-		return
+	if f == nil || m.filtering() {
+		return // what matches stays open
 	}
 	if f.open == nil {
 		f.open = map[string]bool{}
@@ -417,7 +434,8 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 		m.log.Info("files not read", "worktree", msg.worktree, "err", msg.err)
 		return
 	}
-	f.tree, f.truncated, f.loaded = codeTree(msg.paths), msg.truncated, true
+	f.paths, f.tree, f.truncated, f.loaded = msg.paths, codeTree(msg.paths), msg.truncated, true
+	f.read++
 	m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "truncated", msg.truncated)
 	if l == m.list() {
 		m.keepCodeCursor()

@@ -24,8 +24,8 @@ const minAgentName = 10
 // The status line says these while the list takes the keys, with the fold keys
 // when there is something to fold.
 const (
-	selectHint = "↑↓ select  Enter show  i info  Alt+arrows move  C-q menu"
-	treeHint   = "↑↓ select  ←→ fold  Enter show  i info  Alt+arrows move  C-q menu"
+	selectHint = "↑↓ select  Enter show  i info  / filter  Alt+arrows move  C-q menu"
+	treeHint   = "↑↓ select  ←→ fold  Enter show  i info  / filter  Alt+arrows move  C-q menu"
 )
 
 // The fold marks of a parent's row. ▸ is taken by the cursor.
@@ -62,6 +62,7 @@ type agentList struct {
 	// editorsSeen is set once the project came and its editors got their tabs.
 	editorsSeen bool
 	closing     map[string]bool // the editors' tabs told to quit, which close once they end
+	filter      listFilter
 }
 
 // agentListRow is a row of the Agents list.
@@ -73,6 +74,7 @@ type agentListRow struct {
 	below int    // the agents under it
 	// waiting is how many of them are waiting, which a folded parent must not hide.
 	waiting int
+	match   bool // it matches the filter
 }
 
 // list returns the Agents list of the project shown, nil until it is known.
@@ -110,24 +112,36 @@ func childrenOf(a api.Agent) []api.Agent {
 }
 
 // listRows returns the rows the Agents list shows: those under a folded parent
-// are left out. The fold column is there only when something has children, so
-// that a flat list keeps the room.
+// are left out, and with a filter those that neither match nor hold a match, the
+// rest open. The fold column is there only when something has children, so that a
+// flat list keeps the room.
 func (m *Model) listRows() []agentListRow {
 	l, top := m.list(), m.topAgents()
 	if l == nil {
 		return nil
 	}
 	tree := slices.ContainsFunc(top, func(a api.Agent) bool { return len(childrenOf(a)) > 0 })
+	words := l.filter.words()
+	var kept map[string]bool
+	if words != nil {
+		kept = keptAgents(top, words)
+	}
+	shown := func(list []api.Agent) []api.Agent {
+		if kept == nil {
+			return list
+		}
+		return slices.DeleteFunc(slices.Clone(list), func(a api.Agent) bool { return !kept[a.Id] })
+	}
 	var rows []agentListRow
 	var walk func(list []api.Agent, lead string, depth int)
 	walk = func(list []api.Agent, lead string, depth int) {
 		for i, a := range list {
-			r := agentListRow{agent: a, depth: depth}
-			children := childrenOf(a)
+			r := agentListRow{agent: a, depth: depth, match: words != nil && matches(a.Name, words)}
+			children := shown(childrenOf(a))
 			var next string
 			r.guide, next = treeGuides(lead, depth, i == len(list)-1)
 			switch {
-			case len(children) > 0 && l.closed[a.Id]:
+			case len(children) > 0 && kept == nil && l.closed[a.Id]:
 				below := api.FlattenAgents(children)
 				r.fold, r.below = foldClosed, len(below)
 				r.waiting = waitingAgents(below)
@@ -142,7 +156,7 @@ func (m *Model) listRows() []agentListRow {
 			}
 		}
 	}
-	walk(top, "", 0)
+	walk(shown(top), "", 0)
 	return rows
 }
 
@@ -218,7 +232,13 @@ func (m *Model) agentsChanged() {
 		}
 	}
 	m.tabsChanged(agents)
-	rows := m.listRows()
+	m.keepAgentCursor()
+}
+
+// keepAgentCursor keeps the cursor on its agent, or its nearest parent shown, or
+// on the row it was on.
+func (m *Model) keepAgentCursor() {
+	l, agents, rows := m.list(), m.agents(), m.listRows()
 	if i := shownAs(rows, agents, l.cursor); i >= 0 {
 		l.row, l.cursor = i, rows[i].agent.Id
 		return
@@ -276,7 +296,7 @@ func (m *Model) foldLeft() {
 		return
 	}
 	r := rows[l.row]
-	if r.fold == foldOpen {
+	if r.fold == foldOpen && !m.filtering() {
 		l.closed[r.agent.Id] = true
 		return
 	}
@@ -288,7 +308,7 @@ func (m *Model) foldLeft() {
 // foldRight opens the closed parent under the cursor.
 func (m *Model) foldRight() {
 	l, rows := m.list(), m.listRows()
-	if l.row < len(rows) && rows[l.row].fold == foldClosed {
+	if l.row < len(rows) && rows[l.row].fold == foldClosed && !m.filtering() {
 		delete(l.closed, rows[l.row].agent.Id)
 	}
 }
@@ -297,6 +317,9 @@ func (m *Model) foldRight() {
 // comes out of what it closes.
 func (m *Model) toggleFold(i int) {
 	l, rows := m.list(), m.listRows()
+	if m.filtering() {
+		return // what matches stays open
+	}
 	id := rows[i].agent.Id
 	if rows[i].fold == foldClosed {
 		delete(l.closed, id)
@@ -435,6 +458,17 @@ type projectScreen struct {
 func (s *projectScreen) title() string { return "Project: " + s.name }
 
 func (s *projectScreen) hint() string {
+	l := s.m.list()
+	switch {
+	case l != nil && l.filter.typing:
+		return filterTypingHint
+	case l != nil && l.filter.on():
+		return filterOnHint + s.sectionHint()
+	}
+	return s.sectionHint()
+}
+
+func (s *projectScreen) sectionHint() string {
 	top := s.m.topAgents()
 	if l := s.m.list(); l != nil {
 		switch {
@@ -463,6 +497,10 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 	}
 	name := key.String()
 	switch {
+	case name == filterKey:
+		s.m.openFilter()
+	case name == "esc" && l.filter.on():
+		s.m.clearFilter()
 	case slices.Contains(upKeys, name):
 		s.m.moveUp()
 	case slices.Contains(downKeys, name):
@@ -584,10 +622,15 @@ func (m *Model) visibleItems(height int) (shown []paneItem, top section) {
 // on a row's fold mark it folds or unfolds, elsewhere on a row it moves the cursor
 // there and shows what the row is.
 func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
-	if s.m.list() == nil || row < 1 {
+	l := s.m.list()
+	if l == nil || row < 1 {
 		return nil
 	}
-	shown, _ := s.m.visibleItems(height)
+	if l.filter.on() && row == height-1 {
+		s.m.openFilter()
+		return nil
+	}
+	shown, _ := s.m.visibleItems(s.m.listHeight(height))
 	if row-1 >= len(shown) {
 		return nil
 	}
@@ -648,7 +691,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		sectionCode:      sectionHeading(st, " Code", "", width),
 	}
 
-	shown, top := m.visibleItems(area.Dy())
+	shown, top := m.visibleItems(m.listHeight(area.Dy()))
 	lines := []string{headings[top]}
 	// A parent folded over the active agent carries its mark.
 	activeRow := shownAs(rows, agents, tabAgent(l.active))
@@ -659,6 +702,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, headings[it.section])
 		case it.empty && it.section == sectionCode:
 			lines = append(lines, st.Muted(" "+m.codeNote()))
+		case it.empty && m.filtering():
+			lines = append(lines, st.Muted(" no match"))
 		case it.empty && it.section == sectionAgents:
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
 		case it.empty && m.worktreeStatuses() == nil:
@@ -674,7 +719,20 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, m.codeLine(code[it.row], cursor, width))
 		}
 	}
+	if l.filter.on() {
+		lines = append(lines, slices.Repeat([]string{""}, max(m.listHeight(area.Dy())-len(lines), 0))...)
+		lines = append(lines, m.filterLine(st, width))
+	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
+}
+
+// listHeight is the rows the list has in a pane height rows high: the filter's
+// line takes the last.
+func (m *Model) listHeight(height int) int {
+	if l := m.list(); l != nil && l.filter.on() {
+		return max(height-1, 1)
+	}
+	return height
 }
 
 // sectionHeading is a section's band, with its count at the right end.

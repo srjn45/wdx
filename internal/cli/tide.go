@@ -34,7 +34,8 @@ func newTideCmd() *cobra.Command {
 			"dragging selects text in a pane and copies it on release.\n" +
 			"The Code section lists a worktree's files: Enter shows one read-only and\n" +
 			"highlighted, e edits it in the editor the editor setting names, and closing\n" +
-			"that tab asks to save or discard.\n" +
+			"that tab asks to save or discard. / filters the left pane's list as you\n" +
+			"type: Enter goes back to the list, Esc clears it.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
 			"when closed. The terminal pane has a tab for each of the project's\n" +
 			"terminals, kept up to date as they change; for now a tab and the agent pane\n" +

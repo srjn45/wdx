@@ -184,9 +184,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	diff := m.diffSync()
 	worktrees := m.worktreesSync()
 	code := m.codeSync()
+	filter := m.codeFilterSync()
 	attach := m.attachSelected()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, diff, worktrees, code, attach)
+	return m, tea.Batch(cmd, values, diff, worktrees, code, filter, attach)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -281,6 +282,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editorOpened(msg)
 	case codeLoaded:
 		m.codeLoaded(msg)
+	case codeMatched:
+		m.codeMatchedMsg(msg)
 	case commitSent:
 		m.commitSent(msg)
 	case landSettingsRead:
@@ -531,6 +534,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	default:
 		d, ok := focusKeys[name]
 		switch {
+		case !ok && m.layout.focus == project && m.filterTyping():
+			return m.filterKeyTyped(msg)
 		case !ok && m.layout.focus == project && m.menuOffers(name):
 			return m.menuAction(name)
 		case !ok && m.layout.focus == project:

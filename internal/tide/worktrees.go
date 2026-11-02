@@ -19,7 +19,7 @@ import (
 
 const (
 	refreshKey   = "f" // of the menu
-	worktreeHint = "↑↓ select  ←→ files  Enter diff  v verified  f refresh  Alt+arrows move  C-q menu"
+	worktreeHint = "↑↓ select  ←→ files  Enter diff  v verified  f refresh  / filter  Alt+arrows move  C-q menu"
 	rowSeparator = "\x00"
 )
 
@@ -27,6 +27,7 @@ const (
 type worktreeRow struct {
 	worktree api.WorktreeStatus
 	file     *api.WorktreeFile
+	match    bool // it matches the filter
 }
 
 // key names the row across events, as an agent's id does its row.
@@ -55,14 +56,20 @@ func (m *Model) worktreeStatuses() []api.WorktreeStatus {
 }
 
 // worktreeRows returns the rows the section shows: a folded worktree hides its
-// files.
+// files. With a filter, a worktree shows when its name or branch matches, or a file
+// it changed does, with those files.
 func (m *Model) worktreeRows() []worktreeRow {
 	l := m.list()
 	if l == nil {
 		return nil
 	}
 	var rows []worktreeRow
+	words := l.filter.words()
 	for _, w := range m.worktreeStatuses() {
+		if words != nil {
+			rows = append(rows, filteredWorktreeRows(w, words)...)
+			continue
+		}
 		rows = append(rows, worktreeRow{worktree: w})
 		if !l.worktreesOpen[w.Name] {
 			continue
@@ -74,21 +81,53 @@ func (m *Model) worktreeRows() []worktreeRow {
 	return rows
 }
 
+// filteredWorktreeRows returns the rows of w that the filter of words shows.
+func filteredWorktreeRows(w api.WorktreeStatus, words []string) []worktreeRow {
+	rows := []worktreeRow{{worktree: w, match: worktreeMatches(w, words)}}
+	for i := range w.Files {
+		if matches(w.Files[i].Path, words) {
+			rows = append(rows, worktreeRow{worktree: w, file: &w.Files[i], match: true})
+		}
+	}
+	if len(rows) == 1 && !rows[0].match {
+		return nil
+	}
+	return rows
+}
+
+// worktreeFolded reports whether the worktree's row hides its files: with a filter,
+// when none of them matches.
+func (m *Model) worktreeFolded(w api.WorktreeStatus) bool {
+	if words := m.filterWords(); words != nil {
+		return !slices.ContainsFunc(w.Files, func(f api.WorktreeFile) bool { return matches(f.Path, words) })
+	}
+	return !m.list().worktreesOpen[w.Name]
+}
+
 // worktreesChanged keeps the cursor on its row, or on the one that took its place;
 // with none left it goes back to the agents.
 func (m *Model) worktreesChanged() {
-	l, rows := m.list(), m.worktreeRows()
-	if l == nil {
+	if m.list() == nil {
 		return
 	}
 	m.codeChanged()
 	m.landingsChanged()
+	m.keepWorktreeCursor()
+}
+
+// keepWorktreeCursor keeps the cursor on its row, or on the one that took its
+// place; with none left it goes back to the agents.
+func (m *Model) keepWorktreeCursor() {
+	l, rows := m.list(), m.worktreeRows()
 	if i := slices.IndexFunc(rows, func(r worktreeRow) bool { return r.key() == l.worktreeKey }); i >= 0 {
 		l.worktreeRow = i
 		return
 	}
 	if len(rows) == 0 {
-		l.section, l.worktreeRow, l.worktreeKey = sectionAgents, 0, ""
+		if l.section == sectionWorktrees {
+			l.section = sectionAgents
+		}
+		l.worktreeRow, l.worktreeKey = 0, ""
 		return
 	}
 	l.worktreeRow = max(min(l.worktreeRow, len(rows)-1), 0)
@@ -178,6 +217,9 @@ func (m *Model) worktreeFoldRight() {
 
 func (m *Model) foldWorktree(name string, closed bool) {
 	l := m.list()
+	if m.filtering() {
+		return // what matches stays open
+	}
 	if l.worktreesOpen == nil {
 		l.worktreesOpen = map[string]bool{}
 	}
@@ -242,8 +284,11 @@ func (m *Model) worktreeRowActive(r worktreeRow) bool {
 	if r.tab() == l.active {
 		return true
 	}
-	if worktree, file := diffTabOf(l.active); r.file == nil && isDiffTab(l.active) && file != "" {
-		return worktree == r.worktree.Name && !l.worktreesOpen[worktree]
+	if worktree, file := diffTabOf(l.active); r.file == nil && isDiffTab(l.active) && file != "" && worktree == r.worktree.Name {
+		if words := m.filterWords(); words != nil {
+			return !matches(file, words)
+		}
+		return !l.worktreesOpen[worktree]
 	}
 	return false
 }
@@ -463,7 +508,7 @@ func stripped(s string) string { return ansi.Strip(s) }
 func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) string {
 	st := m.st
 	fold := "  "
-	folded := !m.list().worktreesOpen[w.Name]
+	folded := m.worktreeFolded(w)
 	if len(w.Files) > 0 {
 		fold = foldOpen + " "
 		if folded {
