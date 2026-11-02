@@ -234,7 +234,7 @@ Designed with the human on 2026-11-02, who chose the directory picker, a name ty
 
 ## Measured for the build
 
-- `git ls-files -co --exclude-standard` took 6 ms on this repository's 440 files; a monorepo is not measured.
+- `git ls-files -co --exclude-standard` took 6 ms on this repository's 440 files. Large repositories were measured on 2026-11-02, and the list since comes from the index and one walk, with no limit, and its tree is built off tide's UI loop: docs/LARGE_REPOS.md.
 - Chroma is MIT. Its latest GitHub release is a v3 alpha, so a stable v2 unless that has changed.
 - Chroma v2.27.0, with `regexp2` (MIT), measured on 2026-11-02 on linux/amd64 with the release's flags: the binary goes from 28.0 to 31.5 MiB, 10.6 to 11.5 MiB gzipped. Its `lexers` package registers every language when the process starts, in every `wdx` process since all are one binary: 20 ms more per run (`wdx help`, 36 to 56 ms over 20 runs) and 5 MB more resident (22 to 27 MB). A holder was not measured by itself.
 - Tokenising took 0.24 s for 32 KiB of Go and 1.9 s for 256 KiB, without the race detector, on repeated copies of `diff.go`.

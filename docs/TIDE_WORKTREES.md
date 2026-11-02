@@ -114,7 +114,7 @@ No entry point calls anything new. The daemon's `notices` already says that some
                                         ▼
                      tracker marks the worktree out of date
                                         ▼
-       settle; wait while index.lock exists; one git at a time per repository
+   settle; wait while index.lock exists; up to 4 worktrees read at once
                                         ▼
                           read-only git; result kept in memory
                                         ▼  only if it differs
@@ -133,6 +133,7 @@ No entry point calls anything new. The daemon's `notices` already says that some
 - `POST /v1/projects/{project}/worktrees/refresh` answers at once and, like a reload, does not wait for the daemon's other changes, so that a clone taking minutes does not hold it up.
 - Waiting on `index.lock` is a courtesy, since a read is safe beside it: the lock's end fires the watch. A refresh the user asked for does not wait, so a lock left by a crashed git cannot hide changes for good.
 - With no file watch available, as on some network file systems, the other events still work, and the log says so.
+- Up to 4 worktrees are read at once, and each is told of as it is read; on a project's first read the list is told of first, each worktree `unread` and shown `reading…` until its turn. Changed on 2026-11-02 from one at a time, for large repositories: docs/LARGE_REPOS.md.
 - The watches use `fsnotify`, under a BSD license.
 
 ### The lock rule

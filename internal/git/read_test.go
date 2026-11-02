@@ -42,7 +42,11 @@ func readRepo(t *testing.T) string {
 
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -448,6 +452,21 @@ func TestBoundedBuffer(t *testing.T) {
 	}
 }
 
+// TestReadKeepsUpToItsRoom reads what git writes through a pipe, as every read
+// does, where io.Copy may go around Write.
+func TestReadKeepsUpToItsRoom(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	whole, err := readWhole(t.Context(), dir, noDownload, "ls-files", "-z")
+	if err != nil || len(whole) <= 4 {
+		t.Fatalf("%q, %v", whole, err)
+	}
+	out, truncated, err := readUpTo(t.Context(), dir, noDownload, 4, "ls-files", "-z")
+	if err != nil || !truncated || !bytes.Equal(out, whole[:4]) {
+		t.Errorf("got %q, truncated %v, %v; want %q cut", out, truncated, err, whole[:4])
+	}
+}
+
 // TestPartialClone runs the reads of a clone lacking its files: one that runs by
 // itself downloads nothing, one a user asked for may.
 func TestPartialClone(t *testing.T) {
@@ -500,13 +519,97 @@ func TestListFiles(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "bare.txt")); err != nil {
 		t.Fatal(err)
 	}
-	got, truncated, err := ListFiles(t.Context(), dir)
-	if err != nil || truncated {
-		t.Fatal(truncated, err)
+	got, _, err := ListFiles(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
 	}
 	want := []string{".gitignore", "bare.txt", "kept", "landing", "new", "several/one", "several/two", "with\nnewline"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestListFilesAsTwoWalks compares ListFiles with the two walks it replaced,
+// ls-files -co and -o --directory, on a checkout with each kind of entry.
+func TestListFilesAsTwoWalks(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	write(t, dir, ".gitignore", "ignored\nbuild/\n")
+	write(t, dir, "ignored", "secret\n")
+	write(t, dir, "several/new", "untracked in a tracked directory\n")
+	write(t, dir, "fresh/a/b/c/deep", "untracked, levels down\n")
+	write(t, dir, "fresh/top", "x\n")
+	write(t, dir, "fresh/ignored", "secret\n")
+	write(t, dir, "fresh/build/out", "ignored directory\n")
+	write(t, dir, "*:(magic/inside", "a name that is pathspec magic\n")
+	write(t, dir, "with\nnewline/inside", "x\n")
+	for _, empty := range []string{"empty", "several/empty", "hollow/empty"} {
+		if err := os.MkdirAll(filepath.Join(dir, empty), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nested := filepath.Join(dir, "nested")
+	gittest.Git(t, dir, "init", "-q", nested)
+	write(t, nested, "inside", "x\n")
+	if err := os.Remove(filepath.Join(dir, "bare.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, dirs, err := ListFiles(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPaths := filePaths([]byte(gitOutput(t, dir, "ls-files", "-z", "-co", "--exclude-standard")))
+	var wantDirs []string
+	for _, p := range strings.Split(gitOutput(t, dir, "ls-files", "-z", "-o", "--directory", "--exclude-standard"), "\x00") {
+		if d, ok := strings.CutSuffix(p, "/"); ok {
+			wantDirs = append(wantDirs, d)
+		}
+	}
+	if !slices.Equal(paths, wantPaths) {
+		t.Errorf("paths:\n got %q\nwant %q", paths, wantPaths)
+	}
+	if !slices.Equal(dirs, wantDirs) {
+		t.Errorf("dirs:\n got %q\nwant %q", dirs, wantDirs)
+	}
+	for _, p := range []string{"fresh/a/b/c/deep", "*:(magic/inside", "with\nnewline/inside", "bare.txt"} {
+		if !slices.Contains(paths, p) {
+			t.Errorf("%q is missing from %q", p, paths)
+		}
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
+}
+
+func TestPathGroups(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("d", maxPathspecBytes/3)
+	dirs := []string{long + "1", long + "2", long + "3", "short"}
+	groups := pathGroups(dirs)
+	var all []string
+	for _, g := range groups {
+		size := 0
+		for _, p := range g {
+			size += len(p) + 1
+		}
+		if size > maxPathspecBytes {
+			t.Errorf("a group of %d bytes", size)
+		}
+		all = append(all, g...)
+	}
+	want := []string{long + "1/", long + "2/", long + "3/", "short/"}
+	if len(groups) != 2 || !slices.Equal(all, want) {
+		t.Errorf("%d groups, %d paths", len(groups), len(all))
+	}
+	if pathGroups(nil) != nil {
+		t.Error("no directories need no command")
 	}
 }
 

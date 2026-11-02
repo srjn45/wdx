@@ -84,7 +84,7 @@ func TestCodeRows(t *testing.T) {
 func codeModel(paths []string, worktrees ...api.WorktreeStatus) *Model {
 	m := worktreesModel(worktrees...)
 	m.Update(nil) // asks for them
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: paths})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: paths}, nil))
 	return m
 }
 
@@ -190,20 +190,18 @@ func TestCodeKeepsItsPlace(t *testing.T) {
 	if l.code.cursor != "b" {
 		t.Fatalf("on %q", l.code.cursor)
 	}
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"0", "a", "b", "c"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"0", "a", "b", "c"}}, nil))
 	if l.code.cursor != "b" || l.code.row != 3 {
 		t.Errorf("a file came above it: %+v", l.code)
 	}
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"0", "a"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"0", "a"}}, nil))
 	if l.code.cursor != "a" || l.code.row != 2 {
 		t.Errorf("its file went: %+v", l.code)
 	}
 	failed := "cannot read the files"
 	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", err: context.Canceled})
 	wantText(t, m, failed, "a")
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"a"}, truncated: true})
-	wantText(t, m, "too many files")
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{}}, nil))
 	wantText(t, m, "no files")
 	if l.code.row != 0 {
 		t.Errorf("nothing left but the selector: %+v", l.code)
@@ -247,7 +245,7 @@ func TestCodeKeepsEachWorktreesFolds(t *testing.T) {
 	keys(m, "enter")
 	m.moveToCode(0)
 	keys(m, "right")
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "auth-fix", paths: []string{"dir/x"}})
+	m.Update(newCodeLoaded("proj-demo", "auth-fix", fileList{paths: []string{"dir/x"}}, nil))
 	if m.codeFilesShown().open["dir"] {
 		t.Error("another worktree's folds apply")
 	}
@@ -369,6 +367,32 @@ func TestCodeScrollsAsOneList(t *testing.T) {
 	}
 }
 
+// TestCodeKeepsTheTreeOfTheSameList reads a list like the one shown: nothing is
+// built, and the tree, its folds and what the filter matched stay.
+func TestCodeKeepsTheTreeOfTheSameList(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(api.WorktreeStatus{Name: "main", Path: "/r"})
+	m.Update(nil)
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"dir/a", "b"}}, nil))
+	f := m.codeFilesShown()
+	tree, read := f.tree, f.read
+
+	again := newCodeLoaded("proj-demo", "main", fileList{paths: []string{"dir/a", "b"}, emptyDirs: []string{}}, &fileList{paths: f.paths, emptyDirs: f.emptyDirs})
+	if !again.same || again.tree != nil {
+		t.Fatalf("the same list was built again: %+v", again)
+	}
+	m.Update(again)
+	if len(f.tree) == 0 || &f.tree[0] != &tree[0] || f.read != read {
+		t.Errorf("the tree was replaced: read %d, then %d", read, f.read)
+	}
+
+	other := newCodeLoaded("proj-demo", "main", fileList{paths: []string{"dir/a", "c"}}, &fileList{paths: f.paths, emptyDirs: f.emptyDirs})
+	m.Update(other)
+	if other.same || f.read != read+1 || !slices.Equal(f.paths, []string{"dir/a", "c"}) {
+		t.Errorf("a new list was not taken: %+v", f.paths)
+	}
+}
+
 func TestCodeReadsAgainOnWhatItDependsOn(t *testing.T) {
 	t.Parallel()
 	head := "one"
@@ -378,7 +402,7 @@ func TestCodeReadsAgainOnWhatItDependsOn(t *testing.T) {
 	if f == nil || !f.loading {
 		t.Fatalf("not read once a worktree is chosen: %+v", f)
 	}
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"a"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"a"}}, nil))
 	m.Update(nil)
 	if f.loading {
 		t.Error("read again with nothing changed")
@@ -389,13 +413,13 @@ func TestCodeReadsAgainOnWhatItDependsOn(t *testing.T) {
 	if !f.loading {
 		t.Error("not read again on a commit")
 	}
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"a"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"a"}}, nil))
 	(*m.following.project.WorktreeStatuses)[0].Files = []api.WorktreeFile{changed("new", api.WorktreeFileStatusEmpty)}
 	m.Update(nil)
 	if !f.loading {
 		t.Error("not read again on a file new to the status")
 	}
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"a", "new"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"a", "new"}}, nil))
 	m.Update(nil)
 	if f.loading {
 		t.Fatal("read again with nothing changed")
@@ -535,7 +559,7 @@ func TestFileOpens(t *testing.T) {
 	}
 	m.moveToCode(0)
 	keys(m, "right")
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "auth-fix", paths: []string{"dir/a.go"}})
+	m.Update(newCodeLoaded("proj-demo", "auth-fix", fileList{paths: []string{"dir/a.go"}}, nil))
 	if slices.ContainsFunc(m.codeRowsShown(), m.codeRowActive) {
 		t.Error("another worktree's file has the mark")
 	}

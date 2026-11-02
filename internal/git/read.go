@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +66,18 @@ func (e *ReadError) Error() string {
 // is kept up to maxPatch; the reader of the rest goes on, so that git ends by
 // itself, and truncated says so.
 func read(ctx context.Context, dir string, fetch fetching, args ...string) (out []byte, truncated bool, err error) {
+	return readUpTo(ctx, dir, fetch, maxPatch, args...)
+}
+
+// readWhole is read keeping all git writes, for the lists a user must see whole
+// however long: a repository of 387K files lists about 20 MB.
+func readWhole(ctx context.Context, dir string, fetch fetching, args ...string) ([]byte, error) {
+	out, _, err := readUpTo(ctx, dir, fetch, math.MaxInt, args...)
+	return out, err
+}
+
+// readUpTo is read keeping room bytes of stdout.
+func readUpTo(ctx context.Context, dir string, fetch fetching, room int, args ...string) (out []byte, truncated bool, err error) {
 	log := logging.FromContext(ctx).With("dir", dir, "args", args)
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", append(append([]string{"-C", dir}, readConfig...), args...)...)
@@ -72,7 +85,7 @@ func read(ctx context.Context, dir string, fetch fetching, args ...string) (out 
 	if fetch == noDownload {
 		cmd.Env = append(cmd.Env, noLazyFetchOn)
 	}
-	stdout := &boundedBuffer{room: maxPatch}
+	stdout := &boundedBuffer{room: room}
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	err = cmd.Run()
@@ -89,9 +102,11 @@ func read(ctx context.Context, dir string, fetch fetching, args ...string) (out 
 	return stdout.Bytes(), stdout.dropped, nil
 }
 
-// boundedBuffer keeps what fits in room and drops the rest.
+// boundedBuffer keeps what fits in room and drops the rest. Its buffer is a field,
+// not embedded: io.Copy would call an embedded bytes.Buffer's ReadFrom, which
+// keeps everything, in place of Write.
 type boundedBuffer struct {
-	bytes.Buffer
+	buf     bytes.Buffer
 	room    int
 	dropped bool
 }
@@ -103,9 +118,11 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 		b.dropped = true
 	}
 	b.room -= len(p)
-	b.Buffer.Write(p)
+	b.buf.Write(p)
 	return n, nil
 }
+
+func (b *boundedBuffer) Bytes() []byte { return b.buf.Bytes() }
 
 var _ io.Writer = (*boundedBuffer)(nil)
 
@@ -221,39 +238,68 @@ func changeLetter(xy string) string {
 }
 
 // ListFiles returns the files of the checkout at dir, tracked and untracked, without
-// gitignored ones, sorted. A tracked file missing from disk is among them. truncated
-// says the list was too long, and these are the first of it.
-func ListFiles(ctx context.Context, dir string) (paths []string, truncated bool, err error) {
-	out, truncated, err := read(ctx, dir, noDownload, "ls-files", "-z", "-co", "--exclude-standard")
+// gitignored ones, sorted, however many. A tracked file missing from disk is among
+// them. dirs are the directories holding nothing tracked, without gitignored ones:
+// those holding untracked files only, those holding nothing, and nested
+// repositories, each relative to dir, without its slash.
+//
+// The tracked files come from the index, which costs no walk of the checkout, and
+// the untracked ones from one walk; only the directories it shows whole are walked
+// again, for what they hold. `ls-files -co` and `-o --directory` walked it twice.
+func ListFiles(ctx context.Context, dir string) (paths, dirs []string, err error) {
+	tracked, err := readWhole(ctx, dir, noDownload, "ls-files", "-z")
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
-	return filePaths(out), truncated, nil
-}
-
-// UntrackedDirs returns the directories ls-files shows in place of what they hold,
-// without gitignored ones: those holding untracked files only, those holding
-// nothing, and nested repositories. Each is relative to dir, without its slash.
-func UntrackedDirs(ctx context.Context, dir string) ([]string, error) {
-	out, _, err := read(ctx, dir, noDownload, "ls-files", "-z", "-o", "--directory", "--exclude-standard")
+	walked, err := readWhole(ctx, dir, noDownload, "ls-files", "-z", "-o", "--directory", "--exclude-standard")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var dirs []string
-	for _, p := range strings.Split(string(out), "\x00") {
+	out := append(tracked, walked...)
+	for _, p := range strings.Split(string(walked), "\x00") {
 		if d, ok := strings.CutSuffix(p, "/"); ok {
 			dirs = append(dirs, d)
 		}
 	}
-	return dirs, nil
+	for _, group := range pathGroups(dirs) {
+		inside, err := readWhole(ctx, dir, noDownload, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, group...)...)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, inside...)
+	}
+	return filePaths(out), dirs, nil
 }
 
-// filePaths splits what ls-files -z wrote. It lists a file in conflict once per
-// stage, and a nested repository as a directory, which is no file to open. Output
-// cut short ends inside a path, which is dropped.
+// maxPathspecBytes is the most of the paths one git command is given, well within
+// what a command line holds on Linux and macOS.
+const maxPathspecBytes = 64 << 10
+
+// pathGroups splits the directories into groups each one command can be given,
+// each with its slash, so that it names the directory alone.
+func pathGroups(dirs []string) [][]string {
+	var groups [][]string
+	var group []string
+	size := 0
+	for _, d := range dirs {
+		if len(group) > 0 && size+len(d)+2 > maxPathspecBytes {
+			groups, group, size = append(groups, group), nil, 0
+		}
+		group = append(group, d+"/")
+		size += len(d) + 2
+	}
+	if len(group) > 0 {
+		groups = append(groups, group)
+	}
+	return groups
+}
+
+// filePaths splits what ls-files -z wrote, sorted. It lists a file in conflict
+// once per stage, and a directory it shows whole, or a nested repository, with its
+// slash: no file to open.
 func filePaths(out []byte) []string {
 	entries := strings.Split(string(out), "\x00")
-	entries = entries[:len(entries)-1] // after the last NUL: nothing, or the part of a path
+	entries = entries[:len(entries)-1] // after the last NUL: nothing
 	paths := make([]string, 0, len(entries))
 	for _, p := range entries {
 		if !strings.HasSuffix(p, "/") {

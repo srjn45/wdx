@@ -70,7 +70,7 @@ func TestCodeFileKeysTakeOverInCode(t *testing.T) {
 func TestCodeDirPicker(t *testing.T) {
 	t.Parallel()
 	m := codeModel([]string{"a/b/x", "a/c", "top", ".hidden/y"}, codeWorktreeList()...)
-	m.Update(codeLoaded{projectID: "proj-demo", worktree: "main", paths: []string{"a/b/x", "a/c", "top", ".hidden/y"}, emptyDirs: []string{"a/empty", "z"}})
+	m.Update(newCodeLoaded("proj-demo", "main", fileList{paths: []string{"a/b/x", "a/c", "top", ".hidden/y"}, emptyDirs: []string{"a/empty", "z"}}, nil))
 	m.moveToCode(0)
 	keys(m, newDirKey)
 	s := m.openTop().(*codeDirScreen)

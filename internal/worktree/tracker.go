@@ -46,8 +46,11 @@ type Options struct {
 	// listed is called when a read has listed the checkouts and knows what it is to
 	// read, before it reads each: a test holds that step open to change one between.
 	listed func()
-	// readDone is called when a read has read the checkouts, before it tells of
-	// them: a test holds that step open to act during a read.
+	// reading is called as a read starts on the checkout at path: a test holds one
+	// open to see the others read meanwhile.
+	reading func(path string)
+	// readDone is called when a read has read the checkouts, before it last tells
+	// of them: a test holds that step open to act during a read.
 	readDone func()
 }
 
@@ -327,8 +330,9 @@ func (p *tracked) run(ctx context.Context) {
 	}
 }
 
-// read reads what is pending, and tells of what differs. One checkout at a time,
-// and in this goroutine alone, so that a project never runs two reads at once.
+// read reads what is pending, and tells of what differs, of each checkout as it is
+// read. Up to parallelReads checkouts at once, from this goroutine alone, so that a
+// project never runs two reads of one checkout at once.
 func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 	log := logging.FromContext(ctx)
 	c, err := p.t.opts.Checkouts(ctx, p.id)
@@ -354,8 +358,9 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		if s.Missing {
 			continue
 		}
-		was := known[s.Path]
+		was, seen := known[s.Path]
 		s.Files, s.Base, s.Ahead, s.Added, s.Removed, s.Committed, s.Comments = was.Files, was.Base, was.Ahead, was.Added, was.Removed, was.Committed, was.Comments
+		s.Unread = !seen || was.Unread
 	}
 
 	dirs := p.dirsOf(ctx, list)
@@ -374,18 +379,48 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		p.t.opts.listed()
 	}
 
-	for i := range list {
-		s := &list[i]
-		if s.Missing {
-			continue
+	// What is told: each checkout replaced in it as it is read. A base read for the
+	// first time, or a new one, has its files watched before anyone is told of it,
+	// or a move made right after would go unseen; one tell at a time, so that the
+	// watches and what is kept agree.
+	var told, telling sync.Mutex
+	tell := func() {
+		telling.Lock()
+		defer telling.Unlock()
+		told.Lock()
+		now := slices.Clone(list)
+		told.Unlock()
+		if watcher != nil {
+			p.syncWatches(ctx, watcher, now, dirs)
 		}
-		was, seen := known[s.Path]
+		p.mu.Lock()
+		changed := !reflect.DeepEqual(p.statuses, now)
+		p.statuses = now
+		p.mu.Unlock()
+		if changed {
+			p.t.opts.Changed()
+		}
+	}
+	// The checkouts not read yet are told of at once, so that they show while the
+	// others are read.
+	if slices.ContainsFunc(list, func(s Status) bool { return s.Unread && !s.Missing }) {
+		tell()
+	}
+
+	atOnce(ctx, len(list), func(i int) {
+		told.Lock()
+		s := list[i]
+		told.Unlock()
+		if s.Missing {
+			return
+		}
+		was := known[s.Path]
 		want := pending[s.Path]
-		if everything || !seen || was.Head != s.Head || was.Branch != s.Branch {
+		if everything || s.Unread || was.Head != s.Head || was.Branch != s.Branch {
 			want = reading{files: true, commits: true}
 		}
 		if want == (reading{}) {
-			continue
+			return
 		}
 		// A command like a long pull holds the index: its end fires the watch.
 		if d, ok := dirs[s.Path]; ok && watching && !forced && exists(filepath.Join(d.git, "index.lock")) {
@@ -393,10 +428,14 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			p.mu.Lock()
 			p.pending[s.Path] = p.pending[s.Path].with(want)
 			p.mu.Unlock()
-			continue
+			return
 		}
+		if p.t.opts.reading != nil {
+			p.t.opts.reading(s.Path)
+		}
+		start := time.Now()
 		if want.files {
-			if err := readFiles(ctx, s); err != nil {
+			if err := readFiles(ctx, &s); err != nil {
 				log.Info("files of a worktree not read", "path", s.Path, "err", err)
 			}
 			// A commit since the list above took files from the changes: they are
@@ -406,32 +445,31 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			}
 		}
 		if want.commits {
-			if err := readCommits(ctx, s); err != nil {
+			if err := readCommits(ctx, &s); err != nil {
 				log.Info("commits of a worktree not read", "path", s.Path, "err", err)
 			}
 		}
-		p.markRead(ctx, s)
-		p.commentsRead(ctx, s)
+		p.markRead(ctx, &s)
+		p.commentsRead(ctx, &s)
 		if ctx.Err() != nil {
 			return
 		}
+		s.Unread = false
+		log.Info("worktree read", "path", s.Path, "files", want.files, "commits", want.commits, logging.Duration(start))
+		told.Lock()
+		list[i] = s
+		told.Unlock()
+		tell()
+	})
+	if ctx.Err() != nil {
+		return
 	}
 	p.forgetGone(ctx, list)
 
 	if p.t.opts.readDone != nil {
 		p.t.opts.readDone()
 	}
-	// A base read for the first time, or a new one, has its files to watch.
-	if watcher != nil {
-		p.syncWatches(ctx, watcher, list, dirs)
-	}
-	p.mu.Lock()
-	changed := !reflect.DeepEqual(p.statuses, list)
-	p.statuses = list
-	p.mu.Unlock()
-	if changed {
-		p.t.opts.Changed()
-	}
+	tell()
 }
 
 // fileLeft says whether a file in before is not in after.

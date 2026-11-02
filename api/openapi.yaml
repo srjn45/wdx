@@ -1487,13 +1487,14 @@ components:
 
     WorktreeStatus:
       type: object
-      required: [name, path, branch, head, missing, base, ahead, added, removed, files, committed_files, comments]
+      required: [name, path, branch, head, missing, unread, base, ahead, added, removed, files, committed_files, comments]
       properties:
         name: { type: string, description: "main for the clone, else the last part of its path, with a number if that is taken." }
         path: { type: string }
         branch: { type: string, nullable: true, description: "Null when HEAD is detached." }
         head: { type: string, nullable: true, description: "Null with no commit yet." }
         missing: { type: boolean, description: "Its directory is gone." }
+        unread: { type: boolean, description: "True while a project's stream lists it before its files and commits were first read: they are empty until then. Always false elsewhere." }
         pull_request:
           nullable: true
           description: What gh last said of its PR; null when none is known. It is asked only when the user looks.
@@ -1790,7 +1791,7 @@ components:
           type: array
           items: { type: string }
           description: The directories, not gitignored, that hold no file, without a slash at their end.
-        truncated: { type: boolean, description: "Too many: paths is the first of them." }
+        truncated: { type: boolean, description: "Always false: every file is listed, however many. Kept so that nothing reading it breaks." }
 
     WorktreeFileCreate:
       type: object

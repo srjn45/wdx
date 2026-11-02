@@ -35,7 +35,6 @@ func (e *NotAFileError) Error() string {
 type Files struct {
 	Paths     []string
 	EmptyDirs []string
-	Truncated bool
 }
 
 // ListFiles returns the files of the checkout called name.
@@ -44,15 +43,11 @@ func ListFiles(ctx context.Context, c Checkouts, name string) (Files, error) {
 	if err != nil {
 		return Files{}, err
 	}
-	paths, truncated, err := git.ListFiles(ctx, s.Path)
+	paths, dirs, err := git.ListFiles(ctx, s.Path)
 	if err != nil {
 		return Files{}, err
 	}
-	dirs, err := git.UntrackedDirs(ctx, s.Path)
-	if err != nil {
-		return Files{}, err
-	}
-	f := Files{Paths: paths, EmptyDirs: []string{}, Truncated: truncated}
+	f := Files{Paths: paths, EmptyDirs: []string{}}
 	for _, d := range dirs {
 		// One listed with files holds untracked ones; a nested repository is no
 		// directory of this one's.

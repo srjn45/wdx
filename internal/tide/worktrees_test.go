@@ -82,6 +82,7 @@ func TestWorktreeSummary(t *testing.T) {
 		{"lines not known", api.WorktreeStatus{Ahead: aheadBy(2), Base: &main}, "↑2"},
 		{"no base", api.WorktreeStatus{}, ""},
 		{"missing", api.WorktreeStatus{Missing: true}, "missing"},
+		{"not read yet, so not clean", api.WorktreeStatus{Unread: true, Base: &main}, "reading…"},
 	} {
 		if got := worktreeSummary(tc.w); got != tc.want {
 			t.Errorf("%s: want %q, got %q", tc.name, tc.want, got)

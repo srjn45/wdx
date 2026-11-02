@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/srjn45/wdx/internal/git"
@@ -41,7 +42,10 @@ type Status struct {
 	Branch  string // "" when HEAD is detached
 	Head    string // "" with no commit yet
 	Missing bool   // its directory is gone
-	Base    string // what its commits are measured against; "" when nothing fits
+	// Unread is a checkout the tracker lists before it first read its files and
+	// commits, which are empty until then.
+	Unread bool
+	Base   string // what its commits are measured against; "" when nothing fits
 	// Ahead is how many commits it has that Base has not; nil when not known.
 	Ahead *int
 	// Added and Removed are the lines of those commits; nil when not known.
@@ -82,6 +86,31 @@ type Checkouts struct {
 	Paths []string
 }
 
+// parallelReads is how many checkouts are read at once. Measured on llvm-project,
+// 8 cores: 4 git status at once took 1.5 times one alone, against 4 times one after
+// the other; more crowd the user's own git and builds (docs/LARGE_REPOS.md).
+const parallelReads = 4
+
+// atOnce calls read for each of n checkouts, up to parallelReads at once, and
+// returns when all have returned. None starts once ctx is done.
+func atOnce(ctx context.Context, n int, read func(i int)) {
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, parallelReads)
+	for i := range n {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			read(i)
+		})
+	}
+	wg.Wait()
+}
+
 // Read returns everything known of the project's checkouts, reading it all now, with
 // the marks that still hold.
 func Read(ctx context.Context, c Checkouts, marks []Mark, drafts []Comment) ([]Status, error) {
@@ -89,17 +118,28 @@ func Read(ctx context.Context, c Checkouts, marks []Mark, drafts []Comment) ([]S
 	if err != nil {
 		return nil, err
 	}
-	for i := range list {
-		if err := readFiles(ctx, &list[i]); err != nil {
+	errs := make([]error, len(list))
+	atOnce(ctx, len(list), func(i int) {
+		s := &list[i]
+		start := time.Now()
+		if errs[i] = readFiles(ctx, s); errs[i] != nil {
+			return
+		}
+		if errs[i] = readCommits(ctx, s); errs[i] != nil {
+			return
+		}
+		applyMarks(ctx, s, marks)
+		applyComments(ctx, s, drafts)
+		if !s.Missing {
+			logging.FromContext(ctx).Info("worktree read", "path", s.Path, "files", true, "commits", true, logging.Duration(start))
+		}
+	})
+	for _, err := range errs {
+		if err != nil {
 			return nil, err
 		}
-		if err := readCommits(ctx, &list[i]); err != nil {
-			return nil, err
-		}
-		applyMarks(ctx, &list[i], marks)
-		applyComments(ctx, &list[i], drafts)
 	}
-	return list, nil
+	return list, ctx.Err()
 }
 
 // List returns the checkouts git lists for the repositories of c, then those of c

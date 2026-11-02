@@ -38,7 +38,6 @@ type codeFiles struct {
 	open      map[string]bool // the directories unfolded: they start folded
 	match     *codeMatch      // the files the filter last matched
 	matching  codeMatchKey    // what a match is being found for, the zero value when none is
-	truncated bool
 	loaded    bool
 	failed    bool
 	asked     bool // it was read for seen, or is being
@@ -198,8 +197,6 @@ func (m *Model) codeNote() string {
 		return "loading…"
 	case l.filter.words() != nil && f.match == nil:
 		return "filtering…"
-	case f.truncated:
-		return "too many files: these are the first"
 	case l.filter.words() != nil && len(f.match.tree) == 0:
 		return "no match"
 	case len(f.tree) == 0:
@@ -404,7 +401,11 @@ func (m *Model) codeSync() tea.Cmd {
 		return nil
 	}
 	f.asked, f.loading, f.seen = true, true, seen
-	return m.readCodeFiles(name)
+	var shown *fileList
+	if f.loaded {
+		shown = &fileList{paths: f.paths, emptyDirs: f.emptyDirs}
+	}
+	return m.readCodeFiles(name, shown)
 }
 
 // codeRefresh has the files of the worktree chosen read again, whatever the stream
@@ -418,16 +419,36 @@ func (m *Model) codeRefresh() {
 	}
 }
 
-// codeLoaded is the answer to reading a worktree's files.
+// fileList is what the daemon lists of a worktree's files.
+type fileList struct {
+	paths, emptyDirs []string
+}
+
+// codeLoaded is the answer to reading a worktree's files, with their tree built off
+// the UI loop: it takes long in a large repository. same is a list like the one
+// shown, which has nothing to build.
 type codeLoaded struct {
 	projectID, worktree string
 	paths, emptyDirs    []string
-	truncated           bool
+	tree                []*codeNode
+	same                bool
 	err                 error
 }
 
-// readCodeFiles asks the daemon for the files of the worktree called name.
-func (m *Model) readCodeFiles(name string) tea.Cmd {
+// newCodeLoaded is the answer of the list got, compared with the one shown, if any.
+func newCodeLoaded(projectID, worktree string, got fileList, shown *fileList) codeLoaded {
+	msg := codeLoaded{projectID: projectID, worktree: worktree, paths: got.paths, emptyDirs: got.emptyDirs}
+	if shown != nil && slices.Equal(shown.paths, got.paths) && slices.Equal(shown.emptyDirs, got.emptyDirs) {
+		msg.same = true
+		return msg
+	}
+	msg.tree = codeTree(got.paths, got.emptyDirs)
+	return msg
+}
+
+// readCodeFiles asks the daemon for the files of the worktree called name. The
+// lists it compares are never changed in place, only replaced.
+func (m *Model) readCodeFiles(name string, shown *fileList) tea.Cmd {
 	following := m.following
 	if following == nil || following.project == nil || m.client == nil {
 		return nil
@@ -435,7 +456,10 @@ func (m *Model) readCodeFiles(name string) tea.Cmd {
 	id := following.project.Id
 	return func() tea.Msg {
 		r, err := m.client.WorktreeFiles(m.ctx, name, "id:"+id, "")
-		return codeLoaded{projectID: id, worktree: name, paths: r.Paths, emptyDirs: r.EmptyDirs, truncated: r.Truncated, err: err}
+		if err != nil {
+			return codeLoaded{projectID: id, worktree: name, err: err}
+		}
+		return newCodeLoaded(id, name, fileList{paths: r.Paths, emptyDirs: r.EmptyDirs}, shown)
 	}
 }
 
@@ -453,9 +477,13 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 		m.log.Info("files not read", "worktree", msg.worktree, "err", msg.err)
 		return
 	}
-	f.paths, f.emptyDirs, f.tree, f.truncated, f.loaded = msg.paths, msg.emptyDirs, codeTree(msg.paths, msg.emptyDirs), msg.truncated, true
+	if msg.same && f.loaded {
+		m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "changed", false)
+		return
+	}
+	f.paths, f.emptyDirs, f.tree, f.loaded = msg.paths, msg.emptyDirs, msg.tree, true
 	f.read++
-	m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "truncated", msg.truncated)
+	m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "changed", true)
 	if l == m.list() {
 		m.keepCodeCursor()
 	}

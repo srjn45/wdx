@@ -18,13 +18,15 @@ import (
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
+// worktreeStatus finds the worktree called name once it was read: listed before,
+// its files and commits are empty, which a wait for none would take.
 func worktreeStatus(e event, name string) (api.WorktreeStatus, bool) {
 	if e.project.WorktreeStatuses == nil {
 		return api.WorktreeStatus{}, false
 	}
 	list := *e.project.WorktreeStatuses
 	i := slices.IndexFunc(list, func(w api.WorktreeStatus) bool { return w.Name == name })
-	if i < 0 {
+	if i < 0 || list[i].Unread {
 		return api.WorktreeStatus{}, false
 	}
 	return list[i], true

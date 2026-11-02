@@ -418,7 +418,7 @@ func (s *server) ListWorktreeFiles(ctx context.Context, req api.ListWorktreeFile
 	if err != nil {
 		return nil, err
 	}
-	return api.ListWorktreeFiles200JSONResponse{Worktree: req.Worktree, Paths: f.Paths, EmptyDirs: f.EmptyDirs, Truncated: f.Truncated}, nil
+	return api.ListWorktreeFiles200JSONResponse{Worktree: req.Worktree, Paths: f.Paths, EmptyDirs: f.EmptyDirs, Truncated: false}, nil
 }
 
 func (s *server) CreateWorktreeFile(ctx context.Context, req api.CreateWorktreeFileRequestObject) (api.CreateWorktreeFileResponseObject, error) {
@@ -691,6 +691,7 @@ func worktreeStatusViews(list []worktree.Status) []api.WorktreeStatus {
 			Branch:         textOrNull(w.Branch),
 			Head:           textOrNull(w.Head),
 			Missing:        w.Missing,
+			Unread:         w.Unread,
 			Base:           textOrNull(w.Base),
 			Ahead:          w.Ahead,
 			Added:          w.Added,

@@ -28,6 +28,8 @@ type trackerHarness struct {
 	reads  int    // how many times the checkouts were read
 	during func() // run once at the end of a read, holding it open
 	listed func() // run once after a read lists the checkouts, holding it open
+	// reading is run as a read starts on a checkout, holding it open.
+	reading func(path string)
 }
 
 func track(t *testing.T, dir string) *trackerHarness {
@@ -35,10 +37,14 @@ func track(t *testing.T, dir string) *trackerHarness {
 	return trackWith(t, dir, nil)
 }
 
-// trackWith is track with marks kept by the tracker, when not nil.
-func trackWith(t *testing.T, dir string, marks *Marks) *trackerHarness {
+// trackWith is track with marks kept by the tracker, when not nil, and the
+// harness set up before it follows the project.
+func trackWith(t *testing.T, dir string, marks *Marks, setup ...func(*trackerHarness)) *trackerHarness {
 	t.Helper()
 	h := &trackerHarness{t: t, dir: dir, changed: make(chan struct{}, 1)}
+	for _, f := range setup {
+		f(h)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	h.tracker = NewTracker(ctx, Options{
 		Checkouts: func(context.Context, string) (Checkouts, error) {
@@ -67,6 +73,14 @@ func trackWith(t *testing.T, dir string, marks *Marks) *trackerHarness {
 			h.mu.Unlock()
 			if listed != nil {
 				listed()
+			}
+		},
+		reading: func(path string) {
+			h.mu.Lock()
+			reading := h.reading
+			h.mu.Unlock()
+			if reading != nil {
+				reading(path)
 			}
 		},
 		readDone: func() {
@@ -106,6 +120,13 @@ func (h *trackerHarness) waitFor(what string, ok func([]Status) bool) {
 	}
 }
 
+// isRead says the worktree is listed and was read: listed alone, its files and
+// commits may not be known yet.
+func isRead(list []Status, worktree string) bool {
+	s, ok := named2(list, worktree)
+	return ok && !s.Unread
+}
+
 func fileIn(list []Status, worktree, path string) bool {
 	s, ok := named2(list, worktree)
 	return ok && slices.ContainsFunc(s.Files, func(f File) bool { return f.Path == path })
@@ -117,6 +138,34 @@ func TestTrackerReadsWhenFollowed(t *testing.T) {
 	write(t, dir, "fresh", "new\n")
 	h := track(t, dir)
 	h.waitFor("the first read", func(list []Status) bool { return fileIn(list, "main", "fresh") })
+}
+
+// TestTrackerReadsCheckoutsAtOnce holds the read of the clone open: the worktree
+// is read meanwhile and told of, and the clone shows as not read yet.
+func TestTrackerReadsCheckoutsAtOnce(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	write(t, work, "fresh", "new\n")
+	held := make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	h := trackWith(t, dir, nil, func(h *trackerHarness) {
+		h.reading = func(path string) {
+			if path == dir {
+				<-held
+			}
+		}
+	})
+	t.Cleanup(release) // before the tracker's cleanup waits for its reads
+	h.waitFor("the worktree read with the clone held", func(list []Status) bool {
+		clone, _ := named2(list, "main")
+		return fileIn(list, "work", "fresh") && clone.Unread
+	})
+	release()
+	h.waitFor("the clone read", func(list []Status) bool {
+		clone, _ := named2(list, "main")
+		return !clone.Unread
+	})
 }
 
 // TestTrackerNotFollowed is the promise that nobody following costs no git.
@@ -147,7 +196,7 @@ func TestTrackerSeesGitCommands(t *testing.T) {
 	dir := repo(t)
 	work := linked(t, dir, "work")
 	h := track(t, dir)
-	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.waitFor("the worktree read", func(list []Status) bool { return isRead(list, "work") })
 
 	// git add changes the index, and only that.
 	write(t, work, "staged", "s\n")
@@ -176,7 +225,7 @@ func TestTrackerSeesWorktreesComeAndGo(t *testing.T) {
 	h.waitFor("the clone", func(list []Status) bool { return len(list) == 1 })
 
 	later := linked(t, dir, "later")
-	h.waitFor("a worktree added", func(list []Status) bool { _, ok := named2(list, "later"); return ok })
+	h.waitFor("a worktree added and read", func(list []Status) bool { return isRead(list, "later") })
 
 	gittest.Git(t, dir, "worktree", "remove", later)
 	h.waitFor("a worktree removed", func(list []Status) bool { _, ok := named2(list, "later"); return !ok })
@@ -196,6 +245,37 @@ func TestTrackerSeesTheBaseMove(t *testing.T) {
 
 	// Landed by moving main, which no checkout has checked out: only its ref and reflog say.
 	gittest.Git(t, dir, "update-ref", "refs/heads/main", "work")
+	h.waitFor("landed", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 0
+	})
+}
+
+// TestTrackerWatchesABaseBeforeTellingOfIt moves the base right after the worktree
+// was told of, while another checkout's read holds the read open: the move must
+// be seen, so the base was watched before the worktree was told of.
+func TestTrackerWatchesABaseBeforeTellingOfIt(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	gittest.Git(t, dir, "switch", "-qc", "elsewhere")
+	commit(t, work, "mine", "m\n")
+	held := make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	h := trackWith(t, dir, nil, func(h *trackerHarness) {
+		h.reading = func(path string) {
+			if path == dir {
+				<-held
+			}
+		}
+	})
+	t.Cleanup(release) // before the tracker's cleanup waits for its reads
+	h.waitFor("one ahead, the clone held", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return intOf(s.Ahead) == 1
+	})
+	gittest.Git(t, dir, "update-ref", "refs/heads/main", "work")
+	release()
 	h.waitFor("landed", func(list []Status) bool {
 		s, _ := named2(list, "work")
 		return intOf(s.Ahead) == 0
@@ -344,7 +424,7 @@ func TestTrackerAgentStops(t *testing.T) {
 	dir := repo(t)
 	work := linked(t, dir, "work")
 	h := track(t, dir)
-	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.waitFor("the worktree read", func(list []Status) bool { return isRead(list, "work") })
 
 	h.setAgents(Agent{ID: "a", Dir: filepath.Join(work, "sub"), Working: true})
 	h.tracker.AgentsChanged()
@@ -370,7 +450,7 @@ func TestTrackerAgentMoved(t *testing.T) {
 	work := linked(t, dir, "work")
 	h := track(t, dir)
 	h.setAgents(Agent{ID: "a", Dir: dir})
-	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.waitFor("the worktree read", func(list []Status) bool { return isRead(list, "work") })
 	h.tracker.AgentsChanged()
 
 	write(t, work, "edited", "e\n") // says nothing to git's files
@@ -390,7 +470,7 @@ func TestTrackerRefresh(t *testing.T) {
 	dir := repo(t)
 	work := linked(t, dir, "work")
 	h := track(t, dir)
-	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.waitFor("the worktree read", func(list []Status) bool { return isRead(list, "work") })
 
 	write(t, work, "edited", "e\n") // says nothing to git's files
 	h.tracker.Refresh("p", "work")
@@ -408,7 +488,7 @@ func TestTrackerWaitsForTheIndexLock(t *testing.T) {
 	dir := repo(t)
 	work := linked(t, dir, "work")
 	h := track(t, dir)
-	h.waitFor("the worktree", func(list []Status) bool { _, ok := named2(list, "work"); return ok })
+	h.waitFor("the worktree read", func(list []Status) bool { return isRead(list, "work") })
 
 	gitDir := filepath.Join(dir, ".git", "worktrees", "work")
 	lock := filepath.Join(gitDir, "index.lock")

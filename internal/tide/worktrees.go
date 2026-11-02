@@ -270,6 +270,8 @@ func worktreeSummary(w api.WorktreeStatus) string {
 	switch {
 	case w.Missing:
 		return "missing"
+	case w.Unread:
+		return "reading…" // its files and commits are not known yet, nor that it has none
 	case w.Ahead == nil:
 		return pullRequestSummary(w)
 	case *w.Ahead == 0:
