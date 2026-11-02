@@ -1,6 +1,6 @@
 # Docs
 
-Status: approved by the human on 2026-11-02; nothing built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
+Status: approved by the human on 2026-11-02; steps 1 to 3 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
 
 ## Why
 
@@ -101,14 +101,16 @@ CREATE TABLE doc_revisions (
 | `PATCH /v1/docs/{doc}` | status, labels, name | 200 `updated` or `unchanged` |
 | `GET /v1/docs/{doc}/revisions` | its revisions: number, size, time | `revisions` |
 | `DELETE /v1/docs/{doc}?project=&dir=` | removes a doc with its revisions and copies | 200 `removed` |
-| `POST /v1/docs/sync-to-git` | writes the project's git copy once, with `path` | 200 `synced` |
+| `POST /v1/docs/sync-to-git` | writes the project's git copy once, with `path`; added with step 5 | 200 `synced` |
 
-- `{doc}` is a name, or `id:` and an id, as `{project}` is. The project comes from `project` or `dir`, as for terminals and agents.
+- `{doc}` is a name, or `id:` and an id, as `{project}` is. The project comes from `project` or `dir`, as for terminals and agents; listing and creating need one of them, as docs belong to a project.
+- `labels` in a list is repeated (`labels=a&labels=b`), as the generated client sends an array; a label no doc could have, as one with a capital, is `invalid_argument` rather than matching nothing.
+- `PATCH` takes `name`, or `status`, `add_labels` and `remove_labels`, never both: a rename and a status are separate transactions, and together one could be made and the other fail. Asking for nothing is `usage`; a label both added and removed is `invalid_argument`.
 - Content travels in the requests, never a path: the daemon never reads a client's files, and a client never learns where the copies are.
-- A doc: `id`, `project_id`, `name`, `format`, `labels`, `status`, `revision`, `size` (of the latest), `created_at`, `updated_at`. An `updated` content change also returns `previous_status`.
+- A doc: `id`, `project_id`, `project_name`, `name`, `format`, `labels`, `status`, `revision`, `size` (of the latest), `created_at`, `updated_at`. An `updated` content change also returns `previous_status`.
 - `Project` gains `docs`, without content, so that the project stream tells tide of every change.
 - Docs work in a closed project too: nothing about them runs.
-- Errors: `not_found` (a doc, or a revision it does not have), `name_taken`, `invalid_name`, `invalid_argument`, `doc_changed`, and for `sync-to-git` `checkout_missing` and `invalid_path` (a path leading out of the repository).
+- Errors: `not_found` (a doc, or a revision it does not have), `name_taken` (the doc under `details.doc`), `invalid_name`, `invalid_argument`, `doc_changed` (the doc as it is now under `details.doc`, whose `revision` is the latest, and `details.base`), and for `sync-to-git` `checkout_missing` and `invalid_path` (a path leading out of the repository).
 - Logs name the doc, project, revision and size of every change, never the content.
 
 ### The CLI
@@ -151,7 +153,7 @@ Each builds and passes `make test` on its own.
 
 1. **Done.** The migration and `internal/doc`: names, labels, content checks, revisions and the base check, with domain tests.
 2. **Done.** The hidden copies: writing after each change, and `CatchUpCopies` and `RemoveProjectCopies`, which step 3 has the daemon call on start and on removing a project.
-3. The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
+3. **Done.** The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
 4. The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
 5. The git copy: `sync-to-git` and the `docs.git_path` setting.
 6. tide: the Docs section and its tab, `tide.section_order`.

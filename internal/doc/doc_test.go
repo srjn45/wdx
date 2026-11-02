@@ -181,7 +181,7 @@ func TestUpdate(t *testing.T) {
 	// A client that read revision 1 writes after another wrote revision 2.
 	_, err = f.store.Update(ctx, d.ID, 1, []byte("stale"))
 	var changed *ChangedError
-	if !errors.As(err, &changed) || changed.Base != 1 || changed.Latest != 2 {
+	if !errors.As(err, &changed) || changed.Base != 1 || changed.Doc.Revision != 2 {
 		t.Fatalf("got %v, want a *ChangedError from 1 to 2", err)
 	}
 	if got := f.content(t, d.ID, 0); got != "two" {
@@ -266,6 +266,13 @@ func TestList(t *testing.T) {
 			t.Errorf("labels %q, status %q: got %q, want %q", c.labels, c.status, got, c.want)
 		}
 	}
+	var invalid *InvalidError
+	if _, err := f.store.List(ctx, p, []string{"Auth"}, ""); !errors.As(err, &invalid) || invalid.What != "label" {
+		t.Errorf("a capital label: %v", err)
+	}
+	if _, err := f.store.List(ctx, p, nil, "done"); !errors.As(err, &invalid) || invalid.What != "status" {
+		t.Errorf("an unknown status: %v", err)
+	}
 }
 
 func TestSet(t *testing.T) {
@@ -293,6 +300,9 @@ func TestSet(t *testing.T) {
 	}
 	if _, _, err := f.store.Set(ctx, d.ID, Change{AddLabels: []string{"RFC"}}); !errors.As(err, &invalid) {
 		t.Errorf("a capital: %v", err)
+	}
+	if _, _, err := f.store.Set(ctx, d.ID, Change{AddLabels: []string{"x"}, RemoveLabels: []string{"x"}}); !errors.As(err, &invalid) || invalid.What != "labels" {
+		t.Errorf("a label added and removed: %v", err)
 	}
 	many := make([]string, MaxLabels-1)
 	for i := range many {

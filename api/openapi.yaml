@@ -204,7 +204,8 @@ paths:
       operationId: deleteProject
       summary: Delete a project and everything that belongs to it
       description: |
-        Files on disk are not touched. Terminals starting or running refuse
+        Files on disk are not touched, but for the copies of its docs in the
+        daemon's home, which go with them. Terminals starting or running refuse
         it with project_in_use unless stop_running is true, which stops them
         first and lists them under "stopped".
 
@@ -229,9 +230,9 @@ paths:
         Server-sent events (text/event-stream) for as long as the client
         stays. The first event is the project as getProject returns it;
         after every change under it (the project opened or closed, a
-        terminal created, changing state or removed, whoever made it) the
-        project is sent whole again, never a delta, so a client replaces
-        what it holds. Changes close together may be sent as one.
+        terminal created, changing state or removed, a doc created, changed
+        or removed, whoever made it) the project is sent whole again, never a
+        delta, so a client replaces what it holds. Changes close together may be sent as one.
 
         Each event is "event: project" with a ProjectEnvelope as its data.
         When the project is removed, "event: removed" with a ProjectRemoved
@@ -1294,6 +1295,165 @@ paths:
               schema: { $ref: "#/components/schemas/EditorResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/docs:
+    get:
+      operationId: listDocs
+      summary: List a project's docs by name
+      description: |
+        The docs of the project named by project, or of the project whose
+        worktree holds dir; one of them is required. With labels, only the
+        docs that have every one of them; with status, only those in it.
+        Content is never listed.
+
+        Errors: invalid_argument, invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/TerminalProject"
+        - $ref: "#/components/parameters/TerminalDir"
+        - name: labels
+          in: query
+          description: Labels a doc must all have; repeated, as in labels=a&labels=b.
+          schema: { type: array, items: { type: string, minLength: 1 } }
+        - name: status
+          in: query
+          description: The status a doc must be in.
+          schema: { $ref: "#/components/schemas/DocStatus" }
+      responses:
+        "200":
+          description: The docs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createDoc
+      summary: Create a doc at revision 1
+      description: |
+        In the project named by project, or the one whose worktree holds dir;
+        one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+        most 100, unique in the project ignoring case. A format is A-Z, a-z
+        and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+        most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+        2 MiB. Docs work in a closed project too.
+
+        Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+        the doc under details.doc), not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDoc" }
+      responses:
+        "201":
+          description: The doc, with result created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/docs/{doc}:
+    parameters:
+      - $ref: "#/components/parameters/DocRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getDoc
+      summary: A doc with one revision's content, the latest by default
+      description: "Errors: invalid_path, not_found (the doc, or a revision it does not have), usage."
+      parameters:
+        - name: revision
+          in: query
+          description: The revision whose content to return.
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: The doc and the revision's content.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocContent" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateDoc
+      summary: Change a doc's status or labels, or rename it
+      description: |
+        Never makes a revision and needs no base. name excludes status,
+        add_labels and remove_labels; asking for nothing is a usage error. A
+        label in both add_labels and remove_labels is invalid_argument;
+        removing a label the doc does not have is not an error. Result
+        updated, or unchanged when nothing differs.
+
+        Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+        the doc under details.doc), not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDoc" }
+      responses:
+        "200":
+          description: The doc, with result updated or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocResult" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteDoc
+      summary: Delete a doc, its revisions and its copies on disk
+      description: "Errors: invalid_path, not_found, usage."
+      responses:
+        "200":
+          description: The removed doc, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/docs/{doc}/content:
+    parameters:
+      - $ref: "#/components/parameters/DocRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    put:
+      operationId: updateDocContent
+      summary: Write a doc's content as a new revision, if base is still its latest
+      description: |
+        In one step: when base is the doc's latest revision, content becomes
+        revision base + 1 and the status wip, result updated with
+        previous_status; content equal to the latest makes no revision and
+        keeps the status, result unchanged. When base is not the latest,
+        doc_changed, with the doc under details.doc: read it again, apply the
+        change and write it with the new base.
+
+        Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocContentChange" }
+      responses:
+        "200":
+          description: The doc, with result updated or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/docs/{doc}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/DocRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: listDocRevisions
+      summary: A doc's revisions, latest first, without content
+      description: "Errors: invalid_path, not_found, usage."
+      responses:
+        "200":
+          description: The revisions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocRevisionList" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     WorktreeRef:
@@ -1343,6 +1503,15 @@ components:
       required: true
       description: |
         "id:" and the agent's id, as in id:agent-1a2b3c4d, or its name
+        (case-insensitive) together with project or dir, since names are
+        unique only within a project.
+      schema: { type: string, minLength: 1 }
+    DocRef:
+      name: doc
+      in: path
+      required: true
+      description: |
+        "id:" and the doc's id, as in id:doc-1a2b3c4d, or its name
         (case-insensitive) together with project or dir, since names are
         unique only within a project.
       schema: { type: string, minLength: 1 }
@@ -1478,6 +1647,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Editor" }
           description: The editors running in the project; set by getProject only.
+        docs:
+          type: array
+          items: { $ref: "#/components/schemas/Doc" }
+          description: The project's docs by name, without content; set by getProject only.
         worktree_statuses:
           type: array
           items: { $ref: "#/components/schemas/WorktreeStatus" }
@@ -2242,6 +2415,115 @@ components:
           nullable: true
           description: Its task, as the first message in its inbox, which waits until it is ready for it; see sendAgent.
 
+    DocStatus:
+      type: string
+      description: Whether a doc is agreed on; changing its content makes it wip.
+      enum: [wip, review, approved, rejected]
+
+    Doc:
+      type: object
+      required: [id, name, project_id, project_name, format, labels, status, revision, size, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        project_id: { type: string }
+        project_name: { type: string }
+        format: { type: string, description: "Its file extension, as md; empty for none." }
+        labels:
+          type: array
+          items: { type: string }
+          description: Sorted.
+        status: { $ref: "#/components/schemas/DocStatus" }
+        revision: { type: integer, format: int64, description: The latest. }
+        size: { type: integer, format: int64, description: Bytes of the latest revision. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: When anything about it last changed. }
+
+    DocRevision:
+      type: object
+      required: [number, size, created_at]
+      properties:
+        number: { type: integer, format: int64 }
+        size: { type: integer, format: int64, description: Bytes of its text. }
+        created_at: { type: string, format: date-time }
+
+    CreateDoc:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          nullable: true
+          description: The project's name, or "id:" and its id; excludes dir.
+        dir:
+          type: string
+          nullable: true
+          description: An absolute path in one of the project's worktrees; excludes project.
+        name: { type: string, description: See createDoc. }
+        format: { type: string, default: md, description: Its file extension; see createDoc. }
+        labels:
+          type: array
+          items: { type: string }
+        status: { $ref: "#/components/schemas/DocStatus" }
+        content: { type: string, default: "", description: The text of revision 1. }
+
+    DocContentChange:
+      type: object
+      required: [base, content]
+      additionalProperties: false
+      properties:
+        base: { type: integer, format: int64, minimum: 1, description: The revision the change was made on. }
+        content: { type: string, description: The whole new text. }
+
+    UpdateDoc:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, description: Its new name; excludes the others. }
+        status: { $ref: "#/components/schemas/DocStatus" }
+        add_labels:
+          type: array
+          items: { type: string }
+        remove_labels:
+          type: array
+          items: { type: string }
+
+    DocList:
+      type: object
+      required: [docs]
+      properties:
+        docs:
+          type: array
+          items: { $ref: "#/components/schemas/Doc" }
+
+    DocRevisionList:
+      type: object
+      required: [revisions]
+      properties:
+        revisions:
+          type: array
+          items: { $ref: "#/components/schemas/DocRevision" }
+
+    DocContent:
+      type: object
+      required: [doc, revision, content]
+      properties:
+        doc: { $ref: "#/components/schemas/Doc" }
+        revision: { type: integer, format: int64, description: The revision content is of. }
+        content: { type: string }
+
+    DocResult:
+      type: object
+      required: [result, doc]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        doc: { $ref: "#/components/schemas/Doc" }
+        previous_status:
+          $ref: "#/components/schemas/DocStatus"
+          description: The status before a content change made it wip; left out otherwise.
+
     ErrorCode:
       type: string
       description: |
@@ -2318,6 +2600,7 @@ components:
         - privileges_required
         - dependency_missing
         - editor_running
+        - doc_changed
 
     Problem:
       type: object

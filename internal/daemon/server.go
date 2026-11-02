@@ -5,6 +5,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
@@ -12,12 +13,13 @@ import (
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
-// server implements the API on the project store, the terminals' supervisor
-// and the agents' manager.
+// server implements the API on the project store, the terminals' supervisor,
+// the agents' manager and the doc store.
 type server struct {
 	projects     *project.Store
 	terminals    *terminal.Supervisor
 	agents       *agent.Manager
+	docs         *doc.Store
 	self         api.Daemon
 	notices      *notices        // tells the streams about changes
 	stopping     <-chan struct{} // closed when the daemon starts stopping: the streams end

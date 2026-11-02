@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -148,6 +149,7 @@ type Daemon struct {
 	projects  *project.Store
 	agents    *agent.Manager
 	backups   *agent.Backups
+	docs      *doc.Store
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
 	marks     *worktree.Marks
@@ -234,6 +236,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		return nil, err
 	}
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
+	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
 	if opts.Executable == "" {
 		if opts.Executable, err = os.Executable(); err != nil {
 			return nil, err
@@ -287,6 +290,11 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	if err := d.terminals.Sweep(logged); err != nil {
 		return nil, err
+	}
+	// A copy is only a backup of what the database holds, so one left
+	// behind fails nothing.
+	if err := d.docs.CatchUpCopies(logged); err != nil {
+		d.log.Error("doc copies not caught up", "err", err)
 	}
 	if err := d.backups.Sweep(logged); err != nil {
 		d.log.Error("agent backups not swept", "err", err)

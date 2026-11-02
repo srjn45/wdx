@@ -84,6 +84,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeDependencyMissing:  {http.StatusServiceUnavailable, ExitSystem, "a program the request needs is not installed: wdx deps list tells which"},
 	ErrorCodePrivilegesRequired: {http.StatusForbidden, ExitRejected, "installing needs root, and sudo cannot ask for the password"},
 	ErrorCodeEditorRunning:      {http.StatusConflict, ExitRejected, "an editor has the file, or a file in the directory, open"},
+	ErrorCodeDocChanged:         {http.StatusConflict, ExitRejected, "the doc has a newer revision than the base given"},
 }
 
 // NewProblem returns the problem of code, with the status and title the code

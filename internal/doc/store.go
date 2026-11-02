@@ -103,8 +103,19 @@ func (s *Store) GetByName(ctx context.Context, projectID, name string) (Doc, err
 }
 
 // List returns the docs of the project with projectID by name: those with every
-// one of labels, and in status unless it is empty.
+// one of labels, and in status unless it is empty. A label no doc could have is an
+// *InvalidError rather than matching none, so that a capital is not taken for a
+// label nothing has.
 func (s *Store) List(ctx context.Context, projectID string, labels []string, status Status) ([]Doc, error) {
+	labels, err := cleanLabels(labels)
+	if err != nil {
+		return nil, err
+	}
+	if status != "" {
+		if err := checkStatus(status); err != nil {
+			return nil, err
+		}
+	}
 	return s.query(ctx, s.db, `d.project_id = ?
 		AND (?2 = '' OR d.status = ?2)
 		AND NOT EXISTS (SELECT 1 FROM json_each(?3) w WHERE w.value NOT IN (SELECT value FROM json_each(d.labels)))`,
@@ -189,7 +200,7 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 	}
 	if d.Revision != base {
 		log.Info("doc changed since its base", "doc_id", id, "name", d.Name, "base", base, "revision", d.Revision)
-		return Updated{}, &ChangedError{Name: d.Name, Base: base, Latest: d.Revision}
+		return Updated{}, &ChangedError{Doc: d, Base: base}
 	}
 	var packed []byte
 	if err := tx.QueryRowContext(ctx, "SELECT content FROM doc_revisions WHERE doc_id = ? AND revision = ?", id, d.Revision).Scan(&packed); err != nil {
@@ -224,7 +235,8 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 }
 
 // Change is what Set changes: the status unless it is empty, and labels added and
-// removed. Removing a label the doc does not have is no error.
+// removed. Removing a label the doc does not have is no error; adding and removing
+// the same one is.
 type Change struct {
 	Status       Status
 	AddLabels    []string
@@ -242,6 +254,11 @@ func (s *Store) Set(ctx context.Context, id string, c Change) (Doc, bool, error)
 	}
 	if _, err := cleanLabels(c.AddLabels); err != nil {
 		return Doc{}, false, err
+	}
+	for _, l := range c.AddLabels {
+		if slices.Contains(c.RemoveLabels, l) {
+			return Doc{}, false, &InvalidError{What: "labels", Reason: fmt.Sprintf("%q is both added and removed", l)}
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

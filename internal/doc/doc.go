@@ -89,15 +89,15 @@ func (e *InvalidError) Error() string {
 }
 
 // ChangedError is returned when a change names a base revision that is no longer
-// the doc's latest: someone changed it since it was read.
+// the doc's latest: someone changed it since it was read. Doc is the doc as it is
+// now.
 type ChangedError struct {
-	Name   string
-	Base   int
-	Latest int
+	Doc  Doc
+	Base int
 }
 
 func (e *ChangedError) Error() string {
-	return fmt.Sprintf("doc %s is at revision %d, not %d", e.Name, e.Latest, e.Base)
+	return fmt.Sprintf("doc %s is at revision %d, not %d", e.Doc.Name, e.Doc.Revision, e.Base)
 }
 
 // Names, formats and labels are drawn in tide and printed by the cli, so they must

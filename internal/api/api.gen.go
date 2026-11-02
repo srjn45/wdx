@@ -117,6 +117,30 @@ func (e CreateProjectOnMissingCheckout) Valid() bool {
 	}
 }
 
+// Defines values for DocStatus.
+const (
+	DocStatusApproved DocStatus = "approved"
+	DocStatusRejected DocStatus = "rejected"
+	DocStatusReview   DocStatus = "review"
+	DocStatusWip      DocStatus = "wip"
+)
+
+// Valid indicates whether the value is a known member of the DocStatus enum.
+func (e DocStatus) Valid() bool {
+	switch e {
+	case DocStatusApproved:
+		return true
+	case DocStatusRejected:
+		return true
+	case DocStatusReview:
+		return true
+	case DocStatusWip:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAgentBusy          ErrorCode = "agent_busy"
@@ -137,6 +161,7 @@ const (
 	ErrorCodeDaemonUnavailable  ErrorCode = "daemon_unavailable"
 	ErrorCodeDependencyMissing  ErrorCode = "dependency_missing"
 	ErrorCodeDetachedHead       ErrorCode = "detached_head"
+	ErrorCodeDocChanged         ErrorCode = "doc_changed"
 	ErrorCodeDownloadFailed     ErrorCode = "download_failed"
 	ErrorCodeEditorRunning      ErrorCode = "editor_running"
 	ErrorCodeFastForwardFailed  ErrorCode = "fast_forward_failed"
@@ -224,6 +249,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeDependencyMissing:
 		return true
 	case ErrorCodeDetachedHead:
+		return true
+	case ErrorCodeDocChanged:
 		return true
 	case ErrorCodeDownloadFailed:
 		return true
@@ -919,6 +946,28 @@ type CreateAgent struct {
 	Worktree *string `json:"worktree,omitempty"`
 }
 
+// CreateDoc defines model for CreateDoc.
+type CreateDoc struct {
+	// Content The text of revision 1.
+	Content *string `json:"content,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *string `json:"dir,omitempty"`
+
+	// Format Its file extension; see createDoc.
+	Format *string   `json:"format,omitempty"`
+	Labels *[]string `json:"labels,omitempty"`
+
+	// Name See createDoc.
+	Name string `json:"name"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *string `json:"project,omitempty"`
+
+	// Status Whether a doc is agreed on; changing its content makes it wip.
+	Status *DocStatus `json:"status,omitempty"`
+}
+
 // CreateProject defines model for CreateProject.
 type CreateProject struct {
 	// Name Required for source new; otherwise the repository directory or URL name by default.
@@ -956,6 +1005,84 @@ type Daemon struct {
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version"`
 }
+
+// Doc defines model for Doc.
+type Doc struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Format Its file extension, as md; empty for none.
+	Format string `json:"format"`
+	Id     string `json:"id"`
+
+	// Labels Sorted.
+	Labels      []string `json:"labels"`
+	Name        string   `json:"name"`
+	ProjectId   string   `json:"project_id"`
+	ProjectName string   `json:"project_name"`
+
+	// Revision The latest.
+	Revision int64 `json:"revision"`
+
+	// Size Bytes of the latest revision.
+	Size int64 `json:"size"`
+
+	// Status Whether a doc is agreed on; changing its content makes it wip.
+	Status DocStatus `json:"status"`
+
+	// UpdatedAt When anything about it last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DocContent defines model for DocContent.
+type DocContent struct {
+	Content string `json:"content"`
+	Doc     Doc    `json:"doc"`
+
+	// Revision The revision content is of.
+	Revision int64 `json:"revision"`
+}
+
+// DocContentChange defines model for DocContentChange.
+type DocContentChange struct {
+	// Base The revision the change was made on.
+	Base int64 `json:"base"`
+
+	// Content The whole new text.
+	Content string `json:"content"`
+}
+
+// DocList defines model for DocList.
+type DocList struct {
+	Docs []Doc `json:"docs"`
+}
+
+// DocResult defines model for DocResult.
+type DocResult struct {
+	Doc Doc `json:"doc"`
+
+	// PreviousStatus Whether a doc is agreed on; changing its content makes it wip.
+	PreviousStatus *DocStatus `json:"previous_status,omitempty"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
+// DocRevision defines model for DocRevision.
+type DocRevision struct {
+	CreatedAt time.Time `json:"created_at"`
+	Number    int64     `json:"number"`
+
+	// Size Bytes of its text.
+	Size int64 `json:"size"`
+}
+
+// DocRevisionList defines model for DocRevisionList.
+type DocRevisionList struct {
+	Revisions []DocRevision `json:"revisions"`
+}
+
+// DocStatus Whether a doc is agreed on; changing its content makes it wip.
+type DocStatus string
 
 // Editor defines model for Editor.
 type Editor struct {
@@ -1116,6 +1243,9 @@ type Project struct {
 	// Agents The project's agents with no parent by name, in every state, with their children; set by getProject only.
 	Agents    *[]Agent  `json:"agents,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// Docs The project's docs by name, without content; set by getProject only.
+	Docs *[]Doc `json:"docs,omitempty"`
 
 	// Editors The editors running in the project; set by getProject only.
 	Editors *[]Editor `json:"editors,omitempty"`
@@ -1368,6 +1498,18 @@ type TerminalState string
 type UpdateAgent struct {
 	// Name Its new name; see updateAgent.
 	Name string `json:"name"`
+}
+
+// UpdateDoc defines model for UpdateDoc.
+type UpdateDoc struct {
+	AddLabels *[]string `json:"add_labels,omitempty"`
+
+	// Name Its new name; excludes the others.
+	Name         *string   `json:"name,omitempty"`
+	RemoveLabels *[]string `json:"remove_labels,omitempty"`
+
+	// Status Whether a doc is agreed on; changing its content makes it wip.
+	Status *DocStatus `json:"status,omitempty"`
 }
 
 // UpdateProject defines model for UpdateProject.
@@ -1763,6 +1905,9 @@ type WorktreeStatus struct {
 // AgentRef defines model for AgentRef.
 type AgentRef = string
 
+// DocRef defines model for DocRef.
+type DocRef = string
+
 // ProjectRef defines model for ProjectRef.
 type ProjectRef = string
 
@@ -1894,6 +2039,69 @@ type GetAgentTranscriptParams struct {
 	// Tail The last lines; excludes from and count; 1000 when none is given.
 	Tail *int `form:"tail,omitempty" json:"tail,omitempty"`
 
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// ListDocsParams defines parameters for ListDocs.
+type ListDocsParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+
+	// Labels Labels a doc must all have; repeated, as in labels=a&labels=b.
+	Labels *[]string `form:"labels,omitempty" json:"labels,omitempty"`
+
+	// Status The status a doc must be in.
+	Status *DocStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// DeleteDocParams defines parameters for DeleteDoc.
+type DeleteDocParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// GetDocParams defines parameters for GetDoc.
+type GetDocParams struct {
+	// Revision The revision whose content to return.
+	Revision *int64 `form:"revision,omitempty" json:"revision,omitempty"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// UpdateDocParams defines parameters for UpdateDoc.
+type UpdateDocParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// UpdateDocContentParams defines parameters for UpdateDocContent.
+type UpdateDocContentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// ListDocRevisionsParams defines parameters for ListDocRevisions.
+type ListDocRevisionsParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -2197,6 +2405,15 @@ type RestartAgentJSONRequestBody = RestartAgent
 
 // SendAgentJSONRequestBody defines body for SendAgent for application/json ContentType.
 type SendAgentJSONRequestBody = AgentMessage
+
+// CreateDocJSONRequestBody defines body for CreateDoc for application/json ContentType.
+type CreateDocJSONRequestBody = CreateDoc
+
+// UpdateDocJSONRequestBody defines body for UpdateDoc for application/json ContentType.
+type UpdateDocJSONRequestBody = UpdateDoc
+
+// UpdateDocContentJSONRequestBody defines body for UpdateDocContent for application/json ContentType.
+type UpdateDocContentJSONRequestBody = DocContentChange
 
 // OpenEditorJSONRequestBody defines body for OpenEditor for application/json ContentType.
 type OpenEditorJSONRequestBody = OpenEditor
@@ -2702,6 +2919,137 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/daemon/reload (the `ReloadDaemon` operationId).
 	ReloadDaemon(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListDocs List a project's docs by name
+	//
+	// The docs of the project named by project, or of the project whose
+	// worktree holds dir; one of them is required. With labels, only the
+	// docs that have every one of them; with status, only those in it.
+	// Content is never listed.
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/docs (the `ListDocs` operationId).
+	ListDocs(ctx context.Context, params *ListDocsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDocWithBody Create a doc at revision 1
+	//
+	// In the project named by project, or the one whose worktree holds dir;
+	// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+	// most 100, unique in the project ignoring case. A format is A-Z, a-z
+	// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+	// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+	// 2 MiB. Docs work in a closed project too.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+	CreateDocWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDoc Create a doc at revision 1
+	//
+	// In the project named by project, or the one whose worktree holds dir;
+	// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+	// most 100, unique in the project ignoring case. A format is A-Z, a-z
+	// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+	// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+	// 2 MiB. Docs work in a closed project too.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+	CreateDoc(ctx context.Context, body CreateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDoc Delete a doc, its revisions and its copies on disk
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with DELETE /v1/docs/{doc} (the `DeleteDoc` operationId).
+	DeleteDoc(ctx context.Context, doc DocRef, params *DeleteDocParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDoc A doc with one revision's content, the latest by default
+	//
+	// Errors: invalid_path, not_found (the doc, or a revision it does not have), usage.
+	//
+	// Corresponds with GET /v1/docs/{doc} (the `GetDoc` operationId).
+	GetDoc(ctx context.Context, doc DocRef, params *GetDocParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDocWithBody Change a doc's status or labels, or rename it
+	//
+	// Never makes a revision and needs no base. name excludes status,
+	// add_labels and remove_labels; asking for nothing is a usage error. A
+	// label in both add_labels and remove_labels is invalid_argument;
+	// removing a label the doc does not have is not an error. Result
+	// updated, or unchanged when nothing differs.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+	UpdateDocWithBody(ctx context.Context, doc DocRef, params *UpdateDocParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDoc Change a doc's status or labels, or rename it
+	//
+	// Never makes a revision and needs no base. name excludes status,
+	// add_labels and remove_labels; asking for nothing is a usage error. A
+	// label in both add_labels and remove_labels is invalid_argument;
+	// removing a label the doc does not have is not an error. Result
+	// updated, or unchanged when nothing differs.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+	UpdateDoc(ctx context.Context, doc DocRef, params *UpdateDocParams, body UpdateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDocContentWithBody Write a doc's content as a new revision, if base is still its latest
+	//
+	// In one step: when base is the doc's latest revision, content becomes
+	// revision base + 1 and the status wip, result updated with
+	// previous_status; content equal to the latest makes no revision and
+	// keeps the status, result unchanged. When base is not the latest,
+	// doc_changed, with the doc under details.doc: read it again, apply the
+	// change and write it with the new base.
+	//
+	// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+	UpdateDocContentWithBody(ctx context.Context, doc DocRef, params *UpdateDocContentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDocContent Write a doc's content as a new revision, if base is still its latest
+	//
+	// In one step: when base is the doc's latest revision, content becomes
+	// revision base + 1 and the status wip, result updated with
+	// previous_status; content equal to the latest makes no revision and
+	// keeps the status, result unchanged. When base is not the latest,
+	// doc_changed, with the doc under details.doc: read it again, apply the
+	// change and write it with the new base.
+	//
+	// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+	UpdateDocContent(ctx context.Context, doc DocRef, params *UpdateDocContentParams, body UpdateDocContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDocRevisions A doc's revisions, latest first, without content
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Corresponds with GET /v1/docs/{doc}/revisions (the `ListDocRevisions` operationId).
+	ListDocRevisions(ctx context.Context, doc DocRef, params *ListDocRevisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// OpenEditorWithBody Start the editor the editor setting names on a file of a worktree
 	//
 	// The editor runs in a terminal of its own in the worktree, through the login
@@ -2829,7 +3177,8 @@ type ClientInterface interface {
 
 	// DeleteProject Delete a project and everything that belongs to it
 	//
-	// Files on disk are not touched. Terminals starting or running refuse
+	// Files on disk are not touched, but for the copies of its docs in the
+	// daemon's home, which go with them. Terminals starting or running refuse
 	// it with project_in_use unless stop_running is true, which stops them
 	// first and lists them under "stopped".
 	//
@@ -2888,9 +3237,9 @@ type ClientInterface interface {
 	// Server-sent events (text/event-stream) for as long as the client
 	// stays. The first event is the project as getProject returns it;
 	// after every change under it (the project opened or closed, a
-	// terminal created, changing state or removed, whoever made it) the
-	// project is sent whole again, never a delta, so a client replaces
-	// what it holds. Changes close together may be sent as one.
+	// terminal created, changing state or removed, a doc created, changed
+	// or removed, whoever made it) the project is sent whole again, never a
+	// delta, so a client replaces what it holds. Changes close together may be sent as one.
 	//
 	// Each event is "event: project" with a ProjectEnvelope as its data.
 	// When the project is removed, "event: removed" with a ProjectRemoved
@@ -3795,6 +4144,237 @@ func (c *Client) ReloadDaemon(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// ListDocs List a project's docs by name
+//
+// The docs of the project named by project, or of the project whose
+// worktree holds dir; one of them is required. With labels, only the
+// docs that have every one of them; with status, only those in it.
+// Content is never listed.
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/docs (the `ListDocs` operationId).
+func (c *Client) ListDocs(ctx context.Context, params *ListDocsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDocsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDocWithBody Create a doc at revision 1
+//
+// In the project named by project, or the one whose worktree holds dir;
+// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+// most 100, unique in the project ignoring case. A format is A-Z, a-z
+// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+// 2 MiB. Docs work in a closed project too.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+func (c *Client) CreateDocWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDocRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDoc Create a doc at revision 1
+//
+// In the project named by project, or the one whose worktree holds dir;
+// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+// most 100, unique in the project ignoring case. A format is A-Z, a-z
+// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+// 2 MiB. Docs work in a closed project too.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+func (c *Client) CreateDoc(ctx context.Context, body CreateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDocRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteDoc Delete a doc, its revisions and its copies on disk
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with DELETE /v1/docs/{doc} (the `DeleteDoc` operationId).
+func (c *Client) DeleteDoc(ctx context.Context, doc DocRef, params *DeleteDocParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDocRequest(c.Server, doc, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDoc A doc with one revision's content, the latest by default
+//
+// Errors: invalid_path, not_found (the doc, or a revision it does not have), usage.
+//
+// Corresponds with GET /v1/docs/{doc} (the `GetDoc` operationId).
+func (c *Client) GetDoc(ctx context.Context, doc DocRef, params *GetDocParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDocRequest(c.Server, doc, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDocWithBody Change a doc's status or labels, or rename it
+//
+// Never makes a revision and needs no base. name excludes status,
+// add_labels and remove_labels; asking for nothing is a usage error. A
+// label in both add_labels and remove_labels is invalid_argument;
+// removing a label the doc does not have is not an error. Result
+// updated, or unchanged when nothing differs.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+func (c *Client) UpdateDocWithBody(ctx context.Context, doc DocRef, params *UpdateDocParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDocRequestWithBody(c.Server, doc, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDoc Change a doc's status or labels, or rename it
+//
+// Never makes a revision and needs no base. name excludes status,
+// add_labels and remove_labels; asking for nothing is a usage error. A
+// label in both add_labels and remove_labels is invalid_argument;
+// removing a label the doc does not have is not an error. Result
+// updated, or unchanged when nothing differs.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+func (c *Client) UpdateDoc(ctx context.Context, doc DocRef, params *UpdateDocParams, body UpdateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDocRequest(c.Server, doc, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDocContentWithBody Write a doc's content as a new revision, if base is still its latest
+//
+// In one step: when base is the doc's latest revision, content becomes
+// revision base + 1 and the status wip, result updated with
+// previous_status; content equal to the latest makes no revision and
+// keeps the status, result unchanged. When base is not the latest,
+// doc_changed, with the doc under details.doc: read it again, apply the
+// change and write it with the new base.
+//
+// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+func (c *Client) UpdateDocContentWithBody(ctx context.Context, doc DocRef, params *UpdateDocContentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDocContentRequestWithBody(c.Server, doc, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDocContent Write a doc's content as a new revision, if base is still its latest
+//
+// In one step: when base is the doc's latest revision, content becomes
+// revision base + 1 and the status wip, result updated with
+// previous_status; content equal to the latest makes no revision and
+// keeps the status, result unchanged. When base is not the latest,
+// doc_changed, with the doc under details.doc: read it again, apply the
+// change and write it with the new base.
+//
+// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+func (c *Client) UpdateDocContent(ctx context.Context, doc DocRef, params *UpdateDocContentParams, body UpdateDocContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDocContentRequest(c.Server, doc, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDocRevisions A doc's revisions, latest first, without content
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Corresponds with GET /v1/docs/{doc}/revisions (the `ListDocRevisions` operationId).
+func (c *Client) ListDocRevisions(ctx context.Context, doc DocRef, params *ListDocRevisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDocRevisionsRequest(c.Server, doc, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // OpenEditorWithBody Start the editor the editor setting names on a file of a worktree
 //
 // The editor runs in a terminal of its own in the worktree, through the login
@@ -4002,7 +4582,8 @@ func (c *Client) CreateProject(ctx context.Context, body CreateProjectJSONReques
 
 // DeleteProject Delete a project and everything that belongs to it
 //
-// Files on disk are not touched. Terminals starting or running refuse
+// Files on disk are not touched, but for the copies of its docs in the
+// daemon's home, which go with them. Terminals starting or running refuse
 // it with project_in_use unless stop_running is true, which stops them
 // first and lists them under "stopped".
 //
@@ -4101,9 +4682,9 @@ func (c *Client) UpdateProject(ctx context.Context, project ProjectRef, body Upd
 // Server-sent events (text/event-stream) for as long as the client
 // stays. The first event is the project as getProject returns it;
 // after every change under it (the project opened or closed, a
-// terminal created, changing state or removed, whoever made it) the
-// project is sent whole again, never a delta, so a client replaces
-// what it holds. Changes close together may be sent as one.
+// terminal created, changing state or removed, a doc created, changed
+// or removed, whoever made it) the project is sent whole again, never a
+// delta, so a client replaces what it holds. Changes close together may be sent as one.
 //
 // Each event is "event: project" with a ProjectEnvelope as its data.
 // When the project is removed, "event: removed" with a ProjectRemoved
@@ -5897,6 +6478,539 @@ func NewReloadDaemonRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListDocsRequest constructs an http.Request for the ListDocs method
+func NewListDocsRequest(server string, params *ListDocsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Labels != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "labels", *params.Labels, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDocRequest calls the generic CreateDoc builder with application/json body
+func NewCreateDocRequest(server string, body CreateDocJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDocRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateDocRequestWithBody constructs an http.Request for the CreateDoc method, with any body, and a specified content type
+func NewCreateDocRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteDocRequest constructs an http.Request for the DeleteDoc method
+func NewDeleteDocRequest(server string, doc DocRef, params *DeleteDocParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "doc", doc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDocRequest constructs an http.Request for the GetDoc method
+func NewGetDocRequest(server string, doc DocRef, params *GetDocParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "doc", doc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Revision != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "revision", *params.Revision, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateDocRequest calls the generic UpdateDoc builder with application/json body
+func NewUpdateDocRequest(server string, doc DocRef, params *UpdateDocParams, body UpdateDocJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDocRequestWithBody(server, doc, params, "application/json", bodyReader)
+}
+
+// NewUpdateDocRequestWithBody constructs an http.Request for the UpdateDoc method, with any body, and a specified content type
+func NewUpdateDocRequestWithBody(server string, doc DocRef, params *UpdateDocParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "doc", doc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateDocContentRequest calls the generic UpdateDocContent builder with application/json body
+func NewUpdateDocContentRequest(server string, doc DocRef, params *UpdateDocContentParams, body UpdateDocContentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDocContentRequestWithBody(server, doc, params, "application/json", bodyReader)
+}
+
+// NewUpdateDocContentRequestWithBody constructs an http.Request for the UpdateDocContent method, with any body, and a specified content type
+func NewUpdateDocContentRequestWithBody(server string, doc DocRef, params *UpdateDocContentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "doc", doc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/%s/content", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListDocRevisionsRequest constructs an http.Request for the ListDocRevisions method
+func NewListDocRevisionsRequest(server string, doc DocRef, params *ListDocRevisionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "doc", doc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/%s/revisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8912,6 +10026,145 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/daemon/reload (the `ReloadDaemon` operationId).
 	ReloadDaemonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadDaemonResponse, error)
 
+	// ListDocsWithResponse List a project's docs by name
+	//
+	// The docs of the project named by project, or of the project whose
+	// worktree holds dir; one of them is required. With labels, only the
+	// docs that have every one of them; with status, only those in it.
+	// Content is never listed.
+	//
+	// Errors: invalid_argument, invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/docs (the `ListDocs` operationId).
+	ListDocsWithResponse(ctx context.Context, params *ListDocsParams, reqEditors ...RequestEditorFn) (*ListDocsResponse, error)
+
+	// CreateDocWithBodyWithResponse Create a doc at revision 1
+	//
+	// In the project named by project, or the one whose worktree holds dir;
+	// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+	// most 100, unique in the project ignoring case. A format is A-Z, a-z
+	// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+	// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+	// 2 MiB. Docs work in a closed project too.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+	CreateDocWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDocResponse, error)
+
+	// CreateDocWithResponse Create a doc at revision 1
+	//
+	// In the project named by project, or the one whose worktree holds dir;
+	// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+	// most 100, unique in the project ignoring case. A format is A-Z, a-z
+	// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+	// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+	// 2 MiB. Docs work in a closed project too.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+	CreateDocWithResponse(ctx context.Context, body CreateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDocResponse, error)
+
+	// DeleteDocWithResponse Delete a doc, its revisions and its copies on disk
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/docs/{doc} (the `DeleteDoc` operationId).
+	DeleteDocWithResponse(ctx context.Context, doc DocRef, params *DeleteDocParams, reqEditors ...RequestEditorFn) (*DeleteDocResponse, error)
+
+	// GetDocWithResponse A doc with one revision's content, the latest by default
+	//
+	// Errors: invalid_path, not_found (the doc, or a revision it does not have), usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/docs/{doc} (the `GetDoc` operationId).
+	GetDocWithResponse(ctx context.Context, doc DocRef, params *GetDocParams, reqEditors ...RequestEditorFn) (*GetDocResponse, error)
+
+	// UpdateDocWithBodyWithResponse Change a doc's status or labels, or rename it
+	//
+	// Never makes a revision and needs no base. name excludes status,
+	// add_labels and remove_labels; asking for nothing is a usage error. A
+	// label in both add_labels and remove_labels is invalid_argument;
+	// removing a label the doc does not have is not an error. Result
+	// updated, or unchanged when nothing differs.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+	UpdateDocWithBodyWithResponse(ctx context.Context, doc DocRef, params *UpdateDocParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDocResponse, error)
+
+	// UpdateDocWithResponse Change a doc's status or labels, or rename it
+	//
+	// Never makes a revision and needs no base. name excludes status,
+	// add_labels and remove_labels; asking for nothing is a usage error. A
+	// label in both add_labels and remove_labels is invalid_argument;
+	// removing a label the doc does not have is not an error. Result
+	// updated, or unchanged when nothing differs.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+	// the doc under details.doc), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+	UpdateDocWithResponse(ctx context.Context, doc DocRef, params *UpdateDocParams, body UpdateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDocResponse, error)
+
+	// UpdateDocContentWithBodyWithResponse Write a doc's content as a new revision, if base is still its latest
+	//
+	// In one step: when base is the doc's latest revision, content becomes
+	// revision base + 1 and the status wip, result updated with
+	// previous_status; content equal to the latest makes no revision and
+	// keeps the status, result unchanged. When base is not the latest,
+	// doc_changed, with the doc under details.doc: read it again, apply the
+	// change and write it with the new base.
+	//
+	// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+	UpdateDocContentWithBodyWithResponse(ctx context.Context, doc DocRef, params *UpdateDocContentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDocContentResponse, error)
+
+	// UpdateDocContentWithResponse Write a doc's content as a new revision, if base is still its latest
+	//
+	// In one step: when base is the doc's latest revision, content becomes
+	// revision base + 1 and the status wip, result updated with
+	// previous_status; content equal to the latest makes no revision and
+	// keeps the status, result unchanged. When base is not the latest,
+	// doc_changed, with the doc under details.doc: read it again, apply the
+	// change and write it with the new base.
+	//
+	// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+	UpdateDocContentWithResponse(ctx context.Context, doc DocRef, params *UpdateDocContentParams, body UpdateDocContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDocContentResponse, error)
+
+	// ListDocRevisionsWithResponse A doc's revisions, latest first, without content
+	//
+	// Errors: invalid_path, not_found, usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/docs/{doc}/revisions (the `ListDocRevisions` operationId).
+	ListDocRevisionsWithResponse(ctx context.Context, doc DocRef, params *ListDocRevisionsParams, reqEditors ...RequestEditorFn) (*ListDocRevisionsResponse, error)
+
 	// OpenEditorWithBodyWithResponse Start the editor the editor setting names on a file of a worktree
 	//
 	// The editor runs in a terminal of its own in the worktree, through the login
@@ -9047,7 +10300,8 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteProjectWithResponse Delete a project and everything that belongs to it
 	//
-	// Files on disk are not touched. Terminals starting or running refuse
+	// Files on disk are not touched, but for the copies of its docs in the
+	// daemon's home, which go with them. Terminals starting or running refuse
 	// it with project_in_use unless stop_running is true, which stops them
 	// first and lists them under "stopped".
 	//
@@ -9110,9 +10364,9 @@ type ClientWithResponsesInterface interface {
 	// Server-sent events (text/event-stream) for as long as the client
 	// stays. The first event is the project as getProject returns it;
 	// after every change under it (the project opened or closed, a
-	// terminal created, changing state or removed, whoever made it) the
-	// project is sent whole again, never a delta, so a client replaces
-	// what it holds. Changes close together may be sent as one.
+	// terminal created, changing state or removed, a doc created, changed
+	// or removed, whoever made it) the project is sent whole again, never a
+	// delta, so a client replaces what it holds. Changes close together may be sent as one.
 	//
 	// Each event is "event: project" with a ProjectEnvelope as its data.
 	// When the project is removed, "event: removed" with a ProjectRemoved
@@ -10217,6 +11471,342 @@ func (r ReloadDaemonResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReloadDaemonResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDocsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDocsResponse) GetJSON200() *DocList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListDocsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDocsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDocsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDocsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDocsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDocResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *DocResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateDocResponse) GetJSON201() *DocResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateDocResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDocResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDocResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDocResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDocResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteDocResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteDocResponse) GetJSON200() *DocResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteDocResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteDocResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDocResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDocResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteDocResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDocResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocContent
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDocResponse) GetJSON200() *DocContent {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetDocResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDocResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDocResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDocResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDocResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateDocResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDocResponse) GetJSON200() *DocResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateDocResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDocResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDocResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDocResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDocResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateDocContentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDocContentResponse) GetJSON200() *DocResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateDocContentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDocContentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDocContentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDocContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDocContentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDocRevisionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocRevisionList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDocRevisionsResponse) GetJSON200() *DocRevisionList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListDocRevisionsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDocRevisionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDocRevisionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDocRevisionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDocRevisionsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12543,6 +14133,205 @@ func (c *ClientWithResponses) ReloadDaemonWithResponse(ctx context.Context, reqE
 	return ParseReloadDaemonResponse(rsp)
 }
 
+// ListDocsWithResponse List a project's docs by name
+//
+// The docs of the project named by project, or of the project whose
+// worktree holds dir; one of them is required. With labels, only the
+// docs that have every one of them; with status, only those in it.
+// Content is never listed.
+//
+// Errors: invalid_argument, invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/docs (the `ListDocs` operationId).
+func (c *ClientWithResponses) ListDocsWithResponse(ctx context.Context, params *ListDocsParams, reqEditors ...RequestEditorFn) (*ListDocsResponse, error) {
+	rsp, err := c.ListDocs(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDocsResponse(rsp)
+}
+
+// CreateDocWithBodyWithResponse Create a doc at revision 1
+//
+// In the project named by project, or the one whose worktree holds dir;
+// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+// most 100, unique in the project ignoring case. A format is A-Z, a-z
+// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+// 2 MiB. Docs work in a closed project too.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+func (c *ClientWithResponses) CreateDocWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDocResponse, error) {
+	rsp, err := c.CreateDocWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDocResponse(rsp)
+}
+
+// CreateDocWithResponse Create a doc at revision 1
+//
+// In the project named by project, or the one whose worktree holds dir;
+// one of them is required. Names are A-Z, a-z, 0-9, "_" and "-", at
+// most 100, unique in the project ignoring case. A format is A-Z, a-z
+// and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
+// most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
+// 2 MiB. Docs work in a closed project too.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/docs (the `CreateDoc` operationId).
+func (c *ClientWithResponses) CreateDocWithResponse(ctx context.Context, body CreateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDocResponse, error) {
+	rsp, err := c.CreateDoc(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDocResponse(rsp)
+}
+
+// DeleteDocWithResponse Delete a doc, its revisions and its copies on disk
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/docs/{doc} (the `DeleteDoc` operationId).
+func (c *ClientWithResponses) DeleteDocWithResponse(ctx context.Context, doc DocRef, params *DeleteDocParams, reqEditors ...RequestEditorFn) (*DeleteDocResponse, error) {
+	rsp, err := c.DeleteDoc(ctx, doc, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDocResponse(rsp)
+}
+
+// GetDocWithResponse A doc with one revision's content, the latest by default
+//
+// Errors: invalid_path, not_found (the doc, or a revision it does not have), usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/docs/{doc} (the `GetDoc` operationId).
+func (c *ClientWithResponses) GetDocWithResponse(ctx context.Context, doc DocRef, params *GetDocParams, reqEditors ...RequestEditorFn) (*GetDocResponse, error) {
+	rsp, err := c.GetDoc(ctx, doc, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDocResponse(rsp)
+}
+
+// UpdateDocWithBodyWithResponse Change a doc's status or labels, or rename it
+//
+// Never makes a revision and needs no base. name excludes status,
+// add_labels and remove_labels; asking for nothing is a usage error. A
+// label in both add_labels and remove_labels is invalid_argument;
+// removing a label the doc does not have is not an error. Result
+// updated, or unchanged when nothing differs.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+func (c *ClientWithResponses) UpdateDocWithBodyWithResponse(ctx context.Context, doc DocRef, params *UpdateDocParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDocResponse, error) {
+	rsp, err := c.UpdateDocWithBody(ctx, doc, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDocResponse(rsp)
+}
+
+// UpdateDocWithResponse Change a doc's status or labels, or rename it
+//
+// Never makes a revision and needs no base. name excludes status,
+// add_labels and remove_labels; asking for nothing is a usage error. A
+// label in both add_labels and remove_labels is invalid_argument;
+// removing a label the doc does not have is not an error. Result
+// updated, or unchanged when nothing differs.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
+// the doc under details.doc), not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/docs/{doc} (the `UpdateDoc` operationId).
+func (c *ClientWithResponses) UpdateDocWithResponse(ctx context.Context, doc DocRef, params *UpdateDocParams, body UpdateDocJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDocResponse, error) {
+	rsp, err := c.UpdateDoc(ctx, doc, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDocResponse(rsp)
+}
+
+// UpdateDocContentWithBodyWithResponse Write a doc's content as a new revision, if base is still its latest
+//
+// In one step: when base is the doc's latest revision, content becomes
+// revision base + 1 and the status wip, result updated with
+// previous_status; content equal to the latest makes no revision and
+// keeps the status, result unchanged. When base is not the latest,
+// doc_changed, with the doc under details.doc: read it again, apply the
+// change and write it with the new base.
+//
+// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+func (c *ClientWithResponses) UpdateDocContentWithBodyWithResponse(ctx context.Context, doc DocRef, params *UpdateDocContentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDocContentResponse, error) {
+	rsp, err := c.UpdateDocContentWithBody(ctx, doc, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDocContentResponse(rsp)
+}
+
+// UpdateDocContentWithResponse Write a doc's content as a new revision, if base is still its latest
+//
+// In one step: when base is the doc's latest revision, content becomes
+// revision base + 1 and the status wip, result updated with
+// previous_status; content equal to the latest makes no revision and
+// keeps the status, result unchanged. When base is not the latest,
+// doc_changed, with the doc under details.doc: read it again, apply the
+// change and write it with the new base.
+//
+// Errors: doc_changed, invalid_argument, invalid_path, not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/docs/{doc}/content (the `UpdateDocContent` operationId).
+func (c *ClientWithResponses) UpdateDocContentWithResponse(ctx context.Context, doc DocRef, params *UpdateDocContentParams, body UpdateDocContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDocContentResponse, error) {
+	rsp, err := c.UpdateDocContent(ctx, doc, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDocContentResponse(rsp)
+}
+
+// ListDocRevisionsWithResponse A doc's revisions, latest first, without content
+//
+// Errors: invalid_path, not_found, usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/docs/{doc}/revisions (the `ListDocRevisions` operationId).
+func (c *ClientWithResponses) ListDocRevisionsWithResponse(ctx context.Context, doc DocRef, params *ListDocRevisionsParams, reqEditors ...RequestEditorFn) (*ListDocRevisionsResponse, error) {
+	rsp, err := c.ListDocRevisions(ctx, doc, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDocRevisionsResponse(rsp)
+}
+
 // OpenEditorWithBodyWithResponse Start the editor the editor setting names on a file of a worktree
 //
 // The editor runs in a terminal of its own in the worktree, through the login
@@ -12726,7 +14515,8 @@ func (c *ClientWithResponses) CreateProjectWithResponse(ctx context.Context, bod
 
 // DeleteProjectWithResponse Delete a project and everything that belongs to it
 //
-// Files on disk are not touched. Terminals starting or running refuse
+// Files on disk are not touched, but for the copies of its docs in the
+// daemon's home, which go with them. Terminals starting or running refuse
 // it with project_in_use unless stop_running is true, which stops them
 // first and lists them under "stopped".
 //
@@ -12813,9 +14603,9 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 // Server-sent events (text/event-stream) for as long as the client
 // stays. The first event is the project as getProject returns it;
 // after every change under it (the project opened or closed, a
-// terminal created, changing state or removed, whoever made it) the
-// project is sent whole again, never a delta, so a client replaces
-// what it holds. Changes close together may be sent as one.
+// terminal created, changing state or removed, a doc created, changed
+// or removed, whoever made it) the project is sent whole again, never a
+// delta, so a client replaces what it holds. Changes close together may be sent as one.
 //
 // Each event is "event: project" with a ProjectEnvelope as its data.
 // When the project is removed, "event: removed" with a ProjectRemoved
@@ -13980,6 +15770,237 @@ func ParseReloadDaemonResponse(rsp *http.Response) (*ReloadDaemonResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ReloadResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDocsResponse parses an HTTP response from a ListDocsWithResponse call
+func ParseListDocsResponse(rsp *http.Response) (*ListDocsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDocsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDocResponse parses an HTTP response from a CreateDocWithResponse call
+func ParseCreateDocResponse(rsp *http.Response) (*CreateDocResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDocResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest DocResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDocResponse parses an HTTP response from a DeleteDocWithResponse call
+func ParseDeleteDocResponse(rsp *http.Response) (*DeleteDocResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDocResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDocResponse parses an HTTP response from a GetDocWithResponse call
+func ParseGetDocResponse(rsp *http.Response) (*GetDocResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDocResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocContent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDocResponse parses an HTTP response from a UpdateDocWithResponse call
+func ParseUpdateDocResponse(rsp *http.Response) (*UpdateDocResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDocResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDocContentResponse parses an HTTP response from a UpdateDocContentWithResponse call
+func ParseUpdateDocContentResponse(rsp *http.Response) (*UpdateDocContentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDocContentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDocRevisionsResponse parses an HTTP response from a ListDocRevisionsWithResponse call
+func ParseListDocRevisionsResponse(rsp *http.Response) (*ListDocRevisionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDocRevisionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocRevisionList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -15383,6 +17404,27 @@ type ServerInterface interface {
 	// ReloadDaemon Read the settings again and apply them
 	// (POST /v1/daemon/reload)
 	ReloadDaemon(w http.ResponseWriter, r *http.Request)
+	// ListDocs List a project's docs by name
+	// (GET /v1/docs)
+	ListDocs(w http.ResponseWriter, r *http.Request, params ListDocsParams)
+	// CreateDoc Create a doc at revision 1
+	// (POST /v1/docs)
+	CreateDoc(w http.ResponseWriter, r *http.Request)
+	// DeleteDoc Delete a doc, its revisions and its copies on disk
+	// (DELETE /v1/docs/{doc})
+	DeleteDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params DeleteDocParams)
+	// GetDoc A doc with one revision's content, the latest by default
+	// (GET /v1/docs/{doc})
+	GetDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params GetDocParams)
+	// UpdateDoc Change a doc's status or labels, or rename it
+	// (PATCH /v1/docs/{doc})
+	UpdateDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params UpdateDocParams)
+	// UpdateDocContent Write a doc's content as a new revision, if base is still its latest
+	// (PUT /v1/docs/{doc}/content)
+	UpdateDocContent(w http.ResponseWriter, r *http.Request, doc DocRef, params UpdateDocContentParams)
+	// ListDocRevisions A doc's revisions, latest first, without content
+	// (GET /v1/docs/{doc}/revisions)
+	ListDocRevisions(w http.ResponseWriter, r *http.Request, doc DocRef, params ListDocRevisionsParams)
 	// OpenEditor Start the editor the editor setting names on a file of a worktree
 	// (POST /v1/editors)
 	OpenEditor(w http.ResponseWriter, r *http.Request)
@@ -16153,6 +18195,380 @@ func (siw *ServerInterfaceWrapper) ReloadDaemon(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReloadDaemon(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDocs operation middleware
+func (siw *ServerInterfaceWrapper) ListDocs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDocsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "labels" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "labels", r.URL.Query(), &params.Labels, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "labels"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "labels", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDocs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDoc operation middleware
+func (siw *ServerInterfaceWrapper) CreateDoc(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDoc(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDoc operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDoc(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "doc" -------------
+	var doc DocRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "doc", r.PathValue("doc"), &doc, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "doc", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteDocParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDoc(w, r, doc, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDoc operation middleware
+func (siw *ServerInterfaceWrapper) GetDoc(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "doc" -------------
+	var doc DocRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "doc", r.PathValue("doc"), &doc, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "doc", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDocParams
+
+	// ------------- Optional query parameter "revision" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "revision", r.URL.Query(), &params.Revision, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "revision"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDoc(w, r, doc, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDoc operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDoc(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "doc" -------------
+	var doc DocRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "doc", r.PathValue("doc"), &doc, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "doc", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateDocParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDoc(w, r, doc, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDocContent operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDocContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "doc" -------------
+	var doc DocRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "doc", r.PathValue("doc"), &doc, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "doc", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateDocContentParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDocContent(w, r, doc, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDocRevisions operation middleware
+func (siw *ServerInterfaceWrapper) ListDocRevisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "doc" -------------
+	var doc DocRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "doc", r.PathValue("doc"), &doc, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "doc", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDocRevisionsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDocRevisions(w, r, doc, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18252,6 +20668,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/history", wrapper.GetAgentHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/transcript", wrapper.GetAgentTranscript)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/editors", wrapper.OpenEditor)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/docs", wrapper.ListDocs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/docs", wrapper.CreateDoc)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/docs/{doc}", wrapper.DeleteDoc)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/docs/{doc}", wrapper.GetDoc)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/docs/{doc}", wrapper.UpdateDoc)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/docs/{doc}/content", wrapper.UpdateDocContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/docs/{doc}/revisions", wrapper.ListDocRevisions)
 
 	return m
 }
@@ -18724,6 +21147,286 @@ type ReloadDaemondefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ReloadDaemondefaultApplicationProblemPlusJSONResponse) VisitReloadDaemonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDocsRequestObject struct {
+	Params ListDocsParams
+}
+
+type ListDocsResponseObject interface {
+	VisitListDocsResponse(w http.ResponseWriter) error
+}
+
+type ListDocs200JSONResponse DocList
+
+func (response ListDocs200JSONResponse) VisitListDocsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDocsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListDocsdefaultApplicationProblemPlusJSONResponse) VisitListDocsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDocRequestObject struct {
+	Body *CreateDocJSONRequestBody
+}
+
+type CreateDocResponseObject interface {
+	VisitCreateDocResponse(w http.ResponseWriter) error
+}
+
+type CreateDoc201JSONResponse DocResult
+
+func (response CreateDoc201JSONResponse) VisitCreateDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDocdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateDocdefaultApplicationProblemPlusJSONResponse) VisitCreateDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDocRequestObject struct {
+	Doc    DocRef `json:"doc"`
+	Params DeleteDocParams
+}
+
+type DeleteDocResponseObject interface {
+	VisitDeleteDocResponse(w http.ResponseWriter) error
+}
+
+type DeleteDoc200JSONResponse DocResult
+
+func (response DeleteDoc200JSONResponse) VisitDeleteDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDocdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteDocdefaultApplicationProblemPlusJSONResponse) VisitDeleteDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDocRequestObject struct {
+	Doc    DocRef `json:"doc"`
+	Params GetDocParams
+}
+
+type GetDocResponseObject interface {
+	VisitGetDocResponse(w http.ResponseWriter) error
+}
+
+type GetDoc200JSONResponse DocContent
+
+func (response GetDoc200JSONResponse) VisitGetDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDocdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetDocdefaultApplicationProblemPlusJSONResponse) VisitGetDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDocRequestObject struct {
+	Doc    DocRef `json:"doc"`
+	Params UpdateDocParams
+	Body   *UpdateDocJSONRequestBody
+}
+
+type UpdateDocResponseObject interface {
+	VisitUpdateDocResponse(w http.ResponseWriter) error
+}
+
+type UpdateDoc200JSONResponse DocResult
+
+func (response UpdateDoc200JSONResponse) VisitUpdateDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDocdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response UpdateDocdefaultApplicationProblemPlusJSONResponse) VisitUpdateDocResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDocContentRequestObject struct {
+	Doc    DocRef `json:"doc"`
+	Params UpdateDocContentParams
+	Body   *UpdateDocContentJSONRequestBody
+}
+
+type UpdateDocContentResponseObject interface {
+	VisitUpdateDocContentResponse(w http.ResponseWriter) error
+}
+
+type UpdateDocContent200JSONResponse DocResult
+
+func (response UpdateDocContent200JSONResponse) VisitUpdateDocContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDocContentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response UpdateDocContentdefaultApplicationProblemPlusJSONResponse) VisitUpdateDocContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDocRevisionsRequestObject struct {
+	Doc    DocRef `json:"doc"`
+	Params ListDocRevisionsParams
+}
+
+type ListDocRevisionsResponseObject interface {
+	VisitListDocRevisionsResponse(w http.ResponseWriter) error
+}
+
+type ListDocRevisions200JSONResponse DocRevisionList
+
+func (response ListDocRevisions200JSONResponse) VisitListDocRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDocRevisionsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListDocRevisionsdefaultApplicationProblemPlusJSONResponse) VisitListDocRevisionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -20445,6 +23148,27 @@ type StrictServerInterface interface {
 	// ReloadDaemon Read the settings again and apply them
 	// (POST /v1/daemon/reload)
 	ReloadDaemon(ctx context.Context, request ReloadDaemonRequestObject) (ReloadDaemonResponseObject, error)
+	// ListDocs List a project's docs by name
+	// (GET /v1/docs)
+	ListDocs(ctx context.Context, request ListDocsRequestObject) (ListDocsResponseObject, error)
+	// CreateDoc Create a doc at revision 1
+	// (POST /v1/docs)
+	CreateDoc(ctx context.Context, request CreateDocRequestObject) (CreateDocResponseObject, error)
+	// DeleteDoc Delete a doc, its revisions and its copies on disk
+	// (DELETE /v1/docs/{doc})
+	DeleteDoc(ctx context.Context, request DeleteDocRequestObject) (DeleteDocResponseObject, error)
+	// GetDoc A doc with one revision's content, the latest by default
+	// (GET /v1/docs/{doc})
+	GetDoc(ctx context.Context, request GetDocRequestObject) (GetDocResponseObject, error)
+	// UpdateDoc Change a doc's status or labels, or rename it
+	// (PATCH /v1/docs/{doc})
+	UpdateDoc(ctx context.Context, request UpdateDocRequestObject) (UpdateDocResponseObject, error)
+	// UpdateDocContent Write a doc's content as a new revision, if base is still its latest
+	// (PUT /v1/docs/{doc}/content)
+	UpdateDocContent(ctx context.Context, request UpdateDocContentRequestObject) (UpdateDocContentResponseObject, error)
+	// ListDocRevisions A doc's revisions, latest first, without content
+	// (GET /v1/docs/{doc}/revisions)
+	ListDocRevisions(ctx context.Context, request ListDocRevisionsRequestObject) (ListDocRevisionsResponseObject, error)
 	// OpenEditor Start the editor the editor setting names on a file of a worktree
 	// (POST /v1/editors)
 	OpenEditor(ctx context.Context, request OpenEditorRequestObject) (OpenEditorResponseObject, error)
@@ -20947,6 +23671,212 @@ func (sh *strictHandler) ReloadDaemon(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReloadDaemonResponseObject); ok {
 		if err := validResponse.VisitReloadDaemonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDocs operation middleware
+func (sh *strictHandler) ListDocs(w http.ResponseWriter, r *http.Request, params ListDocsParams) {
+	var request ListDocsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDocs(ctx, request.(ListDocsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDocs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDocsResponseObject); ok {
+		if err := validResponse.VisitListDocsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDoc operation middleware
+func (sh *strictHandler) CreateDoc(w http.ResponseWriter, r *http.Request) {
+	var request CreateDocRequestObject
+
+	var body CreateDocJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDoc(ctx, request.(CreateDocRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDoc")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDocResponseObject); ok {
+		if err := validResponse.VisitCreateDocResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDoc operation middleware
+func (sh *strictHandler) DeleteDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params DeleteDocParams) {
+	var request DeleteDocRequestObject
+
+	request.Doc = doc
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDoc(ctx, request.(DeleteDocRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDoc")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDocResponseObject); ok {
+		if err := validResponse.VisitDeleteDocResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDoc operation middleware
+func (sh *strictHandler) GetDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params GetDocParams) {
+	var request GetDocRequestObject
+
+	request.Doc = doc
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDoc(ctx, request.(GetDocRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDoc")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDocResponseObject); ok {
+		if err := validResponse.VisitGetDocResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDoc operation middleware
+func (sh *strictHandler) UpdateDoc(w http.ResponseWriter, r *http.Request, doc DocRef, params UpdateDocParams) {
+	var request UpdateDocRequestObject
+
+	request.Doc = doc
+	request.Params = params
+
+	var body UpdateDocJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDoc(ctx, request.(UpdateDocRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDoc")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDocResponseObject); ok {
+		if err := validResponse.VisitUpdateDocResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDocContent operation middleware
+func (sh *strictHandler) UpdateDocContent(w http.ResponseWriter, r *http.Request, doc DocRef, params UpdateDocContentParams) {
+	var request UpdateDocContentRequestObject
+
+	request.Doc = doc
+	request.Params = params
+
+	var body UpdateDocContentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDocContent(ctx, request.(UpdateDocContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDocContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDocContentResponseObject); ok {
+		if err := validResponse.VisitUpdateDocContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDocRevisions operation middleware
+func (sh *strictHandler) ListDocRevisions(w http.ResponseWriter, r *http.Request, doc DocRef, params ListDocRevisionsParams) {
+	var request ListDocRevisionsRequestObject
+
+	request.Doc = doc
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDocRevisions(ctx, request.(ListDocRevisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDocRevisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDocRevisionsResponseObject); ok {
+		if err := validResponse.VisitListDocRevisionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -22132,264 +25062,288 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AAD//w==",
+	"7H17k9s4kudXQeguwt2xdNnu2dnbrYqLjRq7Z9u3/Tq7exxxww4FREISpihATYAlazr83S+QmQBBCqSo",
+	"Ksl2785fpZJIPBOJfP7yt1mhN1uthLJmdv3bbMtrvhFW1PDf7Uoo+0Ys3edSmKKWWyu1ml3P8pksr/MZ",
+	"46pkdi0Yd08+MUyWGeOGScVkeQ1fPn3Bv1r8ofjnMmO6ZtIapvhG5OqLghvxVCojlJFW3osvmdUrYdei",
+	"Zjtp12xb67+Jwrq3SllnzEhVCHjZMF6LXDVK/toIplW1hzekYty/dZWrWTaTbqhbbtezbOZenF3PYEyz",
+	"bFaLXxtZi3J2betGZDNTrMWGu4lupPpWqJVdz65fZDO737rXjK2lWs0+fMhmr3QxaUlKXfQXpNTFZ7Yc",
+	"pS4etRg/YvvJBflpLXz/T3Ca7HCWsAzx0rkl6SyaayKs2lV6GtTNo6by1urtm0Yp9//BXNyPsKtW1Bup",
+	"eGVgsEBNhtk1t24TmLG8tlKt3KRqbItJZazgJdNLVotlY6RahVn82oh6307DWL2d03uzeOylWPKmsrPr",
+	"Ja+MCKNfaF0JrmD4P9HAXsn6cPi3ivGF0VVjBXMr55ZWK+HGZDu7tNP1na2FMDdMvC+qphQm0NDAoEtZ",
+	"z05ZZz9QIp0pdDNAJNEYS1kPja+ljdPHOOmge5Lon3b3/Wd23P1QH3VQ3hGNfPaU5gf6OVOaH+MgB/Xr",
+	"FAa44VKxpa5hPYtKKzHAFP2bj9jsD+5Vs9XKCBAIfqz1ohIb97HQyrqr9Pq3Gd9uK1lwN+hnW3zin/5m",
+	"3Ax+i3r6n7Wb4ux/PGsljmf4q3nm24UeD9fADV8Yy5ZcVqK8goWjV4OYAtJLrbeithIHywt+uKTv1rJY",
+	"s9vXrNCl487AwZm0jl0bOLxFxZtSzAtdwsL2liSb8cLKe2n3qbY5NCUNK7VUq4zt1rIS/ia4Ydqd7500",
+	"gqmmqq7Yz+pO6Z1iu7VQQGmmqIVQrOBKacsWbua8ZR3bWhfCGLbjBm8aUbLFnnG2K98zqzXTVcmsZobv",
+	"3ciFajaz678CHeCFIsvKUcOOS4tfNDiA2S/ZzI2ILyrhSeRg3sVaVmUtVJpM6SYsasHdsBpVCjfozA0Q",
+	"6RbYml0LWTPf1A0zwronKmks7KLJ2ErgRzh+K2F/9JxQVTAtacXGHCMoJIkPYRq8rvkeZoEDnHMgmKWu",
+	"N+7TrORWPLVyI1I7XjR1LZSdlymG924tagHbc/uavfz2Nau4scxw6XgHnF6BlwJfWlgSttH3omRSWe22",
+	"jg4p/MBLaElUyxugENYoKyv305obIAOiFFZqYZijEdrro7s3OnakJpMxpXew7FoxcS/qPatFxRtVrJMn",
+	"oaz50iZbhXuMs3Wz4YpVYmmZFe8t3IuOn6ptY9lCv8+Yct3QLfreHjswwxMNkpAj+3J8f4+ulahrnVit",
+	"H+CqdRuAfOiG7dZ72AxZ4l64VZy0G+K9tMBhxnpxD7leXnz1r0HWMHKleAXs392qd7KqPBPAn0a6l8qK",
+	"lahd/2tRlYddfyeM4SthoHlpUax1zAK+oO28pjO81pU74qUE8lYl27mn7Vrs2c5R1UZwhS9Kw1Z0Sx2O",
+	"RMI4DhZoo0tRpTnN7WsGv3qdwslb7vS9vKWjt9Y7d75sxkxTrN3v33B517A/Xv0xgwGV0mwrvj9CbXBo",
+	"F2Kp8YisHdNdO27t5sJuWbHmaiW6h3Gtd22vXDHeWL3hVhZsyatqwYu7zC0HPCuEmkQreJsn1mjLgSsB",
+	"553LcoQvAyfiPe5MLAY3jTn9phL3opo0pk7XfoD9zp1ORGYB98ij+huaXu8if2L8ptKOEd0dPxEku80H",
+	"6NH/PLgZvzaiEYlBfqN3bMPVnm384YIDZTVbabwDHKECpa2l0ygZcNWHc8JoTrWAq4Z44QGTVp4s6LlZ",
+	"luaXcklCDWdWbxbGwqJewxk5vnVGGCO1mk/eQVZx64Q9ehFWoli7IazcOdMKJQlgkV4K4isu1Q0dSYO/",
+	"gXis1b2oDYimbgZFJXgtyuRtRm096uYwllsxSTZ5C086AYVUsuQCgUTpOK2JBUC/JNxaXqzd0pWSV+aG",
+	"KR2UUVS+eFGIrbtxbXLKzbaMhKEkgYCkaQWyVlxfWL5pklNQQZJbD+x7UDGEeePk6pTWQ/wE9lq5y9Cx",
+	"4Qnc5EOsDv3VXUDEYztMoHfkD7ltigl2dzMDDaRzAjLSYWOJkm7jLNbXkI4iXcMLW4HR+CsSeWMsUXj5",
+	"pSPrdva6Q+uRwNThGL+EhdML0Go/ZKhofa3uRaW3IqFweT1sgmTe2wV8dbDPb6WxA/3Bp8foBKmRmOGh",
+	"kJAE/ZeldOQMtqwwLjLRdYcqlbFcJY7Zf2i2lLWxKEM55l3XzdZ2jOq2qRULXBgNKtF5jmTfba032wFD",
+	"B0jg7t6R96Jt/oZaNc1iI63Fw33MaBGvF3U5uF5vhAHL5WOIxU9sPiCZvwM5HPjjZot3GopYyrZ6J4lC",
+	"3izLqwolahBNQEfRjW3v2STDrMNkxkZNU4b7QG+3opwTCzDpnfG/el6IAwXp2xuUM1aLjnHZHVSwLrtn",
+	"oBM3fCNRgwzXgLsqIv20Y/RY85J0UbsWm2gN/PVZCxTllbcx+VN2sC59LduzsjmxoMS860ZgR/CIG1U7",
+	"dS+nulH7po7sUWwKj8mTdiw7xmHe+ps7rcvG5hcnCVXyXmRAZDs0+hwur7cCXeXK79w1PEiak3Qyn3uc",
+	"mPGNJ83rVHO58t3ekGLoHmPAu53+580GRAzX7o40SCDBruoGgqQi7Q0psdcHCuwNq7Sx/aE6Dc6xqFwp",
+	"vdDlnsVN0bVxfSgnZuxObG2wY5hg+skVrwXqhWCs9sYqv1TuMgqOEJzwLJwnJ3/A6GfZzA22vbmiDW6p",
+	"Ezb4p5or3NlDXrSs9WZARGk2C1H7gwmcmlVSCceF3V/TkYWksv/yz0k1F55NdwE/ZcyttLHhMjDsO17f",
+	"lXqnTjt5Sry3o1Nx83AP4TR2tWP6TqR27JDfiYnzAUtzspulU1s0it8lFxutnhi2ATlVOG6kK4Fa+KoW",
+	"2wST7V8vaNKGHaLZ+dUcPMvtVg/LKrZDDkfvoIh6+iOMWkqN6CXwsmCiPkFmSJrsbrvOFW+6YxKMqYJY",
+	"J3SXvMHSyvotWwklamC6vHRDl/fiqdKNckxIgKC+2DNyQ55gIhgzSlhNo3XTAJMEWItTzuDId+ZOXqQw",
+	"wHfAASOPWaQ53ETj9kYBpRmObtpEzuA9isbgxu546W6tjegqO8G5NGVMSTnvtbv6ubkDBtJyLLI9tPZX",
+	"sL2iErnj7qtgaJYGfA57sgEiURmhykBSRwc3rvSFGVuNtMukysKNH4keYCfznkNuyYaUoPHT9D13qobP",
+	"6StdnHhKIz9Y8NLPZtmQAA5RAPfSyXvsRdqqfkm36tHN87w/ns2mPJiPIzTg9OK9FcrNJt6aV7pITq3i",
+	"C1F1FbbjF1qSYb092tf2Ak7fSfaf5qgi+koXb/HBPnHCZIepM3Jkn0Ch6RV8Q93CQTe6qQsnF+xiS6MF",
+	"1+tWG2l1vXeLIAr4pGv285tvWeJaOFgRreaFVstK4rC9mKe3wkl9BVeFqJJCm1bzjTROhJ0Xa1Hc6abT",
+	"QC3ACBQkv2QbOK1j2/EWn+rvBb08vBs+SOT81zropWtRVenb3Xd8sQseO0OLEfpil+B75JZx3PUN38OV",
+	"9Tu9QSfeCa9Afj0UHgu92UibZF9rPeAgGHbjdFwOkYxtdHEn0r1MsFUfvHMvaiNxNuOrQaZM/3zmp+tN",
+	"jTDFMLzOYJKLiFdqbwUf4IaPr6bxuwjEn41j4JutRVFGdW1mbasDDp/2qupdPLomI9npV9igV+mhTicv",
+	"SQwoluBHmajQGfn3BNv4096KYJYiv4zvdGrDp16JE9wSXO0t+D34Qjcg1j/EPfFARwA1HUgkTDHaD1rP",
+	"YRP8wEF52QqTg1LmocCIB+zI8h6nlyCXUmdOAtfLSdvc56cUVRxWww9/fNovYf9OvE4X3Igj8wGXEXrr",
+	"d44x8NJdIMmJbaSSGydhvEjRckfWP1Bs1roCEQoE/eOWDRj40aVJez5KXUz3e9Dmj3o9oMGBIQxZ8KfT",
+	"3dZthW7M/FRmkFKjsA0fmcEDtdIOUxAV28lt2mR8shl/yKLs5j+4ZO1Be/zFh5a7zvMPZuToHHhvH3Ks",
+	"aRwp5nZkHdJU7A/oSaQclvYYSbetDwzubSDGofi1Uhdgz17VQpRM+wgDb1b3lLfhd8IQzXUCL+WW2KDY",
+	"zbIZ325rirOohRvHgLn669LpW4fLNW5zfWIY2UprUXELTj4NrM9LyCFmIyVorGo+YAIXOBynkQV7A37H",
+	"jLBWqtUTw4q1loUww11Miozwis204Iifoth7H8HLpDo4QdmMwiVYUUkILIW4CWGY1TTgyVYrUlPcTZEI",
+	"w05Pvm8v7oQIRE5/2j6/GX7NUtSLJDLEmEUgoLHFJjI7GzukXpPDrWtdv0yGO761Tk1j4NgFVfSGYkJJ",
+	"mENnZ2NEeUXuhHmj+D2XoN5lueIV2Ct92kzmyMAxUm89yNhW13Yu1bwxov0V/UfufQzf0LZtAelj3ijT",
+	"bLcg72e5KrRSTm3Wal5pYzO37+7bEvnqrnxPCjP7otQ7VWleUifuHNbCWF2LuV+5LzHMdpkr92Iptgby",
+	"hHhVsS/QKEIvbmt5LyuxEiZ+t0bDjBtarhZ7oMGX37728bT0Da5X17/WQPBCBjy+xkwQN/elbpSXf+eW",
+	"34F1xnUxF++lse4m9lYYv7D05krauXsQ2rznlSy9oOz/Jbr2//J61WwwCc/90nbg5eyNNBtuC/cOnKt5",
+	"8PX5J4pKm84XuLtx/E2UReXU07aN8ES05RCko8r2ISSK9lf6P8TJLWquimjowd/duiW5KqGLQqulXDV1",
+	"1G4bkI8PbDDyAv93es3c6rlrAL6ZV7rg1ZzERfe1e6IdW+h70Zg97Jp7tB0J7Fv7L/wY4v24cXtf73gd",
+	"zX7bmHW86O3nUgDnLOdrwWPuNZdm7u1x4Ts3OTdcUfa/bRfy4PSF72g2h2cRZeb4LLqBHbAG926XNaBL",
+	"OeYNbnYtc4h+byfcPcp+OU2zickUvOTz1mCCjCDql74IjSg9DzJx+1qfSQBZwg1r5nR68HrvDMifK3o0",
+	"WFXx12jh5mZvrNjAK8Bq4j0+4DKw21uhSqGKfbRgyOajuZW6mBOzTooz/yHt22CHPUGxw4Zai+9K2mT7",
+	"TZ0IFH/piJH9/Obb43oY/IrNpO6ub93pe9AE0vLabd+Nw9nKCS/Bzp60UvUXA3hCYjnSc4ORpCYXBbP1",
+	"orOsFZutNSMBze6gGB9CvIZzziClBYNGrtjtQt8L9gIzW/Zsze8FK/RGMLuTxUA6wEPUowHrWRRydxgo",
+	"NxSz3snm1LUPwRsKGE6FDLkzAxoCxCpDCBPf37C1qEpytkbZFJlPX4jSKdpsClrcZCqFpwTqDo5rJe8F",
+	"Hl0KKW0UXD/1ZuBs9uTrxO/v7XGDsSwPIl9DOCzEa/itiAJbPX0d1SKJRF9JU/C6xFCyvhr5ePF1pOe0",
+	"7urD+Serrv6oHVNbQ8MjQxoS/DftcZ44lPOI/r7f1JC/F7tLcM/WGdmGkfT8lVLdsLx5/vwPxVpvBHwS",
+	"z0hiNMf8ln2Gq8RuIrtNLcIPW6Fatf7RzsIzBQOMhvlmk+0N3WYeZH04u6f+yNTOqOyfEivdV/ZTpBKl",
+	"WB/sOmrJ3DB6iL0SlsvKsC/e/Pkl+7d//uP/+vJqdhigUh7lCK2CDvnXi2aVtLj8WarS0DGDjOwnhlV6",
+	"1UZCHvomYIADiS07oSzb1Rpif6UBiWKkFTN8dtDJe7iT97xqnJCi7nV1L8o2N4+SgyAuwV3Wx0Nk2h1a",
+	"S2UHZmQ1K3XwSp0YMnIoDVlpKzHUFcygxERLM8rDum83tbrele+vgZiuQ2bpQL57WqDEgUWeL9rnbEYp",
+	"KLBG7cZFRDVA854DDGV4jHEGyj2HQP8Q29cmnkufzAzCx3gi+meRb+69O2Nzds90c+sdzZFF+tHTSbqM",
+	"vO5nxuzEJsK9iW+jRw+pNVf2RzUguw56zXUtVxJcM0cPp663a65EOewkUNHF6y1khmT/Upq7sXkfqiWT",
+	"rOTUzIGR/CjNtNhFA2fj0ZsUQqIS29T16p+WP0iOw1QI/dcwfL/0oEtX0ljE8oCwgFrwEmcGYDkLN9la",
+	"8I2fIaaTelEpY1oVCLwxedoexKUNYRhKiJmuL/g2jyoMsb5FpN3qWW2/p8Ui0NoMx89HQtsEWk1ljcH3",
+	"I31/i5bOhAvV7XWa1gu92bgLrW6UdxCTwZSyReNQoOOIJ63p9lAUctJ6J2zaCHvte2NKiLKXdhsd842w",
+	"az2QLA7BLKo014wyvBxnWXCDsq/eCsxeYz++ia0AaPQF2S+p6G8bsx7zdLq3Mcya0EkMc6+gSQepKj2V",
+	"RymQHds4LQpZWMkMPYFAfgZKPi+Z6DoROnaUXoa2FXGBDDPcLS1ZpX3isoWETJUx3ELGKQfoIbt7JBfu",
+	"6IImLR1eY57Mufz91Gw2vN4f5V+h/ZGRvSGHQXI3S265u4I7XP1JgDVwFxwmCiTnlTZ9pcd4RH4dMsvE",
+	"AdCTULCyWVljoluafIOcQY+xhSh4gxHbe/AOKs0qrVai9nLIyXdZ6hY7lek/JGEWYknHTbMmsME4EchD",
+	"FTk1j2RPhC4QvFi7+9z9dBZJJgS8jmgnpJNcfqCDmofPlTyylD5PNE4qjkdLzZxp4TAdesLCnXtYx5Zp",
+	"Pkm3mTgqn1tV6jatFjFKzqDunJ5TLq3pIJVOnEVIKEddOZCMzynHrz9aVvmQ8XmCKBmSu/vpJxhHkLpS",
+	"e5fYWeL4LqioPkhxfJRGVuim41wbChqcpJ5Qa6fpKG/AET506V7KK/QGcRgektC71OQG6WdiUR6kBVHF",
+	"3wkbWZaV8OfXrdQA3EFqiDT1Q76w0cYCVJxcyoIDzAQef+6O7nYrFDJVf1I8gINbn5U0lvyLYAN3HzS8",
+	"0Z6lNhO/vczbuJE4lx/jGOBjwLSpIROpbPcefZgUXYDRL/Rg2/i2ntMoUgf5LYVFJPQDCFlMLxMZjq1m",
+	"xVprJ5ZvNAJ6ImyWhZBPzpbyvSid6hejEbW/qz1lfdaUfj/O8AaOeWD9ISUzlQUQzyHxu7vCsO20KutH",
+	"TvB0Tkdhy1pvgqlcrsDvkzGj3XMtRqkRljm2nlYQ09gK7/wNgisNcQEG+rvG0DWcaUZJzBVgT4CfAdRg",
+	"fLGWbkJJ0/ed2KcThUptrSjZndi3zoBKr64CFt1h3pQb4HEVwfXoH253qrsvAcfA0160LSleQ7Sb1st8",
+	"aNBkvcyfhGM3a2h4ZEjn4bohvmny0IeEAN9OcsjB/VxKtxdOiiFP7IZvt9T9Stqh3tsIpowCbwYejGOF",
+	"MnAZDzzYOsU/hEti/z1hdLvxQwKs+GE5u/7r+MrELY0/GQ/u2LPtjD/8EsGhn0cMGoGi7Se+nopI+98F",
+	"+5XTKrX4r5OBLk8VQgehN2EEnw5wE7o/Fl5Hjhl49tOCPh6kNlwYe/GByY0EsQ9r24rp54MYTPFnvzQj",
+	"YD0R/5lmexjIuRjt/xtprE7pemCPnYIPRRhOgKx0J7ZTc28/PfyUD4kI6TRlLXagwHfc5cIUfIuhAhjF",
+	"aOy+EsbLZnfmM8Sq6lFCF0gKd3YMUKpHHMM0um6pZwqJemLrj883MzaWtDzYcQM/0lQ3cHzGl+hhyJhT",
+	"ICtdlzfsa2VFzZa6qvTO+9bOhFTZ1ns5j1j7aIYVBNtJnGsAvPAhsIMoVwSswVy1YIP+x7NgDobxOC4C",
+	"zQ6BEObqEIWQHYAQngNFMGU++LkFQTkL7I7TQZXYRWhWEczK8firQYAgHOcU+KqNVPG3L/rj5mU5Px9Q",
+	"U3e+IUwTbku7FrUZwFnd6HvxoGE8BIJpYDUfBrf0IFNsp/LXoTzormCUBdHMlgHl9wqSPaQK2RGP8XAG",
+	"Kq5QZFw7YYWCRSVNKvBzjN0CIjwZJXCW7vaHT8dPDHaWmsJfWkCcyfA+g+rIo9F1UiN8F4UpX8z94MO8",
+	"EyqYMEKNFHiJY94eGPKWUlMorPxIXohfm5d6s0lCprgLIjkvb04ehi8t5XIparRHYiYOlFwSQl2xtxBH",
+	"hlUaTNrk+SBwI1klXQNDwfQnIBlJJdLhxb822ophrQBTk9qpJ/VnWYqRhVR6B/Zajg36iAxYV9kJcVEA",
+	"kaCrtBF/INXKEEpNF+L7iZctblhIiXJPuVZLhj5Y361H1TeC4pV9ClVqFIDjMFBRzJGMXy2vqOhOV42K",
+	"M33bz79M0t2BPmgzadlpQH4fM6T4Vmtv3SanHSVEtzvlQGHU8SBIA6WLLCq9YLL0uuaW22LNKq3vRMk4",
+	"VLIyICQi2YEfYteLkroaOzpHcj78ORiH+AlnYpDUp1Gsp5VH7/7YxsOOTNjRr0s5nUH2YYqm9jGoGRct",
+	"h54SeOQZ+mGwIH4/YSxpBZkaOD0EN4zoiJocOjg2RNj6PxPZTkl7O+keMAO4Nt95G2LGbhkvS/fhlWOR",
+	"wnZ9vt/NstntLJu9SlO2qOVSpu7PWyr4tuH1HShlzD9L1S08/HKwZmJZ0wmCAckEId8kDGJsqV/J5TKR",
+	"UwLYBcNBFREzSGOL3UINjm7M9yTL/0IqiiXprxtcltL7X/G5jPwe1R6rCVpNcslQTHG9EvP0iL+PXdNm",
+	"zWuoV8bI1oTXZwgxxi2aGPIKTDzN9RsFOwSD9tK85+ZrSpCGvUjnLtWNKgZKR2gMbrymK0RiBvVCrCTo",
+	"Oun1iVP+JmfpUdhttLYZ0Y+fetjVeMhjRJk+9htdwmol3QHf+8h17k8rEMygK2DKrj2ayRDM2EkIkCfw",
+	"o4z9O2uUrXkB9TN/dqfDx9GmeVU2+/dZNvv58+VZhJoWb/VERuZopgVHnFK7IlT23HFDUSsUW5MGy04S",
+	"RGgEZbGbUEsGW4U8mej6eHS1nOlHNJhHp2TUdlZxCGBziDe/xv3n7Pufv2WIwOBo4eef/vz0Xwe0vzGQ",
+	"SCved0KFsFsIaXFcjderyXx3PSCl/n3AtOJ+cadosbeT/UZW6zkMKuGrvhc1+4p9J/90Rn7rVX9awpi5",
+	"hpHQHI/udNBiTku3R1SBVNH9PuNoIQhqTvYQriAmrBoqzzV8zDJWj7Dfk9wcU85BWjQaOgRBn3+ocDJR",
+	"TEBJBOM8wGAQHJ+VGBIhIsVqlLV9phKGB/17uDDxHa/vhvWI0avwvHOYfJW9Ed6MelZ3SptNwTcRQMiD",
+	"kS7enPNAZsOum3hp/uLWcD+I/3wuEwvFdFqqDYwSzgRjy4cjwzcJMEp3auelHEqt8PskhcmobytXStdO",
+	"ArO+/qlTVzD61Ke6c2YqbtZUT1jWTKgTYdndvpzoXBrhGbfVzq0u0O418TDPMytpQKRd6x3gM2642l+x",
+	"/xRby4ym6jbE0WrBS6rrt6gFvzNn5jUQc9puyVRG8y1Xg5H2VZuoO8Wa4vN6j8eAfWT5MQ6L8nM6tiZJ",
+	"d91tSAOm+8v3koXaFd4tR96tiht7xW5ZCGsn7E6n9a1EKOCbRj5P2GNLMRBU5h3wLQpkxmKAyIwlICEz",
+	"FjAgMxaBQ2ICUYQ2OTGr2nvX0om5vvA8ZEGTloE6yJ2icniTMredpmiGuaWT6SnlNuQ7nVhrbyK4zaQR",
+	"e6PUyJpEtU52HAthk0nnhNUfcgI2VTUnUB+4mKtqQvCxPwk/NlX1hl7+8EsKiOfHN4yHU7HYu/8xZ8PR",
+	"EIDPwv+HU6Ds5qHKr7dAj0gwUUFLzBPp1HidplZBzntaNBrwQb2GIpxgEsReMz+zxb4/Z7CvtZvVSe8m",
+	"6E53FvEjJuZRHjx+omzSOBEm5N9QKMsYyt8RCG3Pk4Jb9wZYVbS2zFh3xwGeMS8fWGs7uKcwkjRCDvJn",
+	"Nhpx1pZJoBo03vqGO9Whjh4Zj/LupIfg4SgdQ8gfA5fxuIsgPk5p5rJaY1Aw6F56GeAgeiGJx3gKlWsd",
+	"qBQZqg6kTXqphEowlJbjmZWE13okSsKXGnBPtzQDMxpbuggooHdZImIzmavSq4LPIMEj+5ZQY3OacR87",
+	"uBNDdRnxATLGraRlO91UGPKGo3LbAUUXwVndJkHRm5NGobQdMHT6gvvdKtPuMFelT+jVbKVPvgUHNc2H",
+	"FsuelIkNm1RzhV6T7OR88OH86jNYIbM+uXXJI9qmw1mPU7d3Kw/UUh8ptWoEWrOtvg61VLGwankdQSlO",
+	"0JZVMmrkrWNFBKZiicW4FT8eoTVcmbs77/NUko+9wAPIxv4RYAJpnOLz4KbiyLNpjuO2XMlBvGbqvH8L",
+	"cf0WauQhuzeMl2VsfHasB2RqRCFWjLMtr63klce4nJLIw9PXzEvqk8wLcF5B2iZ3SnIg03pMOznf+ULs",
+	"YbY1gCOapnai4IpLZex1grGGjFKwG2lFeEdxRiwUkeL+hXjoba1aId3nE+6KMT/tN1/fvoIK8pQ4PVmz",
+	"SpP2a1oWoGoIsnZcYS8sVFzu5NeeDBQzGB0RhbnMl944NKSMxRvXcbSBOC+WlhzUiz1kdj1olG3YRWKs",
+	"R0cIwkBkbaZhmoePaWgo6QOFxEEYlyTA7cU04SQy0Zym2QVjzS8JxcwXBUgnWgfvSARaPhWI/RBvN2Oi",
+	"opK0IPk6RuWxEdziU54S96lDkqpGO1GK3w1Ejg2Hvl5QHU4K8G4aP77p8kQlWqMHe42iurkT5Hbx3Ic1",
+	"RtRg4zVJ7bkegs5KXRD48CNYc6PqtNJRN4ISRXmESImQXQjYCCZPlB8kVfTEzDI/OECNwRw418l1i3aF",
+	"niEE47Nroa5YbI0FytkNIRSkw7M7YlyrdbZlMGiiQT/1USF4G8coGMhYDpnh6LX/AQoYLHWaId3++DqY",
+	"Fsv3ZCvMmBH1vSOPe4rN/lnJ9wzLtB4Coe/K91fut6tc5erWAzpDpQYQFTl7V75/+kosmtXT1yVz0xM1",
+	"+6JcrJ7Crrz4iq3Fe1bKlbTmSydhrvm9yFVbeAigoX1pfzqN5Q3BR5utVm5rirWmdBBZxsjSudohMoO7",
+	"CKCFK3YLQ/pWr55+K+5F5ceklwzQhUnO6HQPRZr83LilBwHsIUMy47JqamGYeF+ILVjpOeY2Wr5wpLet",
+	"hFt5c5MrJxtC0gqBVkjDyFMBiwgg2ih2DONzezZlsO5VDmaQfHYD4F+5coIdd/3RmfDIzIYgN1gtbFMr",
+	"thBGum+hnBOK71TQCROhCDl61pKHI5oo7+B6dv8CUAa2QvGtnF3P/nD1/OoPs8gt8uz+xbMWqWsl7DjS",
+	"WQd8HtQLMIHRF4he2X0GCjjn6rCCs38YvSjbCKdVN5ahoHUTA9fmKnhZrhgYtfQWdzkQRRIkOvPUCIkz",
+	"uUIHoqzpZ/MkIERHO3zN4spW4LTC+lm49GELX5ez65kb1C0uolvamm+EFU65HbhL2kdCcmALpzf5lVey",
+	"hpvHnzPYwa+eP++VkuXbbSULGOyzvxnMXsHLbJI6BUY0YFVDVHHVQ61JNRnG2OIffshmxgNvzVwvfvfc",
+	"XiJIb0tZpMlauK0c93b3t06azoiAAkkGumALUWnILtKHFBrM7piJSBTqzhxVZwcd4Iq9Q2sRuKFLWeP9",
+	"6T5IQ57pXIWuQZrpQmQ/MSjqoDCJzXkyJUsdkmOuNEk3MPhrvDm7E4D3noQ0zHi4YSz+GZjPbs0tOCdx",
+	"xEDv72JkZBhE3AS3rUOid7Ip2+w6VznIcvnM27RImGtZKZWTt1iQkbBu8Vu9ZLxlD1Rwwl0D8Cui1dKL",
+	"IC1hmoPpukqkyhVefgF/UWtLl+BVMMg+w2dcy/hb5pQ+DsEFZBf0iw69e2ikXIGqppdRcBzY9ULFWVwz",
+	"JJiQ/9h2DC3lagUXZSWMAdugB4nF+wX8f+y2nRQldJA93ouCVMwQj4K72EwWwEMgjd5fhEuo4wBJs7m6",
+	"Vd5I5CZXamEi0ELHVp3yRfZ/AM2FG8iwuK5erropOHTnE/z/FXzX4aCdgnoZ69TTy1hcSDDrcttctSUK",
+	"I9absaiWYMa6hQKzzlizlqS82zLBt3GFb8lAQwv3J8qYOAsLfRn18KErhgbRvcO9X5yXewfj1DD/JqUK",
+	"7VWe6M7B03HujHvSC9wJZLIepCS82wojz36Dvx+Qv1ciZYwMNJ1KhYX8V1+w1wljcbFHOoSYth6+dMyr",
+	"bsQV+0EJfMnLBXQEIUTU6s3CWOBv7hnXhptloHKPFm48oousIDEtPEABx8gqVa7IfHzTwnRGnXjMPtOO",
+	"pTczX9yU2r9ioXBIH7TzTohtgAol6FAY/j5kdY4d384KZqeIRzhDf8xOk4/eWr19QynTlxd2xo+Lz2xM",
+	"HBu/+mc4Nq/QT+SPjWsxKZYfk1MPtmElbMvqLrmKIUtsjO2cY6k8BwBpzEkbxqfan0ZktPfLU6TvRwjs",
+	"A4GyrxFQoxDGZP58IrdAGYAC/sAaEgQkYFpysyHOAqq58iBdjiFudA1C1u3T/5cx/vTvGXv+9N+g2Xz2",
+	"NJ9dse/BX+gU2kbJXxtkfU6g4q1cudGei6C1JoIJDqzKiaU6Q2HGMZ2CGwH6NLGfDd/78v0gIzoJkJgR",
+	"GL9uI64XcCedXo8ZDSOcaUSSYJEgkatRLhVBdFxIGIhhRiYJA88/sTAQskkef1QxHDjiasnr/lkEsJRk",
+	"ereGrYTt4StlXjOpyNrJLTNFrQE2Ty+XcdZ4rkxRi2mq/g1zki2uCKgCUL28UWjnWNRSLP0V7DSdJWFp",
+	"gQ6HNhsIWUkRm+fFHiHqgGOlwjnUvagNGo6kwv4zTBlTrQsYMF2l12qIjVyTAoKWdevUA9qa4BfzNlcg",
+	"e9SafZVK9NGQcgMWLKt1xQpeVYwYDTiV2E+gk0DevwkbEsf3R9olt5lbt9Jjk5FHGWb1hFjC116Tcm1m",
+	"uPbIf7gkG5h0y/NrI2AN0c8wgzZmWXQ0Du3BpwCxxZA2ruOBbgl1rO31IPcmZKU/T0GYpW33sJxIfQpD",
+	"y9zn58FQ5v69YS+eP3/ei+yeOGoPyt0Oe8PfU+788+fPn2ejufTphQTJF/Y1GgSMG039jbLdIaMXJASk",
+	"p8ZJAWQPHOYlJcch9LgBPkuQfuewmSkM9PHH/4nx2b6/K4EofRNQlDSmuXzOwlzSCunUFpPSc5kEBJG6",
+	"UaZjXnQaYY9pB5+KyBVELci2lkjkeLV43HYac1tV7BU1VmJ0bO19q4C1Bsz1p8DjiM8zK6rKYPgQXiP+",
+	"lvqp5gpn98Qgh75iBARoQKpie2EjHBYIMPNWymhGGeNL691E2jFW9ExC2Wwn4ubKfXSyoF+DlCKLWpgv",
+	"XOEWOYS3wpwx0BukURCJ0U0hFetX1bhhZN4EsyfwJdDyF43ZoxnAL6S3ESAsnWWyrMhGwBV5JqXaNpYt",
+	"9PshDd21mnn7H5QJiPoYNcmFbVdil6t2MQcMdexBdjoc3oBo3ZOMDoxvYEcIA0hJPHVcUuEy8nWnasMH",
+	"krA/M4GaUj/Owf/fYsWZYF5bcakOmIivUuPOMxWhJ0AIL0IOieJGqPJ3yn1/aoVXttLCe0OYVO546mUC",
+	"RipU80Em5pYqV5SWYhjqDIwDKuk1U+BDwUgHgC9F5w9EwgUuAFAOCEcKnku9RWN2jT4HarItsgDR9uw1",
+	"KsruizW/F75SVGz5J08A2BTh8JNN0QCcJrJ/f/QhawFLzQVfDxXqd13D4kTxnCuhRM2rVvLnqszaKBS6",
+	"wQz4UDlznaODHdzVsAhW1HWzRfQK3+tte8N0WB3MDRom8M/AzIQq+7zMzz7BzK7jNiTYIZiuyuAWoVuj",
+	"Md6iQIcw6D5+eGFkS7yOX0Dm+yGrdHwwGEInckzHt8OsUgzS/XxJ7ghte/je34X5ASvGnINV/l/XEuNh",
+	"oxFnJVzqYxaJ37MU+ueObcCdPYTHzVib24cROMYOyiIYdjHBP5gUO3L1ILljmrPhAWJITwj5rOj9crIB",
+	"hjj05WiBmWxxQj1JDUOHwQZFYNBCtyvfOyWBF3fNNtTMjkxXGeNFrU0IBt7yAkKvUBkiwTzL1Z3Y2jba",
+	"L1w9rRNGlWxR62a1tqzZAjYFt6TRXLGfVSXvRK56drYM701pEPCzbdhfFYgTBAGb7qvSqVxK21yF5+ne",
+	"Nmu961mlP50VsdXP/mFI/Ich8R+GxN+pIbF3lj+pIbHDJLgBNef3aFXEuNjotjrgoK/wiQvuK/WQ2EZI",
+	"GW1khZIMen7XeoPBvhjUfY4N/qmNlzaiplKw0lAP4bLHR55hzUYQedPadQCj9wFsXpC+E2JLsbVY7sFN",
+	"w9sbKrmR9oq9C3FsUb3BqNBgYxATJowYw1ZsW6+Rks3AtAcBcF6IcsP2op9TpIMcu+PSwv2G0YiU0wNR",
+	"g8tKrtY2ozQkTsGZBVcIP7+RqrHCpA1arr/LU0+nAuoAKwjA+ZA+AX2dy23Lyy40P5qZ3Ma6bvYgrbQU",
+	"pIvxOHL3wFmjyBG+gKQmlA9RqaXYWqwukWE6DZAdDIHCqu4FBZhHjdwgOSGiY3hRG8JuvcrVSw+qZMgS",
+	"REHpKWGQ16tmQyEqAzoMCHlDYeWv3Ip+7KDyQwkCVpFxt39oSHEim1u/G1aLLYQM+vxSXPH/zfPm+fOv",
+	"/oX+WwzdxlT9I76PQ3rdkRTlPghDsn4d7GI88IUgdPjUaFoYz2mMPSowcknB4JUuxsLwHUWfLwg/ilSH",
+	"o7LYH4m4f62OH2cPidSNtY+Oca4Gz3EboNSJYcpYPpvnszaUKWPc5gpqH794/jzz4Uzd+PtufNIVu2Uo",
+	"XLsuffOoTkAX3DJqEKYBnp4r5o+D47UTRvPH51j13/321XMQoqrqikVsBJBGQ9rK9z9/G3rOFcJvMscI",
+	"YOFQJ0ODR5iV1Xoi+xkPkmJfoCpqkax61tZSF19OY10YRvxKFxeNq3btf+So6le6GL+KS11cPKIatoY7",
+	"Jftegpf0RecGfvZbqYvR0OkjJgu/sQORvH5bL8ftpsXhHiz1BaJwsRNMm8XFNgFIo9BbKULs9EMDddkX",
+	"1pMNWqX9pspIgnVX7ZeD2+K0GNiTo7af0PiOUoKRBYG5xzb14MXo35tolvjYmvMrXXjQ5+FjGYx8fjKo",
+	"5tpzBSNDH0COAP530EnGIqvZYu8BKk7Xo+GAfOJg5e8J4/KOMPaIrCA+QogSSg8s4IaFuM9gvCGxOldt",
+	"BTpyKETF4G4YN3fujnY6W1xJoGMQZbe5gufBiKntmo21ie7J7q14k6so6QLb8jdf5+h5RHCufN/IoXJF",
+	"5XDh7DbKg1p08Iup0NRndT83oZLgJUOdJ9/Pzz/h/Uw72NnAs1zWGOsON8gTT/iul6CS1hRgzaRN3N/P",
+	"ovX4nPlDk1YJHA80VmyvCQOfGxEgz2BBiBF61pGFy2ghCr0Rxp1N4irw8j+xF22VdFzMndxm/W3E87F1",
+	"7+rGzPHJm9C4+LXhlQ9NoyEgF1O6w8Zy1RqevC3AdxXIBK1Zfm6OQ7TNZmBqmIfyF8E7mjy31+RvoTie",
+	"rLWu5NQbTH5XS8SQC61B7qpjtDF76XR8DlNE4BcvA2r/JdhG2wFVwvhvyz3ewUZ75uGpFzIQ3Y63p0Yu",
+	"A/1htCemHlrApTlkKkGKHTTTPVQ3IGvVm9DBpfcJ+xkzjITJnk2+exLpAZnnH+Dga0HL/Qw/Z7mOCCNC",
+	"YRyOpMOHIGQZbQ8h2rZN3/JWlhgEG5zzyBD1SqpcgU+gzZCFYBRfuAYzYldaiWtfjAYkTA+VDVzxiv2g",
+	"KjDW5gqGo30pjmsvMaJ52oenyF6EBQLpgnPArKHAeBey4Ynx2JPopPa1rmMDElzbJDR2QAgMxXxf5Spa",
+	"NgjLA2x+hLrqrQo5StpgucDCxVaoUqhiPydAougKobZ7t0h44yZX3dMbIvjcv6yCWFBHqj3o8qj2DS7r",
+	"TZQzd9MLtrnpBP/cDN8dbtEJifMyt8YPbQcf+b7AXsevDNqrvq+MYtvbegc9GnXs45yGqxOGGsIjL2TG",
+	"wuCkiI6jj+Rn8ii2/nwj/nGAYPUXmw8sGfU5heiTy/mdvGcBAw8mBAUd8fr45IqTPT8BnW76xdAWUrww",
+	"nBBNauzC9lt1EW9GG4UEctKOSwtcVVdluMUPKOvZb/RpHIoCpAKxexIhcK40RME5XWMhwA6A1aRj6hiH",
+	"TZCm4HXpQ3YvvzOvsENRDstTZzezYpdRaG5ncxIyFFgn42o717NNtEIx5+8E+YzW8vllcNefQX30VCLE",
+	"ZQYy5GQbCUCPmEoUYp4FMS1+eiAzR6iPSGbjdxCt4aUiwd8i7GGS2txR7WSTuWsbw3TjctWBRxBrMYPR",
+	"RY6V/+gfOmKdB8nWt4hyqUSrkbjpY+Q5aY4vDAFXDzmyxWQ/No3xLYZ1XfQSoK7GLgG/CGe7BHyDrYqG",
+	"MUoBnitjRoOWcdTXbXRTF+LKHVu2lcUdBRKv+XYrlLnO1VOnnl+TtNQmB66kY5tbbSTEQnGP1en4B8GU",
+	"9bHJ2BcgrNMCmFwxR58HEJ9+cl9isb4t6FJX7FYxwMlCA7RPFvXpjBDSzFCb6w0NzOTSSl7Jv2PW5Lbi",
+	"hWgDt1rcEX4nlGuGJLgOGHCi6YxpNfcFQFgOekE+gyHj7NzgeuBynWQDCiXH91H3yUNFkXx24xrxO0zF",
+	"dMLjIVtKhMJpPqz6Kat0watrXDx0EIXlcAKfW0OC6wuAbrDYGE1WaSVgAiCjAo5u3MLfNKWG0dSgx5W0",
+	"UX8x+CUlxwI6OUikGJEGCUlWu24GSeCQhDDZGAooIr6vEz5+wAIzYay+9w2v74DNYaZaWfsUZqgToxtA",
+	"FYeSiaLOFXk9aYMq3qgA7mfbAEFVetgYr0pD4Dak4WYQNyXVCtwZm7CjpH6EYAr6f44N5TMiRaXDwHy6",
+	"LFAYactz/2Ou8lktYBXzGe1WsLNSFyjR5DMSbchwAAmBYTIYFUKzwXujCzaG2xcqjKl5Y8RNTJB+RH6I",
+	"kFnjqbIjF/afzHDc8zYduGfSbRX+IyA4IC2spJ07Cu0C6gUrCI29za7ZSAMYjBnQNT0/HPbhlY9Lhn4E",
+	"BefjKvzU7bAIE/PdcKy5Ia0+C9YjvGwS5Hp2xf/4kDsDJT3fbfVKGgv5/J4LnTeIJTKoASc8uIowJeRA",
+	"3Hr2G30aVcmgUiULXKoW6J7RTbEGMMrGttjzFMeB1kwIevN2QYxBhixhd6yQJax0sMRtrlgbDj2MQ5gr",
+	"77LpHjGPBpDCIfS9oVnR9ZUrTCXBZBdCjo75JrDVfJZWMbNe38NIfe35/Uyx+o6SdBwlFKw7l44UilF4",
+	"QWBH9z/WFGmRe+VxSL9xEL+YvV52gY9loHSXNp9tQZW0TqhTGPLY+gPyma63a64cgbr/2nvV3/P+fmdG",
+	"nCkgpzXsOf6CXMwEwyYeLzr1rYzjWEUs3MQaYSzRnO7fCWS7HIuseel9DsCqTAgj8RCd4LzwPCEyb7WY",
+	"fJQqj4Pt1NJyc0twKc9qgP0idol3o0/nVimu5GSvwJaylkcFWS6IeJ36WMTCvKCKkmioWNiVRP263HRT",
+	"wEAczFVfkIr1AFjJCaJrrrzs6qFlBhnwuOCa5QoOhU+4BeBYaT3GwxEJ8CRGjm7pywpiP3f6+NwEsUP+",
+	"5B0ZGDlNUseZZBrXZnsFZEGmCXoGJV6KA34zIt48E/ejhRneivpe1E+hzBM+yr6w4r3F955i3ZUvMbHX",
+	"wHHxqm9RScenEfw3hoKCN32cTrjQAHTxR4+sHnyrN7lCPCc0T1GYCp4GaTGuNQh5oRCs58E8V8HQFoRO",
+	"aAOPmjscrbScUdRz90lR5ip+ZrfWFJcIwFBfdiP/DVbE2q11JXyYDXqZOcAwW54xoyG43i2PE0UrXgiy",
+	"8UgsUm6u2EvKH4OZMKtXAgwBG75nC4F9oOiKJ9od+bCu+Qw+XvtR5TNfLKR356LJ0bCSW36Vq2B9iWYT",
+	"ph0apW8OGqWKmbkCPBhkPo44cOujJpe6qvQOlROsFUhLgpFqPihKWnyTSvvwymiEmgmOZp9u6C6qwzID",
+	"JkPxAJcFXl9ztzgBtB1DroTjmlgd2q7FPlfuAkOgnB+wPpKsBDNNgdVWYDAEtYMBnNFQakpl21C6eFtg",
+	"yeiNwDsWaucDxi6R17UHa3MXjlNPwCNp5UbU0x05OLBBqbp7qP9TiG16IWKYA7pC8NQPGYHbQrSjKezH",
+	"JfUDptLl030nRjpFEXen6199YsIUHs+E/wy0G3Ph6Lgji3Ibh5YYOMGPFOGGGXdUii3JudFsKVdNDYdV",
+	"+iJWITQGeJW9DpWlMaZa2ulE13JsX97tI1j1fSG58SzVc2z2N/FOYxl5YFgtzT9aPG8maWhJJKfU0p9f",
+	"AOt2guLYJ5LDJu58MnbyPG49dzsfJYnhE9upCv44ukk6jt4M6RmpELNgICfDIdrNc+WutK6WMG4VHiid",
+	"knYCQ1uDtoUXn4fkfj55XcUmm1Bx0zsUqBhpcQdeF5TYQ9mmSXT0rBbLWpj1hejpVpmdqA0DINVCXEdC",
+	"HeLnBaEV6gB18BBA1NlB8RGl/cW868hnJAh29ACPqkQuMl6iUSFX6P10IqMTr4yo7p2AJ1MADFDLuxTv",
+	"WeWrEk7iqLSW7yKB5miqW1RSyslDN5Cy7gO2ugg3DNOM2hqYY9JUSphqi14f1Jvm94Kt1k6yBAZFleea",
+	"qvIQSWA3VoRXi3YYsMBgcL913cbCdnJ3B4YcVzg9WQj8Kh1NB2L0jvsypUtdnxVnIi35gme1X1HUY1HE",
+	"IRn+ojka3d5BC4kCZIdBSdIR7299hxe8Y6mPsZiJ9oIlzUDXZUCgklDnshLn2KivsR4jdkfs2XFHKpZ5",
+	"uIip3Xn2G336kOCOg5MDQAIoynwn9hlpfVA+9AqqQIZT0A3KordHg7JSYVhp6+xPHofGiehwXUDpMX6P",
+	"sRK92VPFQgJkYRySmlrYGPoB3c1OEYpj4QPiHCzjmgc7TSUAgnVXS2td40rsQEkPkYdRWL73e92JrU1j",
+	"4uSqD4rDJmPiHIa5BsKIJI+ho4bLuHOLguu3wMgcr7DT8QuJUDD1YWPn284+X8bY6fv4yEI2dTsJAygp",
+	"YqfSUwNp+cj0NeSfnTX10Udzt3BB0nqRJXCFIAuPRnG3EvOZw7iXqeg6KvTfgsk9ojJscBD/lyoO6zsa",
+	"u5XCnp0tlK+lgrPVhg1G6NPLw2IWj2ObFjNrdtKDQpPjELN72oKqpayvyBYaBtGpuJqoKdsmGrQiUEvL",
+	"ZkKZWQThxrGkqg1Ugt/3FNME2G8XXLdNRgqvdNOR/NfJozMlSsnjZo/V+RwOQvL0edEopNDJR0ah8f2O",
+	"3wh+By6PRxNIoFvjEyjukM8/+81/PJJUEZqdUuEzhLvTA7maHFzTntTDPLzBBJ5+f8PxNBEpfqYBNdPo",
+	"yUfUpOnqEiE1NpyvMxbB7HCGCy/osQiawCTPEu/SbszjgFpbcvio2cgpBnG0IuA3vpyJOVoC0Df6xBf0",
+	"yHKFUM2i9GjIPiYweraSSxFQy6N4EVSzQlqzY30IWg5uurCzNIE5wvUiKmUXBxzhXBCUumqxmrEOOUFJ",
+	"qyzgNffBmSsn2lqPlgxg49TXLb4TFfigXDeA04bBBhBt1wRWZfr0oOa9imr/ADX/B6j5P0DN/1Ed8YGg",
+	"5jEvP1N9xM/pgnxYna6PPYNHleqKN7BTrctRMpbqAjcd+MAC8Pi2FsYpCF8rK+obx1yHKmvhS7k6qKwF",
+	"JtNeYS3soFdY60wlro6o0scKXfnncuUBCR5T62pQ83lQlrF76cI6uW/+ExW5eoxS/rFKXcUi8FHl/KG1",
+	"rz4X3gLlr1ojwpECWDcUCwp1ApTwQRi5Wuyj5EUThSZg/kCIz4h0g8/Q4nasdFbHrDbNugFvfExt+iEn",
+	"6/xFtRjEIniDUZfG0FgMEp6jIaiwFc6YU1DkeDGSv9AjF1xM38XAKqJlloZKEulmIzueuR3HsiUoX59j",
+	"aWlQ/sIvfcUUXLhOcNagh6hNDvlYQD8MwhZAdF9Jy5TeBYgB9M8SqEQvp1zXrNQ7VWmOxdgUZoqdATdo",
+	"JEDmdwwc5DsaczUFEjmbq8knNVBEmNtgzPlZ+squUYQapnRQUHGfap/95j+O2rs9tp2PRsM4Lb52NEYu",
+	"fUB6pBrU8Guj8HR6CQ+g8ZAJdeAYvI93pRXYvgUkuVUATPHEMKFsvQf520m8hi1qrop1rkAid1JmABLY",
+	"iBqAT28xwyzIFdAimCmcQIodWI2VwKkMd6lR+HYPSMua7RX7mpLTDpsJIZCUqoexEIjHkKsGIwbi5NvD",
+	"JiCGj1M8P6/FCecrC/Q0l2YOnrSsZQ4g6lYcqyd2vvQ28GQIm/vpXRtEdvHjQkkfqRPzzq3nLlGe+mwm",
+	"fOw8wmxDMQhX7XSFu53T8hTW9GBuNnKEn/k4m8ciqB7h4S99Nx+BVKivMQbrZ31GaLYoQjPELklFjBcs",
+	"M5m7tTFIhWyhnz/pHEPwOgccM/pwe7t3Ia261wv6fD+2w7s3iGNWRCKnswj9HNgYtYj5X95wzwHbP0O9",
+	"DkseY/6OITxAJsfFgcBLnv1Gn85RtmXQEZ0imEPOMricIPdjS+d18/r2wzruhX38QU/Eghadk/IQgL6P",
+	"w0DSsafn5CCilPaT8A8n8p1gmRsnxvOXa0DzynuLxztNmGMH2jGEQcHgO8FNE5zNaI2tVwLEegjhJRnJ",
+	"ipq0buNxglHyx2heqlrCK3PF3rWIbiyoAv4LX7CQIs46ygKhQRdrjDJDtLUItqTTIFiHVlBgnWxYK7JU",
+	"NcrWHIOgQZLEqcC05kFbQR1GNRWapl47HrrltZW8wjC1LOQzWKjFIE3QkKcV2R6h9JWw7flaLj+6Znzg",
+	"A3y71jua78G+4T4MefmiDXxsSu/jzzMs5lCZBLlcnqUKAoCWRPUCuYlWC+PTJWVref04wyoJP77xEO9o",
+	"7wk5/Ly36I+8aEZVBSe6mlGUKl2zldblddDoSeVmnNmamzXGFaykhfj7BVQuhLw0Sl+HSeV4CCHiw+w3",
+	"C13Jwgkpd3CQ8MJGKcWvAkLA227RQERf8Rbfm85Zu4ljPwbPWlfJ/bOsxLHYjdfWMDzLtai4lffCG8z8",
+	"Kg4mN+HN/gik3YsfEbcAcSGT7tRfXUCSwqQTMFC19h/EgoDSIGjXpFiiGFB9IL7ulhF7Ry3Mo+jA64CQ",
+	"JI2vfsvosCrh/u1jaBoAO1SagCPc5mFYCyGvehjJJAWwVzQXKULOoa5KprTHz0dctjjl0I0qc6dcMO7u",
+	"mjNaVwFabvaR6McM8VjgLeeqDr5EtLwYZD8LW5+458kiCsVURcm0ekjC/SfQzNOC9UqGu7hu1DXy3pbq",
+	"EfukpPuERyzVh/krsWOIj8JNu1QjzJXSoLjydQ/WPNxUVPEAhDeELrvpwnv2OXOU2j2VTbtmemz6krK/",
+	"6+KNwOSMj+uUn8aKcWxnMnwCPrIvW1FHfLh3vAgWOPw+WmGZJ1CcwdR9xfrU24YTDtFiNwsjZIOB2xJG",
+	"32a+atUjt4wyxydWk1FWs6uVtENUmuXKh9zG73XwpG+mGsI+EiV/WhPYOCW/PH92h8cwPyRoCKQ9KMoy",
+	"LAnHJQ0HxA3oxBP4QiqO/lKrNau405VRfm9rqoKw/3/e/vA9Q9GOaDdXBa/rfSg87guTouzf/uTO0Iho",
+	"8IDCSbmCykmTGHGkm8K2huJ6n1hF9SLBk//qwvl40WBIOD6fGntYyIjCDCBwICojfVF1dNxE9RbtPCwy",
+	"80DqcJD+AHPBWPbN17evgiyPViRkE/7I4Dnw5zUyXXhH+RWbYgjK1SUsQW7zPw9r0H+Xo/YxzEWurQSh",
+	"4ZmLKq0REgxUypSPV10mnLl7UculFOVlvDuNgvb3B3LQR9jX73h9N8Y/kZVseH13HqnkJ37npesnhvl1",
+	"hQ4Y3/H9Z6+Gfo4cIIl1d0sV0TlbNxuuIObNtAcJTC7eagkp6FiA0jCtIG4e7zaAGOnBz4aLgeBSoLYt",
+	"ksg14R69t5ir1RO0KEsNUI+ghGgp3UGny8ICBTzylhg4SpdVKf4CnX5K5fj4OT7fGf4ODiuSQeCMo+pD",
+	"xR+S5PK5hH78ac9qgb4JCBN3H43PJwEvmTsMmFytVYaAsz00h7Uo7rJcYXma8N5S1ztel55TUKgu4RJh",
+	"Fkxj1ng2ZCfiNVcAdmv0FfvTnv34JgtItwFoPfMvY+ohV8U6FJlCFwvaq8rS5D79BoJltwI5APgydCgO",
+	"vODF3ap2x++a5TOCNs1n/drBTzDu3TYG8XjXeseWHCClVxozHN1X7vRjCF7AXSoFuoDmiItM8O8hpn3J",
+	"jTv+sGLhy23dfmzMet6JwofGAtIEIDlHkfuwAxjqKMEf3eE8WKnPTQrsfal6vqWwkIM0Xwte9rz4uXIL",
+	"BFGFLVZs5gFh4+p/cyhfNUf6wueD2za2sxCvnlsNwYuHGQD90MdFY/aJSMikeZyrMoptHHX5fKN3jl4r",
+	"zFqSBtCAblq8q4CC6Ta/m7U5dANuhF3rrk9UqGYzu/7rDDfRjame/TJF/P3q/HHLXJXDqQuvbbrg7tkT",
+	"FzyWcKR+ahXcpuP8F8OZzO+XBcd5htJQvpXnHHBUnxhMOkSTEiSMA9IigK5i2r7SVFoD+K0TRCUlg4f4",
+	"RWP5fjDoOFG8E78KSO4nhPZ0svAGpRn3VLsHbhMvLM1QJ59IksHex/OEqKTnYfpdFu6WDVf7dk935wol",
+	"xNqjqbDXOMAIvP8qqjzq7tRNm9P44f8HAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

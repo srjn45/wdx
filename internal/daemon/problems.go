@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/project"
@@ -122,6 +123,18 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		}
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "terminal": terminalView(e.Terminal)}
 	}
+	if e, ok := errors.AsType[*doc.NameTakenError](err); ok {
+		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "doc": docView(e.Doc)}
+	}
+	if e, ok := errors.AsType[*doc.InvalidNameError](err); ok {
+		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
+	}
+	if e, ok := errors.AsType[*doc.InvalidError](err); ok {
+		return api.ErrorCodeInvalidArgument, map[string]any{"argument": e.What}
+	}
+	if e, ok := errors.AsType[*doc.ChangedError](err); ok {
+		return api.ErrorCodeDocChanged, map[string]any{"doc": docView(e.Doc), "base": e.Base}
+	}
 	if e, ok := errors.AsType[*terminal.InvalidNameError](err); ok {
 		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
 	}
@@ -175,7 +188,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeProjectInUse, details
 	}
 	switch {
-	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound):
+	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound), errors.Is(err, doc.ErrNotFound):
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, errLandNotConfigured):
 		return api.ErrorCodeLandNotConfigured, nil
