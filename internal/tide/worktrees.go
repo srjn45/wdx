@@ -87,7 +87,7 @@ func (m *Model) worktreesChanged() {
 		return
 	}
 	if len(rows) == 0 {
-		l.onWorktrees, l.worktreeRow, l.worktreeKey = false, 0, ""
+		l.section, l.worktreeRow, l.worktreeKey = sectionAgents, 0, ""
 		return
 	}
 	l.worktreeRow = max(min(l.worktreeRow, len(rows)-1), 0)
@@ -100,27 +100,27 @@ func (m *Model) moveToWorktree(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.onWorktrees, l.worktreeRow, l.worktreeKey = true, i, rows[i].key()
+	l.section, l.worktreeRow, l.worktreeKey = sectionWorktrees, i, rows[i].key()
 }
 
-// moveUp moves the cursor up the one list both sections make.
+// moveUp moves the cursor up the one list the sections make.
 func (m *Model) moveUp() {
 	l := m.list()
 	switch {
-	case !l.onWorktrees:
+	case l.section == sectionAgents:
 		m.moveCursor(l.row - 1)
 	case l.worktreeRow > 0:
 		m.moveToWorktree(l.worktreeRow - 1)
 	case len(m.listRows()) > 0:
-		l.onWorktrees = false
+		l.section = sectionAgents
 	}
 }
 
-// moveDown moves the cursor down the one list both sections make.
+// moveDown moves the cursor down the one list the sections make.
 func (m *Model) moveDown() {
 	l := m.list()
 	switch {
-	case l.onWorktrees:
+	case l.section == sectionWorktrees:
 		m.moveToWorktree(l.worktreeRow + 1)
 	case l.row < len(m.listRows())-1:
 		m.moveCursor(l.row + 1)
@@ -266,7 +266,7 @@ func worktreeSummary(w api.WorktreeStatus) string {
 // directory is gone: C-q x removes nothing else, and the clone never.
 func (m *Model) removableWorktree() (removal, bool) {
 	l, rows := m.list(), m.worktreeRows()
-	if m.layout.focus != project || l == nil || !l.onWorktrees || l.worktreeRow >= len(rows) {
+	if m.layout.focus != project || l == nil || l.section != sectionWorktrees || l.worktreeRow >= len(rows) {
 		return removal{}, false
 	}
 	r := rows[l.worktreeRow]
@@ -591,7 +591,7 @@ func (m *Model) verifyAnsweredMsg(msg verifyAnswered) {
 // so what it has now is what is marked.
 func (m *Model) verifyRow() tea.Cmd {
 	l, rows := m.list(), m.worktreeRows()
-	if !l.onWorktrees || l.worktreeRow >= len(rows) || rows[l.worktreeRow].file == nil {
+	if l.section != sectionWorktrees || l.worktreeRow >= len(rows) || rows[l.worktreeRow].file == nil {
 		return nil
 	}
 	r := rows[l.worktreeRow]

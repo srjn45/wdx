@@ -48,8 +48,8 @@ type agentList struct {
 	created    string          // the tab of an agent created here, current once the stream brings it
 	closed     map[string]bool // the ids of the parents folded; what is open inside them stays so
 
-	onWorktrees   bool                 // the cursor is in the Worktrees section, not on an agent
-	worktreeRow   int                  // its row there
+	section       section              // the section the cursor is in
+	worktreeRow   int                  // its row in the Worktrees section
 	worktreeKey   string               // what that row is, which the cursor stays on as rows come and go
 	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
 	landAsked     map[string]string    // the landing this tide started, by worktree, until it ends
@@ -220,7 +220,7 @@ func (m *Model) agentsChanged() {
 // cursorAgent returns the agent under the cursor.
 func (m *Model) cursorAgent() (api.Agent, bool) {
 	l, rows := m.list(), m.listRows()
-	if l == nil || l.onWorktrees || l.row >= len(rows) {
+	if l == nil || l.section != sectionAgents || l.row >= len(rows) {
 		return api.Agent{}, false
 	}
 	return rows[l.row].agent, true
@@ -244,7 +244,7 @@ func (m *Model) moveCursor(i int) {
 	if l == nil || i < 0 || i >= len(rows) {
 		return
 	}
-	l.row, l.cursor, l.onWorktrees = i, rows[i].agent.Id, false
+	l.row, l.cursor, l.section = i, rows[i].agent.Id, sectionAgents
 }
 
 // activate opens the tab of the agent under the cursor, or goes to it.
@@ -423,7 +423,7 @@ func (s *projectScreen) title() string { return "Project: " + s.name }
 
 func (s *projectScreen) hint() string {
 	top := s.m.topAgents()
-	if l := s.m.list(); l != nil && l.onWorktrees {
+	if l := s.m.list(); l != nil && l.section == sectionWorktrees {
 		return worktreeHint
 	}
 	switch {
@@ -441,36 +441,68 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 	if !ok || l == nil {
 		return nil
 	}
-	switch name := key.String(); {
+	name := key.String()
+	switch {
 	case slices.Contains(upKeys, name):
 		s.m.moveUp()
 	case slices.Contains(downKeys, name):
 		s.m.moveDown()
-	case (name == "left" || name == "h") && l.onWorktrees:
-		s.m.worktreeFoldLeft()
-	case (name == "right" || name == "l") && l.onWorktrees:
-		s.m.worktreeFoldRight()
-	case name == "left" || name == "h":
-		s.m.foldLeft()
-	case name == "right" || name == "l":
-		s.m.foldRight()
-	case name == "enter" && l.onWorktrees:
-		return s.m.openWorktreeRow()
-	case name == verifyKey && l.onWorktrees:
-		return s.m.verifyRow()
-	case name == "enter":
-		s.m.activate()
+	case l.section == sectionWorktrees:
+		return s.updateWorktrees(name)
+	case l.section == sectionAgents:
+		s.updateAgents(name)
 	}
 	return nil
 }
 
-// paneItem is a line of the one list the two sections make, below the heading kept
-// at the pane's top.
+func (s *projectScreen) updateAgents(name string) {
+	switch name {
+	case "left", "h":
+		s.m.foldLeft()
+	case "right", "l":
+		s.m.foldRight()
+	case "enter":
+		s.m.activate()
+	}
+}
+
+func (s *projectScreen) updateWorktrees(name string) tea.Cmd {
+	switch name {
+	case "left", "h":
+		s.m.worktreeFoldLeft()
+	case "right", "l":
+		s.m.worktreeFoldRight()
+	case "enter":
+		return s.m.openWorktreeRow()
+	case verifyKey:
+		return s.m.verifyRow()
+	}
+	return nil
+}
+
+// section is a part of the left pane's list.
+type section int
+
+const (
+	sectionAgents section = iota
+	sectionWorktrees
+)
+
+// cursorRow is the cursor's row in its section.
+func (l *agentList) cursorRow() int {
+	if l.section == sectionWorktrees {
+		return l.worktreeRow
+	}
+	return l.row
+}
+
+// paneItem is a line of the one list the sections make, below the heading kept at
+// the pane's top.
 type paneItem struct {
-	agent    int // the row among the agents, or -1
-	worktree int // the row among the worktrees, or -1
-	heading  bool
-	note     string // what stands for rows there are none of
+	section section
+	row     int // its row in the section, when it is neither of the next two
+	heading bool
+	empty   bool // it stands for the rows the section has none of
 }
 
 // paneItems are the lines of the list: the agents, the Worktrees heading, the
@@ -479,43 +511,40 @@ func (m *Model) paneItems() []paneItem {
 	var items []paneItem
 	rows := m.listRows()
 	for i := range rows {
-		items = append(items, paneItem{agent: i, worktree: -1})
+		items = append(items, paneItem{section: sectionAgents, row: i})
 	}
 	if len(rows) == 0 {
-		items = append(items, paneItem{agent: -1, worktree: -1, note: "agents"})
+		items = append(items, paneItem{section: sectionAgents, empty: true})
 	}
-	items = append(items, paneItem{agent: -1, worktree: -1, heading: true})
+	items = append(items, paneItem{section: sectionWorktrees, heading: true})
 	worktrees := m.worktreeRows()
 	for i := range worktrees {
-		items = append(items, paneItem{agent: -1, worktree: i})
+		items = append(items, paneItem{section: sectionWorktrees, row: i})
 	}
 	if len(worktrees) == 0 {
-		items = append(items, paneItem{agent: -1, worktree: -1, note: "worktrees"})
+		items = append(items, paneItem{section: sectionWorktrees, empty: true})
 	}
 	return items
 }
 
 // visibleItems scrolls the list so the cursor stays in view in a pane of height
-// rows, and returns what shows below the heading at its top, whichever section's
-// is first in view.
-func (m *Model) visibleItems(height int) (shown []paneItem, onWorktrees bool) {
+// rows, and returns what shows below the heading at its top, and the section first
+// in view, whose heading that is.
+func (m *Model) visibleItems(height int) (shown []paneItem, top section) {
 	l, items := m.list(), m.paneItems()
 	body := max(height-1, 1)
 	cursor := slices.IndexFunc(items, func(it paneItem) bool {
-		if l.onWorktrees {
-			return it.worktree == l.worktreeRow
-		}
-		return it.agent == l.row
+		return it.section == l.section && it.row == l.cursorRow() && !it.heading && !it.empty
 	})
 	cursor = max(cursor, 0)
 	l.offset = max(min(l.offset, cursor), cursor-body+1)
 	l.offset = max(min(l.offset, len(items)-body), 0)
 	first := l.offset
-	onWorktrees = items[first].worktree >= 0 || items[first].heading || items[first].note == "worktrees"
+	top = items[first].section
 	if items[first].heading {
 		first++ // the heading at the top says it
 	}
-	return items[first:min(first+body, len(items))], onWorktrees
+	return items[first:min(first+body, len(items))], top
 }
 
 // click takes a click at the column and row of the pane's area, of the given size:
@@ -531,13 +560,13 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 	}
 	it := shown[row-1]
 	switch {
-	case it.worktree >= 0:
-		return s.clickWorktree(it.worktree, col)
-	case it.agent < 0:
+	case it.heading || it.empty:
 		return nil
+	case it.section == sectionWorktrees:
+		return s.clickWorktree(it.row, col)
 	}
 	rows := s.m.listRows()
-	i := it.agent
+	i := it.row
 	if r := rows[i]; r.fold == foldOpen || r.fold == foldClosed {
 		guide, _ := rowGuide(r, width)
 		if col == ansi.StringWidth("▸ ")+ansi.StringWidth(guide) {
@@ -577,32 +606,31 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	if m.worktreeStatuses() != nil {
 		worktreeCount = fmt.Sprint(len(m.worktreeStatuses())) + " "
 	}
-	worktreeTitle := sectionHeading(st, " Worktrees", worktreeCount, width)
-
-	shown, onWorktrees := m.visibleItems(area.Dy())
-	lines := []string{sectionHeading(st, " Agents", agentCount, width)}
-	if onWorktrees {
-		lines[0] = worktreeTitle
+	headings := map[section]string{
+		sectionAgents:    sectionHeading(st, " Agents", agentCount, width),
+		sectionWorktrees: sectionHeading(st, " Worktrees", worktreeCount, width),
 	}
+
+	shown, top := m.visibleItems(area.Dy())
+	lines := []string{headings[top]}
 	// A parent folded over the active agent carries its mark.
 	activeRow := shownAs(rows, agents, tabAgent(l.active))
 	for _, it := range shown {
+		cursor := it.section == l.section && it.row == l.cursorRow() && m.layout.focus == project
 		switch {
 		case it.heading:
-			lines = append(lines, worktreeTitle)
-		case it.agent >= 0:
-			cursor := !l.onWorktrees && it.agent == l.row && m.layout.focus == project
-			lines = append(lines, agentRow(st, rows[it.agent], cursor, it.agent == activeRow, width))
-		case it.worktree >= 0:
-			r := worktrees[it.worktree]
-			cursor := l.onWorktrees && it.worktree == l.worktreeRow && m.layout.focus == project
-			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
-		case it.note == "agents":
+			lines = append(lines, headings[it.section])
+		case it.empty && it.section == sectionAgents:
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
-		case m.worktreeStatuses() == nil:
+		case it.empty && m.worktreeStatuses() == nil:
 			lines = append(lines, st.Muted(" loading…"))
-		default:
+		case it.empty:
 			lines = append(lines, st.Muted(" no worktrees"))
+		case it.section == sectionAgents:
+			lines = append(lines, agentRow(st, rows[it.row], cursor, it.row == activeRow, width))
+		case it.section == sectionWorktrees:
+			r := worktrees[it.row]
+			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
 		}
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)

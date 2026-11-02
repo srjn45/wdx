@@ -99,7 +99,7 @@ func TestWorktreeCursorMovesFromTheAgents(t *testing.T) {
 	last := len(m.listRows()) - 1
 	m.moveCursor(last)
 	keys(m, "down")
-	if !l.onWorktrees || l.worktreeKey != "main" {
+	if l.section != sectionWorktrees || l.worktreeKey != "main" {
 		t.Fatalf("down from the last agent: %+v", l)
 	}
 	if _, ok := m.cursorAgent(); ok {
@@ -121,7 +121,7 @@ func TestWorktreeCursorMovesFromTheAgents(t *testing.T) {
 		t.Error("left on a worktree folds it")
 	}
 	keys(m, "up")
-	if l.onWorktrees || l.row != last {
+	if l.section == sectionWorktrees || l.row != last {
 		t.Errorf("up from the first worktree: %+v", l)
 	}
 }
@@ -142,7 +142,7 @@ func TestWorktreeCursorStaysOnItsRow(t *testing.T) {
 	}
 	*m.following.project.WorktreeStatuses = nil
 	m.worktreesChanged()
-	if m.list().onWorktrees {
+	if m.list().section == sectionWorktrees {
 		t.Error("the cursor stayed in an empty section")
 	}
 }
