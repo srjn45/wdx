@@ -228,6 +228,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case projectOpened:
 		return m, m.opened(msg)
+	case createCodeEntry, renameCodeEntry, removeCodeEntry:
+		return m, m.changeCodeEntry(msg)
+	case codeEntryChanged:
+		return m, m.codeEntryChanged(msg)
 	case switchProject:
 		return m, m.show(msg.name)
 	case openCreate:
@@ -540,6 +544,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case !ok && m.layout.focus == project && m.filterTyping():
 			return m.filterKeyTyped(msg)
+		case !ok && m.layout.focus == project && m.codeKeyTaken(name):
+			return m.projectPaneKey(msg)
 		case !ok && m.layout.focus == project && m.menuOffers(name):
 			return m.menuAction(name)
 		case !ok && m.layout.focus == project:

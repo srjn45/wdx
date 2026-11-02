@@ -138,6 +138,7 @@ const (
 	ErrorCodeDependencyMissing  ErrorCode = "dependency_missing"
 	ErrorCodeDetachedHead       ErrorCode = "detached_head"
 	ErrorCodeDownloadFailed     ErrorCode = "download_failed"
+	ErrorCodeEditorRunning      ErrorCode = "editor_running"
 	ErrorCodeFastForwardFailed  ErrorCode = "fast_forward_failed"
 	ErrorCodeInstallFailed      ErrorCode = "install_failed"
 	ErrorCodeInternal           ErrorCode = "internal"
@@ -225,6 +226,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeDetachedHead:
 		return true
 	case ErrorCodeDownloadFailed:
+		return true
+	case ErrorCodeEditorRunning:
 		return true
 	case ErrorCodeFastForwardFailed:
 		return true
@@ -1522,6 +1525,19 @@ type WorktreeFile struct {
 // WorktreeFileStatus M changed, A added, D deleted, ? untracked, U in conflict.
 type WorktreeFileStatus string
 
+// WorktreeFileChange defines model for WorktreeFileChange.
+type WorktreeFileChange struct {
+	// From Where it was, when renamed.
+	From *string `json:"from,omitempty"`
+
+	// Path Where it is now; where it was, once deleted.
+	Path string `json:"path"`
+
+	// Result The most significant thing that happened.
+	Result   Result `json:"result"`
+	Worktree string `json:"worktree"`
+}
+
 // WorktreeFileContent defines model for WorktreeFileContent.
 type WorktreeFileContent struct {
 	// Binary It has a NUL or is not UTF-8.
@@ -1537,6 +1553,15 @@ type WorktreeFileContent struct {
 	// TooLarge Over 2 MiB.
 	TooLarge bool   `json:"too_large"`
 	Worktree string `json:"worktree"`
+}
+
+// WorktreeFileCreate defines model for WorktreeFileCreate.
+type WorktreeFileCreate struct {
+	// Directory A directory rather than a file.
+	Directory *bool `json:"directory,omitempty"`
+
+	// Path Where, relative to the worktree.
+	Path string `json:"path"`
 }
 
 // WorktreeFileDiff defines model for WorktreeFileDiff.
@@ -1560,6 +1585,15 @@ type WorktreeFileMark struct {
 	Worktree string `json:"worktree"`
 }
 
+// WorktreeFileRename defines model for WorktreeFileRename.
+type WorktreeFileRename struct {
+	// Name Its new name, in the same directory.
+	Name string `json:"name"`
+
+	// Path Relative to the worktree.
+	Path string `json:"path"`
+}
+
 // WorktreeFileVerify defines model for WorktreeFileVerify.
 type WorktreeFileVerify struct {
 	// ContentId The file's blob id as the patch looked at says it; the content it has now when not given.
@@ -1568,7 +1602,9 @@ type WorktreeFileVerify struct {
 
 // WorktreeFiles defines model for WorktreeFiles.
 type WorktreeFiles struct {
-	Paths []string `json:"paths"`
+	// EmptyDirs The directories, not gitignored, that hold no file, without a slash at their end.
+	EmptyDirs []string `json:"empty_dirs"`
+	Paths     []string `json:"paths"`
 
 	// Truncated Too many: paths is the first of them.
 	Truncated bool   `json:"truncated"`
@@ -2036,8 +2072,38 @@ type GetWorktreeDiffParams struct {
 	Uncommitted *bool `form:"uncommitted,omitempty" json:"uncommitted,omitempty"`
 }
 
+// RemoveWorktreeFileParams defines parameters for RemoveWorktreeFile.
+type RemoveWorktreeFileParams struct {
+	// Path Its path, relative to the worktree.
+	Path string `form:"path" json:"path"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // ListWorktreeFilesParams defines parameters for ListWorktreeFiles.
 type ListWorktreeFilesParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// RenameWorktreeFileParams defines parameters for RenameWorktreeFile.
+type RenameWorktreeFileParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *WorktreeDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// CreateWorktreeFileParams defines parameters for CreateWorktreeFile.
+type CreateWorktreeFileParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *WorktreeProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -2155,6 +2221,12 @@ type CreateWorktreeCommentJSONRequestBody = WorktreeCommentCreate
 
 // EditWorktreeCommentJSONRequestBody defines body for EditWorktreeComment for application/json ContentType.
 type EditWorktreeCommentJSONRequestBody = WorktreeCommentEdit
+
+// RenameWorktreeFileJSONRequestBody defines body for RenameWorktreeFile for application/json ContentType.
+type RenameWorktreeFileJSONRequestBody = WorktreeFileRename
+
+// CreateWorktreeFileJSONRequestBody defines body for CreateWorktreeFile for application/json ContentType.
+type CreateWorktreeFileJSONRequestBody = WorktreeFileCreate
 
 // VerifyWorktreeFileJSONRequestBody defines body for VerifyWorktreeFile for application/json ContentType.
 type VerifyWorktreeFileJSONRequestBody = WorktreeFileVerify
@@ -3136,15 +3208,78 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
 	GetWorktreeDiff(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RemoveWorktreeFile Delete a file, or a directory with all it holds, from a worktree
+	//
+	// For good: nothing goes to a trash, and git can bring back only what it
+	// tracks. A symbolic link is deleted, not what it leads to.
+	//
+	// Errors: editor_running; invalid_path; not_found; usage.
+	//
+	// Corresponds with DELETE /v1/worktrees/{worktree}/files (the `RemoveWorktreeFile` operationId).
+	RemoveWorktreeFile(ctx context.Context, worktree WorktreeRef, params *RemoveWorktreeFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListWorktreeFiles The files of a worktree, tracked and untracked, without gitignored ones
 	//
 	// A tracked file missing from disk is listed. What a nested repository holds
-	// is not. The paths are sorted and relative to the worktree.
+	// is not. The paths are sorted and relative to the worktree. Directories that
+	// hold no file, which git does not list, come apart.
 	//
 	// Errors: invalid_path, not_found, usage.
 	//
 	// Corresponds with GET /v1/worktrees/{worktree}/files (the `ListWorktreeFiles` operationId).
 	ListWorktreeFiles(ctx context.Context, worktree WorktreeRef, params *ListWorktreeFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenameWorktreeFileWithBody Rename a file or directory of a worktree, in its directory
+	//
+	// git is not run: a tracked file renamed shows as deleted, and its new name
+	// as untracked.
+	//
+	// Errors: editor_running, when an editor has it, or a file in it, open;
+	// invalid_name; invalid_path; path_exists; not_found; usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+	RenameWorktreeFileWithBody(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenameWorktreeFile Rename a file or directory of a worktree, in its directory
+	//
+	// git is not run: a tracked file renamed shows as deleted, and its new name
+	// as untracked.
+	//
+	// Errors: editor_running, when an editor has it, or a file in it, open;
+	// invalid_name; invalid_path; path_exists; not_found; usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+	RenameWorktreeFile(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, body RenameWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWorktreeFileWithBody Create an empty file or directory in a worktree
+	//
+	// In a directory that is there. git is not run: the file is untracked.
+	//
+	// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+	// the path leads out of the worktree or into .git; path_exists; not_found,
+	// for the worktree or the directory; usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+	CreateWorktreeFileWithBody(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWorktreeFile Create an empty file or directory in a worktree
+	//
+	// In a directory that is there. git is not run: the file is untracked.
+	//
+	// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+	// the path leads out of the worktree or into .git; path_exists; not_found,
+	// for the worktree or the directory; usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+	CreateWorktreeFile(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, body CreateWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetWorktreeFileContent What a file of a worktree holds now, on disk
 	//
@@ -4566,16 +4701,129 @@ func (c *Client) GetWorktreeDiff(ctx context.Context, worktree WorktreeRef, para
 	return c.Client.Do(req)
 }
 
+// RemoveWorktreeFile Delete a file, or a directory with all it holds, from a worktree
+//
+// For good: nothing goes to a trash, and git can bring back only what it
+// tracks. A symbolic link is deleted, not what it leads to.
+//
+// Errors: editor_running; invalid_path; not_found; usage.
+//
+// Corresponds with DELETE /v1/worktrees/{worktree}/files (the `RemoveWorktreeFile` operationId).
+func (c *Client) RemoveWorktreeFile(ctx context.Context, worktree WorktreeRef, params *RemoveWorktreeFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveWorktreeFileRequest(c.Server, worktree, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListWorktreeFiles The files of a worktree, tracked and untracked, without gitignored ones
 //
 // A tracked file missing from disk is listed. What a nested repository holds
-// is not. The paths are sorted and relative to the worktree.
+// is not. The paths are sorted and relative to the worktree. Directories that
+// hold no file, which git does not list, come apart.
 //
 // Errors: invalid_path, not_found, usage.
 //
 // Corresponds with GET /v1/worktrees/{worktree}/files (the `ListWorktreeFiles` operationId).
 func (c *Client) ListWorktreeFiles(ctx context.Context, worktree WorktreeRef, params *ListWorktreeFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListWorktreeFilesRequest(c.Server, worktree, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenameWorktreeFileWithBody Rename a file or directory of a worktree, in its directory
+//
+// git is not run: a tracked file renamed shows as deleted, and its new name
+// as untracked.
+//
+// Errors: editor_running, when an editor has it, or a file in it, open;
+// invalid_name; invalid_path; path_exists; not_found; usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+func (c *Client) RenameWorktreeFileWithBody(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameWorktreeFileRequestWithBody(c.Server, worktree, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenameWorktreeFile Rename a file or directory of a worktree, in its directory
+//
+// git is not run: a tracked file renamed shows as deleted, and its new name
+// as untracked.
+//
+// Errors: editor_running, when an editor has it, or a file in it, open;
+// invalid_name; invalid_path; path_exists; not_found; usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+func (c *Client) RenameWorktreeFile(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, body RenameWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameWorktreeFileRequest(c.Server, worktree, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWorktreeFileWithBody Create an empty file or directory in a worktree
+//
+// In a directory that is there. git is not run: the file is untracked.
+//
+// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+// the path leads out of the worktree or into .git; path_exists; not_found,
+// for the worktree or the directory; usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+func (c *Client) CreateWorktreeFileWithBody(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorktreeFileRequestWithBody(c.Server, worktree, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWorktreeFile Create an empty file or directory in a worktree
+//
+// In a directory that is there. git is not run: the file is untracked.
+//
+// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+// the path leads out of the worktree or into .git; path_exists; not_found,
+// for the worktree or the directory; usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+func (c *Client) CreateWorktreeFile(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, body CreateWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWorktreeFileRequest(c.Server, worktree, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7513,6 +7761,87 @@ func NewGetWorktreeDiffRequest(server string, worktree WorktreeRef, params *GetW
 	return req, nil
 }
 
+// NewRemoveWorktreeFileRequest constructs an http.Request for the RemoveWorktreeFile method
+func NewRemoveWorktreeFileRequest(server string, worktree WorktreeRef, params *RemoveWorktreeFileParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/files", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListWorktreeFilesRequest constructs an http.Request for the ListWorktreeFiles method
 func NewListWorktreeFilesRequest(server string, worktree WorktreeRef, params *ListWorktreeFilesParams) (*http.Request, error) {
 	var err error
@@ -7582,6 +7911,178 @@ func NewListWorktreeFilesRequest(server string, worktree WorktreeRef, params *Li
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewRenameWorktreeFileRequest calls the generic RenameWorktreeFile builder with application/json body
+func NewRenameWorktreeFileRequest(server string, worktree WorktreeRef, params *RenameWorktreeFileParams, body RenameWorktreeFileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenameWorktreeFileRequestWithBody(server, worktree, params, "application/json", bodyReader)
+}
+
+// NewRenameWorktreeFileRequestWithBody constructs an http.Request for the RenameWorktreeFile method, with any body, and a specified content type
+func NewRenameWorktreeFileRequestWithBody(server string, worktree WorktreeRef, params *RenameWorktreeFileParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/files", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateWorktreeFileRequest calls the generic CreateWorktreeFile builder with application/json body
+func NewCreateWorktreeFileRequest(server string, worktree WorktreeRef, params *CreateWorktreeFileParams, body CreateWorktreeFileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateWorktreeFileRequestWithBody(server, worktree, params, "application/json", bodyReader)
+}
+
+// NewCreateWorktreeFileRequestWithBody constructs an http.Request for the CreateWorktreeFile method, with any body, and a specified content type
+func NewCreateWorktreeFileRequestWithBody(server string, worktree WorktreeRef, params *CreateWorktreeFileParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "worktree", worktree, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worktrees/%s/files", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -8961,10 +9462,23 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/worktrees/{worktree}/diff (the `GetWorktreeDiff` operationId).
 	GetWorktreeDiffWithResponse(ctx context.Context, worktree WorktreeRef, params *GetWorktreeDiffParams, reqEditors ...RequestEditorFn) (*GetWorktreeDiffResponse, error)
 
+	// RemoveWorktreeFileWithResponse Delete a file, or a directory with all it holds, from a worktree
+	//
+	// For good: nothing goes to a trash, and git can bring back only what it
+	// tracks. A symbolic link is deleted, not what it leads to.
+	//
+	// Errors: editor_running; invalid_path; not_found; usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/worktrees/{worktree}/files (the `RemoveWorktreeFile` operationId).
+	RemoveWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *RemoveWorktreeFileParams, reqEditors ...RequestEditorFn) (*RemoveWorktreeFileResponse, error)
+
 	// ListWorktreeFilesWithResponse The files of a worktree, tracked and untracked, without gitignored ones
 	//
 	// A tracked file missing from disk is listed. What a nested repository holds
-	// is not. The paths are sorted and relative to the worktree.
+	// is not. The paths are sorted and relative to the worktree. Directories that
+	// hold no file, which git does not list, come apart.
 	//
 	// Errors: invalid_path, not_found, usage.
 	//
@@ -8972,6 +9486,58 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/worktrees/{worktree}/files (the `ListWorktreeFiles` operationId).
 	ListWorktreeFilesWithResponse(ctx context.Context, worktree WorktreeRef, params *ListWorktreeFilesParams, reqEditors ...RequestEditorFn) (*ListWorktreeFilesResponse, error)
+
+	// RenameWorktreeFileWithBodyWithResponse Rename a file or directory of a worktree, in its directory
+	//
+	// git is not run: a tracked file renamed shows as deleted, and its new name
+	// as untracked.
+	//
+	// Errors: editor_running, when an editor has it, or a file in it, open;
+	// invalid_name; invalid_path; path_exists; not_found; usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+	RenameWorktreeFileWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameWorktreeFileResponse, error)
+
+	// RenameWorktreeFileWithResponse Rename a file or directory of a worktree, in its directory
+	//
+	// git is not run: a tracked file renamed shows as deleted, and its new name
+	// as untracked.
+	//
+	// Errors: editor_running, when an editor has it, or a file in it, open;
+	// invalid_name; invalid_path; path_exists; not_found; usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+	RenameWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, body RenameWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameWorktreeFileResponse, error)
+
+	// CreateWorktreeFileWithBodyWithResponse Create an empty file or directory in a worktree
+	//
+	// In a directory that is there. git is not run: the file is untracked.
+	//
+	// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+	// the path leads out of the worktree or into .git; path_exists; not_found,
+	// for the worktree or the directory; usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+	CreateWorktreeFileWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorktreeFileResponse, error)
+
+	// CreateWorktreeFileWithResponse Create an empty file or directory in a worktree
+	//
+	// In a directory that is there. git is not run: the file is untracked.
+	//
+	// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+	// the path leads out of the worktree or into .git; path_exists; not_found,
+	// for the worktree or the directory; usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+	CreateWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, body CreateWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorktreeFileResponse, error)
 
 	// GetWorktreeFileContentWithResponse What a file of a worktree holds now, on disk
 	//
@@ -11128,6 +11694,54 @@ func (r GetWorktreeDiffResponse) ContentType() string {
 	return ""
 }
 
+type RemoveWorktreeFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeFileChange
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveWorktreeFileResponse) GetJSON200() *WorktreeFileChange {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveWorktreeFileResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveWorktreeFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveWorktreeFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveWorktreeFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveWorktreeFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListWorktreeFilesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11170,6 +11784,102 @@ func (r ListWorktreeFilesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListWorktreeFilesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenameWorktreeFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorktreeFileChange
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RenameWorktreeFileResponse) GetJSON200() *WorktreeFileChange {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RenameWorktreeFileResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RenameWorktreeFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RenameWorktreeFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenameWorktreeFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenameWorktreeFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateWorktreeFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *WorktreeFileChange
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateWorktreeFileResponse) GetJSON201() *WorktreeFileChange {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateWorktreeFileResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateWorktreeFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateWorktreeFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateWorktreeFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateWorktreeFileResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12623,10 +13333,29 @@ func (c *ClientWithResponses) GetWorktreeDiffWithResponse(ctx context.Context, w
 	return ParseGetWorktreeDiffResponse(rsp)
 }
 
+// RemoveWorktreeFileWithResponse Delete a file, or a directory with all it holds, from a worktree
+//
+// For good: nothing goes to a trash, and git can bring back only what it
+// tracks. A symbolic link is deleted, not what it leads to.
+//
+// Errors: editor_running; invalid_path; not_found; usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/worktrees/{worktree}/files (the `RemoveWorktreeFile` operationId).
+func (c *ClientWithResponses) RemoveWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *RemoveWorktreeFileParams, reqEditors ...RequestEditorFn) (*RemoveWorktreeFileResponse, error) {
+	rsp, err := c.RemoveWorktreeFile(ctx, worktree, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveWorktreeFileResponse(rsp)
+}
+
 // ListWorktreeFilesWithResponse The files of a worktree, tracked and untracked, without gitignored ones
 //
 // A tracked file missing from disk is listed. What a nested repository holds
-// is not. The paths are sorted and relative to the worktree.
+// is not. The paths are sorted and relative to the worktree. Directories that
+// hold no file, which git does not list, come apart.
 //
 // Errors: invalid_path, not_found, usage.
 //
@@ -12639,6 +13368,82 @@ func (c *ClientWithResponses) ListWorktreeFilesWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseListWorktreeFilesResponse(rsp)
+}
+
+// RenameWorktreeFileWithBodyWithResponse Rename a file or directory of a worktree, in its directory
+//
+// git is not run: a tracked file renamed shows as deleted, and its new name
+// as untracked.
+//
+// Errors: editor_running, when an editor has it, or a file in it, open;
+// invalid_name; invalid_path; path_exists; not_found; usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+func (c *ClientWithResponses) RenameWorktreeFileWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameWorktreeFileResponse, error) {
+	rsp, err := c.RenameWorktreeFileWithBody(ctx, worktree, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameWorktreeFileResponse(rsp)
+}
+
+// RenameWorktreeFileWithResponse Rename a file or directory of a worktree, in its directory
+//
+// git is not run: a tracked file renamed shows as deleted, and its new name
+// as untracked.
+//
+// Errors: editor_running, when an editor has it, or a file in it, open;
+// invalid_name; invalid_path; path_exists; not_found; usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/worktrees/{worktree}/files (the `RenameWorktreeFile` operationId).
+func (c *ClientWithResponses) RenameWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *RenameWorktreeFileParams, body RenameWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameWorktreeFileResponse, error) {
+	rsp, err := c.RenameWorktreeFile(ctx, worktree, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameWorktreeFileResponse(rsp)
+}
+
+// CreateWorktreeFileWithBodyWithResponse Create an empty file or directory in a worktree
+//
+// In a directory that is there. git is not run: the file is untracked.
+//
+// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+// the path leads out of the worktree or into .git; path_exists; not_found,
+// for the worktree or the directory; usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+func (c *ClientWithResponses) CreateWorktreeFileWithBodyWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWorktreeFileResponse, error) {
+	rsp, err := c.CreateWorktreeFileWithBody(ctx, worktree, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWorktreeFileResponse(rsp)
+}
+
+// CreateWorktreeFileWithResponse Create an empty file or directory in a worktree
+//
+// In a directory that is there. git is not run: the file is untracked.
+//
+// Errors: invalid_name, when the last name cannot be one; invalid_path, when
+// the path leads out of the worktree or into .git; path_exists; not_found,
+// for the worktree or the directory; usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worktrees/{worktree}/files (the `CreateWorktreeFile` operationId).
+func (c *ClientWithResponses) CreateWorktreeFileWithResponse(ctx context.Context, worktree WorktreeRef, params *CreateWorktreeFileParams, body CreateWorktreeFileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWorktreeFileResponse, error) {
+	rsp, err := c.CreateWorktreeFile(ctx, worktree, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWorktreeFileResponse(rsp)
 }
 
 // GetWorktreeFileContentWithResponse What a file of a worktree holds now, on disk
@@ -14207,6 +15012,39 @@ func ParseGetWorktreeDiffResponse(rsp *http.Response) (*GetWorktreeDiffResponse,
 	return response, nil
 }
 
+// ParseRemoveWorktreeFileResponse parses an HTTP response from a RemoveWorktreeFileWithResponse call
+func ParseRemoveWorktreeFileResponse(rsp *http.Response) (*RemoveWorktreeFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveWorktreeFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeFileChange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListWorktreeFilesResponse parses an HTTP response from a ListWorktreeFilesWithResponse call
 func ParseListWorktreeFilesResponse(rsp *http.Response) (*ListWorktreeFilesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14227,6 +15065,72 @@ func ParseListWorktreeFilesResponse(rsp *http.Response) (*ListWorktreeFilesRespo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenameWorktreeFileResponse parses an HTTP response from a RenameWorktreeFileWithResponse call
+func ParseRenameWorktreeFileResponse(rsp *http.Response) (*RenameWorktreeFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenameWorktreeFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorktreeFileChange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateWorktreeFileResponse parses an HTTP response from a CreateWorktreeFileWithResponse call
+func ParseCreateWorktreeFileResponse(rsp *http.Response) (*CreateWorktreeFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateWorktreeFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest WorktreeFileChange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
@@ -14569,9 +15473,18 @@ type ServerInterface interface {
 	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	// (GET /v1/worktrees/{worktree}/diff)
 	GetWorktreeDiff(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeDiffParams)
+	// RemoveWorktreeFile Delete a file, or a directory with all it holds, from a worktree
+	// (DELETE /v1/worktrees/{worktree}/files)
+	RemoveWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params RemoveWorktreeFileParams)
 	// ListWorktreeFiles The files of a worktree, tracked and untracked, without gitignored ones
 	// (GET /v1/worktrees/{worktree}/files)
 	ListWorktreeFiles(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params ListWorktreeFilesParams)
+	// RenameWorktreeFile Rename a file or directory of a worktree, in its directory
+	// (PATCH /v1/worktrees/{worktree}/files)
+	RenameWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params RenameWorktreeFileParams)
+	// CreateWorktreeFile Create an empty file or directory in a worktree
+	// (POST /v1/worktrees/{worktree}/files)
+	CreateWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params CreateWorktreeFileParams)
 	// GetWorktreeFileContent What a file of a worktree holds now, on disk
 	// (GET /v1/worktrees/{worktree}/files/content)
 	GetWorktreeFileContent(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params GetWorktreeFileContentParams)
@@ -16535,6 +17448,74 @@ func (siw *ServerInterfaceWrapper) GetWorktreeDiff(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveWorktreeFile operation middleware
+func (siw *ServerInterfaceWrapper) RemoveWorktreeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveWorktreeFileParams
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveWorktreeFile(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorktreeFiles operation middleware
 func (siw *ServerInterfaceWrapper) ListWorktreeFiles(w http.ResponseWriter, r *http.Request) {
 
@@ -16581,6 +17562,116 @@ func (siw *ServerInterfaceWrapper) ListWorktreeFiles(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWorktreeFiles(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameWorktreeFile operation middleware
+func (siw *ServerInterfaceWrapper) RenameWorktreeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RenameWorktreeFileParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameWorktreeFile(w, r, worktree, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorktreeFile operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorktreeFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "worktree" -------------
+	var worktree WorktreeRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktree", r.PathValue("worktree"), &worktree, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktree", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorktreeFileParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorktreeFile(w, r, worktree, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17124,7 +18215,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}", wrapper.RemoveWorktree)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/worktrees/{worktree}/land", wrapper.LandWorktree)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/diff", wrapper.GetWorktreeDiff)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}/files", wrapper.RemoveWorktreeFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files", wrapper.ListWorktreeFiles)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/worktrees/{worktree}/files", wrapper.RenameWorktreeFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/worktrees/{worktree}/files", wrapper.CreateWorktreeFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/content", wrapper.GetWorktreeFileContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/diff", wrapper.GetWorktreeFileDiff)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/worktrees/{worktree}/files/verified", wrapper.UnverifyWorktreeFile)
@@ -18906,6 +20000,46 @@ func (response GetWorktreeDiffdefaultApplicationProblemPlusJSONResponse) VisitGe
 	return err
 }
 
+type RemoveWorktreeFileRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   RemoveWorktreeFileParams
+}
+
+type RemoveWorktreeFileResponseObject interface {
+	VisitRemoveWorktreeFileResponse(w http.ResponseWriter) error
+}
+
+type RemoveWorktreeFile200JSONResponse WorktreeFileChange
+
+func (response RemoveWorktreeFile200JSONResponse) VisitRemoveWorktreeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveWorktreeFiledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RemoveWorktreeFiledefaultApplicationProblemPlusJSONResponse) VisitRemoveWorktreeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorktreeFilesRequestObject struct {
 	Worktree WorktreeRef `json:"worktree"`
 	Params   ListWorktreeFilesParams
@@ -18935,6 +20069,88 @@ type ListWorktreeFilesdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListWorktreeFilesdefaultApplicationProblemPlusJSONResponse) VisitListWorktreeFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameWorktreeFileRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   RenameWorktreeFileParams
+	Body     *RenameWorktreeFileJSONRequestBody
+}
+
+type RenameWorktreeFileResponseObject interface {
+	VisitRenameWorktreeFileResponse(w http.ResponseWriter) error
+}
+
+type RenameWorktreeFile200JSONResponse WorktreeFileChange
+
+func (response RenameWorktreeFile200JSONResponse) VisitRenameWorktreeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameWorktreeFiledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RenameWorktreeFiledefaultApplicationProblemPlusJSONResponse) VisitRenameWorktreeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorktreeFileRequestObject struct {
+	Worktree WorktreeRef `json:"worktree"`
+	Params   CreateWorktreeFileParams
+	Body     *CreateWorktreeFileJSONRequestBody
+}
+
+type CreateWorktreeFileResponseObject interface {
+	VisitCreateWorktreeFileResponse(w http.ResponseWriter) error
+}
+
+type CreateWorktreeFile201JSONResponse WorktreeFileChange
+
+func (response CreateWorktreeFile201JSONResponse) VisitCreateWorktreeFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorktreeFiledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateWorktreeFiledefaultApplicationProblemPlusJSONResponse) VisitCreateWorktreeFileResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -19319,9 +20535,18 @@ type StrictServerInterface interface {
 	// GetWorktreeDiff What a worktree has committed since it left its base, as a PR shows it, or what it has not committed
 	// (GET /v1/worktrees/{worktree}/diff)
 	GetWorktreeDiff(ctx context.Context, request GetWorktreeDiffRequestObject) (GetWorktreeDiffResponseObject, error)
+	// RemoveWorktreeFile Delete a file, or a directory with all it holds, from a worktree
+	// (DELETE /v1/worktrees/{worktree}/files)
+	RemoveWorktreeFile(ctx context.Context, request RemoveWorktreeFileRequestObject) (RemoveWorktreeFileResponseObject, error)
 	// ListWorktreeFiles The files of a worktree, tracked and untracked, without gitignored ones
 	// (GET /v1/worktrees/{worktree}/files)
 	ListWorktreeFiles(ctx context.Context, request ListWorktreeFilesRequestObject) (ListWorktreeFilesResponseObject, error)
+	// RenameWorktreeFile Rename a file or directory of a worktree, in its directory
+	// (PATCH /v1/worktrees/{worktree}/files)
+	RenameWorktreeFile(ctx context.Context, request RenameWorktreeFileRequestObject) (RenameWorktreeFileResponseObject, error)
+	// CreateWorktreeFile Create an empty file or directory in a worktree
+	// (POST /v1/worktrees/{worktree}/files)
+	CreateWorktreeFile(ctx context.Context, request CreateWorktreeFileRequestObject) (CreateWorktreeFileResponseObject, error)
 	// GetWorktreeFileContent What a file of a worktree holds now, on disk
 	// (GET /v1/worktrees/{worktree}/files/content)
 	GetWorktreeFileContent(ctx context.Context, request GetWorktreeFileContentRequestObject) (GetWorktreeFileContentResponseObject, error)
@@ -20601,6 +21826,33 @@ func (sh *strictHandler) GetWorktreeDiff(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// RemoveWorktreeFile operation middleware
+func (sh *strictHandler) RemoveWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params RemoveWorktreeFileParams) {
+	var request RemoveWorktreeFileRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveWorktreeFile(ctx, request.(RemoveWorktreeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveWorktreeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveWorktreeFileResponseObject); ok {
+		if err := validResponse.VisitRemoveWorktreeFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListWorktreeFiles operation middleware
 func (sh *strictHandler) ListWorktreeFiles(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params ListWorktreeFilesParams) {
 	var request ListWorktreeFilesRequestObject
@@ -20621,6 +21873,74 @@ func (sh *strictHandler) ListWorktreeFiles(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListWorktreeFilesResponseObject); ok {
 		if err := validResponse.VisitListWorktreeFilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenameWorktreeFile operation middleware
+func (sh *strictHandler) RenameWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params RenameWorktreeFileParams) {
+	var request RenameWorktreeFileRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	var body RenameWorktreeFileJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenameWorktreeFile(ctx, request.(RenameWorktreeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenameWorktreeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenameWorktreeFileResponseObject); ok {
+		if err := validResponse.VisitRenameWorktreeFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorktreeFile operation middleware
+func (sh *strictHandler) CreateWorktreeFile(w http.ResponseWriter, r *http.Request, worktree WorktreeRef, params CreateWorktreeFileParams) {
+	var request CreateWorktreeFileRequestObject
+
+	request.Worktree = worktree
+	request.Params = params
+
+	var body CreateWorktreeFileJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorktreeFile(ctx, request.(CreateWorktreeFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorktreeFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorktreeFileResponseObject); ok {
+		if err := validResponse.VisitCreateWorktreeFileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -20809,253 +22129,262 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7L17k9u2li/6VVC6t8pJXbrtZM/cM9P9x1RvO5n4nLyOnWxXna2UChIhCbspQCHAlrVd/u6n1gMgKIEU",
+	"u1ttOzP5y22JIl5rLaznb72fLOxma40y3k0u30+2spYb5VWN/7teKeNfqyX8XSq3qPXWa2sml5PpRJeX",
+	"04mQphR+rYSEJ584octCSCe0Ebq8xA+ffiW/nv9l8S9lIWwttHfCyI2ami8W0qmn2jhlnPb6Vn0pvF0p",
+	"v1a12Gm/Ftva/kMtPPyq1HUhnDYLhT92QtZqahqjf2+UsKba4y+0ETL86mJqJsVEw1S30q8nxQR+OLmc",
+	"4JwmxaRWvze6VuXk0teNKiZusVYbCQvdaPO9Miu/nlx+VUz8fgs/c77WZjX58KGY/EwjZLfll7UKM3hC",
+	"CxXH68SNSDcQNqWzcfCKuG8X+YXwMA9ayhtvt68bY+D/R2uBL/Fsvao32sjK4WRxA53wa+nhGITzsvba",
+	"rGBRNb1LaOO8kqWwS1GrZeO0WcVV/N6oet8uw3m7nfHvJuncS7WUTeUnl0tZORVnP7e2UtLg9H/hib3U",
+	"9fH0r42Qc2erxisBOwdba42COfnOKe1sfeNrpdyVUO8WVVMqF6moZ9Klrid32ecwUSadMXTTQyTJHEtd",
+	"982vpY27z3EUuweSOOR4+PwzY/gw1Qcxylumkc+e0sJEP2dKC3PslaBhn+IEN1IbsbQ17ueiskb1CMXw",
+	"ywcc9gf4qdta4xTegT/Xdl6pDfy5sMbD7XH5fiK320ovJEz62Zae+P/+4WAF75OR/t8aljj5f561l+wz",
+	"+tY9C+/FEY/3AKavnBdLqStVXuDG8U/jzYwXdm23qvaaJisX8nhL3671Yi2uX4mFLUE6owQX2oO4dsi8",
+	"i0o2pZotbIkbe7AlxUQuvL7Vfp97t8RXaSdKq82qELu1rlS4Ca6EBf7eaaeEaarqQvxqbozdGbFbK4OU",
+	"5ha1UkYspDHWizmsXLaiY1vbhXJO7KSjm0aVYr4XUuzKd8JbK2xVCm+Fk3uYuTLNZnL5d6QDulB0WQE1",
+	"7KT29EFDE5j8VkxgRnJeqUAiR+terHVV1srkyZRvwkWtJEyrMaWCSRcwQaJbFGt+rXQtwquuhFMenqi0",
+	"83iKrhArRX8i+62U/zlIQlPhsrRXG3eKoIgkPsRlyLqWe1wFTXAmkWCWtt7AX5NSevXU643KnfiiqWtl",
+	"/KzMCby3a1UrPJ7rV+LF969EJZ0XTmqQHci9ii4FufS4JWJjb1UptPEWjo6ZFL+QJb5JVcsrpBDRGK8r",
+	"+GotHZIBU4oorXICaITP+uTpDc6dqMkVwtgdbrs1Qt2qei9qVcnGLNZZTihrufTZt+I9JsW62UgjKrX0",
+	"wqt3Hu9FkKdm23gxt+8KYWAYvkXf+VMM07/QqAkB2ZfD53tyr1Rd28xu/YRXLRwAyaErsVvv8TB0SWcB",
+	"uzjqNNQ77VHCDI0CD8EoX339b1HXcHplZIXiH27VG11VQQjQVwPDa+PVStUw/lpV5fHQPyjn5Eo5fL32",
+	"pNaCsMAP+DgvmYfXtgIWLzWStynFDp72a7UXO6CqjZKGfqidWPEtdTwTjfM42qCNLVWVlzTXrwR+G2wK",
+	"0LeA+15cM+ut7Q74yxfCNYs1fP+d1DeN+NeLfy1wQqV220ruT1AbMu1cLS2xyBqE7hqkNaxFXIvFWpqV",
+	"6jLj2u7aUaURsvF2I71eiKWsqrlc3BSwHfisUmYUrdBtntmjrUSphJJ3pssBuYySSB5IZxYxdGgC7JtK",
+	"3apq1Jw6Q4cJHg4ONhFbwvDIg8brW97BRf7EhUPlE2O6O80RrLvNeugxfN17GL83qlGZSX5nd2IjzV5s",
+	"AnMhQ3krVpbuACBUpLS1BotSoFS9vyRM1lQrvGpYFh4JaRPIgp+bFHl5qZes1Ejh7WbuPG7qJfLI6aNz",
+	"yjltzWz0CYpKelD2+Ie4E4s1TGEFfGYNaRIoIoMWJFdSmytmSUffoXpsza2qHaqmsIJFpWStyuxtxu96",
+	"0M3hvPRqlG7yBp8EBYVNsuwGoUYJktalCmDYEum9XKxh60otK3cljI3GKBlfcrFQW7hxfXbJzbZMlKEs",
+	"gaCm6RWJVtpf3L5xmlM0QbJHj+K71zDEddPi6pzVw/IEz9rAZQhieIQ0+ZCaQ3+HC4hlbEcIHLD8sbTN",
+	"CcHuaRZogXQ4oGAbNtUo+TYuUnuN6CixNYKyFQVNuCJJNqYaRdBfOrpu56w7tJ4oTB2J8VvcODtHq/ZD",
+	"QYbWN+ZWVXarMgZXsMNGaOYHp0A/7R3ze+18z3j410NsgtxMXP9UWEnC8ctSAzmjLyvOi1103alq47w0",
+	"GTb7TyuWunaedCgQ3nXdbH3Hj+yb2ogohcmhkvBzovtua7vZ9jg6UAOHe0ffqvb1V/xW18w32nti7lNO",
+	"i3S/eMje/XqtHHouH0IsYWGzHs38LerhKB83W7rTSMUyvrU7WRUKbllZVaRRo2qCNoptfHvPZgVmHRcz",
+	"NGteMt4HdrtV5YxFgMufTPg2yEKaKGrfwaFciFp1nMvAqOhdhmdwEJi+02RBxmsArorEPu04PdayZFvU",
+	"r9Um2YNwfdaKVHkTfEyBy4725dDKDqJsxiIos+66UTQQPgKzapce9FSYdXjViTNKXeEpefKJFackzJtw",
+	"c+dt2dT9AppQpW9VgUS2I6fP8fYGL9DF1ISTu8QH2XLSoPPB4yyMrwJpXuZeNzVh2Cs2DOExgbIb7L/g",
+	"NmBiuIQ70hGBRL8qTIRIRfsrNmIvjwzYK1FZ5w+nChYciKipMXZuy71IX8XXxuWxnliIG7X10Y/houtn",
+	"amStyC5EZ3VwVoWtgssoBkJowZPIT6B/4OwnxQQm295cyQG31IkH/EstDZ3ssSxa1nbTo6I0m7mqA2Oi",
+	"pBaVNgqkMPzrOrqQNv7//5esmYvP5ofArwoBO+18vAyc+EHWN6XdmbtxnlHv/OBSYB3wEC1jV4PQB5Ua",
+	"xKG8USPXg57m7DBLMFssqd+lVBtrnjixQT1VgTSylSIrfFWrbUbIHl4v5NLGE+LVhd3s5eX2qPt1Fd8h",
+	"h5N3UEI9hzNM3pSb0QuUZdFFfQedIeuyu+4GV4LrTmh0pioWnThc9gbLG+vXYqWMqlHoyhKmrm/VU2Mb",
+	"A0JIoaI+3wsOQ97BRTDklPCWZwvLQJcEeotzweAkdgaclxgM+BlKwCRillgOV8m8g1PAWEGzG7eQM0SP",
+	"kjnA3EGW7tbWqa6xE4NLY+aU1fNewdUv3Q0KkFZise+h9b+i75WMyJ2Ej6KjWTuMOezZB0hE5ZQpI0md",
+	"nNyw0RdX7C3RrtCmiDd+onqgnyxEDqVnH1KGxu9m7wFX9fNpEiq8A6fmmeo1j4pb6WxTL0Dy7lJfjsfg",
+	"1tY67W29h+NXC/zL1uLX19+LDOMdbbc1s4U1y0rTtMNFarcK7tWFNAtVZa9Fa2Yb7UBJmC3WanFjm84L",
+	"aoVmdrxbs++gZZ0SoW/oqcOj4B/3n0YIw59fcKLmv1ZVlZefYeBHE6E0GNnkFO1aYnRHeiHp1Ddyj0Lh",
+	"DyqjRnLdS9QQjq/nhd1stM9qPGvb44Ltd5R3nLqJFuPs4kblRxnhDTz6za2qnabVDO8GO4vC80VYbnDm",
+	"4BLj9DqTyW3iNyWIj+NNHFbSnjjBylWtKunRK2Dx6MOBRydvjt5WtezRmRVNBwRMdO/RZ8IpD8r9E7AD",
+	"rF6A+tw3xChXauDTcd7UX5JknRDyF9ocHWUxYf+qWFQaI9HoaFVOeMsTHn3NMddNikkubyO/+EMFs+NT",
+	"TLyEfHzhMMKe9ZNIny9GRQIa2mwmszu7Qfosch41O926tvWLbHz0jQepI9AThJL1ioPI7Jwm70jjVHnB",
+	"9sesMfJWapRWxdTIChWckGdXABkAR4fLsBBbW/uZNrPGqfZbMjjh9+Tvtb59A9HHrDGu2cKP8bmFNQZu",
+	"AWtmYKMWcO7waanQ0bMr37H8F1+AmVdZWfIgwIe1ct7WahZ27kuKyy+nBn5Yqq3DxEJZVeILuuP5h9ta",
+	"3+pKrZRLf1uTngFTm5r5HmnwxfevQgCeP6H96hrkDXo7CxSbNaWOwdqXtjHBcz4Dw9GgINnamXqnnXcg",
+	"1FipCBvLv1xpP4MH8Z23stJlcJ6H/zJdh//KetVsKFEVvmkHCB76jXYb6RfwG+SrWXQOhCcWlXWdD+h0",
+	"U4d9knYJ0rZ9R3wiOXL06puyfYiIov2W/x8Da/NamkUy9egga/0Y0pQ4BChzetXUyXvbDB56YEOuWvr/",
+	"GhQ4b2fwAvxkVtmFrGZziQuEj+GJdm5x7Hnj9nhq8Gg7Ezy39r/4ZQwQSgdnX+9knax+27h1uunt36VC",
+	"yVnO1kqm0mum3Syol/EzWBxMV5WHn7YbecR98TNezTEv4v3a4UWY2JFogN92RQP5oFLZAKtrhUPyfbvg",
+	"LiuH7XTNJiVTdKvN2vufBEEyLn8QX2LsbFurW20bl/zsUEggWeIN62bMPXS9dyYU+IofjUYCfZts3Mzt",
+	"nVcb/AmKmvSMj6QMnvZWmVKZxT7ZMBLzcW05K+I/tX8TDYk7KPr0otZkWWmffX9TZ3JJXgD5gZV12gmF",
+	"39JrcrfV98Bv91pAXkO7PkyglWIF6ko0FLNmyeFmoBTIbEd+bTiT3OKSeNdBAMd7tdl6N5DzAKzhQpbB",
+	"GjlbYNYb+ZUvxPXc3irxFSW/7cVa3iqxsBsl/E4vejKG7pPB15PVkUTljmNpfWktnYRvW4coXV9OQS6q",
+	"AFyCvnlMZ8Aoh9xfibWqSvbHJAlXRchwSjKu2oQr3txstlWgBB4OGbTSt4qYlaPOjcELp970OM8PNOrM",
+	"9+/8aYtHl0fB8RgxR5duOIok9h3oq3PkAyT6UruFrEuKNnVp9RwK68DI+fB0yPgZHaAOrHYqRB1fPDCl",
+	"PlV/07LzyKmcR9kP4+am/KPaPYb0bL1praf5wOGmzZWYNs+f/2UBJjf+pZ6xjuhOOd4OBa5Ru5HiNrcJ",
+	"P22VaQ35B3u7zlSGMZgJUIz2MHRfcy9/w9krOE4s7Yzm/V3SKQ7N+xypJFUYR6dOdrF0gh8SL5WXunLi",
+	"i9ffvhD//i//+j++vJgUR9628qREaE1yLNGYN6usj+VbbUrHbIZFG0+cqOyqDZYeZ5HjBHty33bKeLGr",
+	"LaYHaIcaxcBbXD/vkJfy+CRvZdWAkmJubXWryjZ9l/MH0bEOl3XCFT2+z/aE1tr4nhV5K0or5Nw2ntPy",
+	"RmUVNi7vwvTaV6pvKFxBSbnYblCGdX/d1OZyV767RGK6jMnnPSUxeYWSJhYnH8+5mHCWGu5Re3AJUfXQ",
+	"fJAAfUlgQ5KBy1MwFyiG/9raFB3qHVD5GK5V+SxKUsiockMOWJdUoKZC/8ELaf2AhyvpURF7HfO21iuN",
+	"/vKTPGDr7VoaVfan6JjkfguuJ8cqdqndzdC6j7X/Ue5nfs2R9/kkObZVxD0k+OBDiqGzzDF1037vlsk7",
+	"I37OJbN8g9MPW48ma6Wdp6o6zB+ulSxpZVi2OofF1kpuwgopsTtoJIWwZkElcKOXHcop35DUGUhNG6+W",
+	"h3ee1MtTs4ZJuzVn2nH7E3MHBF9/JkuiG42g1Vz+Jn4+MPb35ELMROngrPO0vrCbDdwbdWNCEQ17Ijlv",
+	"G1QlM1yekVTgtT7RY40DlOJOAoNT/jKMJoxS5UECfMLmG+XXtqdsA+hXmtJdCs61BMkyl45UTLtVlEcq",
+	"fn6dGtvkTUUVK2tPbxu3HqqZg19TwgPXCToBPyHPCVFVfikPstM6TmfeFHZdsn93BIH8ipR8XjKxtVCb",
+	"rd/fjV76jpUqdJ1wEraW3b2hhMBjarQpBB2hkJyNd5/TPZGVenJDsw6FYJiOllzhfmo2G1nvT8qv+P6B",
+	"mb1mT3z2NEvpJVzBHan+JBYYwQVHKTvZdeU9TPk5nlAT+7wfaaLMqHr0YlLWlHKaJ9+oZ/BjYq4WsqHM",
+	"nj2G3YwVlTUrVQc95M53We4Wu6vQv0/qOuYcDHtAXRSDaUpeKBoGa4p1TyoiUnKxhvscvjqLJhMTIwaM",
+	"AFb9H3+ivQp+yFo+sZUhYztN709ny68508ZRYcKIjTv3tE5t02yUbTNyViHLsbRtgjtVC57B3Ll7dYf2",
+	"roMZNHIVsbSDTNJIMqG6gz7+aPUdfT7eEapkLLM4TFOkAH3uSj24xI5l+vniQecwVO9lOD7IIlvYphPD",
+	"it6h+5gn/La72SivMcLcd+k+VvDlNVVE3Se1fmk52nCYscsZyR5VlXAnbHRZVirwL+xUT+FRboq89GO5",
+	"sLHOI2iDXuqFxIIvYn8JrLvdKkNCNXBKKKWC/Vlp5zmMh65m+MPiL1peamti2su8TchIq2ooQQD/jNWl",
+	"NWaslu3ZU6iQcqw4rYQfbF++rWc8ixwjv+F8g4x9gLmA+W1i/6y3YrG2FtTyjSVoHSpg9/JGOSHFUr9T",
+	"JZh+aV1w+73ZUwEkWBFYCDMs8HrYPIr+CMj2PueKTtbwPu+7o3fnTdkwcwaKABtFLGu7iR5pvcLwSiGc",
+	"hedatCCnvACxnjcQ81VOb8MNQjuN4XeH411SThittOByggqrwNCdj2Yw/bDWsKCsh/lG7fN1CqX1XpXi",
+	"Ru1bn3tlVxcRFeI4vxYmeNpEgBHDw+1Jdc8lVhQF2kuOJSdrmHbzdlnIuRltlwVOOHWzxhcPTOk8Ujcm",
+	"Do2eep8SEN6TnXKM8pYazgK0GA54buR2y8OvtO8bvU0UKji/pefBNCWnwMhsz4Nt7PlDvCT2PzJaHswf",
+	"CyXUT8vJ5d+HdyZ90/CT6eROPduu+MNvCTDhedSgAVCowwKJu2JD/XdBYZK8Sy0S02jImbsqob0gODiD",
+	"Twd9g8OfymLjwAw++2nhV45qBh4ZBeWeeCMMdol726rp5wP7yMnnsDUDZbOJ/Bnne+gpZhgc/zvtvM3Z",
+	"euiPHVOpzdXUWON8o7Z+ZFnzpy8ED5kHsU6lrNUODfhOVFq5hdxSRJ6SBZ3fV8oF3ezGfYZV4weU0C3p",
+	"ppMdKu0+II5+Gl231DOGRAOxHc4vvGZoLnl9sBMGfqCrrod9hrfofhg1Y8BjYMgr8Y3xqhZLW1V2F2Jr",
+	"Z8KMaZGXz6PWPlhgRcV2lOTqgRG5DwAI6RUR9WNqWtiP8OVZ0D/ifECK4Gv74ECm5hgPRBzBgZwDzyPn",
+	"Pvi1LZY9S3k22KBG7ZK68qQc93SaE740Rwo0z/sVkt/LedhBjT/WYODSIO2FHEMFntUBmP19EOxPxDj7",
+	"ixFphxJ30B12KPoA8oeJX18lIWNUOtmMplXCfYV/nT5jGiy3hL+1pb6jC5d7FegH1w3nZvg2yV99NId5",
+	"yP/NGA3KKTMADpxmad0zSSunWHO+8YmCgbA3L+xmk4UOB5GWXVdwgPZD35R6uVQ1edCoRAPhupUyF+IN",
+	"Zj4RwqfLO+nuczgwbs6Z3ZdlPf58QRvL553+3liv+vVYqllpl561+HSpBjbS2B16GCW9MOQQ4L7qTlKG",
+	"UTuqqctDVPRcyYzR1YWHexJuwysRa2XgKXhrKShqGIYNiIxOcSJrqK3JzeJWq10fGj2QTNitoFrbzlCN",
+	"SYs+279/G2VtIn3wYfK284TCORZE8a2d2Tr678ZKhNtxF4aiNgK99fpcRzCv7FzoMlhHW+kXa1FZe6NK",
+	"IREF3aFaQ2SHnvPdQV7PxRDrnCgGCHyw0UZv4Ei+KoZ4opfUx1FsoJUHn/7QweOJjDjRb0o9XkAejD96",
+	"jF5bbtFK6DGpMkGgH6e30ecj5pI36fgFd08ajTM6YdjFAU5NEY/+WybbMfVQd7oH2lKDA2j44PUqxLWQ",
+	"ZQl/vAQRqXw3SvnDpJhcT4rJyzxlq1ovde7+vOZmARtZ36AZIcKzjIwaoLui/41a4oxQDFgniIUIcRJD",
+	"W/1SL5eZYgMsY+9PA0iEAeYJHi8T8Vu7WcqjfNVzbTj74XDf8LLUIWJIzxXsqa/21InCW9ZL+rJg65Wa",
+	"5Wf8YxpMdWtZI9a9YO8IXZ8xKZaOaGSSJgrxvNRvDJ4QTjpo80Gar7lyFs8iX9RSN2bRAztqKR3vkq8Q",
+	"TaW1c7XSaOvk9yetBRtdvsWJosneFkw/YenxVNMpDxFlnu03tsTdyjqwfwy51jJwKxJMr/N6zKk9WMjo",
+	"f6qOdtvvLr2XPCrEf4jG+FousPfKr8AdIfMzL6uKyX9Mismvn6/Mwi0rOkc9UpABzbzA0cfinsauMDvp",
+	"OM+Cs0Gyp5kniPgS0sWuIg4xvRUrO5Lr48FIy+NZNDr0xpRadnax7Xh1oAz1yOZXdP5S/Pjr94JK84EW",
+	"fv3l26f/1mP9tUPkfbBpcgsNi0kYINVkvRotd9c9Wuo/e1wr8A1w0XzvR0c6vLUznFQmunqravG1+EH/",
+	"9YzyNpj+vIWpcI0z4TWePOloxdytDpvKzXMNGw8FR1ubXkv2h0iDWUxVH7R7P5sVoh4Qv3dyzI/hg7xq",
+	"1McE0Z6/r3IyUk0gTYQyE9BhEEN1lepTIRLDalC0faYaRsB/u78y8YOsb/rtiMGr8LxrGH2VvVbBjXrW",
+	"AECb/y83CXLEvSEQXp+TIYv+YEO6NX+DPdxni17O6WLhLETPfaVIwxnhbPlwYvoug0sIXDsrdV8xQDgn",
+	"rVzBY3u9MrYGDcyH3jlgrlC+JIgI23ghhaukW3MvKl0LZcq7BczhXLrOgJM/OSEzNtLsUWassWi5zTIg",
+	"ObY5s9zAjMd2e8cKje+l6c3zrtoy0TGekVBVejoD6SPrgmlSTljTqT3Jht6uYxEq30VhlCIi7IYQG0eq",
+	"Kun8hbgWMamaIRnBglup2Mjp4OZluz3jWy1VT0pTCP+24H6FSHH/CpFB+itEhPYrRIL5R+UrCYjgyJre",
+	"ECnLl4WGBoRYg8sWA9kT2LN0dN0wWH2uX/KBfs4Fn7Ha5o49F0YimIyacXAwDexJgsi8k9QQjd0zd9j9",
+	"voBeU1UzRm7BS7aqRqS+xkbLTVW95h9/+C2HtvLzayEjV8z38H+qGAAaQkxR/P/xEri2tq8D0DXSIxFM",
+	"0tiEqhQ6vX7GmUhYcZ1Xc3riSa+wGQu692jUIqwMu3N21oy+svawOsXFjMgIvEh/UlkYV2HTX1zLmJZh",
+	"xOoPTqQYgnI7gYwcZFIM0V6hqEr2VjgP2gDC1Mrynj3XYqiJ8hgTeJjAs0Xar5w9aBEpO3jS6KQ61HFA",
+	"xoOyO+vtvz9GRB/uRM9lPOzuT9kpL1xW66TdsF1GMIKDhLhTMoXb9vR0DMEMwB4A9Z5yPnR6lsN1fQzK",
+	"eSLjgQanp1uawRUNbV1Spn5wWRIQL7ue8rtCz3D7WxTfGnutjHPU0wA3qq8/Bz3AjrUV9ohuKkq4olnB",
+	"cVADXtYDAyw//XJc01jre5yWofFit9sYMHNVhnJSbE5611uw12q8b9O0UXXAeEi1NBQBKe5cjdxf3XsG",
+	"j2JxSG5d8kiO6XjVw9QdQsQ9PfUGWu44RZ5pby9jTx1qsFNeJnh5Iyxfk80AeQOiiKE8PIsY2PHT2Vb9",
+	"Hdq66z5PR8E0otsDXxseQSGQB6M9DzgmzbwYFwR+E0MiB8svyxy/f49Z5R47eZC4d0KWZbd7qiedmqBm",
+	"jZBiK2uvZRWADMeUkcj8NfOCx2RXAfIratscGslOZNyI+YDl29CQL66WupG7pg6dgp2/zAjWWM+IPiBr",
+	"GG0nrcfEvmYy/CCdetuzSGn4+w53xVDM9btvrl9iJ0Eu2x1tWeVJ+xVvC1J1aJEp9spj561OdeedYUp6",
+	"Mx2SlJXZMjh6+oyx9OA6QTNU59XSc7B5vkdfyb1m2aZQZOZ6coaoDCSe49B1+v5z6ptKnqGIOBjIkBW4",
+	"vRqnnCQumrtZdtFZ81vGMAtY7/ky3xjpSJCpx6JtH4OqFkJV3DgLNV8QVKEyHzafq2RkKFzR3D0MVCl5",
+	"05MF1p/G+ojmcFaBh2X8/PqotXV0eohXpKq7G8UhlNjrvHGqRn+ty1rPdR9wU+6CoIfvLZrzacsdlai1",
+	"4NpOAQdJEnShpTAGxJvH8mTw5vyAQO9L29N+/udX0TtXvmN3WyGcqm9hh285VflXo98J6sd0DBi9K99d",
+	"wHcXUzM11wH4FhHtUduS4m357ulLNW9WT1+VApanavFFOV89RXH71ddird6JUq+0d1+CkraWt2pq2pYs",
+	"CKEbuiQyQZdXDLPrttY4JdRibRUZDLpMEXinZkel9SBL8Q0X4hqn9L1dPf1e3aoqzMkuBaKw8lXdGR7b",
+	"14S1Sc8PYrV+gXS7lLpqauWEerdQW8zDkFSc5uUcSGtbKdh5dzU1oF5hGzxGHdBOsOMeNxHBhunm7scx",
+	"DpzuqCPQFD0J08kVojdNDehG1PgfUSgjgq1jzARRK2ysPVdOw6fY6Kbtwm1kRZUsjLA7ackDiCZJw7+c",
+	"3H6FZeJbZeRWTy4nf7l4fvGXSRIleHb71bMWamml/DBU1XKwwyXBD3afwU5tU3Pcqi08TIHRbQK0aRsv",
+	"SFe5SpFHsdEw7JgqLwT6heyWTjkSRRZMtwjUiHUkU0PxNF3z1+5JRNJNTvhSpD1/MIZDnYVo6+MRvion",
+	"lxOY1DVtIrYXlRvlFdiHPeK4fSRWd7V4aKN/8lLXKLwDn+EJfv38eRJZw5thu630Aif77B+OijnoPhhl",
+	"kaAfCkVVH1VcHMCO5F4Z59gC2IE9HZCTJjBKOD04S0JZTXqnkjHoUeCD0IYr0Ga9T0xAkSTb5t1zVVks",
+	"trHHFBo911RKxhQKPMdtGFGNvhBvyeGCUdlS13QFwR/U/x5FURwaFYIuxvETR9oC6WP0ukCmoUc1kuPU",
+	"hPaiOHl0Gh8uAH/3JNbRpdONcwnP4Hp2a+mxrRbNGOn9bQptW3Qa97KjKbDuAWdz8dXl1ExRHZpOgluI",
+	"9aFWlHLfSE+t6hislD61SyFb8cDA/HAN4LcEN8o/RIWDsv5dN9qgzdTQ5RcB9Kz1fAleRJ/mM3oG3kzf",
+	"FWA3SYy1s2st7ekasW2mBq0du0xyxdA11vZLxT0jgolw/u3A+KapWeFFWSnn0L0WUD7pfsEQmrhuFxU6",
+	"z5JLO2hT3OaNWAEuNldE9Aesgw4X4RLx7rHqcWquTdq7v7TKJahzIFbBfmEXOqKe4g3kRNpxbGq6FSl8",
+	"5zNM+gV+1pGgnVZjheh0GitE2mKt6ErbqWmbtyWitxBJl7VCdFuoFZ25Fi1JhchfRm4n7XonpBgq5//K",
+	"BQRnEaFpj+0PXe0zar8d6f3VeaV39O/0y2+2S8jlE4juHDKd1i5kIL0onVAnO8AExN+2ysiz9/jvB5Lv",
+	"lcr58yJN5ypDsRyUWzyhMpa2wWMmpLrj+CEIr7pRF+Ino+hHQS9gFsSMSW83c+dRvsEz8A5YZaTyAPfs",
+	"AiSHrkrqXc0PcP4tiUozNeyBvWpxFpNBAuiaa+dysLLQ9pHffyFig4VD1MUbpbYR65GxH3H6+1jkOMS+",
+	"nR0s7qIe0QoDm91NP3rj7fY1VxA/vrIzzC6h0C/DNmH3z8A2LynUEtgG3phVy0/pqUfHsFK+FXWPuYux",
+	"aGpI7Jxjq4IEQG0MtA0XKs/vRmR89su7aN8PUNh78kZfESLCQjlXBP4kaUE6AOe/IXhzVJBQaOnNhiUL",
+	"muYmoCyBQNzYGpWs66f/pxDy6T8L8fzpv+Nrp5On08mF+BFDbmDQNkb/3pDoA4VKtnrlxgYpQkAuCc5r",
+	"FFWgltqClBkQOgvpFNrTLH42cs8OSdIRQQNkYYT+o+tE6kXgQLDrKcF/QDINaBIiUSSmZlBKJRgLj6QM",
+	"pDgRo5SB559YGYjFFQ9nVcqOTaRa9rp/liDkZIXetRMr5Q8AcopgmVTsMJReuEVtEffMLpdpEfXUuEWt",
+	"xpn6VwI0W9oRNAWwr3NjyM8xr7VahisYLJ0lgyGhDUc+G8z6yBFbkMUB4udIYuUyIsytqh05jrSh8Quq",
+	"oDJtFBVBOXWwaliMXLIBQs5pD+YBH00MLVFKJ5M9Wc2hmx+FOdi4QQ+Wt7YSC1lVggUNxmXEL2iTYBm8",
+	"iweSprsn1qX0BexbGcClOCiLq3rCIuGbYEnBOwvae5I/UrMPTMP2/N4o3ENy1U/wHZMiYY3jmqa7IGkl",
+	"Hdpw4J5hGTaqHfWoFCUWaT/Peabz7m/cTqI+Q9lZ8Pfz6CiD/16Jr54/f36Q6Dxy1gFVuZ32Rr7jUvLn",
+	"z58/LwZLy/MbiZovnmsyCZw3HB6O2J0yBRJifnZunpyDdc9pPqbm2Af/1SNnGZPtHD4zQ7kygf2fuFD8",
+	"+odSiPI3AScaU9XH56zMZb2QYLa4nJ0rNAJq1I1xHfciWIQHQjvGVNTUYOBft80gktilJ3bbWSr1NGlg",
+	"0XlNCaZ1CE8iWBYK11+ijGM5L7yqKkcZOHSNhFvql1oaWt0TRxL6QjCSm0OtSuyVT2BJMEcreCmTFRVC",
+	"Ln0IE1kQrBTcw/bCoOJODfwJumDYg5whS1ZY6DwAmxwzRHHNlCuN2iiqxBSm0EYctkW4EuzeRLcnyiW0",
+	"8ueN25MbIGxk8BEQrpgXuqzYRyANl3Bps228mNt3fRY6vLUI/j/EeU/GGHTJxWM3ajc17Wb2OOrEvfx0",
+	"NL0e1fpAMzpyvqEfIU4gp/HUKSb+4+jXHdj9D6xhf2YKNVdPnEP+v6GWIdG9tpLaHAmR0GYE+JmbdTM+",
+	"QlAh+1Rxp0z5B5W+v7TKq1hZFaIhQhtgT7vMoCrFdiwkxGCrpoYrO5wgm0FIhJW8FAZjKIRpjPiTFPzB",
+	"ZLIoBRDZgPAkMXJpt+TMrinmwK9sUfIxYV28IkMZPsCe89zqJ/X8cyQAfYrI/OxTdIiHSOI/sD4m/lOv",
+	"sBjr4YbmMDRuTpISuVJG1bJqNX9pyqJN5OAbzGEMVQoYnALsGK7GTfCqrpstgTmEUa/bG6Yj6nBt+GJG",
+	"b4zCTJnyUJaF1WeE2WX6Do1+CGGrMoZF+NZoXPAoMBNG2ydML85sSdfxV1gIfiwqQQ5GR+hIiQlyO64q",
+	"JyDh68eUjvju2D39j+B+oJYf5xCV/xveJGQ8aIIdiZf6kEfij6yFftvxDQDvEb5pIdryOMrAcb5XF6G0",
+	"ixHxwazaMTX30jvGBRvuoYYcKCGfFb0/nm5AKQ6HerSiYrC0vpy1hj5m8NEQ6PXQ7cp3YCTIxU2zjU2P",
+	"E9dVIeSiti7m027lAlOvyBhixbyYmhu19RxMS6+eNghjSjGvbbNae9FsEapBerZoLsSvptI3amoO/GwF",
+	"3ZvaEf5l++JwVRBsDuY8wkclmFzG+qmJz/O97dZ2d+CV/nRexNY++9OR+Kcj8U9H4h/UkXjAy5/UkdgR",
+	"EtKhmfNH9CpSXmxyWx1J0Jf0xCOeK4+QOUasumx0RZoMRX7XdkPJvpTUfY4D/qXNl3aq5l6e2vEI8bKn",
+	"R55R0z1UefPWdcRmDwlsQZG+UWrLubWE1w/LCP6GSm+0vxBvYx5b0jAu6RTXOIJIiTOmtBXfNtzjei10",
+	"7WECXFCiYNpB9QNDOuqxO6k93m+UjchlMZg1uKz0au0LruSRnJy5kIbQ2DfaNF65vEMLxnt86um0sOwR",
+	"BRFHHrum4ljnCtvKsotUT24mOFgYZo/aSqSgpDC23zNDD6ELnPSL6L1t0wGCUprikqCyR9qAXcHZIY21",
+	"GVdo3LgirYpbWaMuA9YfOm0Cegl12hXYTcsaNTU4HRuQzi6FdDekKcNyg7mjDzR2wjZAYgOF8CgF+IkL",
+	"5cCk9ITmF2ka7WGH3Zj/6TiGcDE1ybahmwehj6j66GBXmPFa50vQTku1BX3fLPYzrmtp2/aEd3d9K+0v",
+	"rqamq9xGjxB20KrQtwg6xAGaTAItSNt6leRgXB0Yb1cdY/KKdN8c48Gmc3H043hKfmoH+Mh+Ehp1mNf5",
+	"rA5lL8dKWjipAxoFYXDO9NI7TDW62x4p0ZSM3YSOkz9ZbgVggcDfBEkRq+KD/AqGymAtTLRmzlkNQ0gm",
+	"bP0FXyUrsiOMzKKfXSrtgtvv7uUpsWBwvBrW4lQ/cnkKL2qoQCUc1flKVJI6jtaqxSgrKBkoVbnDG/UN",
+	"O6SsZ+/5r+HUZlEjoMCTpCh6ZdGrAqY5NWfiZh0pdQyn4Wq3kHUZXMCPfzIvaUBV9ifUnj15loZMXL2d",
+	"w8nYLGgipmCGl5NNskOp5O8YjYNQib/1nvozbD+TC6w9zkT6XMMDAY1EqCQhiyKqaenTPZFeZT4imQ3f",
+	"QbyHjxVZeENltFlqA1btZCfAtU1u37QbSJQRLFpcr7UKovzn8NAJTx9qtuGNpJdqbhZ6dVhzCdqcnDvG",
+	"Esk5TQK80biD6fYBe9RLgIcaugTCJpztEggvbGE7yeaN5V6FcBatjPn+RLWiww7KF8C2YqsXN+yYpi77",
+	"7nJqngqjdpesLbXJJisNYnNrnUbbWobab5AfXPZ2WOsmvkBlnTfATY0A+jwqGQ+L+5KwkLdoS12Ia+w3",
+	"7JCs2+SjkB6DLnJB1tzB1DAqrL2Wlf4nZeFsK7lQrSOgzWOXN8rAa1iD6+AzZF5dCGtmAZNNTNEumE5w",
+	"yrQ6mNxBsWIneBW61uPvyfaZRpC36eQKXhJOmPEN4+Mx+q4iLm1w0z8V2AD8kjaPao/jdoDCB3vI5Z+x",
+	"QBA3m7wTlTUKF4A6KkIbpG/4h+VUA14ajrjSPhkvLabmZCsEjEGNlDwcGOD2FobpJYFjEqLkNcSnJsgF",
+	"UD5+Isy/ONcw+kbWNyjmKPOhrENKXOiuhu06KmtWqp4arkDiA6L+3codNANEtwOVIbR9JENaV4HF4dqs",
+	"MDyxiSfK5sd0wlUPseswvmg6YVI0ttP2rVJLjxTG1vIsfDk100mtcBenEz4tmEXrGJkyMMR0wqoNOw4w",
+	"wSQuhoIWvBq6N7rFa3R8EfTVzBqnrlKCDDMKU8RIbaDKjl54+GRB85616WVkVch61YC2WbQG/4miCtQW",
+	"VtrPgEK7BZrRC8Jzb6O1G+2wprdAuubn+ws0g/HxmCWa0cD5uAY/D9uvwqRyN7K1dGzVF9F7FDq8H5Hr",
+	"2Q3/01PuTJTtfDjqlXYe80ODFDprmWnqUENJeHQVUYjxSN169p7/GjTJEAhcRClVK3Rredsg+JVoneL9",
+	"1ahTE6pRu4wRckJz1ahBbJAzEOTa1FBAkUKejB+SSjsUhtNJ3jAsDsbur9dsue4zrdg8SYhpzWb0yTxy",
+	"1WYHiwHVbOrpQOBsLX6DPl3YOVzKmQrFx93gU3HI7tZOQ4dVUMUMhvkTL/50YuvtWhogUPhfexuG2znc",
+	"ysKdJ/Z1nbjjQCqQ7HHRHUnsxZGHVjMBBk9VktSOS/WQu0dBI9kuh4pBX4RIAQoYF3uDhEJtDDkEmZA4",
+	"pdrKTE6YpMl2QEl7uikHUYNCkzLYKS/lLtIqJ5VAY4piqWhlVNTAomLWARplERbUS9If0+68if7Ydunt",
+	"JAKgEjc1h+pPqr3jTo5QOKcmaJyhwKBXAA+rm8XUIFOEtCuED9A+ZPqe0NvuJMibTsPvxyxq/VzVp2P5",
+	"FMIPKAOCrnAmTQTe2V4BRdREonXA6TfqSN4MKCXP1O0gPNcbVd+q+iniZdKj4guv3nn63VPnayU3X1J6",
+	"l0N2CQbrotIgpwkCIi0Iwl+G1Kt4obm09XUbEb2aGqrqIacSl3gTN2gvvujEOiOifpDBcmqieyyqivgO",
+	"YjVgjlbHBRFlMY67kVj682Un3IrlP5zvWCna84IDv9hl0MtCOIthflg6KIeVXIC1vSNsVgrIXIgXnCKA",
+	"0xTerqg3+EbuxVzRGKRNErsCP8dNm07wz8uw6ukk4MEdXKjkBXSilF5eTE10iCSrieuOL+VPjl7KuOJT",
+	"gyn/JFng5Olck1cubVXZHdkLhKjMe0LV3lNDCRfa0y/pLUJWzlI1QYz9howSuIWOkaRcQXc/bQv+fC1h",
+	"cyIuD7UQVCASqYeGX6v91MDtRLUQPxGKpK6UcM2CAPVwMlxNQQkeyVRqzlbYcEZgC0Pp7EbRBYrdghBG",
+	"gUFcL0M9HtwmYDFgkNDrjarHx1ZoYr0qc5dj/5dS2/xGpJmsfD8QS/f5ZVu4/sEsxdNq+JHE6Arhw7hC",
+	"PguFTqcb8nzi4hIeLmG/RdpNRWzC7iR/4ODIOYIc/ED9rF8qJ4C1WbFMnkS9ampkVmA8WaH2xNkqKKv8",
+	"Zey/YZRq8bpGEV0rjgMI7kdwtAe43eFEpHMc9nfpSVOzHRRYLc0/WPduRplf2WKd3NafX7vqDkK61idS",
+	"skaefFfNIg30TJE2uJ1PkkQ/x3Z6pzyMbrKxnNd9RkQu6yv6rNmXR67sqYErrWsCDDtqe9Dx8nFZfFev",
+	"4+Crz0MtP58yblJ/TMQlDz5+hmxf3GAghNTxiMw5io6e1WpZK7d+JHq6Nm6naiewVn6hLhOljkokRVBa",
+	"Eeqxk/KKqs4O8eWMDRfzrqOfsSLYUfJD4QxHrWRJHoOpoYAkqIygXjlV3YKCp3M5ttjxpFTvRBWAp0dJ",
+	"VN7Lt4lCc7KSJUENBX3oCttphRyqbhEDGBEdpPAhbSqnTLWtQY66cshbJVZr0CxRQDG4cFNVoQoGncKG",
+	"IQnIyYLuFSrp9zBsqmxnT7dnyikO/J2VwK/zCW6oRu9kAHNf2vqsqcR5zReDna3OGHaC7OY0SyJcNL2a",
+	"VyC3TkJ4krPan3d+kU2eexMGfMQ7lscYSmNoL1i2DGxdxiIjjVDmlTrHQX1DkNs0XBFaTLmAh368ibnT",
+	"efae//qQkY69i3viRGmxdcWN2hds9SFC/AUCfUcu6OZJ8a8H86RymVH9/Zsj9jteF4guK28pfeFg9QxK",
+	"zTn3QrqpSSsD+AuKAIMhlKanx6JC3Ma1jE4YbEo9Nbtaew8vN2qHRnpMBkwy5UMo6kZtfb7sYWoO6x7E",
+	"6LKH48zTSBiJ5tHHarSNO9gU2r85JcsEg53ZL1YSUJfxXk/mm845P44nM4zxkZVsHnZUmUdWxUZvI6if",
+	"1JkmHgG1zuFk8bUssVvcGdQrcvPJmGDdVoRoH1SWKBWiLjyYWN1qzGfOrF7mEt64HVJbL/gA8P8Y/f0v",
+	"hf8fBhq6leKZnS27rqWCs8H/Rw/z3TsAUGENiE1PxS47HXA/OCpIBTctZn6p6wv2hcZJdED1M20D2tz/",
+	"VgVqadmN6CRAOCs0lxygVKXk7YFhmsFz6OIntPVB8SfdCqHwcZZ1xiQOBWiUISj3/rygX9oerI+XGBQH",
+	"+cjw7WHc4RshnMCjg7i3JNCFcUeKO5bzz96HP0/UOcTXjgFxjxno/MDUjM6caTn1uDSut6bmcLz+ZJmE",
+	"FD/TbJlx9BTSZfJ09Rj5MrGR8jlxzjuS4ZE39FR6TBSSZ0lmaQ/mYbX4LTl81HL8nIA4Cfr8XUCscydR",
+	"nsNLnwTMtmJqCI1DlQHwInTtS56t9FJFYJokGYTMrFhpDKKPcGkwTBdPlhcwI0QGaurThXohxBTCHala",
+	"OA5qNcNoIaaIkByH+BuVUwFzBTQkqStGfxDX9JsEw43LzxAxBScbcVLgFQS8+elxaw5Ac//ErfkTt+ZP",
+	"3Jo/AbDviVuTyvIzQWB/Thfk/aBYP/YKHoTGmh5gB5AVKJnQWDFMhzGwiC2zrZUDA+Eb41V9BcK1DzyV",
+	"fjQ1R+CpoXFtip1KAxxgp54JxfSEKX0KyzQ8NzUBI+AhcKa9ls+9Cn/hR49sk4fXfyIc04cY5R8LzTRV",
+	"gU8a5/eFN/1cZAsinLZOhBMYp1ecC4pQUEaFJIypme+TekKXpCZQcUDMz0hsg8/Q43YKHbXbIXGUdwN/",
+	"8TGt6ftw1vlxUwXmIgSHUZfGyFmMGh7QEIKoRh6LnZf78eb+xo884maGIXp2kTyzPFXWSLFZfxKZ20lC",
+	"piP9+hxby5MKF34ZQPFo4zrJWb0Rorby42Nh7whMW0DVfaW9MHYXq/4pPss4Dwdl3rYWpd2ZykrC2zVU",
+	"BnYGKJ+BBJk/MJZPGGgo1BRJ5GyhplCxwBlhcMBU0LMM4P1JhhrVa3BS8SHVPnsf/hz0dwe4uZCNRnla",
+	"cg00xiF97IzMbUbW1KuUuDNoeIhWR0Kog5AQYrwr6k2KjYoxAX6lMQnb+HqP+jdovI678U4NauSgZcba",
+	"/o2qV6q8ENTRvNUr8I3opgCFlAbwlpq9cKeV0pLyDQ9oL5rthfiGK8+OXxNTILkOj3IhCCJhahrKGEgr",
+	"a49fgTl8aVvE8fxVRHqaaTejjtVJ02B4vJIEkN35MPjAsyls8NXbNons0dmFiz5yHINtYHeP2aiUBk9g",
+	"1EgNol27u8Hdrml5F9F0b2k2wMLPQp7NyRyzh8nwF2GYj0AqPNaQgA2rPiNaWpKhGXOXtGHBi54Z7PJP",
+	"SSrsC/38SecUqNZxlvbd6YRiuAen90hW9cEoFPP92AHvg0mc8iIyOZ1F6ZcoxviNVP8VHPdSlHq5LMiu",
+	"o64Wob83QfQJPawORFny7D3/Nagh3F+w0BtzBHMsWXq3E/V+7kh+1jBveH/cx73yD2f0TC7oosMp98HM",
+	"+zgCJJ97ek4JokrtP4n8AJXvDp65YWLkhMYz5iySe+WdJ/bOE+YQQ4NA6FUMflDSNTHYTN7YeqVQrccU",
+	"XtaRvKrZ6nYBupc0f8rmnRpU1GTluKE/wyhHUyB8gFhgbfVtx1hggObFmrLMCAAtwSTpvBC9QyvsocM+",
+	"rBV7qhrja0lJ0KhJ0lJwWbNorZANY5qKXFOvQIZuZe21rChNrYj1DF7eKOzBEizkcX1UBih9pXzLX8vl",
+	"R7eMj2KAb9Z2x+s9Ojc6h74oX3KADy3pfTg/42b23L/ABedgSqTuxIZYS5fsFuWna67WCvYxVs1J8fPr",
+	"gLpO/p5Ywy8PNv2BF82gqQCqqxsEjrK1WFlbXkaLnk1uIYWvpVtTXsGKOgGKOTbPx7o0Ll/HRU2JCTHj",
+	"w+03c1vpBSgpN8hIdGGTlhJ2gVDZve3wFkGrBI/vVYfXrtLcj15e6xq53+pKncrdeOWdIF6uVSW9vlXB",
+	"YRZ2sbe4iW72B4DfPjqLwAbQvZJjlJePoElR0Qk6qFr/D2FBVFWEsOBcohTjvCe/7lqweCcrLEDk4M8R",
+	"/kg79Iqpkq8iKYyC/x7CWjrEHzSWgSPg8CithcFQA7JjlgLES16LVrHm0FalMDZA2mMoZpWWHMKsCuBy",
+	"JSTcNWf0riLa2+Qj0Y/rk7EoW87VAGZJAHYp7n0Rjz5zz7NHVK+MRcw+c5+C+09gmecV65WOd3HdmEuS",
+	"vS3VE/ZJyfeJTERqSPM3aicIH0W6dqsGhCuXQUkTWhGsZbypuAkBKm+ES3bVRdw8lMxJafdYMQ2vORDT",
+	"j6n7wxCvFRVnfNyg/DhRTHM7k+MTIYtDJ4k6kcMH7MVIvfH7/roVVJiPgZXR1X0hDqm3TSfso8VuFUas",
+	"BsOwJc6+rXzFRuzH/V0oWXJEgxfjrbhYad9HpcXUhJTb9HcdiOersY6wj0TJn9YFNkzJL85f3RFgxY8J",
+	"GhNpj/qk9GvCz5KN6FE3cJBA4HNtJMVLvbWikmArk/4u+E2s7P/PNz/9KEi1Y9qdmoWsa6obRawHUyKI",
+	"Dun+7VfAQwOqwT16GU0NNjMaJYgT2xSPlbfnk5uoQSV48l9dOecXDqhYZzRjj3sLcZoBJg4wSOWjm6PD",
+	"Lqo35OcRiZsHS4ej9oeYC86L7765fhl1efIikZjYxR5+oXAd+DVxXYRA+YUY4wiamsfwBMHhfx7eoP8u",
+	"rPYx3EXwrgyhEc8lzc8YCQa0L8w3f3yeu1W1XmpVPk50pzH4/v2RHvQRzvUHWd8MyU8SJRtZ35xHK/lF",
+	"3gTt+okTYV9xACF3cv/Zm6GfowTIYt1di0rOVSUkNz5f6VvlWkZCl0vwWmIJOvWEdMIazJunuw0hRg6w",
+	"ZePFwHApQJFMIpeMe/TOU63WgaLFVWqIeoRdPUsNjM6XhUcKeOAt0cNKj2tS/A0H/ZTG8Wk+Ph8P/4DM",
+	"SmQQJeOg+VDJ+xS5fC6pH3/di1pRbALTxOFPF+pJMEoGzEDF1dYUBDh7gOawVoubYmqoY0z83dLWO1mX",
+	"QVJwqi7jElEVTOPWxBu6k/E6NQh26+yF+Ote/Py6iEi3EUW9CD+m0kNpFuvY94lCLOSvKks3DeU3mCy7",
+	"VSQBMJZhY7/euVzcrGpgv0sxnTC06XRy2M73CeW9+8YRHu/a7sRSIl70ylKFI3wE3E8peBF3qVQUApoR",
+	"LjJju8ec9qV0wP64Y/HDbd3+2bj1rJOFjy+LSBOI5Jxk7uMJUKqjxnh0R/JQ8zxYFPr7ci12S+WxBmm2",
+	"VrI8iOJPDWwQZhW2WLFFAIRNG/LNsKPUjOiLno9h29TPwrJ65i0mLx5XABymPs4bt89kQmbd49KUSW7j",
+	"YMjnO7sDeq2oakk7RAO6avGuIgomHH63arPvBtwov7bdmKgyzWZy+fcJHSLMqZ78Nkb9/fr8ecvSDLTo",
+	"fuXzPXDPXrgQsIQT89OaGDYdlr+UzuT+uCI4rTPUjuutguRAVn3iqOiQXEpYMI5Iiwi6SmX7xnLfDJS3",
+	"oIhqLgaP+YvOy31v0nGmnyZ9FJHc75Da06nC69Vm4Kn2DOAQH1mb4UE+kSZDow/XCXGXzePyuyLeLRtp",
+	"9u2Z7s6VSkjtQHNpr2mCEUb/TdIMFO7UTVvT+OH/BgAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

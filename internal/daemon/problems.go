@@ -83,6 +83,15 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*worktree.NotAFileError](err); ok {
 		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}
 	}
+	if e, ok := errors.AsType[*worktree.ExistsError](err); ok {
+		return api.ErrorCodePathExists, map[string]any{"path": e.Path}
+	}
+	if e, ok := errors.AsType[*worktree.InvalidNameError](err); ok {
+		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
+	}
+	if e, ok := errors.AsType[*editorRunningError](err); ok {
+		return api.ErrorCodeEditorRunning, map[string]any{"path": e.path, "editors": e.editors}
+	}
 	if e, ok := errors.AsType[*project.InvalidWorktreeNameError](err); ok {
 		return api.ErrorCodeInvalidName, map[string]any{"name": e.Name}
 	}

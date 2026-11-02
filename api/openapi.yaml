@@ -448,23 +448,86 @@ paths:
   /v1/worktrees/{worktree}/files:
     parameters:
       - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
     get:
       operationId: listWorktreeFiles
       summary: The files of a worktree, tracked and untracked, without gitignored ones
       description: |
         A tracked file missing from disk is listed. What a nested repository holds
-        is not. The paths are sorted and relative to the worktree.
+        is not. The paths are sorted and relative to the worktree. Directories that
+        hold no file, which git does not list, come apart.
 
         Errors: invalid_path, not_found, usage.
-      parameters:
-        - $ref: "#/components/parameters/WorktreeProject"
-        - $ref: "#/components/parameters/WorktreeDir"
       responses:
         "200":
           description: The files.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/WorktreeFiles" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createWorktreeFile
+      summary: Create an empty file or directory in a worktree
+      description: |
+        In a directory that is there. git is not run: the file is untracked.
+
+        Errors: invalid_name, when the last name cannot be one; invalid_path, when
+        the path leads out of the worktree or into .git; path_exists; not_found,
+        for the worktree or the directory; usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorktreeFileCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFileChange" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: renameWorktreeFile
+      summary: Rename a file or directory of a worktree, in its directory
+      description: |
+        git is not run: a tracked file renamed shows as deleted, and its new name
+        as untracked.
+
+        Errors: editor_running, when an editor has it, or a file in it, open;
+        invalid_name; invalid_path; path_exists; not_found; usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorktreeFileRename" }
+      responses:
+        "200":
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFileChange" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: removeWorktreeFile
+      summary: Delete a file, or a directory with all it holds, from a worktree
+      description: |
+        For good: nothing goes to a trash, and git can bring back only what it
+        tracks. A symbolic link is deleted, not what it leads to.
+
+        Errors: editor_running; invalid_path; not_found; usage.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Its path, relative to the worktree.
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFileChange" }
         default: { $ref: "#/components/responses/Problem" }
 
   /v1/worktrees/{worktree}/files/content:
@@ -1717,13 +1780,42 @@ components:
 
     WorktreeFiles:
       type: object
-      required: [worktree, paths, truncated]
+      required: [worktree, paths, empty_dirs, truncated]
       properties:
         worktree: { type: string }
         paths:
           type: array
           items: { type: string }
+        empty_dirs:
+          type: array
+          items: { type: string }
+          description: The directories, not gitignored, that hold no file, without a slash at their end.
         truncated: { type: boolean, description: "Too many: paths is the first of them." }
+
+    WorktreeFileCreate:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string, minLength: 1, description: "Where, relative to the worktree." }
+        directory: { type: boolean, default: false, description: "A directory rather than a file." }
+
+    WorktreeFileRename:
+      type: object
+      required: [path, name]
+      additionalProperties: false
+      properties:
+        path: { type: string, minLength: 1, description: "Relative to the worktree." }
+        name: { type: string, minLength: 1, description: "Its new name, in the same directory." }
+
+    WorktreeFileChange:
+      type: object
+      required: [result, worktree, path]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        worktree: { type: string }
+        path: { type: string, description: "Where it is now; where it was, once deleted." }
+        from: { type: string, description: "Where it was, when renamed." }
 
     WorktreeFileContent:
       type: object
@@ -2224,6 +2316,7 @@ components:
         - install_failed
         - privileges_required
         - dependency_missing
+        - editor_running
 
     Problem:
       type: object

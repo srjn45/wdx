@@ -409,7 +409,7 @@ func (m *Model) statusLine() string {
 		right = "switcher: type to find a project"
 	case len(m.opening) > 0:
 		state = style.StatusPrefix
-		right = "open project: Esc goes back"
+		right = strings.ToLower(m.opening[0].title()) + ": Esc goes back"
 	}
 	// Versions that differ matter more than the keys, but not than what the
 	// bar is saying now.

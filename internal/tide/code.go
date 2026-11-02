@@ -17,7 +17,7 @@ import (
 
 const (
 	codeSelectorHint = "↑↓ select  ←→ worktree  / filter  Alt+arrows move  C-q menu"
-	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  / filter  Alt+arrows move  C-q menu"
+	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  n/N new file/dir  r rename  d delete  / filter  C-q menu"
 	mainWorktree     = "main"
 )
 
@@ -32,7 +32,8 @@ type codeSection struct {
 // codeFiles is what the section knows of a worktree's files.
 type codeFiles struct {
 	paths     []string
-	read      int // how many times they were read, to tell a match for these
+	emptyDirs []string // the directories holding no file, which paths cannot show
+	read      int      // how many times they were read, to tell a match for these
 	tree      []*codeNode
 	open      map[string]bool // the directories unfolded: they start folded
 	match     *codeMatch      // the files the filter last matched
@@ -53,12 +54,13 @@ type codeNode struct {
 	children []*codeNode
 }
 
-// codeTree makes the tree of paths, whose directories are what the paths say:
-// directories first, then files, each by name.
-func codeTree(paths []string) []*codeNode {
+// codeTree makes the tree of paths, whose directories are what the paths say, and of
+// the empty directories: directories first, then files, each by name.
+func codeTree(paths, emptyDirs []string) []*codeNode {
 	root := &codeNode{dir: true}
 	dirs := map[string]*codeNode{"": root}
-	for _, p := range paths {
+	// dirOf returns the node of the directory p is in, making those not made yet.
+	dirOf := func(p string) *codeNode {
 		parent := root
 		for i, r := range p {
 			if r != '/' {
@@ -72,7 +74,18 @@ func codeTree(paths []string) []*codeNode {
 			}
 			parent = d
 		}
+		return parent
+	}
+	for _, p := range paths {
+		parent := dirOf(p)
 		parent.children = append(parent.children, &codeNode{name: path.Base(p), path: p})
+	}
+	for _, d := range emptyDirs {
+		if _, ok := dirs[d]; !ok {
+			parent := dirOf(d)
+			dirs[d] = &codeNode{name: path.Base(d), path: d, dir: true}
+			parent.children = append(parent.children, dirs[d])
+		}
 	}
 	for _, d := range dirs {
 		slices.SortFunc(d.children, compareCodeNodes)
@@ -274,6 +287,12 @@ func (s *projectScreen) updateCode(name string) tea.Cmd {
 			s.m.openCodeFile(r.node.path)
 			return s.m.askEditor(s.m.list().active)
 		}
+	case newFileKey, newDirKey:
+		s.m.newCodeEntry(name == newDirKey)
+	case renameKey:
+		s.m.renameCodeEntry()
+	case deleteFileKey:
+		s.m.deleteCodeEntry()
 	}
 	return nil
 }
@@ -402,7 +421,7 @@ func (m *Model) codeRefresh() {
 // codeLoaded is the answer to reading a worktree's files.
 type codeLoaded struct {
 	projectID, worktree string
-	paths               []string
+	paths, emptyDirs    []string
 	truncated           bool
 	err                 error
 }
@@ -416,7 +435,7 @@ func (m *Model) readCodeFiles(name string) tea.Cmd {
 	id := following.project.Id
 	return func() tea.Msg {
 		r, err := m.client.WorktreeFiles(m.ctx, name, "id:"+id, "")
-		return codeLoaded{projectID: id, worktree: name, paths: r.Paths, truncated: r.Truncated, err: err}
+		return codeLoaded{projectID: id, worktree: name, paths: r.Paths, emptyDirs: r.EmptyDirs, truncated: r.Truncated, err: err}
 	}
 }
 
@@ -434,7 +453,7 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 		m.log.Info("files not read", "worktree", msg.worktree, "err", msg.err)
 		return
 	}
-	f.paths, f.tree, f.truncated, f.loaded = msg.paths, codeTree(msg.paths), msg.truncated, true
+	f.paths, f.emptyDirs, f.tree, f.truncated, f.loaded = msg.paths, msg.emptyDirs, codeTree(msg.paths, msg.emptyDirs), msg.truncated, true
 	f.read++
 	m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "truncated", msg.truncated)
 	if l == m.list() {

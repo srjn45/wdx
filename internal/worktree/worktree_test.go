@@ -344,15 +344,27 @@ func TestListFiles(t *testing.T) {
 	write(t, work, ".gitignore", "ignored\n")
 	write(t, work, "ignored", "x\n")
 	write(t, work, "untracked", "x\n")
+	for _, d := range []string{"empty", "full", "ignored-dir", "nested/.git", "deep/deeper"} {
+		if err := os.MkdirAll(filepath.Join(work, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, work, "full/untracked", "x\n")
+	write(t, work, ".gitignore", "ignored\nignored-dir/\n")
 	c := Checkouts{Clone: dir, Paths: []string{dir}}
-	paths, _, err := ListFiles(t.Context(), c, "work")
+	f, err := ListFiles(t.Context(), c, "work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(paths, "ignored") || !slices.Contains(paths, "untracked") || !slices.Contains(paths, ".gitignore") {
-		t.Errorf("paths: %q", paths)
+	if slices.Contains(f.Paths, "ignored") || !slices.Contains(f.Paths, "untracked") || !slices.Contains(f.Paths, ".gitignore") || !slices.Contains(f.Paths, "full/untracked") {
+		t.Errorf("paths: %q", f.Paths)
 	}
-	if _, _, err := ListFiles(t.Context(), c, "nope"); !errors.Is(err, ErrNotFound) {
+	// What git does not list, but a directory holding only an empty one, which
+	// git shows as one.
+	if !slices.Equal(f.EmptyDirs, []string{"deep", "empty"}) {
+		t.Errorf("empty directories: %q", f.EmptyDirs)
+	}
+	if _, err := ListFiles(t.Context(), c, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown worktree: %v", err)
 	}
 }

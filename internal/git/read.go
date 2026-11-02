@@ -231,6 +231,23 @@ func ListFiles(ctx context.Context, dir string) (paths []string, truncated bool,
 	return filePaths(out), truncated, nil
 }
 
+// UntrackedDirs returns the directories ls-files shows in place of what they hold,
+// without gitignored ones: those holding untracked files only, those holding
+// nothing, and nested repositories. Each is relative to dir, without its slash.
+func UntrackedDirs(ctx context.Context, dir string) ([]string, error) {
+	out, _, err := read(ctx, dir, noDownload, "ls-files", "-z", "-o", "--directory", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	var dirs []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if d, ok := strings.CutSuffix(p, "/"); ok {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs, nil
+}
+
 // filePaths splits what ls-files -z wrote. It lists a file in conflict once per
 // stage, and a nested repository as a directory, which is no file to open. Output
 // cut short ends inside a path, which is dropped.

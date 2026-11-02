@@ -436,6 +436,36 @@ func (c *Client) WorktreeFiles(ctx context.Context, name, ref, dir string) (api.
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// CreateWorktreeFile creates an empty file, or a directory, at path of the worktree
+// name.
+func (c *Client) CreateWorktreeFile(ctx context.Context, name, path string, directory bool, ref string) (api.WorktreeFileChange, error) {
+	r, err := c.api.CreateWorktreeFileWithResponse(ctx, name, &api.CreateWorktreeFileParams{Project: nonEmpty(ref)}, api.WorktreeFileCreate{Path: path, Directory: &directory})
+	if err != nil {
+		return api.WorktreeFileChange{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// RenameWorktreeFile gives the file or directory at path of the worktree name the
+// name newName.
+func (c *Client) RenameWorktreeFile(ctx context.Context, name, path, newName, ref string) (api.WorktreeFileChange, error) {
+	r, err := c.api.RenameWorktreeFileWithResponse(ctx, name, &api.RenameWorktreeFileParams{Project: nonEmpty(ref)}, api.WorktreeFileRename{Path: path, Name: newName})
+	if err != nil {
+		return api.WorktreeFileChange{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// RemoveWorktreeFile deletes the file, or the directory, at path of the worktree
+// name.
+func (c *Client) RemoveWorktreeFile(ctx context.Context, name, path, ref string) (api.WorktreeFileChange, error) {
+	r, err := c.api.RemoveWorktreeFileWithResponse(ctx, name, &api.RemoveWorktreeFileParams{Path: path, Project: nonEmpty(ref)})
+	if err != nil {
+		return api.WorktreeFileChange{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeFileContent returns what the file at path of the worktree name holds now.
 func (c *Client) WorktreeFileContent(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileContent, error) {
 	r, err := c.api.GetWorktreeFileContentWithResponse(ctx, name, &api.GetWorktreeFileContentParams{Path: path, Project: nonEmpty(ref), Dir: nonEmpty(dir)})

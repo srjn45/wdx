@@ -42,7 +42,7 @@ func TestCodeTree(t *testing.T) {
 		{"nested", []string{"a/b/c", "a/b/d", "a/e", "f"}, []string{"a/", "a/b/", "a/b/c", "a/b/d", "a/e", "f"}},
 		{"a name with a space and no ascii", []string{"é x/ü"}, []string{"é x/", "é x/ü"}},
 	} {
-		if got := flatTree(codeTree(tc.paths)); !slices.Equal(got, tc.want) {
+		if got := flatTree(codeTree(tc.paths, nil)); !slices.Equal(got, tc.want) {
 			t.Errorf("%s: %q, want %q", tc.what, got, tc.want)
 		}
 	}
@@ -50,7 +50,7 @@ func TestCodeTree(t *testing.T) {
 
 func TestCodeRows(t *testing.T) {
 	t.Parallel()
-	nodes := codeTree([]string{"docs/a", "internal/git/x", "internal/tide/code.go", "internal/tide/tabs.go", "internal/z", "README"})
+	nodes := codeTree([]string{"docs/a", "internal/git/x", "internal/tide/code.go", "internal/tide/tabs.go", "internal/z", "README"}, nil)
 	type row struct{ guide, fold, key string }
 	for _, tc := range []struct {
 		what string

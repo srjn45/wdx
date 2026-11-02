@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"strings"
@@ -413,11 +414,92 @@ func (s *server) ListWorktreeFiles(ctx context.Context, req api.ListWorktreeFile
 	if err != nil {
 		return nil, err
 	}
-	paths, truncated, err := worktree.ListFiles(ctx, c, req.Worktree)
+	f, err := worktree.ListFiles(ctx, c, req.Worktree)
 	if err != nil {
 		return nil, err
 	}
-	return api.ListWorktreeFiles200JSONResponse{Worktree: req.Worktree, Paths: paths, Truncated: truncated}, nil
+	return api.ListWorktreeFiles200JSONResponse{Worktree: req.Worktree, Paths: f.Paths, EmptyDirs: f.EmptyDirs, Truncated: f.Truncated}, nil
+}
+
+func (s *server) CreateWorktreeFile(ctx context.Context, req api.CreateWorktreeFileRequestObject) (api.CreateWorktreeFileResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	path, err := worktree.CreateEntry(ctx, c, req.Worktree, req.Body.Path, deref(req.Body.Directory))
+	if err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.CreateWorktreeFile201JSONResponse{Result: api.ResultCreated, Worktree: req.Worktree, Path: path}, nil
+}
+
+func (s *server) RenameWorktreeFile(ctx context.Context, req api.RenameWorktreeFileRequestObject) (api.RenameWorktreeFileResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.noEditorOn(ctx, p, c, req.Worktree, req.Body.Path); err != nil {
+		return nil, err
+	}
+	path, err := worktree.RenameEntry(ctx, c, req.Worktree, req.Body.Path, req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	from := filepath.Clean(req.Body.Path)
+	return api.RenameWorktreeFile200JSONResponse{Result: api.ResultRenamed, Worktree: req.Worktree, Path: path, From: &from}, nil
+}
+
+func (s *server) RemoveWorktreeFile(ctx context.Context, req api.RemoveWorktreeFileRequestObject) (api.RemoveWorktreeFileResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.noEditorOn(ctx, p, c, req.Worktree, req.Params.Path); err != nil {
+		return nil, err
+	}
+	if err := worktree.RemoveEntry(ctx, c, req.Worktree, req.Params.Path); err != nil {
+		return nil, err
+	}
+	s.tracker.Refresh(p.ID, req.Worktree)
+	return api.RemoveWorktreeFile200JSONResponse{Result: api.ResultRemoved, Worktree: req.Worktree, Path: filepath.Clean(req.Params.Path)}, nil
+}
+
+// editorRunningError is a file, or a directory, an editor has open, which renaming or
+// deleting would take from under it.
+type editorRunningError struct {
+	path    string
+	editors []api.Editor
+}
+
+func (e *editorRunningError) Error() string {
+	return fmt.Sprintf("an editor has %s open: close it first", e.path)
+}
+
+// noEditorOn fails when an editor runs on the file at path in the worktree called
+// name, or on a file under it.
+func (s *server) noEditorOn(ctx context.Context, p project.Project, c worktree.Checkouts, name, path string) error {
+	w, err := worktree.Find(ctx, c, name)
+	if err != nil {
+		return err
+	}
+	live, err := s.terminals.LiveEditors(ctx, p.ID, w.Path)
+	if err != nil {
+		return err
+	}
+	clean := filepath.Clean(path)
+	var on []terminal.Terminal
+	for _, t := range live {
+		if t.EditorPath == clean || strings.HasPrefix(t.EditorPath, clean+"/") {
+			on = append(on, t)
+		}
+	}
+	if len(on) > 0 {
+		logging.FromContext(ctx).Info("editor running on the path", "worktree", name, "path", clean, "editors", len(on))
+		return &editorRunningError{path: clean, editors: editorViews(p, on)}
+	}
+	return nil
 }
 
 func (s *server) GetWorktreeFileContent(ctx context.Context, req api.GetWorktreeFileContentRequestObject) (api.GetWorktreeFileContentResponseObject, error) {

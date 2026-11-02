@@ -29,7 +29,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeInvalidName:        {http.StatusUnprocessableEntity, ExitRejected, "the name is not allowed"},
 	ErrorCodeInvalidPath:        {http.StatusUnprocessableEntity, ExitRejected, "the path cannot be used"},
 	ErrorCodeInvalidArgument:    {http.StatusUnprocessableEntity, ExitRejected, "an argument is empty or malformed"},
-	ErrorCodePathExists:         {http.StatusConflict, ExitRejected, "the directory to clone into already exists"},
+	ErrorCodePathExists:         {http.StatusConflict, ExitRejected, "something is already at the path, as the directory to clone into"},
 	ErrorCodeProjectMismatch:    {http.StatusConflict, ExitRejected, "the repository is a worktree of one project but has the origin of another"},
 	ErrorCodeCloneFailed:        {http.StatusBadGateway, ExitRejected, "git clone failed"},
 	ErrorCodeBranchExists:       {http.StatusConflict, ExitRejected, "a new worktree's branch already exists"},
@@ -83,6 +83,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeInstallFailed:      {http.StatusBadGateway, ExitSystem, "the package manager failed"},
 	ErrorCodeDependencyMissing:  {http.StatusServiceUnavailable, ExitSystem, "a program the request needs is not installed: wdx deps list tells which"},
 	ErrorCodePrivilegesRequired: {http.StatusForbidden, ExitRejected, "installing needs root, and sudo cannot ask for the password"},
+	ErrorCodeEditorRunning:      {http.StatusConflict, ExitRejected, "an editor has the file, or a file in the directory, open"},
 }
 
 // NewProblem returns the problem of code, with the status and title the code

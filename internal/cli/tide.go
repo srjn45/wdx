@@ -28,13 +28,15 @@ func newTideCmd() *cobra.Command {
 			"creates a terminal, x removes the terminal of the tab selected after asking,\n" +
 			"r reloads tide from the binary installed, keeping what it shows, and q quits;\n" +
 			"\\, ] and C-q send C-\\, C-] and C-q to the program in the focused\n" +
-			"pane, so C-q \\ d detaches a wdx attach running there. Alt+Shift and ← or → switch to the previous or next open\n" +
-			"project.\n" +
+			"pane, so C-q \\ d detaches a wdx attach running there, and C-q then Alt and\n" +
+			"an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to\n" +
+			"the previous or next open project.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +
 			"The Code section lists a worktree's files: Enter shows one read-only and\n" +
 			"highlighted, e edits it in the editor the editor setting names, and closing\n" +
-			"that tab asks to save or discard. / filters the left pane's list as you\n" +
+			"that tab asks to save or discard. There n and N create a file or directory,\n" +
+			"r renames and d deletes, each in a popup. / filters the left pane's list as you\n" +
 			"type: Enter goes back to the list, Esc clears it.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
 			"when closed. The terminal pane has a tab for each of the project's\n" +

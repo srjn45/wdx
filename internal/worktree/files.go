@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"unicode/utf8"
 
@@ -27,13 +29,40 @@ func (e *NotAFileError) Error() string {
 	return fmt.Sprintf("%q is not a file", e.Path)
 }
 
-// ListFiles returns the files of the checkout called name, as git.ListFiles does.
-func ListFiles(ctx context.Context, c Checkouts, name string) (paths []string, truncated bool, err error) {
+// Files are the files of a checkout, as git.ListFiles gives them, and its
+// directories that hold none, which git does not list: empty ones, not
+// gitignored.
+type Files struct {
+	Paths     []string
+	EmptyDirs []string
+	Truncated bool
+}
+
+// ListFiles returns the files of the checkout called name.
+func ListFiles(ctx context.Context, c Checkouts, name string) (Files, error) {
 	s, err := Find(ctx, c, name)
 	if err != nil {
-		return nil, false, err
+		return Files{}, err
 	}
-	return git.ListFiles(ctx, s.Path)
+	paths, truncated, err := git.ListFiles(ctx, s.Path)
+	if err != nil {
+		return Files{}, err
+	}
+	dirs, err := git.UntrackedDirs(ctx, s.Path)
+	if err != nil {
+		return Files{}, err
+	}
+	f := Files{Paths: paths, EmptyDirs: []string{}, Truncated: truncated}
+	for _, d := range dirs {
+		// One listed with files holds untracked ones; a nested repository is no
+		// directory of this one's.
+		i, _ := slices.BinarySearch(paths, d+"/")
+		holds := i < len(paths) && strings.HasPrefix(paths[i], d+"/")
+		if _, err := os.Lstat(filepath.Join(s.Path, d, ".git")); !holds && err != nil {
+			f.EmptyDirs = append(f.EmptyDirs, d)
+		}
+	}
+	return f, nil
 }
 
 // FileContent is what a file holds. Text is empty when Binary or TooLarge.

@@ -743,6 +743,16 @@ func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Termi
 	return s.stopAll(ctx, live)
 }
 
+// LiveEditors returns the editors starting or running in the project's checkout at
+// dir.
+func (s *Supervisor) LiveEditors(ctx context.Context, projectID, dir string) ([]Terminal, error) {
+	editors, err := s.store.Editors(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(editors, func(t Terminal) bool { return t.Dir != dir || !t.State.Live() }), nil
+}
+
 // StopEditors stops the editors running in the project in dir, as removing that
 // worktree does, and returns them as StopProject does.
 func (s *Supervisor) StopEditors(ctx context.Context, projectID, dir string) ([]Terminal, error) {

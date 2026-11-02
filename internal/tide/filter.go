@@ -291,7 +291,7 @@ func matchCode(key codeMatchKey, paths []string) *codeMatch {
 			open[dir] = true
 		}
 	}
-	return &codeMatch{key: key, tree: codeTree(hits), open: open}
+	return &codeMatch{key: key, tree: codeTree(hits, nil), open: open}
 }
 
 // codeFilterSync matches the files of the worktree chosen when the filter or the

@@ -33,6 +33,8 @@ func (s *fieldScreen) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case projectOpened: // only a failure reaches the screen
 		s.busy, s.failure = false, msg.err.Error()
+	case screenFailed:
+		s.busy, s.failure = false, msg.err.Error()
 	case tea.KeyPressMsg:
 		if s.busy {
 			return nil
@@ -106,6 +108,8 @@ func (s *choiceScreen) hint() string { return "↑↓ select  enter choose  Esc 
 func (s *choiceScreen) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case projectOpened:
+		s.busy, s.failure = "", msg.err.Error()
+	case screenFailed:
 		s.busy, s.failure = "", msg.err.Error()
 	case tea.KeyPressMsg:
 		if s.busy != "" {

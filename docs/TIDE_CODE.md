@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu and the other five editors on 2026-11-02; creating, renaming and deleting files come next, and `tide.section_order` later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu, the other five editors, and creating, renaming and deleting files and directories on 2026-11-02; `tide.section_order` comes later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -200,6 +200,26 @@ Built on 2026-11-02 in `internal/tide/filter.go`, and tried in a real tide under
 - A click on the line goes back to typing in it.
 - Each project has its own filter for the run; `C-q r` does not keep it.
 - The Code section's files are matched in a command, away from `Update`, and an answer for text typed before is dropped. The agents and worktrees are few, and are matched as they are drawn.
+
+## Creating, renaming and deleting
+
+Designed with the human on 2026-11-02, who chose the directory picker, a name typed alone, popups for all three, keys that act only in the Code section, and rename and delete with create.
+
+| Key | Does |
+|---|---|
+| `n` | a new file |
+| `N` | a new directory |
+| `r` | rename the file or directory under the cursor |
+| `d` | delete it |
+
+- **Only in Code.** With the cursor in the section, these four come before the `C-q` menu's letters, which otherwise act without `C-q` in the project pane: `n` there is not the menu's new session, nor `r` its reload. `C-q n` and `C-q r` still are. Elsewhere the letters are the menu's.
+- **New.** A popup picks the directory, as [Open Project › Local] picks one on disk: the worktree's directories, from the one under the cursor or the file's, going no higher than the worktree; `→` goes in, `←` up, typing filters, and the first row, `create the file here`, asks the name alone. A name taken, or one with a `/`, is refused in the popup, which stays to correct it. The cursor goes to what was made, its directories open, and a new file opens in the editor, as there is nothing to read in an empty file.
+- **Rename** asks the new name, with the old one to edit, and renames in place: no moving to another directory.
+- **Delete** asks, `keep it` selected first, saying how many files a directory holds and how many of them are untracked or changed, which git cannot bring back. It is for good: nothing goes to a trash. A symbolic link is deleted, not what it leads to.
+- **Editors.** What an editor has open, or a directory holding it, is neither renamed nor deleted: the status line says which editor to close first, and the daemon refuses with `editor_running` in case tide's list is late. A file's read-only tab follows a rename and closes on a delete.
+- **No git.** All three are plain file system changes: a renamed tracked file shows as deleted and its new name as untracked, and nothing writes the index, which background git must never do.
+- **Empty directories.** git lists no directory holding no file, so `listWorktreeFiles` gives those apart, `empty_dirs`, from `ls-files --directory`: without them a new directory would be gone from the tree at once. One holding only an empty one shows alone.
+- **API.** `POST`, `PATCH` and `DELETE` on `/v1/worktrees/{worktree}/files`, refusing a path out of the worktree or into `.git`, the worktree itself, and `.git` as a name (`invalid_path`, `invalid_name`), a name taken (`path_exists`) and a directory not there (`not_found`). The CLI has no command, as for the rest of the section: a script or an AI changes files itself (`docs/CLI_TIDE.md`).
 
 ## The order of the sections
 
