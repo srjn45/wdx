@@ -79,6 +79,10 @@ func TestEditorRefused(t *testing.T) {
 	wantText(t, m, "vi not found: wdx deps install --name vi")
 	m.Update(editorOpened{projectID: "proj-demo", tab: aFile, err: &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeInvalidPath, Detail: `"dir/a.go" is not a file`}}})
 	wantText(t, m, `"dir/a.go" is not a file`)
+	// One too long for the bar is cut short, not lost.
+	long := "terminal balmy-glacier did not start: listen unix " + strings.Repeat("/very/long/path", 10) + ": bind: invalid argument"
+	m.Update(editorOpened{projectID: "proj-demo", tab: aFile, err: &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeStartFailed, Detail: long}}})
+	wantText(t, m, "terminal balmy-glacier did not start: listen unix /very/long/path", "…")
 }
 
 // TestEditorGetsItsTab checks an editor running when the project comes gets a tab,

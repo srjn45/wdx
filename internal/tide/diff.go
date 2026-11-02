@@ -832,6 +832,11 @@ func (v *diffView) bar(file bool, extra []barKey, width int, st style.Style) str
 	for used(keys, place) > width && place != "" && len(keys) > 3 {
 		keys = dropLeast(keys)
 	}
+	if used(keys, place) > width && v.notice != "" {
+		// What the last key found, as why the editor did not start, is cut short
+		// rather than lost.
+		place = ansi.Truncate(place, max(width-used(keys, "")-1, 0), "…")
+	}
 	if used(keys, place) > width {
 		place = ""
 	}

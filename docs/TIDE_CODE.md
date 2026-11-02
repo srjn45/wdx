@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: designed with the human on 2026-11-01, not built. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor; the filter, `tide.section_order`, the other editors and the Alt+arrows through the menu come next. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -310,6 +310,8 @@ Done on 2026-11-02, with these differences from the plan. `Esc` in the box keeps
 - Tests: each answer with a test program that records its input; cancel; a stay; closing an inactive tab.
 
 ### 10. Docs and release
+
+Done on 2026-11-02. `make test-stress PKG=./internal/terminal` failed `TestSweepSockets` once in 3: the test swept a lost terminal's socket before its watch ended, a gap that deleting an editor's row as a process ends had widened; it now waits for the watch to end (docs/FLAKES.md). Tried with the real `vi` in a real tide under tmux, with a test home: `e` from the tree, typing with an arrow key in insert mode, no swap file in the worktree, `C-q -` and `s` saving, the tab closing and the worktree showing the change; another program's write kept, with `vi` asking and the tab staying until `vi` was quit; quitting tide with `vi` holding unsaved text, and its tab back with the text on the next start; `d` discarding. It found one bug: a refusal longer than the tab's bar was dropped from it, with most of its keys, so a long reason showed nothing; the bar now cuts it short. A test home whose path is too long for a holder's socket fails to start the editor with `start_failed`, as any terminal does there.
 
 `docs/TIDE.md`, tide's help and the menu; `docs/CLI_TIDE.md`, with rows for the tab, the tree and `editor` in `wdx deps`; `docs/SETTINGS.md` if a limit applies; `docs/IDE.md`'s Code part pointing here. Then `make test-stress PKG=./internal/terminal`, since it changes how processes end. A dev release only when the human asks.
 

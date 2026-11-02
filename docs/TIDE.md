@@ -291,6 +291,7 @@ Supported, though most users will mostly use the keyboard.
 - **Worktrees and diffs (implemented, docs/TIDE_WORKTREES.md):** a Worktrees section under the agents, with each worktree's uncommitted files; `Enter` on a file opens a split diff, on a worktree a PR view; kept up to date by events, with no git on a timer and no lock taken; `C-q f` or `f` in the list reads them again.
 - **Settings (implemented, docs/TIDE_SETTINGS.md):** a tab in each project, opened with `C-q s` or `s` in the list; a fixed set of values steps with `←` and `→`, and the rest are edited in place.
 - **Agent info (implemented, docs/TIDE_INFO.md):** a tab of `key: value` rows per agent, opened with `C-q i` or `i` in the list, with the name editable in place.
+- **Code (implemented, docs/TIDE_CODE.md):** a Code section listing a worktree's files, chosen with `< worktree >`; `Enter` on a file opens it read-only and highlighted in a tab, `e` edits it there in the `editor` setting's editor, which runs under a holder in the daemon, and closing that tab asks to save or discard.
 - **Agent tabs (implemented, docs/TIDE_TABS.md):** a tab per agent opened in the right pane, closed with `C-q -` or `(-)`, walked with `Alt+←/→`, on a strip that slides to keep the current one shown.
 - **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves. docs/IDE.md holds the wider direction: other tab types in the right pane, worktrees and diffs, code, docs and plans.
 

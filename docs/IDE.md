@@ -55,6 +55,8 @@ Proposed: the complete diff is what a PR would show, measured from the merge-bas
 
 The whole project's files and directories, opened read-only or for writing in a terminal editor. The heading names what it shows, `Code: <worktree> <branch>`, and the user can switch both.
 
+Built on 2026-11-02 as docs/TIDE_CODE.md describes: a Code section with `< worktree >`, a read-only highlighted tab, and `e` for the `editor` setting's editor. What follows is the picture it started from.
+
 Proposed:
 
 - `Enter` opens a file read-only in the text view; `e` opens it in the editor, which runs as a terminal under a holder.

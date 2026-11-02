@@ -89,6 +89,16 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Start one that ended | `terminal start` | `C-q g` | Same | |
 | Remove a terminal | `terminal remove` | `C-q x` | Same | |
 
+## Code
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| Browse a worktree's files | none, only the API | the Code section, `< worktree >` and a tree | By design | A script or an AI reads files itself (docs/TIDE_CODE.md) |
+| Read a file, highlighted | none, only the API | `Enter` on it: a read-only tab | By design | As above |
+| Edit a file | none, only the API | `e`: the `editor` setting's editor in its tab; closing it asks to save or discard | By design | A script or an AI writes files itself; a person edits in an editor |
+| Choose the editor | `setting set editor` | the settings tab | Same | |
+| Install the editor | `deps install --name vi` | none | By design | As every dependency: `deps` manages wdx itself |
+
 ## Settings
 
 | Feature | CLI | tide | Status | Why they differ |

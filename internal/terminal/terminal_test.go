@@ -734,6 +734,9 @@ func TestSweepSockets(t *testing.T) {
 	waitGone(t, lost.HolderPID)
 	kill(0, lost.PID)
 	waitState(t, s, lost.ID, StateLost)
+	// A socket is kept while its terminal is watched, which ends only after the
+	// state changed.
+	waittest.For(t, "the lost terminal no longer watched", func() bool { return !s.watching(lost.ID) })
 	removed := s.socket("term-00000000")
 	if err := os.WriteFile(removed, nil, 0o600); err != nil {
 		t.Fatal(err)
