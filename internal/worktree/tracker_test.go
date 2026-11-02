@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -25,9 +27,16 @@ type trackerHarness struct {
 	agents []Agent
 	reads  int    // how many times the checkouts were read
 	during func() // run once at the end of a read, holding it open
+	listed func() // run once after a read lists the checkouts, holding it open
 }
 
 func track(t *testing.T, dir string) *trackerHarness {
+	t.Helper()
+	return trackWith(t, dir, nil)
+}
+
+// trackWith is track with marks kept by the tracker, when not nil.
+func trackWith(t *testing.T, dir string, marks *Marks) *trackerHarness {
 	t.Helper()
 	h := &trackerHarness{t: t, dir: dir, changed: make(chan struct{}, 1)}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -50,6 +59,16 @@ func track(t *testing.T, dir string) *trackerHarness {
 			}
 		},
 		Settle: time.Millisecond,
+		Marks:  marks,
+		listed: func() {
+			h.mu.Lock()
+			listed := h.listed
+			h.listed = nil
+			h.mu.Unlock()
+			if listed != nil {
+				listed()
+			}
+		},
 		readDone: func() {
 			h.mu.Lock()
 			during := h.during
@@ -250,6 +269,72 @@ func TestTrackerSeesTheBaseMoveDuringARead(t *testing.T) {
 		s, _ := named2(list, "work")
 		return intOf(s.Ahead) == 0
 	})
+}
+
+// TestTrackerKeepsTheMarkOfAFileCommittedDuringARead commits a verified file after
+// a read listed the checkouts and before it reads their files: that read finds the
+// file in neither the changes nor, by the head it listed, the commits. The mark is
+// lost for good if the read goes by that.
+func TestTrackerKeepsTheMarkOfAFileCommittedDuringARead(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	path := filepath.Join(t.TempDir(), "wdx.db")
+	dbtest.Seed(t, path)
+	database, err := db.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	if _, err := database.ExecContext(t.Context(), "INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('p', 'p', 'open', 0, 0)"); err != nil {
+		t.Fatal(err)
+	}
+	marks := NewMarks(database)
+	h := trackWith(t, dir, marks)
+
+	write(t, work, "file", "two\n")
+	gittest.Git(t, work, "add", "file")
+	h.waitFor("the file changed", func(list []Status) bool { return fileIn(list, "work", "file") })
+	h.waitFor("its commits read", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		return s.Ahead != nil
+	})
+	if _, err := Verify(t.Context(), marks, "p", Checkouts{Clone: dir, Paths: []string{dir}}, "work", "file", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	reading, committed := make(chan struct{}), make(chan struct{})
+	h.mu.Lock()
+	h.listed = func() {
+		close(reading)
+		<-committed
+	}
+	h.mu.Unlock()
+	// Staging something else reads only the changes, as the index is all that moved.
+	write(t, work, "other", "o\n")
+	gittest.Git(t, work, "add", "other")
+	select {
+	case <-reading:
+	case <-waittest.After(t):
+		close(committed)
+		t.Fatal("no read came of staging a file")
+	}
+	gittest.Git(t, work, "commit", "-qm", "two", "--", "file")
+	close(committed)
+
+	var row CommittedFile
+	h.waitFor("the file among the commits", func(list []Status) bool {
+		s, _ := named2(list, "work")
+		i := slices.IndexFunc(s.Committed, func(f CommittedFile) bool { return f.Path == "file" })
+		if i < 0 {
+			return false
+		}
+		row = s.Committed[i]
+		return true
+	})
+	if !row.Verified {
+		t.Fatal("the commit took the mark away")
+	}
 }
 
 // TestTrackerAgentStops shows the event for what git's files never say: an edit

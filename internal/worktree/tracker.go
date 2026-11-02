@@ -43,6 +43,9 @@ type Options struct {
 	// Settle is DefaultSettle when 0.
 	Settle time.Duration
 
+	// listed is called when a read has listed the checkouts and knows what it is to
+	// read, before it reads each: a test holds that step open to change one between.
+	listed func()
 	// readDone is called when a read has read the checkouts, before it tells of
 	// them: a test holds that step open to act during a read.
 	readDone func()
@@ -367,6 +370,9 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 	watching := p.watching
 	p.gitDirs = dirs
 	p.mu.Unlock()
+	if p.t.opts.listed != nil {
+		p.t.opts.listed()
+	}
 
 	for i := range list {
 		s := &list[i]
@@ -392,6 +398,11 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		if want.files {
 			if err := readFiles(ctx, s); err != nil {
 				log.Info("files of a worktree not read", "path", s.Path, "err", err)
+			}
+			// A commit since the list above took files from the changes: they are
+			// among the commits, which the old head says need no read.
+			if fileLeft(was.Files, s.Files) {
+				want.commits = true
 			}
 		}
 		if want.commits {
@@ -421,6 +432,13 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 	if changed {
 		p.t.opts.Changed()
 	}
+}
+
+// fileLeft says whether a file in before is not in after.
+func fileLeft(before, after []File) bool {
+	return slices.ContainsFunc(before, func(f File) bool {
+		return !slices.ContainsFunc(after, func(a File) bool { return a.Path == f.Path })
+	})
 }
 
 // markRead sets what the checkout read has verified, and takes away the marks that
