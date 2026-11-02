@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -547,29 +548,63 @@ func (m *Model) codeRowActive(r codeRow) bool {
 type codeMark struct {
 	letter    string
 	committed bool
+	count     int // a directory's changed files, at any depth
 }
 
-// codeMarks returns the marks of the chosen worktree's changed files, by path. A file
-// with changes of both kinds has the mark of those not committed, the newer.
-func (m *Model) codeMarks() map[string]codeMark {
+// treeMarks are the marks of a worktree's tree, by path: a file and a directory can
+// have the same path, one deleted in a commit and the other made since.
+type treeMarks struct {
+	files, dirs map[string]codeMark
+}
+
+// codeMarks returns the marks of the chosen worktree's changed files and of the
+// directories they are in. A file with changes of both kinds has the mark of those
+// not committed, the newer; a directory has the weightiest of those below it.
+func (m *Model) codeMarks() treeMarks {
 	l := m.list()
 	if l == nil {
-		return nil
+		return treeMarks{}
 	}
 	for _, w := range m.worktreeStatuses() {
 		if w.Name != l.code.worktree {
 			continue
 		}
-		marks := make(map[string]codeMark, len(w.Files)+len(w.CommittedFiles))
+		marks := treeMarks{files: make(map[string]codeMark, len(w.Files)+len(w.CommittedFiles)), dirs: map[string]codeMark{}}
 		for _, f := range w.CommittedFiles {
-			marks[f.Path] = codeMark{letter: string(f.Status), committed: true}
+			marks.files[f.Path] = codeMark{letter: string(f.Status), committed: true}
 		}
 		for _, f := range w.Files {
-			marks[f.Path] = codeMark{letter: string(f.Status)}
+			marks.files[f.Path] = codeMark{letter: string(f.Status)}
+		}
+		for p, mark := range marks.files {
+			for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
+				d := marks.dirs[dir]
+				if d.letter == "" || mark.weight() > d.weight() {
+					d.letter, d.committed = mark.letter, mark.committed
+				}
+				d.count++
+				marks.dirs[dir] = d
+			}
 		}
 		return marks
 	}
-	return nil
+	return treeMarks{}
+}
+
+// weight orders marks for the directory holding them: what is not committed comes
+// before what is, and among those a deletion or a conflict, then an addition, then
+// a change.
+func (c codeMark) weight() int {
+	if c.committed {
+		return 0
+	}
+	switch api.WorktreeFileStatus(c.letter) {
+	case api.WorktreeFileStatusD, api.WorktreeFileStatusU:
+		return 3
+	case api.WorktreeFileStatusA, api.WorktreeFileStatusEmpty:
+		return 2
+	}
+	return 1
 }
 
 // paint styles text, a file's name or letter, in the colour of the mark: what is
@@ -600,9 +635,9 @@ func codeGuide(r codeRow, width int) (guide string, room int) {
 	return fitGuide(r.guide, r.depth, base)
 }
 
-// codeLine draws a row of the section, width wide, a changed file with its mark
-// from marks.
-func (m *Model) codeLine(r codeRow, marks map[string]codeMark, cursor bool, width int) string {
+// codeLine draws a row of the section, width wide: a changed file with its letter
+// from marks, a directory holding changes with their count.
+func (m *Model) codeLine(r codeRow, marks treeMarks, cursor bool, width int) string {
 	st := m.st
 	pointer := "  "
 	if cursor {
@@ -620,16 +655,18 @@ func (m *Model) codeLine(r codeRow, marks map[string]codeMark, cursor bool, widt
 	if active {
 		end = " " + st.Focused("◂") + " "
 	}
-	var mark codeMark
-	if !r.node.dir {
-		mark = marks[r.node.path]
+	mark, label := marks.files[r.node.path], ""
+	if r.node.dir {
+		mark = marks.dirs[r.node.path]
 	}
-	letter := ""
-	if mark.letter != "" {
-		letter = " " + mark.paint(st, mark.letter)
+	switch {
+	case mark.count > 0:
+		label = " " + mark.paint(st, strconv.Itoa(mark.count))
+	case mark.letter != "":
+		label = " " + mark.paint(st, mark.letter)
 	}
 	guide, room := codeGuide(r, width)
-	room -= style.Width(end) + style.Width(letter)
+	room -= style.Width(end) + style.Width(label)
 	name := ansi.Truncate(r.node.name, max(room, 0), "…")
 	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
 	name = mark.paint(st, name)
@@ -639,7 +676,7 @@ func (m *Model) codeLine(r codeRow, marks map[string]codeMark, cursor bool, widt
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	row := pointer + st.Muted(guide) + name + gap + letter + end
+	row := pointer + st.Muted(guide) + name + gap + label + end
 	if active {
 		return st.ActiveRow(row)
 	}

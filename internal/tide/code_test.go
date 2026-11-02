@@ -361,13 +361,74 @@ func TestCodeMarks(t *testing.T) {
 		"pr.go":          {letter: "M", committed: true},
 		"dir/deleted.go": {letter: "D", committed: true},
 	}
-	if got := m.codeMarks(); !maps.Equal(got, want) {
+	if got := m.codeMarks().files; !maps.Equal(got, want) {
 		t.Errorf("marks %v, want %v", got, want)
 	}
 	m.moveToCode(0)
 	keys(m, "right") // to the other worktree
-	if got := m.codeMarks(); !maps.Equal(got, map[string]codeMark{"elsewhere.go": {letter: "M"}}) {
+	if got := m.codeMarks().files; !maps.Equal(got, map[string]codeMark{"elsewhere.go": {letter: "M"}}) {
 		t.Errorf("the other worktree's marks: %v", got)
+	}
+}
+
+func TestCodeDirectoryMarks(t *testing.T) {
+	t.Parallel()
+	committed := func(p string, status api.WorktreeCommittedFileStatus) api.WorktreeCommittedFile {
+		return api.WorktreeCommittedFile{Path: p, Status: status}
+	}
+	for _, tc := range []struct {
+		what      string
+		files     []api.WorktreeFile
+		committed []api.WorktreeCommittedFile
+		want      map[string]codeMark
+	}{
+		{
+			"counted at every level",
+			[]api.WorktreeFile{changed("a/b/c.go", api.WorktreeFileStatusM)},
+			[]api.WorktreeCommittedFile{committed("a/d.go", api.WorktreeCommittedFileStatusM)},
+			map[string]codeMark{"a": {letter: "M", count: 2}, "a/b": {letter: "M", count: 1}},
+		},
+		{
+			"all committed",
+			nil,
+			[]api.WorktreeCommittedFile{committed("a/x", api.WorktreeCommittedFileStatusA), committed("a/y", api.WorktreeCommittedFileStatusM)},
+			map[string]codeMark{"a": {letter: "A", committed: true, count: 2}},
+		},
+		{
+			"what is not committed outweighs what is",
+			[]api.WorktreeFile{changed("a/x", api.WorktreeFileStatusM)},
+			[]api.WorktreeCommittedFile{committed("a/y", api.WorktreeCommittedFileStatusD)},
+			map[string]codeMark{"a": {letter: "M", count: 2}},
+		},
+		{
+			"an addition outweighs a change",
+			[]api.WorktreeFile{changed("a/x", api.WorktreeFileStatusM), changed("a/y", api.WorktreeFileStatusEmpty)},
+			nil,
+			map[string]codeMark{"a": {letter: "?", count: 2}},
+		},
+		{
+			"a deletion or a conflict outweighs an addition",
+			[]api.WorktreeFile{changed("a/x", api.WorktreeFileStatusA), changed("a/y", api.WorktreeFileStatusU), changed("b/x", api.WorktreeFileStatusD), changed("b/y", api.WorktreeFileStatusEmpty)},
+			nil,
+			map[string]codeMark{"a": {letter: "U", count: 2}, "b": {letter: "D", count: 2}},
+		},
+		{
+			"a file changed both ways counted once",
+			[]api.WorktreeFile{changed("a/x", api.WorktreeFileStatusM)},
+			[]api.WorktreeCommittedFile{committed("a/x", api.WorktreeCommittedFileStatusA)},
+			map[string]codeMark{"a": {letter: "M", count: 1}},
+		},
+		{
+			"a file deleted in a commit, where a directory is now",
+			[]api.WorktreeFile{changed("x/y", api.WorktreeFileStatusEmpty)},
+			[]api.WorktreeCommittedFile{committed("x", api.WorktreeCommittedFileStatusD)},
+			map[string]codeMark{"x": {letter: "?", count: 1}},
+		},
+	} {
+		m := codeModel(nil, api.WorktreeStatus{Name: "main", Path: "/r", Files: tc.files, CommittedFiles: tc.committed})
+		if got := m.codeMarks().dirs; !maps.Equal(got, tc.want) {
+			t.Errorf("%s: %v, want %v", tc.what, got, tc.want)
+		}
 	}
 }
 
@@ -379,7 +440,7 @@ func TestCodeMarksDrawn(t *testing.T) {
 	(*w)[0].Files = append((*w)[0].Files, changed(long, api.WorktreeFileStatusM))
 	m.moveToCode(1)
 
-	ends := map[string]string{"dir": "", "new.go": "?", "both.go": "M", "pr.go": "M", "plain.go": "", "a-changed": "M"}
+	ends := map[string]string{"dir": "1", "new.go": "?", "both.go": "M", "pr.go": "M", "plain.go": "", "a-changed": "M"}
 	for _, line := range paneLines(m) {
 		for name, letter := range ends {
 			if !strings.Contains(line, " "+name) {
@@ -411,6 +472,7 @@ func TestCodeMarksDrawn(t *testing.T) {
 		{"a file changed in both, as not committed", "both.go", false, []string{st.Warning("both.go"), " " + st.Warning("M")}},
 		{"a committed file under the cursor, bold in cyan", "pr.go", true, []string{st.Name(st.Committed("pr.go")), " " + st.Committed("M")}},
 		{"an unchanged file, plain", "plain.go", false, []string{"\x1b[0mplain.go   "}},
+		{"a directory with a file deleted in a commit, its count in cyan", "dir", false, []string{st.Committed("dir"), " " + st.Committed("1")}},
 	} {
 		got := line(tc.path, tc.cursor)
 		for _, want := range tc.want {

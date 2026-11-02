@@ -223,7 +223,7 @@ Designed with the human on 2026-11-02, who chose the directory picker, a name ty
 
 ## Changes in the tree
 
-Status: designed with the human on 2026-11-02; step 1, the files' letters, built on 2026-11-02, with a space between a cut name and its letter; the directories' counts not yet. The human chose marking both what is not committed and what is committed against the base, git's letters rather than new glyphs, colouring the name as well as the letter, the colours (scheme 2 of a preview in the terminal: what is not committed by what changed, all that is committed in cyan), and a count on directories. The other details came from the AI and stand until the human changes them.
+Status: designed with the human on 2026-11-02, and built the same day in two steps, the files' letters and then the directories' counts, with a space between a cut name and its letter. The human chose marking both what is not committed and what is committed against the base, git's letters rather than new glyphs, colouring the name as well as the letter, the colours (scheme 2 of a preview in the terminal: what is not committed by what changed, all that is committed in cyan), and a count on directories. The other details came from the AI and stand until the human changes them.
 
 The tree shows which files a worktree changed, so that its changes can be found and opened without going through Worktrees.
 
