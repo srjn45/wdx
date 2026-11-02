@@ -81,6 +81,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.child != nil {
 		m.drawPopup(buf, m.childPopup())
 	}
+	if m.editorClose != nil {
+		m.drawPopup(buf, m.editorClosePopup(m.st))
+	}
 	if m.menu {
 		m.drawMenu(buf)
 	}
@@ -398,6 +401,9 @@ func (m *Model) statusLine() string {
 	case m.child != nil:
 		state = style.StatusPrefix
 		right = "new child: type a worktree  Enter create  Esc cancel"
+	case m.editorClose != nil:
+		state = style.StatusPrefix
+		right = "close editor: s save  d discard  Esc keep editing"
 	case m.switcher != nil:
 		state = style.StatusPrefix
 		right = "switcher: type to find a project"

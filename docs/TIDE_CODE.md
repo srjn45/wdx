@@ -302,6 +302,8 @@ Done on 2026-11-02, with these differences from the plan. `attachedAgent` became
 
 ### 9. Closing with the popup
 
+Done on 2026-11-02, with these differences from the plan. `Esc` in the box keeps editing, and other keys do nothing. Keys waiting for the editor's attachment are dropped if it ends first. tide's tests stand in a shell for the editor, which shows what it was typed and stays, as `vi` does when something stops it, so they check vi's own keys arrived and the tab stays until it ends. That the keys work in `vi` is `internal/editor`'s test.
+
 - `C-q -` and a click on `(-)`, with an editor running, select that tab and open a box with `s` save, `d` discard and `Esc` cancel.
 - The answer sends `editor.Save` or `Discard` through the attachment's `session.Write`, once attached. Sending to an editor already gone is not an error.
 - `closing` is remembered for that tab: when the editor leaves the stream the tab closes. Until then its screen stays, with the focus, for whatever stopped it.

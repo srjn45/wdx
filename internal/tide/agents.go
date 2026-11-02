@@ -61,6 +61,7 @@ type agentList struct {
 	lastActive string // the tab current when last looked, to tell one coming to show
 	// editorsSeen is set once the project came and its editors got their tabs.
 	editorsSeen bool
+	closing     map[string]bool // the editors' tabs told to quit, which close once they end
 }
 
 // agentListRow is a row of the Agents list.

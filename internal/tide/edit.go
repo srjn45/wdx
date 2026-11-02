@@ -9,6 +9,8 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/editor"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // A file's tab shows the editor while the project has one running on its file, and
@@ -112,10 +114,22 @@ func (m *Model) editorOpened(msg editorOpened) {
 	m.statusNotice = why
 }
 
-// editorsChanged gives each editor running a tab, on the project's first event: one
-// started before tide was, or by another tide, could not be reached otherwise.
+// editorsChanged closes the tabs closing whose editor ended, and gives each editor
+// running a tab on the project's first event: one started before tide was, or by
+// another tide, could not be reached otherwise.
 func (m *Model) editorsChanged() {
 	l := m.list()
+	for tab := range l.closing {
+		if _, ok := m.tabEditor(tab); !ok {
+			delete(l.closing, tab)
+			m.closeTab(tab, "editor ended")
+		}
+	}
+	for id := range m.editorKeys {
+		if !slices.ContainsFunc(m.editors(), func(e api.Editor) bool { return e.TerminalId == id }) {
+			delete(m.editorKeys, id) // it ended before it could be told
+		}
+	}
 	if l.editorsSeen {
 		return
 	}
@@ -143,4 +157,103 @@ func (m *Model) editorsIn(name string) []string {
 		}
 	}
 	return names
+}
+
+// Closing an editor's tab asks whether to save or discard, as wdx cannot see what is
+// unsaved, then types that into the editor. The tab closes once the editor ends, and
+// shows it until then, so that whatever kept it going is there to answer.
+
+const (
+	saveKey    = "s"
+	discardKey = "d"
+)
+
+// editorCloseBox is the question closing an editor's tab asks.
+type editorCloseBox struct {
+	tab string
+}
+
+// askCloseTab closes the tab, or asks first when an editor runs in it, with the tab
+// current and in focus, so that the answer's effect shows.
+func (m *Model) askCloseTab(tab, reason string) {
+	if _, ok := m.tabEditor(tab); !ok {
+		m.closeTab(tab, reason)
+		return
+	}
+	m.list().active = tab
+	m.layout.setFocus(agent)
+	m.changed("close editor")
+	m.editorClose = &editorCloseBox{tab: tab}
+	m.log.Info("editor's tab closing asked", "tab", tab)
+}
+
+// editorCloseKey answers the box.
+func (m *Model) editorCloseKey(name string) {
+	tab := m.editorClose.tab
+	switch name {
+	case "esc":
+		m.editorClose = nil
+		m.log.Info("editor's tab kept", "tab", tab)
+		return
+	case saveKey, discardKey:
+	default:
+		return
+	}
+	m.editorClose = nil
+	e, ok := m.tabEditor(tab)
+	known, found := editor.Lookup(e.Program)
+	if !ok || !found {
+		m.closeTab(tab, "editor gone")
+		return
+	}
+	keys, answer := known.Save, "save"
+	if name == discardKey {
+		keys, answer = known.Discard, "discard"
+	}
+	l := m.list()
+	if l.closing == nil {
+		l.closing = map[string]bool{}
+	}
+	l.closing[tab] = true
+	m.log.Info("editor told to quit", "tab", tab, "terminal_id", e.TerminalId, "answer", answer)
+	m.typeInto(e.TerminalId, keys)
+}
+
+// typeInto types keys into the terminal with id through the agent pane's
+// attachment, or once it attaches.
+func (m *Model) typeInto(id, keys string) {
+	if a := m.attachedIn(agent); a != nil && a.id == id && a.session != nil {
+		// An editor that quit already has nothing to be told.
+		if _, err := a.session.Write([]byte(keys)); err != nil {
+			m.log.Info("keys not typed: the editor is gone", "terminal_id", id, "err", err)
+		}
+		return
+	}
+	if m.editorKeys == nil {
+		m.editorKeys = map[string]string{}
+	}
+	m.editorKeys[id] = keys
+}
+
+// typeWaiting types what waits for the attachment a, now attached.
+func (m *Model) typeWaiting(a *attachment) {
+	keys, ok := m.editorKeys[a.id]
+	if !ok {
+		return
+	}
+	delete(m.editorKeys, a.id)
+	m.typeInto(a.id, keys)
+}
+
+// editorClosePopup is what the box shows.
+func (m *Model) editorClosePopup(st style.Style) popup {
+	return popup{
+		title: "Close editor",
+		body: []string{
+			"Close " + st.Name(m.diffTitle(m.editorClose.tab)) + "?",
+			"Its editor runs, and may hold changes not saved.",
+			"The tab closes once the editor quits.",
+		},
+		footer: st.Command(saveKey) + " save  " + st.Command(discardKey) + " discard  " + st.Command("Esc") + " keep editing",
+	}
 }

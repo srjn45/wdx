@@ -73,6 +73,8 @@ type Model struct {
 	tabResting     bool                                                                 // another was switched to soon after: no agent attaches
 	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
 	child          *childBox                                                            // the worktree C-q c asks for, while it does
+	editorClose    *editorCloseBox                                                      // what closing an editor's tab asks, while it does
+	editorKeys     map[string]string                                                    // what to type into an editor once its tab attaches, by terminal id
 	land           *landBox                                                             // what L asks, while it is open
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
@@ -500,6 +502,10 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	if m.confirm != nil {
 		return m.confirmKey(name)
 	}
+	if m.editorClose != nil {
+		m.editorCloseKey(name)
+		return nil
+	}
 	if m.switcher != nil && name != menuKey {
 		return m.switcher.update(msg)
 	}
@@ -613,7 +619,7 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		}
 	case closeTabKey:
 		if t, ok := m.closableTab(); ok {
-			m.closeTab(t.tab, "asked")
+			m.askCloseTab(t.tab, "asked")
 		}
 	case "r":
 		if m.menuOffers("r") {
@@ -672,7 +678,7 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil || m.land != nil {
+	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil || m.land != nil || m.editorClose != nil {
 		return nil
 	}
 	if m.confirm == nil {
@@ -746,7 +752,7 @@ func (m *Model) clickTitle(p pane, f uv.Rectangle, at uv.Position) {
 		return
 	case on.closes:
 		m.lastClick = click{}
-		m.closeTab(m.openTabs()[on.tab].tab, "clicked")
+		m.askCloseTab(m.openTabs()[on.tab].tab, "clicked")
 		return
 	case on.arrow:
 		m.lastClick = click{}

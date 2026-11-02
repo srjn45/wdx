@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -192,4 +194,121 @@ func TestEditTabThroughReload(t *testing.T) {
 	if r := m.Reload(); r == nil || r.Agent != aFile || !slices.Contains(r.Tabs, aFile) {
 		t.Fatalf("reload: %+v", r)
 	}
+}
+
+// TestCloseEditorTab checks closing an editor's tab asks first, even when it is not
+// the current one, and goes back to it.
+func TestCloseEditorTab(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	other := fileTab("main", "top")
+	m.list().openTab(other)
+	withEditors(m, aEditor)
+	m.layout.setFocus(project)
+
+	row := titleRow(m)
+	at := strings.Index(row, "edit: main/a.go(-)")
+	if at < 0 {
+		t.Fatalf("title %q", row)
+	}
+	m.Update(clickAt(ansi.StringWidth(row[:at])+len("edit: main/a.go")+1, 0))
+	if m.editorClose == nil || m.list().active != aFile || m.layout.focus != agent {
+		t.Fatalf("box %v, tab %q, focus %v", m.editorClose, m.list().active, m.layout.focus)
+	}
+	wantText(t, m, "Close editor", "Close edit: main/a.go?", "s save  d discard  Esc keep editing")
+	keys(m, "x") // not an answer
+	if m.editorClose == nil {
+		t.Fatal("another key closed the box")
+	}
+	keys(m, "esc")
+	if m.editorClose != nil || !slices.Contains(m.list().tabs, aFile) || len(m.editorKeys) != 0 || m.list().closing[aFile] {
+		t.Fatalf("box %v, tabs %v, keys %q, closing %v", m.editorClose, m.list().tabs, m.editorKeys, m.list().closing)
+	}
+
+	// Not attached yet: the keys wait for the attachment.
+	m.askCloseTab(aFile, "asked")
+	keys(m, discardKey)
+	if m.editorKeys[aEditor.TerminalId] != "\x1c\x0e:b1 | q!\r" || !m.list().closing[aFile] {
+		t.Fatalf("keys %q, closing %v", m.editorKeys, m.list().closing)
+	}
+	// It stays until the editor ends.
+	withEditors(m, aEditor)
+	if !slices.Contains(m.list().tabs, aFile) {
+		t.Fatal("closed with its editor running")
+	}
+	withEditors(m)
+	if slices.Contains(m.list().tabs, aFile) || len(m.editorKeys) != 0 {
+		t.Fatalf("tabs %v, keys %q", m.list().tabs, m.editorKeys)
+	}
+
+	// A tab with no editor closes at once.
+	m.askCloseTab(other, "asked")
+	if m.editorClose != nil || slices.Contains(m.list().tabs, other) {
+		t.Fatalf("box %v, tabs %v", m.editorClose, m.list().tabs)
+	}
+}
+
+// TestCloseEditorTabLive answers the box with each key, into the test home's shell
+// standing in for vi: it shows what it was typed and stays, as vi does when something
+// stops it, and the tab with it, until it ends.
+func TestCloseEditorTabLive(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeFile(t, filepath.Join(dir, "file.go"), "package one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the file listed", func(m *Model) bool { return strings.Contains(text(m), "file.go") })
+	tab := fileTab("main", "file.go")
+	for _, answer := range []struct{ key, typed string }{{saveKey, ":b1 | x"}, {discardKey, ":b1 | q!"}} {
+		m := p.m
+		m.layout.setFocus(project)
+		m.moveToCode(slices.IndexFunc(m.codeRowsShown(), func(r codeRow) bool { return r.key() == "file.go" }))
+		p.keys(editFileKey)
+		p.until(t, "the editor attached", func(m *Model) bool {
+			a := m.attachedIn(agent)
+			return m.editShown() && a != nil && a.pane != nil && a.live
+		})
+		p.keys("C-q", "-")
+		if m.editorClose == nil {
+			t.Fatal("no box")
+		}
+		p.keys(answer.key)
+		p.until(t, "the keys typed: "+answer.typed, func(m *Model) bool { return strings.Contains(text(m), answer.typed) })
+		if !slices.Contains(m.list().tabs, tab) {
+			t.Fatal("the tab closed with its editor running")
+		}
+		p.keys("exit", "enter")
+		p.until(t, "the tab closed once the editor ended", func(m *Model) bool { return !slices.Contains(m.list().tabs, tab) })
+	}
+
+	// Asked while another tab is shown: the keys wait for the editor's to attach.
+	m := p.m
+	m.layout.setFocus(project)
+	m.moveToCode(slices.IndexFunc(m.codeRowsShown(), func(r codeRow) bool { return r.key() == "file.go" }))
+	p.keys(editFileKey)
+	p.until(t, "the editor attached", func(m *Model) bool {
+		a := m.attachedIn(agent)
+		return m.editShown() && a != nil && a.pane != nil && a.live
+	})
+	m.list().openTab(settingsTab)
+	p.update(nil)
+	if m.attachedIn(agent) != nil {
+		t.Fatal("the editor is still attached")
+	}
+	m.askCloseTab(tab, "clicked")
+	p.keys(saveKey)
+	if m.editorKeys == nil || m.editorKeys[m.attachedIn(agent).id] == "" {
+		t.Fatalf("no keys waiting: %q", m.editorKeys)
+	}
+	p.until(t, "the keys typed once attached", func(m *Model) bool { return strings.Contains(text(m), ":b1 | x") })
+	p.keys("exit", "enter")
+	p.until(t, "the tab closed once the editor ended", func(m *Model) bool { return !slices.Contains(m.list().tabs, tab) })
 }
