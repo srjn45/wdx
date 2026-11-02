@@ -149,7 +149,7 @@ A Docs table. Reading a doc: Same. Create, update, status and labels, rename, re
 
 Each builds and passes `make test` on its own.
 
-1. The migration and `internal/doc`: names, labels, content checks, revisions and the base check, with domain tests.
+1. **Done.** The migration and `internal/doc`: names, labels, content checks, revisions and the base check, with domain tests.
 2. The hidden copies: writing after each change, catching up on start.
 3. The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
 4. The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
