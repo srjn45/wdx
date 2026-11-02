@@ -33,6 +33,7 @@ Decided on the way:
 | `log.level`, `log.retention_days` | each command and the daemon | immediately |
 | `terminal.shell`, `terminal.history_lines` | the daemon, when a terminal starts | new terminals |
 | `editor` | the daemon, when an editor starts | new editors |
+| `tide.section_order` | `tide`, when it starts | a `tide` started later; a save in tide's settings tab, at once in that `tide` |
 | `otel.endpoint`, `otel.interval_seconds` | the daemon's metrics exporter | immediately; the metric's counts restart from zero, a normal counter reset for Grafana |
 | `home` | `WDX_HOME` | cannot be set; `list` and `get` show it |
 

@@ -42,6 +42,8 @@ type Config struct {
 	TerminalHistoryTail int
 	// Editor is the editor files are edited with, one of editor.Names.
 	Editor string
+	// TideSectionOrder orders the sections of tide's left pane, a letter each.
+	TideSectionOrder string
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -296,6 +298,41 @@ var settings = []setting{
 		},
 		get: func(c Config) string { return c.Editor },
 	},
+	{
+		key:         "tide.section_order",
+		description: "order of the sections of tide's left pane, a letter each: a agents, w worktrees, c code; those left out come after, in that order",
+		def:         "awc",
+		set: func(c *Config, v string) error {
+			if err := checkSectionOrder(v); err != nil {
+				return err
+			}
+			c.TideSectionOrder = v
+			return nil
+		},
+		get: func(c Config) string { return c.TideSectionOrder },
+	},
+}
+
+// SectionLetters are the letters tide.section_order takes, in their default order.
+const SectionLetters = "awc"
+
+// checkSectionOrder refuses an order that is empty, or has a letter twice or one
+// that names no section. It is not a list of choices: five sections make 120 orders.
+func checkSectionOrder(v string) error {
+	if v == "" {
+		return fmt.Errorf("give at least one of %s", strings.Join(strings.Split(SectionLetters, ""), ", "))
+	}
+	seen := map[rune]bool{}
+	for _, r := range v {
+		switch {
+		case !strings.ContainsRune(SectionLetters, r):
+			return fmt.Errorf("%q has %q, which is none of a (agents), w (worktrees), c (code)", v, r)
+		case seen[r]:
+			return fmt.Errorf("%q has %q twice", v, r)
+		}
+		seen[r] = true
+	}
+	return nil
 }
 
 func defaultHome() string {

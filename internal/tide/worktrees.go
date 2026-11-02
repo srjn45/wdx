@@ -144,53 +144,10 @@ func (m *Model) moveToWorktree(i int) {
 }
 
 // moveUp moves the cursor up the one list the sections make.
-func (m *Model) moveUp() {
-	l := m.list()
-	switch l.section {
-	case sectionAgents:
-		m.moveCursor(l.row - 1)
-	case sectionWorktrees:
-		if l.worktreeRow > 0 {
-			m.moveToWorktree(l.worktreeRow - 1)
-		} else if len(m.listRows()) > 0 {
-			l.section = sectionAgents
-		}
-	case sectionCode:
-		switch n := len(m.worktreeRows()); {
-		case l.code.row > 0:
-			m.moveToCode(l.code.row - 1)
-		case n > 0:
-			m.moveToWorktree(n - 1)
-		case len(m.listRows()) > 0:
-			l.section = sectionAgents
-		}
-	}
-}
+func (m *Model) moveUp() { m.moveBy(-1) }
 
 // moveDown moves the cursor down the one list the sections make.
-func (m *Model) moveDown() {
-	l := m.list()
-	n := len(m.worktreeRows())
-	switch l.section {
-	case sectionAgents:
-		switch {
-		case l.row < len(m.listRows())-1:
-			m.moveCursor(l.row + 1)
-		case n > 0:
-			m.moveToWorktree(0)
-		default:
-			m.moveToCode(0)
-		}
-	case sectionWorktrees:
-		if l.worktreeRow < n-1 {
-			m.moveToWorktree(l.worktreeRow + 1)
-		} else {
-			m.moveToCode(0)
-		}
-	case sectionCode:
-		m.moveToCode(l.code.row + 1)
-	}
-}
+func (m *Model) moveDown() { m.moveBy(1) }
 
 // worktreeFoldLeft folds the worktree under the cursor; from a file it moves to
 // the file's worktree.

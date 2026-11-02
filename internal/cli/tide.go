@@ -118,7 +118,8 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
 	opts := tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
-		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip}
+		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
+		SectionOrder: env.Config.TideSectionOrder}
 	if env.Exec != nil {
 		opts.Executable = env.Executable
 	}

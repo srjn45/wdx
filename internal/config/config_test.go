@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -74,8 +74,9 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
-		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		From: map[string]string{
+			"tide.section_order":     path + ":16",
 			"update.channel":         "default",
 			"update.base_url":        "default",
 			"terminal.shell":         path + ":11",
@@ -304,5 +305,22 @@ func TestChoicesAreAccepted(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)
+	}
+}
+
+func TestSectionOrder(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"awc", "cwa", "c", "wa"} {
+		if err := checkSectionOrder(v); err != nil {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+	for v, why := range map[string]string{"": "at least one", "aa": "twice", "awd": "none of", "A": "none of", "a w": "none of"} {
+		if err := checkSectionOrder(v); err == nil || !strings.Contains(err.Error(), why) {
+			t.Errorf("%q: %v, want %q", v, err, why)
+		}
+	}
+	if Default().TideSectionOrder != SectionLetters {
+		t.Errorf("default %q", Default().TideSectionOrder)
 	}
 }

@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu, the other five editors, and creating, renaming and deleting files and directories on 2026-11-02; `tide.section_order` comes later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu, the other five editors, creating, renaming and deleting files and directories, and `tide.section_order` on 2026-11-02. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -230,6 +230,7 @@ Designed with the human on 2026-11-02, who chose the directory picker, a name ty
 - `d` and `p` are added when docs and plans are. A rollback puts back the config file as it was, so an older version never reads them.
 - A section left out comes after the others, in the default order, so `ca` is Code, Agents, Worktrees. Leaving one out never hides it: a value of `awc` must neither hide docs when they arrive nor stop that update, which refuses a value the new version does not accept.
 - A save in tide's settings tab applies at once. `wdx setting set` elsewhere applies when tide next starts, since settings are not in the project's stream.
+- Built 2026-11-02. The first section's heading stays at the pane's top as the Agents heading did, and `↑` / `↓` go through the one list the sections make in their order, rather than each section knowing its neighbours.
 
 ## Measured for the build
 

@@ -82,6 +82,9 @@ func (m *Model) settingSaved(msg settingSaved) {
 			m.settings[i] = msg.setting
 		}
 	}
+	if msg.err == nil && msg.setting.Key == sectionSettingKey {
+		m.setSectionOrder(msg.setting.Value)
+	}
 	m.values.saved(msg.valueSaved)
 }
 

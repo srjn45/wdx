@@ -94,6 +94,7 @@ type Model struct {
 	resume        *Resume                                   // what to show first, until the projects are listed
 	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
 	stripLinger   time.Duration                             // from Options
+	sections      []section                                 // the left pane's, in the order set
 
 	values      valuePane     // the agent info or the settings shown, if any
 	settings    []api.Setting // what the daemon last said, while a settings tab reads them
@@ -130,6 +131,8 @@ type Options struct {
 	// StripLinger is how long the project strip stays after the last switch;
 	// zero is a second.
 	StripLinger time.Duration
+	// SectionOrder is the tide.section_order setting; "" is the default order.
+	SectionOrder string
 }
 
 // click is where and when a click on a frame's title happened.
@@ -165,6 +168,7 @@ func New(ctx context.Context, opts Options) *Model {
 		versionOf:   opts.DaemonVersion,
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
+		sections:    sectionOrder(opts.SectionOrder),
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.

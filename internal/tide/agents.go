@@ -549,6 +549,31 @@ const (
 	sectionCode
 )
 
+// sectionLetters name the sections in the tide.section_order setting, in the
+// default order.
+var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'c': sectionCode}
+
+// sectionSettingKey is the setting that orders the sections.
+const sectionSettingKey = "tide.section_order"
+
+// sectionOrder returns the sections in the order the setting's letters give, then
+// those it leaves out, in the default order: leaving one out never hides it. A letter
+// it does not know, which the setting refuses, is passed over.
+func sectionOrder(letters string) []section {
+	var order []section
+	for _, r := range letters {
+		if s, ok := sectionLetters[r]; ok && !slices.Contains(order, s) {
+			order = append(order, s)
+		}
+	}
+	for _, s := range []section{sectionAgents, sectionWorktrees, sectionCode} {
+		if !slices.Contains(order, s) {
+			order = append(order, s)
+		}
+	}
+	return order
+}
+
 // cursorRow is the cursor's row in its section.
 func (l *agentList) cursorRow() int {
 	switch l.section {
@@ -569,33 +594,81 @@ type paneItem struct {
 	empty   bool // it stands for the rows the section has none of
 }
 
-// paneItems are the lines of the list: the agents, the Worktrees heading, the
-// worktrees, the Code heading, its selector and tree.
+// paneItems are the lines of the list: each section in the order set, with its
+// heading but the first's, which the pane's top keeps, and its rows or what stands for
+// them. The agents' rows, the worktrees and their files, the Code selector and tree.
 func (m *Model) paneItems() []paneItem {
 	var items []paneItem
-	rows := m.listRows()
-	for i := range rows {
-		items = append(items, paneItem{section: sectionAgents, row: i})
-	}
-	if len(rows) == 0 {
-		items = append(items, paneItem{section: sectionAgents, empty: true})
-	}
-	items = append(items, paneItem{section: sectionWorktrees, heading: true})
-	worktrees := m.worktreeRows()
-	for i := range worktrees {
-		items = append(items, paneItem{section: sectionWorktrees, row: i})
-	}
-	if len(worktrees) == 0 {
-		items = append(items, paneItem{section: sectionWorktrees, empty: true})
-	}
-	items = append(items, paneItem{section: sectionCode, heading: true})
-	for i := range m.codeRowsShown() {
-		items = append(items, paneItem{section: sectionCode, row: i})
-	}
-	if m.codeNote() != "" {
-		items = append(items, paneItem{section: sectionCode, empty: true})
+	for i, s := range m.sectionsInOrder() {
+		if i > 0 {
+			items = append(items, paneItem{section: s, heading: true})
+		}
+		var n int
+		var empty bool
+		switch s {
+		case sectionAgents:
+			n = len(m.listRows())
+			empty = n == 0
+		case sectionWorktrees:
+			n = len(m.worktreeRows())
+			empty = n == 0
+		case sectionCode:
+			n = len(m.codeRowsShown())
+			empty = m.codeNote() != ""
+		}
+		for row := range n {
+			items = append(items, paneItem{section: s, row: row})
+		}
+		if empty {
+			items = append(items, paneItem{section: s, empty: true})
+		}
 	}
 	return items
+}
+
+// sectionsInOrder returns the sections in the order set.
+func (m *Model) sectionsInOrder() []section {
+	if len(m.sections) == 0 {
+		return sectionOrder("")
+	}
+	return m.sections
+}
+
+// moveBy moves the cursor by step rows up the one list the sections make, past
+// headings and what stands for rows; at either end it stays.
+func (m *Model) moveBy(step int) {
+	l, items := m.list(), m.paneItems()
+	i := slices.IndexFunc(items, func(it paneItem) bool {
+		return it.section == l.section && it.row == l.cursorRow() && !it.heading && !it.empty
+	})
+	if i < 0 && step < 0 {
+		return
+	}
+	for j := i + step; j >= 0 && j < len(items); j += step {
+		if it := items[j]; !it.heading && !it.empty {
+			m.moveToItem(it)
+			return
+		}
+	}
+}
+
+// moveToItem puts the cursor on the row it is.
+func (m *Model) moveToItem(it paneItem) {
+	switch it.section {
+	case sectionAgents:
+		m.moveCursor(it.row)
+	case sectionWorktrees:
+		m.moveToWorktree(it.row)
+	case sectionCode:
+		m.moveToCode(it.row)
+	}
+}
+
+// setSectionOrder orders the sections by the setting's value, as saved in the
+// settings tab.
+func (m *Model) setSectionOrder(letters string) {
+	m.sections = sectionOrder(letters)
+	m.log.Info("sections ordered", "order", letters)
 }
 
 // visibleItems scrolls the list so the cursor stays in view in a pane of height
