@@ -313,7 +313,39 @@ func (s *Screen) Cursor() Cursor {
 
 // SendKey sends a key to the program, encoded as the modes it set ask.
 func (s *Screen) SendKey(k uv.KeyPressEvent) {
+	if seq, ok := modifiedKey(k); ok {
+		s.vt.SendText(seq)
+		return
+	}
 	s.vt.SendKey(k)
+}
+
+// modifiedKey encodes an arrow, editing or function key pressed with Shift,
+// Alt or Ctrl as xterm does, with the modifiers as a parameter: the vt sends
+// such a key as Esc alone, or as the key without Shift and Ctrl (docs/VT.md,
+// #17). It reports false for any other key.
+func modifiedKey(k uv.KeyPressEvent) (string, bool) {
+	mods := k.Mod & (uv.ModShift | uv.ModAlt | uv.ModCtrl | uv.ModMeta)
+	if mods == 0 {
+		return "", false
+	}
+	// xterm's parameter is 1 plus the modifiers' bits, which uv's share.
+	param := 1 + int(mods)
+	if final, ok := map[rune]string{
+		uv.KeyUp: "A", uv.KeyDown: "B", uv.KeyRight: "C", uv.KeyLeft: "D",
+		uv.KeyHome: "H", uv.KeyEnd: "F",
+		uv.KeyF1: "P", uv.KeyF2: "Q", uv.KeyF3: "R", uv.KeyF4: "S",
+	}[k.Code]; ok {
+		return fmt.Sprintf("\x1b[1;%d%s", param, final), true
+	}
+	if n, ok := map[rune]int{
+		uv.KeyInsert: 2, uv.KeyDelete: 3, uv.KeyPgUp: 5, uv.KeyPgDown: 6,
+		uv.KeyF5: 15, uv.KeyF6: 17, uv.KeyF7: 18, uv.KeyF8: 19,
+		uv.KeyF9: 20, uv.KeyF10: 21, uv.KeyF11: 23, uv.KeyF12: 24,
+	}[k.Code]; ok {
+		return fmt.Sprintf("\x1b[%d;%d~", n, param), true
+	}
+	return "", false
 }
 
 // SendMouse sends a mouse event to the program, encoded as the modes it

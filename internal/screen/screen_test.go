@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
@@ -316,6 +317,44 @@ func TestScreenAnswers(t *testing.T) {
 	case <-done:
 	case <-waittest.After(t):
 		t.Fatal("unanswered queries block the screen")
+	}
+}
+
+// TestScreenModifiedKeys: arrow, editing and function keys pressed with
+// modifiers reach the program as xterm sends them, in application cursor
+// mode too; plain keys as before.
+func TestScreenModifiedKeys(t *testing.T) {
+	t.Parallel()
+	sent := make(chan []byte, 16)
+	s := New(80, 24, func(p []byte) { sent <- p })
+	defer s.Close()
+	s.Write([]byte("\x1b[?1h")) // application cursor keys
+	for _, c := range []struct {
+		key  uv.KeyPressEvent
+		want string
+	}{
+		{uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModAlt}, "\x1b[1;3A"},
+		{uv.KeyPressEvent{Code: uv.KeyLeft, Mod: uv.ModAlt | uv.ModShift}, "\x1b[1;4D"},
+		{uv.KeyPressEvent{Code: uv.KeyRight, Mod: uv.ModCtrl}, "\x1b[1;5C"},
+		{uv.KeyPressEvent{Code: uv.KeyEnd, Mod: uv.ModShift}, "\x1b[1;2F"},
+		{uv.KeyPressEvent{Code: uv.KeyDelete, Mod: uv.ModCtrl}, "\x1b[3;5~"},
+		{uv.KeyPressEvent{Code: uv.KeyF5, Mod: uv.ModShift}, "\x1b[15;2~"},
+		{uv.KeyPressEvent{Code: uv.KeyUp}, "\x1bOA"},
+		{uv.KeyPressEvent{Code: 'x', Mod: uv.ModAlt}, "\x1bx"},
+	} {
+		s.SendKey(c.key)
+		var got []byte
+		for len(got) < len(c.want) {
+			select {
+			case p := <-sent:
+				got = append(got, p...)
+			case <-waittest.After(t):
+				t.Fatalf("%v: got %q, want %q", c.key, got, c.want)
+			}
+		}
+		if string(got) != c.want {
+			t.Errorf("%v: got %q, want %q", c.key, got, c.want)
+		}
 	}
 }
 
