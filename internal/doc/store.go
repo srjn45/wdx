@@ -16,15 +16,17 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// Store keeps docs and their revisions.
+// Store keeps docs and their revisions, and a read-only copy of each doc's latest
+// revision under its directory.
 type Store struct {
 	db      *sql.DB
+	copies  copies
 	changed func() // called after every change; see OnChange
 }
 
-// NewStore returns a Store backed by database.
-func NewStore(database *sql.DB) *Store {
-	return &Store{db: database, changed: func() {}}
+// NewStore returns a Store backed by database, keeping its copies in dir.
+func NewStore(database *sql.DB, dir string) *Store {
+	return &Store{db: database, copies: copies{dir: dir}, changed: func() {}}
 }
 
 // OnChange makes the store call fn after every change it writes, before it is
@@ -81,7 +83,12 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 	}
 	logging.FromContext(ctx).Info("doc created", "doc_id", id, "name", n.Name, "project_id", projectID, "status", n.Status, "size", len(n.Content))
 	s.changed()
-	return s.Get(ctx, id)
+	d, err := s.Get(ctx, id)
+	if err != nil {
+		return Doc{}, err
+	}
+	s.copies.write(ctx, d, n.Content, time.UnixMilli(now))
+	return d, nil
 }
 
 // Get returns the doc with id.
@@ -209,7 +216,11 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 	log.Info("doc updated", "doc_id", id, "name", d.Name, "project_id", d.ProjectID, "revision", next, "size", len(content), "previous_status", d.Status)
 	s.changed()
 	updated, err := s.Get(ctx, id)
-	return Updated{Doc: updated, Previous: d.Status, Changed: true}, err
+	if err != nil {
+		return Updated{}, err
+	}
+	s.copies.write(ctx, updated, content, time.UnixMilli(now))
+	return Updated{Doc: updated, Previous: d.Status, Changed: true}, nil
 }
 
 // Change is what Set changes: the status unless it is empty, and labels added and
@@ -291,6 +302,7 @@ func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
 		return Doc{}, err
 	}
 	logging.FromContext(ctx).Info("doc renamed", "doc_id", id, "name", name, "old_name", d.Name)
+	s.copies.rename(ctx, d, name)
 	s.changed()
 	return s.Get(ctx, id)
 }
@@ -309,8 +321,41 @@ func (s *Store) Remove(ctx context.Context, id string) (Doc, error) {
 		return Doc{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	logging.FromContext(ctx).Info("doc removed", "doc_id", id, "name", d.Name, "project_id", d.ProjectID, "revisions", d.Revision)
+	s.copies.remove(ctx, d)
 	s.changed()
 	return d, nil
+}
+
+// RemoveProjectCopies deletes the copies of the project named projectName, once
+// the project is removed: its docs' rows went with its own.
+func (s *Store) RemoveProjectCopies(ctx context.Context, projectName string) {
+	s.copies.removeProject(ctx, projectName)
+}
+
+// CatchUpCopies writes every copy that is missing or older than its doc's latest
+// revision, as one a crash kept from being written; the daemon calls it on start.
+// It never deletes one: were the database lost or replaced, the copies are what is
+// left of the docs.
+func (s *Store) CatchUpCopies(ctx context.Context) error {
+	docs, err := s.query(ctx, s.db, "1")
+	if err != nil {
+		return err
+	}
+	written := 0
+	for _, d := range docs {
+		content, r, err := s.Content(ctx, d.ID, d.Revision)
+		if err != nil {
+			logging.FromContext(ctx).Error("doc copy not caught up", "doc_id", d.ID, "err", err)
+			continue
+		}
+		if current(s.copies.path(d.ProjectName, d.Name, d.Format), r.CreatedAt) {
+			continue
+		}
+		s.copies.write(ctx, d, content, r.CreatedAt)
+		written++
+	}
+	logging.FromContext(ctx).Info("doc copies caught up", "docs", len(docs), "written", written)
+	return nil
 }
 
 // checkFree returns a *NameTakenError if a doc of the project other than self is
@@ -345,8 +390,10 @@ func (s *Store) one(ctx context.Context, q queryer, where string, args ...any) (
 
 func (s *Store) query(ctx context.Context, q queryer, where string, args ...any) ([]Doc, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT d.id, d.project_id, d.name, d.format, d.labels, d.status, d.revision, r.size, d.created_at, d.updated_at
-		FROM docs d JOIN doc_revisions r ON r.doc_id = d.id AND r.revision = d.revision
+		SELECT d.id, d.project_id, p.name, d.name, d.format, d.labels, d.status, d.revision, r.size, d.created_at, d.updated_at
+		FROM docs d
+		JOIN projects p ON p.id = d.project_id
+		JOIN doc_revisions r ON r.doc_id = d.id AND r.revision = d.revision
 		WHERE `+where+` ORDER BY d.name`, args...)
 	if err != nil {
 		return nil, err
@@ -357,7 +404,7 @@ func (s *Store) query(ctx context.Context, q queryer, where string, args ...any)
 		var d Doc
 		var labels string
 		var created, updated int64
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Format, &labels, &d.Status, &d.Revision, &d.Size, &created, &updated); err != nil {
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ProjectName, &d.Name, &d.Format, &labels, &d.Status, &d.Revision, &d.Size, &created, &updated); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(labels), &d.Labels); err != nil {

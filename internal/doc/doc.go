@@ -27,16 +27,17 @@ var Statuses = []Status{StatusWIP, StatusReview, StatusApproved, StatusRejected}
 
 // Doc is a doc's row: what it is, without its content.
 type Doc struct {
-	ID        string
-	ProjectID string
-	Name      string
-	Format    string // the extension its copies get, such as md; empty for none
-	Labels    []string
-	Status    Status
-	Revision  int // the latest
-	Size      int // of the latest revision's text
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          string
+	ProjectID   string
+	ProjectName string
+	Name        string
+	Format      string // the extension its copies get, such as md; empty for none
+	Labels      []string
+	Status      Status
+	Revision    int // the latest
+	Size        int // of the latest revision's text
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Revision is one revision of a doc, without its content.

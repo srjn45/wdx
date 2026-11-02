@@ -78,7 +78,7 @@ CREATE TABLE doc_revisions (
 ### The copies on disk
 
 - Hidden: `<home>/docs/<project>/<name>.<format>`, the latest revision, mode 0444. `<project>` is the project's name escaped as in a URL path (`/` is `%2F`, a leading `.` is `%2E`), since a project's name may hold almost anything; usual names are left as they are, so the files still say which project each belongs to.
-- The daemon writes a doc's copy after the transaction that changes it commits, whole or not at all (`internal/atomicfile`, then `chmod`). A copy that fails to write is logged and fails nothing: the database holds the doc. On start, the daemon writes any copy that is missing or older than its doc, so a copy lost to a crash comes back.
+- The daemon writes a doc's copy after the transaction that changes it commits, whole or not at all (`internal/atomicfile`, then `chmod`). A copy that fails to write is logged and fails nothing: the database holds the doc. On start, the daemon writes any copy that is missing or older than its doc, so a copy lost to a crash comes back. A copy's modified time is its revision's, which is how it is known to be current without reading it. Catching up never deletes a copy, even one no doc matches: were the database lost or replaced by an empty one, the copies are all that is left. Only removing a doc or its project deletes copies, so a crash between a removal and its file leaves a copy behind, to be deleted by hand.
 - Rename and remove move or delete the copy; removing a project deletes its directory; a future `project rename` must move the directory in the same step as the row.
 - Recovering from the copies is done by hand, not by a command, until it is needed.
 
@@ -150,7 +150,7 @@ A Docs table. Reading a doc: Same. Create, update, status and labels, rename, re
 Each builds and passes `make test` on its own.
 
 1. **Done.** The migration and `internal/doc`: names, labels, content checks, revisions and the base check, with domain tests.
-2. The hidden copies: writing after each change, catching up on start.
+2. **Done.** The hidden copies: writing after each change, and `CatchUpCopies` and `RemoveProjectCopies`, which step 3 has the daemon call on start and on removing a project.
 3. The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
 4. The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
 5. The git copy: `sync-to-git` and the `docs.git_path` setting.

@@ -16,6 +16,7 @@ import (
 type fixture struct {
 	db      *sql.DB
 	store   *Store
+	dir     string // of the copies
 	changes *int
 }
 
@@ -29,9 +30,10 @@ func newFixture(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { d.Close() })
 	changes := 0
-	s := NewStore(d)
+	dir := filepath.Join(t.TempDir(), "docs")
+	s := NewStore(d, dir)
 	s.OnChange(func() { changes++ })
-	return fixture{db: d, store: s, changes: &changes}
+	return fixture{db: d, store: s, dir: dir, changes: &changes}
 }
 
 func (f fixture) project(t *testing.T, name string) string {

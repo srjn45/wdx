@@ -61,6 +61,12 @@ func HolderSocket(home, id string) string {
 	return filepath.Join(home, "run", id+".sock")
 }
 
+// DocsDir holds a read-only copy of each doc's latest revision under home, to
+// recover docs from if the database is lost (docs/DOCS.md).
+func DocsDir(home string) string {
+	return filepath.Join(home, "docs")
+}
+
 // TerminalDir holds what terminal id keeps on disk under home: its spool
 // and history (docs/ATTACH.md). Terminal output can hold secrets: only the
 // user may read it.
