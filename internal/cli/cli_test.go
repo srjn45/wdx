@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,9 +70,19 @@ func TestMain(m *testing.M) {
 			panic(fmt.Sprintf("build %s: %v\n%s", path, err, out))
 		}
 	}
-	build(wdxBinary)
-	build(releaseBinary, "-ldflags", "-X github.com/srjn45/wdx/internal/identity.Version="+releaseVersion)
+	// Without debug tables, as a release: a quicker link, and less to copy.
+	var built sync.WaitGroup
+	built.Go(func() { build(wdxBinary, "-ldflags", "-s -w") })
+	built.Go(func() {
+		build(releaseBinary, "-ldflags", "-s -w -X github.com/srjn45/wdx/internal/identity.Version="+releaseVersion)
+	})
+	built.Wait()
+	var err error
+	if archivesDir, err = os.MkdirTemp("", "archives"); err != nil {
+		panic(err)
+	}
 	code := m.Run()
+	os.RemoveAll(archivesDir)
 	if !shared {
 		os.RemoveAll(dir)
 	}
@@ -243,28 +255,73 @@ type logLine struct {
 	Response json.RawMessage `json:"response"`
 }
 
-// logLines reads the lines logged in home.
+// logsRead holds, by home, the log lines parsed so far: every run of wdx in a
+// test reads its home's logs, which parsed whole each time cost more the longer
+// the test.
+var logsRead sync.Map
+
+// logFile is what has been parsed of one log file.
+type logFile struct {
+	read  int64
+	lines []logLine
+}
+
+// homeLogs is what has been parsed of a home's log files, by path.
+type homeLogs struct {
+	mu    sync.Mutex
+	files map[string]*logFile
+}
+
+// logLines reads the lines logged in home, checking each as it first comes.
 func logLines(t *testing.T, home string, args []string) []logLine {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("%v: no log file in %s", args, home)
 	}
+	cached, known := logsRead.LoadOrStore(home, &homeLogs{files: map[string]*logFile{}})
+	if !known {
+		t.Cleanup(func() { logsRead.Delete(home) })
+	}
+	logs := cached.(*homeLogs)
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
 	var lines []logLine
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
+	for _, path := range files {
+		f := logs.files[path]
+		if f == nil {
+			f = &logFile{}
+			logs.files[path] = f
 		}
-		for raw := range strings.Lines(string(b)) {
-			var l logLine
-			if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" || l.Process == "" {
-				t.Fatalf("%v: bad log line %q: %v", args, raw, err)
-			}
-			lines = append(lines, l)
-		}
+		f.readMore(t, path, args)
+		lines = append(lines, f.lines...)
 	}
 	return lines
+}
+
+// readMore parses what was added to the log file at path since the last read.
+func (f *logFile) readMore(t *testing.T, path string, args []string) {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := file.Seek(f.read, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.read += int64(len(b))
+	for raw := range strings.Lines(string(b)) {
+		var l logLine
+		if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" || l.Process == "" {
+			t.Fatalf("%v: bad log line %q: %v", args, raw, err)
+		}
+		f.lines = append(f.lines, l)
+	}
 }
 
 // runLogged returns the CLI's lines of the run id, and how many requests the

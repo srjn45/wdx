@@ -162,7 +162,7 @@ func installRelease(t *testing.T, env ...string) string {
 	arch := map[string]string{"amd64": "x86_64", "arm64": "arm64"}[runtime.GOARCH]
 	releases := t.TempDir()
 	name := fmt.Sprintf("%s_%s_darwin_%s.tar.gz", identity.Name, releaseVersion, runtime.GOARCH)
-	sum := writeArchive(t, filepath.Join(releases, "v"+releaseVersion, name), wdxBinary)
+	sum := placeArchive(t, filepath.Join(releases, "v"+releaseVersion, name), wdxBinary)
 	writeFile(t, filepath.Join(releases, "v"+releaseVersion, "checksums.txt"), sum+"  "+name+"\n")
 	stubs := t.TempDir()
 	stub(t, stubs, "uname", `case "$1" in -s) echo Darwin ;; -m) echo `+arch+` ;; esac`)

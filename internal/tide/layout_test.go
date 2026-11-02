@@ -2,6 +2,7 @@ package tide
 
 import (
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -167,8 +168,26 @@ func checkLayout(l layout, width, height int) string {
 			return p.String() + " has a frame iff it is shown: not so"
 		}
 	}
-	for y := range height {
-		for x := range width {
+	// Between the edges of the frames and their insides nothing changes from one
+	// cell to the next, so one row and column of each stretch answers for all.
+	var xs, ys []int
+	for _, f := range frames {
+		inner := f.Inset(1)
+		xs = append(xs, f.Min.X-1, f.Min.X, inner.Min.X, inner.Max.X-1, inner.Max.X, f.Max.X-1, f.Max.X)
+		ys = append(ys, f.Min.Y-1, f.Min.Y, inner.Min.Y, inner.Max.Y-1, inner.Max.Y, f.Max.Y-1, f.Max.Y)
+	}
+	xs = append(xs, 0, width-1)
+	ys = append(ys, 0, height-1)
+	slices.Sort(xs)
+	slices.Sort(ys)
+	for _, y := range slices.Compact(ys) {
+		if y < 0 || y >= height {
+			continue
+		}
+		for _, x := range slices.Compact(xs) {
+			if x < 0 || x >= width {
+				continue
+			}
 			at := uv.Pos(x, y)
 			framed, inside := 0, 0
 			for _, f := range frames {

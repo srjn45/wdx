@@ -82,7 +82,7 @@ linters:
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/worktree
               desc: tide calls the daemon's API, never the domain
-            - pkg: github.com/srjn45/wdx/internal/db
+            - pkg: github.com/srjn45/wdx/internal/db$
               desc: tide calls the daemon's API, never the database
         # The editors are data the settings, wdx deps, the daemon and tide share.
         editor-is-data:

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func publish(t *testing.T, latest, latestDev string, binaries map[string]string)
 	dir = t.TempDir()
 	for version, binary := range binaries {
 		name := fmt.Sprintf("%s_%s_%s_%s.tar.gz", identity.Name, version, runtime.GOOS, runtime.GOARCH)
-		sum := writeArchive(t, filepath.Join(dir, "v"+version, name), binary)
+		sum := placeArchive(t, filepath.Join(dir, "v"+version, name), binary)
 		writeFile(t, filepath.Join(dir, "v"+version, "checksums.txt"), sum+"  "+name+"\n")
 	}
 	writeFile(t, filepath.Join(dir, "LATEST"), "v"+latest+"\n")
@@ -68,25 +69,63 @@ func publish(t *testing.T, latest, latestDev string, binaries map[string]string)
 	return "file://" + dir, dir
 }
 
-// writeArchive writes a release archive at path holding binary, streamed
-// file to file, and returns its sha256.
-func writeArchive(t *testing.T, path, binary string) string {
+// archivesDir holds the archives of the binaries TestMain builds.
+var archivesDir string
+
+// sharedArchive is the archive of a binary TestMain builds.
+type sharedArchive struct {
+	path, sum string
+}
+
+// sharedArchives makes each archive once, by binary: they are never changed,
+// and writing one takes seconds under the race detector.
+var sharedArchives sync.Map
+
+// placeArchive puts a release archive holding binary at path and returns its
+// sha256. A binary a test wrote is archived for it; one TestMain built is linked
+// to its one archive.
+func placeArchive(t *testing.T, path, binary string) string {
 	t.Helper()
-	in, err := os.Open(binary)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if binary != wdxBinary && binary != releaseBinary {
+		sum, err := writeArchive(path, binary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sum
+	}
+	once, _ := sharedArchives.LoadOrStore(binary, sync.OnceValues(func() (sharedArchive, error) {
+		shared := filepath.Join(archivesDir, filepath.Base(filepath.Dir(binary))+".tar.gz")
+		sum, err := writeArchive(shared, binary)
+		return sharedArchive{path: shared, sum: sum}, err
+	}))
+	shared, err := once.(func() (sharedArchive, error))()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := os.Symlink(shared.path, path); err != nil {
+		t.Fatal(err)
+	}
+	return shared.sum
+}
+
+// writeArchive writes a release archive at path holding binary, streamed
+// file to file, and returns its sha256.
+func writeArchive(path, binary string) (string, error) {
+	in, err := os.Open(binary)
+	if err != nil {
+		return "", err
 	}
 	defer in.Close()
 	info, err := in.Stat()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	out, err := os.Create(path)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	defer out.Close()
 	hash := sha256.New()
@@ -94,18 +133,18 @@ func writeArchive(t *testing.T, path, binary string) string {
 	gz, _ := gzip.NewWriterLevel(io.MultiWriter(out, hash), gzip.NoCompression)
 	tw := tar.NewWriter(gz)
 	if err := tw.WriteHeader(&tar.Header{Name: identity.Name, Mode: 0o755, Size: info.Size()}); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	if _, err := io.Copy(tw, in); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	if err := gz.Close(); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return hex.EncodeToString(hash.Sum(nil))
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // copyBinary copies the binary src to dest, file to file.
@@ -114,21 +153,6 @@ func copyBinary(t *testing.T, dest, src string) {
 	if err := runtest.CopyExecutable(dest, src); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// digest is the sha256 of the file at path, read a block at a time.
-func digest(t *testing.T, path string) string {
-	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, f); err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func readFile(t *testing.T, path string) string {
@@ -216,8 +240,9 @@ func (in installation) runTyped(t *testing.T, stdin io.Reader, args ...string) o
 // wantInstalled checks that the installed binary is binary.
 func (in installation) wantInstalled(t *testing.T, binary string) {
 	t.Helper()
-	if digest(t, in.binary) != digest(t, binary) {
-		t.Fatalf("want %s installed, got another binary", binary)
+	// In another process, as reading these files under the race detector takes seconds.
+	if err := exec.Command("cmp", "-s", in.binary, binary).Run(); err != nil {
+		t.Fatalf("want %s installed, got another binary: %v", binary, err)
 	}
 }
 

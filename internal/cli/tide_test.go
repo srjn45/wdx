@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -37,7 +38,9 @@ func TestTideDetachesAttach(t *testing.T) {
 	run.input("\x1d") // C-]: zoomed, room for attach
 	run.waitScreen("zoomed")
 	run.waitScreen("│$") // attached: until then the pane drops what is typed
-	run.input(wdxBinary + " terminal attach --id " + other.Id + "\r")
+	// A pane takes keys one at a time: a binary's whole path takes seconds to type.
+	writeFile(t, filepath.Join(dir, "a"), "#!/bin/sh\nexec "+wdxBinary+" terminal attach --id "+other.Id+"\n")
+	run.input("./a\r")
 	run.waitScreen("C-\\ ? for keys")
 	run.input("\x11") // C-q: the menu
 	run.waitScreen("send C-\\ to the program")

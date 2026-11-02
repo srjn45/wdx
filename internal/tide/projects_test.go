@@ -19,6 +19,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/daemon"
+	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
@@ -77,6 +78,7 @@ func (h testHome) logger(t *testing.T, process string) *slog.Logger {
 // stops.
 func (h testHome) serve(t *testing.T) (stop func()) {
 	t.Helper()
+	dbtest.Seed(t, identity.DBPath(h.home))
 	shell := filepath.Join(t.TempDir(), "shell")
 	if err := runtest.WriteExecutable(shell, testShell); err != nil {
 		t.Fatal(err)
