@@ -803,7 +803,7 @@ func TestCommandDocs(t *testing.T) {
 			if name, _ := pflag.UnquoteUsage(f); !strings.Contains(f.Usage, "`"+name+"`") {
 				t.Errorf("%s: --%s does not name its value with backticks in %q", path, f.Name, f.Usage)
 			}
-			if _, ok := cmd.GetFlagCompletionFunc(f.Name); !ok {
+			if _, ok := flagCompletion(cmd, f.Name); !ok {
 				t.Errorf("%s: --%s completes nothing; register its completion, cobra.NoFileCompletions if none", path, f.Name)
 			}
 		})

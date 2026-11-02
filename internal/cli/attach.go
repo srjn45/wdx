@@ -86,7 +86,7 @@ func newTerminalAttachCmd() *cobra.Command {
 
 func addPrefixKeyFlag(cmd *cobra.Command, prefix *string) {
 	cmd.Flags().StringVar(prefix, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter> but i and m, ctrl-\\ or ctrl-]")
-	cmd.RegisterFlagCompletionFunc("prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
+	completeFlag(cmd, "prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
 }
 
 // attachTarget is what attach shows: a terminal, or an agent. Both are a

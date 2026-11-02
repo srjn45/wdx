@@ -67,7 +67,7 @@ func newTerminalHistoryCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("tail", "from")
 	cmd.MarkFlagsMutuallyExclusive("tail", "count")
 	for _, name := range []string{"tail", "from", "count"} {
-		cmd.RegisterFlagCompletionFunc(name, cobra.NoFileCompletions)
+		completeFlag(cmd, name, cobra.NoFileCompletions)
 	}
 	return cmd
 }

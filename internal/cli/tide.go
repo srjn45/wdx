@@ -58,7 +58,7 @@ func newTideCmd() *cobra.Command {
 	// release must keep it, since an earlier one reloads into that release.
 	cmd.Flags().String(resumeFlag, "", "show what the `state` says, as the run before did")
 	_ = cmd.Flags().MarkHidden(resumeFlag)
-	_ = cmd.RegisterFlagCompletionFunc(resumeFlag, cobra.NoFileCompletions)
+	completeFlag(cmd, resumeFlag, cobra.NoFileCompletions)
 	return cmd
 }
 

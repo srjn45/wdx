@@ -68,8 +68,8 @@ func newProjectCreateCmd(home string) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of the project, also the repository directory name")
 	cmd.Flags().StringVar(&opts.parent, "path", "", "parent `dir` of the repository (default "+identity.ProjectsDir(home)+")")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
-	cmd.RegisterFlagCompletionFunc("path", completeDirs)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	completeFlag(cmd, "path", completeDirs)
 	cmd.Flags().BoolVar(&opts.openOnConflict, "open", false, "on a conflict, open the existing project without asking")
 	cmd.Flags().BoolVar(&opts.cancelOnConflict, "cancel", false, "on a conflict, create nothing without asking")
 	cmd.MarkFlagRequired("name")
@@ -249,9 +249,9 @@ func newProjectLandingCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noCheck, "no-check", false, "run nothing before landing")
 	cmd.Flags().BoolVar(&push, "push", false, "push the base to origin once it moved")
 	cmd.Flags().StringVar(&method, "method", "", "`method` of landing, rebase or pr; what is saved when not given")
-	cmd.RegisterFlagCompletionFunc("method", landingMethods)
+	completeFlag(cmd, "method", landingMethods)
 	cmd.MarkFlagsMutuallyExclusive("check", "no-check")
-	cmd.RegisterFlagCompletionFunc("check", cobra.NoFileCompletions)
+	completeFlag(cmd, "check", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -313,8 +313,8 @@ func (r *projectRef) addFlags(cmd *cobra.Command, state api.ProjectState) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the project (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	cmd.RegisterFlagCompletionFunc("id", completeProjects("id", state))
-	cmd.RegisterFlagCompletionFunc("name", completeProjects("name", state))
+	completeFlag(cmd, "id", completeProjects("id", state))
+	completeFlag(cmd, "name", completeProjects("name", state))
 }
 
 // projectNotFoundHint tells where to find the projects when one was not found.
@@ -394,10 +394,10 @@ func newProjectOpenCmd(home string) *cobra.Command {
 	cmd.Flags().StringVar(&opts.gitURL, "git", "", "`url` of a git repository to clone")
 	cmd.Flags().StringVar(&opts.id, "id", "", "`id` of a known project")
 	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of a known project; with --local or --git, the name to give it (default: the repository directory or URL name)")
-	cmd.RegisterFlagCompletionFunc("local", completeDirs)
-	cmd.RegisterFlagCompletionFunc("git", cobra.NoFileCompletions)
-	cmd.RegisterFlagCompletionFunc("id", completeProjects("id", api.ProjectStateClosed))
-	cmd.RegisterFlagCompletionFunc("name", completeProjects("name", api.ProjectStateClosed))
+	completeFlag(cmd, "local", completeDirs)
+	completeFlag(cmd, "git", cobra.NoFileCompletions)
+	completeFlag(cmd, "id", completeProjects("id", api.ProjectStateClosed))
+	completeFlag(cmd, "name", completeProjects("name", api.ProjectStateClosed))
 	cmd.Flags().BoolVar(&opts.reclone, "reclone", false, "if no checkout is left, clone it again without asking")
 	cmd.Flags().BoolVar(&opts.remove, "remove", false, "if no checkout is left, remove the project without asking")
 	cmd.MarkFlagsMutuallyExclusive("local", "git", "id")

@@ -9,8 +9,30 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
 )
+
+// TestCompletionsLeftToCompletingRuns: cobra keeps every flag given a completion
+// for the life of the process, so a run that does not complete gives it none.
+func TestCompletionsLeftToCompletingRuns(t *testing.T) {
+	t.Parallel()
+	root := newRoot(config.Default())
+	cmd, _, err := root.Find([]string{"project", "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := flagCompletion(cmd, "name"); !ok {
+		t.Fatal("--name completes nothing")
+	}
+	if _, ok := cmd.GetFlagCompletionFunc("name"); ok {
+		t.Fatal("cobra was given --name's completion")
+	}
+	registerCompletions(root)
+	if _, ok := cmd.GetFlagCompletionFunc("name"); !ok {
+		t.Fatal("cobra was not given --name's completion")
+	}
+}
 
 func TestCompletionScripts(t *testing.T) {
 	t.Parallel()

@@ -6,11 +6,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
+	"weak"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/config"
@@ -26,6 +30,48 @@ const completionTimeout = 500 * time.Millisecond
 // isCompletion reports whether args are a shell asking for completions.
 func isCompletion(args []string) bool {
 	return len(args) > 0 && (args[0] == cobra.ShellCompRequestCmd || args[0] == cobra.ShellCompNoDescRequestCmd)
+}
+
+// flagCompletions holds what each flag of the trees built completes with, until a
+// run that completes gives it to cobra (registerCompletions). cobra keeps every flag
+// it is given for the life of the process, which in a process that runs many
+// commands, as the tests do, keeps every tree built. A flag's entry goes with it.
+var flagCompletions sync.Map // weak.Pointer[pflag.Flag] -> cobra.CompletionFunc
+
+// completeFlag says what the flag of cmd completes with.
+func completeFlag(cmd *cobra.Command, name string, complete cobra.CompletionFunc) {
+	flag := cmd.Flag(name)
+	if flag == nil {
+		panic(fmt.Sprintf("%s has no flag --%s to complete", cmd.CommandPath(), name))
+	}
+	key := weak.Make(flag)
+	flagCompletions.Store(key, complete)
+	runtime.AddCleanup(flag, func(key weak.Pointer[pflag.Flag]) { flagCompletions.Delete(key) }, key)
+}
+
+// flagCompletion is what the flag of cmd, its own or inherited, completes with.
+func flagCompletion(cmd *cobra.Command, name string) (cobra.CompletionFunc, bool) {
+	flag := cmd.Flag(name)
+	if flag == nil {
+		return nil, false
+	}
+	complete, ok := flagCompletions.Load(weak.Make(flag))
+	if !ok {
+		return nil, false
+	}
+	return complete.(cobra.CompletionFunc), true
+}
+
+// registerCompletions gives cobra what every flag of the tree completes with.
+func registerCompletions(cmd *cobra.Command) {
+	cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+		if complete, ok := flagCompletion(cmd, f.Name); ok {
+			_ = cmd.RegisterFlagCompletionFunc(f.Name, complete)
+		}
+	})
+	for _, sub := range cmd.Commands() {
+		registerCompletions(sub)
+	}
 }
 
 // completeProjects completes --id or --name, as key says, with the projects

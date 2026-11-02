@@ -41,8 +41,8 @@ func (p *projectScope) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&p.id, "project-id", "", "`id` of the project (default: the one the working directory is in)")
 	cmd.Flags().StringVar(&p.name, "project-name", "", "`name` of the project (default: the one the working directory is in)")
 	cmd.MarkFlagsMutuallyExclusive("project-id", "project-name")
-	cmd.RegisterFlagCompletionFunc("project-id", completeProjects("id", ""))
-	cmd.RegisterFlagCompletionFunc("project-name", completeProjects("name", ""))
+	completeFlag(cmd, "project-id", completeProjects("id", ""))
+	completeFlag(cmd, "project-name", completeProjects("name", ""))
 }
 
 // given reports whether a project flag was given.
@@ -106,7 +106,7 @@ func newTerminalCreateCmd() *cobra.Command {
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the terminal (default: a generated one)")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -162,8 +162,8 @@ func (r *terminalRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the terminal (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	cmd.RegisterFlagCompletionFunc("id", completeTerminals("id"))
-	cmd.RegisterFlagCompletionFunc("name", completeTerminals("name"))
+	completeFlag(cmd, "id", completeTerminals("id"))
+	completeFlag(cmd, "name", completeTerminals("name"))
 	r.scope.addFlags(cmd)
 }
 
@@ -299,7 +299,7 @@ func newTerminalSendCmd() *cobra.Command {
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to type; Enter follows it")
 	cmd.MarkFlagRequired(promptFlag)
-	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
+	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 

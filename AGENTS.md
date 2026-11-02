@@ -122,7 +122,7 @@ Every command serves both humans and scripts or AIs.
 - Every leaf command has `Example`s built with `examples(description, command line, ...)`: the common use first, then the flag combinations that answer prompts or that `--json` needs. `TestExamples` runs each through the command's flag parsing and rules, so they cannot go stale; keep them free of shell quoting.
 - A flag that takes a value names it in backticks in its description (``"`path` to a local git repository"``); help shows it as `--local <path>`.
 - `Long` does not repeat `Short`: help prints the summary on its first line, after the command path.
-- Every flag that takes a value registers its completion (`RegisterFlagCompletionFunc`), `cobra.NoFileCompletions` when it has none; `TestCommandDocs` checks it. Completions that ask the daemon never prompt, wait at most `completionTimeout` and offer nothing when it does not answer.
+- Every flag that takes a value registers its completion with `completeFlag`, `cobra.NoFileCompletions` when it has none; `TestCommandDocs` checks it. cobra itself gets them only in a run that completes, as it keeps every flag given to it for the life of the process. Completions that ask the daemon never prompt, wait at most `completionTimeout` and offer nothing when it does not answer.
 - Reference that is about no single command is a help topic (`wdx help json`, `settings`, `logs`), not a section of the root help.
 
 ## Text output style

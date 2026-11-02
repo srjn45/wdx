@@ -85,7 +85,7 @@ func newMessageResendCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&id, "id", "", "`id` of the message")
 	cmd.MarkFlagRequired("id")
-	cmd.RegisterFlagCompletionFunc("id", cobra.NoFileCompletions)
+	completeFlag(cmd, "id", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -115,7 +115,7 @@ func newMessageDiscardCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&id, "id", "", "`id` of the message")
 	cmd.MarkFlagRequired("id")
-	cmd.RegisterFlagCompletionFunc("id", cobra.NoFileCompletions)
+	completeFlag(cmd, "id", cobra.NoFileCompletions)
 	return cmd
 }
 

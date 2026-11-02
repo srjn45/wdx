@@ -124,8 +124,8 @@ func newWorktreeDiffCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&uncommitted, "uncommitted", false, "show everything not committed instead")
 	cmd.MarkFlagsMutuallyExclusive("uncommitted", "path")
 	cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
-	cmd.RegisterFlagCompletionFunc("path", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	completeFlag(cmd, "path", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -161,7 +161,7 @@ func newWorktreeCommentsCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree, main for the clone")
 	cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -228,8 +228,8 @@ func newWorktreeLandCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.Flags().StringVar(&method, "method", "", "`method` for this landing, rebase or pr; what the project says when not given")
 	cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
-	cmd.RegisterFlagCompletionFunc("method", landingMethods)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	completeFlag(cmd, "method", landingMethods)
 	return cmd
 }
 
@@ -370,7 +370,7 @@ func newWorktreeRemoveCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 

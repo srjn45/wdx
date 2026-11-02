@@ -89,7 +89,7 @@ func newAgentTranscriptCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("path", "from")
 	cmd.MarkFlagsMutuallyExclusive("path", "count")
 	for _, name := range []string{"tail", "from", "count"} {
-		cmd.RegisterFlagCompletionFunc(name, cobra.NoFileCompletions)
+		completeFlag(cmd, name, cobra.NoFileCompletions)
 	}
 	return cmd
 }

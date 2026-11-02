@@ -166,6 +166,9 @@ func Run(ctx context.Context, args []string, env Env) int {
 	logReceived(log, args, env)
 
 	root := newRoot(env.Config)
+	if completion {
+		registerCompletions(root)
+	}
 	root.SetArgs(args)
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
@@ -441,7 +444,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
-	root.RegisterFlagCompletionFunc("color", completeColor)
+	completeFlag(root, "color", completeColor)
 	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()

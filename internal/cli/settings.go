@@ -81,7 +81,7 @@ func newSettingGetCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`key` of the setting, such as log.level")
 	cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", completeSettings(false))
+	completeFlag(cmd, "name", completeSettings(false))
 	return cmd
 }
 
@@ -142,8 +142,8 @@ func newSettingSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&value, "value", "", "the new `value`")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagRequired("value")
-	cmd.RegisterFlagCompletionFunc("name", completeSettings(true))
-	cmd.RegisterFlagCompletionFunc("value", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", completeSettings(true))
+	completeFlag(cmd, "value", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -225,7 +225,7 @@ func newSettingWriteCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "write it to `path` instead of the config file")
-	cmd.RegisterFlagCompletionFunc("to", completeFiles)
+	completeFlag(cmd, "to", completeFiles)
 	return cmd
 }
 

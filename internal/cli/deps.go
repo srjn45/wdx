@@ -328,7 +328,7 @@ func newDepsInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "`dependency` to install: "+strings.Join(deps.Installable, ", "))
 	cmd.Flags().BoolVar(&yes, "yes", false, "run the commands that need root without asking")
 	_ = cmd.MarkFlagRequired("name")
-	cmd.RegisterFlagCompletionFunc("name", cobra.FixedCompletions(deps.Installable, cobra.ShellCompDirectiveNoFileComp))
+	completeFlag(cmd, "name", cobra.FixedCompletions(deps.Installable, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 

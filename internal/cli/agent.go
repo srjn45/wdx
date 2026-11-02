@@ -98,16 +98,16 @@ func newAgentCreateCmd() *cobra.Command {
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the agent (default: a generated one)")
-	cmd.RegisterFlagCompletionFunc("name", cobra.NoFileCompletions)
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&parentID, "parent-id", "", "`id` of the agent to create it under")
 	cmd.Flags().StringVar(&parentName, "parent-name", "", "`name` of the agent to create it under (case-insensitive)")
 	cmd.MarkFlagsMutuallyExclusive("parent-id", "parent-name")
-	cmd.RegisterFlagCompletionFunc("parent-id", completeParents("id"))
-	cmd.RegisterFlagCompletionFunc("parent-name", completeParents("name"))
+	completeFlag(cmd, "parent-id", completeParents("id"))
+	completeFlag(cmd, "parent-name", completeParents("name"))
 	cmd.Flags().StringVar(&worktree, "worktree", "", "`name` of the worktree to start in, created when there is none (default: the parent's, else the one you are in, else main)")
-	cmd.RegisterFlagCompletionFunc("worktree", cobra.NoFileCompletions)
+	completeFlag(cmd, "worktree", cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
-	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
+	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -165,8 +165,8 @@ func (r *agentRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the agent (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	cmd.RegisterFlagCompletionFunc("id", completeAgents("id"))
-	cmd.RegisterFlagCompletionFunc("name", completeAgents("name"))
+	completeFlag(cmd, "id", completeAgents("id"))
+	completeFlag(cmd, "name", completeAgents("name"))
 	r.scope.addFlags(cmd)
 }
 
@@ -347,7 +347,7 @@ func newAgentRenameCmd() *cobra.Command {
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&newName, "new-name", "", "`name` to give the agent")
 	cmd.MarkFlagRequired("new-name")
-	cmd.RegisterFlagCompletionFunc("new-name", cobra.NoFileCompletions)
+	completeFlag(cmd, "new-name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -402,7 +402,7 @@ func newAgentSendCmd() *cobra.Command {
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to give it; it is submitted")
 	cmd.Flags().BoolVar(&instant, "instant", false, "go before other messages, and interrupt its turn")
 	cmd.MarkFlagRequired(promptFlag)
-	cmd.RegisterFlagCompletionFunc(promptFlag, cobra.NoFileCompletions)
+	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
