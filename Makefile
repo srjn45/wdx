@@ -33,9 +33,10 @@ generate:
 	go generate ./...
 
 # The tests run four packages at a time and, where systemd-run can set one,
-# under a memory cap: they must leave room for other work on the machine.
+# under a memory cap: they must leave room for other work on the machine. Each
+# test binary collects its garbage sooner as it nears GOMEMLIMIT, well under the cap.
 TEST_CAP = $(shell systemd-run --user --scope -q true 2>/dev/null && echo systemd-run --user --scope -q -p MemoryMax=3G -p MemorySwapMax=0)
-GO_TEST  = $(TEST_CAP) go test -p 4 -race -shuffle=on
+GO_TEST  = $(TEST_CAP) env GOMEMLIMIT=2GiB go test -p 4 -race -shuffle=on
 
 # Run every test, with the race detector and in shuffled order.
 test:
