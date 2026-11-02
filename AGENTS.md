@@ -76,6 +76,7 @@ internal/waittest/  gives every wait in the tests one deadline, from the test bi
 internal/logtest/  shows the end of a test home's logs (daemon, CLI, holders) when the test fails
 internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgent; aca/acatest is one for tests; docs/AGENT.md; docs/ACA.md lists every place specific to an ACA, in this package or not, and a change to one updates it
 internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository or asking GitHub but for landing and removing a worktree, or reading its PR, when asked to; docs/TIDE_WORKTREES.md
+third_party/cancelreader/  a library's copy with a race fixed, which go.mod uses in its place; its README says what changed and when to drop it
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
