@@ -697,7 +697,10 @@ func TestDaemonStartGivesUp(t *testing.T) {
 	home := shortHome(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	mute := filepath.Join(t.TempDir(), identity.Name)
-	writeFile(t, mute, "#!/bin/sh\necho $$ >"+pidFile+"\nexec sleep 60\n")
+	// The pid is moved into place, so the file is there only once it holds it: a
+	// file the shell has created but not yet written lets start give up and kill
+	// the daemon before the pid is in it.
+	writeFile(t, mute, "#!/bin/sh\necho $$ >"+pidFile+".tmp\nmv "+pidFile+".tmp "+pidFile+"\nexec sleep 60\n")
 	// It gives up only once the daemon has run, however long that takes.
 	expired := make(chan time.Time)
 	go func() {
