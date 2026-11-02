@@ -181,9 +181,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	values := m.valuesSync()
 	diff := m.diffSync()
 	worktrees := m.worktreesSync()
+	code := m.codeSync()
 	attach := m.attachSelected()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, diff, worktrees, attach)
+	return m, tea.Batch(cmd, values, diff, worktrees, code, attach)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -272,6 +273,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingSaved(msg)
 	case diffLoaded:
 		m.diffLoaded(msg)
+	case codeLoaded:
+		m.codeLoaded(msg)
 	case commitSent:
 		m.commitSent(msg)
 	case landSettingsRead:
@@ -580,6 +583,7 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		}
 	case refreshKey:
 		if m.menuOffers(refreshKey) {
+			m.codeRefresh()
 			return m.refreshWorktrees("", true)
 		}
 	case startKey:

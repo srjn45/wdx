@@ -81,6 +81,7 @@ func (m *Model) worktreesChanged() {
 	if l == nil {
 		return
 	}
+	m.codeChanged()
 	m.landingsChanged()
 	if i := slices.IndexFunc(rows, func(r worktreeRow) bool { return r.key() == l.worktreeKey }); i >= 0 {
 		l.worktreeRow = i
@@ -106,26 +107,49 @@ func (m *Model) moveToWorktree(i int) {
 // moveUp moves the cursor up the one list the sections make.
 func (m *Model) moveUp() {
 	l := m.list()
-	switch {
-	case l.section == sectionAgents:
+	switch l.section {
+	case sectionAgents:
 		m.moveCursor(l.row - 1)
-	case l.worktreeRow > 0:
-		m.moveToWorktree(l.worktreeRow - 1)
-	case len(m.listRows()) > 0:
-		l.section = sectionAgents
+	case sectionWorktrees:
+		if l.worktreeRow > 0 {
+			m.moveToWorktree(l.worktreeRow - 1)
+		} else if len(m.listRows()) > 0 {
+			l.section = sectionAgents
+		}
+	case sectionCode:
+		switch n := len(m.worktreeRows()); {
+		case l.code.row > 0:
+			m.moveToCode(l.code.row - 1)
+		case n > 0:
+			m.moveToWorktree(n - 1)
+		case len(m.listRows()) > 0:
+			l.section = sectionAgents
+		}
 	}
 }
 
 // moveDown moves the cursor down the one list the sections make.
 func (m *Model) moveDown() {
 	l := m.list()
-	switch {
-	case l.section == sectionWorktrees:
-		m.moveToWorktree(l.worktreeRow + 1)
-	case l.row < len(m.listRows())-1:
-		m.moveCursor(l.row + 1)
-	default:
-		m.moveToWorktree(0)
+	n := len(m.worktreeRows())
+	switch l.section {
+	case sectionAgents:
+		switch {
+		case l.row < len(m.listRows())-1:
+			m.moveCursor(l.row + 1)
+		case n > 0:
+			m.moveToWorktree(0)
+		default:
+			m.moveToCode(0)
+		}
+	case sectionWorktrees:
+		if l.worktreeRow < n-1 {
+			m.moveToWorktree(l.worktreeRow + 1)
+		} else {
+			m.moveToCode(0)
+		}
+	case sectionCode:
+		m.moveToCode(l.code.row + 1)
 	}
 }
 

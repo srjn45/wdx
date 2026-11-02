@@ -163,8 +163,8 @@ func TestRender(t *testing.T) {
 │ no agent│                            │
 │ Worktree│                            │
 │ loading…│                            │
-│         │                            │
-│         │                            │
+│ Code    │                            │
+│ loading…│                            │
 ├ [● shell] [● tests] [● server] ──[⤢]─┤
 │● shell running                       │
 └──────────────────────────────────────┘

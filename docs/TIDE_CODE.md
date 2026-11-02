@@ -232,6 +232,8 @@ Done on 2026-11-01. Beyond the plan: a file in conflict is listed once, though `
 
 ### 3. The Code section
 
+Done on 2026-11-01, with these differences from the plan. There is one cursor for the section rather than one per worktree: changing the worktree happens on the selector, which the cursor has to stay on for the next `→`, so a cursor kept per worktree could never come back into use. `Enter` on a file does nothing until step 4, and no row is marked as the current tab's until then. A child's `├` stands under its parent's name, as on the Agents list, where the mock above had it under the fold mark. `f` reads the tree again even when the stream brings nothing new.
+
 New `internal/tide/code.go`.
 
 - `codeTree`, a pure function from paths to nodes, and `codeRows`, nodes and open directories to rows, each with table tests.

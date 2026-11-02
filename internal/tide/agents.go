@@ -56,6 +56,8 @@ type agentList struct {
 	diffs         map[string]*diffView // what the diffs' tabs hold, by view: a worktree's tab has two
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
 	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first
+
+	code codeSection
 }
 
 // agentListRow is a row of the Agents list.
@@ -118,13 +120,8 @@ func (m *Model) listRows() []agentListRow {
 		for i, a := range list {
 			r := agentListRow{agent: a, depth: depth}
 			children := childrenOf(a)
-			next := "  "
-			if depth > 0 {
-				r.guide, next = lead+"├ ", lead+"│   "
-				if i == len(list)-1 {
-					r.guide, next = lead+"└ ", lead+"    "
-				}
-			}
+			var next string
+			r.guide, next = treeGuides(lead, depth, i == len(list)-1)
 			switch {
 			case len(children) > 0 && l.closed[a.Id]:
 				below := api.FlattenAgents(children)
@@ -143,6 +140,18 @@ func (m *Model) listRows() []agentListRow {
 	}
 	walk(top, "", 0)
 	return rows
+}
+
+// treeGuides returns the lines of a tree's row at depth, under the lines lead, and
+// the lead of its children.
+func treeGuides(lead string, depth int, last bool) (guide, next string) {
+	switch {
+	case depth == 0:
+		return "", "  "
+	case last:
+		return lead + "└ ", lead + "    "
+	}
+	return lead + "├ ", lead + "│   "
 }
 
 func agentIndex(agents []api.Agent, id string) int {
@@ -423,8 +432,15 @@ func (s *projectScreen) title() string { return "Project: " + s.name }
 
 func (s *projectScreen) hint() string {
 	top := s.m.topAgents()
-	if l := s.m.list(); l != nil && l.section == sectionWorktrees {
-		return worktreeHint
+	if l := s.m.list(); l != nil {
+		switch {
+		case l.section == sectionWorktrees:
+			return worktreeHint
+		case l.section == sectionCode && l.code.row == 0:
+			return codeSelectorHint
+		case l.section == sectionCode:
+			return codeHint
+		}
 	}
 	switch {
 	case len(top) == 0:
@@ -449,6 +465,8 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		s.m.moveDown()
 	case l.section == sectionWorktrees:
 		return s.updateWorktrees(name)
+	case l.section == sectionCode:
+		s.updateCode(name)
 	case l.section == sectionAgents:
 		s.updateAgents(name)
 	}
@@ -486,12 +504,16 @@ type section int
 const (
 	sectionAgents section = iota
 	sectionWorktrees
+	sectionCode
 )
 
 // cursorRow is the cursor's row in its section.
 func (l *agentList) cursorRow() int {
-	if l.section == sectionWorktrees {
+	switch l.section {
+	case sectionWorktrees:
 		return l.worktreeRow
+	case sectionCode:
+		return l.code.row
 	}
 	return l.row
 }
@@ -506,7 +528,7 @@ type paneItem struct {
 }
 
 // paneItems are the lines of the list: the agents, the Worktrees heading, the
-// worktrees.
+// worktrees, the Code heading, its selector and tree.
 func (m *Model) paneItems() []paneItem {
 	var items []paneItem
 	rows := m.listRows()
@@ -523,6 +545,13 @@ func (m *Model) paneItems() []paneItem {
 	}
 	if len(worktrees) == 0 {
 		items = append(items, paneItem{section: sectionWorktrees, empty: true})
+	}
+	items = append(items, paneItem{section: sectionCode, heading: true})
+	for i := range m.codeRowsShown() {
+		items = append(items, paneItem{section: sectionCode, row: i})
+	}
+	if m.codeNote() != "" {
+		items = append(items, paneItem{section: sectionCode, empty: true})
 	}
 	return items
 }
@@ -564,6 +593,9 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 		return nil
 	case it.section == sectionWorktrees:
 		return s.clickWorktree(it.row, col)
+	case it.section == sectionCode:
+		s.clickCode(it.row, col, width)
+		return nil
 	}
 	rows := s.m.listRows()
 	i := it.row
@@ -600,7 +632,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
-	agents, rows, worktrees := m.agents(), m.listRows(), m.worktreeRows()
+	agents, rows, worktrees, code := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown()
 	agentCount := fmt.Sprint(len(agents)-countRemoved(agents)) + " "
 	worktreeCount := ""
 	if m.worktreeStatuses() != nil {
@@ -609,6 +641,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	headings := map[section]string{
 		sectionAgents:    sectionHeading(st, " Agents", agentCount, width),
 		sectionWorktrees: sectionHeading(st, " Worktrees", worktreeCount, width),
+		sectionCode:      sectionHeading(st, " Code", "", width),
 	}
 
 	shown, top := m.visibleItems(area.Dy())
@@ -620,6 +653,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		switch {
 		case it.heading:
 			lines = append(lines, headings[it.section])
+		case it.empty && it.section == sectionCode:
+			lines = append(lines, st.Muted(" "+m.codeNote()))
 		case it.empty && it.section == sectionAgents:
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
 		case it.empty && m.worktreeStatuses() == nil:
@@ -631,6 +666,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		case it.section == sectionWorktrees:
 			r := worktrees[it.row]
 			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
+		case it.section == sectionCode:
+			lines = append(lines, m.codeLine(code[it.row], cursor, width))
 		}
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
@@ -660,12 +697,17 @@ func rowGuide(r agentListRow, width int) (guide string, room int) {
 	if r.fold != "" {
 		base -= 2
 	}
-	guide = r.guide
-	if r.depth > 0 && base-ansi.StringWidth(guide)-1 < minAgentName {
+	return fitGuide(r.guide, r.depth, base)
+}
+
+// fitGuide returns guide, or its level when the lines would leave too little of the
+// room, and what is left of it.
+func fitGuide(guide string, depth, room int) (fitted string, left int) {
+	if depth > 0 && room-ansi.StringWidth(guide)-1 < minAgentName {
 		connector := []rune(guide)
-		guide = fmt.Sprintf("⋯%d %s", r.depth, string(connector[len(connector)-2:]))
+		guide = fmt.Sprintf("⋯%d %s", depth, string(connector[len(connector)-2:]))
 	}
-	return guide, base - ansi.StringWidth(guide)
+	return guide, room - ansi.StringWidth(guide)
 }
 
 // agentRow is r's row: the cursor when it is there, the tree's lines and fold

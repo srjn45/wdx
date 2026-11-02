@@ -427,6 +427,15 @@ func (c *Client) WorktreeUncommittedDiff(ctx context.Context, name, ref, dir str
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// WorktreeFiles returns the files of the worktree name, without gitignored ones.
+func (c *Client) WorktreeFiles(ctx context.Context, name, ref, dir string) (api.WorktreeFiles, error) {
+	r, err := c.api.ListWorktreeFilesWithResponse(ctx, name, &api.ListWorktreeFilesParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeFiles{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeFileDiff returns the uncommitted changes of the file at path in the
 // worktree name.
 func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileDiff, error) {

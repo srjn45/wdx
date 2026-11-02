@@ -54,6 +54,8 @@ type Resume struct {
 	// Tabs are the tabs open, as Agent is. A release that does not know one
 	// drops it, as it does a tab whose agent is gone.
 	Tabs []string `json:"tabs,omitempty"`
+	// CodeWorktree is the worktree the Code section shows.
+	CodeWorktree string `json:"code_worktree,omitempty"`
 }
 
 // String is r as the flag carries it.
@@ -100,6 +102,7 @@ func (m *Model) startReload() tea.Cmd {
 			r.Agent = m.list().active
 		}
 		r.Tabs = m.list().tabs
+		r.CodeWorktree = m.list().code.worktree
 	}
 	m.reload = r
 	m.log.Info("tide reloading", "executable", m.executable, "project", m.shown)
@@ -133,7 +136,7 @@ func (m *Model) resumed() (tea.Cmd, bool) {
 		}
 		// Active once the stream brings it, as an agent created here is; the
 		// first running one must not take its place, nor take it when none was.
-		m.agentLists[r.ProjectID] = &agentList{closed: map[string]bool{}, tabs: r.Tabs, created: r.Agent, opened: true}
+		m.agentLists[r.ProjectID] = &agentList{closed: map[string]bool{}, tabs: r.Tabs, created: r.Agent, opened: true, code: codeSection{worktree: r.CodeWorktree}}
 	}
 	cmd := m.show(r.Project)
 	m.layout.terminalOpen = r.TerminalOpen
