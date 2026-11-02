@@ -1401,9 +1401,12 @@ func TestLandAsksAnAgentAfterAConflict(t *testing.T) {
 	p.keys(landKey)
 	p.until(t, "the box", func(m *Model) bool { return m.land != nil })
 	p.keys("y")
+	// The landing fails at the head the rebase was undone to, which the worktree's own
+	// status may show only later: until then L takes it as rebased since, and lands.
 	p.until(t, "the conflict", func(m *Model) bool {
 		w, ok := m.worktreeNamed("work")
-		return ok && landingFailed(w) && m.land == nil && len(m.agents()) == 1
+		return ok && landingFailed(w) && deref(w.Head) == deref(w.Landing.Head) && m.land == nil &&
+			len(m.agents()) == 1 && m.agents()[0].State == api.AgentStateRunning
 	})
 	if !strings.Contains(m.statusNotice, "L asks an agent") {
 		t.Errorf("notice: %q", m.statusNotice)
@@ -1427,9 +1430,10 @@ func TestLandAsksAnAgentAfterAConflict(t *testing.T) {
 	writeFile(t, filepath.Join(work, "again"), "b\n")
 	gittest.Git(t, work, "add", ".")
 	gittest.Git(t, work, "commit", "-qm", "again")
+	// The head moved at the reset too, with nothing to land yet, and L does nothing then.
 	p.until(t, "the new commit", func(m *Model) bool {
 		w, ok := m.worktreeNamed("work")
-		return ok && deref(w.Head) != deref(w.Landing.Head)
+		return ok && deref(w.Head) != deref(w.Landing.Head) && len(w.Files) == 0 && w.Ahead != nil && *w.Ahead == 1
 	})
 	p.keys(landKey)
 	p.until(t, "the land box", func(m *Model) bool { return m.land != nil })

@@ -38,10 +38,10 @@ failed=0
 while read -r dir names; do
 	echo "== ./$dir: $names"
 	# Each batch is a process, whose TestMain and what tests share start again.
-	# The cli's are small, as cobra keeps every flag it saw, which in one process
-	# adds up to more than the tests' memory cap.
+	# The cli's run once a process, as cobra keeps every flag it saw, which in one
+	# process adds up to more than the tests' memory cap.
 	case "$dir" in
-	internal/cli) batch=2 ;;
+	internal/cli) batch=1 ;;
 	*) batch=10 ;;
 	esac
 	left="$TIMES"

@@ -1156,11 +1156,7 @@ func TestClosingAProjectStopsWhatRunsOutsideItsTerminals(t *testing.T) {
 	test := &acatest.ACA{Script: "exit 0"}
 	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = test })
 	ctx := context.Background()
-	a := td.createAgent(t, "", td.create(t, "app").Worktrees[0].Path, "helper")
-	waittest.For(t, "the agent to exit", func() bool {
-		r, err := td.client.GetAgentWithResponse(ctx, "id:"+a.Id, nil)
-		return err == nil && r.JSON200 != nil && r.JSON200.Agent.State != api.AgentStateRunning
-	})
+	td.createExitedAgent(t, td.create(t, "app").Worktrees[0].Path, "helper")
 	closing := func(stop bool) *api.UpdateProjectResponse {
 		t.Helper()
 		r, err := td.client.UpdateProjectWithResponse(ctx, "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(stop)})
