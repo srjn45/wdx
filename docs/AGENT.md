@@ -15,7 +15,7 @@ Child agents and tombstones are in docs/CHILD_AGENTS.md. What the ACA is doing, 
 ```
 
 - An agent is a row in `agents` pointing at one row in `terminals` of kind `agent`, which keeps the name, dir, pid, exit code and process state. The holder, its protocol, attach, history, reconciliation and stopping are the terminal's, unchanged.
-- That is storage: an agent is always read joined with its terminal row, and the terminal API and `wdx terminal` deal only with kind `shell`. The one trace outside is `terminal_id` in an agent's JSON, which attach needs to reach the holder and which no terminal path accepts.
+- That is storage: an agent is always read joined with its terminal row, and the terminal API and `wdx terminal` deal only with kind `shell`, and not with the editors' rows of that kind, which have an `editor_path` (docs/TIDE_CODE.md). The one trace outside is `terminal_id` in an agent's JSON, which attach needs to reach the holder and which no terminal path accepts.
 - The ACA is the holder's child, not something typed into a shell: typing races with rc files and leaves a live shell behind when the ACA ends, hiding its exit. It starts through the user's login shell, interactive, so that the `PATH` and keys their rc files set apply; `exec` then puts the ACA in the shell's place. The command is one string of single-quoted words rather than `"$@"`, which fish does not parse. When the ACA ends the terminal is `exited` with its code, and no shell is left.
 - The supervisor asks for the command at each launch, through a function in its options that the daemon wires to the agent package; `terminal` knows nothing of agents. Terminals of kind `shell` run the shell as today.
 - Dependencies: `daemon -> agent -> aca, terminal`.

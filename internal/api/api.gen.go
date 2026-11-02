@@ -954,6 +954,35 @@ type Daemon struct {
 	Version   string    `json:"version"`
 }
 
+// Editor defines model for Editor.
+type Editor struct {
+	// Path The file's path
+	Path string `json:"path"`
+
+	// Program The editor
+	Program string `json:"program"`
+
+	// State starting: its holder is being started; running: its shell is alive;
+	// exited: its shell ended by itself; stopped: closing its project
+	// stopped it; failed: its holder or shell did not start; lost: its
+	// holder is gone and nobody stopped it.
+	State TerminalState `json:"state"`
+
+	// TerminalId The terminal it runs in
+	TerminalId string `json:"terminal_id"`
+
+	// Worktree The worktree's name
+	Worktree string `json:"worktree"`
+}
+
+// EditorResult defines model for EditorResult.
+type EditorResult struct {
+	Editor Editor `json:"editor"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
 // ErrorCode Stable error code; never changed or reused. daemon_unavailable,
 // already_running, runtime_missing, port_in_use, runtime_failed,
 // agent_not_running, attach_unsupported,
@@ -1033,6 +1062,21 @@ type NewSource struct {
 // NewSourceType defines model for NewSource.Type.
 type NewSourceType string
 
+// OpenEditor defines model for OpenEditor.
+type OpenEditor struct {
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *string `json:"dir,omitempty"`
+
+	// Path The file's path
+	Path string `json:"path"`
+
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *string `json:"project,omitempty"`
+
+	// Worktree The worktree's name
+	Worktree string `json:"worktree"`
+}
+
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
 	// Code Stable error code; never changed or reused. daemon_unavailable,
@@ -1069,9 +1113,12 @@ type Project struct {
 	// Agents The project's agents with no parent by name, in every state, with their children; set by getProject only.
 	Agents    *[]Agent  `json:"agents,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
-	Id        string    `json:"id"`
-	Name      string    `json:"name"`
-	Origin    *string   `json:"origin"`
+
+	// Editors The editors running in the project; set by getProject only.
+	Editors *[]Editor `json:"editors,omitempty"`
+	Id      string    `json:"id"`
+	Name    string    `json:"name"`
+	Origin  *string   `json:"origin"`
 
 	// Orphaned Whether none of the checkouts is on disk; set by getProject only.
 	Orphaned *bool        `json:"orphaned,omitempty"`
@@ -1158,6 +1205,9 @@ type ProjectResult struct {
 
 	// StoppedAgents The agents closing or removing the project stopped.
 	StoppedAgents *[]Agent `json:"stopped_agents,omitempty"`
+
+	// StoppedEditors The editors closing or removing the project stopped, which do not start again.
+	StoppedEditors *[]Editor `json:"stopped_editors,omitempty"`
 
 	// StoppedSessions The sessions of its agents that closing or removing the project stopped outside their terminals, where their AI coding agent had moved them; left out when there were none.
 	StoppedSessions *[]string `json:"stopped_sessions,omitempty"`
@@ -1603,8 +1653,11 @@ type WorktreeRemoved struct {
 	Path     string   `json:"path"`
 
 	// Result The most significant thing that happened.
-	Result   Result `json:"result"`
-	Worktree string `json:"worktree"`
+	Result Result `json:"result"`
+
+	// StoppedEditors The editors that ran in it, stopped.
+	StoppedEditors []Editor `json:"stopped_editors"`
+	Worktree       string   `json:"worktree"`
 }
 
 // WorktreeReview defines model for WorktreeReview.
@@ -2075,6 +2128,9 @@ type RestartAgentJSONRequestBody = RestartAgent
 
 // SendAgentJSONRequestBody defines body for SendAgent for application/json ContentType.
 type SendAgentJSONRequestBody = AgentMessage
+
+// OpenEditorJSONRequestBody defines body for OpenEditor for application/json ContentType.
+type OpenEditorJSONRequestBody = OpenEditor
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProject
@@ -2571,6 +2627,40 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/daemon/reload (the `ReloadDaemon` operationId).
 	ReloadDaemon(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// OpenEditorWithBody Start the editor the editor setting names on a file of a worktree
+	//
+	// The editor runs in a terminal of its own in the worktree, through the login
+	// shell, until it exits, when it is gone: it is never started again. Only one
+	// runs on a file: asking again returns it, with result opened. It shows in the
+	// project's editors, and closing the project or removing the worktree stops it.
+	// The editor is looked for through the login shell first.
+	//
+	// Errors: dependency_missing, with the editor under details.dependency;
+	// invalid_path, when the path leads out of the worktree or is not a file;
+	// not_found; project_closed; start_failed; usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+	OpenEditorWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OpenEditor Start the editor the editor setting names on a file of a worktree
+	//
+	// The editor runs in a terminal of its own in the worktree, through the login
+	// shell, until it exits, when it is gone: it is never started again. Only one
+	// runs on a file: asking again returns it, with result opened. It shows in the
+	// project's editors, and closing the project or removing the worktree stops it.
+	// The editor is looked for through the login shell first.
+	//
+	// Errors: dependency_missing, with the editor under details.dependency;
+	// invalid_path, when the path leads out of the worktree or is not a file;
+	// not_found; project_closed; start_failed; usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+	OpenEditor(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMessages List a project's messages still waiting, oldest first
 	//
 	// The messages of the project named by project, or of the project whose
@@ -2682,10 +2772,10 @@ type ClientInterface interface {
 
 	// UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals and
-	// agents that are starting or running, which it refuses with
+	// Closing touches nothing on disk. It stops the project's terminals,
+	// agents and editors that are starting or running, which it refuses with
 	// project_in_use unless stop_running is true, and lists them under
-	// "stopped" and "stopped_agents".
+	// "stopped", "stopped_agents" and "stopped_editors".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
 	// checkout_missing is returned. It relaunches the terminals and agents
@@ -2701,10 +2791,10 @@ type ClientInterface interface {
 
 	// UpdateProject Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals and
-	// agents that are starting or running, which it refuses with
+	// Closing touches nothing on disk. It stops the project's terminals,
+	// agents and editors that are starting or running, which it refuses with
 	// project_in_use unless stop_running is true, and lists them under
-	// "stopped" and "stopped_agents".
+	// "stopped", "stopped_agents" and "stopped_editors".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
 	// checkout_missing is returned. It relaunches the terminals and agents
@@ -2972,7 +3062,8 @@ type ClientInterface interface {
 	// Only one with nothing ahead of its base and nothing uncommitted, or one
 	// whose directory is already gone, where only git's entry goes. Its branch
 	// goes too if it is merged. Agents running there are told where to go on, and
-	// do not hold it up. Terminals running there are left as they are.
+	// do not hold it up. Editors running there are stopped, with what they hold
+	// unsaved. Terminals running there are left as they are.
 	//
 	// Errors: invalid_path, not_found, usage, worktree_is_clone,
 	// worktree_not_landed, worktree_not_removed.
@@ -3566,6 +3657,60 @@ func (c *Client) ReloadDaemon(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// OpenEditorWithBody Start the editor the editor setting names on a file of a worktree
+//
+// The editor runs in a terminal of its own in the worktree, through the login
+// shell, until it exits, when it is gone: it is never started again. Only one
+// runs on a file: asking again returns it, with result opened. It shows in the
+// project's editors, and closing the project or removing the worktree stops it.
+// The editor is looked for through the login shell first.
+//
+// Errors: dependency_missing, with the editor under details.dependency;
+// invalid_path, when the path leads out of the worktree or is not a file;
+// not_found; project_closed; start_failed; usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+func (c *Client) OpenEditorWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOpenEditorRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OpenEditor Start the editor the editor setting names on a file of a worktree
+//
+// The editor runs in a terminal of its own in the worktree, through the login
+// shell, until it exits, when it is gone: it is never started again. Only one
+// runs on a file: asking again returns it, with result opened. It shows in the
+// project's editors, and closing the project or removing the worktree stops it.
+// The editor is looked for through the login shell first.
+//
+// Errors: dependency_missing, with the editor under details.dependency;
+// invalid_path, when the path leads out of the worktree or is not a file;
+// not_found; project_closed; start_failed; usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+func (c *Client) OpenEditor(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOpenEditorRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListMessages List a project's messages still waiting, oldest first
 //
 // The messages of the project named by project, or of the project whose
@@ -3757,10 +3902,10 @@ func (c *Client) GetProject(ctx context.Context, project ProjectRef, reqEditors 
 
 // UpdateProjectWithBody Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals and
-// agents that are starting or running, which it refuses with
+// Closing touches nothing on disk. It stops the project's terminals,
+// agents and editors that are starting or running, which it refuses with
 // project_in_use unless stop_running is true, and lists them under
-// "stopped" and "stopped_agents".
+// "stopped", "stopped_agents" and "stopped_editors".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
 // checkout_missing is returned. It relaunches the terminals and agents
@@ -3786,10 +3931,10 @@ func (c *Client) UpdateProjectWithBody(ctx context.Context, project ProjectRef, 
 
 // UpdateProject Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals and
-// agents that are starting or running, which it refuses with
+// Closing touches nothing on disk. It stops the project's terminals,
+// agents and editors that are starting or running, which it refuses with
 // project_in_use unless stop_running is true, and lists them under
-// "stopped" and "stopped_agents".
+// "stopped", "stopped_agents" and "stopped_editors".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
 // checkout_missing is returned. It relaunches the terminals and agents
@@ -4267,7 +4412,8 @@ func (c *Client) ListWorktrees(ctx context.Context, params *ListWorktreesParams,
 // Only one with nothing ahead of its base and nothing uncommitted, or one
 // whose directory is already gone, where only git's entry goes. Its branch
 // goes too if it is merged. Agents running there are told where to go on, and
-// do not hold it up. Terminals running there are left as they are.
+// do not hold it up. Editors running there are stopped, with what they hold
+// unsaved. Terminals running there are left as they are.
 //
 // Errors: invalid_path, not_found, usage, worktree_is_clone,
 // worktree_not_landed, worktree_not_removed.
@@ -5503,6 +5649,46 @@ func NewReloadDaemonRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewOpenEditorRequest calls the generic OpenEditor builder with application/json body
+func NewOpenEditorRequest(server string, body OpenEditorJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewOpenEditorRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewOpenEditorRequestWithBody constructs an http.Request for the OpenEditor method, with any body, and a specified content type
+func NewOpenEditorRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/editors")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -8222,6 +8408,40 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/daemon/reload (the `ReloadDaemon` operationId).
 	ReloadDaemonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadDaemonResponse, error)
 
+	// OpenEditorWithBodyWithResponse Start the editor the editor setting names on a file of a worktree
+	//
+	// The editor runs in a terminal of its own in the worktree, through the login
+	// shell, until it exits, when it is gone: it is never started again. Only one
+	// runs on a file: asking again returns it, with result opened. It shows in the
+	// project's editors, and closing the project or removing the worktree stops it.
+	// The editor is looked for through the login shell first.
+	//
+	// Errors: dependency_missing, with the editor under details.dependency;
+	// invalid_path, when the path leads out of the worktree or is not a file;
+	// not_found; project_closed; start_failed; usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+	OpenEditorWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OpenEditorResponse, error)
+
+	// OpenEditorWithResponse Start the editor the editor setting names on a file of a worktree
+	//
+	// The editor runs in a terminal of its own in the worktree, through the login
+	// shell, until it exits, when it is gone: it is never started again. Only one
+	// runs on a file: asking again returns it, with result opened. It shows in the
+	// project's editors, and closing the project or removing the worktree stops it.
+	// The editor is looked for through the login shell first.
+	//
+	// Errors: dependency_missing, with the editor under details.dependency;
+	// invalid_path, when the path leads out of the worktree or is not a file;
+	// not_found; project_closed; start_failed; usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+	OpenEditorWithResponse(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*OpenEditorResponse, error)
+
 	// ListMessagesWithResponse List a project's messages still waiting, oldest first
 	//
 	// The messages of the project named by project, or of the project whose
@@ -8345,10 +8565,10 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals and
-	// agents that are starting or running, which it refuses with
+	// Closing touches nothing on disk. It stops the project's terminals,
+	// agents and editors that are starting or running, which it refuses with
 	// project_in_use unless stop_running is true, and lists them under
-	// "stopped" and "stopped_agents".
+	// "stopped", "stopped_agents" and "stopped_editors".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
 	// checkout_missing is returned. It relaunches the terminals and agents
@@ -8364,10 +8584,10 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 	//
-	// Closing touches nothing on disk. It stops the project's terminals and
-	// agents that are starting or running, which it refuses with
+	// Closing touches nothing on disk. It stops the project's terminals,
+	// agents and editors that are starting or running, which it refuses with
 	// project_in_use unless stop_running is true, and lists them under
-	// "stopped" and "stopped_agents".
+	// "stopped", "stopped_agents" and "stopped_editors".
 	//
 	// Opening drops the checkouts no longer on disk; when none is left,
 	// checkout_missing is returned. It relaunches the terminals and agents
@@ -8659,7 +8879,8 @@ type ClientWithResponsesInterface interface {
 	// Only one with nothing ahead of its base and nothing uncommitted, or one
 	// whose directory is already gone, where only git's entry goes. Its branch
 	// goes too if it is merged. Agents running there are told where to go on, and
-	// do not hold it up. Terminals running there are left as they are.
+	// do not hold it up. Editors running there are stopped, with what they hold
+	// unsaved. Terminals running there are left as they are.
 	//
 	// Errors: invalid_path, not_found, usage, worktree_is_clone,
 	// worktree_not_landed, worktree_not_removed.
@@ -9427,6 +9648,61 @@ func (r ReloadDaemonResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReloadDaemonResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OpenEditorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EditorResult
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *EditorResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OpenEditorResponse) GetJSON200() *EditorResult {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r OpenEditorResponse) GetJSON201() *EditorResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r OpenEditorResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r OpenEditorResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OpenEditorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OpenEditorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OpenEditorResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11554,6 +11830,52 @@ func (c *ClientWithResponses) ReloadDaemonWithResponse(ctx context.Context, reqE
 	return ParseReloadDaemonResponse(rsp)
 }
 
+// OpenEditorWithBodyWithResponse Start the editor the editor setting names on a file of a worktree
+//
+// The editor runs in a terminal of its own in the worktree, through the login
+// shell, until it exits, when it is gone: it is never started again. Only one
+// runs on a file: asking again returns it, with result opened. It shows in the
+// project's editors, and closing the project or removing the worktree stops it.
+// The editor is looked for through the login shell first.
+//
+// Errors: dependency_missing, with the editor under details.dependency;
+// invalid_path, when the path leads out of the worktree or is not a file;
+// not_found; project_closed; start_failed; usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+func (c *ClientWithResponses) OpenEditorWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OpenEditorResponse, error) {
+	rsp, err := c.OpenEditorWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOpenEditorResponse(rsp)
+}
+
+// OpenEditorWithResponse Start the editor the editor setting names on a file of a worktree
+//
+// The editor runs in a terminal of its own in the worktree, through the login
+// shell, until it exits, when it is gone: it is never started again. Only one
+// runs on a file: asking again returns it, with result opened. It shows in the
+// project's editors, and closing the project or removing the worktree stops it.
+// The editor is looked for through the login shell first.
+//
+// Errors: dependency_missing, with the editor under details.dependency;
+// invalid_path, when the path leads out of the worktree or is not a file;
+// not_found; project_closed; start_failed; usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
+func (c *ClientWithResponses) OpenEditorWithResponse(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*OpenEditorResponse, error) {
+	rsp, err := c.OpenEditor(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOpenEditorResponse(rsp)
+}
+
 // ListMessagesWithResponse List a project's messages still waiting, oldest first
 //
 // The messages of the project named by project, or of the project whose
@@ -11725,10 +12047,10 @@ func (c *ClientWithResponses) GetProjectWithResponse(ctx context.Context, projec
 
 // UpdateProjectWithBodyWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals and
-// agents that are starting or running, which it refuses with
+// Closing touches nothing on disk. It stops the project's terminals,
+// agents and editors that are starting or running, which it refuses with
 // project_in_use unless stop_running is true, and lists them under
-// "stopped" and "stopped_agents".
+// "stopped", "stopped_agents" and "stopped_editors".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
 // checkout_missing is returned. It relaunches the terminals and agents
@@ -11750,10 +12072,10 @@ func (c *ClientWithResponses) UpdateProjectWithBodyWithResponse(ctx context.Cont
 
 // UpdateProjectWithResponse Close a project, or open it again from one of its checkouts
 //
-// Closing touches nothing on disk. It stops the project's terminals and
-// agents that are starting or running, which it refuses with
+// Closing touches nothing on disk. It stops the project's terminals,
+// agents and editors that are starting or running, which it refuses with
 // project_in_use unless stop_running is true, and lists them under
-// "stopped" and "stopped_agents".
+// "stopped", "stopped_agents" and "stopped_editors".
 //
 // Opening drops the checkouts no longer on disk; when none is left,
 // checkout_missing is returned. It relaunches the terminals and agents
@@ -12171,7 +12493,8 @@ func (c *ClientWithResponses) ListWorktreesWithResponse(ctx context.Context, par
 // Only one with nothing ahead of its base and nothing uncommitted, or one
 // whose directory is already gone, where only git's entry goes. Its branch
 // goes too if it is merged. Agents running there are told where to go on, and
-// do not hold it up. Terminals running there are left as they are.
+// do not hold it up. Editors running there are stopped, with what they hold
+// unsaved. Terminals running there are left as they are.
 //
 // Errors: invalid_path, not_found, usage, worktree_is_clone,
 // worktree_not_landed, worktree_not_removed.
@@ -12853,6 +13176,46 @@ func ParseReloadDaemonResponse(rsp *http.Response) (*ReloadDaemonResponse, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOpenEditorResponse parses an HTTP response from a OpenEditorWithResponse call
+func ParseOpenEditorResponse(rsp *http.Response) (*OpenEditorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OpenEditorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EditorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest EditorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
@@ -14113,6 +14476,9 @@ type ServerInterface interface {
 	// ReloadDaemon Read the settings again and apply them
 	// (POST /v1/daemon/reload)
 	ReloadDaemon(w http.ResponseWriter, r *http.Request)
+	// OpenEditor Start the editor the editor setting names on a file of a worktree
+	// (POST /v1/editors)
+	OpenEditor(w http.ResponseWriter, r *http.Request)
 	// ListMessages List a project's messages still waiting, oldest first
 	// (GET /v1/messages)
 	ListMessages(w http.ResponseWriter, r *http.Request, params ListMessagesParams)
@@ -14871,6 +15237,20 @@ func (siw *ServerInterfaceWrapper) ReloadDaemon(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReloadDaemon(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenEditor operation middleware
+func (siw *ServerInterfaceWrapper) OpenEditor(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenEditor(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16774,6 +17154,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agents/{agent}/send", wrapper.SendAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/history", wrapper.GetAgentHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agents/{agent}/transcript", wrapper.GetAgentTranscript)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/editors", wrapper.OpenEditor)
 
 	return m
 }
@@ -17246,6 +17627,59 @@ type ReloadDaemondefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ReloadDaemondefaultApplicationProblemPlusJSONResponse) VisitReloadDaemonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenEditorRequestObject struct {
+	Body *OpenEditorJSONRequestBody
+}
+
+type OpenEditorResponseObject interface {
+	VisitOpenEditorResponse(w http.ResponseWriter) error
+}
+
+type OpenEditor200JSONResponse EditorResult
+
+func (response OpenEditor200JSONResponse) VisitOpenEditorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenEditor201JSONResponse EditorResult
+
+func (response OpenEditor201JSONResponse) VisitOpenEditorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenEditordefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response OpenEditordefaultApplicationProblemPlusJSONResponse) VisitOpenEditorResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18792,6 +19226,9 @@ type StrictServerInterface interface {
 	// ReloadDaemon Read the settings again and apply them
 	// (POST /v1/daemon/reload)
 	ReloadDaemon(ctx context.Context, request ReloadDaemonRequestObject) (ReloadDaemonResponseObject, error)
+	// OpenEditor Start the editor the editor setting names on a file of a worktree
+	// (POST /v1/editors)
+	OpenEditor(ctx context.Context, request OpenEditorRequestObject) (OpenEditorResponseObject, error)
 	// ListMessages List a project's messages still waiting, oldest first
 	// (GET /v1/messages)
 	ListMessages(ctx context.Context, request ListMessagesRequestObject) (ListMessagesResponseObject, error)
@@ -19282,6 +19719,37 @@ func (sh *strictHandler) ReloadDaemon(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReloadDaemonResponseObject); ok {
 		if err := validResponse.VisitReloadDaemonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenEditor operation middleware
+func (sh *strictHandler) OpenEditor(w http.ResponseWriter, r *http.Request) {
+	var request OpenEditorRequestObject
+
+	var body OpenEditorJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenEditor(ctx, request.(OpenEditorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenEditor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenEditorResponseObject); ok {
+		if err := validResponse.VisitOpenEditorResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -20341,245 +20809,253 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AQAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

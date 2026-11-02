@@ -60,6 +60,11 @@ type Options struct {
 	TerminalShell string
 	// TerminalHistoryLines bounds each terminal's history; 0 keeps none.
 	TerminalHistoryLines int64
+	// Editor is the editor files are edited with; editor.Default when "".
+	Editor string
+	// EditorCommand is what runs the editor named program on path, in place of
+	// its own command, as tests give; nil runs the editor.
+	EditorCommand func(program, path string) []string
 	// ACA is what new agents run, and among the ones agents may have been
 	// created with; aca.ClaudeCode when nil.
 	ACA aca.AiCodingAgent
@@ -121,6 +126,7 @@ type Settings struct {
 	Metrics              telemetry.Options
 	TerminalShell        string
 	TerminalHistoryLines int64
+	Editor               string
 }
 
 // ReloadError is settings that could not be read again; the daemon keeps the
@@ -245,16 +251,18 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups = agent.NewBackups(logged, agents, opts.Home, []aca.AiCodingAgent{opts.ACA}, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
-		Executable:   opts.Executable,
-		Home:         opts.Home,
-		Env:          opts.ShellEnv,
-		Shell:        opts.TerminalShell,
-		HistoryLines: opts.TerminalHistoryLines,
-		StopGrace:    opts.StopGrace,
-		StopReport:   opts.StopReport,
-		Limits:       opts.HolderLimits,
-		AgentLaunch:  agent.Launches(d.backups),
-		AgentEnded:   d.backups.Request,
+		Executable:    opts.Executable,
+		Home:          opts.Home,
+		Env:           opts.ShellEnv,
+		Shell:         opts.TerminalShell,
+		HistoryLines:  opts.TerminalHistoryLines,
+		Editor:        opts.Editor,
+		EditorCommand: opts.EditorCommand,
+		StopGrace:     opts.StopGrace,
+		StopReport:    opts.StopReport,
+		Limits:        opts.HolderLimits,
+		AgentLaunch:   agent.Launches(d.backups),
+		AgentEnded:    d.backups.Request,
 		AgentSession: func(ctx context.Context, id string) (string, error) {
 			a, err := agents.GetByTerminal(ctx, id)
 			return a.SessionID, err
@@ -337,7 +345,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 	if err != nil {
 		return &ReloadError{err}
 	}
-	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines)
+	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines, s.Editor)
 	if s.Metrics != d.opts.Metrics {
 		// The exporter outlives the request, so it logs as the daemon does.
 		if err := d.meter(logging.NewContext(context.WithoutCancel(ctx), d.log), s.Metrics); err != nil {
@@ -346,7 +354,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 		d.opts.Metrics = s.Metrics
 		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
 	}
-	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines)
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor)
 	return nil
 }
 

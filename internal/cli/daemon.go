@@ -132,6 +132,7 @@ func runForeground(cmd *cobra.Command) error {
 		ShellEnv:             invocationOf(cmd).env.ShellEnv,
 		TerminalShell:        settings.TerminalShell,
 		TerminalHistoryLines: settings.TerminalHistoryLines,
+		Editor:               settings.Editor,
 		SettingStore:         settingStore{home: cfg.Home},
 		Reload: func() (daemon.Settings, error) {
 			now, err := config.LoadHome(cfg.Home)
@@ -165,6 +166,7 @@ func daemonSettings(cfg config.Config) daemon.Settings {
 		Metrics:              telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
 		TerminalShell:        cfg.TerminalShell,
 		TerminalHistoryLines: cfg.TerminalHistoryLines,
+		Editor:               cfg.Editor,
 	}
 }
 

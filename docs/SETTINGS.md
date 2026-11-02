@@ -32,6 +32,7 @@ Decided on the way:
 | `no_input`, `color`, `update.channel`, `update.base_url`, `terminal.history_tail` | each command | the next command |
 | `log.level`, `log.retention_days` | each command and the daemon | immediately |
 | `terminal.shell`, `terminal.history_lines` | the daemon, when a terminal starts | new terminals |
+| `editor` | the daemon, when an editor starts | new editors |
 | `otel.endpoint`, `otel.interval_seconds` | the daemon's metrics exporter | immediately; the metric's counts restart from zero, a normal counter reset for Grafana |
 | `home` | `WDX_HOME` | cannot be set; `list` and `get` show it |
 

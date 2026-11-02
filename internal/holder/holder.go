@@ -196,16 +196,13 @@ func start(ctx context.Context, o Options) (*holder, error) {
 	}
 	cmd := shellCommand(o.Shell, o.Command)
 	cmd.Dir = o.Dir
-	cmd.Env = append([]string{
-		"HOME=" + account.Home,
-		"USER=" + account.Name,
-		"LOGNAME=" + account.Name,
-		"SHELL=" + account.LoginShell(),
+	cmd.Env = append(accountEnv(account), []string{
 		"TERM=xterm-256color",
 		identity.Env("TERMINAL_ID") + "=" + o.ID,
 		identity.Env("PROJECT") + "=" + o.Project,
 		identity.Env("HOME") + "=" + o.Home,
-	}, o.Env...)
+	}...)
+	cmd.Env = append(cmd.Env, o.Env...)
 	if o.AgentID != "" {
 		cmd.Env = append(cmd.Env, identity.Env("AGENT_ID")+"="+o.AgentID)
 	}
@@ -256,22 +253,49 @@ func start(ctx context.Context, o Options) (*holder, error) {
 	return h, nil
 }
 
+// accountEnv is what a shell gets of the user's account.
+func accountEnv(a Account) []string {
+	return []string{"HOME=" + a.Home, "USER=" + a.Name, "LOGNAME=" + a.Name, "SHELL=" + a.LoginShell()}
+}
+
+// LookPath reports whether program is found by shell started as a holder starts
+// it, in dir with env: the daemon's PATH may lack what the user's profile or rc
+// adds. It fails when it is not, or the shell fails.
+func LookPath(ctx context.Context, shell, dir string, env []string, program string) error {
+	account, err := LookupAccount(ctx)
+	if err != nil {
+		return err
+	}
+	look := exec.CommandContext(ctx, shell, "-l", "-i", "-c", "command -v "+quoted([]string{program}))
+	look.Dir = dir
+	look.Env = append(accountEnv(account), env...)
+	if out, err := look.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %w: %s", program, err, bytes.TrimSpace(out))
+	}
+	return nil
+}
+
 // shellCommand is what a holder starts: the login shell, or the command
 // through it. Interactive too, since many keep their PATH in the rc file
-// only a shell asked to be interactive reads. The command is one string of
-// quoted words, which every shell parses, fish too, as it does not "$@".
+// only a shell asked to be interactive reads.
 func shellCommand(shell string, command []string) *exec.Cmd {
 	if len(command) > 0 {
-		words := make([]string, len(command))
-		for i, word := range command {
-			words[i] = "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
-		}
-		return exec.Command(shell, "-l", "-i", "-c", "exec "+strings.Join(words, " "))
+		return exec.Command(shell, "-l", "-i", "-c", "exec "+quoted(command))
 	}
 	cmd := exec.Command(shell)
 	// A leading dash makes it a login shell, which reads the user's profile.
 	cmd.Args = []string{"-" + filepath.Base(shell)}
 	return cmd
+}
+
+// quoted is command as one string of quoted words, which every shell parses, fish
+// too, as it does not "$@".
+func quoted(command []string) string {
+	words := make([]string, len(command))
+	for i, word := range command {
+		words[i] = "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
+	}
+	return strings.Join(words, " ")
 }
 
 // HistoryDir is where the history of terminal id is kept under home.

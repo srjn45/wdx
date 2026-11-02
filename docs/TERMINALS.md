@@ -2,7 +2,7 @@
 
 Status: implemented. Attaching to a terminal and its history are in docs/ATTACH.md.
 
-A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents run in the same kind of PTY, on a row of this table of kind `agent` that the terminal commands and API never show: docs/AGENT.md. This document's commands and API deal with kind `shell`.
+A terminal is a shell running in a PTY that belongs to a project. It keeps running when the daemon restarts, is upgraded or crashes, and when the window that showed it is closed. Agents run in the same kind of PTY, on a row of this table of kind `agent` that the terminal commands and API never show: docs/AGENT.md. So do the editors tide opens on a file, on a row with an `editor_path`, kept as kind `shell` so that an older binary reads it as a shell, and deleted when the editor ends: docs/TIDE_CODE.md. This document's commands and API deal with kind `shell` without an `editor_path`.
 
 ## Architecture
 

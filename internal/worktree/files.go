@@ -47,21 +47,9 @@ type FileContent struct {
 // ReadFile returns what the file at path in the checkout called name holds on disk.
 // A symbolic link is followed only as far as the checkout goes.
 func ReadFile(ctx context.Context, c Checkouts, name, path string) (FileContent, error) {
-	s, err := findFile(ctx, c, name, path)
+	_, full, info, err := regularFile(ctx, c, name, path)
 	if err != nil {
 		return FileContent{}, err
-	}
-	full, err := resolveInside(s.Path, path)
-	if err != nil {
-		return FileContent{}, err
-	}
-	// Asked before opening it, as opening a named pipe waits for a writer.
-	info, err := os.Stat(full)
-	if err != nil {
-		return FileContent{}, gone(err, path)
-	}
-	if !info.Mode().IsRegular() {
-		return FileContent{}, &NotAFileError{Path: path}
 	}
 	r := FileContent{Size: info.Size()}
 	if r.Size > maxFileContent {
@@ -87,6 +75,38 @@ func ReadFile(ctx context.Context, c Checkouts, name, path string) (FileContent,
 		r.Text = string(data)
 	}
 	return r, nil
+}
+
+// EditableFile returns the directory of the checkout called name, and path
+// cleaned, when path there is a regular file inside it, for an editor to run on.
+func EditableFile(ctx context.Context, c Checkouts, name, path string) (dir, clean string, err error) {
+	s, _, _, err := regularFile(ctx, c, name, path)
+	if err != nil {
+		return "", "", err
+	}
+	return s.Path, filepath.Clean(path), nil
+}
+
+// regularFile returns the checkout called name, and the file at path in it with its
+// symbolic links followed, when that is a regular file inside the checkout.
+func regularFile(ctx context.Context, c Checkouts, name, path string) (Status, string, os.FileInfo, error) {
+	s, err := findFile(ctx, c, name, path)
+	if err != nil {
+		return Status{}, "", nil, err
+	}
+	full, err := resolveInside(s.Path, path)
+	if err != nil {
+		return Status{}, "", nil, err
+	}
+	// Asked before opening it, as opening a named pipe waits for a writer.
+	info, err := os.Stat(full)
+	if err != nil {
+		return Status{}, "", nil, gone(err, path)
+	}
+	if !info.Mode().IsRegular() {
+		return Status{}, "", nil, &NotAFileError{Path: path}
+	}
+	return s, full, info, nil
 }
 
 // resolveInside returns the path with its symbolic links followed, which must end

@@ -51,6 +51,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*git.MissingError](err); ok {
 		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "git"}
 	}
+	if e, ok := errors.AsType[*terminal.EditorMissingError](err); ok {
+		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": e.Editor}
+	}
 	if errors.Is(err, gh.ErrMissing) {
 		return api.ErrorCodeDependencyMissing, map[string]any{"dependency": "gh"}
 	}
@@ -156,6 +159,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		details := map[string]any{"project": projectView(e.project), "terminals": terminalViews(e.terminals)}
 		if len(e.agents) > 0 {
 			details["agents"] = agentViews(e.agents)
+		}
+		if len(e.editors) > 0 {
+			details["editors"] = editorViews(e.project, e.editors)
 		}
 		return api.ErrorCodeProjectInUse, details
 	}

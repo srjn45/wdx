@@ -39,10 +39,19 @@ func (td *testDaemon) removeAgents(ctx context.Context, agents []api.Agent) {
 	}
 }
 
-// removeTerminals removes every terminal and agent, stopping the live ones,
-// so no holder outlives the test; it does nothing once the daemon is stopped.
+// removeTerminals removes every terminal and agent, stopping the live ones, and
+// stops every editor, so no holder outlives the test; it does nothing once the
+// daemon is stopped.
 func (td *testDaemon) removeTerminals() {
 	ctx := context.Background()
+	if projects, err := td.client.ListProjectsWithResponse(ctx, nil); err == nil && projects.JSON200 != nil {
+		for _, p := range projects.JSON200.Projects {
+			got, err := td.client.GetProjectWithResponse(ctx, "id:"+p.Id)
+			if err == nil && got.JSON200 != nil && got.JSON200.Project.Editors != nil && len(*got.JSON200.Project.Editors) > 0 {
+				_, _ = td.client.UpdateProjectWithResponse(ctx, "id:"+p.Id, api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)})
+			}
+		}
+	}
 	if agents, err := td.client.ListAgentsWithResponse(ctx, nil); err == nil && agents.JSON200 != nil {
 		td.removeAgents(ctx, agents.JSON200.Agents)
 	}

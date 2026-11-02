@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
-
+	"github.com/srjn45/wdx/internal/editor"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -104,7 +104,20 @@ type Options struct {
 	AgentStatus func(ctx context.Context, id string, status holder.Status)
 	// AgentEnded is told a row of KindAgent's process ended, when not nil.
 	AgentEnded func(id string)
+	// Editor is the editor files are edited with; editor.Default when "".
+	Editor string
+	// EditorCommand is what runs the editor named program on path; its Command
+	// when nil.
+	EditorCommand func(program, path string) []string
 }
+
+// EditorMissingError is returned when the editor is not found through the login
+// shell.
+type EditorMissingError struct {
+	Editor string
+}
+
+func (e *EditorMissingError) Error() string { return e.Editor + " not found" }
 
 // AgentLaunch is how to run a row of KindAgent.
 type AgentLaunch struct {
@@ -131,20 +144,27 @@ type Supervisor struct {
 	closed       bool              // no more watching: the daemon is stopping
 	shell        string            // what new terminals run; see Options.Shell
 	historyLines int64             // what terminals start with; see Options.HistoryLines
+	editor       string            // what new editors run; see Options.Editor
 }
 
-// Reconfigure changes what terminals get from now on. Those running keep
-// what they started with: their holders and shells have it already.
-func (s *Supervisor) Reconfigure(shell string, historyLines int64) {
+// Reconfigure changes what terminals and editors get from now on. Those running
+// keep what they started with: their holders and shells have it already.
+func (s *Supervisor) Reconfigure(shell string, historyLines int64, editorName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.shell, s.historyLines = shell, historyLines
+	s.shell, s.historyLines, s.editor = shell, historyLines, cmp.Or(editorName, editor.Default)
 }
 
 func (s *Supervisor) newTerminals() (shell string, historyLines int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.shell, s.historyLines
+}
+
+func (s *Supervisor) newEditors() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.editor
 }
 
 // watch is a terminal's live connection and the goroutine following it.
@@ -177,7 +197,7 @@ func (w *watch) current() *holder.Conn {
 func NewSupervisor(ctx context.Context, store *Store, o Options) *Supervisor {
 	ctx, stop := context.WithCancel(context.WithoutCancel(ctx))
 	o.StopGrace = cmp.Or(o.StopGrace, DefaultStopGrace)
-	return &Supervisor{store: store, opts: o, ctx: ctx, stop: stop, watches: map[string]*watch{}, shell: o.Shell, historyLines: o.HistoryLines}
+	return &Supervisor{store: store, opts: o, ctx: ctx, stop: stop, watches: map[string]*watch{}, shell: o.Shell, historyLines: o.HistoryLines, editor: cmp.Or(o.Editor, editor.Default)}
 }
 
 // Store returns the Store the Supervisor keeps its terminals in.
@@ -211,19 +231,77 @@ func (s *Supervisor) StopWait() time.Duration {
 // empty, to the project, and starts its shell in dir. A shell that does not
 // start leaves the terminal failed and returns a *StartError.
 func (s *Supervisor) Create(ctx context.Context, projectID, name, dir string) (Terminal, error) {
-	return s.create(ctx, KindShell, projectID, name, dir, nil)
+	return s.createRunning(ctx, Terminal{Kind: KindShell, ProjectID: projectID, Name: name, Dir: dir}, nil, nil)
 }
 
 // CreateCommand is Create for a terminal that runs command through the shell and
 // ends with it, so that its exit code is the command's. Started again, it is a shell.
 func (s *Supervisor) CreateCommand(ctx context.Context, projectID, name, dir string, command []string) (Terminal, error) {
-	return s.createRunning(ctx, KindShell, projectID, name, dir, nil, command)
+	return s.createRunning(ctx, Terminal{Kind: KindShell, ProjectID: projectID, Name: name, Dir: dir}, nil, command)
 }
 
 // CreateAgent is Create for an agent's row: linked inserts what points at the
 // new row, in the transaction that inserts it.
 func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
-	return s.create(ctx, KindAgent, projectID, name, dir, linked)
+	return s.createRunning(ctx, Terminal{Kind: KindAgent, ProjectID: projectID, Name: name, Dir: dir}, linked, nil)
+}
+
+// lookEditorTimeout bounds looking for the editor through the login shell, which
+// reads the user's profile and rc.
+const lookEditorTimeout = 10 * time.Second
+
+// OpenEditor returns the editor running in the project on path, relative to dir,
+// or starts the one set on it and returns it with created true. One not found
+// through the login shell fails with an *EditorMissingError, and one that does
+// not start with a *StartError.
+func (s *Supervisor) OpenEditor(ctx context.Context, projectID, dir, path string) (t Terminal, created bool, err error) {
+	log := logging.FromContext(ctx)
+	running, err := s.store.query(ctx, kindWhere(KindEditor)+" AND t.project_id = ? AND t.dir = ? AND t.editor_path = ?", projectID, dir, path)
+	if err != nil {
+		return Terminal{}, false, err
+	}
+	if len(running) > 0 {
+		log.Info("editor already running on the file", "terminal_id", running[0].ID, "path", path)
+		return running[0], false, nil
+	}
+	program := s.newEditors()
+	var command []string
+	if s.opts.EditorCommand != nil {
+		command = s.opts.EditorCommand(program, path)
+	} else {
+		e, ok := editor.Lookup(program)
+		if !ok {
+			return Terminal{}, false, &EditorMissingError{Editor: program}
+		}
+		command = e.Command(path)
+	}
+	shell, err := s.shellFor(ctx)
+	if err != nil {
+		return Terminal{}, false, err
+	}
+	look, cancel := context.WithTimeout(ctx, lookEditorTimeout)
+	defer cancel()
+	if err := holder.LookPath(look, shell, dir, s.opts.Env, command[0]); err != nil {
+		log.Info("editor not found", "editor", program, "program", command[0], "err", err)
+		return Terminal{}, false, &EditorMissingError{Editor: program}
+	}
+	t, err = s.createRunning(ctx, Terminal{Kind: KindEditor, ProjectID: projectID, Dir: dir, Editor: program, EditorPath: path}, nil, command)
+	return t, err == nil, err
+}
+
+// shellFor returns the shell new terminals run.
+func (s *Supervisor) shellFor(ctx context.Context) (string, error) {
+	shell, _ := s.newTerminals()
+	if shell != "" {
+		return shell, nil
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return "", err
+	}
+	shell = account.LoginShell()
+	logging.FromContext(ctx).Info("login shell looked up", "shell", shell)
+	return shell, nil
 }
 
 // RenameAgent renames the agent's row with id. Its holder and process go by id,
@@ -232,22 +310,15 @@ func (s *Supervisor) RenameAgent(ctx context.Context, id, name string) (Terminal
 	return s.store.rename(ctx, id, name)
 }
 
-func (s *Supervisor) create(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
-	return s.createRunning(ctx, kind, projectID, name, dir, linked, nil)
-}
-
-func (s *Supervisor) createRunning(ctx context.Context, kind Kind, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error, command []string) (Terminal, error) {
-	shell, _ := s.newTerminals()
-	if shell == "" {
-		account, err := holder.LookupAccount(ctx)
-		if err != nil {
-			return Terminal{}, err
-		}
-		shell = account.LoginShell()
-		logging.FromContext(ctx).Info("login shell looked up", "shell", shell)
-	}
-	t, err := s.store.insert(ctx, kind, projectID, name, dir, shell, linked)
+// createRunning inserts the row t asks for, with the shell, and starts it, running
+// command when given.
+func (s *Supervisor) createRunning(ctx context.Context, t Terminal, linked func(ctx context.Context, tx db.Execer, id string) error, command []string) (Terminal, error) {
+	shell, err := s.shellFor(ctx)
 	if err != nil {
+		return Terminal{}, err
+	}
+	t.Shell = shell
+	if t, err = s.store.insert(ctx, t, linked); err != nil {
 		return Terminal{}, err
 	}
 	return s.launchRunning(ctx, t, command)
@@ -312,6 +383,9 @@ func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []st
 	var started holder.Started
 	var err error
 	_, historyLines := s.newTerminals()
+	if t.Kind == KindEditor {
+		historyLines = 0 // what scrolled by in an editor is the file, kept on disk already
+	}
 	if t.Kind == KindAgent {
 		agent, err = s.opts.AgentLaunch(ctx, t)
 		command = agent.Command
@@ -335,7 +409,8 @@ func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []st
 		if _, ferr := s.store.failed(ctx, t.ID, err.Error()); ferr != nil {
 			return Terminal{}, ferr
 		}
-		failed, gerr := s.store.row(ctx, t.ID)
+		t.State, t.Error = StateFailed, err.Error()
+		failed, gerr := s.rowOr(ctx, t)
 		if gerr != nil {
 			return Terminal{}, gerr
 		}
@@ -349,7 +424,18 @@ func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []st
 	}
 	s.catchUp(ctx, t, conn)
 	s.follow(t, conn)
-	return s.store.row(ctx, t.ID)
+	t.State = StateExited // if its row is gone, it ended already
+	return s.rowOr(ctx, t)
+}
+
+// rowOr returns the row of t as it is now, or t when the row is gone, as an
+// editor's is once it ended.
+func (s *Supervisor) rowOr(ctx context.Context, t Terminal) (Terminal, error) {
+	now, err := s.store.row(ctx, t.ID)
+	if errors.Is(err, ErrNotFound) && t.Kind == KindEditor {
+		return t, nil
+	}
+	return now, err
 }
 
 // Remove deletes a terminal and returns it as it was last, stopped when
@@ -654,6 +740,24 @@ func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Termi
 	if err != nil {
 		return nil, err
 	}
+	return s.stopAll(ctx, live)
+}
+
+// StopEditors stops the editors running in the project in dir, as removing that
+// worktree does, and returns them as StopProject does.
+func (s *Supervisor) StopEditors(ctx context.Context, projectID, dir string) ([]Terminal, error) {
+	editors, err := s.store.Editors(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	editors = slices.DeleteFunc(editors, func(t Terminal) bool { return t.Dir != dir || !t.State.Live() })
+	return s.stopAll(ctx, editors)
+}
+
+// stopAll stops the terminals live and returns them stopped: all are hung up on,
+// then waited for together.
+func (s *Supervisor) stopAll(ctx context.Context, live []Terminal) ([]Terminal, error) {
+	var err error
 	watches := make([]*watch, len(live))
 	for i, t := range live {
 		if watches[i], err = s.hangUp(ctx, t); err != nil {
@@ -668,7 +772,8 @@ func (s *Supervisor) StopProject(ctx context.Context, projectID string) ([]Termi
 	}
 	stopped := []Terminal{}
 	for _, t := range live {
-		if t, err = s.store.row(ctx, t.ID); err != nil {
+		t.State, t.PID, t.HolderPID = StateStopped, 0, 0
+		if t, err = s.rowOr(ctx, t); err != nil {
 			return nil, err
 		}
 		stopped = append(stopped, t)
@@ -686,7 +791,8 @@ func (s *Supervisor) StartProject(ctx context.Context, projectID string) ([]Term
 	}
 	started := []Terminal{}
 	for _, t := range list {
-		if t.State != StateStopped {
+		// An editor stopped is on its way out: its row goes once it is gone.
+		if t.State != StateStopped || t.Kind == KindEditor {
 			continue
 		}
 		if _, err := s.store.relaunch(ctx, t.ID, StateStopped); err != nil {

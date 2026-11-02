@@ -184,8 +184,10 @@ func TestVi(t *testing.T) {
 			if got, err := os.ReadFile(path); err != nil || string(got) != tc.want {
 				t.Errorf("file %q, %v; want %q", got, err, tc.want)
 			}
-			if _, err := os.Stat(filepath.Join(dir, "second")); !os.IsNotExist(err) {
-				t.Errorf("the second file was written: %v", err)
+			// Nothing else in the worktree: no swap file, and the second file unwritten.
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 1 {
+				t.Errorf("the directory holds %v, %v", entries, err)
 			}
 		})
 	}

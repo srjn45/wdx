@@ -278,6 +278,8 @@ Done on 2026-11-02, with these differences from the plan. Driving the real `vi` 
 
 ### 7. Running an editor in the daemon
 
+Done on 2026-11-02, with these differences from the plan. The migration is `0015_editor_path.sql`, as `0013` and `0014` were taken on `main` meanwhile, and it adds `editor` beside `editor_path`, since tide needs to know which editor runs to send it the right keys after the setting changed. The request is `openEditor`, since asking again returns the editor running. `Editor` in the API has `terminal_id` and no `id`, as an editor has no row of its own; it also has `state`. A closed project refuses it with `project_closed`, and an editor whose holder fails with `start_failed`. `vi` starts with `-n`, keeping no swap file, which would sit in the worktree beside the file where git and agents see it, and stay behind when the editor is hung up on; the `vi` test checks it. An editor keeps no terminal history, since what scrolled by in it is the file. `wdx project close` and `wdx worktree remove` do not print the editors they stopped in text yet; their `--json` has them. Not done: a test of an older binary's rollback, since the migration only adds columns that an older binary does not read.
+
 - Migration `0013_editor_path.sql`: `ALTER TABLE terminals ADD COLUMN editor_path TEXT`.
 - `terminal.KindEditor`, read from that column. The terminal flow's filters become `t.kind = 'shell' AND t.editor_path IS NULL`, and `ofKind` follows. `byKind` in `internal/daemon/projects.go` splits a third way.
 - `daemon.Settings` carries `editor`, moved from step 6, so that `wdx setting set` applies to the next editor started.

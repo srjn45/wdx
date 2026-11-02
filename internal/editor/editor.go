@@ -27,9 +27,11 @@ func (e Editor) Command(path string) []string {
 var editors = []Editor{
 	{
 		Name: "vi",
-		// Ubuntu's vi turns esckeys off after reading its arguments' --cmd, so an
-		// arrow key in insert mode would type letters; -c comes later.
-		args: []string{"-c", "set esckeys"},
+		// -n keeps no swap file, which would sit beside the file in the worktree, where
+		// git and agents see it. Ubuntu's vi turns esckeys off after reading its
+		// arguments' --cmd, so an arrow key in insert mode would type letters; -c comes
+		// later.
+		args: []string{"-n", "-c", "set esckeys"},
 		// C-\ C-n leaves any mode and drops a command half typed, which Esc would run
 		// in vi's compatible mode. Buffer 1 is the file vi started on, which spares
 		// quoting its name.

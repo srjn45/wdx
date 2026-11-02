@@ -327,6 +327,11 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 	if err != nil {
 		return nil, err
 	}
+	// Before git removes the directory they run in.
+	editors, err := s.terminals.StopEditors(ctx, p.ID, w.Path)
+	if err != nil {
+		return nil, err
+	}
 	r, err := worktree.Remove(ctx, w)
 	if err != nil {
 		return nil, err
@@ -344,12 +349,13 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 	}
 	s.tracker.Refresh(p.ID, "")
 	return api.RemoveWorktree200JSONResponse{
-		Result:        api.ResultRemoved,
-		Worktree:      w.Name,
-		Path:          w.Path,
-		BranchDeleted: textOrNull(r.BranchDeleted),
-		BranchKept:    textOrNull(r.BranchKept),
-		Notified:      notified,
+		Result:         api.ResultRemoved,
+		Worktree:       w.Name,
+		Path:           w.Path,
+		BranchDeleted:  textOrNull(r.BranchDeleted),
+		BranchKept:     textOrNull(r.BranchKept),
+		Notified:       notified,
+		StoppedEditors: editorViews(p, editors),
 	}, nil
 }
 

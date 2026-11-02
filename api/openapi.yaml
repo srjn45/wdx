@@ -177,10 +177,10 @@ paths:
       operationId: updateProject
       summary: Close a project, or open it again from one of its checkouts
       description: |
-        Closing touches nothing on disk. It stops the project's terminals and
-        agents that are starting or running, which it refuses with
+        Closing touches nothing on disk. It stops the project's terminals,
+        agents and editors that are starting or running, which it refuses with
         project_in_use unless stop_running is true, and lists them under
-        "stopped" and "stopped_agents".
+        "stopped", "stopped_agents" and "stopped_editors".
 
         Opening drops the checkouts no longer on disk; when none is left,
         checkout_missing is returned. It relaunches the terminals and agents
@@ -368,7 +368,8 @@ paths:
         Only one with nothing ahead of its base and nothing uncommitted, or one
         whose directory is already gone, where only git's entry goes. Its branch
         goes too if it is merged. Agents running there are told where to go on, and
-        do not hold it up. Terminals running there are left as they are.
+        do not hold it up. Editors running there are stopped, with what they hold
+        unsaved. Terminals running there are left as they are.
 
         Errors: invalid_path, not_found, usage, worktree_is_clone,
         worktree_not_landed, worktree_not_removed.
@@ -1198,6 +1199,38 @@ paths:
               schema: { $ref: "#/components/schemas/AgentTranscriptEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/editors:
+    post:
+      operationId: openEditor
+      summary: Start the editor the editor setting names on a file of a worktree
+      description: |
+        The editor runs in a terminal of its own in the worktree, through the login
+        shell, until it exits, when it is gone: it is never started again. Only one
+        runs on a file: asking again returns it, with result opened. It shows in the
+        project's editors, and closing the project or removing the worktree stops it.
+        The editor is looked for through the login shell first.
+
+        Errors: dependency_missing, with the editor under details.dependency;
+        invalid_path, when the path leads out of the worktree or is not a file;
+        not_found; project_closed; start_failed; usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OpenEditor" }
+      responses:
+        "201":
+          description: The editor started, with result created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorResult" }
+        "200":
+          description: The editor already running on the file, with result opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     WorktreeRef:
@@ -1378,6 +1411,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Agent" }
           description: The project's agents with no parent by name, in every state, with their children; set by getProject only.
+        editors:
+          type: array
+          items: { $ref: "#/components/schemas/Editor" }
+          description: The editors running in the project; set by getProject only.
         worktree_statuses:
           type: array
           items: { $ref: "#/components/schemas/WorktreeStatus" }
@@ -1604,7 +1641,7 @@ components:
 
     WorktreeRemoved:
       type: object
-      required: [result, worktree, path, branch_deleted, branch_kept, notified]
+      required: [result, worktree, path, branch_deleted, branch_kept, notified, stopped_editors]
       properties:
         result: { $ref: "#/components/schemas/Result" }
         worktree: { type: string }
@@ -1615,6 +1652,10 @@ components:
           type: array
           description: The names of the agents told where to go on.
           items: { type: string }
+        stopped_editors:
+          type: array
+          description: The editors that ran in it, stopped.
+          items: { $ref: "#/components/schemas/Editor" }
 
     WorktreeFileMark:
       type: object
@@ -1760,6 +1801,10 @@ components:
           type: array
           description: The agents closing or removing the project stopped.
           items: { $ref: "#/components/schemas/Agent" }
+        stopped_editors:
+          type: array
+          description: The editors closing or removing the project stopped, which do not start again.
+          items: { $ref: "#/components/schemas/Editor" }
 
     CreateProject:
       type: object
@@ -1924,6 +1969,33 @@ components:
       required: [history]
       properties:
         history: { $ref: "#/components/schemas/TerminalHistory" }
+
+    OpenEditor:
+      type: object
+      required: [worktree, path]
+      additionalProperties: false
+      properties:
+        worktree: { type: string, minLength: 1, description: The worktree's name, main for the clone. }
+        project: { type: string, minLength: 1, description: 'The project''s name, or "id:" and its id; excludes dir.' }
+        dir: { type: string, minLength: 1, description: An absolute path in one of the project's worktrees; excludes project. }
+        path: { type: string, minLength: 1, description: The file's path, relative to the worktree. }
+
+    Editor:
+      type: object
+      required: [terminal_id, worktree, path, program, state]
+      properties:
+        terminal_id: { type: string, description: The terminal it runs in, which a client attaches to. }
+        worktree: { type: string, description: The worktree's name, main for the clone. }
+        path: { type: string, description: The file's path, relative to the worktree. }
+        program: { type: string, description: The editor, one of the editor setting's choices. }
+        state: { $ref: "#/components/schemas/TerminalState" }
+
+    EditorResult:
+      type: object
+      required: [result, editor]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        editor: { $ref: "#/components/schemas/Editor" }
 
     CreateTerminal:
       type: object
