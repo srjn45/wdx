@@ -164,7 +164,9 @@ func TestVi(t *testing.T) {
 			if err := os.WriteFile(path, []byte("first\n"), mode); err != nil {
 				t.Fatal(err)
 			}
-			r := run(t, vi, dir, "first.txt", "1 line")
+			// Once it has read the file, vi names it in quotes; what follows differs:
+			// "1 line, 6 bytes" from vim-tiny, "1L, 6B" from vim.
+			r := run(t, vi, dir, "first.txt", `"first.txt"`)
 			if tc.other != "" {
 				if err := os.WriteFile(path, []byte(tc.other), 0o644); err != nil {
 					t.Fatal(err)
