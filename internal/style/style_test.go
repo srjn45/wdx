@@ -35,6 +35,7 @@ func TestStyles(t *testing.T) {
 			"heading": s.Heading, "command": s.Command, "flag": s.Flag, "placeholder": s.Placeholder,
 			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
 			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "bar name": s.BarName, "bar muted": s.BarMuted,
+			"code keyword": s.CodeKeyword, "code string": s.CodeString, "code comment": s.CodeComment, "code number": s.CodeNumber, "code type": s.CodeType, "code function": s.CodeFunction,
 		} {
 			got := f("text")
 			if Width(got) != len("text") || (got != "text") != on {

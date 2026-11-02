@@ -35,6 +35,8 @@ const (
 	red    = "31"
 	green  = "32"
 	yellow = "33"
+	blue   = "34"
+	purple = "35"
 	cyan   = "36"
 )
 
@@ -61,6 +63,24 @@ func (s Style) Added(text string) string { return s.apply(text, green) }
 
 // Removed styles what a diff removes.
 func (s Style) Removed(text string) string { return s.apply(text, red) }
+
+// CodeKeyword styles a language's keyword in source code.
+func (s Style) CodeKeyword(text string) string { return s.apply(text, purple) }
+
+// CodeString styles a string in source code.
+func (s Style) CodeString(text string) string { return s.apply(text, green) }
+
+// CodeComment styles a comment in source code.
+func (s Style) CodeComment(text string) string { return s.apply(text, dim) }
+
+// CodeNumber styles a number in source code.
+func (s Style) CodeNumber(text string) string { return s.apply(text, yellow) }
+
+// CodeType styles a type's name in source code.
+func (s Style) CodeType(text string) string { return s.apply(text, cyan) }
+
+// CodeFunction styles a function's name in source code.
+func (s Style) CodeFunction(text string) string { return s.apply(text, blue) }
 
 // Match styles what a search found: in reverse video with color off too, since a
 // mark beside it would change the text.

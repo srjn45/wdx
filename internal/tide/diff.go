@@ -131,8 +131,10 @@ type diffView struct {
 	heading string // the line above the rows
 	split   []splitRow
 	unified []string
-	lineOf  []string // what a file holds, by line, when source
-	cutOff  bool     // the daemon left out the rest
+	lineOf  []string      // what a file holds, by line, when source
+	colors  [][]colorSpan // the colours of lineOf by line, once worked out
+	reading int           // which different text of the file lineOf is, for what colours belong to
+	cutOff  bool          // the daemon left out the rest
 
 	width     int // of what lines was drawn for, 0 before
 	lines     []string
@@ -283,10 +285,10 @@ func (m *Model) readDiff(tab string) tea.Cmd {
 	}
 }
 
-func (m *Model) diffLoaded(msg diffLoaded) {
+func (m *Model) diffLoaded(msg diffLoaded) tea.Cmd {
 	l, ok := m.agentLists[msg.projectID]
 	if !ok || l.diffs[msg.tab] == nil {
-		return
+		return nil
 	}
 	v := l.diffs[msg.tab]
 	v.loading = false
@@ -295,14 +297,16 @@ func (m *Model) diffLoaded(msg diffLoaded) {
 		if !v.setSourceError(msg.err) {
 			v.err = msg.err.Error()
 		}
-		return
+		return nil
 	}
 	v.err, v.message, v.heading, v.cutOff = "", "", "", false
+	old := v.lineOf
 	v.split, v.unified, v.lineOf = nil, nil, nil
 	v.width = 0 // what is drawn is to be worked out again
 	switch {
 	case msg.content != nil:
 		v.setSource(*msg.content)
+		return m.sourceRead(msg.projectID, msg.tab, v, old)
 	case msg.file != nil:
 		v.setFile(*msg.file)
 	case msg.uncommitted != nil:
@@ -310,6 +314,7 @@ func (m *Model) diffLoaded(msg diffLoaded) {
 	default:
 		v.setCommitted(*msg.committed)
 	}
+	return nil
 }
 
 func (v *diffView) setFile(d api.WorktreeFileDiff) {
@@ -515,17 +520,22 @@ func (v *diffView) add(line string, row, number int) {
 
 // paint styles a piece of a line, with what the search finds standing out.
 func (v *diffView) paint(piece string, paint func(string) string, st style.Style) string {
+	return v.paintRanges(piece, func(from, to int) string { return paint(piece[from:to]) }, st)
+}
+
+// paintRanges is paint for what paints by where in piece the text is.
+func (v *diffView) paintRanges(piece string, paint func(from, to int) string, st style.Style) string {
 	if v.search == nil {
-		return paint(piece)
+		return paint(0, len(piece))
 	}
 	var b strings.Builder
 	at := 0
 	for _, m := range v.search.FindAllStringIndex(piece, -1) {
-		b.WriteString(paint(piece[at:m[0]]))
+		b.WriteString(paint(at, m[0]))
 		b.WriteString(st.Match(piece[m[0]:m[1]]))
 		at = m[1]
 	}
-	b.WriteString(paint(piece[at:]))
+	b.WriteString(paint(at, len(piece)))
 	return b.String()
 }
 

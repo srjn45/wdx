@@ -74,12 +74,12 @@ func (v *diffView) setSourceError(err error) bool {
 	return true
 }
 
-// prepareSource lays the file's lines out with their numbers; a long line wraps.
+// prepareSource lays the file's lines out with their numbers and colours; a long
+// line wraps, and a colour goes on across the break.
 func (v *diffView) prepareSource(width int, st style.Style) {
 	digits := len(strconv.Itoa(len(v.lineOf)))
 	text := max(width-digits-1, 1)
 	blank := strings.Repeat(" ", digits)
-	plain := func(s string) string { return s }
 	for row, line := range v.lineOf {
 		v.text = append(v.text, shownText(line))
 		v.starts = append(v.starts, len(v.lines))
@@ -87,12 +87,21 @@ func (v *diffView) prepareSource(width int, st style.Style) {
 		if len(pieces) == 0 {
 			pieces = []string{""}
 		}
+		var spans []colorSpan
+		if v.colors != nil {
+			spans = v.colors[row]
+		}
+		at := 0
 		for i, piece := range pieces {
 			number, shown := blank, 0
 			if i == 0 {
 				number, shown = fmt.Sprintf("%*d", digits, row+1), row+1
 			}
-			v.add(st.Muted(number)+" "+v.paint(piece, plain, st), row, shown)
+			painted := v.paintRanges(piece, func(from, to int) string {
+				return paintTokens(piece[from:to], at+from, spans, st)
+			}, st)
+			v.add(st.Muted(number)+" "+painted, row, shown)
+			at += len(piece)
 		}
 	}
 }

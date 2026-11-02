@@ -194,6 +194,8 @@ Tried and not supported, by the human's choice, since their save loses another p
 
 - `git ls-files -co --exclude-standard` took 6 ms on this repository's 440 files; a monorepo is not measured.
 - Chroma is MIT. Its latest GitHub release is a v3 alpha, so a stable v2 unless that has changed.
+- Chroma v2.27.0, with `regexp2` (MIT), measured on 2026-11-02 on linux/amd64 with the release's flags: the binary goes from 28.0 to 31.5 MiB, 10.6 to 11.5 MiB gzipped. Its `lexers` package registers every language when the process starts, in every `wdx` process since all are one binary: 20 ms more per run (`wdx help`, 36 to 56 ms over 20 runs) and 5 MB more resident (22 to 27 MB). A holder was not measured by itself.
+- Tokenising took 0.24 s for 32 KiB of Go and 1.9 s for 256 KiB, without the race detector, on repeated copies of `diff.go`.
 
 ## Implementation plan
 
@@ -256,6 +258,8 @@ Done on 2026-11-01, and tried in a real tide under tmux: the tree, the mark, wra
 - Tests: action sequences, the messages, and that `c`, `v` and `C` do nothing there.
 
 ### 5. Highlighting
+
+Done on 2026-11-02, and tried in a real tide under tmux: Go in colour, and a file over the limit plain. The human accepted Chroma's cost, measured above. Different from the plan: the text shows at once and its colours follow, since 256 KiB takes about 2 s; reading a file again with the same text keeps them and works out nothing; the first line is read for its interpreter, past `env`, as Chroma's `Analyse` knew only the shells on such a line, which only the real run showed; `node` is mapped by hand, as Chroma has no such name. Any failure in Chroma leaves the file plain. The colours: keyword purple, string green, comment dim, number yellow, type cyan, function blue.
 
 - `go get` Chroma's latest stable v2, then `make notices`. Measure what it adds to the binary and tell the human before going on.
 - New `internal/tide/highlight.go`: choose a lexer by file name, then by content for a shebang, and none means plain. Each token category goes through a new semantic method in `internal/style` (keyword, string, comment, number, type, function), in the 16 ANSI colours, so that it follows the terminal's theme, and `color: never` shows none.
