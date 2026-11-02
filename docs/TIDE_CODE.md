@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; `tide.section_order`, the other editors and the Alt+arrows through the menu come next. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu on 2026-11-02; the other editors, then creating, renaming and deleting files, come next, and `tide.section_order` later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -145,7 +145,7 @@ It depends on the editor, and any syntax pack is the user's to install (the huma
 
 ### Keys tide takes first
 
-`C-q`, `C-\`, `C-]`, Alt+arrows and Alt+Shift+arrows. The human's rule: what tide takes has a way through, so editors have no key restrictions. `C-q C-q`, `C-q \` and `C-q ]` do that today (`sendToProgram`). Proposed: the menu sends Alt+arrows and Alt+Shift+arrows on as well, the same way, which it does not yet.
+`C-q`, `C-\`, `C-]`, Alt+arrows and Alt+Shift+arrows. The human's rule: what tide takes has a way through, so editors have no key restrictions. `C-q C-q`, `C-q \` and `C-q ]` do that (`sendToProgram`), and so does `C-q` then any Alt+arrow or Alt+Shift+arrow (built 2026-11-02). Building it found that the vt sent a modified arrow, editing or function key as `Esc` alone or without its modifiers; `screen` now encodes those as xterm does (docs/VT.md, #17), so Ctrl+arrows and Shift+arrows reach programs too.
 
 ### Editors
 

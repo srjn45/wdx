@@ -378,8 +378,11 @@ func TestMenuSendsKeys(t *testing.T) {
 	wantText(t, p.m, `\  send C-\ to the program`)
 	wantText(t, p.m, "]  send C-] to the program")
 	wantText(t, p.m, "C-q  send C-q to the program")
+	wantText(t, p.m, "M-arrow  send Alt+arrow, with or without Shift, to the program")
 	p.keys(`\`, "C-q", "]", "C-q", "C-q")
 	p.until(t, "the three keys in the program", screenHas(`^\^]^Q`))
+	p.keys("C-q", "alt+up", "C-q", "alt+shift+left")
+	p.until(t, "the Alt keys in the program", screenHas(`^Q^[[1;3A^[[1;4D`))
 	if !p.m.layout.shown(terminal) || p.m.layout.zoomed != none || p.m.menu {
 		t.Fatalf("sending took tide's own action: %+v, menu %v", p.m.layout, p.m.menu)
 	}

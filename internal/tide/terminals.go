@@ -53,7 +53,8 @@ func (m *Model) menuItems() []menuItem {
 		items = append(items,
 			menuItem{`\`, `send C-\ to the program`, "send"},
 			menuItem{"]", "send C-] to the program", "send"},
-			menuItem{"C-q", "send C-q to the program", "send"})
+			menuItem{"C-q", "send C-q to the program", "send"},
+			menuItem{"M-arrow", "send Alt+arrow, with or without Shift, to the program", "send"})
 	}
 	if m.executable != "" && m.projects.loaded {
 		items = append(items, menuItem{"r", "reload tide", "reload"})

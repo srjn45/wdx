@@ -352,6 +352,14 @@ func (m *Model) sendToProgram(name string) tea.Cmd {
 	return m.paneInput(m.layout.focus, tea.KeyPressMsg{Code: code, Mod: tea.ModCtrl})
 }
 
+// altArrows are the keys the menu sends on as they are, as tide takes some of
+// them: Alt and an arrow moves the focus, and Alt+Shift with one switches
+// projects. Those tide leaves alone go through too, so none needs knowing.
+var altArrows = map[string]bool{
+	"alt+up": true, "alt+down": true, "alt+left": true, "alt+right": true,
+	"alt+shift+up": true, "alt+shift+down": true, "alt+shift+left": true, "alt+shift+right": true,
+}
+
 // programMouse gives a mouse event to the program in the agent or terminal
 // pane, at the pane's coordinates, when it asked for the mouse: a press inside
 // the pane, and the drag and release that follow it. It reports whether the

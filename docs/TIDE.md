@@ -184,7 +184,7 @@ Constraint: in basic terminals only `Ctrl+letter`, a few `Ctrl+symbol`, plain ke
 | `C-\` | show or hide the terminal pane (focuses it when it opens) |
 | `C-q` | open the shortcut menu |
 
-These keys are lost to the programs in the panes, so the menu sends each on: `C-q \` sends `C-\`, `C-q ]` sends `C-]` and `C-q C-q` sends `C-q` to the program in the focused agent or terminal pane, as tmux's `send-prefix` does. Tide cannot tell what runs in a pane, so `wdx terminal attach` there, whose prefix is `C-\` too, still says `C-\ ? for keys`; it detaches with `C-q \ d`.
+These keys are lost to the programs in the panes, so the menu sends each on: `C-q \` sends `C-\`, `C-q ]` sends `C-]` and `C-q C-q` sends `C-q` to the program in the focused agent or terminal pane, as tmux's `send-prefix` does; `C-q` then an Alt+arrow or Alt+Shift+arrow sends that key, as tide takes some of them (all eight go through, so none needs knowing which). Tide cannot tell what runs in a pane, so `wdx terminal attach` there, whose prefix is `C-\` too, still says `C-\ ? for keys`; it detaches with `C-q \ d`.
 
 These three keys are configurable, since `C-]` and `C-\` are awkward on some non-US keyboard layouts.
 

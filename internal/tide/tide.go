@@ -487,6 +487,10 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	m.sel = nil
 	if m.menu {
 		m.menu = false
+		if altArrows[name] && m.programInFocus() {
+			m.log.Info("alt key sent to the program", "key", name, "pane", m.layout.focus)
+			return m.paneInput(m.layout.focus, msg)
+		}
 		return m.menuAction(name)
 	}
 	m.terminalNotice, m.statusNotice = "", ""
