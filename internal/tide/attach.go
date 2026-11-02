@@ -321,7 +321,7 @@ func (m *Model) syncSize() {
 
 // paneInput gives a key, a paste or a mouse event to what the pane p shows.
 func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
-	if p == agent && m.diffShown() {
+	if p == agent && m.textShown() {
 		return m.diffKey(msg)
 	}
 	if rows, ok := m.valueRows(); p == agent && ok {
@@ -404,7 +404,7 @@ func (m *Model) programMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 // paneWheel gives a turn of the wheel over the pane p to it: to the program,
 // or scrolling its history.
 func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd {
-	if p == agent && m.diffShown() {
+	if p == agent && m.textShown() {
 		m.diffWheel(msg)
 		return nil
 	}

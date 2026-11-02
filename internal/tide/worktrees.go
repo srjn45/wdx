@@ -364,7 +364,7 @@ func (m *Model) removeWorktree(r removal) tea.Cmd {
 func (m *Model) worktreeRemoved(msg removed) {
 	if l := m.list(); l != nil {
 		for _, tab := range slices.Clone(l.tabs) {
-			if name, _ := diffTabOf(tab); isDiffTab(tab) && name == msg.r.name {
+			if name, _ := diffTabOf(tab); isTextTab(tab) && name == msg.r.name {
 				m.closeTab(tab, "worktree removed")
 			}
 		}

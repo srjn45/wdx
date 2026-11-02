@@ -1019,7 +1019,7 @@ func TestWorktreeDiffsLive(t *testing.T) {
 
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file != nil && r.file.Path == "file" }))
 	p.keys("enter")
-	if m.layout.focus != agent || !m.diffShown() {
+	if m.layout.focus != agent || !m.textShown() {
 		t.Fatalf("focus %v, tab %q", m.layout.focus, m.list().active)
 	}
 	p.until(t, "the split view", func(m *Model) bool {

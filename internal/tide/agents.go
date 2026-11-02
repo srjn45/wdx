@@ -57,7 +57,8 @@ type agentList struct {
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
 	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first
 
-	code codeSection
+	code       codeSection
+	lastActive string // the tab current when last looked, to tell one coming to show
 }
 
 // agentListRow is a row of the Agents list.
@@ -195,7 +196,7 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 // its first running agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
-	if l.created == settingsTab || isDiffTab(l.created) {
+	if l.created == settingsTab || isTextTab(l.created) {
 		l.openTab(l.created)
 		l.created = ""
 	}
@@ -824,7 +825,7 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	case m.settingsShown():
 		m.drawSettings(buf, area, st)
 		return
-	case m.diffShown():
+	case m.textShown():
 		m.drawDiff(buf, area, st)
 		return
 	case ok && m.infoShown():

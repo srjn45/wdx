@@ -436,6 +436,15 @@ func (c *Client) WorktreeFiles(ctx context.Context, name, ref, dir string) (api.
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// WorktreeFileContent returns what the file at path of the worktree name holds now.
+func (c *Client) WorktreeFileContent(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileContent, error) {
+	r, err := c.api.GetWorktreeFileContentWithResponse(ctx, name, &api.GetWorktreeFileContentParams{Path: path, Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeFileContent{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeFileDiff returns the uncommitted changes of the file at path in the
 // worktree name.
 func (c *Client) WorktreeFileDiff(ctx context.Context, name, path, ref, dir string) (api.WorktreeFileDiff, error) {

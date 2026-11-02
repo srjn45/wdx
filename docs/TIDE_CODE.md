@@ -246,6 +246,8 @@ New `internal/tide/code.go`.
 
 ### 4. The read-only tab
 
+Done on 2026-11-01, and tried in a real tide under tmux: the tree, the mark, wrapping, `:`, `/`, `?` and `C-q -`. `diffShown` became `textShown`, as it now says either. Decided while building: over a zoomed list, opening a file moves the zoom and focus to its tab, since the tab could not be seen otherwise; a folded directory carries the `◂` of the file it hides, as a folded parent does in Agents; CRLF line ends do not show; an empty file says so. The diffs' keys that act on changes do nothing here, and `e` is free for step 8.
+
 - A `file:` tab prefix beside `diff:` and `pr:`, with `isFileTab`, and `isTextTab` for what diffs and files share. `isDiffTab`'s callers each take the one they mean. The title is `file: <worktree>/<name>`, with no mark.
 - It reuses `diffView`, as `docs/IDE.md` proposes: a new `source` mode with `setSource` and `prepareSource`, line numbers, wrapping, `/`, `n`, `N`, `:` and paging. `diffKey` and the bar leave out what only diffs have: changes, comments, verify, commit, land.
 - `Enter` on a file opens it and the focus stays in the list. It is read again when `diffSeen`'s file branch changes, when its tab comes to show and on `f`, by the existing `diffSync`.

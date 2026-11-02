@@ -50,6 +50,9 @@ func isDiffTab(tab string) bool {
 	return strings.HasPrefix(tab, fileDiffPrefix) || strings.HasPrefix(tab, committedPrefix)
 }
 
+// isTextTab reports whether the tab is read in the text view: a diff or a file.
+func isTextTab(tab string) bool { return isDiffTab(tab) || isFileTab(tab) }
+
 // diffTabOf returns the worktree a diff's tab is of, and its file if it is a
 // file's.
 func diffTabOf(tab string) (worktree, file string) {
@@ -60,6 +63,10 @@ func diffTabOf(tab string) (worktree, file string) {
 		worktree, file, _ = strings.Cut(rest, rowSeparator)
 		return worktree, file
 	}
+	if rest, ok := strings.CutPrefix(tab, fileTabPrefix); ok {
+		worktree, file, _ = strings.Cut(rest, rowSeparator)
+		return worktree, file
+	}
 	return strings.TrimPrefix(tab, committedPrefix), ""
 }
 
@@ -67,6 +74,8 @@ func diffTabOf(tab string) (worktree, file string) {
 func (m *Model) diffTitle(tab string) string {
 	worktree, file := diffTabOf(tab)
 	switch {
+	case isFileTab(tab):
+		return fileTabLabel + worktree + "/" + tabLeaf(file)
 	case file != "":
 		return fileDiffLabel + worktree + "/" + tabLeaf(file)
 	case strings.HasPrefix(m.diffViewOf(tab), uncommittedPrefix):
@@ -103,10 +112,10 @@ func (m *Model) shownDiff() *diffView {
 	return l.diffs[m.diffViewOf(l.active)]
 }
 
-// diffShown reports whether the agent pane shows a diff.
-func (m *Model) diffShown() bool {
+// textShown reports whether the agent pane shows a diff or a file.
+func (m *Model) textShown() bool {
 	l := m.list()
-	return l != nil && isDiffTab(l.active)
+	return l != nil && isTextTab(l.active)
 }
 
 // diffView is what a diff's tab holds, for the run.
@@ -116,12 +125,14 @@ type diffView struct {
 	loading     bool
 	err         string
 	uncommitted bool // the view of what is not committed, of a worktree's tab
+	source      bool // the view of a file as it is, not of changes
 
 	message string // why there is nothing to show, instead of the rows
 	heading string // the line above the rows
 	split   []splitRow
 	unified []string
-	cutOff  bool // the daemon left out the rest
+	lineOf  []string // what a file holds, by line, when source
+	cutOff  bool     // the daemon left out the rest
 
 	width     int // of what lines was drawn for, 0 before
 	lines     []string
@@ -167,6 +178,7 @@ type diffLoaded struct {
 	file           *api.WorktreeFileDiff
 	committed      *api.WorktreeDiff
 	uncommitted    *api.WorktreeDiff
+	content        *api.WorktreeFileContent
 	err            error
 }
 
@@ -213,7 +225,12 @@ func number(p *int) string {
 // not shown is read when it comes to show: it may never.
 func (m *Model) diffSync() tea.Cmd {
 	l := m.list()
-	if l == nil || !isDiffTab(l.active) {
+	if l == nil {
+		return nil
+	}
+	came := l.active != l.lastActive
+	l.lastActive = l.active
+	if !isTextTab(l.active) {
 		return nil
 	}
 	if l.diffs == nil {
@@ -223,8 +240,11 @@ func (m *Model) diffSync() tea.Cmd {
 	v, ok := l.diffs[view]
 	if !ok {
 		_, file := diffTabOf(view)
-		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), file: file}
+		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), source: isFileTab(view), file: file}
 		l.diffs[view] = v
+	}
+	if came && v.source {
+		v.asked = false // a gitignored file, or one edited by another, says nothing in the stream
 	}
 	seen := m.diffSeen(view)
 	if v.loading || (v.asked && v.seen == seen) {
@@ -246,6 +266,9 @@ func (m *Model) readDiff(tab string) tea.Cmd {
 	return func() tea.Msg {
 		msg := diffLoaded{projectID: id, tab: tab}
 		switch {
+		case isFileTab(tab):
+			r, err := m.client.WorktreeFileContent(m.ctx, worktree, file, ref, "")
+			msg.content, msg.err = &r, err
 		case file != "":
 			r, err := m.client.WorktreeFileDiff(m.ctx, worktree, file, ref, "")
 			msg.file, msg.err = &r, err
@@ -269,13 +292,17 @@ func (m *Model) diffLoaded(msg diffLoaded) {
 	v.loading = false
 	if msg.err != nil {
 		m.log.Info("diff not read", "tab", msg.tab, "err", msg.err)
-		v.err = msg.err.Error()
+		if !v.setSourceError(msg.err) {
+			v.err = msg.err.Error()
+		}
 		return
 	}
 	v.err, v.message, v.heading, v.cutOff = "", "", "", false
-	v.split, v.unified = nil, nil
+	v.split, v.unified, v.lineOf = nil, nil, nil
 	v.width = 0 // what is drawn is to be worked out again
 	switch {
+	case msg.content != nil:
+		v.setSource(*msg.content)
 	case msg.file != nil:
 		v.setFile(*msg.file)
 	case msg.uncommitted != nil:
@@ -461,6 +488,8 @@ func (v *diffView) prepare(width int, st style.Style) {
 		}
 	}()
 	switch {
+	case v.lineOf != nil:
+		v.prepareSource(width, st)
 	case v.split != nil:
 		v.prepareSplit(width, st)
 	case v.unified != nil:
@@ -691,7 +720,10 @@ func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 	if len(v.lines) == 0 {
 		return append([]barKey{{"C-q -", "close", 1}}, extra...)
 	}
-	keys := []barKey{{"↑↓", "scroll", 1}, {"[ ]", "change", 5}}
+	keys := []barKey{{"↑↓", "scroll", 1}}
+	if !v.source {
+		keys = append(keys, barKey{"[ ]", "change", 5})
+	}
 	if file {
 		keys = append(keys, barKey{":", "line", 3})
 	} else {
@@ -734,6 +766,9 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 
 // allKeys are what ? shows.
 func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
+	if v.source {
+		return sourceKeys
+	}
 	keys := []barKey{
 		{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
 		{"g G", "the first or last line", 0}, {"[ ]", "the change before or after", 0},
@@ -811,6 +846,9 @@ func (v *diffView) position(file bool) string {
 	if len(v.lines) == 0 {
 		return ""
 	}
+	if v.source {
+		return fmt.Sprintf("line %d of %d", v.lineNumber(), len(v.lineOf))
+	}
 	if file {
 		return ofAll("change", v.changes, v.cursor) + " · " + fmt.Sprintf("line %d of %d", v.lineNumber(), v.lastNumber())
 	}
@@ -858,10 +896,14 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	v := m.shownDiff()
 	var top []string
 	if v != nil && v.err != "" {
-		top = append(top, st.Failure(wrap("the diff could not be read: "+v.err, area.Dx())))
+		what := "the diff"
+		if v.source {
+			what = "the file"
+		}
+		top = append(top, st.Failure(wrap(what+" could not be read: "+v.err, area.Dx())))
 	}
 	switch {
-	case v == nil || (v.loading && v.lines == nil && v.split == nil && v.unified == nil && v.message == ""):
+	case v == nil || (v.loading && v.lines == nil && !v.hasText() && v.message == ""):
 		top = append(top, st.Muted("loading…"))
 	case v.message != "":
 		top = append(top, st.Muted(v.message))
@@ -878,7 +920,7 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		v.marks = marks
 		v.width = 0 // a file's heading says it
 	}
-	if comments := m.viewComments(m.diffViewOf(l.active)); !reflect.DeepEqual(comments, v.comments) {
+	if comments := m.viewComments(m.diffViewOf(l.active)); !v.source && !reflect.DeepEqual(comments, v.comments) {
 		v.comments = comments
 		v.width = 0 // they show under their lines
 	}
@@ -888,7 +930,7 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			v.verified = verifiedProgress(m.worktreeStatuses()[i])
 		}
 	}
-	if v.split != nil || v.unified != nil {
+	if v.hasText() {
 		v.prepare(width, st)
 		if v.jump {
 			v.jump = false
@@ -899,7 +941,10 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	} else {
 		v.lines = nil
 	}
-	extra := m.worktreeBarKeys(l.active) // after the lines: it says of the current file
+	var extra []barKey
+	if !v.source {
+		extra = m.worktreeBarKeys(l.active) // after the lines: it says of the current file
+	}
 	content := area
 	if area.Dy() >= 3 { // too small for it, the lines come first
 		content.Max.Y--
@@ -913,7 +958,7 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, content)
 		return
 	}
-	if v.split == nil && v.unified == nil {
+	if !v.hasText() {
 		uv.NewStyledString(strings.Join(top, "\n")).Draw(buf, content)
 		return
 	}
@@ -1062,6 +1107,9 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		if name := key.String(); name == "esc" || name == "?" {
 			v.keyHelp = false
 		}
+		return nil
+	}
+	if v.source && slices.Contains(diffOnlyKeys, key.String()) {
 		return nil
 	}
 	page := max(v.height-1, 1)

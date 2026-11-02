@@ -476,3 +476,321 @@ func TestCodeLive(t *testing.T) {
 		return false
 	})
 }
+
+// fileModel is a model on the main checkout with the file "dir/a.go" and "top", with
+// the tree open and the cursor on dir/a.go.
+func fileModel(t *testing.T) *Model {
+	t.Helper()
+	m := codeModel([]string{"dir/a.go", "top"}, codeWorktreeList()...)
+	m.moveToCode(1)
+	keys(m, "enter", "down")
+	if m.list().code.cursor != "dir/a.go" {
+		t.Fatalf("on %q", m.list().code.cursor)
+	}
+	return m
+}
+
+func sourceOf(s string) *api.WorktreeFileContent {
+	return &api.WorktreeFileContent{Content: &s, Size: int64(len(s))}
+}
+
+func loadFile(m *Model, tab string, c *api.WorktreeFileContent) {
+	m.Update(diffLoaded{projectID: "proj-demo", tab: tab, content: c})
+}
+
+const aFile = "file:main\x00dir/a.go"
+
+func TestFileOpens(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	l := m.list()
+	if l.active != aFile || !m.textShown() {
+		t.Fatalf("tab %q", l.active)
+	}
+	if m.layout.focus != project {
+		t.Errorf("the focus left the list: %v", m.layout.focus)
+	}
+	if !strings.Contains(titleRow(m), "[file: main/a.go") {
+		t.Errorf("a file has a title and no state mark: %q", titleRow(m))
+	}
+	wantText(t, m, "loading…", "◂")
+	loadFile(m, aFile, sourceOf("package a\n\nfunc A() {}\n"))
+	wantText(t, m, "1 package a", "3 func A() {}", "line 1 of 3")
+	if strings.Contains(text(m), "change ") {
+		t.Errorf("a file has no changes:\n%s", text(m))
+	}
+
+	// Again goes to the same tab.
+	n := len(l.tabs)
+	keys(m, "enter")
+	if len(l.tabs) != n {
+		t.Errorf("tabs: %v", l.tabs)
+	}
+
+	// A folded directory carries the mark of what it hides; another worktree's tree none.
+	keys(m, "left", "left")
+	if !m.codeRowActive(m.codeRowsShown()[1]) {
+		t.Error("the folded directory has no mark")
+	}
+	m.moveToCode(0)
+	keys(m, "right")
+	m.Update(codeLoaded{projectID: "proj-demo", worktree: "auth-fix", paths: []string{"dir/a.go"}})
+	if slices.ContainsFunc(m.codeRowsShown(), m.codeRowActive) {
+		t.Error("another worktree's file has the mark")
+	}
+}
+
+func TestFileOpensOverAZoomedList(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	m.layout.toggleZoom()
+	keys(m, "enter")
+	if m.layout.zoomed != agent || m.layout.focus != agent {
+		t.Errorf("zoomed %v, focus %v", m.layout.zoomed, m.layout.focus)
+	}
+}
+
+func TestFileClick(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	s := &projectScreen{m: m}
+	shown, _ := m.visibleItems(100)
+	row := slices.IndexFunc(shown, func(it paneItem) bool {
+		return it.section == sectionCode && !it.heading && !it.empty && m.codeRowsShown()[it.row].key() == "top"
+	}) + 1
+	s.click(6, row, 31, 100)
+	if m.list().active != "file:main\x00top" {
+		t.Errorf("tab %q", m.list().active)
+	}
+}
+
+func TestFileViewKeys(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	var lines []string
+	for range 100 {
+		lines = append(lines, "line")
+	}
+	lines[49] = "the needle"
+	loadFile(m, aFile, sourceOf(strings.Join(lines, "\n")))
+	keys(m, "alt+right")
+	if m.layout.focus != agent {
+		t.Fatalf("focus %v", m.layout.focus)
+	}
+	v := m.shownDiff()
+	text(m)
+	keys(m, ":", "7", "enter")
+	text(m)
+	if v.lineNumber() != 7 {
+		t.Errorf(": goes to line %d", v.lineNumber())
+	}
+	keys(m, "/", "n", "e", "e", "d", "l", "e", "enter")
+	text(m)
+	if v.lineNumber() != 50 {
+		t.Errorf("/ goes to line %d", v.lineNumber())
+	}
+	wantText(t, m, "n N", "match")
+	keys(m, "g")
+	text(m)
+	keys(m, "n")
+	if v.lineNumber() != 50 {
+		t.Errorf("n goes to line %d", v.lineNumber())
+	}
+	keys(m, "G")
+	text(m)
+	if v.lineNumber() != 100 {
+		t.Errorf("G goes to line %d", v.lineNumber())
+	}
+	keys(m, "g", "pgdown")
+	text(m)
+	if v.lineNumber() <= 1 {
+		t.Errorf("a page down stays on line %d", v.lineNumber())
+	}
+	keys(m, "?")
+	wantText(t, m, "go to that line")
+	if strings.Contains(text(m), "comment") || strings.Contains(text(m), "verified") {
+		t.Errorf("? lists what a file does not do:\n%s", text(m))
+	}
+	keys(m, "esc")
+
+	// With changes in the worktree, so that the keys have something to act on.
+	(*m.following.project.WorktreeStatuses)[0].Files = []api.WorktreeFile{changed("dir/a.go", api.WorktreeFileStatusM)}
+	at := v.cursor
+	for _, k := range []string{"[", "]", "{", "}", "\t", commitKey, landKey, commentKey, editKey, deleteKey, reviewKey, verifyKey} {
+		keys(m, k)
+		if v.cursor != at || v.prompt != "" || v.notice != "" || m.list().showCommits["main"] || m.commit != nil || m.comment != nil || m.confirm != nil || m.statusNotice != "" {
+			t.Errorf("%q acts on a file", k)
+		}
+	}
+}
+
+func TestFileShownAsItCan(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		what    string
+		content *api.WorktreeFileContent
+		err     error
+		want    string
+		no      string
+	}{
+		{"binary", &api.WorktreeFileContent{Binary: true, Size: 3}, nil, "a binary file", ""},
+		{"too large", &api.WorktreeFileContent{TooLarge: true, Size: 3 << 20}, nil, "too large to show: 3.0 MiB", ""},
+		{"empty", sourceOf(""), nil, "an empty file", ""},
+		{"one blank line", sourceOf("\n"), nil, "line 1 of 1", "an empty file"},
+		{"no newline at the end", sourceOf("a\nb"), nil, "line 1 of 2", ""},
+		{"windows line ends", sourceOf("a\r\nb\r\n"), nil, "1 a", "a·"},
+		{"tabs", sourceOf("\tx\n"), nil, "1     x", ""},
+		{"escapes kept from the terminal", sourceOf("a\x1b[31mb\x07\n"), nil, "a·[31mb·", ""},
+		{"gone", &api.WorktreeFileContent{}, &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeNotFound}}, "not on disk", "could not be read"},
+		{"out of the worktree", &api.WorktreeFileContent{}, &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeInvalidPath}}, "not a file in this worktree", "could not be read"},
+		{"any other failure", &api.WorktreeFileContent{}, context.Canceled, "the file could not be read", ""},
+	} {
+		m := fileModel(t)
+		keys(m, "enter")
+		m.Update(diffLoaded{projectID: "proj-demo", tab: aFile, content: tc.content, err: tc.err})
+		got := text(m)
+		if !strings.Contains(got, tc.want) || (tc.no != "" && strings.Contains(got, tc.no)) {
+			t.Errorf("%s: want %q, not %q, in:\n%s", tc.what, tc.want, tc.no, got)
+		}
+	}
+}
+
+func TestFileWraps(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	loadFile(m, aFile, sourceOf(strings.Repeat("x", 300)+"\nsecond\n"))
+	text(m)
+	v := m.shownDiff()
+	if len(v.lines) < 4 || v.numbers[0] != 1 || v.numbers[1] != 0 {
+		t.Fatalf("lines %d, numbers %v", len(v.lines), v.numbers)
+	}
+	if v.numbers[len(v.numbers)-1] != 2 {
+		t.Errorf("the line after is numbered %v", v.numbers)
+	}
+}
+
+func TestFileGoneThenBack(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	loadFile(m, aFile, sourceOf("first\n"))
+	wantText(t, m, "first")
+	m.Update(diffLoaded{projectID: "proj-demo", tab: aFile, err: &client.ProblemError{Problem: api.Problem{Code: api.ErrorCodeNotFound}}})
+	if strings.Contains(text(m), "first") {
+		t.Errorf("what is gone still shows:\n%s", text(m))
+	}
+	loadFile(m, aFile, sourceOf("second\n"))
+	got := text(m)
+	if strings.Contains(got, "not on disk") || !strings.Contains(got, "second") {
+		t.Errorf("back:\n%s", got)
+	}
+}
+
+func TestFileReadsAgain(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	loadFile(m, aFile, sourceOf("one\n"))
+	v := m.shownDiff()
+	m.Update(nil)
+	if v.loading {
+		t.Fatal("read again with nothing changed")
+	}
+
+	// The stream says it changed.
+	(*m.following.project.WorktreeStatuses)[0].Files = []api.WorktreeFile{changed("dir/a.go", api.WorktreeFileStatusM)}
+	m.Update(nil)
+	if !v.loading {
+		t.Error("not read again on a change")
+	}
+	loadFile(m, aFile, sourceOf("two\n"))
+	m.Update(nil)
+
+	// It comes to show after another tab.
+	l := m.list()
+	l.openTab(settingsTab)
+	m.Update(nil)
+	if v.loading {
+		t.Error("read while not shown")
+	}
+	l.active = aFile
+	m.Update(nil)
+	if !v.loading {
+		t.Error("not read again on coming to show")
+	}
+	loadFile(m, aFile, sourceOf("three\n"))
+	m.Update(nil)
+
+	// On f.
+	keys(m, "C-q", refreshKey)
+	if !v.loading {
+		t.Error("not read again on f")
+	}
+}
+
+func TestFileTabKeptThroughReload(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	loadFile(m, aFile, sourceOf("one\n"))
+	m.executable = executableFile(t)
+	m.Update(key('q', tea.ModCtrl))
+	m.update(key('r', 0))
+	r := m.Reload()
+	if r == nil || r.Agent != aFile || !slices.Contains(r.Tabs, aFile) {
+		t.Fatalf("reload: %+v", r)
+	}
+	next := New(context.Background(), Options{Style: style.New(false), Resume: r})
+	next.tick = noTick
+	next.Update(projectsListed{projects: []api.ProjectSummary{{Name: "demo", State: api.ProjectStateOpen}}})
+	worktrees := codeWorktreeList()
+	next.Update(projectEvent{gen: next.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", WorktreeStatuses: &worktrees}}})
+	if got := next.list().active; got != aFile {
+		t.Errorf("after the reload: tab %q", got)
+	}
+}
+
+func TestFileTabClosesWithItsWorktree(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	keys(m, "enter")
+	other := fileTab("auth-fix", "x")
+	m.list().openTab(other)
+	m.worktreeRemoved(removed{r: removal{name: "auth-fix"}})
+	if slices.Contains(m.list().tabs, other) || !slices.Contains(m.list().tabs, aFile) {
+		t.Errorf("tabs %v", m.list().tabs)
+	}
+}
+
+func TestFileLive(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := filepath.Join(h.newProject(t, "app", api.ProjectStateOpen), "app")
+	gittest.Git(t, dir, "branch", "-M", "main")
+	writeFile(t, filepath.Join(dir, "file.go"), "package one\n")
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "base")
+
+	p := h.follow(t)
+	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
+	p.keys("enter")
+	p.until(t, "the file listed", func(m *Model) bool { return strings.Contains(text(m), "file.go") })
+	m := p.m
+	m.layout.setFocus(project)
+	m.moveToCode(slices.IndexFunc(m.codeRowsShown(), func(r codeRow) bool { return r.key() == "file.go" }))
+	p.keys("enter")
+	p.until(t, "the file's text", func(m *Model) bool { return strings.Contains(text(m), "1 package one") })
+
+	writeFile(t, filepath.Join(dir, "file.go"), "package two\n")
+	p.until(t, "the edit, with a refresh", func(m *Model) bool {
+		if strings.Contains(text(m), "1 package two") {
+			return true
+		}
+		p.keys("C-q", refreshKey)
+		return false
+	})
+}

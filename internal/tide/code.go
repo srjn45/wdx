@@ -17,7 +17,7 @@ import (
 
 const (
 	codeSelectorHint = "↑↓ select  ←→ worktree  Alt+arrows move  C-q menu"
-	codeHint         = "↑↓ select  ←→ fold  Enter fold  Alt+arrows move  C-q menu"
+	codeHint         = "↑↓ select  ←→ fold  Enter open  Alt+arrows move  C-q menu"
 	mainWorktree     = "main"
 )
 
@@ -244,10 +244,29 @@ func (s *projectScreen) updateCode(name string) {
 	case "right", "l":
 		s.m.codeRight()
 	case "enter":
-		if r, ok := s.m.codeCursorRow(); ok && r.node != nil && r.node.dir {
+		r, ok := s.m.codeCursorRow()
+		switch {
+		case !ok || r.node == nil:
+		case r.node.dir:
 			s.m.toggleCodeDir(r.node.path)
+		default:
+			s.m.openCodeFile(r.node.path)
 		}
 	}
+}
+
+// openCodeFile opens the tab of the file at p of the worktree chosen, or goes to it.
+// The focus stays in the list, to go on through the tree, unless the list is zoomed
+// over the tab.
+func (m *Model) openCodeFile(p string) {
+	l := m.list()
+	l.openTab(fileTab(l.code.worktree, p))
+	if m.layout.zoomed != none {
+		m.layout.setFocus(agent)
+		m.layout.zoomed = agent
+	}
+	m.changed("file")
+	m.log.Info("file opened", "worktree", l.code.worktree, "path", p)
 }
 
 func (m *Model) codeCursorRow() (codeRow, bool) {
@@ -352,6 +371,9 @@ func (m *Model) codeRefresh() {
 	if f := m.codeFilesShown(); f != nil {
 		f.asked = false
 	}
+	if l := m.list(); l != nil && isFileTab(l.active) && l.diffs[l.active] != nil {
+		l.diffs[l.active].asked = false
+	}
 }
 
 // codeLoaded is the answer to reading a worktree's files.
@@ -403,7 +425,7 @@ func codeSelectorName(name string, width int) string {
 
 // clickCode takes a click on the row i: on the selector's ends it goes through the
 // worktrees, on a fold mark it only folds, and elsewhere on a row it moves the cursor
-// there and folds a directory.
+// there and folds a directory or opens a file.
 func (s *projectScreen) clickCode(i, col, width int) {
 	m := s.m
 	r := m.codeRowsShown()[i]
@@ -429,7 +451,23 @@ func (s *projectScreen) clickCode(i, col, width int) {
 	m.moveToCode(i)
 	if r.node.dir {
 		m.toggleCodeDir(r.node.path)
+		return
 	}
+	m.openCodeFile(r.node.path)
+}
+
+// codeRowActive reports whether the tab shown is the row's file; a folded directory
+// carries the mark of what it hides.
+func (m *Model) codeRowActive(r codeRow) bool {
+	l := m.list()
+	if r.node == nil || !isFileTab(l.active) {
+		return false
+	}
+	worktree, file := diffTabOf(l.active)
+	if worktree != l.code.worktree {
+		return false
+	}
+	return file == r.node.path || (r.fold == foldClosed && strings.HasPrefix(file, r.node.path+"/"))
 }
 
 // codeGuide returns the guide drawn on r in a pane width wide, and the cells it
@@ -456,15 +494,24 @@ func (m *Model) codeLine(r codeRow, cursor bool, width int) string {
 		}
 		return pointer + st.Muted("<") + " " + name + " " + st.Muted(">")
 	}
+	active := m.codeRowActive(r)
 	end := " "
+	if active {
+		end = " " + st.Focused("◂") + " "
+	}
 	guide, room := codeGuide(r, width)
 	room -= style.Width(end)
 	name := ansi.Truncate(r.node.name, max(room, 0), "…")
-	if cursor {
+	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
+	if cursor || active {
 		name = st.Name(name)
 	}
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	return pointer + st.Muted(guide) + name
+	row := pointer + st.Muted(guide) + name + gap + end
+	if active {
+		return st.ActiveRow(row)
+	}
+	return row
 }
