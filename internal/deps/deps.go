@@ -41,6 +41,7 @@ var Dependencies = []Dependency{
 	{Name: "clipboard", Features: []string{"tide copy"}},
 	{Name: "container", Features: []string{"observe"}},
 	{Name: "gh", Features: []string{"landing by PR"}},
+	{Name: "vi", Features: []string{"tide edit"}},
 }
 
 // MinGit is the oldest git wdx works with: it uses rev-parse
@@ -163,6 +164,8 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 		c = checkContainer(ctx, p, "docker", "podman")
 	case "gh":
 		c = checkGH(ctx, p)
+	case "vi":
+		c = checkEditor(p, d.Name)
 	}
 	c.Dependency = d
 	logging.FromContext(ctx).Info("dependency checked", "name", d.Name, "status", c.Status, "program", c.Program, "version", c.Version, "detail", c.Detail)
@@ -239,6 +242,16 @@ func checkGH(ctx context.Context, p Probe) Check {
 	}
 	c.Version = version(out)
 	return c
+}
+
+// checkEditor says whether the editor is on the PATH, which is all tide needs of
+// it.
+func checkEditor(p Probe, name string) Check {
+	program, path, ok := find(p, name)
+	if !ok {
+		return Check{Status: Missing, Detail: name + " is not installed"}
+	}
+	return Check{Status: Ready, Program: program, Path: path}
 }
 
 // ClipboardTools are the programs that can set the clipboard in session

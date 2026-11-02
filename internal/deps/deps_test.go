@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/editor"
 )
 
 // fakeProbe is a machine with the programs in found, which print what out
@@ -132,6 +135,23 @@ func TestCheckClipboard(t *testing.T) {
 		c := check(t, fakeProbe(tc.goos, tc.session, found, nil, ""), "clipboard")
 		if c.Status != tc.status || c.Program != tc.program || !strings.Contains(c.Detail, tc.detail) || c.Mandatory {
 			t.Errorf("%s: got %+v", tc.name, c)
+		}
+	}
+}
+
+// TestEditors checks every editor tide can run is a dependency of its own.
+func TestEditors(t *testing.T) {
+	t.Parallel()
+	for _, name := range editor.Names() {
+		d, ok := DependencyOf(name)
+		if !ok || d.Mandatory || !slices.Equal(d.Features, []string{"tide edit"}) || !slices.Contains(Installable, name) {
+			t.Errorf("%s: %+v, %v", name, d, ok)
+		}
+		if c := check(t, fakeProbe("linux", "", map[string]bool{name: true}, nil, ""), name); c.Status != Ready || c.Program != name || c.Path != "/usr/bin/"+name {
+			t.Errorf("%s found: %+v", name, c)
+		}
+		if c := check(t, fakeProbe("linux", "", nil, nil, ""), name); c.Status != Missing || c.Detail != name+" is not installed" {
+			t.Errorf("%s missing: %+v", name, c)
 		}
 	}
 }

@@ -19,6 +19,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/srjn45/wdx/internal/editor"
 	"github.com/srjn45/wdx/internal/identity"
 )
 
@@ -39,6 +40,8 @@ type Config struct {
 	// TerminalHistoryTail is the history lines terminal history prints by
 	// default.
 	TerminalHistoryTail int
+	// Editor is the editor files are edited with, one of editor.Names.
+	Editor string
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -278,6 +281,20 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return strconv.Itoa(c.TerminalHistoryTail) },
+	},
+	{
+		key:         "editor",
+		description: "terminal editor tide edits a file with: " + strings.Join(editor.Names(), ", "),
+		def:         editor.Default,
+		choices:     editor.Names(),
+		set: func(c *Config, v string) error {
+			if _, ok := editor.Lookup(v); !ok {
+				return fmt.Errorf("%q is not one of %s", v, strings.Join(editor.Names(), ", "))
+			}
+			c.Editor = v
+			return nil
+		},
+		get: func(c Config) string { return c.Editor },
 	},
 }
 

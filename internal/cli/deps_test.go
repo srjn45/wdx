@@ -54,6 +54,7 @@ func TestDepsList(t *testing.T) {
 		{"clipboard", "missing", ""},
 		{"container", "not_ready", "docker"},
 		{"gh", "missing", ""},
+		{"vi", "missing", ""},
 	}
 	if len(v.Dependencies) != len(want) {
 		t.Fatalf("dependencies %+v", v.Dependencies)

@@ -153,7 +153,7 @@ Measured on 2026-11-01 on Ubuntu 26.04 in tmux, not in a tide pane and not on ma
 
 | Editor | Save | Discard | Save when another program wrote the file | Second file edited too |
 |---|---|---|---|---|
-| `vi` (vim-tiny 9.1) | `Esc Esc`, `:b1 \| x`, `Enter` | `Esc Esc`, `:b1 \| q!`, `Enter` | asks `(y/n)`, or exits keeping that text if not edited | stays, `E162` |
+| `vi` (vim-tiny 9.1) | `C-\ C-n`, `:b1 \| x`, `Enter` | `C-\ C-n`, `:b1 \| q!`, `Enter` | asks `(y/n)`, or exits keeping that text if not edited | stays, `E162` |
 | `vim` 9.1 | as `vi` | as `vi` | as `vi` | second file not tried |
 | `nvim` 0.11 | as `vi` | as `vi` | as `vi` | second file not tried |
 | `hx` 25.07 | `Esc`, `:open <file>`, `Enter`, `:wq`, `Enter` | `Esc`, `:open <file>`, `Enter`, `:q!`, `Enter` | refuses and says so, even if not edited | save stays and says so; **discard exits and loses the second file's edits** |
@@ -214,7 +214,7 @@ Through a holder session's `Write`, as tide's attachment will send them: save an
 What it changed:
 
 - **Arrow keys in Ubuntu's `vi`.** In insert mode an arrow key wrote `D` or `B` into the text and opened a line. It does so in plain tmux too, so it is not tide: `/etc/vim/vimrc.tiny` has `set compatible`, which turns `esckeys` off, and sets it after `-N` and `--cmd`. So `vi` starts with `-c 'set esckeys'`, the narrowest fix, which leaves the rest of vi mode alone. On `vim`, whose build is not `vi`'s, this is checked when it is added, and Neovim has no such option.
-- **No wait is needed.** `Esc Esc` and the command in one write worked every time, so `vi`'s `Save` and `Discard` are one write each, and step 9 needs no timer for it. The table's waits stay only if a later editor proves to need them.
+- **No wait is needed.** `Esc Esc` and the command in one write worked every time (step 6 replaced `Esc Esc` by `C-\ C-n`), so `vi`'s `Save` and `Discard` are one write each, and step 9 needs no timer for it. The table's waits stay only if a later editor proves to need them.
 
 ### 1. The list's sections
 
@@ -269,6 +269,8 @@ Done on 2026-11-02, and tried in a real tide under tmux: Go in colour, and a fil
 
 ### 6. The editors' table and setting
 
+Done on 2026-11-02, with these differences from the plan. Driving the real `vi` found that `Esc` on a command half typed runs it, in the compatible mode Ubuntu's `vi` starts in (`cpoptions` has `x`): a half-typed `:s/first/` deleted text on save. So `Save` and `Discard` start with `C-\ C-n`, which leaves any mode and drops the command line; the test covers it, which step 0 had not caught. `daemon.Settings` gets `editor` in step 7, with the code that reads it, rather than carrying a value nothing uses; until then `wdx setting set editor` saves it and nothing reads it. `deps` checks only that the editor is on the `PATH`, with no version.
+
 - New `internal/editor`, data with no dependencies, so that config, deps, the daemon and tide can share it: `Names`, and for each its `Command(path)`, `Save` and `Discard`, what to write. Only `vi` for now, which runs `vi -c 'set esckeys' -- <path>`. It goes into `AGENTS.md`'s layout and `.golangci.yml`'s directions.
 - `editor` in `internal/config`, default `vi`, with `choices`, its `set` refusing others. `daemon.Settings` carries it, so that `wdx setting set` applies to the next editor started.
 - In `internal/deps`: a `vi` dependency, optional, with the feature `tide edit`, ready when found on the `PATH`; `Installable`, and `PlanFor` with `vim-tiny` on apt and nothing to do on macOS. `docs/DEPS.md` gets its row.
@@ -278,6 +280,7 @@ Done on 2026-11-02, and tried in a real tide under tmux: Go in colour, and a fil
 
 - Migration `0013_editor_path.sql`: `ALTER TABLE terminals ADD COLUMN editor_path TEXT`.
 - `terminal.KindEditor`, read from that column. The terminal flow's filters become `t.kind = 'shell' AND t.editor_path IS NULL`, and `ofKind` follows. `byKind` in `internal/daemon/projects.go` splits a third way.
+- `daemon.Settings` carries `editor`, moved from step 6, so that `wdx setting set` applies to the next editor started.
 - `Supervisor.CreateEditor`, on the existing `createRunning`, in the worktree's directory, through the login shell. The row is deleted in `recordExit` and `recordGone`, and in `Reconcile` when its holder is gone.
 - `POST /v1/editors` with `worktree`, `project` or `dir`, and `path`: 201 `created`, or 200 `opened` for the editor already running on that file. It first looks for the program through the login shell, and fails with `dependency_missing`, naming it. Errors: `invalid_path`, `not_found`, `dependency_missing`.
 - `Project.editors` in the stream, each with `id`, `terminal_id`, `worktree`, `path`, `program`. `project_in_use` gets `details.editors`, a project's close result `stopped_editors`, and `RemoveWorktree` stops those in the worktree and returns them.

@@ -243,7 +243,7 @@ func TestSetConcurrently(t *testing.T) {
 		"no_input": "true", "color": "never", "log.level": "debug", "log.retention_days": "3",
 		"otel.endpoint": "", "otel.interval_seconds": "5", "update.channel": "dev",
 		"update.base_url": "https://example.com", "terminal.shell": "/bin/sh",
-		"terminal.history_lines": "5", "terminal.history_tail": "5",
+		"terminal.history_lines": "5", "terminal.history_tail": "5", "editor": "vi",
 	}
 	for range 5 {
 		home, _ := homeWith(t, "")

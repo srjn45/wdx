@@ -84,6 +84,12 @@ linters:
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/db
               desc: tide calls the daemon's API, never the database
+        # The editors are data the settings, wdx deps, the daemon and tide share.
+        editor-is-data:
+          files: ["**/internal/editor/*.go", "!$test"]
+          deny:
+            - pkg: github.com/srjn45/wdx/
+              desc: internal/editor depends on nothing, so that any package may use it
         config-in-cli-only:
           files:
             - "$all"

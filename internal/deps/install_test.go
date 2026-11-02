@@ -29,6 +29,9 @@ func TestPlanFor(t *testing.T) {
 		{"clipboard", mac, "", false},
 		{"docker", mac, "brew install --cask docker", false},
 		{"podman", mac, "brew install podman && podman machine init && podman machine start", false},
+		{"vi", ubuntu, "sudo apt-get update && sudo apt-get install -y vim-tiny", true},
+		{"vi", mac, "", false},
+		{"vi", System{OS: "darwin"}, "", false},
 	} {
 		p, err := PlanFor(tc.name, tc.sys, "ann")
 		if err != nil || p.Manual() != tc.want || p.NeedsRoot() != tc.root {
@@ -47,6 +50,7 @@ func TestPlanFor(t *testing.T) {
 		{"git", System{OS: "linux", Distribution: "fedora"}, "not on fedora yet"},
 		{"git", System{OS: "darwin"}, "Homebrew is not installed"},
 		{"clipboard", console, "no graphical session"},
+		{"vi", System{OS: "linux", Distribution: "fedora"}, "not on fedora yet"},
 	} {
 		p, err := PlanFor(tc.name, tc.sys, "ann")
 		e, ok := errors.AsType[*UnsupportedError](err)
