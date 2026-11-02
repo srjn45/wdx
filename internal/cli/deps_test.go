@@ -55,6 +55,11 @@ func TestDepsList(t *testing.T) {
 		{"container", "not_ready", "docker"},
 		{"gh", "missing", ""},
 		{"vi", "missing", ""},
+		{"vim", "missing", ""},
+		{"nvim", "missing", ""},
+		{"nano", "missing", ""},
+		{"hx", "missing", ""},
+		{"emacs", "missing", ""},
 	}
 	if len(v.Dependencies) != len(want) {
 		t.Fatalf("dependencies %+v", v.Dependencies)
@@ -236,7 +241,7 @@ func TestDepsInstallFails(t *testing.T) {
 	}
 
 	// --json needs --yes; a name must be one wdx knows.
-	for _, args := range [][]string{{"--name", "git"}, {"--name", "vim", "--yes"}} {
+	for _, args := range [][]string{{"--name", "git"}, {"--name", "micro", "--yes"}} {
 		v, exit = wdxJSONWith(t, home, newMachine().env, append([]string{"deps", "install"}, args...)...)
 		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	}

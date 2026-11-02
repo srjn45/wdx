@@ -1,6 +1,6 @@
 # tide: code, the editor and the left pane's filter
 
-Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu on 2026-11-02; the other editors, then creating, renaming and deleting files, come next, and `tide.section_order` later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
+Status: built on 2026-11-02, steps 0 to 10 of the plan below, with `vi` the one editor, and then the filter; the Alt+arrows through the menu and the other five editors on 2026-11-02; creating, renaming and deleting files come next, and `tide.section_order` later. Designed with the human on 2026-11-01. The human chose the section and its selector, what `Enter` does, hiding gitignored files, the filter's keys and filtering as you type, highlighting, `vi` with save or discard, and the validated order setting. The other details came from the AI and stand until the human changes them.
 
 Reading and editing a project's files without leaving tide: step 4 of the order in `docs/IDE.md`. This is tide's alone but for the editors in `wdx deps`: there is no other CLI command, since a script or an AI reads files itself. `docs/CLI_TIDE.md` gets a row saying so.
 
@@ -59,7 +59,7 @@ Reading and editing a project's files without leaving tide: step 4 of the order 
 
 `editor`, default `vi`: one of the supported editors, shown as `← vi →` in the settings tab. Unlike other settings with `choices`, `set` refuses anything else (`docs/TIDE_SETTINGS.md`), since wdx must know how to start and quit it. It takes no arguments. It is a general setting rather than a `tide.` one because `wdx doc edit`, proposed in `docs/IDE.md`, will want it too. `$EDITOR` is not read.
 
-The first release supports `vi` alone, and the others follow quickly, each being a row of what to run and what to send. A new editor needs no change for a rollback: `wdx update --rollback` puts back the config file as it was (`docs/RELEASING.md`).
+The first release supported `vi` alone; `vim`, `nvim`, `nano`, `hx` and `emacs` followed on 2026-11-02, each a row of what to run and what to send ([Editors](#editors)). A new editor needs no change for a rollback: `wdx update --rollback` puts back the config file as it was (`docs/RELEASING.md`).
 
 Any terminal editor should work in a pane, as a pane is a terminal emulator; a GUI one does not. Not yet tried in a pane. [Editors](#editors) lists them.
 
@@ -67,10 +67,10 @@ Any terminal editor should work in a pane, as a pane is a terminal emulator; a G
 
 Each supported editor is an optional dependency of its own, enabling `tide edit`, in `wdx deps list` with its status, and installed by `wdx deps install --name <editor>` as any other (`docs/DEPS.md`). So this much of the feature is on the CLI too. Packages:
 
-| Editor | Ubuntu, Debian | macOS (brew names from memory, to be checked when added) |
+| Editor | Ubuntu, Debian | macOS (brew names from memory, not yet checked on a Mac) |
 |---|---|---|
 | `vi` | `vim-tiny` | preinstalled |
-| `vim` | `vim` | `vim` |
+| `vim` | `vim` | preinstalled |
 | `nvim` | `neovim` | `neovim` |
 | `emacs` | `emacs-nox` | `emacs` |
 | `hx` | `hx` | `helix` |
@@ -149,18 +149,25 @@ It depends on the editor, and any syntax pack is the user's to install (the huma
 
 ### Editors
 
-Measured on 2026-11-01 on Ubuntu 26.04 in tmux, not in a tide pane and not on macOS, with each editor's defaults. `<file>` is the tab's file, quoted. `vi` needs no wait after `Esc` (step 0); the others are to be tried without one when added.
+Measured first on 2026-11-01 in tmux, then built on 2026-11-02 and tested against the real programs (`internal/editor`'s tests, which skip one not installed, but `vi` on Linux) and tried in a tide pane, each saving a file edited with an arrow key: vim-tiny 9.1, vim 9.1, Neovim 0.11.6, nano 8.7.1, Helix 25.07.1 and GNU Emacs 30.2 on Ubuntu 26.04; not on macOS. `<file>` is the tab's file, relative to the worktree.
 
-| Editor | Save | Discard | Save when another program wrote the file | Second file edited too |
-|---|---|---|---|---|
-| `vi` (vim-tiny 9.1) | `C-\ C-n`, `:b1 \| x`, `Enter` | `C-\ C-n`, `:b1 \| q!`, `Enter` | asks `(y/n)`, or exits keeping that text if not edited | stays, `E162` |
-| `vim` 9.1 | as `vi` | as `vi` | as `vi` | second file not tried |
-| `nvim` 0.11 | as `vi` | as `vi` | as `vi` | second file not tried |
-| `hx` 25.07 | `Esc`, `:open <file>`, `Enter`, `:wq`, `Enter` | `Esc`, `:open <file>`, `Enter`, `:q!`, `Enter` | refuses and says so, even if not edited | save stays and says so; **discard exits and loses the second file's edits** |
-| `nano` 8.7 | `C-c`, `C-x`, `y`, `Enter` | `C-c`, `C-x`, `n` | asks | holds one file by default |
-| `emacs` 30.2 | `C-g`, `C-x C-s`, `C-x C-c` | `C-g`, `M-x kill-emacs`, `Enter` | asks | not tried, and these keys act on the current buffer |
+| Editor | Started with | Save | Discard | Another program wrote the file, edited | A second file edited too |
+|---|---|---|---|---|---|
+| `vi` (vim-tiny) | `-n -c 'set esckeys'` | `C-\ C-n`, `:b1 \| x`, `Enter` | `C-\ C-n`, `:b1 \| q!`, `Enter` | asks `(y/n)` | the tab's file saved or not; stays, `E162` |
+| `vim` | as `vi`: a vimrc may set `compatible` | as `vi` | as `vi` | as `vi` | as `vi` |
+| `nvim` | `-n`: Neovim has no `esckeys` | as `vi` | as `vi` | as `vi` | as `vi` |
+| `nano` | nothing | `C-c`, `C-x`, `y`, `Enter` | `C-c`, `C-x`, `n` | asks | holds one file by default |
+| `hx` | nothing | `CSI 27 u`, `:open '<file>'`, `:update`, `:quit-all` | `CSI 27 u`, `:open '<file>'`, `:buffer-close!`, `:quit-all` | refuses, says so | the tab's file saved or not; stays, `unsaved buffer remaining` |
+| `emacs` | `-nw`, and `--eval` with two keys of wdx's | `CSI 7001 ~` | `CSI 7002 ~` | asks at the first key typed after it, `changed on disk; really edit the buffer?` | the tab's file saved or not; stays, asking to save the other |
 
-To settle when each is added: `hx`'s discard, perhaps with `:bc!` and then `:q`, and `emacs` with a second file.
+What building them found:
+
+- **Nothing beside the file.** vi, vim and Neovim start with `-n`, so no swap file. emacs is told to make no backup, auto-save or lock file. nano keeps a lock file, `.<file>.swp`, while it edits one: Ubuntu's `/etc/nanorc` sets `locking`, which no flag unsets but `--ignorercfiles`, which would drop the user's settings too, so it is left; nano removes it when it quits. hx writes none.
+- **hx and Esc.** hx reads `Esc` followed at once by `:` as Alt+`:`, so it takes `Esc` as `CSI 27 u`, which it reads as `Esc` whatever follows. `:update` writes the file only if edited, as `:write` refuses a file another program wrote even when it was not. hx writes in the background, and `:quit` looks for files edited before that write is done, so it refused; `:quit-all` waits for it. The file's name goes in single quotes, or in double quotes, with `%` doubled, when it holds one.
+- **emacs and C-g.** On a terminal, `C-g` throws away the keys typed after it, and so does leaving a prompt, so no keys typed after one can run a command. emacs is started with two keys of wdx's, sequences no terminal sends, decoded to commands that save or forget the edits of the buffer of the tab's file, whichever buffer is current, then quit as `C-x C-c` would, asking about any other buffer edited. From a prompt, they leave it, then do so. emacs refuses to edit a read-only file until told to, with `C-x C-q`; saving it then asks `write-protected; try to save anyway?`.
+- **Neovim** runs its editor as a child process in a session of its own, which quits soon after the interface does. Its file message is off by default, so the tests wait for its status line. It cannot open its log when its state directory's path holds a comma, and writes `.nvimlog` into the working directory instead: the tests' names have none.
+- **Keys after quitting.** The editor runs as `exec`, so a key sent after it quit, as nano's `y` when nothing was edited, reaches nothing.
+- **macOS** is untried: Homebrew's names (`neovim`, `nano`, `helix`, `emacs`) are from memory, `vi` and `vim` come with it, and its own `nano` is pico since 12.3, whose keys may differ.
 
 Tried and not supported, by the human's choice, since their save loses another program's write with no question:
 

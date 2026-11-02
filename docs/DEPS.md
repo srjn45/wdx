@@ -26,6 +26,11 @@ Agreed with the human:
 | `container` (installed as `docker` or `podman`) | no | `wdx observe` | `docker` or `podman` is installed and answers (`info`) | `docker`: `sudo apt-get install -y docker.io`, `sudo usermod -aG docker $USER`, then log in again; `podman`: `sudo apt-get install -y podman` | `docker`: `brew install --cask docker`, then open Docker once; `podman`: `brew install podman`, `podman machine init`, `podman machine start` |
 | `gh` | no | landing a worktree by PR (docs/TIDE_WORKTREES.md) | `gh` is on the PATH. Whether it is logged in shows when it is used, as asking would reach GitHub | `sudo apt-get install -y gh` | `brew install gh` |
 | `vi` | no | editing a file in tide (docs/TIDE_CODE.md); each editor the `editor` setting takes is a dependency of its own | `vi` is on the PATH | `sudo apt-get install -y vim-tiny` | none needed |
+| `vim` | no | as `vi` | `vim` is on the PATH | `sudo apt-get install -y vim` | none needed |
+| `nvim` | no | as `vi` | `nvim` is on the PATH | `sudo apt-get install -y neovim` | `brew install neovim` |
+| `nano` | no | as `vi` | `nano` is on the PATH | `sudo apt-get install -y nano` | `brew install nano` |
+| `hx` | no | as `vi` | `hx` is on the PATH | `sudo apt-get install -y hx` | `brew install helix` |
+| `emacs` | no | as `vi` | `emacs` is on the PATH | `sudo apt-get install -y emacs-nox` | `brew install emacs` |
 
 Later, with the agents: each agent's CLI (`claude`, `codex`, …), optional, enabling its agent, ready when installed and logged in.
 

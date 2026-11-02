@@ -32,6 +32,16 @@ func TestPlanFor(t *testing.T) {
 		{"vi", ubuntu, "sudo apt-get update && sudo apt-get install -y vim-tiny", true},
 		{"vi", mac, "", false},
 		{"vi", System{OS: "darwin"}, "", false},
+		{"vim", ubuntu, "sudo apt-get update && sudo apt-get install -y vim", true},
+		{"vim", mac, "", false},
+		{"nvim", ubuntu, "sudo apt-get update && sudo apt-get install -y neovim", true},
+		{"nvim", mac, "brew install neovim", false},
+		{"nano", ubuntu, "sudo apt-get update && sudo apt-get install -y nano", true},
+		{"nano", mac, "brew install nano", false},
+		{"hx", ubuntu, "sudo apt-get update && sudo apt-get install -y hx", true},
+		{"hx", mac, "brew install helix", false},
+		{"emacs", ubuntu, "sudo apt-get update && sudo apt-get install -y emacs-nox", true},
+		{"emacs", mac, "brew install emacs", false},
 	} {
 		p, err := PlanFor(tc.name, tc.sys, "ann")
 		if err != nil || p.Manual() != tc.want || p.NeedsRoot() != tc.root {
@@ -51,6 +61,8 @@ func TestPlanFor(t *testing.T) {
 		{"git", System{OS: "darwin"}, "Homebrew is not installed"},
 		{"clipboard", console, "no graphical session"},
 		{"vi", System{OS: "linux", Distribution: "fedora"}, "not on fedora yet"},
+		{"hx", System{OS: "linux", Distribution: "fedora"}, "not on fedora yet"},
+		{"hx", System{OS: "darwin"}, "Homebrew is not installed"},
 	} {
 		p, err := PlanFor(tc.name, tc.sys, "ann")
 		e, ok := errors.AsType[*UnsupportedError](err)

@@ -7,7 +7,18 @@ import (
 
 // Installable are the names wdx deps install takes: a dependency, or for
 // container the program that provides it.
-var Installable = []string{"git", "clipboard", "docker", "podman", "gh", "vi"}
+var Installable = []string{"git", "clipboard", "docker", "podman", "gh", "vi", "vim", "nvim", "nano", "hx", "emacs"}
+
+// editorPackages are the packages of each editor on apt and brew; "" is one
+// macOS comes with.
+var editorPackages = map[string]struct{ apt, brew string }{
+	"vi":    {"vim-tiny", ""},
+	"vim":   {"vim", ""},
+	"nvim":  {"neovim", "neovim"},
+	"nano":  {"nano", "nano"},
+	"hx":    {"hx", "helix"},
+	"emacs": {"emacs-nox", "emacs"},
+}
 
 // DependencyOf returns the dependency the installable name provides.
 func DependencyOf(name string) (Dependency, bool) {
@@ -101,8 +112,8 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 		return unsupported("no graphical session, so no clipboard a program can reach",
 			"tide copies through the terminal (OSC 52) in terminals that take it: kitty, WezTerm, iTerm2, foot, Alacritty")
 	}
-	if name == "vi" && sys.OS == "darwin" {
-		return Plan{}, nil // vi comes with macOS
+	if p, ok := editorPackages[name]; ok && sys.OS == "darwin" && p.brew == "" {
+		return Plan{}, nil // macOS comes with it
 	}
 	switch sys.PackageManager {
 	case "apt":
@@ -123,8 +134,9 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 			return Plan{Commands: apt("podman")}, nil
 		case "gh":
 			return Plan{Commands: apt("gh")}, nil
-		case "vi":
-			return Plan{Commands: apt("vim-tiny")}, nil
+		}
+		if p, ok := editorPackages[name]; ok {
+			return Plan{Commands: apt(p.apt)}, nil
 		}
 	case "brew":
 		switch name {
@@ -146,6 +158,9 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 		case "gh":
 			return Plan{Commands: [][]string{{"brew", "install", "gh"}}}, nil
 		}
+		if p, ok := editorPackages[name]; ok {
+			return Plan{Commands: [][]string{{"brew", "install", p.brew}}}, nil
+		}
 	}
 	if sys.OS == "darwin" {
 		return unsupported("Homebrew is not installed",
@@ -157,8 +172,10 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 		"docker":    "Docker: https://docs.docker.com/engine/install/",
 		"podman":    "Podman: https://podman.io/docs/installation",
 		"gh":        "GitHub CLI: https://cli.github.com",
-		"vi":        "vi",
 	}[name]
+	if _, ok := editorPackages[name]; ok {
+		what = name
+	}
 	distribution := sys.Distribution
 	if distribution == "" {
 		distribution = "this system"

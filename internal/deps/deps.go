@@ -42,6 +42,11 @@ var Dependencies = []Dependency{
 	{Name: "container", Features: []string{"observe"}},
 	{Name: "gh", Features: []string{"landing by PR"}},
 	{Name: "vi", Features: []string{"tide edit"}},
+	{Name: "vim", Features: []string{"tide edit"}},
+	{Name: "nvim", Features: []string{"tide edit"}},
+	{Name: "nano", Features: []string{"tide edit"}},
+	{Name: "hx", Features: []string{"tide edit"}},
+	{Name: "emacs", Features: []string{"tide edit"}},
 }
 
 // MinGit is the oldest git wdx works with: it uses rev-parse
@@ -164,7 +169,7 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 		c = checkContainer(ctx, p, "docker", "podman")
 	case "gh":
 		c = checkGH(ctx, p)
-	case "vi":
+	case "vi", "vim", "nvim", "nano", "hx", "emacs":
 		c = checkEditor(p, d.Name)
 	}
 	c.Dependency = d

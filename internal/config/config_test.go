@@ -142,7 +142,7 @@ func TestEveryProblemReported(t *testing.T) {
 		"  shell: zsh",
 		"  history_lines: -1",
 		"  history_tail: 20000",
-		"editor: emacs",
+		"editor: micro",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -160,7 +160,7 @@ func TestEveryProblemReported(t *testing.T) {
 		path + `:18: terminal.shell: "zsh" is not an absolute path`,
 		path + `:19: terminal.history_lines: "-1" is not a whole number of at least 0`,
 		path + `:20: terminal.history_tail: "20000" is not a whole number from 1 to 10000`,
-		path + `:21: editor: "emacs" is not one of vi`,
+		path + `:21: editor: "micro" is not one of vi, vim, nvim, nano, hx, emacs`,
 	}
 	slices.Sort(want)
 	var got []string
@@ -300,7 +300,7 @@ func TestChoicesAreAccepted(t *testing.T) {
 	}
 	want := map[string][]string{
 		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
-		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi"},
+		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi", "vim", "nvim", "nano", "hx", "emacs"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)

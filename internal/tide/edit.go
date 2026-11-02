@@ -206,9 +206,9 @@ func (m *Model) editorCloseKey(name string) {
 		m.closeTab(tab, "editor gone")
 		return
 	}
-	keys, answer := known.Save, "save"
+	keys, answer := known.Save(e.Path), "save"
 	if name == discardKey {
-		keys, answer = known.Discard, "discard"
+		keys, answer = known.Discard(e.Path), "discard"
 	}
 	l := m.list()
 	if l.closing == nil {
