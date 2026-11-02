@@ -61,12 +61,13 @@ var ErrNotFound = errors.New("agent not found")
 
 // Store persists agents. Every query joins them with their terminal rows.
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *db.Statements
 }
 
 // NewStore returns a Store backed by db.
-func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+func NewStore(database *sql.DB) *Store {
+	return &Store{db: database, queries: db.NewStatements(database)}
 }
 
 // Get returns the agent with id.
@@ -169,7 +170,7 @@ func (s *Store) beginSession(ctx context.Context, id, session string, linked fun
 }
 
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.queries.Query(ctx, `
 		SELECT a.id, a.aca, a.session_id, a.parent_agent_id,
 			(SELECT pt.name FROM agents pa JOIN terminals pt ON pt.id = pa.terminal_id WHERE pa.id = a.parent_agent_id),
 			a.removed_at, (`+worktreeOfDir+`),

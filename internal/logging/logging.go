@@ -3,6 +3,7 @@
 package logging
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -72,7 +73,12 @@ type redacting struct {
 }
 
 func (r *redacting) Write(p []byte) (int, error) {
-	if _, err := r.w.Write(credentials.ReplaceAll(p, []byte("${1}redacted@"))); err != nil {
+	out := p
+	// The regular expression is the dearest part of logging a line, and few hold both.
+	if bytes.IndexByte(p, '@') >= 0 && bytes.Contains(p, []byte("://")) {
+		out = credentials.ReplaceAll(p, []byte("${1}redacted@"))
+	}
+	if _, err := r.w.Write(out); err != nil {
 		return 0, err
 	}
 	return len(p), nil

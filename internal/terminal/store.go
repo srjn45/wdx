@@ -138,12 +138,13 @@ func cleanName(name string) (string, error) {
 // Store persists terminals.
 type Store struct {
 	db      *sql.DB
+	queries *db.Statements
 	changed func() // called after every change; see OnChange
 }
 
 // NewStore returns a Store backed by db.
-func NewStore(db *sql.DB) *Store {
-	return &Store{db: db, changed: func() {}}
+func NewStore(database *sql.DB) *Store {
+	return &Store{db: database, queries: db.NewStatements(database), changed: func() {}}
 }
 
 // OnChange makes the store call fn after every change it writes, before it
@@ -354,7 +355,7 @@ func ScanRow(scan func(dest ...any) error, before ...any) (Terminal, error) {
 // query returns the rows matching where, a constant condition on t, the
 // terminals, and p, their projects.
 func (s *Store) query(ctx context.Context, where string, args ...any) ([]Terminal, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.queries.Query(ctx, `
 		SELECT `+Columns+`
 		FROM terminals t JOIN projects p ON p.id = t.project_id
 		WHERE `+where+`
