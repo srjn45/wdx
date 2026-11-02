@@ -144,6 +144,25 @@ func TestWorktreeRequests(t *testing.T) {
 		t.Fatalf("file: %v, %s", err, f.Body)
 	}
 
+	files, err := td.client.ListWorktreeFilesWithResponse(ctx, "work", &api.ListWorktreeFilesParams{Project: &project})
+	if err != nil || files.JSON200 == nil || !slices.Contains(files.JSON200.Paths, "file") || files.JSON200.Worktree != "work" {
+		t.Fatalf("files: %v, %s", err, files.Body)
+	}
+	content, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "file"})
+	if err != nil || content.JSON200 == nil || content.JSON200.Content == nil || !strings.Contains(*content.JSON200.Content, "two") || content.JSON200.Path != "file" {
+		t.Fatalf("content: %v, %s", err, content.Body)
+	}
+	writeIn(t, work, "empty", "")
+	writeIn(t, work, "binary", "a\x00b")
+	empty, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "empty"})
+	if err != nil || empty.JSON200 == nil || empty.JSON200.Content == nil || *empty.JSON200.Content != "" {
+		t.Errorf("an empty file has empty content, not none: %v, %s", err, empty.Body)
+	}
+	binary, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "binary"})
+	if err != nil || binary.JSON200 == nil || binary.JSON200.Content != nil || !binary.JSON200.Binary || binary.JSON200.Size != 3 {
+		t.Errorf("binary: %v, %s", err, binary.Body)
+	}
+
 	for _, tc := range []struct {
 		what string
 		get  func() (*http.Response, []byte, error)
@@ -162,6 +181,26 @@ func TestWorktreeRequests(t *testing.T) {
 			r, err := td.client.GetWorktreeFileDiffWithResponse(ctx, "work", &api.GetWorktreeFileDiffParams{Project: &project, Path: "../x"})
 			return r.HTTPResponse, r.Body, err
 		}, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPath},
+		{"the files of an unknown worktree", func() (*http.Response, []byte, error) {
+			r, err := td.client.ListWorktreeFilesWithResponse(ctx, "nope", &api.ListWorktreeFilesParams{Project: &project})
+			return r.HTTPResponse, r.Body, err
+		}, http.StatusNotFound, api.ErrorCodeNotFound},
+		{"the content of a file gone", func() (*http.Response, []byte, error) {
+			r, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "gone"})
+			return r.HTTPResponse, r.Body, err
+		}, http.StatusNotFound, api.ErrorCodeNotFound},
+		{"the content of a path outside", func() (*http.Response, []byte, error) {
+			r, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "../x"})
+			return r.HTTPResponse, r.Body, err
+		}, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPath},
+		{"the content of a directory", func() (*http.Response, []byte, error) {
+			r, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project, Path: "."})
+			return r.HTTPResponse, r.Body, err
+		}, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPath},
+		{"no path", func() (*http.Response, []byte, error) {
+			r, err := td.client.GetWorktreeFileContentWithResponse(ctx, "work", &api.GetWorktreeFileContentParams{Project: &project})
+			return r.HTTPResponse, r.Body, err
+		}, http.StatusBadRequest, api.ErrorCodeUsage},
 	} {
 		resp, body, err := tc.get()
 		if err != nil || resp.StatusCode != tc.want || !strings.Contains(string(body), string(tc.code)) {
@@ -375,6 +414,12 @@ func TestWorktreeContentsAreNotLogged(t *testing.T) {
 	on := true
 	if r, err := td.client.GetWorktreeDiffWithResponse(ctx, "main", &api.GetWorktreeDiffParams{Project: &project, Uncommitted: &on}); err != nil || r.JSON200 == nil || !strings.Contains(r.JSON200.Patch, inFile) {
 		t.Fatalf("diff: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.GetWorktreeFileContentWithResponse(ctx, "main", &api.GetWorktreeFileContentParams{Project: &project, Path: "file"}); err != nil || r.JSON200 == nil || r.JSON200.Content == nil || !strings.Contains(*r.JSON200.Content, inFile) {
+		t.Fatalf("content: %v, %s", err, r.Body)
+	}
+	if r, err := td.client.ListWorktreeFilesWithResponse(ctx, "main", &api.ListWorktreeFilesParams{Project: &project}); err != nil || r.JSON200 == nil || !slices.Contains(r.JSON200.Paths, "file") {
+		t.Fatalf("files: %v, %s", err, r.Body)
 	}
 	if r, err := td.client.ListWorktreeCommentsWithResponse(ctx, "main", &api.ListWorktreeCommentsParams{Project: &project}); err != nil || r.JSON200 == nil || r.JSON200.Comments[0].Body != inComment {
 		t.Fatalf("comments: %v, %s", err, r.Body)

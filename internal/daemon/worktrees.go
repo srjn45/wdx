@@ -402,6 +402,34 @@ func (s *server) GetWorktreeDiff(ctx context.Context, req api.GetWorktreeDiffReq
 	}, nil
 }
 
+func (s *server) ListWorktreeFiles(ctx context.Context, req api.ListWorktreeFilesRequestObject) (api.ListWorktreeFilesResponseObject, error) {
+	_, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	paths, truncated, err := worktree.ListFiles(ctx, c, req.Worktree)
+	if err != nil {
+		return nil, err
+	}
+	return api.ListWorktreeFiles200JSONResponse{Worktree: req.Worktree, Paths: paths, Truncated: truncated}, nil
+}
+
+func (s *server) GetWorktreeFileContent(ctx context.Context, req api.GetWorktreeFileContentRequestObject) (api.GetWorktreeFileContentResponseObject, error) {
+	_, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	f, err := worktree.ReadFile(ctx, c, req.Worktree, req.Params.Path)
+	if err != nil {
+		return nil, err
+	}
+	view := api.WorktreeFileContent{Worktree: req.Worktree, Path: req.Params.Path, Binary: f.Binary, TooLarge: f.TooLarge, Size: f.Size}
+	if !f.Binary && !f.TooLarge {
+		view.Content = &f.Text // an empty file has content
+	}
+	return api.GetWorktreeFileContent200JSONResponse(view), nil
+}
+
 func (s *server) GetWorktreeFileDiff(ctx context.Context, req api.GetWorktreeFileDiffRequestObject) (api.GetWorktreeFileDiffResponseObject, error) {
 	_, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
 	if err != nil {

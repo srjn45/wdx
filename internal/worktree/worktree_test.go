@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/git"
@@ -333,5 +334,95 @@ func TestHolds(t *testing.T) {
 		if s.Holds(dir) != want {
 			t.Errorf("%s: want %v", dir, want)
 		}
+	}
+}
+
+func TestListFiles(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	write(t, work, ".gitignore", "ignored\n")
+	write(t, work, "ignored", "x\n")
+	write(t, work, "untracked", "x\n")
+	c := Checkouts{Clone: dir, Paths: []string{dir}}
+	paths, _, err := ListFiles(t.Context(), c, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(paths, "ignored") || !slices.Contains(paths, "untracked") || !slices.Contains(paths, ".gitignore") {
+		t.Errorf("paths: %q", paths)
+	}
+	if _, _, err := ListFiles(t.Context(), c, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown worktree: %v", err)
+	}
+}
+
+func TestReadFile(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	work := linked(t, dir, "work")
+	c := Checkouts{Clone: dir, Paths: []string{dir}}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(work, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, work, "text", "héllo\n")
+	write(t, work, "empty", "")
+	write(t, work, "nul", "a\x00b")
+	write(t, work, "latin1", "caf\xe9\n")
+	write(t, work, "at-limit", strings.Repeat("x", maxFileContent))
+	write(t, work, "too-large", strings.Repeat("x", maxFileContent+1))
+	write(t, work, ".gitignore", "ignored\n")
+	write(t, work, "ignored", "still a file\n")
+	for link, target := range map[string]string{"in": "text", "out": outside, "up": "../", "dangling": "nowhere", "to-dir": "dir"} {
+		if err := os.Symlink(target, filepath.Join(work, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := syscall.Mkfifo(filepath.Join(work, "fifo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		path string
+		want FileContent
+	}{
+		{"text", FileContent{Text: "héllo\n", Size: 7}},
+		{"empty", FileContent{}},
+		{"in", FileContent{Text: "héllo\n", Size: 7}},
+		{"ignored", FileContent{Text: "still a file\n", Size: 13}},
+		{"nul", FileContent{Binary: true, Size: 3}},
+		{"latin1", FileContent{Binary: true, Size: 5}},
+		{"too-large", FileContent{TooLarge: true, Size: maxFileContent + 1}},
+	} {
+		got, err := ReadFile(t.Context(), c, "work", tc.path)
+		if err != nil || got != tc.want {
+			t.Errorf("%s: %+v, %v", tc.path, got, err)
+		}
+	}
+	if got, err := ReadFile(t.Context(), c, "work", "at-limit"); err != nil || got.TooLarge || len(got.Text) != maxFileContent {
+		t.Errorf("at the limit: %d bytes, too large %v, %v", len(got.Text), got.TooLarge, err)
+	}
+
+	for _, path := range []string{"../x", "/etc/passwd", "", "out", "up"} {
+		if _, err := ReadFile(t.Context(), c, "work", path); !isInvalidPath(err) {
+			t.Errorf("%q: want an invalid path, got %v", path, err)
+		}
+	}
+	for _, path := range []string{"dir", "to-dir", "fifo", "."} {
+		if _, err := ReadFile(t.Context(), c, "work", path); !errors.As(err, new(*NotAFileError)) {
+			t.Errorf("%q: want not a file, got %v", path, err)
+		}
+	}
+	for _, path := range []string{"gone", "dangling", "text/below"} {
+		if _, err := ReadFile(t.Context(), c, "work", path); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%q: want not found, got %v", path, err)
+		}
+	}
+	if _, err := ReadFile(t.Context(), c, "nope", "text"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown worktree: %v", err)
 	}
 }

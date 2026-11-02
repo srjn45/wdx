@@ -444,6 +444,56 @@ paths:
               schema: { $ref: "#/components/schemas/WorktreeDiff" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/worktrees/{worktree}/files:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+    get:
+      operationId: listWorktreeFiles
+      summary: The files of a worktree, tracked and untracked, without gitignored ones
+      description: |
+        A tracked file missing from disk is listed. What a nested repository holds
+        is not. The paths are sorted and relative to the worktree.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+      responses:
+        "200":
+          description: The files.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFiles" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/worktrees/{worktree}/files/content:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+    get:
+      operationId: getWorktreeFileContent
+      summary: What a file of a worktree holds now, on disk
+      description: |
+        A file that is binary or too large has no content, as a JSON string cannot
+        carry the one and need not carry the other.
+
+        Errors: invalid_path, when the path leads out of the worktree or is not a
+        file; not_found; usage.
+      parameters:
+        - $ref: "#/components/parameters/WorktreeProject"
+        - $ref: "#/components/parameters/WorktreeDir"
+        - name: path
+          in: query
+          required: true
+          description: The file's path, relative to the worktree.
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeFileContent" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/worktrees/{worktree}/files/diff:
     parameters:
       - $ref: "#/components/parameters/WorktreeRef"
@@ -1623,6 +1673,27 @@ components:
         patch: { type: string, description: "The unified diff with every line of the file; empty when nothing is uncommitted." }
         binary: { type: boolean, description: "The file is binary, and only said to differ." }
         truncated: { type: boolean, description: "Too long: patch is its beginning." }
+
+    WorktreeFiles:
+      type: object
+      required: [worktree, paths, truncated]
+      properties:
+        worktree: { type: string }
+        paths:
+          type: array
+          items: { type: string }
+        truncated: { type: boolean, description: "Too many: paths is the first of them." }
+
+    WorktreeFileContent:
+      type: object
+      required: [worktree, path, content, binary, too_large, size]
+      properties:
+        worktree: { type: string }
+        path: { type: string }
+        content: { type: string, nullable: true, description: "The text; null when binary or too large." }
+        binary: { type: boolean, description: "It has a NUL or is not UTF-8." }
+        too_large: { type: boolean, description: "Over 2 MiB." }
+        size: { type: integer, format: int64, description: "Its size in bytes." }
 
     ProjectSummary:
       type: object

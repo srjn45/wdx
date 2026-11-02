@@ -76,6 +76,7 @@ func reads(dir string) map[string]func(context.Context) error {
 		"FileDiff new":        func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "new")) },
 		// git refreshes the index when more than one file it compares proves unchanged.
 		"FileDiff several": func(ctx context.Context) error { return ignoring(FileDiff(ctx, dir, "several")) },
+		"ListFiles":        func(ctx context.Context) error { _, _, err := ListFiles(ctx, dir); return err },
 		"MergeBase":        func(ctx context.Context) error { return ignoring(MergeBase(ctx, dir, "main")) },
 		"RangeDiff":        func(ctx context.Context) error { return ignoring(RangeDiff(ctx, dir, "main")) },
 	}
@@ -484,5 +485,57 @@ func TestPartialClone(t *testing.T) {
 	p, err := RangeDiff(t.Context(), dir, "origin/main")
 	if err != nil || !strings.Contains(p.Text, "+work") {
 		t.Errorf("one a user asked for: %+v, %v", p, err)
+	}
+}
+
+func TestListFiles(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	write(t, dir, ".gitignore", "ignored\n")
+	write(t, dir, "ignored", "secret\n")
+	write(t, dir, "with\nnewline", "x\n")
+	nested := filepath.Join(dir, "nested")
+	gittest.Git(t, dir, "init", "-q", nested)
+	write(t, nested, "inside", "x\n")
+	if err := os.Remove(filepath.Join(dir, "bare.txt")); err != nil {
+		t.Fatal(err)
+	}
+	got, truncated, err := ListFiles(t.Context(), dir)
+	if err != nil || truncated {
+		t.Fatal(truncated, err)
+	}
+	want := []string{".gitignore", "bare.txt", "kept", "landing", "new", "several/one", "several/two", "with\nnewline"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestListFilesOfAConflictOnce(t *testing.T) {
+	t.Parallel()
+	dir := readRepo(t)
+	gittest.Git(t, dir, "add", ".")
+	gittest.Git(t, dir, "commit", "-qm", "ours")
+	gittest.Git(t, dir, "switch", "-qc", "theirs", "main")
+	write(t, dir, "kept", "theirs\n")
+	gittest.Git(t, dir, "commit", "-qam", "theirs")
+	if err := exec.Command("git", "-C", dir, "merge", "-q", "work").Run(); err == nil {
+		t.Fatal("the merge should stop at a conflict")
+	}
+	got, _, err := ListFiles(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(slices.DeleteFunc(got, func(p string) bool { return p != "kept" })); n != 1 {
+		t.Errorf("kept is listed %d times", n)
+	}
+}
+
+func TestFilePathsCutShort(t *testing.T) {
+	t.Parallel()
+	if got := filePaths([]byte("a\x00b\x00par")); !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("got %q", got)
+	}
+	if got := filePaths(nil); len(got) != 0 || got == nil {
+		t.Errorf("no files must be an empty list: %#v", got)
 	}
 }

@@ -3,8 +3,9 @@ package api
 import "encoding/json"
 
 // WorktreeResponseLogged is a worktree response as logged, by the daemon and the
-// cli: a file's contents and what is said of them can hold secrets, so a patch is
-// measured and comments are counted, never logged. b is the response's JSON.
+// cli: a file's contents and what is said of them can hold secrets, so a patch or
+// content is measured and comments are counted, never logged, as a list of paths is
+// counted for its length. b is the response's JSON.
 func WorktreeResponseLogged(b []byte) any {
 	var v map[string]any
 	if json.Unmarshal(b, &v) != nil {
@@ -34,6 +35,13 @@ func worktreeSecretsOut(v map[string]any) {
 	if patch, ok := v["patch"].(string); ok {
 		delete(v, "patch")
 		v["patch_bytes"] = len(patch)
+	}
+	if content, ok := v["content"].(string); ok {
+		delete(v, "content")
+		v["content_bytes"] = len(content)
+	}
+	if paths, ok := v["paths"].([]any); ok {
+		v["paths"] = len(paths)
 	}
 	if comments, ok := v["comments"].([]any); ok {
 		v["comments"] = len(comments)

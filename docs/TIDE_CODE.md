@@ -220,6 +220,8 @@ Done on 2026-11-01. A refactor with no change in behaviour, in `internal/tide`. 
 
 ### 2. The API for the tree and for contents
 
+Done on 2026-11-01. Beyond the plan: a file in conflict is listed once, though `ls-files` gives one per stage; a nested repository, which `ls-files` gives as a directory, is left out; and anything else that is not a regular file is `invalid_path` too, asked before opening it, since opening a named pipe would wait forever. The client's methods come with the first caller, in step 3.
+
 - `git.ListFiles` in `internal/git/read.go`, from `git ls-files -z -co --exclude-standard`, joining `TestReadsWriteNothing`'s table.
 - `worktree.ListFiles` and `worktree.ReadFile` in `internal/worktree`. Paths go through `filepath.IsLocal`, then `filepath.EvalSymlinks` must stay inside the worktree (`invalid_path`). A directory is `invalid_path`, and a file gone is `not_found`.
 - In `api/openapi.yaml`, then `make generate`:

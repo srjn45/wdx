@@ -195,7 +195,7 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 var (
 	// Messages too: their text can hold secrets.
 	worktreeRequests  = map[string]bool{"createWorktreeComment": true, "editWorktreeComment": true, "sendWorktreeReview": true}
-	worktreeResponses = map[string]bool{"listWorktrees": true, "getWorktreeDiff": true, "getWorktreeFileDiff": true, "listWorktreeComments": true, "createWorktreeComment": true, "listMessages": true, "resendMessage": true}
+	worktreeResponses = map[string]bool{"listWorktrees": true, "getWorktreeDiff": true, "getWorktreeFileDiff": true, "listWorktreeFiles": true, "getWorktreeFileContent": true, "listWorktreeComments": true, "createWorktreeComment": true, "listMessages": true, "resendMessage": true}
 )
 
 // requestLogged is a request's body as logged: a prompt can hold secrets, so

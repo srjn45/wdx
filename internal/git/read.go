@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -217,6 +218,33 @@ func changeLetter(xy string) string {
 		return "A"
 	}
 	return "M"
+}
+
+// ListFiles returns the files of the checkout at dir, tracked and untracked, without
+// gitignored ones, sorted. A tracked file missing from disk is among them. truncated
+// says the list was too long, and these are the first of it.
+func ListFiles(ctx context.Context, dir string) (paths []string, truncated bool, err error) {
+	out, truncated, err := read(ctx, dir, noDownload, "ls-files", "-z", "-co", "--exclude-standard")
+	if err != nil {
+		return nil, false, err
+	}
+	return filePaths(out), truncated, nil
+}
+
+// filePaths splits what ls-files -z wrote. It lists a file in conflict once per
+// stage, and a nested repository as a directory, which is no file to open. Output
+// cut short ends inside a path, which is dropped.
+func filePaths(out []byte) []string {
+	entries := strings.Split(string(out), "\x00")
+	entries = entries[:len(entries)-1] // after the last NUL: nothing, or the part of a path
+	paths := make([]string, 0, len(entries))
+	for _, p := range entries {
+		if !strings.HasSuffix(p, "/") {
+			paths = append(paths, p)
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths)
 }
 
 // DefaultBranch returns the name of the repository's default branch: the one
