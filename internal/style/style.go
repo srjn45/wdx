@@ -64,6 +64,10 @@ func (s Style) Added(text string) string { return s.apply(text, green) }
 // Removed styles what a diff removes.
 func (s Style) Removed(text string) string { return s.apply(text, red) }
 
+// Committed styles what a branch's commits changed, apart from what is not
+// committed yet, which Added, Warning and Removed style.
+func (s Style) Committed(text string) string { return s.apply(text, cyan) }
+
 // CodeKeyword styles a language's keyword in source code.
 func (s Style) CodeKeyword(text string) string { return s.apply(text, purple) }
 

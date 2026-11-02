@@ -252,13 +252,7 @@ func (m *Model) worktreeRowActive(r worktreeRow) bool {
 
 // worktreeMark is a file's status, which tells it with color off too.
 func worktreeMark(st style.Style, status api.WorktreeFileStatus) string {
-	switch status {
-	case api.WorktreeFileStatusA, api.WorktreeFileStatusEmpty:
-		return st.Added(string(status))
-	case api.WorktreeFileStatusD, api.WorktreeFileStatusU:
-		return st.Removed(string(status))
-	}
-	return st.Warning(string(status))
+	return codeMark{letter: string(status)}.paint(st, string(status))
 }
 
 // worktreeSummary is what a worktree's row says of its commits. "landed" is for a

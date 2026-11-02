@@ -94,6 +94,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
 | Browse a worktree's files | none, only the API | the Code section, `< worktree >` and a tree | By design | A script or an AI reads files itself (docs/TIDE_CODE.md) |
+| See which files a worktree changed | `worktree list` for what is not committed, `worktree diff` for what is | the Code tree's letters and colours, and a count on each directory | By design | The CLI has no tree to mark; its lists say the same (docs/TIDE_CODE.md) |
 | Read a file, highlighted | none, only the API | `Enter` on it: a read-only tab | By design | As above |
 | Edit a file | none, only the API | `e`: the `editor` setting's editor in its tab; closing it asks to save or discard | By design | A script or an AI writes files itself; a person edits in an editor |
 | Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `d` in the Code section, in popups | By design | A script or an AI changes files itself |

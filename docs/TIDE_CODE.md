@@ -41,7 +41,7 @@ Reading and editing a project's files without leaving tide: step 4 of the order 
 - It holds what `git ls-files -co --exclude-standard` lists: tracked and untracked files, without gitignored ones (the human's choice, for now). Directories come from the paths, so an empty one does not show.
 - A tracked file missing from disk is listed, and says so when opened.
 - Directories come before files, and both are sorted by name. Directories start folded. Each worktree keeps its own folds and cursor.
-- It looks and moves as the Agents list does, design A of its [design sheet](https://claude.ai/artifact/PNZzmDWdZeiMHY1PPBFLy6), by the human's choice: a green `▸` and bold name for the cursor, hidden while the pane has no focus; a tinted row and `◂` for the file in the current tab; `−` and `+` for folds, `├ └ │` for the tree, and past about level 8 the row shows its level (`⋯9 ├`). Names end in `…`. Files have no state mark, having no state. With colour off the glyphs carry it all.
+- It looks and moves as the Agents list does, design A of its [design sheet](https://claude.ai/artifact/PNZzmDWdZeiMHY1PPBFLy6), by the human's choice: a green `▸` and bold name for the cursor, hidden while the pane has no focus; a tinted row and `◂` for the file in the current tab; `−` and `+` for folds, `├ └ │` for the tree, and past about level 8 the row shows its level (`⋯9 ├`). Names end in `…`. A changed file has git's letter and a changed directory a count, in [Changes in the tree](#changes-in-the-tree). With colour off the glyphs carry it all.
 - `↑↓` or `k j` move through the rows shown, and the heading stays pinned. `→` or `l` unfolds. `←` or `h` folds, or moves to the parent when already folded or on a file. A click on a row moves the cursor and opens a file or folds a directory; a click on `+` or `−` only folds.
 - `Enter` on a directory folds or unfolds it, as on a pipeline in that sheet. `Enter` on a file opens its tab, or goes to it, and the focus stays in the list.
 - The tree is read again on the events in `docs/TIDE_WORKTREES.md` and on `f`. No file is watched, so an agent's edits show when it stops, as in Worktrees.
@@ -221,6 +221,66 @@ Designed with the human on 2026-11-02, who chose the directory picker, a name ty
 - **Empty directories.** git lists no directory holding no file, so `listWorktreeFiles` gives those apart, `empty_dirs`, from `ls-files --directory`: without them a new directory would be gone from the tree at once. One holding only an empty one shows alone.
 - **API.** `POST`, `PATCH` and `DELETE` on `/v1/worktrees/{worktree}/files`, refusing a path out of the worktree or into `.git`, the worktree itself, and `.git` as a name (`invalid_path`, `invalid_name`), a name taken (`path_exists`) and a directory not there (`not_found`). The CLI has no command, as for the rest of the section: a script or an AI changes files itself (`docs/CLI_TIDE.md`).
 
+## Changes in the tree
+
+Status: designed with the human on 2026-11-02; step 1, the files' letters, built on 2026-11-02, with a space between a cut name and its letter; the directories' counts not yet. The human chose marking both what is not committed and what is committed against the base, git's letters rather than new glyphs, colouring the name as well as the letter, the colours (scheme 2 of a preview in the terminal: what is not committed by what changed, all that is committed in cyan), and a count on directories. The other details came from the AI and stand until the human changes them.
+
+The tree shows which files a worktree changed, so that its changes can be found and opened without going through Worktrees.
+
+```
+ Code
+ < auth-fix >
+   + docs                     2     cyan: only committed changes below
+   − internal                 5     red: a deletion not committed below
+   ├ + git                    1
+   └ − tide                   4
+       ├ code.go              M     yellow: changed, not committed
+       ├ newfile.go           ?     green: untracked
+       ├ old.go               D     red: deleted, not committed
+     ▸ ├ tabs.go              M     cyan: changed in a commit
+       └ tide.go
+     README.md
+```
+
+### What is marked
+
+- **Not committed:** the worktree's `files`, staged, not staged and untracked, as the Worktrees section lists them: `M` changed, `A` added to the index, `?` untracked, `D` deleted, `U` in conflict.
+- **Committed:** its `committed_files`, what its commits changed since it left the base, as its PR tab shows: `M`, `A`, `D`. On the main checkout the base is the default branch on `origin`, so these are the commits not pushed. A worktree with no base, or whose commits are not known, marks none.
+- **Both:** a file with changes of both kinds shows its letter not committed, the newer state. A file added in a commit and then changed shows a yellow `M`, not that it is new in the PR.
+- **Not in the tree:** a file deleted in a commit, or with `git rm`, is not in the list, so it has no row; the PR tab and Worktrees show it. A file deleted from disk but still in the index is listed, with its `D`.
+- **No new reads.** Both lists are in the worktree's status, which tide already follows in the project's stream, so the marks cost no git and change on the same events as Worktrees: an edit not staged shows when the agent stops, or on `f`. A worktree not read yet (`reading…`) marks nothing.
+
+### How it looks
+
+- The letter sits at the row's right end, before the `◂` of the open tab, and the name is cut shorter to make room for it.
+- **Colours,** the name and the letter alike, through `internal/style`:
+
+  | | Colour | Style |
+  |---|---|---|
+  | `A`, `?` not committed | green | `Added` |
+  | `M` not committed | yellow | `Warning` |
+  | `D`, `U` not committed | red | `Removed` |
+  | anything committed | cyan | new: `Committed` |
+
+  So what is being worked on now has the usual colours, and everything already committed is one quieter colour that never mixes with them.
+- The cursor's row keeps its green `▸`, and its name is bold in its change colour; the open tab's row keeps its tint. An unchanged file looks as now.
+- With colour off the letter still says what changed, but not whether it is committed: the same letter means either.
+
+### Directories
+
+- A directory shows how many changed files are under it, at any depth, in place of a letter, folded or not, so a change can be followed down from the top.
+- Its colour, name and count, is the strongest below it: anything not committed comes before anything committed, and among those red before green before yellow. All committed is cyan.
+- The count includes changed files with no row, such as one deleted in a commit, as the Worktrees section counts them: it says how much changed below, not how many rows are marked.
+- The counts are worked out from the two lists, walking up each changed path, so their cost grows with the changes, not with the tree: it is the same on a monorepo's 387K files.
+
+### Built
+
+- `internal/style`: `Committed`, cyan.
+- `internal/tide/code.go`: `codeMarks`, the marks of the chosen worktree, a letter and colour per changed file and a count and colour per directory, worked out from its status each time the section is drawn, which costs as much as there are changes; `codeLine` draws them. The filter's tree shows them too. The Worktrees section's letters take their colour from the same place, `codeMark.paint`.
+- Tests: the marks from statuses (not committed winning, the order of colours, counts at every level, a path deleted in a commit counted with no row), and the drawn rows with colour off (the letter at the end, the name cut for it) and on (the style of name and letter, the cursor's and the open tab's rows).
+- `docs/CLI_TIDE.md`: a row. The CLI has no tree; `wdx worktree list` already lists the files not committed with their letters, and `wdx worktree diff` what is committed.
+- Two steps, each its own commit if the human wants: the files' letters, then the directories' counts.
+
 ## The order of the sections
 
 `tide.section_order`, default `awc`: a letter per section, `a` Agents, `w` Worktrees, `c` Code.
@@ -362,5 +422,5 @@ Not checked by this plan: macOS, for want of a machine and a CI job (`docs/REVIE
 ## Suggested, not part of this
 
 - Highlighting in the diff tabs, which use the same text view.
-- A git status letter on the tree's files.
+- A git status letter on the tree's files: designed on 2026-11-02, [Changes in the tree](#changes-in-the-tree).
 - A toggle for gitignored files.

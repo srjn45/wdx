@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -541,6 +542,54 @@ func (m *Model) codeRowActive(r codeRow) bool {
 	return file == r.node.path || (r.fold == foldClosed && strings.HasPrefix(file, r.node.path+"/"))
 }
 
+// codeMark is how the tree shows a changed file: git's letter, and whether the
+// change is committed or not yet.
+type codeMark struct {
+	letter    string
+	committed bool
+}
+
+// codeMarks returns the marks of the chosen worktree's changed files, by path. A file
+// with changes of both kinds has the mark of those not committed, the newer.
+func (m *Model) codeMarks() map[string]codeMark {
+	l := m.list()
+	if l == nil {
+		return nil
+	}
+	for _, w := range m.worktreeStatuses() {
+		if w.Name != l.code.worktree {
+			continue
+		}
+		marks := make(map[string]codeMark, len(w.Files)+len(w.CommittedFiles))
+		for _, f := range w.CommittedFiles {
+			marks[f.Path] = codeMark{letter: string(f.Status), committed: true}
+		}
+		for _, f := range w.Files {
+			marks[f.Path] = codeMark{letter: string(f.Status)}
+		}
+		return marks
+	}
+	return nil
+}
+
+// paint styles text, a file's name or letter, in the colour of the mark: what is
+// committed in one colour, what is not by what changed.
+func (c codeMark) paint(st style.Style, text string) string {
+	switch {
+	case c.letter == "":
+		return text
+	case c.committed:
+		return st.Committed(text)
+	}
+	switch api.WorktreeFileStatus(c.letter) {
+	case api.WorktreeFileStatusA, api.WorktreeFileStatusEmpty:
+		return st.Added(text)
+	case api.WorktreeFileStatusD, api.WorktreeFileStatusU:
+		return st.Removed(text)
+	}
+	return st.Warning(text)
+}
+
 // codeGuide returns the guide drawn on r in a pane width wide, and the cells it
 // leaves for the name and the end.
 func codeGuide(r codeRow, width int) (guide string, room int) {
@@ -551,8 +600,9 @@ func codeGuide(r codeRow, width int) (guide string, room int) {
 	return fitGuide(r.guide, r.depth, base)
 }
 
-// codeLine draws a row of the section, width wide.
-func (m *Model) codeLine(r codeRow, cursor bool, width int) string {
+// codeLine draws a row of the section, width wide, a changed file with its mark
+// from marks.
+func (m *Model) codeLine(r codeRow, marks map[string]codeMark, cursor bool, width int) string {
 	st := m.st
 	pointer := "  "
 	if cursor {
@@ -570,17 +620,26 @@ func (m *Model) codeLine(r codeRow, cursor bool, width int) string {
 	if active {
 		end = " " + st.Focused("◂") + " "
 	}
+	var mark codeMark
+	if !r.node.dir {
+		mark = marks[r.node.path]
+	}
+	letter := ""
+	if mark.letter != "" {
+		letter = " " + mark.paint(st, mark.letter)
+	}
 	guide, room := codeGuide(r, width)
-	room -= style.Width(end)
+	room -= style.Width(end) + style.Width(letter)
 	name := ansi.Truncate(r.node.name, max(room, 0), "…")
 	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
+	name = mark.paint(st, name)
 	if cursor || active {
 		name = st.Name(name)
 	}
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	row := pointer + st.Muted(guide) + name + gap + end
+	row := pointer + st.Muted(guide) + name + gap + letter + end
 	if active {
 		return st.ActiveRow(row)
 	}

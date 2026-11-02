@@ -2,6 +2,7 @@ package tide
 
 import (
 	"context"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -330,6 +331,93 @@ func TestCodeDrawn(t *testing.T) {
 	m.layout.setFocus(agent)
 	if strings.Contains(strings.Join(paneLines(m), "\n"), "▸") {
 		t.Errorf("the cursor shows without the focus:\n%s", text(m))
+	}
+}
+
+// markedWorktrees are a main checkout with changes of both kinds, and another
+// worktree with a change of its own.
+func markedWorktrees() []api.WorktreeStatus {
+	return []api.WorktreeStatus{
+		{
+			Name: "main", Path: "/r",
+			Files: []api.WorktreeFile{changed("new.go", api.WorktreeFileStatusEmpty), changed("both.go", api.WorktreeFileStatusM), changed("gone.go", api.WorktreeFileStatusD)},
+			CommittedFiles: []api.WorktreeCommittedFile{
+				{Path: "both.go", Status: api.WorktreeCommittedFileStatusA},
+				{Path: "pr.go", Status: api.WorktreeCommittedFileStatusM},
+				{Path: "dir/deleted.go", Status: api.WorktreeCommittedFileStatusD},
+			},
+		},
+		{Name: "other", Path: "/o", Files: []api.WorktreeFile{changed("elsewhere.go", api.WorktreeFileStatusM)}},
+	}
+}
+
+func TestCodeMarks(t *testing.T) {
+	t.Parallel()
+	m := codeModel(nil, markedWorktrees()...)
+	want := map[string]codeMark{
+		"new.go":         {letter: "?"},
+		"both.go":        {letter: "M"}, // what is not committed wins
+		"gone.go":        {letter: "D"},
+		"pr.go":          {letter: "M", committed: true},
+		"dir/deleted.go": {letter: "D", committed: true},
+	}
+	if got := m.codeMarks(); !maps.Equal(got, want) {
+		t.Errorf("marks %v, want %v", got, want)
+	}
+	m.moveToCode(0)
+	keys(m, "right") // to the other worktree
+	if got := m.codeMarks(); !maps.Equal(got, map[string]codeMark{"elsewhere.go": {letter: "M"}}) {
+		t.Errorf("the other worktree's marks: %v", got)
+	}
+}
+
+func TestCodeMarksDrawn(t *testing.T) {
+	t.Parallel()
+	long := "a-changed-file-with-a-long-name.go"
+	m := codeModel([]string{"dir/x", "new.go", "both.go", "pr.go", "plain.go", long}, markedWorktrees()...)
+	w := m.following.project.WorktreeStatuses
+	(*w)[0].Files = append((*w)[0].Files, changed(long, api.WorktreeFileStatusM))
+	m.moveToCode(1)
+
+	ends := map[string]string{"dir": "", "new.go": "?", "both.go": "M", "pr.go": "M", "plain.go": "", "a-changed": "M"}
+	for _, line := range paneLines(m) {
+		for name, letter := range ends {
+			if !strings.Contains(line, " "+name) {
+				continue
+			}
+			if got := strings.TrimRight(line, " "); !strings.HasSuffix(got, " "+letter) && letter != "" {
+				t.Errorf("%s does not end in %q: %q", name, letter, line)
+			} else if letter == "" && strings.ContainsAny(got[len(got)-1:], "?MAD") {
+				t.Errorf("%s has a mark: %q", name, line)
+			}
+			if name == "a-changed" && !strings.Contains(line, "…") {
+				t.Errorf("a long name is not cut for its letter: %q", line)
+			}
+		}
+	}
+
+	m.st = style.New(true)
+	st, marks := m.st, m.codeMarks()
+	line := func(path string, cursor bool) string {
+		i := slices.IndexFunc(m.codeRowsShown(), func(r codeRow) bool { return r.key() == path })
+		return m.codeLine(m.codeRowsShown()[i], marks, cursor, 31)
+	}
+	for _, tc := range []struct {
+		what, path string
+		cursor     bool
+		want       []string
+	}{
+		{"an untracked file, in green", "new.go", false, []string{st.Added("new.go"), " " + st.Added("?")}},
+		{"a file changed in both, as not committed", "both.go", false, []string{st.Warning("both.go"), " " + st.Warning("M")}},
+		{"a committed file under the cursor, bold in cyan", "pr.go", true, []string{st.Name(st.Committed("pr.go")), " " + st.Committed("M")}},
+		{"an unchanged file, plain", "plain.go", false, []string{"\x1b[0mplain.go   "}},
+	} {
+		got := line(tc.path, tc.cursor)
+		for _, want := range tc.want {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: no %q in %q", tc.what, want, got)
+			}
+		}
 	}
 }
 

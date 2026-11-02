@@ -752,7 +752,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
-	agents, rows, worktrees, code := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown()
+	agents, rows, worktrees, code, marks := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown(), m.codeMarks()
 	agentCount := fmt.Sprint(len(agents)-countRemoved(agents)) + " "
 	worktreeCount := ""
 	if m.worktreeStatuses() != nil {
@@ -789,7 +789,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			r := worktrees[it.row]
 			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
 		case it.section == sectionCode:
-			lines = append(lines, m.codeLine(code[it.row], cursor, width))
+			lines = append(lines, m.codeLine(code[it.row], marks, cursor, width))
 		}
 	}
 	if l.filter.on() {
