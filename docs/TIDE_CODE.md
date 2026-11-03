@@ -402,7 +402,7 @@ Done on 2026-11-02, with these differences from the plan. `attachedAgent` became
 - When the editor leaves the stream, the tab detaches and `diffSync` reads the file anew.
 - An editor with no tab gets one on the project's first event.
 - The confirmations of `C-q w` and worktree removal name the editors.
-- Tests: a sequence through `e`, typing into the attachment, exit and re-read; `C-q r` keeps it attached; a fresh start gets its tab back; two tides on one editor.
+- Tests: a sequence through `e`, typing into the attachment, exit and re-read; `C-q r` keeps it attached; a fresh start gets its tab back, and so does a tide started anew while the editor runs (one tide runs per home since 2026-11-03, docs/TIDE_STATE.md).
 
 ### 9. Closing with the popup
 

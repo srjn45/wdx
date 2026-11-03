@@ -158,7 +158,7 @@ func TestEditLive(t *testing.T) {
 		t.Errorf("title %q", titleRow(m))
 	}
 
-	// Another tide, started now, finds the editor and gives it a tab.
+	// A tide started anew, as after this one quit, finds the editor and gives it a tab.
 	other := h.follow(t)
 	other.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
 	other.keys("enter")

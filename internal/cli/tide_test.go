@@ -21,6 +21,35 @@ func TestTideRefused(t *testing.T) {
 	}
 }
 
+// TestTideRunning: a second tide for a home is refused while the first runs, and
+// starts once it has quit.
+func TestTideRunning(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	run := startInTerminal(t, home, home, 128, 24, []string{"tide"})
+	run.waitScreen("┃ Open Project")
+	// Another command line than the first's: the log checks tell runs apart by it.
+	second := []string{"tide", "--color", "never"}
+	out := wdx(t, home, second...)
+	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "a tide is already running for this home, as pid") ||
+		!strings.Contains(out.stderr, "[tide_running]") || !strings.Contains(out.stderr, "hint: go to the window it runs in") {
+		t.Fatalf("a second tide: %+v", out)
+	}
+	run.input("\x1b") // Esc: the popup closed
+	// Until it has, a C-q would come right after the Esc and read as Alt+C-q.
+	run.waitFor("the popup closed", func(text string) bool { return !strings.Contains(text, "┃ Open Project") })
+	run.input("\x11") // C-q: the menu
+	run.waitScreen("┃ o  open project")
+	run.input("q")
+	if out := run.waitText(); out.exit != api.ExitOK {
+		t.Fatalf("quit: %+v", out)
+	}
+	// Once it quit the lock is free again: no terminal to run in is what stops this one.
+	if out := wdx(t, home, second...); out.exit != api.ExitUsage || !strings.Contains(out.stderr, "no terminal to run tide in") {
+		t.Fatalf("after quitting: %+v", out)
+	}
+}
+
 // TestTideDetachesAttach runs attach in a tide pane, where tide takes attach's
 // prefix: C-q \\ d gives it to attach and detaches, tide still running.
 func TestTideDetachesAttach(t *testing.T) {

@@ -119,6 +119,12 @@ func PreviousDir(home string) string {
 	return filepath.Join(home, "previous")
 }
 
+// TideLockPath is the file the running tide holds locked under home, as a
+// daemon has one tide; it holds the tide's pid.
+func TideLockPath(home string) string {
+	return filepath.Join(home, "tide.lock")
+}
+
 // UpdateLockPath is the file an update or rollback holds locked under home.
 func UpdateLockPath(home string) string {
 	return filepath.Join(home, "update.lock")

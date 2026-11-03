@@ -2596,7 +2596,7 @@ components:
       type: string
       description: |
         Stable error code; never changed or reused. daemon_unavailable,
-        already_running, runtime_missing, port_in_use, runtime_failed,
+        already_running, tide_running, runtime_missing, port_in_use, runtime_failed,
         agent_not_running, attach_unsupported,
         connection_lost, the
         codes of wdx update (download_failed to restore_required) and of
@@ -2669,6 +2669,7 @@ components:
         - dependency_missing
         - editor_running
         - doc_changed
+        - tide_running
 
     Problem:
       type: object

@@ -107,6 +107,8 @@ func problem(err error) (api.Problem, int) {
 		p = api.NewProblem(api.ErrorCodeUsage, err.Error())
 	} else if dp, ok := daemonProblem(err); ok {
 		p = dp
+	} else if tp, ok := tideProblem(err); ok {
+		p = tp
 	} else if op, ok := observeProblem(err); ok {
 		p = op
 	} else if ap, ok := attachProblem(err); ok {

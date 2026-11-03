@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
+	"strings"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
@@ -42,7 +46,7 @@ func newTideCmd() *cobra.Command {
 			"when closed. The terminal pane has a tab for each of the project's\n" +
 			"terminals, kept up to date as they change; for now a tab and the agent pane\n" +
 			"hold placeholders. tide needs the daemon running, runs in the terminal it\n" +
-			"was started from and has no --json.",
+			"was started from and has no --json. One tide runs per home: another is refused.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),
@@ -51,6 +55,7 @@ func newTideCmd() *cobra.Command {
 			failurePrefix: "tide did not start",
 			outputNote:    "Once you quit, that tide closed; it gives the window back as it was.",
 			resultList:    annotation("closed", "reloaded"),
+			errorList:     codeList(api.ErrorCodeTideRunning),
 		},
 		RunE: runTide,
 	}
@@ -92,6 +97,12 @@ func runTide(cmd *cobra.Command, _ []string) error {
 		return &usageError{errors.New("tide is interactive and has no --json")}
 	}
 	env := invocationOf(cmd).env
+	lock, err := lockTide(env.Config.Home)
+	if err != nil {
+		return err
+	}
+	defer lock.Close() // C-q r execs the next tide with it closed, which then takes it
+	logging.FromContext(cmd.Context()).Info("tide lock taken", "path", lock.Name())
 	if env.TTY == nil {
 		return &usageError{errors.New("no terminal to run tide in: run it in one")}
 	}
@@ -162,4 +173,58 @@ type tideResult struct {
 
 func (r tideResult) text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "tide %s\n", st.Success(string(r.Result)))
+}
+
+// tideRunningError is a tide that did not start, as another runs for the home.
+type tideRunningError struct{ pid int }
+
+func (e *tideRunningError) Error() string {
+	if e.pid == 0 {
+		return "a tide is already running for this home"
+	}
+	return fmt.Sprintf("a tide is already running for this home, as pid %d", e.pid)
+}
+
+// tideProblem returns the problem of a tide that did not start, if err is one.
+func tideProblem(err error) (api.Problem, bool) {
+	e, ok := errors.AsType[*tideRunningError](err)
+	if !ok {
+		return api.Problem{}, false
+	}
+	p := api.NewProblem(api.ErrorCodeTideRunning, err.Error())
+	hint := "go to the window it runs in, or quit it there with C-q q"
+	p.Hint = &hint
+	if e.pid != 0 {
+		p.Details = &map[string]any{"pid": e.pid}
+	}
+	return p, true
+}
+
+// lockTide takes the home's tide lock, held until the file returned is closed,
+// and writes this process's pid into it. The operating system frees it when the
+// process ends, killed or not, so no tide that died leaves it held.
+func lockTide(home string) (*os.File, error) {
+	path := identity.TideLockPath(home)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			b, _ := os.ReadFile(path)
+			pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+			return nil, &tideRunningError{pid: pid}
+		}
+		return nil, err
+	}
+	if err := f.Truncate(0); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if _, err := f.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }

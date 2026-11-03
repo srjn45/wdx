@@ -115,8 +115,8 @@ func (m *Model) editorOpened(msg editorOpened) {
 }
 
 // editorsChanged closes the tabs closing whose editor ended, and gives each editor
-// running a tab on the project's first event: one started before tide was, or by
-// another tide, could not be reached otherwise.
+// running a tab on the project's first event: one started before this tide was,
+// by the tide before it, could not be reached otherwise.
 func (m *Model) editorsChanged() {
 	l := m.list()
 	for tab := range l.closing {
