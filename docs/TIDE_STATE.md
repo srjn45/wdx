@@ -205,7 +205,13 @@ A tab whose row is still there but whose target is gone was removed outside wdx,
 - For a `file` tab, it runs one `os.Lstat` of the file. tide has three to ten tabs, so this costs nothing beside the event.
 - It is not kept in `tide_tabs`: it is a fact about the disk now, not about the tab.
 
-The tracker already watches each worktree while a stream follows it, so an `rm` or an `mv` wakes the stream, and the event says so at once. A file put back makes the tab whole again on the next event. tide does not stat files itself.
+**What wakes the stream.** The tracker's watches are on git's files only (index, HEAD, logs, refs), never on a worktree's files: an `rm` outside git changes none of them. So while a stream follows the worktrees, the tracker also watches what the tabs show (`Tracker.WatchTabs`, called each time the daemon builds the tabs, before it looks at the disk):
+- the file of each `file` tab, and the directory of each worktree a tab names;
+- through their parent directories, so that a file put back is seen too: one watch for each directory, however many tabs are in it;
+- a file of a tab created, removed or renamed wakes the streams, whose next event looks at the disk again; a worktree's directory removed (`rm -rf`) has the worktrees read again, which finds it missing. A write wakes nothing.
+- A file under a directory not there when it was watched, or one moved with a directory above its own, is seen at the next event that comes for another reason.
+
+tide does not stat files itself. (Fixed on 2026-11-03: until then, an `rm` was seen only at the next event that came for another reason.)
 
 **How tide shows it**
 - In the strip, the tab is marked `✗` in the failure style, where an agent's tab has its state mark: `[✗ file.go(-)]`. Its name stays as it was.
@@ -219,7 +225,8 @@ The tracker already watches each worktree while a stream follows it, so an `rm` 
 **API:** `Tab.missing` is optional in the schema and always present in responses. The daemon ignores it in a request, so it can never be stored, and tide does not send it. It only adds, so it goes out as `feat:`.
 
 **Tests**
-- Daemon: a file tab missing after its file is removed on disk and whole again once it is back; a pr tab missing after `git worktree remove` outside wdx; a diff tab of a deleted file not missing.
+- Daemon: once the worktrees are read, a file tab missing after its file is removed on disk and whole again once it is back, a file git ignores included; the tabs of a worktree missing after its directory is removed with `rm -rf`; a diff tab of a deleted file not missing.
+- Tracker: a tab's file removed or created calls `Changed`, and a tab's worktree removed is read as missing.
 - tide: a missing tab's mark and pane text, and closing it with `C-q -`.
 
 ## `tide.section_order`

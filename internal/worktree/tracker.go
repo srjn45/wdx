@@ -173,6 +173,11 @@ type tracked struct {
 	commonDirs map[string]bool
 	bases      map[string]bool // the files that say a base moved: its ref and its reflog
 	watching   bool            // the watcher works, so the end of a lock will be seen
+
+	tabsMu       sync.Mutex
+	tabWatcher   *fsnotify.Watcher // nil until watchTabs starts, and once it ended
+	tabFiles     map[string]bool   // the files tabs show
+	tabWorktrees map[string]bool   // the directories of the worktrees tabs name
 }
 
 func (p *tracked) nudge() {
@@ -311,6 +316,7 @@ func (p *tracked) run(ctx context.Context) {
 		p.mu.Unlock()
 		p.t.wg.Go(func() { p.watch(ctx, watcher) })
 	}
+	p.startTabWatch(ctx)
 	p.agentsChanged() // what is working now is what may stop
 	settle := time.NewTimer(p.t.opts.Settle)
 	defer settle.Stop()
@@ -581,7 +587,7 @@ func exists(path string) bool {
 }
 
 // syncWatches watches what git changes for each checkout, and never its files,
-// which would take a watch per directory: its git directory and logs, what the
+// which would take a watch per directory (WatchTabs watches the few tabs show): its git directory and logs, what the
 // repository's checkouts share, and where its base's ref and reflog are. A directory not there yet is added when its
 // parent says it came, or at the next read.
 func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, list []Status, dirs map[string]gitDirs) {

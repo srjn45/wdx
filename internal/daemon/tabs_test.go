@@ -153,8 +153,10 @@ func missingIn(e event) []bool {
 	return list
 }
 
-// TestTabsMissing: a file tab is missing while its file is gone from the disk, and
-// a diff or pr tab while its worktree is; a diff of a deleted file is not.
+// TestTabsMissing: a file tab is missing while its file is gone from the disk, a
+// file git ignores included, and a diff or pr tab while its worktree is; a diff of
+// a deleted file is not. Each is removed outside wdx and git once the worktrees
+// were read, so that only a watch on what the tabs show can tell of it.
 func TestTabsMissing(t *testing.T) {
 	t.Parallel()
 	td, p := startEditing(t, "")
@@ -162,23 +164,36 @@ func TestTabsMissing(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "work")
 	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
 	writeIn(t, work, "b.go", "package b\n")
+	writeIn(t, work, ".gitignore", "*.log\n")
+	writeIn(t, work, "x.log", "x\n")
 	diff, workName := "a.go", "work"
 	td.replaceTabs(t, "api", fileTab("main", "a.go"), api.Tab{Kind: api.TabKindDiff, Worktree: optional("main"), Path: &diff},
-		fileTab("work", "b.go"), api.Tab{Kind: api.TabKindPr, Worktree: &workName})
+		fileTab("work", "b.go"), api.Tab{Kind: api.TabKindPr, Worktree: &workName}, fileTab("work", "x.log"))
 	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: optional(true)})
 	missing := func(what string, want ...bool) {
 		t.Helper()
 		waitEvent(t, events, what, func(e event) bool { return e.name == "project" && slices.Equal(missingIn(e), want) })
 	}
-	missing("all there", false, false, false, false)
+	waitEvent(t, events, "the worktrees read, all there", func(e event) bool {
+		_, main := worktreeStatus(e, "main")
+		_, work := worktreeStatus(e, "work")
+		return main && work && slices.Equal(missingIn(e), []bool{false, false, false, false, false})
+	})
 
 	if err := os.Remove(filepath.Join(dir, "a.go")); err != nil {
 		t.Fatal(err)
 	}
-	missing("a.go gone, its diff still showing the deletion", true, false, false, false)
+	missing("a.go gone, its diff still showing the deletion", true, false, false, false, false)
 	writeIn(t, dir, "a.go", "package a\n")
-	missing("a.go back", false, false, false, false)
+	missing("a.go back", false, false, false, false, false)
 
-	gittest.Git(t, dir, "worktree", "remove", "--force", work) // outside wdx
-	missing("the worktree gone", false, false, true, true)
+	if err := os.Remove(filepath.Join(work, "x.log")); err != nil {
+		t.Fatal(err)
+	}
+	missing("the ignored file gone", false, false, false, false, true)
+
+	if err := os.RemoveAll(work); err != nil {
+		t.Fatal(err)
+	}
+	missing("the worktree's directory gone", false, false, true, true, true)
 }
