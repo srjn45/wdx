@@ -17,10 +17,11 @@ import (
 
 // event is one event of a project stream as the test read it.
 type event struct {
-	name    string
-	project api.Project
-	tabs    []api.Tab
-	data    string
+	name         string
+	project      api.Project
+	tabs         []api.Tab
+	tabsRevision int64
+	data         string
 }
 
 // follow opens the stream of the project ref and returns its events, which
@@ -57,7 +58,7 @@ func (td *testDaemon) followWith(t *testing.T, ref string, params *api.StreamPro
 				if e.name == "project" {
 					var v api.ProjectEnvelope
 					_ = json.Unmarshal([]byte(e.data), &v)
-					e.project, e.tabs = v.Project, v.Tabs
+					e.project, e.tabs, e.tabsRevision = v.Project, v.Tabs, v.TabsRevision
 				}
 				events <- e
 				e = event{}

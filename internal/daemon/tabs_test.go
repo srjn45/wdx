@@ -46,19 +46,20 @@ func TestReplaceTabs(t *testing.T) {
 	pr := "main"
 	tabs := []api.Tab{docTab(d.Id), {Kind: api.TabKindPr, Worktree: &pr}, settingsTab(), fileTab("main", "a/b.go")}
 	r := td.replaceTabs(t, "app", tabs...)
-	if r.JSON200 == nil || r.JSON200.Result != api.ResultUpdated {
+	if r.JSON200 == nil || r.JSON200.Result != api.ResultUpdated || r.JSON200.TabsRevision <= 0 {
 		t.Fatalf("replace: %s", r.Body)
 	}
+	saved := r.JSON200.TabsRevision
 	answered, _ := json.Marshal(r.JSON200.Tabs)
 	if given, _ := json.Marshal(tabs); string(answered) != string(given) {
 		t.Errorf("answered %s, want %s", answered, given)
 	}
-	waitEvent(t, events, "the tabs", func(e event) bool { return tabsAre(e, tabs...) })
+	waitEvent(t, events, "the tabs at their revision", func(e event) bool { return tabsAre(e, tabs...) && e.tabsRevision == saved })
 
 	if del, err := td.client.DeleteDocWithResponse(context.Background(), "auth", &api.DeleteDocParams{Project: optional("app")}); err != nil || del.JSON200 == nil {
 		t.Fatalf("remove the doc: %v", err)
 	}
-	waitEvent(t, events, "the doc's tab gone", func(e event) bool { return tabsAre(e, tabs[1:]...) })
+	waitEvent(t, events, "the doc's tab gone, at a later revision", func(e event) bool { return tabsAre(e, tabs[1:]...) && e.tabsRevision > saved })
 
 	if c, err := td.client.UpdateProjectWithResponse(context.Background(), "app", api.UpdateProject{State: api.ProjectStateClosed}); err != nil || c.JSON200 == nil {
 		t.Fatalf("close: %v", err)

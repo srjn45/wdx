@@ -17,6 +17,7 @@ import (
 type tabsSaved struct {
 	projectID string
 	tabs      []string // what was sent
+	revision  int64    // the tabs' revision once saved
 	err       error
 }
 
@@ -100,17 +101,25 @@ func (m *Model) tabsSync() tea.Cmd {
 	if slices.Equal(tabs, l.savedTabs) {
 		return nil
 	}
+	list := apiTabs(tabs)
+	done := make(chan struct{})
+	l.savingTabs, l.sendingTabs, l.tabsInFlight = true, tabs, done
+	id := m.following.project.Id
+	m.log.Info("tabs sent", "project_id", id, "count", len(tabs))
+	return func() tea.Msg {
+		defer close(done)
+		r, err := m.client.ReplaceTabs(m.ctx, "id:"+id, list)
+		return tabsSaved{projectID: id, tabs: tabs, revision: r.TabsRevision, err: err}
+	}
+}
+
+// apiTabs are the tabs as the API names them.
+func apiTabs(tabs []string) []api.Tab {
 	list := make([]api.Tab, len(tabs))
 	for i, tab := range tabs {
 		list[i], _ = apiTab(tab)
 	}
-	l.savingTabs = true
-	id := m.following.project.Id
-	m.log.Info("tabs sent", "project_id", id, "count", len(tabs))
-	return func() tea.Msg {
-		_, err := m.client.ReplaceTabs(m.ctx, "id:"+id, list)
-		return tabsSaved{projectID: id, tabs: tabs, err: err}
-	}
+	return list
 }
 
 // tabsWereSaved ends a sending. A failure is not tried again: the next change
@@ -120,19 +129,24 @@ func (m *Model) tabsWereSaved(msg tabsSaved) {
 	if !ok {
 		return
 	}
-	l.savingTabs, l.savedTabs = false, msg.tabs
+	l.savingTabs, l.savedTabs, l.sendingTabs, l.tabsInFlight = false, msg.tabs, nil, nil
+	if msg.err == nil {
+		l.tabsRevision = max(l.tabsRevision, msg.revision)
+	}
 	if msg.err != nil {
 		m.log.Error("tabs not saved", "project_id", msg.projectID, "err", msg.err)
 		m.statusNotice = "tabs not saved: " + msg.err.Error()
 	}
 }
 
-// tabsFromStream takes the tabs a project's event brings. The first event brings
-// what the daemon kept, which a project with none leaves to tide; a later one,
-// what a removal or a rename through wdx changed. While a list of tide's is on
-// its way or waits, an event is older than what tide has, and is passed over.
-// A daemon too old to keep tabs sends none, and tide keeps its own.
-func (m *Model) tabsFromStream(saved []api.Tab) {
+// tabsFromStream takes the tabs a project's event brings, at revision. The first
+// event brings what the daemon kept, which a project with none leaves to tide; a
+// later one, what a removal or a rename through wdx changed. An event is older
+// than what tide has, and is passed over, while a list of tide's is on its way or
+// waits, and when its revision is before the one tide's last list was saved at:
+// it was sent before, and came after, on the stream's own connection. A daemon
+// too old to keep tabs sends none, and tide keeps its own.
+func (m *Model) tabsFromStream(saved []api.Tab, revision int64) {
 	l := m.list()
 	if saved == nil || l == nil {
 		return
@@ -144,7 +158,7 @@ func (m *Model) tabsFromStream(saved []api.Tab) {
 		}
 	}
 	if !l.tabsRead {
-		l.tabsRead = true
+		l.tabsRead, l.tabsRevision = true, revision
 		if len(tabs) == 0 {
 			// The run before's are sent, but for an agent gone since, which the
 			// daemon would refuse; with none, the first running agent's are.
@@ -162,7 +176,11 @@ func (m *Model) tabsFromStream(saved []api.Tab) {
 		m.log.Info("tabs restored", "project_id", m.following.project.Id, "count", len(tabs))
 		return
 	}
-	if l.savingTabs || !slices.Equal(savable(l.tabs), l.savedTabs) || slices.Equal(tabs, l.savedTabs) {
+	if l.savingTabs || !slices.Equal(savable(l.tabs), l.savedTabs) || revision < l.tabsRevision {
+		return
+	}
+	l.tabsRevision = revision
+	if slices.Equal(tabs, l.savedTabs) {
 		return
 	}
 	l.savedTabs = tabs

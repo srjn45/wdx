@@ -82,6 +82,10 @@ Today a project's tabs live in its `agentList` (`internal/tide/agents.go`), as s
 - The current tab stays when it is still in the list, and otherwise falls back as closing a tab does today: to the tab on its right, or on its left when it was the last. The focus leaves the agent pane when no tab is left, as today.
 - `tabsChanged`, which closes the tabs of agents gone or just removed, goes: the cascades and the trigger do it in the daemon, and the next event brings it.
 
+**Events sent before tide's own change** (found by the 3x3 of 4b, 2026-11-03). An event the daemon sent just before a list of tide's reached it can come after that list's answer, as the stream has a connection of its own. Taken as a removal through wdx, it would close the tab just opened and move the current tab. So every change to a project's tabs raises its revision (`tide_tab_revisions`, raised by triggers on `tide_tabs`, so cascades and removals count too). Events and `replaceTabs`' answer carry `tabs_revision`, and tide passes over an event whose revision is before its last list's.
+
+**Quitting** sends the tabs as it sends the view, at once and waiting at most a second. A list still on its way is waited for first, and the tabs as they are now go after it, so the older list never wins.
+
 **A project's first event**
 - Its saved tabs open, and the first is current until step 4 keeps which one was.
 - With none saved, tide does as today: the first running agent gets a tab, which is then sent.

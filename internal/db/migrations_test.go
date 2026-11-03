@@ -31,6 +31,7 @@ var committed = []string{
 	"cc850278ea1eaab8b75629ca6e9094e4b2fc84173b21f623e499876f57b597ab", // 0016_docs.sql
 	"7672c273758e8be59d163d5f9c0900a531fb9e7f17e2a5c321193e48abe41f7a", // 0017_tide_tabs.sql
 	"ece96b7d2dd4eaac7443ab2413e8085353a7ba40c3e720de45022f21d8c064d4", // 0018_tide_view.sql
+	"55345f40d653ae960db59062dc82317950cad8f9e8d2d075097ca1bed86065d5", // 0019_tide_tab_revisions.sql
 }
 
 func TestMigrationsNumbered(t *testing.T) {

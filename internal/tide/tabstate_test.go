@@ -6,8 +6,11 @@ import (
 	"slices"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // tabsSaved reports whether the project's tabs are tabs, and the daemon has them.
@@ -67,13 +70,9 @@ func TestTabsEventWhileSaving(t *testing.T) {
 	m, agents := tabsModel(3)
 	l := m.list()
 	l.tabsRead, l.savedTabs = true, []string{"agent-tab-0"} // the list since grew
+	revision := int64(0)
 	sent := func(tabs ...string) {
-		list := []api.Tab{}
-		for _, tab := range tabs {
-			a, _ := apiTab(tab)
-			list = append(list, a)
-		}
-		m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &agents}, Tabs: list}})
+		m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &agents}, Tabs: apiTabs(tabs), TabsRevision: revision}})
 	}
 	sent("agent-tab-0")
 	all := []string{"agent-tab-0", "agent-tab-1", "agent-tab-2"}
@@ -85,7 +84,13 @@ func TestTabsEventWhileSaving(t *testing.T) {
 	if !slices.Equal(l.tabs, all) {
 		t.Fatalf("an event older than a list on its way undid it: %v", l.tabs)
 	}
-	m.Update(tabsSaved{projectID: "proj-demo", tabs: all})
+	m.Update(tabsSaved{projectID: "proj-demo", tabs: all, revision: 5})
+	revision = 4 // sent before tide's list reached the daemon, and come after its answer
+	sent("agent-tab-0")
+	if !slices.Equal(l.tabs, all) {
+		t.Fatalf("an event older than the list saved undid it: %v", l.tabs)
+	}
+	revision = 6
 	sent("agent-tab-0", "agent-tab-2")
 	if !slices.Equal(l.tabs, []string{"agent-tab-0", "agent-tab-2"}) {
 		t.Fatalf("once saved, a change through wdx: %v", l.tabs)
@@ -119,5 +124,50 @@ func TestTabStrings(t *testing.T) {
 	}
 	if a, ok := apiTab(uncommittedPrefix + "feat"); ok {
 		t.Errorf("a view is a tab: %+v", a)
+	}
+}
+
+// TestTabsFlushedOnQuit: quitting sends a change to the tabs that waited for a list
+// on its way, once that list is answered, so the later list is the one kept.
+func TestTabsFlushedOnQuit(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	one := h.newAgent(t, "api", dir, "a-one")
+	two := h.newAgent(t, "api", dir, "b-two")
+	p := h.openShown(t)
+	p.until(t, "a-one's tab saved", tabsSavedAs(one.Id))
+	p.keys("down", "enter") // b-two's tab: its list goes
+	if !p.m.list().savingTabs {
+		t.Fatal("no list on its way")
+	}
+	p.keys("C-q", "i") // its info: waits for the list on its way
+	p.keys("C-q", "q")
+	timeout := waittest.After(t)
+	for quit := false; !quit; {
+		select {
+		case msg := <-p.msgs:
+			_, quit = msg.(tea.QuitMsg)
+		case <-timeout:
+			t.Fatalf("tide did not quit:\n%s", text(p.m))
+		}
+	}
+	stream, err := h.client().ProjectEvents(context.Background(), "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := stream.Next()
+	stream.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, a := range e.Tabs {
+		tab, _ := tideTab(a)
+		kept = append(kept, tab)
+	}
+	if want := []string{one.Id, two.Id, infoTab(two.Id)}; !slices.Equal(kept, want) {
+		t.Fatalf("kept %v, want %v", kept, want)
 	}
 }

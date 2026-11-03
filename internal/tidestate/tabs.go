@@ -6,6 +6,7 @@ package tidestate
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -55,9 +56,25 @@ type Store struct {
 // NewStore returns the store kept in database.
 func NewStore(database *sql.DB) *Store { return &Store{db: database} }
 
-// Tabs returns the project's tabs in their order.
-func (s *Store) Tabs(ctx context.Context, projectID string) ([]Tab, error) {
-	rows, err := s.db.QueryContext(ctx, `
+// Tabs returns the project's tabs in their order, and the revision they are at:
+// how many changes they had, which a later read never has fewer of.
+func (s *Store) Tabs(ctx context.Context, projectID string) ([]Tab, int64, error) {
+	// One transaction, so that the revision is the tabs'.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback()
+	tabs, err := readTabs(ctx, tx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	revision, err := readRevision(ctx, tx, projectID)
+	return tabs, revision, err
+}
+
+func readTabs(ctx context.Context, tx *sql.Tx, projectID string) ([]Tab, error) {
+	rows, err := tx.QueryContext(ctx, `
 		SELECT kind, coalesce(agent_id, ''), coalesce(doc_id, ''), coalesce(worktree, ''), coalesce(path, '')
 		FROM tide_tabs WHERE project_id = ? ORDER BY position`, projectID)
 	if err != nil {
@@ -75,44 +92,59 @@ func (s *Store) Tabs(ctx context.Context, projectID string) ([]Tab, error) {
 	return tabs, rows.Err()
 }
 
-// Replace makes tabs the project's tabs, in their order. A tab its kind does not
-// fit, one twice, or an agent or a doc not the project's returns an *InvalidError.
-func (s *Store) Replace(ctx context.Context, projectID string, tabs []Tab) error {
+// readRevision is the revision of the project's tabs, 0 before any change.
+func readRevision(ctx context.Context, tx *sql.Tx, projectID string) (int64, error) {
+	var revision int64
+	err := tx.QueryRowContext(ctx, "SELECT revision FROM tide_tab_revisions WHERE project_id = ?", projectID).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return revision, err
+}
+
+// Replace makes tabs the project's tabs, in their order, and returns the revision
+// they are at then. A tab its kind does not fit, one twice, or an agent or a doc
+// not the project's returns an *InvalidError.
+func (s *Store) Replace(ctx context.Context, projectID string, tabs []Tab) (int64, error) {
 	for i, t := range tabs {
 		if err := check(t); err != nil {
-			return &InvalidError{Index: i, Reason: err.Error()}
+			return 0, &InvalidError{Index: i, Reason: err.Error()}
 		}
 		if slices.Contains(tabs[:i], t) {
-			return &InvalidError{Index: i, Reason: "the same tab as an earlier one"}
+			return 0, &InvalidError{Index: i, Reason: "the same tab as an earlier one"}
 		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 	for i, t := range tabs {
 		if why, err := notOwned(ctx, tx, projectID, t); err != nil {
-			return err
+			return 0, err
 		} else if why != "" {
-			return &InvalidError{Index: i, Reason: why}
+			return 0, &InvalidError{Index: i, Reason: why}
 		}
 	}
 	if _, err := db.Exec(ctx, tx, "DELETE FROM tide_tabs WHERE project_id = ?", projectID); err != nil {
-		return err
+		return 0, err
 	}
 	for i, t := range tabs {
 		if _, err := db.Exec(ctx, tx, `
 			INSERT INTO tide_tabs (project_id, position, kind, agent_id, doc_id, worktree, path) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			projectID, i, t.Kind, null(t.AgentID), null(t.DocID), null(t.Worktree), null(t.Path)); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
+	revision, err := readRevision(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
 	}
-	logging.FromContext(ctx).Info("tabs replaced", "project_id", projectID, "count", len(tabs))
-	return nil
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	logging.FromContext(ctx).Info("tabs replaced", "project_id", projectID, "count", len(tabs), "revision", revision)
+	return revision, nil
 }
 
 // RemoveWorktree deletes the tabs of the worktree called name, once wdx removed it.

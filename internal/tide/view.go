@@ -265,24 +265,65 @@ func (m *Model) viewWasSent(msg viewSent) tea.Cmd {
 	return nil
 }
 
-// flushViews sends what differs at once, waiting at most viewFlush, as tide quits
-// or reloads; then quits.
+// flushViews sends what differs at once, as tide quits or reloads, waiting at most
+// viewFlush; then quits. The tabs go first: a list still on its way is waited for,
+// and what changed since it went is sent after it, so that the older never wins.
 func (m *Model) flushViews() tea.Cmd {
-	if m.client == nil || !m.view.read {
+	if m.client == nil {
 		return tea.Quit
 	}
 	ctx, cancel := context.WithTimeout(m.ctx, viewFlush)
-	send := m.sendViews(ctx)
-	if send == nil {
+	tabs := m.flushTabs(ctx)
+	var views tea.Cmd
+	if m.view.read {
+		views = m.sendViews(ctx)
+	}
+	if tabs == nil && views == nil {
 		cancel()
 		return tea.Quit
 	}
 	return func() tea.Msg {
 		defer cancel()
-		if msg, ok := send().(viewSent); ok && msg.err != nil {
-			m.log.Error("view not saved on quitting", "err", msg.err)
+		if tabs != nil {
+			if err := tabs(); err != nil {
+				m.log.Error("tabs not saved on quitting", "err", err)
+			}
+		}
+		if views != nil {
+			if msg, ok := views().(viewSent); ok && msg.err != nil {
+				m.log.Error("view not saved on quitting", "err", msg.err)
+			}
 		}
 		return tea.QuitMsg{}
+	}
+}
+
+// flushTabs returns what sends the shown project's tabs when they differ from
+// what was sent, after the list on its way; nil when nothing differs.
+func (m *Model) flushTabs(ctx context.Context) func() error {
+	l := m.list()
+	if l == nil || !l.tabsRead {
+		return nil
+	}
+	tabs, sent, inFlight := savable(l.tabs), l.savedTabs, l.tabsInFlight
+	if inFlight != nil {
+		sent = l.sendingTabs
+	}
+	if slices.Equal(tabs, sent) {
+		return nil
+	}
+	id, list := m.following.project.Id, apiTabs(tabs)
+	m.log.Info("tabs sent on quitting", "project_id", id, "count", len(tabs), "after_one_on_its_way", inFlight != nil)
+	return func() error {
+		if inFlight != nil {
+			select {
+			case <-inFlight:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		_, err := m.client.ReplaceTabs(ctx, "id:"+id, list)
+		return err
 	}
 }
 

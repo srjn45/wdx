@@ -17,10 +17,11 @@ func (s *server) ReplaceTabs(ctx context.Context, req api.ReplaceTabsRequestObje
 	for i, t := range req.Body.Tabs {
 		tabs[i] = tidestate.Tab{Kind: tidestate.Kind(t.Kind), AgentID: deref(t.AgentId), DocID: deref(t.DocId), Worktree: deref(t.Worktree), Path: deref(t.Path)}
 	}
-	if err := s.tabs.Replace(ctx, p.ID, tabs); err != nil {
+	revision, err := s.tabs.Replace(ctx, p.ID, tabs)
+	if err != nil {
 		return nil, err
 	}
-	return api.ReplaceTabs200JSONResponse{Result: api.ResultUpdated, Tabs: tabViews(tabs)}, nil
+	return api.ReplaceTabs200JSONResponse{Result: api.ResultUpdated, Tabs: tabViews(tabs), TabsRevision: revision}, nil
 }
 
 // tabViews are the tabs as the API shows them.

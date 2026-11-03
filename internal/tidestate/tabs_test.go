@@ -62,7 +62,7 @@ func (f fixture) doc(t *testing.T, projectID, name string) string {
 
 func (f fixture) tabs(t *testing.T, projectID string) []Tab {
 	t.Helper()
-	tabs, err := f.store.Tabs(context.Background(), projectID)
+	tabs, _, err := f.store.Tabs(context.Background(), projectID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func (f fixture) tabs(t *testing.T, projectID string) []Tab {
 
 func (f fixture) replace(t *testing.T, projectID string, tabs ...Tab) {
 	t.Helper()
-	if err := f.store.Replace(context.Background(), projectID, tabs); err != nil {
+	if _, err := f.store.Replace(context.Background(), projectID, tabs); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -135,7 +135,7 @@ func TestReplaceRefused(t *testing.T) {
 		{Kind: KindAgent, AgentID: "agent-nowhere"}: "no agent agent-nowhere",
 		{Kind: KindDoc, DocID: theirDoc}:            "no doc " + theirDoc,
 	} {
-		err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "ok.go"), tab})
+		_, err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "ok.go"), tab})
 		var invalid *InvalidError
 		if !errors.As(err, &invalid) || invalid.Index != 1 || !strings.Contains(err.Error(), why) {
 			t.Errorf("%#v: %v, want tab 1 refused for %q", tab, err, why)
@@ -144,7 +144,7 @@ func TestReplaceRefused(t *testing.T) {
 	// A tombstone is still the project's: tide opens one to read what it did.
 	f.replace(t, p, Tab{Kind: KindInfo, AgentID: gone})
 	f.replace(t, p, kept...)
-	err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "a"), fileTab("main", "a")})
+	_, err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "a"), fileTab("main", "a")})
 	if err == nil || !strings.Contains(err.Error(), "tab 1: the same tab") {
 		t.Errorf("twice: %v", err)
 	}
@@ -227,5 +227,61 @@ func TestPathsThroughWdx(t *testing.T) {
 	want = []Tab{fileTab("main", "ab.go"), fileTab("main", "a_x/y"), fileTab("main", "keep.go")}
 	if got := f.tabs(t, p); !slices.Equal(got, want) {
 		t.Fatalf("worktree removed:\n%#v\nwant\n%#v", got, want)
+	}
+}
+
+// TestRevision: every change to a project's tabs raises its revision, through
+// tide's lists, a cascade, the tombstone's trigger or a removal through wdx, and
+// a project's removal still goes through.
+func TestRevision(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.project(t, "wdx")
+	last := int64(-1)
+	raised := func(what string) {
+		t.Helper()
+		_, revision, err := f.store.Tabs(ctx, p)
+		if err != nil || revision <= last {
+			t.Fatalf("%s: revision %d after %d, %v", what, revision, last, err)
+		}
+		last = revision
+	}
+	if _, revision, err := f.store.Tabs(ctx, p); err != nil || revision != 0 {
+		t.Fatalf("before any change: %d, %v", revision, err)
+	}
+	a, tomb, d := f.agent(t, p, "falcon"), f.agent(t, p, "owl"), f.doc(t, p, "plan")
+	revision, err := f.store.Replace(ctx, p, []Tab{{Kind: KindAgent, AgentID: a}, {Kind: KindAgent, AgentID: tomb},
+		{Kind: KindDoc, DocID: d}, fileTab("main", "a/b.go"), fileTab("feat", "x"), {Kind: KindSettings}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raised("a list")
+	if revision != last {
+		t.Errorf("replace answered %d, the tabs are at %d", revision, last)
+	}
+	f.exec(t, "DELETE FROM terminals WHERE id = ?", "term-falcon")
+	raised("an agent's cascade")
+	f.exec(t, "UPDATE agents SET removed_at = 1 WHERE id = ?", tomb)
+	raised("a tombstone")
+	f.exec(t, "DELETE FROM docs WHERE id = ?", d)
+	raised("a doc's cascade")
+	if err := f.store.RenamePath(ctx, p, "main", "a", "z"); err != nil {
+		t.Fatal(err)
+	}
+	raised("a rename")
+	if err := f.store.RemovePath(ctx, p, "main", "z"); err != nil {
+		t.Fatal(err)
+	}
+	raised("a removal")
+	if err := f.store.RemoveWorktree(ctx, p, "feat"); err != nil {
+		t.Fatal(err)
+	}
+	raised("a worktree's removal")
+
+	f.exec(t, "DELETE FROM projects WHERE id = ?", p) // its tabs cascade, and no revision is made for it
+	var n int
+	if err := f.db.QueryRow("SELECT count(*) FROM tide_tab_revisions WHERE project_id = ?", p).Scan(&n); err != nil || n != 0 {
+		t.Errorf("a removed project's revision: %d, %v", n, err)
 	}
 }

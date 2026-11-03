@@ -44,13 +44,18 @@ type agentList struct {
 	// tabsRead is set once the project's stream brought the tabs the daemon kept;
 	// tide sends none before, or it would put its empty list in their place.
 	tabsRead   bool
-	savedTabs  []string        // the tabs as last sent or brought by the stream
-	savingTabs bool            // a list is on its way to the daemon
-	viewRead   bool            // the daemon's view of the project was put in place, or there was none
-	offset     int             // the rows scrolled past
-	opened     bool            // the project came once, and its first running agent became active
-	created    string          // the tab of an agent created here, current once the stream brings it
-	closed     map[string]bool // the ids of the parents folded; what is open inside them stays so
+	savedTabs  []string // the tabs as last sent or brought by the stream
+	savingTabs bool     // a list is on its way to the daemon
+	// tabsRevision is the revision of the tabs as tide last knew them: an event
+	// before it was sent before tide's last change reached the daemon.
+	tabsRevision int64
+	sendingTabs  []string        // the list on its way
+	tabsInFlight chan struct{}   // closed once it has been answered
+	viewRead     bool            // the daemon's view of the project was put in place, or there was none
+	offset       int             // the rows scrolled past
+	opened       bool            // the project came once, and its first running agent became active
+	created      string          // the tab of an agent created here, current once the stream brings it
+	closed       map[string]bool // the ids of the parents folded; what is open inside them stays so
 
 	section       section              // the section the cursor is in
 	worktreeRow   int                  // its row in the Worktrees section

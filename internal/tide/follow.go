@@ -137,7 +137,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 		}
 	}
 	m.terminalsChanged()
-	m.tabsFromStream(msg.event.Tabs)
+	m.tabsFromStream(msg.event.Tabs, msg.event.TabsRevision)
 	m.agentsChanged()
 	m.editorsChanged()
 	m.worktreesChanged()

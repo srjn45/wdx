@@ -2156,13 +2156,14 @@ components:
 
     ProjectEnvelope:
       type: object
-      required: [project, tabs]
+      required: [project, tabs, tabs_revision]
       properties:
         project: { $ref: "#/components/schemas/Project" }
         tabs:
           type: array
           description: The tabs tide has open in the project, in their order.
           items: { $ref: "#/components/schemas/Tab" }
+        tabs_revision: { $ref: "#/components/schemas/TabsRevision" }
 
     Tab:
       type: object
@@ -2220,12 +2221,21 @@ components:
 
     TabsResult:
       type: object
-      required: [result, tabs]
+      required: [result, tabs, tabs_revision]
       properties:
         result: { $ref: "#/components/schemas/Result" }
         tabs:
           type: array
           items: { $ref: "#/components/schemas/Tab" }
+        tabs_revision: { $ref: "#/components/schemas/TabsRevision" }
+
+    TabsRevision:
+      type: integer
+      format: int64
+      description: |
+        How many changes the project's tabs had, 0 before any. A later read
+        never has fewer, so tide tells an event sent before its own change
+        from one sent after.
 
     ProjectRemoved:
       type: object

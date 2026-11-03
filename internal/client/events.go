@@ -25,8 +25,10 @@ type ProjectEvent struct {
 	Project api.Project
 	// Tabs are the tabs tide has open in the project; nil from a daemon too old
 	// to keep them.
-	Tabs    []api.Tab
-	Removed bool
+	Tabs []api.Tab
+	// TabsRevision is how many changes the tabs had when the event was sent.
+	TabsRevision int64
+	Removed      bool
 }
 
 // maxEvent is the largest event a stream reads; a project with every
@@ -98,7 +100,7 @@ func decodeEvent(event, data string) (ProjectEvent, error) {
 		if err := json.Unmarshal([]byte(data), &v); err != nil {
 			return ProjectEvent{}, fmt.Errorf("project event unreadable: %w", err)
 		}
-		return ProjectEvent{Project: v.Project, Tabs: v.Tabs}, nil
+		return ProjectEvent{Project: v.Project, Tabs: v.Tabs, TabsRevision: v.TabsRevision}, nil
 	case "removed":
 		return ProjectEvent{Removed: true}, nil
 	}
