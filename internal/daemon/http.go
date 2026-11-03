@@ -95,19 +95,24 @@ const (
 
 func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// A change runs to its end when the client leaves: cut short, it
+		// would leave a holder unwatched, a clone half made or the view tide
+		// sent as it quit unsaved. Only a daemon stopping cancels it, once it
+		// has run out of time.
+		ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
+		defer cancel()
+		defer context.AfterFunc(d.abort, cancel)()
+		r = r.WithContext(ctx)
 		// A reload, a setting, a refresh or a view touches nothing the changes
 		// use, and should not wait minutes for a clone to end.
-		if r.Method != http.MethodGet && r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
+		if r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
 			d.changes.Lock()
 			defer d.changes.Unlock()
-			// A change runs to its end when the client leaves: cut short, it
-			// would leave a holder unwatched or a clone half made. Only a
-			// daemon stopping cancels it, once it has run out of time.
-			ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
-			defer cancel()
-			defer context.AfterFunc(d.abort, cancel)()
 			defer d.notices.notify() // the streams send what changed
-			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})

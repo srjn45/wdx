@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -101,6 +102,24 @@ func TestIsViewPath(t *testing.T) {
 	} {
 		if got := isViewPath(path); got != want {
 			t.Errorf("%s: %v", path, got)
+		}
+	}
+}
+
+// TestChangesOutliveTheClient: every change, a view and a setting as well as one
+// run one at a time, goes on when its client has left, as tide does once it sent
+// the view it quit on.
+func TestChangesOutliveTheClient(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	for _, path := range []string{"/v1/tide/view", "/v1/projects/app/view", "/v1/settings/color", "/v1/projects/app/tabs"} {
+		var err error
+		handler := td.daemon.oneChangeAtATime(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { err = r.Context().Err() }))
+		left, leave := context.WithCancel(context.Background())
+		leave()
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(left, http.MethodPut, path, nil))
+		if err != nil {
+			t.Errorf("%s: cancelled with its client: %v", path, err)
 		}
 	}
 }

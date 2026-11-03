@@ -324,9 +324,10 @@ func (f *logFile) readMore(t *testing.T, path string, args []string) {
 	}
 }
 
-// runLogged returns the CLI's lines of the run id, and how many requests the
-// CLI says it made and the daemon says it served under it.
-func runLogged(lines []logLine, id string) (run []logLine, called, served int) {
+// runLogged returns the CLI's lines of the run id, how many requests the CLI
+// says it made and had answered, how many it gave up on, and how many the daemon
+// says it served under it.
+func runLogged(lines []logLine, id string) (run []logLine, called, abandoned, served int) {
 	for _, l := range lines {
 		// A view's version check logs at debug level on both sides, where a
 		// cli's log level may not reach while the daemon's does.
@@ -336,14 +337,17 @@ func runLogged(lines []logLine, id string) (run []logLine, called, served int) {
 		switch {
 		case l.Process == "cli":
 			run = append(run, l)
-			if l.Msg == "daemon called" {
+			switch l.Msg {
+			case "daemon called":
 				called++
+			case "daemon unreachable":
+				abandoned++
 			}
 		case l.Msg == "request returned":
 			served++
 		}
 	}
-	return run, called, served
+	return run, called, abandoned, served
 }
 
 // wantLogged checks that the run that produced out is logged in home from the
@@ -370,12 +374,15 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 		}
 	}
 	var run []logLine
-	var called, served int
+	var called, abandoned, served int
 	// A daemon learns that a client has left, as tide leaves its stream, only
-	// after the client has gone, and logs that request's end then.
+	// after the client has gone, and logs that request's end then. A request the
+	// client gave up on, as tide does on the view it sends as it quits once a
+	// second has gone, the daemon may have served or never received.
+	logged := func() bool { return served >= called && served <= called+abandoned }
 	eventually(t, func() bool {
-		run, called, served = runLogged(logLines(t, home, args), id)
-		return called == served
+		run, called, abandoned, served = runLogged(logLines(t, home, args), id)
+		return logged()
 	})
 	if len(run) == 0 {
 		t.Fatalf("%v: nothing logged under %q", args, id)
@@ -384,8 +391,8 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 	if first.Msg != "command received" || last.Msg != "command returned" {
 		t.Fatalf("%v: want the run logged from received to returned, got %q to %q", args, first.Msg, last.Msg)
 	}
-	if called != served {
-		t.Fatalf("%v: the daemon logged %d requests under %s, the cli %d", args, served, id, called)
+	if !logged() {
+		t.Fatalf("%v: the daemon logged %d requests under %s, the cli %d answered and %d given up on", args, served, id, called, abandoned)
 	}
 	if last.Exit == nil || *last.Exit != out.exit || (last.Level == "ERROR") != (out.exit != api.ExitOK) {
 		t.Fatalf("%v: logged exit %v at %s, want exit %d", args, last.Exit, last.Level, out.exit)
