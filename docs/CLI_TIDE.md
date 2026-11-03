@@ -119,9 +119,14 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
-| List a project's plans | `plan list` | the Plans section, a plan of plans with its plans under it, folded with `←` `→` | Same | tide's stays up to date (docs/PLANS.md); the CLI's list is flat, with `3 plans` for a plan of plans |
+| List a project's plans | `plan list`, a run's `2/4` in `TASKS` | the Plans section, a plan of plans with its plans under it, folded with `←` `→`, a run's state and `2/4` | Same | tide's stays up to date (docs/PLANS.md); the CLI's list is flat, with `3 plans` for a plan of plans |
 | Read what a plan defines: its goal, constraints and tasks or plans in DAG order | `plan status` | `Enter` or a click: a read-only tab | Same | |
-| Read a task's prompt | `plan status --json`, `plan get` | `Enter` on the task in the plan's tab | Same | |
+| Read a task's prompt | `plan status --json`, `plan get`, `plan task get` | `Enter` on the task in the plan's tab | Same | |
+| Run a draft plan | `plan run`, `--parallel` | `r` in its tab, after a y/n question | Same | tide asks first, as it starts agents; it runs with `plan.parallel`, as a run's own number is for a script that knows the machine |
+| Follow a run: each task's state, agent and worktree | `plan status`, `plan task get` | the plan's tab, read again on every step | Same | tide's stays up to date |
+| Read a done task's summary | `plan task get` | `Enter` on the task in the plan's tab | Same | |
+| Go to a running task's agent | `plan status` names it, then `agent attach` | `Enter` on the task in the plan's tab | Same | |
+| Say a task is done | `plan task done`, by `--agent-id` or `--plan` and `--task` | none | By design | The task's agent says it, through the CLI; a person who finished a task by hand does too, until step 3 of docs/PLANS.md brings the person's answers to tide |
 | Go from a plan of plans to one of its plans | `plan status --name <child>` | `Enter` on the plan in the tab | Same | |
 | Read the YAML, an older revision, history | `plan get`, `--revision`, `plan history` | none | By design | AIs write plans, and tide shows what they define |
 | Create, update, rename, remove | `plan create`, `update`, `rename`, `remove` | none | By design | As above |
