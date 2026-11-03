@@ -192,11 +192,35 @@ What tide shows besides its tabs, so that it comes back as it was left. The daem
 
 ## Missing tabs
 
-A tab whose row is still there but whose target is gone was removed outside wdx. Examples: a file deleted or moved with `rm` or `mv`, or a worktree's directory deleted by hand (wdx already marks that worktree `missing`).
+A tab whose row is still there but whose target is gone was removed outside wdx, since a removal through wdx takes its rows. Only a file or a worktree can be gone that way: agents and docs change only through wdx.
 
-- Such a tab shows as `[✗ label(-)]`. Its pane says what is gone and where it was, for example `file internal/x.go no longer exists in worktree feat-a`.
-- It stays until it is closed with `C-q -` or `(-)`.
-- If the file comes back, the tab shows it again.
+**When a tab is missing**
+- `file`: the file is not there in its worktree, or the worktree is missing.
+- `diff`, `pr`: the worktree is missing. A diff of a file deleted with `rm` still has something to show, the deletion, so it stays as it is.
+- A worktree is missing when git no longer lists it (`git worktree remove`, `prune`), or lists it with its directory gone (wdx already marks that `missing`).
+- The others never are.
+
+**Who finds out: the daemon.** Each `Tab` in the stream's events and in `replaceTabs`' answer gains `missing`, a boolean. The daemon works it out as it builds the event:
+- It looks the worktree up in what the tracker read, which the stream has as it follows the worktrees. Before the tracker has read them, no tab is missing.
+- For a `file` tab, it runs one `os.Lstat` of the file. tide has three to ten tabs, so this costs nothing beside the event.
+- It is not kept in `tide_tabs`: it is a fact about the disk now, not about the tab.
+
+The tracker already watches each worktree while a stream follows it, so an `rm` or an `mv` wakes the stream, and the event says so at once. A file put back makes the tab whole again on the next event. tide does not stat files itself.
+
+**How tide shows it**
+- In the strip, the tab is marked `✗` in the failure style, where an agent's tab has its state mark: `[✗ file.go(-)]`. Its name stays as it was.
+- Its pane says what is gone and where, instead of trying to read it:
+  - `file internal/x.go is no longer in worktree feat-a`;
+  - `worktree feat-a is no longer there`.
+  - Then a line: `C-q - closes this tab`.
+- It stays until it is closed with `C-q -` or `(-)`, as any tab is. Nothing closes it by itself.
+- `C-q r` and a later tide keep it, as it is a row like any other.
+
+**API:** `Tab.missing` is optional in the schema and always present in responses. The daemon ignores it in a request, so it can never be stored, and tide does not send it. It only adds, so it goes out as `feat:`.
+
+**Tests**
+- Daemon: a file tab missing after its file is removed on disk and whole again once it is back; a pr tab missing after `git worktree remove` outside wdx; a diff tab of a deleted file not missing.
+- tide: a missing tab's mark and pane text, and closing it with `C-q -`.
 
 ## `tide.section_order`
 
