@@ -104,14 +104,40 @@ Today a project's tabs live in its `agentList` (`internal/tide/agents.go`), as s
 
 ## View
 
-Table `tide_view`, one row, and `tide_project_views`, one row per project.
+What tide shows besides its tabs, so that it comes back as it was left. The daemon keeps it and reads nothing in it: only tide reads it, and one tide runs per home.
 
-- `tide_view`: the project shown, focus, zoom, whether the terminal pane is open.
-- `tide_project_views` (`project_id`, `ON DELETE CASCADE`): the current tab, the terminal tab selected, the cursor's section and what it is on (an agent's id, a worktree, a file, a doc), the folded parents and the unfolded worktrees, and the Code worktree.
+**What is kept**
+- For tide as a whole: the project shown, the pane focused, the one zoomed, the top pane focused last (where ↑ from the terminal goes), and whether the terminal pane is open.
+- For each project:
+  - the current tab;
+  - the terminal tab selected;
+  - the cursor: its section and what it is on (an agent's id, a worktree's row, a file in Code, a doc's id);
+  - the agents folded, the worktrees unfolded, and in Code the worktree chosen and the directories unfolded in each.
+- What is in progress or follows the window is not kept: an open popup or confirm, text being typed, the filter, scroll offsets, and the mouse hover.
+- A tab, a cursor or a fold whose target is gone falls back as it does today: the first tab, the nearest row, and folds that name nothing are ignored.
 
-What is in progress or follows the window is not kept: an open prompt or confirm dialog, text being typed, scroll offsets and the mouse hover.
+**Where**
+- Table `tide_view`, one row, and `tide_project_views`, one row per project (`project_id`, `ON DELETE CASCADE`), each holding the view as JSON in a `TEXT` column with a `json_valid` `CHECK`.
+- It is JSON rather than a column per field because the daemon does nothing with it but keep it. It refuses only what is not a JSON object. tide adds fields as its view grows, as it does for `--resume` today, and ignores what it does not know, with no migration for each.
+- `GET` and `PUT /v1/tide/view` (`getTideView`, `replaceTideView`), and `GET` and `PUT /v1/projects/{project}/view` (`getProjectView`, `replaceProjectView`). The body is `{"view": {...}}`. A `PUT` answers `{"result": "updated", "view": {...}}`. A `GET` of a view never saved answers `{"view": {}}`.
+- The project's stream does not carry it, and a `PUT` of a view wakes no stream: tide is its only writer and reader. A stream event costs the daemon a read of the project, with git, and the cursor moves at every key.
+- A `PUT` of a view does not wait behind other changes, as a setting does not: it touches only these tables, and must not wait out a clone.
 
-A current tab or cursor whose target is gone falls back as it does today: the first tab, and the nearest row.
+**When tide writes**
+- When the view changed and then stayed the same for half a second (`viewSettle`, which tests shorten). Holding ↓ sends one request, not one per row. One request is on its way at a time, as with tabs.
+- On `C-q q` and `C-q r`, at once, waiting at most a second, so what was just done is not lost. A tide killed loses at most the last half second.
+- A failure is logged and not shown: the view is a convenience, and the next change sends it again.
+
+**When tide reads**
+- At start, the view for tide as a whole: the project it names is shown when it is still open, and the switcher shows otherwise, as today.
+- A project's view, when tide first shows the project, before its stream's first event places what it names.
+- **`C-q r`** still passes `--resume`, for a reload into an older release. A release that reads the daemon's view uses it, and `--resume` only when the daemon has none.
+
+**Steps**
+- **4a:** the tables, the four endpoints, and the `PUT`s let past the line of changes and waking no stream, tested from the daemon.
+- **4b:** tide writes and reads the view, and `C-q r` leans on it.
+
+**CLI_TIDE.md:** the row for keeping the tabs becomes keeping what tide showed, tabs and view.
 
 ## How tide reads and writes it
 
@@ -141,5 +167,5 @@ A tab whose row is still there but whose target is gone was removed outside wdx.
 1. `section_order`.
 2. One tide per daemon.
 3. The `tide_tabs` table, its API and stream, the cascades and the file rename and delete (3a), with tide reading and writing its tabs through them (3b).
-4. The view tables.
+4. The view: its tables and API (4a), and tide writing and reading it (4b).
 5. Missing tabs.
