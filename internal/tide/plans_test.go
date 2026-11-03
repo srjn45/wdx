@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
@@ -270,7 +271,8 @@ func TestPlanOfPlansTab(t *testing.T) {
 	}
 }
 
-// TestPlanReadsAgain: a plan's tab is read again for a new revision only.
+// TestPlanReadsAgain: a plan's tab is read again when the plan changes, which moves
+// its updated_at on: a new revision, or a step of its run.
 func TestPlanReadsAgain(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
@@ -283,11 +285,19 @@ func TestPlanReadsAgain(t *testing.T) {
 		t.Fatal("read again with nothing changed")
 	}
 	plans := slices.Clone(m.plans())
-	plans[0].Revision = 2
+	plans[0].Revision, plans[0].UpdatedAt = 2, plans[0].UpdatedAt.Add(time.Millisecond)
 	setPlans(m, plans...)
 	m.Update(nil)
 	if !v.loading || !strings.Contains(titleRow(m), "[plan: auth r2") {
 		t.Errorf("not read again on a new revision: title %q", titleRow(m))
+	}
+	loadPlan(m, "doc-auth", api.PlanContent{Plan: plans[0], Revision: 2, Definition: api.PlanDefinition{Constraints: []string{}, Plans: &[]api.PlanChild{}}})
+	plans = slices.Clone(plans)
+	plans[0].UpdatedAt = plans[0].UpdatedAt.Add(time.Millisecond)
+	setPlans(m, plans...)
+	m.Update(nil)
+	if !v.loading {
+		t.Error("not read again on a step of its run")
 	}
 }
 
@@ -343,3 +353,51 @@ func TestPlanLive(t *testing.T) {
 	}
 	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "Two.") })
 }
+
+// TestPlanRunShown: a running plan's row says its state and progress, and its tab
+// each task's state and agent; Enter on a running task goes to its agent, on a
+// done one shows its prompt and summary.
+func TestPlanRunShown(t *testing.T) {
+	t.Parallel()
+	m := plansModel(t)
+	sso := aPlan("doc-sso", "sso", 2, 4)
+	sso.State, sso.TasksDone = api.PlanStateRunning, optionalInt(1)
+	plans := slices.Clone(m.plans())
+	plans[3] = sso
+	setPlans(m, plans...)
+	wantText(t, m, "sso running 1/4")
+
+	m.moveToPlan(3)
+	keys(m, "enter")
+	summary, failure := "Added it.", api.PlanTaskFailureRebase
+	tasks := []api.PlanTask{
+		{Id: "schema", After: []string{}, Prompt: "Add the table.", State: api.PlanTaskStateDone, WaitingFor: []string{}, Summary: &summary, Agent: &api.PlanTaskAgent{Id: "agent-s", Name: "sso-schema"}},
+		{Id: "api", After: []string{"schema"}, Prompt: "Use it.", State: api.PlanTaskStateRunning, WaitingFor: []string{}, Agent: &api.PlanTaskAgent{Id: "agent-a", Name: "sso-api"}},
+		{Id: "cli", After: []string{"schema"}, Prompt: "p", State: api.PlanTaskStateLandFailed, WaitingFor: []string{}, Failure: &failure, Conflicts: &[]string{"x.go"}},
+		{Id: "docs", After: []string{"api", "cli"}, Prompt: "p", State: api.PlanTaskStatePending, WaitingFor: []string{"api", "cli"}},
+	}
+	loadPlan(m, "doc-sso", api.PlanContent{Plan: sso, Revision: 2, Run: &api.PlanRun{State: api.PlanStateRunning, Branch: "plan/sso"},
+		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &tasks}})
+	wantText(t, m, "running on plan/sso, 1/4 tasks done", "done · sso-schema", "running · sso-api",
+		"land failed: rebase", "conflicts in x.go", "waiting for api, cli")
+
+	keys(m, "alt+right", "r")
+	if m.confirm != nil {
+		t.Error("r asks to run a plan that runs")
+	}
+	m.Update(planRan{r: removal{kind: runPlanKind, id: "doc-sso", name: "sso"}, err: errors.New("plan sso has run")})
+	if m.statusNotice != "plan sso has run" {
+		t.Errorf("a refusal: notice %q", m.statusNotice)
+	}
+	wantText(t, m, "Enter show the prompt and summary")
+	keys(m, "enter")
+	wantText(t, m, "Add the table.", "summary:", "Added it.")
+	keys(m, "down")
+	wantText(t, m, "Enter go to its agent")
+	keys(m, "enter")
+	if l := m.list(); l.active != "agent-a" {
+		t.Errorf("Enter on a running task: tab %q", l.active)
+	}
+}
+
+func optionalInt(n int64) *int64 { return &n }

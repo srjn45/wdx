@@ -291,6 +291,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.startedAgain(msg)
 	case restarted:
 		m.restarted(msg)
+	case planRan:
+		m.planRanMsg(msg)
 	case projectClosed:
 		return m, m.closed(msg)
 	case projectRemoved:

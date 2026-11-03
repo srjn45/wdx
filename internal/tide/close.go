@@ -19,8 +19,11 @@ const (
 
 // verb is what y does.
 func (c *confirmBox) verb() string {
-	if c.r.kind == projectKind {
+	switch c.r.kind {
+	case projectKind:
 		return "close"
+	case runPlanKind:
+		return "run"
 	}
 	return "remove"
 }

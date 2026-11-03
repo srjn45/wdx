@@ -1,9 +1,12 @@
 package tide
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gittest"
 )
 
 // TestStartAgentAgain: an agent that ended starts again from its pane, the menu
@@ -139,4 +142,42 @@ func TestRestartAgent(t *testing.T) {
 	if p.m.menuOffers(restartKey) {
 		t.Error("offered on a terminal's pane")
 	}
+}
+
+// TestRunPlan: r in a draft's tab asks first, then runs it, and its first task's
+// agent shows in the tab, which Enter goes to.
+func TestRunPlan(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	c := h.client()
+	got, err := c.GetProject(ctx, "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, got.Project.Worktrees[0].Path, "commit", "-q", "--allow-empty", "-m", "init")
+	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    prompt: p\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := h.openShown(t)
+	p.until(t, "the plan listed", func(m *Model) bool { _, ok := m.planOf(created.Plan.Id); return ok })
+	p.m.openPlan(created.Plan, true)
+	p.m.layout.setFocus(agent)
+	p.until(t, "the tab read", func(m *Model) bool { return strings.Contains(text(m), "draft: r runs it") })
+	p.keys("r")
+	wantText(t, p.m, "Run plan", "Run auth?", "y run")
+	p.keys("n")
+	if p.m.confirm != nil {
+		t.Fatal("still asking")
+	}
+	p.keys("r", "y")
+	p.until(t, "a running, its agent shown", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a") })
+	p.keys("enter")
+	p.until(t, "its agent's tab", func(m *Model) bool {
+		a, ok := m.activeAgent()
+		return ok && a.Name == "auth-a"
+	})
 }

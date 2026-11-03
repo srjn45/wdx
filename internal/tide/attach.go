@@ -323,6 +323,11 @@ func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
 	if p == agent && m.textShown() {
 		return m.diffKey(msg)
 	}
+	if p == agent && m.planShown() {
+		if cmd, ok := m.planKey(msg); ok {
+			return cmd
+		}
+	}
 	if rows, ok := m.valueRows(); p == agent && ok {
 		return m.values.update(rows, msg)
 	}

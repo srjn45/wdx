@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -253,6 +254,14 @@ func planSize(p api.Plan) string {
 	return ""
 }
 
+// planProgress is how far a plan's run is, as 2/4, or its size until it runs.
+func planProgress(p api.Plan) string {
+	if p.TasksDone != nil && p.Tasks != nil {
+		return fmt.Sprintf("%d/%d", *p.TasksDone, *p.Tasks)
+	}
+	return planSize(p)
+}
+
 func plural(n int, noun string) string {
 	if n == 1 {
 		return "1 " + noun
@@ -284,7 +293,7 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
 	name := ansi.Truncate(r.plan.Name, room, "…")
 	room -= ansi.StringWidth(name)
-	size, state := " "+planSize(r.plan), " "+string(r.plan.State)
+	size, state := " "+planProgress(r.plan), " "+string(r.plan.State)
 	if ansi.StringWidth(size) > room {
 		size = "" // a word cut short would say another
 	}
@@ -297,7 +306,10 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	if cursor || active {
 		name = st.Name(name)
 	}
-	row := pointer + st.Muted(lead) + name + st.Muted(state) + size + gap + end
+	if r.plan.State == api.PlanStateDraft {
+		state = st.Muted(state)
+	}
+	row := pointer + st.Muted(lead) + name + state + size + gap + end
 	if active {
 		return st.ActiveRow(row)
 	}
@@ -309,9 +321,9 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 type planView struct {
 	content *api.PlanContent
 	err     string
-	asked   bool  // it was asked for
-	loading bool  // an answer is on its way
-	seen    int64 // the revision it was asked at
+	asked   bool      // it was asked for
+	loading bool      // an answer is on its way
+	seen    time.Time // the plan's updated_at it was asked at
 	prompts map[string]bool
 }
 
@@ -340,7 +352,8 @@ func (m *Model) planTitle(tab string) string {
 }
 
 // planSync reads the plan of the tab shown when it has not been, or the stream
-// brought a new revision. A tab not shown is read when it comes to show.
+// brought a change to it: a revision, or a step of its run, which moves its
+// updated_at on. A tab not shown is read when it comes to show.
 func (m *Model) planSync() tea.Cmd {
 	l := m.list()
 	if l == nil || !isPlanTab(l.active) {
@@ -355,10 +368,10 @@ func (m *Model) planSync() tea.Cmd {
 		l.planViews[l.active] = v
 	}
 	p, ok := m.planOf(strings.TrimPrefix(l.active, planTabPrefix))
-	if !ok || v.loading || (v.asked && v.seen == p.Revision) {
+	if !ok || v.loading || (v.asked && v.seen.Equal(p.UpdatedAt)) {
 		return nil
 	}
-	v.asked, v.loading, v.seen = true, true, p.Revision
+	v.asked, v.loading, v.seen = true, true, p.UpdatedAt
 	return m.readPlan(l.active)
 }
 
@@ -407,7 +420,7 @@ func (m *Model) planTabRows() []valueRow {
 	rows := []valueRow{
 		{key: "goal", values: strings.Split(strings.TrimSpace(d.Goal), "\n")},
 		{key: "constraints", values: d.Constraints},
-		{key: "state", values: []string{string(c.Plan.State)}},
+		{key: "state", values: []string{planTabState(c)}},
 		{key: "revision", values: []string{fmt.Sprint(c.Revision)}},
 	}
 	if c.Plan.Parent != nil {
@@ -422,10 +435,30 @@ func (m *Model) planTabRows() []valueRow {
 	first := true
 	if d.Tasks != nil {
 		for _, t := range *d.Tasks {
-			r := valueRow{key: t.Id, values: after(t.After), gap: first, verb: "show the prompt"}
+			r := valueRow{key: t.Id, values: []string{taskLine(t)}, gap: first}
+			if c.Run == nil {
+				r.values = after(t.After)
+			}
+			if t.Conflicts != nil {
+				r.values = append(r.values, "conflicts in "+strings.Join(*t.Conflicts, ", "))
+			}
+			if (t.State == api.PlanTaskStateRunning || t.State == api.PlanTaskStateLanding) && t.Agent != nil {
+				r.verb, r.open = "go to its agent", m.goToTaskAgent(t.Agent.Id)
+				rows = append(rows, r)
+				first = false
+				continue
+			}
+			what := "the prompt"
+			if t.Summary != nil {
+				what = "the prompt and summary"
+			}
+			r.verb = "show " + what
 			if v.prompts[t.Id] {
 				r.values = append(append(r.values, ""), strings.Split(strings.TrimRight(t.Prompt, "\n"), "\n")...)
-				r.verb = "hide the prompt"
+				if t.Summary != nil {
+					r.values = append(append(r.values, "", "summary:"), strings.Split(strings.TrimRight(*t.Summary, "\n"), "\n")...)
+				}
+				r.verb = "hide " + what
 			}
 			r.open = m.togglePrompt(v, t.Id)
 			rows = append(rows, r)
@@ -460,5 +493,117 @@ func (m *Model) openChild(name string) func() tea.Cmd {
 			m.log.Info("plan opened", "plan_id", p.Id, "name", p.Name, "from", "its parent")
 		}
 		return nil
+	}
+}
+
+// planTabState is the plan's state as its tab says it: a draft says how to run it,
+// a run where its tasks land.
+func planTabState(c *api.PlanContent) string {
+	switch {
+	case c.Plan.State == api.PlanStateDraft && c.Plan.Tasks != nil:
+		return "draft: r runs it"
+	case c.Run != nil:
+		return fmt.Sprintf("%s on %s, %s tasks done", c.Plan.State, c.Run.Branch, planProgress(c.Plan))
+	}
+	return string(c.Plan.State)
+}
+
+// taskLine is a task's state as its row says it, with its agent: a pending task
+// waits for its afters or is ready, a failed one says why.
+func taskLine(t api.PlanTask) string {
+	var s string
+	switch t.State {
+	case api.PlanTaskStatePending:
+		s = "ready"
+		if len(t.WaitingFor) > 0 {
+			s = "waiting for " + strings.Join(t.WaitingFor, ", ")
+		}
+	case api.PlanTaskStateLandFailed:
+		s = "land failed"
+	default:
+		s = string(t.State)
+	}
+	if t.Failure != nil {
+		s += ": " + strings.ReplaceAll(string(*t.Failure), "_", " ")
+	}
+	if t.Agent != nil {
+		s += " · " + t.Agent.Name
+	}
+	return s
+}
+
+// goToTaskAgent is what opens the tab of the task's agent with id.
+func (m *Model) goToTaskAgent(id string) func() tea.Cmd {
+	return func() tea.Cmd {
+		m.list().openTab(id)
+		m.changed("agent")
+		m.log.Info("agent active", "agent_id", id, "reason", "its plan task")
+		return nil
+	}
+}
+
+// runPlanKind is the kind of a confirmation that runs a plan: it asks as a removal
+// does, as it starts agents.
+const runPlanKind = "plan run"
+
+// planKey takes a key the plan's tab has, and reports whether it took it: r runs
+// a draft, once confirmed.
+func (m *Model) planKey(msg tea.Msg) (tea.Cmd, bool) {
+	k, ok := msg.(tea.KeyPressMsg)
+	if !ok || k.String() != "r" || m.values.edit != nil {
+		return nil, false
+	}
+	l := m.list()
+	v := l.planViews[l.active]
+	if v == nil || v.content == nil || v.content.Plan.State != api.PlanStateDraft || v.content.Plan.Tasks == nil {
+		return nil, false
+	}
+	p := v.content.Plan
+	m.confirm = &confirmBox{r: removal{kind: runPlanKind, id: p.Id, name: p.Name}}
+	m.log.Info("plan run asked", "plan_id", p.Id, "name", p.Name)
+	return nil, true
+}
+
+// planRan is the answer to running a plan.
+type planRan struct {
+	r   removal
+	err error
+}
+
+// runPlan asks the daemon to run the plan r names. Its state comes with the stream.
+func (m *Model) runPlan(r removal) tea.Cmd {
+	m.log.Info("plan run confirmed", "plan_id", r.id, "name", r.name)
+	return func() tea.Msg {
+		_, err := m.client.RunPlan(m.ctx, "id:"+r.id, "", "", 0)
+		return planRan{r: r, err: err}
+	}
+}
+
+func (m *Model) planRanMsg(msg planRan) {
+	m.confirm = nil
+	if msg.err != nil {
+		m.log.Info("plan not run", "plan_id", msg.r.id, "err", msg.err)
+		m.statusNotice = msg.err.Error()
+		return
+	}
+	m.log.Info("plan running", "plan_id", msg.r.id, "name", msg.r.name)
+}
+
+// runPlanPopup is the confirmation of running a plan.
+func (m *Model) runPlanPopup() popup {
+	c, st := m.confirm, m.st
+	body := []string{
+		"Run " + st.Name(c.r.name) + "?",
+		"Its tasks' agents start, each in a worktree of the plan's, up to",
+		"plan.parallel at once, and land on the branch plan/" + c.r.name + ".",
+		"A plan runs once, and cannot be changed after.",
+	}
+	if c.busy {
+		body = append(body, "", st.Muted("starting…"))
+	}
+	return popup{
+		title:  "Run plan",
+		body:   body,
+		footer: st.Command("y") + " run  " + st.Command("n") + " or " + st.Command("Esc") + " keep",
 	}
 }
