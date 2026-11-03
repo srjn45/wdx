@@ -1,6 +1,6 @@
 # Docs
 
-Status: approved by the human on 2026-11-02; steps 1 to 3 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
+Status: approved by the human on 2026-11-02; steps 1 to 4 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
 
 ## Why
 
@@ -120,19 +120,20 @@ Each command takes `--project-id <id> | --project-name <name>`, or the project o
 | Command | Text output |
 |---|---|
 | `doc create --name <name> [--path <file> \| --path -] [--format <ext>] [--labels <a,b>] [--status <status>]` | `doc auth-rfc created` |
-| `doc get (--id \| --name) [--revision <n>] [--out <file>]` | the content alone, byte for byte, like `cat`; with `--out`, `revision 4 of auth-rfc written to <file>` |
-| `doc update (--id \| --name) --path <file>\|- --base <n>` | `auth-rfc is at revision 5`, and on stderr `auth-rfc was approved; it is wip again` when it was not `wip` |
+| `doc get (--id \| --name) [--revision <n>] [--out <file> [--overwrite]]` | the content alone, byte for byte, like `cat`; with `--out`, `revision 4 of auth-rfc written to <file>` |
+| `doc update (--id \| --name) --path <file>\|- --base <n>` | `auth-rfc is at revision 5`, and on stderr `auth-rfc was approved; it is wip again` when it was not `wip`; `auth-rfc is unchanged at revision 5` |
 | `doc list [--labels <a,b>] [--status <status>]` | a table: `NAME`, `STATUS`, `REVISION`, `LABELS`, `UPDATED` |
 | `doc history (--id \| --name)` | a table: `REVISION`, `SIZE`, `CREATED` |
-| `doc set (--id \| --name) [--status <status>] [--add-labels <a,b>] [--remove-labels <a,b>]` | `doc auth-rfc is approved`, … |
+| `doc set (--id \| --name) [--status <status>] [--add-labels <a,b>] [--remove-labels <a,b>]` | `doc auth-rfc is approved, with labels auth, rfc`; `is already approved` when unchanged |
 | `doc rename (--id \| --name) --new-name <name>` | `doc auth-rfc renamed to auth-design` |
 | `doc remove (--id \| --name) [--yes]` | `doc auth-rfc removed` |
 | `doc sync-to-git --path <dir>` | `12 docs written to docs/wdx` |
 
-- `create` without `--path` makes an empty doc. A name the project has fails with `name_taken`: replacing a doc's content is `update`, which needs a base.
-- `get --out` writes the file read-write, as it is the client's own copy to edit, and refuses to overwrite an existing file unless it was written by an earlier `get --out` of the same doc. `--json` returns `{"doc": {...}, "revision": 4, "content": "..."}`, without the content when `--out` is given.
-- `update` on `doc_changed`: `auth-rfc is at revision 6, not 4`, hint `get it again with wdx doc get --name auth-rfc --out <file>, apply your change, and update with --base 6`.
-- `remove` asks `remove doc auth-rfc and its 6 revisions?` on a terminal; `--yes` answers it; `--json` requires `--yes`.
+- `create` without `--path` makes an empty doc, and needs `--name`, as `--path -` does. A name the project has fails with `name_taken`: replacing a doc's content is `update`, which needs a base.
+- `get --out` writes the file read-write, as it is the client's own copy to edit, and refuses an existing file with `path_exists`, hint `pass --overwrite to replace it`; `--overwrite` replaces it. No state says which files `get` wrote: a flag is simpler, and never loses a person's file by accident. `--json` returns `{"doc": {...}, "revision": 4, "content": "..."}`, without the content when `--out` is given.
+- `update` on `doc_changed`: `auth-rfc is at revision 6, not 4`, hint `get it again with wdx doc get --name auth-rfc --out <file> --overwrite, apply your change, and update with --base 6`.
+- `create` and `update` refuse a file that is not UTF-8 themselves, with `invalid_argument`: the request's JSON would quietly replace what is not.
+- `remove` asks `remove doc auth-rfc and its 6 revisions? [y/N]` on a terminal, and `n` is `cancelled`; `--yes` answers it; `--json`, or no terminal, requires `--yes` (`usage`).
 - `--path -` reads stdin. Restoring a revision is `get --revision 3 --out f`, then `update --path f --base <latest>`; there is no `restore` or `diff`.
 - Completions: `--name` the project's docs, `--labels` and `--remove-labels` its labels, `--status` the four statuses, `--revision` and `--base` the doc's revisions.
 
@@ -154,7 +155,7 @@ Each builds and passes `make test` on its own.
 1. **Done.** The migration and `internal/doc`: names, labels, content checks, revisions and the base check, with domain tests.
 2. **Done.** The hidden copies: writing after each change, and `CatchUpCopies` and `RemoveProjectCopies`, which step 3 has the daemon call on start and on removing a project.
 3. **Done.** The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
-4. The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
+4. **Done.** The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
 5. The git copy: `sync-to-git` and the `docs.git_path` setting.
 6. tide: the Docs section and its tab, `tide.section_order`.
 7. docs/CLI_TIDE.md, README, and `wdx help agents` once it exists, so that agents know to read and change docs through `wdx doc`.

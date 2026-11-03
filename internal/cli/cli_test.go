@@ -422,6 +422,10 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			if r, ok := obj["transcript"].(map[string]any); ok {
 				r["lines"] = float64(len(r["lines"].([]any))) // a conversation is counted, not logged
 			}
+			if content, ok := obj["content"].(string); ok && obj["doc"] != nil {
+				delete(obj, "content") // a doc is measured, not logged
+				obj["content_bytes"] = float64(len(content))
+			}
 		}
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
@@ -479,6 +483,13 @@ type jsonOutput struct {
 	Conflict *struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
+
+	Doc            *api.Doc          `json:"doc"`
+	Docs           []api.Doc         `json:"docs"`
+	Revisions      []api.DocRevision `json:"revisions"`
+	Revision       *int64            `json:"revision"`
+	Content        *string           `json:"content"`
+	PreviousStatus *api.DocStatus    `json:"previous_status"`
 
 	Terminal   *api.Terminal        `json:"terminal"`
 	Terminals  []api.Terminal       `json:"terminals"`

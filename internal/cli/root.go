@@ -445,7 +445,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	completeFlag(root, "color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd(), newDocCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)

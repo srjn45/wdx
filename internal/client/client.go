@@ -701,3 +701,80 @@ func nonEmpty(s string) *string {
 	}
 	return &s
 }
+
+// ListDocs lists the docs of the project named by project or holding dir, those
+// with every one of labels and in status unless it is empty.
+func (c *Client) ListDocs(ctx context.Context, project, dir string, labels []string, status api.DocStatus) (api.DocList, error) {
+	params := api.ListDocsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if len(labels) > 0 {
+		params.Labels = &labels
+	}
+	if status != "" {
+		params.Status = &status
+	}
+	r, err := c.api.ListDocsWithResponse(ctx, &params)
+	if err != nil {
+		return api.DocList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *Client) CreateDoc(ctx context.Context, body api.CreateDoc) (api.DocResult, error) {
+	r, err := c.api.CreateDocWithResponse(ctx, body)
+	if err != nil {
+		return api.DocResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// GetDoc returns the doc ref names, "id:" and its id or its name in the project
+// named by project or holding dir, with revision's content, the latest when it is
+// 0.
+func (c *Client) GetDoc(ctx context.Context, ref, project, dir string, revision int64) (api.DocContent, error) {
+	params := api.GetDocParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if revision != 0 {
+		params.Revision = &revision
+	}
+	r, err := c.api.GetDocWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.DocContent{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// UpdateDoc changes the doc ref names, as GetDoc does, as body says.
+func (c *Client) UpdateDoc(ctx context.Context, ref, project, dir string, body api.UpdateDoc) (api.DocResult, error) {
+	r, err := c.api.UpdateDocWithResponse(ctx, ref, &api.UpdateDocParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, body)
+	if err != nil {
+		return api.DocResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// UpdateDocContent writes content as the next revision of the doc ref names, as
+// GetDoc does, if base is still its latest.
+func (c *Client) UpdateDocContent(ctx context.Context, ref, project, dir string, base int64, content string) (api.DocResult, error) {
+	r, err := c.api.UpdateDocContentWithResponse(ctx, ref, &api.UpdateDocContentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.DocContentChange{Base: base, Content: content})
+	if err != nil {
+		return api.DocResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// ListDocRevisions returns the revisions of the doc ref names, as GetDoc does.
+func (c *Client) ListDocRevisions(ctx context.Context, ref, project, dir string) (api.DocRevisionList, error) {
+	r, err := c.api.ListDocRevisionsWithResponse(ctx, ref, &api.ListDocRevisionsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.DocRevisionList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// DeleteDoc removes the doc ref names, as GetDoc does.
+func (c *Client) DeleteDoc(ctx context.Context, ref, project, dir string) (api.DocResult, error) {
+	r, err := c.api.DeleteDocWithResponse(ctx, ref, &api.DeleteDocParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.DocResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
