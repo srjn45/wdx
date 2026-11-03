@@ -76,7 +76,7 @@ MVP: registering and logging in, nodes, remote access between one's own nodes (i
 
 On top of mTLS, end-to-end encryption between nodes and the authenticator code checked by the host:
 
-- Client certificates last about a day and renew themselves, so revoking one takes effect quickly and a node logged out offline is useless within a day.
+- ~~Client certificates last about a day and renew themselves.~~ Dropped in the review of 2026-11-03: the hub checks revocation on every connection, so a short certificate added nothing (docs/HUB_ARCH.md). Certificates last a year; a node logged out offline has deleted its key and cannot connect.
 - A node accepts only a fixed list of API routes from a remote session.
 - Docs are encrypted at rest on the hub, with keys from a key management service on the public instance.
 - Every query on the hub is scoped to the account and its teams, with tests proving one account cannot read another's data.

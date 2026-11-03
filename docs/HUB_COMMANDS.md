@@ -8,23 +8,18 @@ Agreed on 2026-11-03.
 
 ### How login flows
 
-```
-wdx hub login ──► daemon ──► hub: "start a login for node <name>, public key K"
-                         ◄── hub: a link and a short code
-   CLI opens the browser at the link (code already in it) and prints both
-   browser: sign up or log in, second factor, "Approve wdx on <name>? code WDX-4F7K"
-                         ◄── hub: approved, here is this node's certificate
-   daemon keeps it in <home>/hub/ (mode 0600), connects; CLI prints the result
-```
+Two flows (docs/HUB_ARCH.md, "Login"):
 
-- One flow, OAuth's device flow, for both cases. The link carries the code, so with a browser the user only checks the code on the page matches the terminal's. Over SSH, `--no-browser` prints the link and code to open on any device.
-- The browser is opened with `xdg-open` or `open`, an optional entry in `wdx deps`. Without it, the link is printed.
-- The CLI waits on a stream from the daemon until the login is approved, denied or expired.
+- **With a browser on the machine,** the default: the CLI opens the browser at the hub's login page and listens on loopback for the browser to come back. The user signs up or logs in, passes the second factor, and approves the node, changing its name on the page if the account has that name already. Only the machine that started the login can finish it, so a forwarded link gets an attacker nothing.
+- **`--no-browser`,** for a shell over SSH: the CLI prints the hub's device page and a code. The user opens the page on any device and types the code, as `gh` has it; the link never carries it.
+
+The browser is opened with `xdg-open` or `open`, an optional entry in `wdx deps`. Without it, or with `--no-browser`, nothing is opened. The CLI waits on a stream from the daemon until the login is approved, denied or expired.
 
 ### Which hub
 
 - **No `hub.url` setting.** The hub's address is kept with the login, in `<home>/hub/`, and `wdx hub status` shows it. A setting could be changed while logged in to another hub, which nothing could make sense of.
 - **Exactly one of `--hub-central` or `--url <url>`:** `--hub-central` is the public hub, named as Maven Central is, its address built into the binary so that nobody changes it; `--url` is any other. Neither, or both, is a `usage` error, so that a company's engineer never ends up on the public hub by leaving a flag out. `--url` completes the public hub's address.
+- `--hub-central` ships with the public hub, after the first release. Until then `--url` is required, and the MVP runs its hub locally (docs/HUB_ARCH.md).
 - A release that changes the public hub's address changes what `--hub-central` means for later logins only; a node already logged in keeps its address, and the hub tells its nodes of a move over the connection they trust.
 
 ### `wdx hub login`
@@ -35,10 +30,10 @@ wdx hub login ──► daemon ──► hub: "start a login for node <name>, pu
 | `--name <name>` | this node's name in the account; the hostname by default; unique in the account |
 | `--no-browser` | print the link and code; open no browser |
 
-- The link and code go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`, with the hint `run wdx hub code setup to allow remote access` when no authenticator is set up.
-- `--json` never prompts; the link and code still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {"url", "user", "node": {"id", "name"}}}`.
+- What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`, with the hint `run wdx hub code setup to allow remote access` when no authenticator is set up.
+- `--json` never prompts; the link, and the code, still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {"url", "user", "node": {"id", "name"}}}`.
 - Results: `logged_in`.
-- Errors: `hub_unreachable` (3); `hub_version_unsupported` (1); `already_logged_in` (1), hinting `wdx hub logout`; `name_taken` (1), hinting `--name`; `login_denied` (1), when Deny was clicked; `login_expired` (1), when not approved within about 10 minutes.
+- Errors: `hub_unreachable` (3); `hub_version_unsupported` (1); `already_logged_in` (1), hinting `wdx hub logout`; `name_taken` (1) only with `--json` and `--no-browser`, where the page cannot ask, hinting `--name`; `login_denied` (1), when Deny was clicked; `login_expired` (1), when not approved within about 10 minutes.
 
 ### `wdx hub logout`
 
@@ -49,7 +44,7 @@ wdx hub login ──► daemon ──► hub: "start a login for node <name>, pu
 
 ### `wdx hub status`
 
-Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`), `remote_access` (`on`, `off`), `code_setup`, `sessions` (`{incoming, outgoing}`), and the hub's version with whether this wdx is in its range. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
+Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`, `revoked` when another node removed this one, hinting `wdx hub logout`, and `disabled` when the admin disabled the account), `remote_access` (`on`, `off`), `code_setup`, `sessions` (`{incoming, outgoing}`), and the hub's version with whether this wdx is in its range. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
 
 ## `wdx hub code setup`, `recover`
 
@@ -83,11 +78,11 @@ Agreed on 2026-11-03.
 - In text mode a `--node` command writes `on node <name>` to stderr, in the cyan of a remote tide's bar, so that a remote result is never read as a local one. `--json` is unchanged.
 - With no session to the node open: with a terminal it asks `code for <name>:` and opens one; with `--json` or `--no-input` it fails with `session_required`, hinting `wdx hub session open --node <name> --code <code>`.
 - Refused for agents: where `WDX_AGENT_ID` is set, `--node` fails with `remote_not_for_agents`, so that an agent on the client never works on another node through a session its human opened. A person in a wdx terminal may use it. In a remote tide, agents work on the host with no `--node`.
-- Errors: `not_logged_in`, `node_not_found`, `node_offline`, `remote_access_off` (the host's setting), `code_not_set_up`, `code_wrong` (slowed down and logged at the host), `node_version_unsupported`, `route_not_allowed`, `session_required`, `remote_not_for_agents`.
+- Errors: `not_logged_in`, `node_not_found`, `node_offline`, `remote_access_off` (the host's setting), `code_not_set_up`, `code_wrong` (slowed down and logged at the host), `node_version_unsupported`, `route_not_allowed`, `session_required`, `session_closed` (the session ended while the command ran: the host closed it, its daemon restarted, or it went idle), `remote_not_for_agents`.
 
 ### `wdx hub session open --node <name> [--code <code>]`
 
-Opens a session ahead of time, for scripts and `--json`, which needs `--code`; otherwise the code is asked for. Results: `opened`; `unchanged` when one is open already.
+Opens a session ahead of time, for scripts and `--json`, which needs `--code`; otherwise the code is asked for. `--code` is never logged, where every other flag is. A code is single use at the host. Results: `opened`; `unchanged` when one is open already. A session ends when the host's daemon restarts.
 
 ### `wdx hub session list`
 
@@ -133,7 +128,7 @@ Not in the MVP. Results: `renamed`. Errors: `name_taken`.
 
 ### `wdx project sync --id | --name [--on | --off]`
 
-- With neither, shows `sync` (on or off), `pending` (revisions not yet on the hub) and `last_pushed_at`.
+- With neither, shows `sync` (on or off), `pending` (changes not yet on the hub), `failed` (changes the hub refused, each with its doc and code, such as `doc_name_taken` when another of one's own nodes made a doc of that name in this repository; renaming the doc pushes it), `last_pushed_at` and the project's repository key.
 - `--on` pushes every doc of the project with all its revisions, then each change: a new doc, a revision, a change of status, labels or name, a removal. It works logged out or offline; changes wait for the connection.
 - `--off` stops pushing. What is on the hub stays there: teams will rely on it once docs are distributed. Removing it from the hub is a later command.
 - A doc removed on the node is removed on the hub too.
@@ -178,7 +173,7 @@ Runs the hub in the foreground, as a container's entry point. It listens on two 
 
 ### The rest
 
-`wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
+`wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's, with settings marked secret shown as `[secret]`; `wdx-hub audit verify`, which walks the audit chain and reports the first broken row; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
 
 ### The hub's settings
 
@@ -191,4 +186,6 @@ Each also from `WDX_HUB_<KEY>`.
 | `listen.nodes` | `:8443` | the node endpoint |
 | `web.tls` | `off` | `off` behind a TLS proxy, as on Fly; `acme` (Let's Encrypt); `files`, with `web.tls_cert` and `web.tls_key` |
 | `registration` | `closed` | `closed` or `open`; invites work either way |
+| `trusted_proxies` | empty | addresses whose forwarding header gives the client's address, as Fly's proxy |
+| `docs_key` | required | the master key sealing docs at rest; secret |
 | `log.level`, `otel.endpoint` | `info`, empty | |
