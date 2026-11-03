@@ -42,7 +42,7 @@ wdx tide                                   # all of it in one window
 wdx help                                   # every command; wdx <command> --help for one
 ```
 
-Scripts and agents add `--json`: stdout then holds one JSON object, a result or a problem with a stable error `code`, and nothing prompts (`wdx help json`).
+Scripts and agents add `--json`: stdout then holds one JSON object, a result or a problem with a stable error `code`, and nothing prompts (`wdx help json`). `wdx help agents` is the manual for an AI agent wdx runs: child agents, messages, worktrees and docs.
 
 ## Updating
 

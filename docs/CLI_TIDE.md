@@ -128,6 +128,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Sending raw keys from a script (Esc, arrows) | `attach` and tide | By design | Both are for a person at a keyboard. The `send` commands can grow this when a need appears |
 | Panes, tabs, focus, zoom, folding, selection, `C-q r` | tide | By design | They are tide's own interface |
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
+| Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
 
 ## `wdx project open`
 

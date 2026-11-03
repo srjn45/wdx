@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -19,28 +21,12 @@ func TestExamples(t *testing.T) {
 	var check func(cmd *cobra.Command)
 	check = func(cmd *cobra.Command) {
 		for _, e := range parseExamples(cmd.Example) {
-			if strings.ContainsAny(e.Command, `'"\`) {
-				t.Errorf("%s: example %q quotes; keep examples free of shell quoting", cmd.CommandPath(), e.Command)
-				continue
-			}
-			args := strings.Fields(e.Command)
-			// A fresh tree, since parsing sets the flags.
-			c, rest, err := newRoot(config.Default()).Find(args[1:])
-			if err != nil || c.CommandPath() != cmd.CommandPath() {
-				t.Errorf("%s: example %q runs %v, %v", cmd.CommandPath(), e.Command, c.CommandPath(), err)
-				continue
-			}
-			for _, validate := range []func() error{
-				func() error { return c.ParseFlags(rest) },
-				func() error { return c.ValidateArgs(c.Flags().Args()) },
-				c.ValidateRequiredFlags,
-				c.ValidateFlagGroups,
-				func() error { return checkJSONRequires(c) },
-			} {
-				if err := validate(); err != nil {
-					t.Errorf("%s: example %q: %v", cmd.CommandPath(), e.Command, err)
-					break
-				}
+			c, err := checkCommandLine(e.Command)
+			switch {
+			case err != nil:
+				t.Errorf("%s: example %q: %v", cmd.CommandPath(), e.Command, err)
+			case c.CommandPath() != cmd.CommandPath():
+				t.Errorf("%s: example %q runs %v", cmd.CommandPath(), e.Command, c.CommandPath())
 			}
 		}
 		for _, sub := range cmd.Commands() {
@@ -52,9 +38,64 @@ func TestExamples(t *testing.T) {
 	check(newRoot(config.Default()))
 }
 
+// checkCommandLine returns the command line names, and an error unless it is one
+// that command accepts: free of shell quoting, with flags that parse and follow
+// its rules.
+func checkCommandLine(line string) (*cobra.Command, error) {
+	if strings.ContainsAny(line, `'"\`) {
+		return nil, errors.New("it quotes; keep command lines free of shell quoting")
+	}
+	args := strings.Fields(line)
+	// A fresh tree, since parsing sets the flags.
+	c, rest, err := newRoot(config.Default()).Find(args[1:])
+	if err != nil {
+		return nil, err
+	}
+	for _, validate := range []func() error{
+		func() error { return c.ParseFlags(rest) },
+		func() error { return c.ValidateArgs(c.Flags().Args()) },
+		c.ValidateRequiredFlags,
+		c.ValidateFlagGroups,
+		func() error { return checkJSONRequires(c) },
+	} {
+		if err := validate(); err != nil {
+			return c, err
+		}
+	}
+	return c, nil
+}
+
+// TestAgentsTopicCommands checks every command line of wdx help agents, the lines
+// indented by four spaces, names a command and is one it accepts, as TestExamples
+// does the examples.
+func TestAgentsTopicCommands(t *testing.T) {
+	t.Parallel()
+	n := 0
+	for line := range strings.Lines(agentsTopic(style.New(false))) {
+		command, ok := strings.CutPrefix(line, "    ")
+		if !ok {
+			continue
+		}
+		command, _, _ = strings.Cut(strings.TrimSpace(command), "  ") // its comment
+		n++
+		c, err := checkCommandLine(command)
+		switch {
+		case !strings.HasPrefix(command, identity.Name+" "):
+			t.Errorf("%q is indented as a command line", command)
+		case err != nil:
+			t.Errorf("%q: %v", command, err)
+		case c.HasSubCommands():
+			t.Errorf("%q names a group of commands, not one: %s", command, c.CommandPath())
+		}
+	}
+	if n == 0 {
+		t.Fatal("no command lines found")
+	}
+}
+
 func TestHelpTopicJSON(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"json", "settings", "logs"} {
+	for _, name := range []string{"json", "settings", "logs", "agents"} {
 		v, exit := wdxJSON(t, t.TempDir(), "help", name)
 		if exit != api.ExitOK || v.Topic == nil || v.Topic.Name != name || v.Topic.Text == "" || (v.Topic.Settings != nil) != (name == "settings") {
 			t.Fatalf("%s: unexpected topic %+v", name, v.Topic)

@@ -608,6 +608,7 @@ var topics = []topic{
 	{"json", "what --json prints: results, errors and the help itself", jsonTopic},
 	{"settings", "every setting, its default and where it is read from", settingsTopic},
 	{"logs", "where runs are logged, and finding one by its debug_id", logsTopic},
+	{"agents", "how an AI agent wdx runs works through wdx: child agents, messages, worktrees, docs", agentsTopic},
 }
 
 func findTopic(name string) (topic, bool) {
@@ -709,4 +710,71 @@ lines to <home>/logs/` + identity.Name + `-<date>.log, kept for log.retention_da
 A failure prints its debug_id; every line of that run, in ` + identity.Name + ` and in the
 daemon, carries it. ` + usageText(st, identity.Name+" observe start") + ` shows the logs in Grafana, where
 the debug_id finds them too.`
+}
+
+// agentsTopic is the manual of an AI agent wdx runs (docs/IDE.md, "MCP and
+// skills"): workflows and when to use each, not flags. Every line indented by four
+// spaces is a command line, checked by TestAgentsTopicCommands; prose is
+// indented by two.
+func agentsTopic(st style.Style) string {
+	w := identity.Name
+	commands := func(rows ...string) string {
+		var table style.Table
+		for i := 0; i < len(rows); i += 2 {
+			if rows[i+1] == "" {
+				table.Row("    " + st.Command(rows[i]))
+			} else {
+				table.Row("    "+st.Command(rows[i]), st.Muted(rows[i+1]))
+			}
+		}
+		var b strings.Builder
+		table.Write(&b)
+		return b.String()
+	}
+	heading := func(s string) string { return st.Heading(s) + "\n" }
+	return `How an AI coding agent that ` + w + ` runs works through it. Run each command with
+` + st.Flag("--json") + `; ` + st.Command(w+" <command> --help --json") + ` says the rest.
+
+` + heading("You") + `  ` + w + ` sets WDX_AGENT_ID in your environment.
+` + commands(w+" agent get --id $WDX_AGENT_ID", "your project, worktree, parent and children") + `
+` + heading(w+" comes first") + `  Use ` + w + ` rather than your own means for what it has, so that the person sees
+  all the work in one place, whichever AI runs it: child agents for subagents,
+  their worktrees for yours, ` + st.Command(w+" agent send") + ` to talk to another agent, and
+  ` + st.Command(w+" doc") + ` for docs. If ` + w + ` fails, use your own means and say so.
+
+` + heading("Child agents") + commands(
+		w+" agent create --parent-id $WDX_AGENT_ID --name <name> --prompt <task>", "",
+		w+" agent create --parent-id $WDX_AGENT_ID --name <name> --worktree <name> --prompt <task>", "",
+	) + `  Put your id in a child's task, and ask it to report back with
+  ` + st.Command(w+" agent send") + ` when it is done.
+` + commands(
+		w+" agent get --name <name>", "what it is doing: working, idle or waiting",
+		w+" agent list", "",
+	) + `
+` + heading("Messages") + commands(
+		w+" agent send --name <name> --prompt <text>", "delivered once it can take it",
+		w+" agent send --name <name> --prompt <text> --instant", "first, interrupting its turn",
+		w+" message list", "those still waiting",
+	) + `
+` + heading("Worktrees") + commands(
+		w+" worktree list", "every worktree and what is uncommitted",
+		w+" worktree diff --name <worktree>", "what it has committed",
+	) + `  Landing and removing a worktree are the person's to do, unless you are asked.
+
+` + heading("Docs") + `  A project's docs live in ` + w + `, not in the repository: read and change them
+  only through ` + st.Command(w+" doc") + `, never through a copy in the repository. A doc's
+  status says what is agreed: approved is, wip and review are not, rejected
+  was turned down.
+` + commands(
+		w+" doc list", "",
+		w+" doc get --name <doc>", "",
+	) + `  To change one, get a copy, edit it with your own tools, and write it back
+  naming the revision you read:
+` + commands(
+		w+" doc get --name <doc> --out <file>", "says the revision, here 4",
+		w+" doc update --name <doc> --path <file> --base 4", "",
+	) + `  ` + st.Name("doc_changed") + ` means another wrote first: get it again with ` + st.Flag("--overwrite") + `, apply
+  your change, and update with the new base.
+` + commands(w+" doc create --name <doc> --path <file> --labels <labels>", "") +
+		`  Approving or rejecting a doc is the person's to do, unless you are asked.`
 }

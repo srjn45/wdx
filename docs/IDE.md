@@ -100,7 +100,7 @@ Proposed:
 Every agent wdx starts knows wdx, in two layers, both from the binary running so that they cannot disagree with it:
 
 1. **A short note at each launch**, added to the system prompt: who the agent is, when to use wdx rather than its own means, and where to read more. It lists no commands. An ACA hands it over in its own way (`Launch` gets the text; Claude Code takes `--append-system-prompt`, which applies on `--resume` too and is not lost when a conversation is compacted). docs/ACA.md records each.
-2. **The manual, `wdx help agents`**, a help topic with the workflows and when to use each: child agents and worktrees, messaging, and later docs and plans. Each command's `--help` and `--json` give the details. Its command lines are checked by a test, as `TestExamples` checks examples.
+2. **The manual, `wdx help agents`**, a help topic with the workflows and when to use each: child agents and worktrees, messaging, and later docs and plans. Each command's `--help` and `--json` give the details. Its command lines are checked by a test, as `TestExamples` checks examples. Built on 2026-11-03 with docs, approved by the human: every line indented by four spaces is a command line `TestAgentsTopicCommands` checks. It says landing a worktree and approving or rejecting a doc are the person's to do unless the agent is asked. The launch note, layer 1, is not built, so an agent finds the topic only in `wdx help`.
 
 Not these:
 

@@ -870,6 +870,7 @@ func TestHelp(t *testing.T) {
 		{[]string{"help", "settings"}, []string{"wdx help settings: ", "WDX_HOME", "log.level", "color ", "NO_COLOR"}, []string{"Usage:"}},
 		{[]string{"help", "json"}, []string{"wdx help json: ", "Problem Details"}, nil},
 		{[]string{"help", "logs"}, []string{"wdx help logs: ", "debug_id"}, nil},
+		{[]string{"help", "agents"}, []string{"wdx help agents: ", "WDX_AGENT_ID", "wdx doc update --name <doc> --path <file> --base 4"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
 		if out.exit != api.ExitOK || out.stderr != "" {
@@ -908,7 +909,7 @@ func TestHelpJSON(t *testing.T) {
 	walk(nil)
 
 	v, _ := wdxJSON(t, t.TempDir(), "--help")
-	if c := v.Command; len(c.Topics) != 3 || c.Topics[0].Name != "json" {
+	if c := v.Command; len(c.Topics) != 4 || c.Topics[0].Name != "json" || c.Topics[3].Name != "agents" {
 		t.Fatalf("unexpected topics: %+v", c.Topics)
 	}
 	v, _ = wdxJSON(t, t.TempDir(), "help", "project", "open")
