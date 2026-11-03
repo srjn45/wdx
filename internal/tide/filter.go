@@ -154,6 +154,12 @@ func (m *Model) placeOnMatch() {
 			return
 		}
 	}
+	for i, r := range m.docRows() {
+		if r.match {
+			m.moveToDoc(i)
+			return
+		}
+	}
 }
 
 // cursorOnMatch reports whether the row under the cursor matches the filter, rather
@@ -167,6 +173,9 @@ func (m *Model) cursorOnMatch() bool {
 	case sectionCode:
 		rows := m.codeRowsShown()
 		return l.code.row < len(rows) && rows[l.code.row].match
+	case sectionDocs:
+		rows := m.docRows()
+		return l.docRow < len(rows) && rows[l.docRow].match
 	}
 	rows := m.listRows()
 	return l.row < len(rows) && rows[l.row].match
@@ -178,6 +187,7 @@ func (m *Model) keepCursors() {
 	m.keepAgentCursor()
 	m.keepWorktreeCursor()
 	m.keepCodeCursor()
+	m.keepDocCursor()
 }
 
 // filterMatches counts the rows that match, not those shown as their parents.
@@ -194,6 +204,11 @@ func (m *Model) filterMatches() int {
 		}
 	}
 	for _, r := range m.codeRowsShown() {
+		if r.match {
+			n++
+		}
+	}
+	for _, r := range m.docRows() {
 		if r.match {
 			n++
 		}

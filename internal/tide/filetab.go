@@ -49,18 +49,24 @@ func (v *diffView) setSource(c api.WorktreeFileContent) {
 	case c.Content == nil || *c.Content == "":
 		v.message = "an empty file"
 	default:
-		v.lineOf = strings.Split(strings.TrimSuffix(*c.Content, "\n"), "\n")
-		for i, line := range v.lineOf {
-			v.lineOf[i] = strings.TrimSuffix(line, "\r")
-		}
+		v.lineOf = sourceLines(*c.Content)
 	}
+}
+
+// sourceLines are the lines of text, without their ends.
+func sourceLines(text string) []string {
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimSuffix(line, "\r")
+	}
+	return lines
 }
 
 // setSourceError says why a file cannot be read, when that is the file's doing, and
 // reports whether it did: what it showed is no longer so.
 func (v *diffView) setSourceError(err error) bool {
 	e, ok := errors.AsType[*client.ProblemError](err)
-	if !v.source || !ok {
+	if !v.source || v.doc || !ok {
 		return false
 	}
 	switch e.Problem.Code {

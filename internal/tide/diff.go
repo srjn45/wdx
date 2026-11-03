@@ -50,12 +50,16 @@ func isDiffTab(tab string) bool {
 	return strings.HasPrefix(tab, fileDiffPrefix) || strings.HasPrefix(tab, committedPrefix)
 }
 
-// isTextTab reports whether the tab is read in the text view: a diff or a file.
-func isTextTab(tab string) bool { return isDiffTab(tab) || isFileTab(tab) }
+// isTextTab reports whether the tab is read in the text view: a diff, a file or a
+// doc.
+func isTextTab(tab string) bool { return isDiffTab(tab) || isFileTab(tab) || isDocTab(tab) }
 
 // diffTabOf returns the worktree a diff's tab is of, and its file if it is a
 // file's.
 func diffTabOf(tab string) (worktree, file string) {
+	if id, ok := strings.CutPrefix(tab, docTabPrefix); ok {
+		return "", id // of no worktree, and shown by line as a file is
+	}
 	if rest, ok := strings.CutPrefix(tab, uncommittedPrefix); ok {
 		return rest, ""
 	}
@@ -74,6 +78,8 @@ func diffTabOf(tab string) (worktree, file string) {
 func (m *Model) diffTitle(tab string) string {
 	worktree, file := diffTabOf(tab)
 	switch {
+	case isDocTab(tab):
+		return m.docTitle(tab)
 	case isFileTab(tab):
 		if _, ok := m.tabEditor(tab); ok {
 			return editTabLabel + worktree + "/" + tabLeaf(file)
@@ -129,6 +135,7 @@ type diffView struct {
 	err         string
 	uncommitted bool // the view of what is not committed, of a worktree's tab
 	source      bool // the view of a file as it is, not of changes
+	doc         bool // the view of a doc, a source tide never edits
 	editing     bool // its tab showed the file's editor when last looked
 
 	message string // why there is nothing to show, instead of the rows
@@ -185,12 +192,16 @@ type diffLoaded struct {
 	committed      *api.WorktreeDiff
 	uncommitted    *api.WorktreeDiff
 	content        *api.WorktreeFileContent
+	doc            *api.DocContent
 	err            error
 }
 
 // diffSeen is what the tab's diff depends on, from what the stream says: a file's
 // status, size and time, or a worktree's commits.
 func (m *Model) diffSeen(tab string) string {
+	if isDocTab(tab) {
+		return m.docSeen(tab)
+	}
 	worktree, file := diffTabOf(tab)
 	i := slices.IndexFunc(m.worktreeStatuses(), func(w api.WorktreeStatus) bool { return w.Name == worktree })
 	if i < 0 {
@@ -246,11 +257,11 @@ func (m *Model) diffSync() tea.Cmd {
 	v, ok := l.diffs[view]
 	if !ok {
 		_, file := diffTabOf(view)
-		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), source: isFileTab(view), file: file}
+		v = &diffView{jump: true, uncommitted: strings.HasPrefix(view, uncommittedPrefix), source: isFileTab(view) || isDocTab(view), doc: isDocTab(view), file: file}
 		l.diffs[view] = v
 	}
 	editing := m.editShown()
-	if (came || (v.editing && !editing)) && v.source {
+	if (came || (v.editing && !editing)) && v.source && !v.doc {
 		v.asked = false // a gitignored file, or one edited by another or in its editor, says nothing in the stream
 	}
 	v.editing = editing
@@ -274,6 +285,9 @@ func (m *Model) readDiff(tab string) tea.Cmd {
 	return func() tea.Msg {
 		msg := diffLoaded{projectID: id, tab: tab}
 		switch {
+		case isDocTab(tab):
+			r, err := m.client.GetDoc(m.ctx, "id:"+file, ref, "", 0)
+			msg.doc, msg.err = &r, err
 		case isFileTab(tab):
 			r, err := m.client.WorktreeFileContent(m.ctx, worktree, file, ref, "")
 			msg.content, msg.err = &r, err
@@ -312,6 +326,9 @@ func (m *Model) diffLoaded(msg diffLoaded) tea.Cmd {
 	switch {
 	case msg.content != nil:
 		v.setSource(*msg.content)
+		return m.sourceRead(msg.projectID, msg.tab, v, old)
+	case msg.doc != nil:
+		v.setDoc(*msg.doc)
 		return m.sourceRead(msg.projectID, msg.tab, v, old)
 	case msg.file != nil:
 		v.setFile(*msg.file)
@@ -737,9 +754,9 @@ func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 		return append([]barKey{{"C-q -", "close", 1}}, extra...)
 	}
 	keys := []barKey{{"↑↓", "scroll", 1}}
-	if v.source {
+	if v.source && !v.doc {
 		keys = append(keys, barKey{editFileKey, "edit", 2})
-	} else {
+	} else if !v.source {
 		keys = append(keys, barKey{"[ ]", "change", 5})
 	}
 	if file {
@@ -784,6 +801,9 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 
 // allKeys are what ? shows.
 func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
+	if v.doc {
+		return docKeys
+	}
 	if v.source {
 		return sourceKeys
 	}
@@ -920,7 +940,9 @@ func (m *Model) drawDiff(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	var top []string
 	if v != nil && v.err != "" {
 		what := "the diff"
-		if v.source {
+		if v.doc {
+			what = "the doc"
+		} else if v.source {
 			what = "the file"
 		}
 		top = append(top, st.Failure(wrap(what+" could not be read: "+v.err, area.Dx())))
@@ -1133,6 +1155,9 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	if v.source && key.String() == editFileKey {
+		if v.doc {
+			return nil // tide never changes a doc
+		}
 		return m.askEditor(l.active)
 	}
 	if v.source && slices.Contains(diffOnlyKeys, key.String()) {

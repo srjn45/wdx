@@ -1,6 +1,6 @@
 # Docs
 
-Status: approved by the human on 2026-11-02; steps 1 to 5 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
+Status: approved by the human on 2026-11-02; steps 1 to 6 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
 
 ## Why
 
@@ -149,6 +149,16 @@ Each command takes `--project-id <id> | --project-name <name>`, or the project o
 - `Enter` opens a `doc: auth-rfc` tab in the file tab's read-only view: highlighted by `format`, line numbers, `/` search. Its title shows the revision and status. It is read again when the stream says the doc changed.
 - Nothing else in tide changes a doc.
 
+Approved on 2026-11-03, as built:
+
+- The rows are the project's docs from its stream, by name; nothing more is asked of the daemon. The heading counts them. With none, the row says `no docs: see wdx doc create`, which fits the pane's usual width. A narrow row drops the labels first, then the status whole, as a word cut short would say another.
+- The filter matches a doc when its name and labels together hold every word typed.
+- `Enter` or a click opens the tab, and the focus stays in the list, as for a file, unless the list is zoomed.
+- The tab is the doc's id (`doc:<id>`), so a rename keeps it and changes its title: `doc: auth-rfc r4 approved`. It shows the latest revision, read with `GetDoc`, and is read again only when the stream brings a new revision, not for a status or labels, nor on coming back to the tab.
+- An empty doc says `an empty doc`. A doc removed closes its tab and the status line says `doc auth-rfc removed`. A daemon that sends no docs closes none.
+- The tab has the file tab's keys but editing: the bar and `?` leave out `e`, and `e` does nothing.
+- Not in tide: older revisions, history, and every change to a doc, which the CLI makes.
+
 ### docs/CLI_TIDE.md
 
 A Docs table. Reading a doc: Same. Create, update, status and labels, rename, remove, history, sync-to-git: By design, CLI only, since AIs write docs and tide only shows them for now.
@@ -162,5 +172,5 @@ Each builds and passes `make test` on its own.
 3. **Done.** The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
 4. **Done.** The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
 5. **Done.** The git copy: `sync-to-git` and the `docs.git_path` setting.
-6. tide: the Docs section and its tab, `tide.section_order`.
+6. **Done.** tide: the Docs section and its tab, `tide.section_order`.
 7. docs/CLI_TIDE.md, README, and `wdx help agents` once it exists, so that agents know to read and change docs through `wdx doc`.

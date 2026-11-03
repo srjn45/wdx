@@ -284,11 +284,11 @@ The tree shows which files a worktree changed, so that its changes can be found 
 
 ## The order of the sections
 
-`tide.section_order`, default `awc`: a letter per section, `a` Agents, `w` Worktrees, `c` Code.
+`tide.section_order`, default `awcd`: a letter per section, `a` Agents, `w` Worktrees, `c` Code, `d` Docs (docs/DOCS.md).
 
-- It is a plain string checked by the table's `set`, not `choices`, since five sections make 120 orders.
+- It is a plain string checked by the table's `set`, not `choices`, since four sections make 24 orders and five would make 120.
 - Refused, with a reason naming the letters: an unknown letter, a letter twice, a capital, an empty value.
-- `d` and `p` are added when docs and plans are. A rollback puts back the config file as it was, so an older version never reads them.
+- `d` came with docs, on 2026-11-03; `p` comes with plans. A rollback puts back the config file as it was, so an older version never reads them.
 - A section left out comes after the others, in the default order, so `ca` is Code, Agents, Worktrees. Leaving one out never hides it: a value of `awc` must neither hide docs when they arrive nor stop that update, which refuses a value the new version does not accept.
 - A save in tide's settings tab applies at once. `wdx setting set` elsewhere applies when tide next starts, since settings are not in the project's stream.
 - Built 2026-11-02. The first section's heading stays at the pane's top as the Agents heading did, and `↑` / `↓` go through the one list the sections make in their order, rather than each section knowing its neighbours.

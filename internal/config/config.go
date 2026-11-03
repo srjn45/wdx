@@ -303,8 +303,8 @@ var settings = []setting{
 	},
 	{
 		key:         "tide.section_order",
-		description: "order of the sections of tide's left pane, a letter each: a agents, w worktrees, c code; those left out come after, in that order",
-		def:         "awc",
+		description: "order of the sections of tide's left pane, a letter each: a agents, w worktrees, c code, d docs; those left out come after, in that order",
+		def:         "awcd",
 		set: func(c *Config, v string) error {
 			if err := checkSectionOrder(v); err != nil {
 				return err
@@ -348,10 +348,10 @@ func checkGitPath(v string) error {
 }
 
 // SectionLetters are the letters tide.section_order takes, in their default order.
-const SectionLetters = "awc"
+const SectionLetters = "awcd"
 
 // checkSectionOrder refuses an order that is empty, or has a letter twice or one
-// that names no section. It is not a list of choices: five sections make 120 orders.
+// that names no section. It is not a list of choices: four sections make 24 orders.
 func checkSectionOrder(v string) error {
 	if v == "" {
 		return fmt.Errorf("give at least one of %s", strings.Join(strings.Split(SectionLetters, ""), ", "))
@@ -360,7 +360,7 @@ func checkSectionOrder(v string) error {
 	for _, r := range v {
 		switch {
 		case !strings.ContainsRune(SectionLetters, r):
-			return fmt.Errorf("%q has %q, which is none of a (agents), w (worktrees), c (code)", v, r)
+			return fmt.Errorf("%q has %q, which is none of a (agents), w (worktrees), c (code), d (docs)", v, r)
 		case seen[r]:
 			return fmt.Errorf("%q has %q twice", v, r)
 		}

@@ -58,7 +58,10 @@ type agentList struct {
 	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first
 
 	code       codeSection
-	lastActive string // the tab current when last looked, to tell one coming to show
+	docRow     int               // the cursor's row in the Docs section
+	docCursor  string            // the id of its doc, which the cursor stays on as docs come and go
+	docNames   map[string]string // the docs' names by id at the last event, to say which went
+	lastActive string            // the tab current when last looked, to tell one coming to show
 	// editorsSeen is set once the project came and its editors got their tabs.
 	editorsSeen bool
 	closing     map[string]bool // the editors' tabs told to quit, which close once they end
@@ -478,6 +481,8 @@ func (s *projectScreen) sectionHint() string {
 			return codeSelectorHint
 		case l.section == sectionCode:
 			return codeHint
+		case l.section == sectionDocs:
+			return docHint
 		}
 	}
 	switch {
@@ -509,6 +514,8 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		return s.updateWorktrees(name)
 	case l.section == sectionCode:
 		return s.updateCode(name)
+	case l.section == sectionDocs && name == "enter":
+		s.m.openDoc()
 	case l.section == sectionAgents:
 		s.updateAgents(name)
 	}
@@ -547,11 +554,12 @@ const (
 	sectionAgents section = iota
 	sectionWorktrees
 	sectionCode
+	sectionDocs
 )
 
 // sectionLetters name the sections in the tide.section_order setting, in the
 // default order.
-var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'c': sectionCode}
+var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'c': sectionCode, 'd': sectionDocs}
 
 // sectionSettingKey is the setting that orders the sections.
 const sectionSettingKey = "tide.section_order"
@@ -566,7 +574,7 @@ func sectionOrder(letters string) []section {
 			order = append(order, s)
 		}
 	}
-	for _, s := range []section{sectionAgents, sectionWorktrees, sectionCode} {
+	for _, s := range []section{sectionAgents, sectionWorktrees, sectionCode, sectionDocs} {
 		if !slices.Contains(order, s) {
 			order = append(order, s)
 		}
@@ -581,6 +589,8 @@ func (l *agentList) cursorRow() int {
 		return l.worktreeRow
 	case sectionCode:
 		return l.code.row
+	case sectionDocs:
+		return l.docRow
 	}
 	return l.row
 }
@@ -615,6 +625,9 @@ func (m *Model) paneItems() []paneItem {
 		case sectionCode:
 			n = len(m.codeRowsShown())
 			empty = m.codeNote() != ""
+		case sectionDocs:
+			n = len(m.docRows())
+			empty = n == 0
 		}
 		for row := range n {
 			items = append(items, paneItem{section: s, row: row})
@@ -661,6 +674,8 @@ func (m *Model) moveToItem(it paneItem) {
 		m.moveToWorktree(it.row)
 	case sectionCode:
 		m.moveToCode(it.row)
+	case sectionDocs:
+		m.moveToDoc(it.row)
 	}
 }
 
@@ -716,6 +731,10 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 	case it.section == sectionCode:
 		s.clickCode(it.row, col, width)
 		return nil
+	case it.section == sectionDocs:
+		s.m.moveToDoc(it.row)
+		s.m.openDoc()
+		return nil
 	}
 	rows := s.m.listRows()
 	i := it.row
@@ -752,7 +771,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
-	agents, rows, worktrees, code, marks := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown(), m.codeMarks()
+	agents, rows, worktrees, code, marks, docs := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown(), m.codeMarks(), m.docRows()
 	agentCount := fmt.Sprint(len(agents)-countRemoved(agents)) + " "
 	worktreeCount := ""
 	if m.worktreeStatuses() != nil {
@@ -762,6 +781,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		sectionAgents:    sectionHeading(st, " Agents", agentCount, width),
 		sectionWorktrees: sectionHeading(st, " Worktrees", worktreeCount, width),
 		sectionCode:      sectionHeading(st, " Code", "", width),
+		sectionDocs:      sectionHeading(st, " Docs", fmt.Sprint(len(m.docs()))+" ", width),
 	}
 
 	shown, top := m.visibleItems(m.listHeight(area.Dy()))
@@ -779,6 +799,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, st.Muted(" no match"))
 		case it.empty && it.section == sectionAgents:
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
+		case it.empty && it.section == sectionDocs:
+			lines = append(lines, st.Muted(" no docs: see ")+st.Command("wdx doc create"))
 		case it.empty && m.worktreeStatuses() == nil:
 			lines = append(lines, st.Muted(" loading…"))
 		case it.empty:
@@ -790,6 +812,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
 		case it.section == sectionCode:
 			lines = append(lines, m.codeLine(code[it.row], marks, cursor, width))
+		case it.section == sectionDocs:
+			lines = append(lines, docLine(st, docs[it.row], cursor, m.docRowActive(docs[it.row]), width))
 		}
 	}
 	if l.filter.on() {

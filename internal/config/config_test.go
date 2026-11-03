@@ -311,12 +311,12 @@ func TestChoicesAreAccepted(t *testing.T) {
 
 func TestSectionOrder(t *testing.T) {
 	t.Parallel()
-	for _, v := range []string{"awc", "cwa", "c", "wa"} {
+	for _, v := range []string{"awc", "awcd", "dcwa", "d", "c", "wa"} {
 		if err := checkSectionOrder(v); err != nil {
 			t.Errorf("%q: %v", v, err)
 		}
 	}
-	for v, why := range map[string]string{"": "at least one", "aa": "twice", "awd": "none of", "A": "none of", "a w": "none of"} {
+	for v, why := range map[string]string{"": "at least one", "aa": "twice", "awx": "none of", "A": "none of", "a w": "none of"} {
 		if err := checkSectionOrder(v); err == nil || !strings.Contains(err.Error(), why) {
 			t.Errorf("%q: %v, want %q", v, err, why)
 		}
