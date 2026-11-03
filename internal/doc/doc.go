@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -100,17 +101,50 @@ func (e *ChangedError) Error() string {
 	return fmt.Sprintf("doc %s is at revision %d, not %d", e.Doc.Name, e.Doc.Revision, e.Base)
 }
 
-// Names, formats and labels are drawn in tide and printed by the cli, so they must
-// not be able to move a terminal's cursor; formats and names also name files.
-var (
-	nameChars   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,100}$`)
-	formatChars = regexp.MustCompile(`^[A-Za-z0-9]{0,10}$`)
-	labelChars  = regexp.MustCompile(`^[a-z0-9_-]{1,50}$`)
+// Kind is what a row of docs holds: a doc, or a plan (docs/PLANS.md), kept as a
+// doc to share its revisions and copies. A Store keeps one kind.
+type Kind string
+
+const (
+	KindDoc  Kind = "doc"
+	KindPlan Kind = "plan"
 )
 
-func checkName(name string) error {
+// stored is name as the docs table holds it. A plan's has the prefix plan:, which
+// no doc's can have, so that the table's UNIQUE (project_id, name) keeps plans and
+// docs apart.
+func (k Kind) stored(name string) string {
+	if k == KindDoc {
+		return name
+	}
+	return string(k) + ":" + name
+}
+
+// shown is a stored name as the store's callers know it.
+func (k Kind) shown(stored string) string {
+	return strings.TrimPrefix(stored, string(k)+":")
+}
+
+// Names, formats and labels are drawn in tide and printed by the cli, so they must
+// not be able to move a terminal's cursor; formats and names also name files. A
+// plan's name has no _, as it goes into its agents' names, and is shorter, so that
+// the stored one is no longer than a doc's.
+var (
+	nameChars     = regexp.MustCompile(`^[A-Za-z0-9_-]{1,100}$`)
+	planNameChars = regexp.MustCompile(`^[A-Za-z0-9-]{1,95}$`)
+	formatChars   = regexp.MustCompile(`^[A-Za-z0-9]{0,10}$`)
+	labelChars    = regexp.MustCompile(`^[a-z0-9_-]{1,50}$`)
+)
+
+func (k Kind) checkName(name string) error {
 	if name == "" {
 		return &InvalidNameError{Name: name, Reason: "it is blank"}
+	}
+	if k == KindPlan {
+		if !planNameChars.MatchString(name) {
+			return &InvalidNameError{Name: name, Reason: "it can only have letters, numbers and -, at most 95"}
+		}
+		return nil
 	}
 	if !nameChars.MatchString(name) {
 		return &InvalidNameError{Name: name, Reason: "it can only have letters, numbers, _ and -, at most 100"}

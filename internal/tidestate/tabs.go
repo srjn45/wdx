@@ -237,7 +237,7 @@ func notOwned(ctx context.Context, tx *sql.Tx, projectID string, t Tab) (string,
 		query, what, id = `SELECT count(*) FROM agents a JOIN terminals t ON t.id = a.terminal_id
 			WHERE a.id = ? AND t.project_id = ?`, "agent", t.AgentID
 	case t.DocID != "":
-		query, what, id = "SELECT count(*) FROM docs WHERE id = ? AND project_id = ?", "doc", t.DocID
+		query, what, id = "SELECT count(*) FROM docs WHERE id = ? AND project_id = ? AND kind = 'doc'", "doc", t.DocID
 	default:
 		return "", nil
 	}

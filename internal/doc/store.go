@@ -16,17 +16,25 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// Store keeps docs and their revisions, and a read-only copy of each doc's latest
-// revision under its directory.
+// Store keeps docs of one kind and their revisions, and a read-only copy of each
+// one's latest revision under its directory. It never reads or changes a row of
+// another kind.
 type Store struct {
 	db      *sql.DB
+	kind    Kind
 	copies  copies
 	changed func() // called after every change; see OnChange
 }
 
-// NewStore returns a Store backed by database, keeping its copies in dir.
+// NewStore returns a Store of docs backed by database, keeping their copies in dir.
 func NewStore(database *sql.DB, dir string) *Store {
-	return &Store{db: database, copies: copies{dir: dir}, changed: func() {}}
+	return NewKindStore(database, dir, KindDoc)
+}
+
+// NewKindStore returns a Store of the kind backed by database, keeping their copies
+// in dir.
+func NewKindStore(database *sql.DB, dir string, kind Kind) *Store {
+	return &Store{db: database, kind: kind, copies: copies{dir: dir}, changed: func() {}}
 }
 
 // OnChange makes the store call fn after every change it writes, before it is
@@ -52,7 +60,7 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 	if err != nil {
 		return Doc{}, err
 	}
-	for _, err := range []error{checkName(n.Name), checkFormat(n.Format), checkStatus(n.Status), checkContent(n.Content)} {
+	for _, err := range []error{s.kind.checkName(n.Name), checkFormat(n.Format), checkStatus(n.Status), checkContent(n.Content)} {
 		if err != nil {
 			return Doc{}, err
 		}
@@ -71,8 +79,8 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 	}
 	now := time.Now().UnixMilli()
 	if _, err := db.Exec(ctx, tx, `
-		INSERT INTO docs (id, project_id, name, format, labels, status, revision, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`, id, projectID, n.Name, n.Format, labelsJSON(labels), n.Status, now, now); err != nil {
+		INSERT INTO docs (id, project_id, kind, name, format, labels, status, revision, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`, id, projectID, s.kind, s.kind.stored(n.Name), n.Format, labelsJSON(labels), n.Status, now, now); err != nil {
 		return Doc{}, err
 	}
 	if err := insertRevision(ctx, tx, id, 1, n.Content, now); err != nil {
@@ -81,7 +89,7 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 	if err := tx.Commit(); err != nil {
 		return Doc{}, err
 	}
-	logging.FromContext(ctx).Info("doc created", "doc_id", id, "name", n.Name, "project_id", projectID, "status", n.Status, "size", len(n.Content))
+	logging.FromContext(ctx).Info("doc created", "doc_id", id, "kind", s.kind, "name", n.Name, "project_id", projectID, "status", n.Status, "size", len(n.Content))
 	s.changed()
 	d, err := s.Get(ctx, id)
 	if err != nil {
@@ -99,7 +107,7 @@ func (s *Store) Get(ctx context.Context, id string) (Doc, error) {
 // GetByName returns the doc named name, ignoring case, in the project with
 // projectID.
 func (s *Store) GetByName(ctx context.Context, projectID, name string) (Doc, error) {
-	return s.one(ctx, s.db, "d.project_id = ? AND d.name = ?", projectID, name)
+	return s.one(ctx, s.db, "d.project_id = ? AND d.name = ?", projectID, s.kind.stored(name))
 }
 
 // List returns the docs of the project with projectID by name: those with every
@@ -224,7 +232,7 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 	if err := tx.Commit(); err != nil {
 		return Updated{}, err
 	}
-	log.Info("doc updated", "doc_id", id, "name", d.Name, "project_id", d.ProjectID, "revision", next, "size", len(content), "previous_status", d.Status)
+	log.Info("doc updated", "doc_id", id, "kind", s.kind, "name", d.Name, "project_id", d.ProjectID, "revision", next, "size", len(content), "previous_status", d.Status)
 	s.changed()
 	updated, err := s.Get(ctx, id)
 	if err != nil {
@@ -297,7 +305,7 @@ func (s *Store) Set(ctx context.Context, id string, c Change) (Doc, bool, error)
 // Rename gives the doc with id the name name. A name another doc in its project
 // has returns a *NameTakenError; the doc's own name in another case is a rename.
 func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
-	if err := checkName(name); err != nil {
+	if err := s.kind.checkName(name); err != nil {
 		return Doc{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -312,13 +320,13 @@ func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
 	if err := s.checkFree(ctx, tx, d.ProjectID, name, id); err != nil {
 		return Doc{}, err
 	}
-	if _, err := db.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", name, time.Now().UnixMilli(), id); err != nil {
+	if _, err := db.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", s.kind.stored(name), time.Now().UnixMilli(), id); err != nil {
 		return Doc{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Doc{}, err
 	}
-	logging.FromContext(ctx).Info("doc renamed", "doc_id", id, "name", name, "old_name", d.Name)
+	logging.FromContext(ctx).Info("doc renamed", "doc_id", id, "kind", s.kind, "name", name, "old_name", d.Name)
 	s.copies.rename(ctx, d, name)
 	s.changed()
 	return s.Get(ctx, id)
@@ -337,7 +345,7 @@ func (s *Store) Remove(ctx context.Context, id string) (Doc, error) {
 	if n == 0 {
 		return Doc{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	logging.FromContext(ctx).Info("doc removed", "doc_id", id, "name", d.Name, "project_id", d.ProjectID, "revisions", d.Revision)
+	logging.FromContext(ctx).Info("doc removed", "doc_id", id, "kind", s.kind, "name", d.Name, "project_id", d.ProjectID, "revisions", d.Revision)
 	s.copies.remove(ctx, d)
 	s.changed()
 	return d, nil
@@ -376,9 +384,10 @@ func (s *Store) CatchUpCopies(ctx context.Context) error {
 }
 
 // checkFree returns a *NameTakenError if a doc of the project other than self is
-// named name.
+// named name. Only the store's kind need be looked at: the stored names of two
+// kinds never match.
 func (s *Store) checkFree(ctx context.Context, q queryer, projectID, name, self string) error {
-	other, err := s.one(ctx, q, "d.project_id = ? AND d.name = ? AND d.id <> ?", projectID, name, self)
+	other, err := s.one(ctx, q, "d.project_id = ? AND d.name = ? AND d.id <> ?", projectID, s.kind.stored(name), self)
 	if errors.Is(err, ErrNotFound) {
 		return nil
 	}
@@ -405,13 +414,15 @@ func (s *Store) one(ctx context.Context, q queryer, where string, args ...any) (
 	return list[0], nil
 }
 
+// query returns the store's kind of docs that match where. The kind's ? comes last,
+// so that a where numbering its own (?2) keeps its numbers.
 func (s *Store) query(ctx context.Context, q queryer, where string, args ...any) ([]Doc, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT d.id, d.project_id, p.name, d.name, d.format, d.labels, d.status, d.revision, r.size, d.created_at, d.updated_at
 		FROM docs d
 		JOIN projects p ON p.id = d.project_id
 		JOIN doc_revisions r ON r.doc_id = d.id AND r.revision = d.revision
-		WHERE `+where+` ORDER BY d.name`, args...)
+		WHERE (`+where+`) AND d.kind = ? ORDER BY d.name`, append(args, s.kind)...)
 	if err != nil {
 		return nil, err
 	}
@@ -427,6 +438,7 @@ func (s *Store) query(ctx context.Context, q queryer, where string, args ...any)
 		if err := json.Unmarshal([]byte(labels), &d.Labels); err != nil {
 			return nil, fmt.Errorf("labels of doc %s: %w", d.ID, err)
 		}
+		d.Name = s.kind.shown(d.Name)
 		d.CreatedAt, d.UpdatedAt = time.UnixMilli(created).UTC(), time.UnixMilli(updated).UTC()
 		list = append(list, d)
 	}

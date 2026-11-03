@@ -119,6 +119,8 @@ func TestReplaceRefused(t *testing.T) {
 	theirs, theirDoc := f.agent(t, other, "owl"), f.doc(t, other, "notes")
 	gone := f.agent(t, p, "tomb")
 	f.exec(t, "UPDATE agents SET removed_at = 1 WHERE id = ?", gone)
+	plan := f.doc(t, p, "auth")
+	f.exec(t, "UPDATE docs SET kind = 'plan', name = 'plan:auth' WHERE id = ?", plan)
 	kept := []Tab{{Kind: KindSettings}}
 	f.replace(t, p, kept...)
 	for tab, why := range map[Tab]string{
@@ -134,6 +136,7 @@ func TestReplaceRefused(t *testing.T) {
 		{Kind: KindAgent, AgentID: theirs}:          "no agent " + theirs,
 		{Kind: KindAgent, AgentID: "agent-nowhere"}: "no agent agent-nowhere",
 		{Kind: KindDoc, DocID: theirDoc}:            "no doc " + theirDoc,
+		{Kind: KindDoc, DocID: plan}:                "no doc " + plan,
 	} {
 		_, err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "ok.go"), tab})
 		var invalid *InvalidError

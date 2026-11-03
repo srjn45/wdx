@@ -46,6 +46,9 @@ type Synced struct {
 // read-only, into dir, a directory of the checkout at root. Files it wrote there
 // before whose docs are gone are removed, and only those.
 func (s *Store) SyncToGit(ctx context.Context, projectID, root, dir string) (Synced, error) {
+	if s.kind != KindDoc {
+		return Synced{}, fmt.Errorf("only docs are synced to git, not %ss", s.kind)
+	}
 	target, err := gitCopyDir(root, dir)
 	if err != nil {
 		return Synced{}, err
