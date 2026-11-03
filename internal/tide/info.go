@@ -119,7 +119,7 @@ func (m *Model) renameAgent(id string) func(string) tea.Cmd {
 // ends an edit, and the settings are read when their tab comes to show.
 func (m *Model) valuesSync() tea.Cmd {
 	tab := ""
-	if l := m.list(); l != nil && (isInfoTab(l.active) || l.active == settingsTab) {
+	if l := m.list(); l != nil && (isInfoTab(l.active) || isPlanTab(l.active) || l.active == settingsTab) {
 		tab = l.active
 	}
 	var cmd tea.Cmd
@@ -142,6 +142,9 @@ func (m *Model) valueRows() ([]valueRow, bool) {
 	}
 	if a, ok := m.activeAgent(); ok && m.infoShown() {
 		return m.infoRows(a), true
+	}
+	if m.planShown() {
+		return m.planTabRows(), true
 	}
 	return nil, false
 }

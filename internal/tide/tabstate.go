@@ -34,6 +34,8 @@ func apiTab(tab string) (api.Tab, bool) {
 		return api.Tab{Kind: api.TabKindInfo, AgentId: text(tabAgent(tab))}, true
 	case isDocTab(tab):
 		return api.Tab{Kind: api.TabKindDoc, DocId: text(strings.TrimPrefix(tab, docTabPrefix))}, true
+	case isPlanTab(tab):
+		return api.Tab{Kind: api.TabKindPlan, DocId: text(strings.TrimPrefix(tab, planTabPrefix))}, true
 	case isFileTab(tab), strings.HasPrefix(tab, fileDiffPrefix):
 		worktree, file := diffTabOf(tab)
 		kind := api.TabKindFile
@@ -68,6 +70,8 @@ func tideTab(t api.Tab) (string, bool) {
 		return settingsTab, true
 	case api.TabKindDoc:
 		return docTab(value(t.DocId)), t.DocId != nil
+	case api.TabKindPlan:
+		return planTab(value(t.DocId)), t.DocId != nil
 	case api.TabKindFile:
 		return fileTab(worktree, path), worktree != "" && path != ""
 	case api.TabKindDiff:

@@ -115,7 +115,7 @@ func TestTabsNotSaved(t *testing.T) {
 // view of a tab is no tab.
 func TestTabStrings(t *testing.T) {
 	t.Parallel()
-	for _, tab := range []string{"agent-x", infoTab("agent-x"), settingsTab, docTab("doc-a"),
+	for _, tab := range []string{"agent-x", infoTab("agent-x"), settingsTab, docTab("doc-a"), planTab("doc-p"),
 		fileTab("main", "a/b.go"), fileDiffTab("feat", "c:d.go"), committedTab("feat")} {
 		a, ok := apiTab(tab)
 		back, ok2 := tideTab(a)

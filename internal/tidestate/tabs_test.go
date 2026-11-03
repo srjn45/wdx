@@ -88,8 +88,11 @@ func TestReplace(t *testing.T) {
 		t.Fatalf("none yet: %#v", got)
 	}
 	a, d := f.agent(t, p, "falcon"), f.doc(t, p, "plan")
+	sso := f.doc(t, p, "sso")
+	f.exec(t, "UPDATE docs SET kind = 'plan', name = 'plan:sso' WHERE id = ?", sso)
 	all := []Tab{
 		{Kind: KindDoc, DocID: d},
+		{Kind: KindPlan, DocID: sso},
 		{Kind: KindAgent, AgentID: a},
 		{Kind: KindInfo, AgentID: a},
 		{Kind: KindSettings},
@@ -102,8 +105,8 @@ func TestReplace(t *testing.T) {
 	if got := f.tabs(t, p); !slices.Equal(got, all) {
 		t.Fatalf("got %#v", got)
 	}
-	f.replace(t, p, all[4], all[0])
-	if got := f.tabs(t, p); !slices.Equal(got, []Tab{all[4], all[0]}) {
+	f.replace(t, p, all[5], all[0])
+	if got := f.tabs(t, p); !slices.Equal(got, []Tab{all[5], all[0]}) {
 		t.Fatalf("after a second list %#v", got)
 	}
 	if got := f.tabs(t, other); !slices.Equal(got, []Tab{{Kind: KindSettings}}) {
@@ -137,6 +140,8 @@ func TestReplaceRefused(t *testing.T) {
 		{Kind: KindAgent, AgentID: "agent-nowhere"}: "no agent agent-nowhere",
 		{Kind: KindDoc, DocID: theirDoc}:            "no doc " + theirDoc,
 		{Kind: KindDoc, DocID: plan}:                "no doc " + plan,
+		{Kind: KindPlan, DocID: theirDoc}:           "no plan " + theirDoc,
+		{Kind: KindPlan}:                            "needs doc_id",
 	} {
 		_, err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "ok.go"), tab})
 		var invalid *InvalidError

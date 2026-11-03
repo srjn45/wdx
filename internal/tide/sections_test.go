@@ -12,14 +12,15 @@ import (
 func TestSectionOrder(t *testing.T) {
 	t.Parallel()
 	for letters, want := range map[string][]section{
-		"":      {sectionAgents, sectionWorktrees, sectionDocs, sectionCode},
-		"awdpc": {sectionAgents, sectionWorktrees, sectionDocs, sectionCode},
+		"":      {sectionAgents, sectionWorktrees, sectionDocs, sectionPlans, sectionCode},
+		"awdpc": {sectionAgents, sectionWorktrees, sectionDocs, sectionPlans, sectionCode},
 		"awc":   {sectionAgents, sectionWorktrees, sectionCode}, // Docs left out is hidden
 		"dcwa":  {sectionDocs, sectionCode, sectionWorktrees, sectionAgents},
-		"pca":   {sectionCode, sectionAgents}, // p has no section yet
+		"pca":   {sectionPlans, sectionCode, sectionAgents},
 		"w":     {sectionWorktrees},
-		"p":     {sectionAgents, sectionWorktrees, sectionDocs, sectionCode}, // none named: never an empty pane
-		"xcc":   {sectionCode},                                               // what the setting refuses, passed over
+		"p":     {sectionPlans},
+		"x":     {sectionAgents, sectionWorktrees, sectionDocs, sectionPlans, sectionCode}, // none named: never an empty pane
+		"xcc":   {sectionCode},                                                             // what the setting refuses, passed over
 	} {
 		if got := sectionOrder(letters); !slices.Equal(got, want) {
 			t.Errorf("%q: %v, want %v", letters, got, want)
@@ -31,7 +32,7 @@ func TestSectionOrder(t *testing.T) {
 func headingRows(m *Model) []string {
 	var names []string
 	for _, line := range paneLines(m) {
-		for _, name := range []string{"Agents", "Worktrees", "Code", "Docs"} {
+		for _, name := range []string{"Agents", "Worktrees", "Code", "Docs", "Plans"} {
 			if strings.HasPrefix(strings.TrimLeft(line, "│ "), name) {
 				names = append(names, name)
 			}
@@ -77,7 +78,7 @@ func TestSectionOrderSaved(t *testing.T) {
 	t.Parallel()
 	m := codeModel([]string{"file"}, api.WorktreeStatus{Name: "main", Path: "/r"})
 	m.Update(settingSaved{valueSaved: valueSaved{err: errors.New("refused")}, setting: api.Setting{Key: sectionSettingKey, Value: "cwa"}})
-	if got := headingRows(m); !slices.Equal(got, []string{"Agents", "Worktrees", "Docs", "Code"}) {
+	if got := headingRows(m); !slices.Equal(got, []string{"Agents", "Worktrees", "Docs", "Plans", "Code"}) {
 		t.Fatalf("after a failed save %q", got)
 	}
 	m.Update(settingSaved{setting: api.Setting{Key: sectionSettingKey, Value: "wc"}})

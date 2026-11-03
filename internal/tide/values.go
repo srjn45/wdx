@@ -41,7 +41,14 @@ type valueRow struct {
 	choices []string
 	// save sends what was typed, and its answer is a valueSaved; nil is read-only.
 	save func(text string) tea.Cmd
+	// open is what Enter or a click does on it in place of editing, as showing a
+	// task's prompt in a plan's tab; nil for none.
+	open func() tea.Cmd
 }
+
+// selectable reports whether the cursor stops on the row: it can be edited, or
+// opened.
+func (r valueRow) selectable() bool { return r.save != nil || r.open != nil }
 
 // valueSaved is the answer to a row's save.
 type valueSaved struct {
@@ -73,13 +80,13 @@ type valuePane struct {
 	failedRow int
 }
 
-// cursorRow returns the row under the cursor: the first editable one when it is
+// cursorRow returns the row under the cursor: the first selectable one when it is
 // not on one, -1 when there is none.
 func (p *valuePane) cursorRow(rows []valueRow) int {
-	if p.cursor < len(rows) && rows[p.cursor].save != nil {
+	if p.cursor < len(rows) && rows[p.cursor].selectable() {
 		return p.cursor
 	}
-	return slices.IndexFunc(rows, func(r valueRow) bool { return r.save != nil })
+	return slices.IndexFunc(rows, valueRow.selectable)
 }
 
 // dropStaleEdit ends an edit of a row that can no longer be edited.
@@ -117,6 +124,9 @@ func (p *valuePane) update(rows []valueRow, msg tea.Msg) tea.Cmd {
 		p.step(rows, i, -1)
 	case slices.Contains(downKeys, name):
 		p.step(rows, i, 1)
+	case name == "enter" && i >= 0 && rows[i].open != nil:
+		p.cursor, p.reveal = i, true
+		return rows[i].open()
 	case name == "enter" && i >= 0 && !choice:
 		p.begin(rows, i)
 	}
@@ -134,12 +144,12 @@ func (p *valuePane) stepChoice(rows []valueRow, i, by int) tea.Cmd {
 	return r.save(next)
 }
 
-// step moves the cursor to the next editable row in direction by, or scrolls
+// step moves the cursor to the next selectable row in direction by, or scrolls
 // when there is none.
 func (p *valuePane) step(rows []valueRow, from, by int) {
 	if from >= 0 {
 		for i := from + by; i >= 0 && i < len(rows); i += by {
-			if rows[i].save != nil {
+			if rows[i].selectable() {
 				p.cursor, p.reveal = i, true
 				return
 			}
@@ -376,8 +386,12 @@ func (p *valuePane) click(rows []valueRow, col, row, width, height int, st style
 		return nil
 	}
 	i := lines[at].row
-	if i < 0 || rows[i].save == nil || (p.edit != nil && (p.edit.row == i || p.edit.busy)) {
+	if i < 0 || !rows[i].selectable() || (p.edit != nil && (p.edit.row == i || p.edit.busy)) {
 		return nil
+	}
+	if rows[i].open != nil {
+		p.edit, p.failed, p.cursor = nil, "", i
+		return rows[i].open()
 	}
 	if rows[i].choices == nil {
 		p.begin(rows, i)

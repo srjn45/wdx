@@ -27,6 +27,7 @@ const (
 	KindDiff     Kind = "diff"     // the diff of a worktree's file
 	KindPR       Kind = "pr"       // what a worktree changed
 	KindDoc      Kind = "doc"      // a doc
+	KindPlan     Kind = "plan"     // a plan, its id in DocID as plans are kept as docs
 )
 
 // Tab is a tab tide has open. A field its kind does not take is "".
@@ -197,7 +198,7 @@ func check(t Tab) error {
 		worktree, path = true, true
 	case KindPR:
 		worktree = true
-	case KindDoc:
+	case KindDoc, KindPlan:
 		doc = true
 	default:
 		return fmt.Errorf("%q is not a kind of tab", t.Kind)
@@ -226,7 +227,7 @@ func relative(path string) bool {
 		path != ".." && !strings.HasPrefix(path, "../")
 }
 
-// notOwned says why a tab of an agent or a doc cannot be the project's: it is
+// notOwned says why a tab of an agent, a doc or a plan cannot be the project's: it is
 // another's. It is "" when it can. An agent kept as a tombstone is still the
 // project's: tide opens one to read what it did, and the trigger closes only
 // the tabs open when it became one.
@@ -237,7 +238,8 @@ func notOwned(ctx context.Context, tx *sql.Tx, projectID string, t Tab) (string,
 		query, what, id = `SELECT count(*) FROM agents a JOIN terminals t ON t.id = a.terminal_id
 			WHERE a.id = ? AND t.project_id = ?`, "agent", t.AgentID
 	case t.DocID != "":
-		query, what, id = "SELECT count(*) FROM docs WHERE id = ? AND project_id = ? AND kind = 'doc'", "doc", t.DocID
+		// kind is doc or plan, as check let through, and so is docs.kind.
+		query, what, id = "SELECT count(*) FROM docs WHERE id = ? AND project_id = ? AND kind = '"+string(t.Kind)+"'", string(t.Kind), t.DocID
 	default:
 		return "", nil
 	}

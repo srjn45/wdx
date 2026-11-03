@@ -186,6 +186,7 @@ func TestCodeMoves(t *testing.T) {
 func TestCodeKeepsItsPlace(t *testing.T) {
 	t.Parallel()
 	m := codeModel([]string{"a", "b", "c"}, codeWorktreeList()...)
+	m.sections = sectionOrder("awdc") // Plans hidden, for the Code section's note to fit
 	l := m.list()
 	m.moveToCode(2)
 	if l.code.cursor != "b" {

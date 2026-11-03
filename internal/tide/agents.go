@@ -69,11 +69,16 @@ type agentList struct {
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
 	lastAsked     map[string]string    // the agent last sent to from each worktree, which is offered first
 
-	code       codeSection
-	docRow     int               // the cursor's row in the Docs section
-	docCursor  string            // the id of its doc, which the cursor stays on as docs come and go
-	docNames   map[string]string // the docs' names by id at the last event, to say which went
-	lastActive string            // the tab current when last looked, to tell one coming to show
+	code        codeSection
+	docRow      int                  // the cursor's row in the Docs section
+	docCursor   string               // the id of its doc, which the cursor stays on as docs come and go
+	docNames    map[string]string    // the docs' names by id at the last event, to say which went
+	planRow     int                  // the cursor's row in the Plans section
+	planCursor  string               // the id of its plan, which the cursor stays on as plans come and go
+	planNames   map[string]string    // the plans' names by id at the last event, to say which went
+	plansFolded map[string]bool      // the ids of the plans of plans folded
+	planViews   map[string]*planView // what the plans' tabs hold, by tab
+	lastActive  string               // the tab current when last looked, to tell one coming to show
 	// editorsSeen is set once the project came and its editors got their tabs.
 	editorsSeen bool
 	closing     map[string]bool // the editors' tabs told to quit, which close once they end
@@ -494,6 +499,8 @@ func (s *projectScreen) sectionHint() string {
 			return codeHint
 		case l.section == sectionDocs:
 			return docHint
+		case l.section == sectionPlans:
+			return s.m.planHintFor()
 		}
 	}
 	switch {
@@ -527,6 +534,12 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		return s.updateCode(name)
 	case l.section == sectionDocs && name == "enter":
 		s.m.openDoc()
+	case l.section == sectionPlans && name == "enter":
+		s.m.planEnter()
+	case l.section == sectionPlans && (name == "left" || name == "h"):
+		s.m.planFold(true)
+	case l.section == sectionPlans && (name == "right" || name == "l"):
+		s.m.planFold(false)
 	case l.section == sectionAgents:
 		s.updateAgents(name)
 	}
@@ -566,11 +579,11 @@ const (
 	sectionWorktrees
 	sectionCode
 	sectionDocs
+	sectionPlans
 )
 
-// sectionLetters name the sections in the tide.section_order setting. The setting
-// also takes p, for Plans, which has no section yet.
-var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'd': sectionDocs, 'c': sectionCode}
+// sectionLetters name the sections in the tide.section_order setting.
+var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'd': sectionDocs, 'p': sectionPlans, 'c': sectionCode}
 
 // defaultSectionOrder is the setting's default, which tide.section_order in
 // internal/config repeats.
@@ -580,9 +593,9 @@ const defaultSectionOrder = "awdpc"
 const sectionSettingKey = "tide.section_order"
 
 // sectionOrder returns the sections the setting's letters name, in their order:
-// one left out is hidden. A letter it does not know, which the setting refuses or
-// whose section is not built, is passed over, and letters naming none of the
-// sections give the default order, so that the pane is never empty.
+// one left out is hidden. A letter it does not know, which the setting refuses, is
+// passed over, and letters naming none of the sections give the default order, so
+// that the pane is never empty.
 func sectionOrder(letters string) []section {
 	var order []section
 	for _, r := range letters {
@@ -615,6 +628,8 @@ func (l *agentList) cursorRow() int {
 		return l.code.row
 	case sectionDocs:
 		return l.docRow
+	case sectionPlans:
+		return l.planRow
 	}
 	return l.row
 }
@@ -651,6 +666,9 @@ func (m *Model) paneItems() []paneItem {
 			empty = m.codeNote() != ""
 		case sectionDocs:
 			n = len(m.docRows())
+			empty = n == 0
+		case sectionPlans:
+			n = len(m.planRows())
 			empty = n == 0
 		}
 		for row := range n {
@@ -716,6 +734,8 @@ func (m *Model) moveToItem(it paneItem) {
 		m.moveToCode(it.row)
 	case sectionDocs:
 		m.moveToDoc(it.row)
+	case sectionPlans:
+		m.moveToPlan(it.row)
 	}
 }
 
@@ -775,6 +795,9 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 		s.m.moveToDoc(it.row)
 		s.m.openDoc()
 		return nil
+	case it.section == sectionPlans:
+		s.m.clickPlan(it.row, col)
+		return nil
 	}
 	rows := s.m.listRows()
 	i := it.row
@@ -811,7 +834,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
-	agents, rows, worktrees, code, marks, docs := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown(), m.codeMarks(), m.docRows()
+	agents, rows, worktrees, code, marks, docs, plans := m.agents(), m.listRows(), m.worktreeRows(), m.codeRowsShown(), m.codeMarks(), m.docRows(), m.planRows()
 	agentCount := fmt.Sprint(len(agents)-countRemoved(agents)) + " "
 	worktreeCount := ""
 	if m.worktreeStatuses() != nil {
@@ -822,6 +845,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		sectionWorktrees: sectionHeading(st, " Worktrees", worktreeCount, width),
 		sectionCode:      sectionHeading(st, " Code", "", width),
 		sectionDocs:      sectionHeading(st, " Docs", fmt.Sprint(len(m.docs()))+" ", width),
+		sectionPlans:     sectionHeading(st, " Plans", fmt.Sprint(len(m.plans()))+" ", width),
 	}
 
 	shown, top := m.visibleItems(m.listHeight(area.Dy()))
@@ -841,6 +865,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
 		case it.empty && it.section == sectionDocs:
 			lines = append(lines, st.Muted(" no docs: see ")+st.Command("wdx doc create"))
+		case it.empty && it.section == sectionPlans:
+			lines = append(lines, st.Muted(" no plans: see ")+st.Command("wdx help plans"))
 		case it.empty && m.worktreeStatuses() == nil:
 			lines = append(lines, st.Muted(" loading…"))
 		case it.empty:
@@ -854,6 +880,9 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, m.codeLine(code[it.row], marks, cursor, width))
 		case it.section == sectionDocs:
 			lines = append(lines, docLine(st, docs[it.row], cursor, m.docRowActive(docs[it.row]), width))
+		case it.section == sectionPlans:
+			r := plans[it.row]
+			lines = append(lines, planLine(st, r, l.plansFolded[r.plan.Id], cursor, m.planRowActive(r), width))
 		}
 	}
 	if l.filter.on() {
@@ -1031,6 +1060,9 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		lines = m.missingLines(st)
 	case m.textShown():
 		m.drawDiff(buf, area, st)
+		return
+	case m.planShown():
+		m.values.draw(buf, area, m.planTabRows(), m.layout.focus == agent, st)
 		return
 	case ok && m.infoShown():
 		m.drawInfo(buf, area, st, active)

@@ -142,6 +142,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	m.editorsChanged()
 	m.worktreesChanged()
 	m.docsChanged()
+	m.plansChanged()
 	return m.next()
 }
 

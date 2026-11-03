@@ -303,7 +303,7 @@ var settings = []setting{
 	},
 	{
 		key:         "tide.section_order",
-		description: "the sections tide's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans (to come), c code; those left out are hidden",
+		description: "the sections tide's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden",
 		def:         SectionLetters,
 		set: func(c *Config, v string) error {
 			if err := checkSectionOrder(v); err != nil {
