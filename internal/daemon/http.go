@@ -30,7 +30,7 @@ import (
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -193,6 +193,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = transcriptLogged(rec.body.Bytes())
 			case operation == "getDoc" && rec.status == http.StatusOK:
 				response = withTextMeasured(rec.body.Bytes(), "content")
+			case operation == "getPlan" && rec.status == http.StatusOK:
+				response = planContentLogged(rec.body.Bytes())
 			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
 				response = api.WorktreeResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
@@ -222,6 +224,8 @@ func requestLogged(operation string, b []byte) any {
 		return withTextMeasured(b, "prompt")
 	case "createDoc", "updateDocContent":
 		return withTextMeasured(b, "content") // a doc can hold secrets
+	case "createPlan", "updatePlanContent":
+		return withTextMeasured(b, "content") // a plan's prompts can hold secrets
 	}
 	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)
@@ -249,6 +253,29 @@ func withTextMeasured(b []byte, key string) any {
 		r[key+"_bytes"] = len(text)
 	}
 	return r
+}
+
+// planContentLogged is getPlan's response as logged: the content is measured, and
+// of the definition only the ids are kept, as its goal, constraints and prompts are
+// what agents are told, which can hold secrets.
+func planContentLogged(b []byte) any {
+	var r api.PlanContent
+	if json.Unmarshal(b, &r) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	d := r.Definition
+	def := map[string]any{"goal_bytes": len(d.Goal), "constraints": len(d.Constraints)}
+	if d.Tasks != nil {
+		tasks := make([]map[string]any, len(*d.Tasks))
+		for i, t := range *d.Tasks {
+			tasks[i] = map[string]any{"id": t.Id, "after": t.After, "prompt_bytes": len(t.Prompt)}
+		}
+		def["tasks"] = tasks
+	}
+	if d.Plans != nil {
+		def["plans"] = *d.Plans
+	}
+	return map[string]any{"plan": r.Plan, "revision": r.Revision, "content_bytes": len(r.Content), "definition": def}
 }
 
 // historyLogged is a history response as logged: terminal output can hold

@@ -124,3 +124,17 @@ func TestSyncToGitDocsOnly(t *testing.T) {
 		t.Error("plans synced to git")
 	}
 }
+
+func TestMissingChild(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	plans, _ := f.plans(t)
+	p := f.project(t, "wdx")
+	if _, err := plans.Create(ctx, p, New{Name: "auth", Children: []string{"doc-nowhere"}}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a child that is not there: %v", err)
+	}
+	if list, err := plans.List(ctx, p, nil, ""); err != nil || len(list) != 0 {
+		t.Errorf("created anyway: %+v, %v", list, err)
+	}
+}

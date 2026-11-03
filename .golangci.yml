@@ -36,6 +36,8 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/doc
               desc: the cli calls the daemon's API, never the domain
+            - pkg: github.com/srjn45/wdx/internal/plan
+              desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/tidestate
               desc: the cli calls the daemon's API, never the domain
         # The holder stays free of ACA code: it is given a parser, by the cli.
@@ -88,6 +90,8 @@ linters:
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/tidestate
               desc: tide keeps its state through the daemon's API, which keeps it here
+            - pkg: github.com/srjn45/wdx/internal/plan
+              desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/db$
               desc: tide calls the daemon's API, never the database
         # The editors are data the settings, wdx deps, the daemon and tide share.

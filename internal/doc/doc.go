@@ -35,8 +35,9 @@ type Doc struct {
 	Format      string // the extension its copies get, such as md; empty for none
 	Labels      []string
 	Status      Status
-	Revision    int // the latest
-	Size        int // of the latest revision's text
+	Revision    int    // the latest
+	Size        int    // of the latest revision's text
+	ParentID    string // the row listing this one as a child, as a plan of plans does; empty for none
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

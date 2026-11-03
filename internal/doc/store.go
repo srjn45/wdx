@@ -41,13 +41,16 @@ func NewKindStore(database *sql.DB, dir string, kind Kind) *Store {
 // used: a doc created, changed, renamed or removed.
 func (s *Store) OnChange(fn func()) { s.changed = fn }
 
-// New is what a doc is created with. An empty Status is StatusWIP.
+// New is what a doc is created with. An empty Status is StatusWIP. Children are
+// the ids of rows of the store's kind it lists, as a plan of plans does: their
+// ParentID becomes its id.
 type New struct {
-	Name    string
-	Format  string
-	Labels  []string
-	Status  Status
-	Content []byte
+	Name     string
+	Format   string
+	Labels   []string
+	Status   Status
+	Content  []byte
+	Children []string
 }
 
 // Create adds a doc to the project with projectID, its content as revision 1. A
@@ -84,6 +87,9 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 		return Doc{}, err
 	}
 	if err := insertRevision(ctx, tx, id, 1, n.Content, now); err != nil {
+		return Doc{}, err
+	}
+	if err := s.setChildren(ctx, tx, id, n.Children); err != nil {
 		return Doc{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -145,7 +151,7 @@ func (s *Store) Content(ctx context.Context, id string, revision int) ([]byte, R
 	r := Revision{Number: revision}
 	err = s.db.QueryRowContext(ctx, "SELECT content, size, created_at FROM doc_revisions WHERE doc_id = ? AND revision = ?", id, revision).Scan(&packed, &r.Size, &created)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, Revision{}, fmt.Errorf("%w: doc %s has no revision %d, its latest is %d", ErrNotFound, d.Name, revision, d.Revision)
+		return nil, Revision{}, fmt.Errorf("%w: %s %s has no revision %d, its latest is %d", ErrNotFound, s.kind, d.Name, revision, d.Revision)
 	}
 	if err != nil {
 		return nil, Revision{}, err
@@ -193,6 +199,18 @@ type Updated struct {
 // revision sets the status to StatusWIP, as what was agreed is not the new text.
 // Content equal to the latest revision's changes nothing.
 func (s *Store) Update(ctx context.Context, id string, base int, content []byte) (Updated, error) {
+	return s.update(ctx, id, base, content, nil, false)
+}
+
+// UpdateWithChildren is Update for a row that lists others, as New's Children: the
+// rows in children are its children from the new revision on, and those it listed
+// before and no longer does are no one's. Content equal to the latest revision's
+// changes nothing, its children included, as they come from the content.
+func (s *Store) UpdateWithChildren(ctx context.Context, id string, base int, content []byte, children []string) (Updated, error) {
+	return s.update(ctx, id, base, content, children, true)
+}
+
+func (s *Store) update(ctx context.Context, id string, base int, content []byte, children []string, withChildren bool) (Updated, error) {
 	if err := checkContent(content); err != nil {
 		return Updated{}, err
 	}
@@ -228,6 +246,14 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 	}
 	if err := insertRevision(ctx, tx, id, next, content, now); err != nil {
 		return Updated{}, err
+	}
+	if withChildren {
+		if _, err := db.Exec(ctx, tx, "UPDATE docs SET parent_id = NULL WHERE parent_id = ?", id); err != nil {
+			return Updated{}, err
+		}
+		if err := s.setChildren(ctx, tx, id, children); err != nil {
+			return Updated{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Updated{}, err
@@ -383,6 +409,21 @@ func (s *Store) CatchUpCopies(ctx context.Context) error {
 	return nil
 }
 
+// setChildren makes the rows in children the children of the one with id. A child
+// that is not there is an error: the caller checked them.
+func (s *Store) setChildren(ctx context.Context, tx *sql.Tx, id string, children []string) error {
+	for _, child := range children {
+		n, err := db.Exec(ctx, tx, "UPDATE docs SET parent_id = ? WHERE id = ?", id, child)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: child %s of %s", ErrNotFound, child, id)
+		}
+	}
+	return nil
+}
+
 // checkFree returns a *NameTakenError if a doc of the project other than self is
 // named name. Only the store's kind need be looked at: the stored names of two
 // kinds never match.
@@ -418,7 +459,7 @@ func (s *Store) one(ctx context.Context, q queryer, where string, args ...any) (
 // so that a where numbering its own (?2) keeps its numbers.
 func (s *Store) query(ctx context.Context, q queryer, where string, args ...any) ([]Doc, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT d.id, d.project_id, p.name, d.name, d.format, d.labels, d.status, d.revision, r.size, d.created_at, d.updated_at
+		SELECT d.id, d.project_id, p.name, d.name, d.format, d.labels, d.status, d.revision, r.size, d.created_at, d.updated_at, coalesce(d.parent_id, '')
 		FROM docs d
 		JOIN projects p ON p.id = d.project_id
 		JOIN doc_revisions r ON r.doc_id = d.id AND r.revision = d.revision
@@ -432,7 +473,7 @@ func (s *Store) query(ctx context.Context, q queryer, where string, args ...any)
 		var d Doc
 		var labels string
 		var created, updated int64
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ProjectName, &d.Name, &d.Format, &labels, &d.Status, &d.Revision, &d.Size, &created, &updated); err != nil {
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ProjectName, &d.Name, &d.Format, &labels, &d.Status, &d.Revision, &d.Size, &created, &updated, &d.ParentID); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(labels), &d.Labels); err != nil {

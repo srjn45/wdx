@@ -55,7 +55,7 @@ func (s *server) GetProject(ctx context.Context, req api.GetProjectRequestObject
 }
 
 // detail is p as getProject returns it: which of its checkouts are on disk,
-// its terminals and agents in every state, and its docs.
+// its terminals and agents in every state, its docs and its plans.
 func (s *server) detail(ctx context.Context, p project.Project) (api.Project, error) {
 	status, err := s.projects.DiskStatus(ctx, p)
 	if err != nil {
@@ -91,6 +91,12 @@ func (s *server) detail(ctx context.Context, p project.Project) (api.Project, er
 	}
 	docList := docViews(docs)
 	v.Docs = &docList
+	plans, err := s.plans.List(ctx, p.ID)
+	if err != nil {
+		return api.Project{}, err
+	}
+	planList := planViews(plans)
+	v.Plans = &planList
 	return v, nil
 }
 
@@ -144,8 +150,9 @@ func (s *server) remove(ctx context.Context, p project.Project, stopRunning bool
 	if p, err = s.projects.Remove(ctx, p.ID); err != nil {
 		return api.ProjectResult{}, err
 	}
-	// Its terminals, agents and docs went with it.
+	// Its terminals, agents, docs and plans went with it.
 	s.docs.RemoveProjectCopies(ctx, p.Name)
+	s.plans.RemoveProjectCopies(ctx, p.ID, p.Name)
 	if err := s.terminals.Sweep(ctx); err != nil {
 		logging.FromContext(ctx).Error("terminal directories not swept", "err", err)
 	}

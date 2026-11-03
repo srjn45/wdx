@@ -30,6 +30,7 @@ import (
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/telemetry"
@@ -155,6 +156,7 @@ type Daemon struct {
 	agents    *agent.Manager
 	backups   *agent.Backups
 	docs      *doc.Store
+	plans     *plan.Store
 	tabs      *tidestate.Store
 	gitCopy   *gitCopy
 	terminals *terminal.Supervisor
@@ -244,6 +246,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
+	d.plans = plan.NewStore(d.db, identity.PlansDir(opts.Home))
 	d.tabs = tidestate.NewStore(d.db)
 	d.gitCopy = newGitCopy(d.projects, d.docs, opts.DocsGitPath)
 	if opts.Executable == "" {
@@ -304,6 +307,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	// behind fails nothing.
 	if err := d.docs.CatchUpCopies(logged); err != nil {
 		d.log.Error("doc copies not caught up", "err", err)
+	}
+	if err := d.plans.CatchUpCopies(logged); err != nil {
+		d.log.Error("plan copies not caught up", "err", err)
 	}
 	d.gitCopy.syncAll(logged)
 	if err := d.backups.Sweep(logged); err != nil {

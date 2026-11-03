@@ -67,6 +67,12 @@ func DocsDir(home string) string {
 	return filepath.Join(home, "docs")
 }
 
+// PlansDir holds a read-only copy of each plan's latest revision under home, as
+// DocsDir does for docs (docs/PLANS.md).
+func PlansDir(home string) string {
+	return filepath.Join(home, "plans")
+}
+
 // TerminalDir holds what terminal id keeps on disk under home: its spool
 // and history (docs/ATTACH.md). Terminal output can hold secrets: only the
 // user may read it.

@@ -11,6 +11,7 @@ import (
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/tidestate"
@@ -124,6 +125,18 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		}
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "terminal": terminalView(e.Terminal)}
 	}
+	if e, ok := errors.AsType[*plan.InvalidError](err); ok {
+		return api.ErrorCodeInvalidPlan, map[string]any{"problems": problemViews(e.Problems)}
+	}
+	if e, ok := errors.AsType[*plan.NameTakenError](err); ok {
+		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "plan": planView(e.Plan)}
+	}
+	if e, ok := errors.AsType[*plan.ChangedError](err); ok {
+		return api.ErrorCodePlanChanged, map[string]any{"plan": planView(e.Plan), "base": e.Base}
+	}
+	if e, ok := errors.AsType[*plan.InUseError](err); ok {
+		return api.ErrorCodePlanInUse, map[string]any{"plan": planView(e.Plan), "parent": planView(e.Parent)}
+	}
 	if e, ok := errors.AsType[*doc.NameTakenError](err); ok {
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "doc": docView(e.Doc)}
 	}
@@ -195,7 +208,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeProjectInUse, details
 	}
 	switch {
-	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound), errors.Is(err, doc.ErrNotFound):
+	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound), errors.Is(err, doc.ErrNotFound), errors.Is(err, plan.ErrNotFound):
 		return api.ErrorCodeNotFound, nil
 	case errors.Is(err, errLandNotConfigured):
 		return api.ErrorCodeLandNotConfigured, nil

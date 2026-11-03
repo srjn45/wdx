@@ -1586,6 +1586,162 @@ paths:
               schema: { $ref: "#/components/schemas/DocRevisionList" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/plans:
+    get:
+      operationId: listPlans
+      summary: List a project's plans by name
+      description: |
+        The plans of the project named by project, or of the project whose
+        worktree holds dir; one of them is required. Content is never listed.
+
+        Errors: invalid_path, not_found, usage.
+      parameters:
+        - $ref: "#/components/parameters/TerminalProject"
+        - $ref: "#/components/parameters/TerminalDir"
+      responses:
+        "200":
+          description: The plans.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createPlan
+      summary: Create a plan at revision 1, checked and reduced
+      description: |
+        In the project named by project, or the one whose worktree holds dir;
+        one of them is required. Names are A-Z, a-z, 0-9 and "-", at most 95,
+        unique among the project's plans ignoring case; a doc may have the
+        same name. content is the plan's YAML (wdx help plans): every
+        problem in it is reported at once, as invalid_plan with
+        details.problems. Every after another path already covers is
+        dropped, rewriting the YAML; dropped lists them. A plan of plans
+        makes each plan it lists its child.
+
+        Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+        name_taken (with the plan under details.plan), not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlan" }
+      responses:
+        "201":
+          description: The plan, with result created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: getPlan
+      summary: A plan with one revision's content and what it defines, the latest by default
+      description: "Errors: invalid_path, not_found (the plan, or a revision it does not have), usage."
+      parameters:
+        - name: revision
+          in: query
+          description: The revision whose content to return.
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: The plan, the revision's content and its definition.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanContent" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updatePlan
+      summary: Rename a plan
+      description: |
+        Result updated, or unchanged when the name is the plan's, case and
+        all. A plan a plan of plans lists cannot be renamed: plan_in_use,
+        with the parent under details.parent.
+
+        Errors: invalid_name, invalid_path, name_taken (with the plan under
+        details.plan), not_found, plan_in_use, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePlan" }
+      responses:
+        "200":
+          description: The plan, with result updated or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deletePlan
+      summary: Delete a plan, its revisions and its copy on disk
+      description: |
+        A plan a plan of plans lists cannot be removed: plan_in_use, with the
+        parent under details.parent. Removing a plan of plans leaves the
+        plans it listed with no parent.
+
+        Errors: invalid_path, not_found, plan_in_use, usage.
+      responses:
+        "200":
+          description: The removed plan, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/content:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    put:
+      operationId: updatePlanContent
+      summary: Write a plan's content as a new revision, checked and reduced, if base is still its latest
+      description: |
+        Checked and reduced as in createPlan. When base is the plan's latest
+        revision, the content becomes revision base + 1, result updated;
+        content that reduces to the latest makes no revision, result
+        unchanged. When base is not the latest, plan_changed, with the plan
+        under details.plan: read it again, apply the change and write it
+        with the new base. A plan of plans' children follow its new
+        revision.
+
+        Errors: invalid_argument, invalid_path, invalid_plan, not_found,
+        plan_changed, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocContentChange" }
+      responses:
+        "200":
+          description: The plan, with result updated or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    get:
+      operationId: listPlanRevisions
+      summary: A plan's revisions, latest first, without content
+      description: "Errors: invalid_path, not_found, usage."
+      responses:
+        "200":
+          description: The revisions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocRevisionList" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     WorktreeRef:
@@ -1644,6 +1800,15 @@ components:
       required: true
       description: |
         "id:" and the doc's id, as in id:doc-1a2b3c4d, or its name
+        (case-insensitive) together with project or dir, since names are
+        unique only within a project.
+      schema: { type: string, minLength: 1 }
+    PlanRef:
+      name: plan
+      in: path
+      required: true
+      description: |
+        "id:" and the plan's id, as in id:doc-1a2b3c4d, or its name
         (case-insensitive) together with project or dir, since names are
         unique only within a project.
       schema: { type: string, minLength: 1 }
@@ -1783,6 +1948,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Doc" }
           description: The project's docs by name, without content; set by getProject only.
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/Plan" }
+          description: The project's plans by name, without content; set by getProject only.
         worktree_statuses:
           type: array
           items: { $ref: "#/components/schemas/WorktreeStatus" }
@@ -2777,6 +2946,141 @@ components:
           $ref: "#/components/schemas/DocStatus"
           description: The status before a content change made it wip; left out otherwise.
 
+    PlanState:
+      type: string
+      description: Where a plan is in its life; draft until it runs.
+      enum: [draft]
+
+    Plan:
+      type: object
+      required: [id, name, project_id, project_name, state, tasks, plans, parent, revision, size, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        project_id: { type: string }
+        project_name: { type: string }
+        state: { $ref: "#/components/schemas/PlanState" }
+        tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
+        plans:
+          type: array
+          items: { type: string }
+          nullable: true
+          description: The plans it lists, in DAG order; null for a plan of tasks.
+        parent: { type: string, nullable: true, description: The plan of plans listing it; null for none. }
+        revision: { type: integer, format: int64, description: The latest. }
+        size: { type: integer, format: int64, description: Bytes of the latest revision. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: When anything about it last changed. }
+
+    PlanDefinition:
+      type: object
+      description: What a revision of a plan says, so that no client parses the YAML.
+      required: [goal, constraints, tasks, plans]
+      properties:
+        goal: { type: string }
+        constraints:
+          type: array
+          items: { type: string }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/PlanTask" }
+          nullable: true
+          description: In DAG order; null for a plan of plans.
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/PlanChild" }
+          nullable: true
+          description: In DAG order; null for a plan of tasks.
+
+    PlanTask:
+      type: object
+      required: [id, after, prompt]
+      properties:
+        id: { type: string }
+        after:
+          type: array
+          items: { type: string }
+          description: The tasks it waits for.
+        prompt: { type: string }
+
+    PlanChild:
+      type: object
+      required: [id, after]
+      properties:
+        id: { type: string, description: The plan's name. }
+        after:
+          type: array
+          items: { type: string }
+          description: The plans it waits for.
+
+    PlanDropped:
+      type: object
+      description: An after reduction took out, as another of the entry's afters already waits for it.
+      required: [entry, after, via]
+      properties:
+        entry: { type: string, description: The task or plan that waited. }
+        after: { type: string, description: What it no longer waits for directly. }
+        via: { type: string, description: The other after that already waits for it. }
+
+    PlanProblem:
+      type: object
+      description: One thing wrong with a plan's YAML; invalid_plan lists every one under details.problems.
+      required: [line, message]
+      properties:
+        line: { type: integer, format: int64 }
+        message: { type: string }
+
+    CreatePlan:
+      type: object
+      required: [name, content]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          nullable: true
+          description: The project's name, or "id:" and its id; excludes dir.
+        dir:
+          type: string
+          nullable: true
+          description: An absolute path in one of the project's worktrees; excludes project.
+        name: { type: string, description: See createPlan. }
+        content: { type: string, description: The plan's YAML. }
+
+    UpdatePlan:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, description: Its new name. }
+
+    PlanList:
+      type: object
+      required: [plans]
+      properties:
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/Plan" }
+
+    PlanContent:
+      type: object
+      required: [plan, revision, content, definition]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
+        revision: { type: integer, format: int64, description: The revision content is of. }
+        content: { type: string }
+        definition: { $ref: "#/components/schemas/PlanDefinition" }
+
+    PlanResult:
+      type: object
+      required: [result, plan]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        plan: { $ref: "#/components/schemas/Plan" }
+        dropped:
+          type: array
+          items: { $ref: "#/components/schemas/PlanDropped" }
+          description: The afters reduction took out, empty when none; set by createPlan and updatePlanContent only.
+
     ErrorCode:
       type: string
       description: |
@@ -2855,6 +3159,9 @@ components:
         - editor_running
         - doc_changed
         - tide_running
+        - invalid_plan
+        - plan_changed
+        - plan_in_use
 
     Problem:
       type: object

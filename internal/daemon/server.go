@@ -8,6 +8,7 @@ import (
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/tidestate"
@@ -15,12 +16,13 @@ import (
 )
 
 // server implements the API on the project store, the terminals' supervisor,
-// the agents' manager and the doc store.
+// the agents' manager, and the doc and plan stores.
 type server struct {
 	projects     *project.Store
 	terminals    *terminal.Supervisor
 	agents       *agent.Manager
 	docs         *doc.Store
+	plans        *plan.Store
 	tabs         *tidestate.Store
 	gitCopy      *gitCopy
 	self         api.Daemon

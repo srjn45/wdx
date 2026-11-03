@@ -465,7 +465,7 @@ plans:
 - `create` and `update` return `dropped`, the `after` entries reduction took out (`entry`, `after`, `via`), empty when none.
 - New codes: `invalid_plan` (422), its `details.problems` a list of `{line, message}`; `plan_changed` (409), as `doc_changed` is for docs, its details holding the plan and `base`; `plan_in_use` (409), removing or renaming a plan a parent lists, its details naming the parent. wdx never edits a parent's content for you. Reused: `not_found`, `name_taken`, `invalid_name`, `invalid_argument`.
 - `Project.plans` in `getProject` and the project's stream, without content or definition, as `Project.docs`.
-- Logs name the plan, project, revision and size of every change, never the content.
+- Logs name the plan, project, revision and size of every change, never the content: the daemon measures `content` in requests and responses, and logs `getPlan`'s definition with its ids and the sizes of its goal and prompts, as they are what agents are told.
 
 ### The CLI
 
