@@ -99,12 +99,25 @@ func (s *Store) Message(ctx context.Context, id string) (Message, error) {
 // db.Exec, here and wherever text is written, which logs what it is given: a message
 // can hold secrets.
 func (s *Store) addMessage(ctx context.Context, terminalID, text string, instant bool, session string) (string, error) {
+	return s.addMessageIn(ctx, s.db, terminalID, text, instant, session)
+}
+
+// AddFirstMessage adds what a new agent on terminalID is told first, in session, in
+// e, the transaction that adds the agent: the holder gets it once it is up, as any
+// message sent before. It is instant, as BeginSession's, so that nothing sent later
+// overtakes it while the agent starts.
+func (s *Store) AddFirstMessage(ctx context.Context, e db.Execer, terminalID, session, text string) error {
+	_, err := s.addMessageIn(ctx, e, terminalID, text, true, session)
+	return err
+}
+
+func (s *Store) addMessageIn(ctx context.Context, e db.Execer, terminalID, text string, instant bool, session string) (string, error) {
 	raw := make([]byte, 4)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
 	id := "msg-" + hex.EncodeToString(raw)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO messages (id, terminal_id, text, instant, state, session_id, created_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?)`,
+	_, err := e.ExecContext(ctx, `INSERT INTO messages (id, terminal_id, text, instant, state, session_id, created_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?)`,
 		id, terminalID, text, instant, MessagePending, session, time.Now().UnixMilli())
 	if err != nil {
 		return "", err

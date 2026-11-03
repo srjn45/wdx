@@ -244,23 +244,11 @@ func (l *Lander) run(ctx context.Context, projectID string, c Checkouts, s Statu
 	}
 	gitCtx := context.WithoutCancel(ctx)
 
-	onBase, err := git.IsAncestor(gitCtx, s.Path, s.Base, "HEAD")
+	commit, err := rebaseOnto(gitCtx, s.Path, s.Base)
 	if err != nil {
-		fail(LandRebaseFailed, err.Error())
-		return
-	}
-	if !onBase {
-		log.Info("rebasing", "base", s.Base)
-		if err := git.Rebase(gitCtx, s.Path, s.Base); err != nil {
-			if e, ok := errors.AsType[*git.RebaseError](err); ok {
-				v.Conflicts = e.Conflicts
-			}
-			fail(LandRebaseFailed, err.Error())
-			return
+		if e, ok := errors.AsType[*git.RebaseError](err); ok {
+			v.Conflicts = e.Conflicts
 		}
-	}
-	commit, err := git.Resolve(gitCtx, s.Path, "HEAD")
-	if err != nil {
 		fail(LandRebaseFailed, err.Error())
 		return
 	}
@@ -281,7 +269,7 @@ func (l *Lander) run(ctx context.Context, projectID string, c Checkouts, s Statu
 
 	v.State = LandMoving
 	l.set(projectID, s.Path, v)
-	onBase, err = git.IsAncestor(gitCtx, s.Path, s.Base, commit)
+	onBase, err := git.IsAncestor(gitCtx, s.Path, s.Base, commit)
 	if err != nil {
 		fail(LandFastForwardFailed, err.Error())
 		return
@@ -305,6 +293,40 @@ func (l *Lander) run(ctx context.Context, projectID string, c Checkouts, s Statu
 	v.State = LandLanded
 	log.Info("landed", "base", s.Base, "commit", commit)
 	l.set(projectID, s.Path, v)
+}
+
+// rebaseOnto rebases the checkout at path onto base if base moved on from it, and
+// returns the commit it is then at. A rebase that stops is undone, and returns a
+// *git.RebaseError with the files in conflict.
+func rebaseOnto(ctx context.Context, path, base string) (string, error) {
+	onBase, err := git.IsAncestor(ctx, path, base, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if !onBase {
+		logging.FromContext(ctx).Info("rebasing", "path", path, "base", base)
+		if err := git.Rebase(ctx, path, base); err != nil {
+			return "", err
+		}
+	}
+	return git.Resolve(ctx, path, "HEAD")
+}
+
+// LandOnto lands the checkout at path on the branch base, which no checkout has, as
+// a task lands on its plan's branch: it rebases the checkout onto base if base moved
+// on, then moves base to its commit, only from where base was. It returns the commit.
+// A rebase that stops is undone, and returns a *git.RebaseError with the files in
+// conflict; either way base has not moved.
+func LandOnto(ctx context.Context, path, base string) (string, error) {
+	commit, err := rebaseOnto(ctx, path, base)
+	if err != nil {
+		return "", err
+	}
+	if err := git.MoveBranch(ctx, path, base, commit); err != nil {
+		return "", err
+	}
+	logging.FromContext(ctx).Info("landed", "path", path, "base", base, "commit", commit)
+	return commit, nil
 }
 
 // runPR takes a landing by PR through its steps: the check, what gh knows, the push,

@@ -414,6 +414,12 @@ func (s *Store) stopped(ctx context.Context, id string) (bool, error) {
 	return s.transition(ctx, id, StateStopped, []State{StateStarting, StateRunning}, "")
 }
 
+// doneWith makes a terminal stopped with its project, whose shell is gone, exited, so
+// that the project opening does not start it again.
+func (s *Store) doneWith(ctx context.Context, id string) (bool, error) {
+	return s.transition(ctx, id, StateExited, []State{StateStopped}, "pid = NULL, holder_pid = NULL")
+}
+
 // ended records that a stopped terminal's shell is gone.
 func (s *Store) ended(ctx context.Context, id string, at time.Time) (bool, error) {
 	changed, err := s.transition(ctx, id, StateStopped, []State{StateStopped}, "pid = NULL, holder_pid = NULL, ended_at = ?", at.UnixMilli())

@@ -394,3 +394,83 @@ func TestLandOneAtATime(t *testing.T) {
 		t.Errorf("landing: %+v", v)
 	}
 }
+
+// planSlot returns a repository with the branch plan/x, which no checkout has, and a
+// worktree on task, a branch from it, as a plan's slot.
+func planSlot(t *testing.T, task string) (dir, slot string) {
+	t.Helper()
+	dir = repo(t)
+	gittest.Git(t, dir, "branch", "plan/x")
+	slot = filepath.Join(filepath.Dir(dir), task)
+	gittest.Git(t, dir, "worktree", "add", "-q", slot, "-b", task, "plan/x")
+	return dir, slot
+}
+
+// moveOn moves plan/x on by a commit of name made in a worktree of its own, as an
+// earlier task's landing does.
+func moveOn(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	other := filepath.Join(filepath.Dir(dir), "other-"+name)
+	gittest.Git(t, dir, "worktree", "add", "-q", "--detach", other, "plan/x")
+	commit(t, other, name, content)
+	tip := head(t, other, "HEAD")
+	gittest.Git(t, dir, "update-ref", "refs/heads/plan/x", tip)
+	return tip
+}
+
+func TestLandOnto(t *testing.T) {
+	t.Parallel()
+	dir, slot := planSlot(t, "task")
+	commit(t, slot, "more", "a\n")
+	want := head(t, slot, "HEAD")
+	got, err := LandOnto(t.Context(), slot, "plan/x")
+	if err != nil || got != want {
+		t.Fatalf("landed %s, %v; want %s", got, err, want)
+	}
+	if head(t, dir, "plan/x") != want || head(t, dir, "main") == want {
+		t.Error("plan/x not moved, or main moved")
+	}
+}
+
+func TestLandOntoRebasesFirst(t *testing.T) {
+	t.Parallel()
+	dir, slot := planSlot(t, "task")
+	commit(t, slot, "more", "a\n")
+	before := head(t, slot, "HEAD")
+	tip := moveOn(t, dir, "earlier", "b\n")
+	got, err := LandOnto(t.Context(), slot, "plan/x")
+	if err != nil || got == before || got != head(t, slot, "HEAD") {
+		t.Fatalf("landed %s, %v", got, err)
+	}
+	if head(t, dir, "plan/x") != got || head(t, slot, "HEAD^") != tip {
+		t.Error("plan/x does not hold the earlier commit and then this one")
+	}
+}
+
+func TestLandOntoNothingCommitted(t *testing.T) {
+	t.Parallel()
+	dir, slot := planSlot(t, "task")
+	tip := head(t, dir, "plan/x")
+	if got, err := LandOnto(t.Context(), slot, "plan/x"); err != nil || got != tip || head(t, dir, "plan/x") != tip {
+		t.Fatalf("landed %s, %v", got, err)
+	}
+}
+
+func TestLandOntoUndoesARebaseThatStops(t *testing.T) {
+	t.Parallel()
+	dir, slot := planSlot(t, "task")
+	commit(t, slot, "file", "theirs\n")
+	before := head(t, slot, "HEAD")
+	tip := moveOn(t, dir, "file", "ours\n")
+	_, err := LandOnto(t.Context(), slot, "plan/x")
+	e, ok := errors.AsType[*git.RebaseError](err)
+	if !ok || !slices.Equal(e.Conflicts, []string{"file"}) {
+		t.Fatalf("landed: %v", err)
+	}
+	if head(t, slot, "HEAD") != before || head(t, dir, "plan/x") != tip {
+		t.Error("something moved")
+	}
+	if busy, err := git.OperationInProgress(t.Context(), slot); err != nil || busy {
+		t.Errorf("a rebase was left: %v, %v", busy, err)
+	}
+}

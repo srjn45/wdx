@@ -1033,3 +1033,136 @@ func TestNoteNotLogged(t *testing.T) {
 		t.Errorf("logged = %q, want %q", got, want)
 	}
 }
+
+// readyThenRecord draws Claude Code's empty prompt, so that the holder delivers, then
+// writes what it is sent to the file got.
+const readyThenRecord = `rule=────────────────
+stty raw -echo
+printf '\033[2J\033[H%s\r\n❯ \r\n%s\r\n  ⏸ manual mode on · ? for shortcuts' "$rule" "$rule"
+exec cat > got
+`
+
+// An agent created linked is told its first message, and what points at it is written
+// with it; when that fails, nothing of it is left.
+func TestCreateLinked(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	if err := os.WriteFile(filepath.Join(f.dir, "run"), []byte(readyThenRecord), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var linkedID string
+	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, "do the schema", func(ctx context.Context, tx db.Execer, agentID string) error {
+		linkedID = agentID
+		_, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 7 WHERE id = ?`, f.project)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkedID != a.ID || a.ParentID != "" || a.Terminal.Name != "app-schema" {
+		t.Errorf("created %+v, linked %q", a, linkedID)
+	}
+	var updated int64
+	if err := f.db.QueryRow(`SELECT updated_at FROM projects WHERE id = ?`, f.project).Scan(&updated); err != nil || updated != 7 {
+		t.Errorf("linked not written: %d, %v", updated, err)
+	}
+	var got string
+	waittest.For(t, "the first message to arrive", func() bool {
+		data, err := os.ReadFile(filepath.Join(f.dir, "got"))
+		got = string(data)
+		return err == nil && strings.Contains(got, "\r")
+	})
+	if !strings.Contains(got, "do the schema") {
+		t.Errorf("arrived as %q", got)
+	}
+
+	_, err = f.agents.CreateLinked(ctx, f.project, "app-api", f.dir, "do the api", func(ctx context.Context, tx db.Execer, agentID string) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 8 WHERE id = ?`, f.project); err != nil {
+			return err
+		}
+		return errors.New("refused")
+	})
+	if err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("linked failing: %v", err)
+	}
+	if _, err := f.agents.Store().GetByName(ctx, f.project, "app-api"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the agent was left: %v", err)
+	}
+	var messages int
+	if err := f.db.QueryRow(`SELECT (SELECT count(*) FROM messages WHERE text = 'do the api') + (SELECT updated_at FROM projects WHERE id = ?)`, f.project).Scan(&messages); err != nil || messages != 7 {
+		t.Errorf("its message or linked change was left: %d, %v", messages, err)
+	}
+}
+
+// An agent stopped on its own ends as one that exited, so that its project opening
+// does not start it again, and keeps its session.
+func TestStopIsNotRelaunchedWithTheProject(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	other := f.create(t, "other")
+	got, err := f.agents.Stop(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Terminal.State != terminal.StateExited || got.Terminal.PID != 0 || got.SessionID != a.SessionID {
+		t.Errorf("stopped: %+v", got)
+	}
+	if again, err := f.agents.Stop(ctx, a.ID); err != nil || again.Terminal.State != terminal.StateExited {
+		t.Errorf("stopped again: %+v, %v", again, err)
+	}
+	if _, err := f.terminals.StopProject(ctx, f.project); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.terminals.StartProject(ctx, f.project); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.agents.Store().Get(ctx, a.ID); err != nil || got.Terminal.State != terminal.StateExited {
+		t.Errorf("relaunched with its project: %+v, %v", got, err)
+	}
+	if got, err := f.agents.Store().Get(ctx, other.ID); err != nil || got.Terminal.State != terminal.StateRunning {
+		t.Errorf("the other: %+v, %v", got, err)
+	}
+	if started, _, err := f.agents.Start(ctx, a.ID); err != nil || started.Terminal.State != terminal.StateRunning {
+		t.Errorf("started again by hand: %+v, %v", started, err)
+	}
+	if _, err := f.terminals.StopProject(ctx, f.project); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.agents.Stop(ctx, other.ID); err != nil || got.Terminal.State != terminal.StateExited {
+		t.Errorf("stopped once stopped with its project: %+v, %v", got, err)
+	}
+	if _, err := f.terminals.StartProject(ctx, f.project); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.agents.Store().Get(ctx, other.ID); err != nil || got.Terminal.State != terminal.StateExited {
+		t.Errorf("relaunched once stopped: %+v, %v", got, err)
+	}
+	if _, err := f.agents.Stop(ctx, "agent-none"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an agent it does not have: %v", err)
+	}
+}
+
+// The first message waits for the agent in its session, instant, as a restart's does,
+// so that nothing sent later overtakes it.
+func TestCreateLinkedFirstMessageWaits(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, "do the schema", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := f.messagesOf(t, a)
+	if len(list) != 1 || list[0].Text != "do the schema" || !list[0].Instant || list[0].SessionID != a.SessionID || list[0].TerminalID != a.Terminal.ID {
+		t.Errorf("messages = %+v", list)
+	}
+	plain := f.create(t, "plain")
+	for _, m := range f.messagesOf(t, plain) {
+		if m.TerminalID == plain.Terminal.ID {
+			t.Errorf("a plain create has a first message: %+v", m)
+		}
+	}
+}

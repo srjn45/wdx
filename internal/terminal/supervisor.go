@@ -770,7 +770,7 @@ func (s *Supervisor) stopAll(ctx context.Context, live []Terminal) ([]Terminal, 
 	var err error
 	watches := make([]*watch, len(live))
 	for i, t := range live {
-		if watches[i], err = s.hangUp(ctx, t); err != nil {
+		if watches[i], err = s.hangUp(ctx, t, true); err != nil {
 			return nil, err
 		}
 	}
@@ -820,23 +820,53 @@ func (s *Supervisor) StartProject(ctx context.Context, projectID string) ([]Term
 	return started, nil
 }
 
+// StopAgent ends the process of an agent's row and waits until it is gone. Its row is
+// not marked stopped but ends exited, or lost, as one that ended by itself: StartProject
+// starts stopped rows again, and one stopped this way is done with. One not live is
+// returned as it is, but one stopped with its project ends exited too. A terminal's
+// is not found.
+func (s *Supervisor) StopAgent(ctx context.Context, id string) (Terminal, error) {
+	t, err := s.store.ofKind(ctx, KindAgent, id)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if !t.State.Live() && !s.watching(id) {
+		if t.State == StateStopped {
+			if _, err := s.store.doneWith(ctx, id); err != nil {
+				return Terminal{}, err
+			}
+		}
+		return s.store.row(ctx, id)
+	}
+	w, err := s.hangUp(ctx, t, false)
+	if err != nil {
+		return Terminal{}, err
+	}
+	if err := s.waitStopped(ctx, t, w, time.Now().Add(s.StopWait())); err != nil {
+		return Terminal{}, err
+	}
+	return s.store.row(ctx, id)
+}
+
 // stopOne marks t stopped, hangs up on its shell and waits until the
 // holder reports it gone.
 func (s *Supervisor) stopOne(ctx context.Context, t Terminal) error {
-	w, err := s.hangUp(ctx, t)
+	w, err := s.hangUp(ctx, t, true)
 	if err != nil {
 		return err
 	}
 	return s.waitStopped(ctx, t, w, time.Now().Add(s.StopWait()))
 }
 
-// hangUp marks t stopped and hangs up on its shell, and returns the watch
-// that tells when the holder reports it gone; nil when it has no holder,
-// and is marked ended.
-func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
+// hangUp marks t stopped, when mark, and hangs up on its shell, and returns the
+// watch that tells when the holder reports it gone; nil when it has no holder,
+// and is marked ended, or lost when not marked stopped.
+func (s *Supervisor) hangUp(ctx context.Context, t Terminal, mark bool) (*watch, error) {
 	log := logging.FromContext(ctx)
-	if _, err := s.store.stopped(ctx, t.ID); err != nil {
-		return nil, err
+	if mark {
+		if _, err := s.store.stopped(ctx, t.ID); err != nil {
+			return nil, err
+		}
 	}
 	s.mu.Lock()
 	w := s.watches[t.ID]
@@ -848,6 +878,10 @@ func (s *Supervisor) hangUp(ctx context.Context, t Terminal) (*watch, error) {
 		conn, err := holder.Dial(holder.WithLimits(ctx, s.opts.Limits), s.socket(t.ID), t.ID)
 		if err != nil {
 			log.Info("terminal has no holder to stop", "terminal_id", t.ID, "err", err)
+			if !mark {
+				s.recordGone(ctx, t.ID)
+				return nil, nil
+			}
 			_, err := s.store.ended(ctx, t.ID, time.Now())
 			return nil, err
 		}

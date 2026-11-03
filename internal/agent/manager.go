@@ -182,6 +182,18 @@ func (m *Manager) Store() *Store {
 // the project is not found, and a tombstone returns a *RemovedError. One that
 // does not start leaves the agent failed and returns a *StartError.
 func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID string) (Agent, error) {
+	return m.create(ctx, projectID, name, dir, parentID, "", nil)
+}
+
+// CreateLinked is Create for an agent with no parent that is told first first, and
+// whose linked writes what points at it, both in the transaction that adds it: so
+// that it is never there without its first message, nor what points at it without
+// it.
+func (m *Manager) CreateLinked(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+	return m.create(ctx, projectID, name, dir, "", first, linked)
+}
+
+func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
 	if parentID != "" {
 		parent, err := m.store.Get(ctx, parentID)
 		if err != nil {
@@ -203,7 +215,18 @@ func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID str
 		return Agent{}, err
 	}
 	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx db.Execer, terminalID string) error {
-		return m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID)
+		if err := m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID); err != nil {
+			return err
+		}
+		if first != "" {
+			if err := m.terminals.Store().AddFirstMessage(ctx, tx, terminalID, sessionID, first); err != nil {
+				return err
+			}
+		}
+		if linked != nil {
+			return linked(ctx, tx, id)
+		}
+		return nil
 	})
 	if err != nil {
 		return Agent{}, m.agentError(ctx, err)
@@ -242,6 +265,22 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, []string, error)
 		return Agent{}, nil, m.agentError(ctx, err)
 	}
 	return a.OnRow(t), stopped, nil
+}
+
+// Stop ends the agent's AI coding agent, if it runs, and waits until it is gone. Its
+// session stays, to go on with; its project opening does not start it again, as it
+// does an agent stopped with the project.
+func (m *Manager) Stop(ctx context.Context, id string) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	t, err := m.terminals.StopAgent(ctx, a.Terminal.ID)
+	if err != nil {
+		return Agent{}, m.agentError(ctx, err)
+	}
+	logging.FromContext(ctx).Info("agent stopped", "agent_id", id, "state", t.State)
+	return a.OnRow(t), nil
 }
 
 // DetachedAtWork returns the project's agents with a session at work outside their
