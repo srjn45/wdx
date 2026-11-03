@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2 is to be designed in detail next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail). "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -249,7 +249,7 @@ Done before you, which this task waits for:
 Your task:
 <prompt>
 When it is done, commit your work, then run:
-    wdx plan task done --summary "<what you did, in a few lines>"
+    wdx plan task done --agent-id $WDX_AGENT_ID --summary "<what you did, in a few lines>"
 ```
 
 ### A task's end
@@ -514,9 +514,119 @@ Each builds and passes `make test` on its own.
 5. tide's Plans section and tab.
 6. docs/CLI_TIDE.md, `wdx help agents`, the README.
 
+## Step 2 in detail (approved 2026-11-03)
+
+Running a plan from `plan run` to `done` when nothing goes wrong: the run's tables, `Next`, the runner, slots, task agents, `task done`, landing on the plan's branch with no check, finishing, and a daemon restarted in the middle. What the person does when something goes wrong is step 3.
+
+### What step 2 leaves to step 3
+
+A task can still reach `failed` (its agent ended, or did not start) or `land_failed` (`rebase`), and a run can be closed with its project; step 2 records and shows them, but `retry`, `land`, `skip` and `cancel` come with step 3. Until then such a plan stays `running` with that task stuck, and what waits for it never starts; a person can still work in the slot by hand. So step 3 follows before a release that has plans running.
+
+### Storage
+
+`0022_plan_runs.sql` adds the three tables of The tables above, whole: every state step 3 and 4 use is in the CHECKs now, with `parallel` and `archived_at`, as a CHECK cannot change without building the table again. Only added tables, so not `breaks-older`; a rollback leaves runs nobody reads, and a plan that has run editable again by the older binary.
+
+- `plan_slots` keeps the slot's path, which is also a row of `project_worktrees`: a slot is a worktree wdx made, recorded as `WorktreeNamed`'s are, so that agents in it belong to the project and the worktree tracker lists it (step 5 groups it under its plan).
+- A slot's path is `<root>/.worktrees/<plan>-<n>`, `n` the lowest number neither another slot of the plan has nor a path on disk: the person's worktree of that name is passed over, not refused (the Open question, answered).
+
+### `internal/plan`
+
+- `run.go`: `Run`, `Task` and `Slot` as the tables hold them, and the store's writes: `Start` writes the run and a `pending` row per task from the plan's revision, in one transaction, refusing a plan that has a run (`plan_started`); every change of a task's state is `UPDATE … WHERE state = <from>`, and one that matched nothing is read again.
+- `next.go`: `Next(Facts) []Action`, pure. `Facts` is the run read whole, its definition, the `parallel` in force, whether the project is open, and per task whether its agent is live or stopped with its project, and whether its slot is on disk: the runner gathers them, so that `Next` is table tests with no process. The actions, in this order:
+  1. `Fail` a `running` task whose agent ended by itself, failed or was lost (`agent_ended`), and one whose slot is gone (`slot_missing`). An agent `stopped` with its project is waited for: `StartProject` starts it again when the project opens, and its task goes on.
+  2. `Land` the first `landing` task.
+  3. If the project is open and the run `running`: `Start` each `pending` task in DAG order whose `after` are all `done` or `skipped`, in the lowest free slot, or a new one while fewer than `parallel` exist; a `pending` task already holding a slot, a start a crash cut short, first.
+  4. `Finish` when every task is `done` or `skipped`.
+- `runner.go`: one goroutine, a set of plan ids woken as The runner says, each read, given to `Next`, its first action carried out and its outcome written, until `Next` says nothing. In step 2 a landing runs in the runner, as with no check it is one rebase and a ref moved; step 3 moves it to a goroutine of its own with the check.
+- `RunnerOptions`, which the daemon fills, so that `plan` never imports `agent`, `terminal` or `project`:
+  - `Project(ctx, id)`: its root, clone path, default branch and whether it is open;
+  - `AddWorktree(ctx, projectID, path, branch, from)` and `RemoveWorktree(ctx, projectID, path)`: `git worktree add` and `remove`, with the `project_worktrees` row;
+  - `CreateAgent(ctx, projectID, name, dir, first, linked)`: the agent, its first message, and `linked(tx, agentID)` writing the task `running`, in one transaction;
+  - `StopAgent(ctx, agentID)`: ends it and waits until it is gone;
+  - `AgentStates(ctx, ids)`: live, stopped with its project, or ended;
+  - `Changed()`: the projects' stream.
+- Landing is `worktree.LandOnto(ctx, path, base, branch)`, the rebase and the move taken out of `Lander.run`, which keeps the check and the push between them: rebase `branch` onto `base` if `base` moved on, then `git.MoveBranch(base, commit)`, which already moves the ref only from the value it read. It returns the commit, or a `*git.RebaseError` with the files in conflict after the rebase is aborted.
+
+### Starting a task, as built
+
+As Starting a task above, with these changes found against the code:
+
+- `agent.Manager.Create` already starts the agent, so there is no `StartAgent`. It gains its first message and a `linked` function, both written in the transaction that adds the agent's row, as `BeginSession` writes a restart's: the message waits in `messages` for the holder, as any sent before the agent is ready (docs/SEND.md). So a crash never leaves a task's agent without its task, nor a task `running` with no agent. `createAgent`'s `--prompt` keeps sending after the create, as now.
+- Its name is `<plan>-<task>`; one taken by another agent fails the start (`start_failed`), as wdx does not rename what a person named.
+- The new agent runs the project's default ACA.
+
+### A task's end, as built
+
+- An agent runs `wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>`, its shell filling the id, as `agent create --parent-id $WDX_AGENT_ID` does: the CLI reads no environment, as only `main` may, and only the home (AGENTS.md). It asks the daemon for the agent, whose view gains `task`, `{plan, task}` or null, and sends `POST /v1/plans/{plan}/tasks/{task}/done`. A person names `--plan` and `--task` instead, for an agent that finished but did not say so. The first message spells the whole command. `--summary` is required and cannot be blank: the tasks after it are told it.
+- Refused when the task is not `running` (`task_state`, with its state), when the slot has changes not committed or files not tracked (`not_committed`), and when the slot is not on `task/<plan>/<task>` (`wrong_branch`, new, 409), as commits on another branch would never land.
+- It writes the summary and `landing`, and wakes the runner, which then stops the agent and lands the task: stopped first, so that nothing writes in the slot during the rebase.
+- Stopping one agent is new: `Supervisor.StopAgent` hangs up on it without marking it `stopped`, so that its row ends `exited`, as one that ended by itself. A `stopped` agent is started again when its project opens; a finished task's must not be. Its session is kept, for step 3 to resume.
+- Landed: the slot detached at the commit, `task/<plan>/<task>` deleted with `git branch -d`, the task `done` and its `slot` cleared. A conflict: the rebase aborted, the task `land_failed` with `rebase` and its files, waiting for step 3.
+
+### The run's start and end
+
+- `plan run` checks, in the request: the plan has no run (`plan_started`), the project is open (`project_closed`), no parent lists it (`plan_in_use`, until step 6 says whether a child runs alone), it is not a parent itself (`invalid_argument`, until step 6 runs parents), and `plan/<name>` can be made (`branch_exists`, also when a branch such as `plan` is in its way). It then makes `plan/<name>` at the default branch's tip, writes the run, and wakes the runner. Starting the agents is the runner's, so the response says `started` before any agent is up.
+- Once it has run, `update`, `rename` and `remove` are refused with `plan_started`, and so is a parent listing it as a child, until step 6.
+- Finishing is as Finishing above, with no skipped tasks yet: the free slot kept becomes an ordinary worktree on `plan/<name>`, the others removed, the run `done` with `finished_at`.
+
+### The API
+
+| Request | Does | Returns |
+|---|---|---|
+| `POST /v1/plans/{plan}/run?project=` | starts it, with `parallel` (1 to 20) or the setting's | `started`, `plan` |
+| `POST /v1/plans/{plan}/tasks/{task}/done?project=` | with `summary` | `landing`, `task` |
+
+- `Plan.state` becomes `draft`, `running`, `paused`, `done` or `cancelled`, every state of a run now, so that step 3 adds none to the enum, and `Plan` gains `tasks_done`, null for a draft.
+- `getPlan` gains `run`, null for a draft: `state`, `revision`, `base`, `branch`, `parallel` (null for the setting's), `started_at`, `finished_at`. Each task of `definition` gains `state`, `waiting_for` (its `after` not yet `done` or `skipped`, so that no client works it out), `failure`, `conflicts`, `agent` (`id` and `name`, or null), `slot_path`, `summary`, `started_at`, `finished_at`; all null for a draft but `state`, `pending`, and `waiting_for`.
+- `Agent.task`: `{plan, task}`, the plan's name and the task's id, or null.
+- New codes: `plan_started` (409), `task_state` (409, its details the task), `wrong_branch` (409). Reused: `not_found`, `project_closed`, `plan_in_use`, `branch_exists`, `not_committed`, `invalid_argument`.
+- Summaries are agents' output: the daemon and the CLI measure them in what they log, in `task done`'s request and in every plan and task they log, as they do the content.
+
+### Settings
+
+`plan.parallel`, 3 by default, 1 to 20: the most tasks each plan runs at once unless its run says otherwise. The runner reads it at each action, so `wdx setting set` takes effect at once through `daemon.Settings`.
+
+### The CLI
+
+| Command | Text output |
+|---|---|
+| `plan run (--id \| --name) [--parallel <n>]` | `plan sso-login running on plan/sso-login, up to 3 tasks at once` |
+| `plan task done (--agent-id <id> \| --plan <name> --task <id>) --summary <text>` | `task schema of sso-login done: landing on plan/sso-login` |
+| `plan task get --plan <name> --task <id>` | its state, agent, slot, `after`, then its prompt and its summary |
+| `plan status` | `sso-login: running, 2/4 tasks done, on plan/sso-login`, and the table gains `AGENT` and `SLOT`; `STATE` says `waiting for api, cli`, `ready`, `running`, `landing`, `done`, `failed: agent ended`, `land failed: rebase` |
+| `plan list` | `STATE` the run's, `TASKS` as `2/4` once it runs |
+
+- `plan task done` takes `--agent-id`, or `--plan` and `--task`, not both: a `usage` error otherwise. An agent that is no task's is `not_found`.
+- No prompt: `plan run` is asked for by name.
+- `wdx help plans` gains running and finishing a task; `wdx help agents` gains `plan task done`, for an agent told it is doing a task; the launch note's list of what to do through wdx gains plans.
+
+### tide
+
+- The Plans section: a running plan's state and `2/4`.
+- The plan's tab: each task's row gains its state, as `plan status` says it, and its agent's name. `Enter` on a running or landing task opens its agent's tab; on any other, shows its prompt under the row, and its summary once done, and hides them again.
+- `r` in a draft's tab runs it, after `run sso-login? up to 3 agents start  y/n`, as removing a worktree asks; refusals show as other actions' do. The rule of step 1, nothing in tide changes a plan, keeps holding for its YAML.
+- docs/CLI_TIDE.md: rows for running a plan and finishing a task (the CLI only: an agent's or, in step 3, the person's answers).
+
+### Logging and tests
+
+- As Logging and tests above. The first message is never logged: `Create` logs it as `Send` does, by its size.
+- `Next` is table tests over `Facts`: each action, its order, the slots chosen, `parallel`, a closed project, a stopped agent waited for, an ended one failed, a slot gone.
+- The runner in a daemon with the test ACA, whose script, committed in the test repository, reads its first message, commits and runs `wdx plan task done`: a plan of A, then B and C at once, then D, run to `done`, checked by the order of the states each task reached and the slots used (two), with `plan/<name>` holding every commit and one worktree left on it; a task whose agent exits without `task done`, `failed`; two tasks changing the same line, the second `land_failed` with its file; the daemon stopped while tasks run and started again, the run going on.
+- The CLI: an integration test per outcome of `run` and `task done`, by `--agent-id` and by `--plan` and `--task`.
+
+### Steps of step 2
+
+Each builds and passes `make test` on its own.
+
+1. The migration, `internal/plan`'s run store and `Next`, table tests.
+2. `worktree.LandOnto` taken out of the lander, `Supervisor.StopAgent`, `Manager.Create`'s first message and `linked`.
+3. The runner and its wiring in the daemon, `plan run`, `task done`, `plan_started` on edits, the setting, the API.
+4. The CLI: `run`, `task done`, `task get`, `status` and `list`, the help and launch note.
+5. tide: states in the section and tab, `Enter` to an agent, `r`.
+6. docs/CLI_TIDE.md and the README.
+
 ## Open
 
 For the steps that need them, not step 1:
 
 - Step 6: can a plan a parent lists be run on its own, and can a plan that has run be listed as a child?
-- Step 2: a slot's path, `.worktrees/<plan>-<n>`, can be a worktree's the person already has; refused, or another number taken?
