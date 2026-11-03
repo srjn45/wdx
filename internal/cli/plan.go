@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ func newPlanCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newPlanCreateCmd(), newPlanGetCmd(), newPlanHistoryCmd(), newPlanListCmd(), newPlanRemoveCmd(),
-		newPlanRenameCmd(), newPlanStatusCmd(), newPlanUpdateCmd())
+		newPlanRenameCmd(), newPlanRunCmd(), newPlanStatusCmd(), newPlanTaskCmd(), newPlanUpdateCmd())
 	return cmd
 }
 
@@ -263,7 +264,7 @@ func newPlanUpdateCmd() *cobra.Command {
 				`With --json: {"result": "updated", "plan": {...}, "dropped": [...]}`,
 			resultList: annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
 			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidPlan, api.ErrorCodeNotFound, api.ErrorCodePlanChanged,
-				api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodePlanStarted, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -396,7 +397,7 @@ func newPlanRenameCmd() *cobra.Command {
 			outputNote:    "The plan's name before and now.\n" + `With --json: {"result": "updated", "plan": {...}}`,
 			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
 			errorList: codeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodePlanInUse,
-				api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodePlanStarted, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -444,7 +445,7 @@ func newPlanRemoveCmd() *cobra.Command {
 			failurePrefix: "not removed",
 			outputNote:    "The removed plan, as it was before.\n" + `With --json: {"result": "removed", "plan": {...}}`,
 			resultList:    string(api.ResultRemoved),
-			errorList:     codeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodePlanInUse, api.ErrorCodeDaemonUnavailable),
+			errorList:     codeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodePlanInUse, api.ErrorCodePlanStarted, api.ErrorCodeDaemonUnavailable),
 			jsonRequires:  annotation("yes"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -500,9 +501,10 @@ func newPlanStatusCmd() *cobra.Command {
 	var ref planRef
 	cmd := &cobra.Command{
 		Use:   "status (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
-		Short: "Show what a plan defines: its goal, and its tasks or plans in DAG order",
+		Short: "Show what a plan defines and how its run goes: its goal, and its tasks or plans in DAG order",
 		Long: "DAG order lists an entry after everything it waits for, keeping the YAML's\n" +
-			"order where it is free to: a plan written in order reads as written.",
+			"order where it is free to: a plan written in order reads as written. Once it\n" +
+			"runs, each task's state, agent and worktree.",
 		Example: examples(
 			"A plan of the project you are in", identity.Name+" plan status --name sso",
 			"By id, as JSON", identity.Name+" plan status --id doc-1a2b3c4d --json",
@@ -510,7 +512,7 @@ func newPlanStatusCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The plan's state, goal and constraints, then a row per task or plan.\n" +
-				`With --json: {"plan": {...}, "revision": ..., "definition": {"goal": ..., "constraints": [...], "tasks": [...], "plans": [...]}}`,
+				`With --json: {"plan": {...}, "revision": ..., "definition": {"goal": ..., "constraints": [...], "tasks": [...], "plans": [...]}, "run": {...}}`,
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -522,7 +524,7 @@ func newPlanStatusCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planStatus{Plan: p.Plan, Revision: p.Revision, Definition: p.Definition})
+			return printResult(cmd, planStatus{Plan: p.Plan, Revision: p.Revision, Definition: p.Definition, Run: p.Run})
 		},
 	}
 	ref.addFlags(cmd)
@@ -631,7 +633,7 @@ func (r planSaved) text(w io.Writer, st style.Style) {
 func planFields(w io.Writer, st style.Style, p api.Plan) {
 	field := fieldPrinter(w, st, 8)
 	field("project", p.ProjectName)
-	field("state", st.Muted(string(p.State)))
+	field("state", planStateText(st, p.State))
 	field("revision", strconv.FormatInt(p.Revision, 10))
 	if p.Parent != nil {
 		field("parent", st.Name(*p.Parent))
@@ -685,11 +687,16 @@ type planStatus struct {
 	Plan       api.Plan           `json:"plan"`
 	Revision   int64              `json:"revision"`
 	Definition api.PlanDefinition `json:"definition"`
+	Run        *api.PlanRun       `json:"run"`
 }
 
 func (r planStatus) text(w io.Writer, st style.Style) {
 	p, d := r.Plan, r.Definition
-	fmt.Fprintf(w, "%s: %s, %s\n", st.Name(p.Name), st.Muted(string(p.State)), planSize(p))
+	if r.Run == nil {
+		fmt.Fprintf(w, "%s: %s, %s\n", st.Name(p.Name), planStateText(st, p.State), planSize(p))
+	} else {
+		fmt.Fprintf(w, "%s: %s, %s tasks done, on %s\n", st.Name(p.Name), planStateText(st, p.State), planProgress(p), st.Name(r.Run.Branch))
+	}
 	field := fieldPrinter(w, st, 11)
 	field("goal", strings.TrimSpace(d.Goal))
 	for _, c := range d.Constraints {
@@ -704,10 +711,22 @@ func (r planStatus) text(w io.Writer, st style.Style) {
 		for _, c := range *d.Plans {
 			table.Row(st.Name(c.Id), strings.Join(c.After, ", "), "")
 		}
-	} else if d.Tasks != nil {
+	} else if d.Tasks != nil && r.Run == nil {
 		table.Row(st.Heading("TASK"), st.Heading("AFTER"), st.Heading("STATE"))
 		for _, t := range *d.Tasks {
 			table.Row(st.Name(t.Id), strings.Join(t.After, ", "), "")
+		}
+	} else if d.Tasks != nil {
+		table.Row(st.Heading("TASK"), st.Heading("STATE"), st.Heading("AFTER"), st.Heading("AGENT"), st.Heading("SLOT"))
+		for _, t := range *d.Tasks {
+			agent, slot := "", ""
+			if t.Agent != nil {
+				agent = t.Agent.Name
+			}
+			if t.SlotPath != nil {
+				slot = filepath.Base(*t.SlotPath)
+			}
+			table.Row(st.Name(t.Id), taskState(st, t), strings.Join(t.After, ", "), agent, slot)
 		}
 	}
 	table.Write(w)
@@ -737,7 +756,7 @@ func (l planList) text(w io.Writer, st style.Style) {
 	var table style.Table
 	table.Row(st.Heading("NAME"), st.Heading("STATE"), st.Heading("TASKS"), st.Heading("REVISION"), st.Heading("UPDATED"))
 	for _, p := range l.Plans {
-		table.Row(st.Name(p.Name), st.Muted(string(p.State)), planSize(p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
+		table.Row(st.Name(p.Name), planStateText(st, p.State), planProgress(p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
 	}
 	table.Write(w)
 }

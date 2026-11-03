@@ -440,6 +440,13 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 					_ = json.Unmarshal(b, &printed)
 				}
 			}
+			if obj["task"] != nil && obj["definition"] == nil {
+				// A task's prompt and summary are measured, not logged.
+				if b, err := json.Marshal(api.PlanTaskResponseLogged([]byte(out.stdout))); err == nil {
+					printed = nil
+					_ = json.Unmarshal(b, &printed)
+				}
+			}
 		}
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
@@ -510,6 +517,8 @@ type jsonOutput struct {
 	Plan           *api.Plan           `json:"plan"`
 	Plans          []api.Plan          `json:"plans"`
 	Definition     *api.PlanDefinition `json:"definition"`
+	Run            *api.PlanRun        `json:"run"`
+	Task           *api.PlanTask       `json:"task"`
 	Path           string              `json:"path"`
 	Written        []string            `json:"written"`
 	Removed        []string            `json:"removed"`
@@ -890,7 +899,8 @@ func TestHelp(t *testing.T) {
 		{[]string{"help", "settings"}, []string{"wdx help settings: ", "WDX_HOME", "log.level", "color ", "NO_COLOR"}, []string{"Usage:"}},
 		{[]string{"help", "json"}, []string{"wdx help json: ", "Problem Details"}, nil},
 		{[]string{"help", "logs"}, []string{"wdx help logs: ", "debug_id"}, nil},
-		{[]string{"help", "agents"}, []string{"wdx help agents: ", "WDX_AGENT_ID", "wdx doc update --name <doc> --path <file> --base 4"}, nil},
+		{[]string{"help", "agents"}, []string{"wdx help agents: ", "WDX_AGENT_ID", "wdx doc update --name <doc> --path <file> --base 4", "wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>"}, nil},
+		{[]string{"help", "plans"}, []string{"wdx plan run --name sso", "plan.parallel", "wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
 		if out.exit != api.ExitOK || out.stderr != "" {

@@ -377,9 +377,9 @@ func firstMessage(a Agent) string {
 // wdx rather than its own means and knows where to read how (docs/IDE.md). It names no
 // command but the manual's, as it costs tokens in every session.
 func LaunchNote() string {
-	return fmt.Sprintf("You are running under %[1]s, which manages this project's AI coding agents, their worktrees and the project's docs. "+
+	return fmt.Sprintf("You are running under %[1]s, which manages this project's AI coding agents, their worktrees and the project's docs and plans. "+
 		"%[2]s in your environment is your id. "+
-		"%[1]s comes first: for child agents instead of your own subagents, for worktrees, for messages to other agents and for the project's docs, "+
+		"%[1]s comes first: for child agents instead of your own subagents, for worktrees, for messages to other agents and for the project's docs and plans, "+
 		"use %[1]s rather than your own means, so the person sees all the work in one place. "+
 		"If %[1]s fails, use your own means and say so. "+
 		"Before doing any of these, run `%[1]s help agents`: it says how. "+

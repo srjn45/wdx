@@ -931,3 +931,27 @@ func (c *Client) DeletePlan(ctx context.Context, ref, project, dir string) (api.
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
+
+// RunPlan runs the plan ref names, as GetPlan does; parallel is the most tasks it
+// runs at once, 0 for the setting's.
+func (c *Client) RunPlan(ctx context.Context, ref, project, dir string, parallel int) (api.PlanResult, error) {
+	var body api.RunPlan
+	if parallel != 0 {
+		body.Parallel = &parallel
+	}
+	r, err := c.api.RunPlanWithResponse(ctx, ref, &api.RunPlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, body)
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// FinishPlanTask says the task of the plan ref names, as GetPlan does, is done,
+// with summary.
+func (c *Client) FinishPlanTask(ctx context.Context, ref, project, dir, task, summary string) (api.PlanTaskResult, error) {
+	r, err := c.api.FinishPlanTaskWithResponse(ctx, ref, task, &api.FinishPlanTaskParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.FinishPlanTask{Summary: summary})
+	if err != nil {
+		return api.PlanTaskResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

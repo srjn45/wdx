@@ -789,7 +789,13 @@ func agentsTopic(st style.Style) string {
 		w+" plan get --name <plan> --out <file>", "says the revision, here 2",
 		w+" plan update --name <plan> --path <file> --base 2", "",
 		w+" plan status --name <plan>", "its tasks in the order they run",
-	) + `  Running a plan is the person's to do, unless you are asked.`
+	) + `  Running a plan is the person's to do, unless you are asked.
+
+  When you are told you are doing a task of a plan, commit your work on the
+  branch you are on, then say it is done, with what you did in a few lines,
+  which the tasks after yours are told:
+` + commands(w+" plan task done --agent-id $"+identity.Env("AGENT_ID")+" --summary <text>", "") + `  ` + st.Name("not_committed") + ` and ` + st.Name("wrong_branch") + ` say what to fix first. Then stop: ` + w + ` stops you,
+  and lands your work on the plan's branch.`
 }
 
 // The examples of wdx help plans, which TestPlansTopicExamples creates.
@@ -871,5 +877,19 @@ dropped.
     ` + st.Command("EOF") + `
   To change one, get a copy and write it back naming the revision you read:
     ` + st.Command(w+" plan get --name sso --out sso.yaml") + `
-    ` + st.Command(w+" plan update --name sso --path sso.yaml --base 1")
+    ` + st.Command(w+" plan update --name sso --path sso.yaml --base 1") + `
+
+` + st.Heading("Running one") + `
+  ` + st.Command(w+" plan run --name sso") + ` makes the branch plan/sso from the default branch,
+  and starts an agent for every task whose afters are done, each in a worktree
+  of the plan's, up to plan.parallel at once (--parallel for this run). Each
+  agent is told the goal, the constraints, the summaries of the tasks it waits
+  for, and its prompt. Once its work is committed, it says so:
+    ` + st.Command(w+" plan task done --agent-id $"+identity.Env("AGENT_ID")+" --summary <text>") + `
+  ` + w + ` then stops it and rebases its work onto plan/sso, and what waited for it
+  starts. A task that cannot land, or whose agent ended, waits for you.
+    ` + st.Command(w+" plan status --name sso") + `       every task's state
+    ` + st.Command(w+" plan task get --plan sso --task <id>") + `   one task's prompt and summary
+  Once every task is done, one worktree is left on plan/sso, to land as any.
+  A plan runs once, and cannot be changed once it has.`
 }
