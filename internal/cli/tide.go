@@ -28,9 +28,10 @@ func newTideCmd() *cobra.Command {
 		Long: "tide takes the whole window: the project on the left, an agent on the right\n" +
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
-			"terminals and C-q opens the menu: what acts on the thing selected first, then\n" +
-			"on the left pane's list, then on tide and the project, such as a new agent\n" +
-			"or terminal, p for the Project submenu (open, switch, close) and q to quit;\n" +
+			"terminals and C-q opens the menu: what acts on the thing selected first, such\n" +
+			"as r to rename an agent, then on the left pane's list, then on tide and the\n" +
+			"project, such as a new agent or terminal, p for the Project submenu (open,\n" +
+			"switch, close, remove) and q to quit;\n" +
 			"\\, ] and C-q send C-\\, C-] and C-q to the program in the focused\n" +
 			"pane, so C-q \\ d detaches a wdx attach running there, and C-q then Alt and\n" +
 			"an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to\n" +
@@ -44,9 +45,10 @@ func newTideCmd() *cobra.Command {
 			"type: Enter goes back to the list, Esc clears it.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
 			"when closed. The terminal pane has a tab for each of the project's\n" +
-			"terminals, kept up to date as they change; for now a tab and the agent pane\n" +
-			"hold placeholders. tide needs the daemon running, runs in the terminal it\n" +
-			"was started from and has no --json. One tide runs per home: another is refused.",
+			"terminals, kept up to date as they change, and the agent pane a tab for each\n" +
+			"agent opened, each live in its pane. tide needs the daemon running, runs in\n" +
+			"the terminal it was started from and has no --json. One tide runs per home:\n" +
+			"another is refused.",
 		Example: examples(
 			"Open tide", identity.Name+" tide",
 		),
