@@ -18,6 +18,11 @@ A plan is the work of a feature broken into tasks, each a prompt for an agent, w
 - A plan has a lifecycle (below): `draft`, `running`, `paused`, `done`, `cancelled`, and `archived` to hide it. It runs once; running it again means copying it.
 - A task retried resumes its agent, which keeps what it knew, when there is one to resume; otherwise, or when asked for a fresh start, a new agent.
 - tide: a plan chosen in the left pane opens in a right-pane tab listing its tasks in DAG order, each with its status. `Enter` on a done task shows its summary, on a running one goes to its agent, on a pending one shows its prompt.
+- A plan's name is kept with a `plan:` prefix, so that it never clashes with a doc's (below).
+- An AI writes most plans, through the CLI: the YAML comes on stdin (`--path -`) or from a file.
+- **Plans of plans.** A big plan is broken into smaller ones, each a PR, so that no branch lives long. A parent plan lists child plans, with `after` between them, as a plan lists tasks: it is their group, and the DAG they run in. A parent has no branch, worktree or slots, and lands nothing: each child lands itself, and the parent is done when they all are.
+- **Stacking.** When a child's `after` plans are done but their PRs are not merged: without autonomous mode the parent waits for the person, who either has the PR reviewed and merged (the child then starts from the default branch) or lets the child go on now, stacked: its branch starts from the earlier plan's, and its PR targets that branch. Autonomous mode always stacks. A child that waits for more than one plan (after reduction) is never stacked, in either mode: it waits until all of them are merged into the default branch, and starts from it.
+- **A DAG is reduced when it is saved.** An `after` that another path already covers is dropped: with C after B, B after A, and C after A, C's `after: [A]` goes, as B already waits for A. For tasks and child plans alike.
 
 ## Why no split and join steps
 
@@ -68,9 +73,9 @@ tasks:
 
 ### Kept as a doc
 
-- `docs` gets a column `kind`, `doc` or `plan`, `doc` by default. Names are unique per project and kind, so a plan and a doc can share one; that changes the table's `UNIQUE`, so the migration rebuilds it. A binary from before it, after `wdx update --rollback`, would list plans among the docs.
+- `docs` gets a column `kind`, `doc` or `plan`, `doc` by default, and a plan's name is stored as `plan:<name>`, which no doc's can be, as a doc's name cannot hold `:`. So a plan and a doc can have the same name (Step 1 in detail says why the prefix). A binary from before it, after `wdx update --rollback`, would list plans among the docs, as `plan:…`.
 - Every `doc` command and request leaves plans out, and every `plan` one docs.
-- A plan has revisions, `doc_changed` on a stale base, and the hidden copy (`<home>/plans/<project>/<name>.yaml`), as a doc. The doc statuses do not apply: a plan's state is its run's.
+- A plan has revisions, `plan_changed` on a stale base (the plan's `doc_changed`), and the hidden copy (`<home>/plans/<project>/<name>.yaml`), as a doc. The doc statuses do not apply: a plan's state is its run's.
 - `sync-to-git` and the hub for plans come later, with the hub. Only the definition, the coarse state and the owner are shared (docs/HUB.md); the run stays on the machine.
 
 ## Architecture (proposed)
@@ -291,7 +296,7 @@ Agents outlive the daemon, as terminals do (docs/TERMINALS.md); a landing does n
 
 ### Around the plan
 
-- **The plan's branch** is `plan/<name>`, from the default branch's tip, refused with `branch_exists` if there; tasks' branches `task/<plan>/<task>`. A plan always starts from the default branch, as that is the only base a worktree lands on.
+- **The plan's branch** is `plan/<name>`, from the default branch's tip, refused with `branch_exists` if there; tasks' branches `task/<plan>/<task>`. A plan starts from the default branch, or, stacked as a parent's child, from the branch of the plan before it (Agreed); its run's `base` says which.
 - **Closing the project** stops its agents, as now. The plan is paused first, so that agents stopped by wdx do not fail their tasks: their tasks stay `running` and are resumed when the project opens and the plan is resumed.
 - **Removing a task's agent** by hand: its task is `failed` with `agent_ended`, and `retry` starts a new agent, as there is none to resume.
 - **The worktree tracker** learns which paths are slots, so that the worktrees in a project's stream carry their plan and task, and a slot's commits are measured against the plan's branch rather than the default branch.
@@ -315,7 +320,7 @@ Agents outlive the daemon, as terminals do (docs/TERMINALS.md); a landing does n
 | `POST /v1/plans/{plan}/tasks/{task}/land`, `/retry` (with `fresh`), `/skip` | the person's answers | `landing`, `retried`, `skipped`, `task` |
 
 - A plan in a response: `id`, `project_id`, `project_name`, `name`, `revision`, `size`, `created_at`, `updated_at`, and its run's `state` and `tasks_done`/`tasks` (`null` before it runs). A task: `id`, `after`, `state`, `failure`, `conflicts`, `agent_id`, `slot_path`, `summary`, `started_at`, `finished_at`; the prompt only from `GET` of the plan, in its content.
-- New codes: `invalid_plan` (422), `plan_started` (409, editing, renaming or removing a plan that is not a draft, or running it again), `plan_not_running` (409, pause, resume, cancel and a task's answers on a plan not running or paused, archiving one not done or cancelled), `task_state` (409, a task not in a state its request needs). Reused: `not_found`, `name_taken`, `doc_changed`, `branch_exists`, `not_committed`, `agent_working`.
+- New codes: `invalid_plan` (422), `plan_started` (409, editing, renaming or removing a plan that is not a draft, or running it again), `plan_not_running` (409, pause, resume, cancel and a task's answers on a plan not running or paused, archiving one not done or cancelled), `task_state` (409, a task not in a state its request needs). Reused: `not_found`, `name_taken`, `plan_changed`, `branch_exists`, `not_committed`, `agent_working`.
 - The project's stream carries its plans, with their runs and tasks, so that tide follows them live.
 
 ### The CLI
@@ -369,7 +374,139 @@ Each is designed again in detail before it is built.
 3. The person's part: `land_failed` and `failed`, the check, `land`, `retry`, `skip`, `pause`, `resume`, `cancel`, `set --parallel`, in the CLI and the tab.
 4. The rest of the lifecycle: `copy`, `archive`, `unarchive`.
 5. tide's grouping of a plan's agents and slots.
+6. Running plans of plans: a parent starting its children, waiting for the person at each PR, stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged.
+
+## Step 1 in detail (proposed)
+
+Plans that can be written, read and checked, with nothing running: what step 2 runs. Every plan is a `draft`.
+
+### Storage
+
+- Migration `0017_plans.sql` adds `docs.kind TEXT NOT NULL DEFAULT 'doc' CHECK (kind IN ('doc', 'plan'))`. It only adds, so a rolled-back binary keeps working, and would list plans among its docs.
+- A plan's `name` column holds `plan:<name>`. The table's `UNIQUE (project_id, name)` then keeps plans and docs apart with nothing rebuilt: a doc's name cannot hold `:`, so no doc can have a plan's. Making names unique per kind otherwise would rebuild `docs`, and a migration runs with foreign keys on, so dropping the old table would delete every revision through its cascade unless `doc_revisions` were rebuilt with it. Docs keep their names as they are: a `doc:` prefix would rename every doc row and every doc synced to git, for nothing.
+- The prefix is `internal/plan`'s alone: it adds it on the way in and strips it on the way out, so the API, CLI, tide and logs never show it. A plan's name follows docs' rule, at most 95 characters, so that the stored one fits docs' 100.
+- `internal/doc` takes the kind: `Store` methods get it in what they are given (`New.Kind`) or filter by it (`List`, `GetByName`), and every query has `d.kind = ?`, so that no `doc` request reaches a plan or the reverse. `sync-to-git` and `docs.git_path` write docs only.
+- A plan's row: `format` `yaml`, `labels` `[]`, `status` `wip`, none of which a plan shows. Plans have no labels or statuses.
+- Hidden copies: `<home>/plans/<project>/<name>.yaml`, written, caught up and removed as docs' are, by the same code given the kind's directory.
+- Content: what docs allow (UTF-8, no NUL, at most 2 MiB), and the plan's check on every create and update, so that every stored revision is a valid plan.
+
+### The definition: `internal/plan`
+
+A plan of tasks:
+
+```yaml
+goal: Keep sessions in the database instead of cookies.
+constraints:
+  - The public API does not change.
+  - Every new table gets a migration test.
+tasks:
+  - id: schema
+    prompt: |
+      Add a sessions table with id, user_id and expires_at.
+  - id: store
+    after: [schema]
+    prompt: |
+      Write the session store on top of the table.
+  - id: api
+    after: [schema]
+    prompt: |
+      Change the login and logout handlers to use sessions.
+  - id: docs
+    after: [store, api]
+    prompt: |
+      Document the session lifetime in docs/AUTH.md.
+```
+
+A plan of plans, each entry an existing plan's name:
+
+```yaml
+goal: Rewrite authentication.
+plans:
+  - id: auth-sessions
+  - id: auth-tokens
+    after: [auth-sessions]
+  - id: auth-cleanup
+    after: [auth-tokens]
+```
+
+- `definition.go`: `Parse(content []byte) (Definition, []Problem)`. `Definition` holds `Goal`, `Constraints`, and either `Tasks` (`ID`, `After`, `Prompt`) or `Plans` (`ID`, `After`), in DAG order. A `Problem` is a line and a message.
+- It decodes through yaml.v3's node tree, already a dependency, so that every problem has its line, and reports all it finds rather than the first:
+  - not YAML, or not a mapping at the top;
+  - a key other than `goal`, `constraints`, `tasks`, `plans`, in a task other than `id`, `after`, `prompt`, or in a child plan other than `id`, `after`;
+  - `goal` missing or blank; `constraints` not a list of strings;
+  - both `tasks` and `plans`, or neither, or the one given empty; a task with no `id` or a blank `prompt`;
+  - a task `id` that is not `A-Z a-z 0-9 _ -`, at most 50, as it goes into agents' and branches' names; one used twice, whatever its case;
+  - an `after` naming no entry, the entry itself, or one twice;
+  - a cycle, naming its entries in order (`schema → api → schema`).
+- The store checks what the YAML alone cannot, as problems with their lines too: a child plan that does not exist in the project, that is itself a plan of plans (one level only), that another parent already lists, or that is the plan itself.
+- **Reduction**: after the check, an `after` entry that another path already reaches is dropped (the transitive reduction). When anything is dropped, wdx stores the YAML with those entries removed, through the node tree, which keeps comments and block text but may change indentation; with nothing dropped it stores the content byte for byte. The response lists what went in `dropped`, `[{entry, after}]`, so that the AI or person who wrote it knows the stored plan differs from what they sent. Every stored revision is then a valid, reduced plan.
+- DAG order: Kahn's algorithm, always taking the ready entry that comes first in the file, so that a plan written in order reads as written, and the order is the same every time.
+- `wdx help plans`, a help topic, is the format's reference: every key, the rules above, and an example plan, which a test parses so that it cannot go stale.
+
+### The API
+
+| Request | Does | Returns |
+|---|---|---|
+| `POST /v1/plans` | creates one, checked | 201 `created`, `plan` |
+| `GET /v1/plans?project=` | a project's plans, by name | `plans` |
+| `GET /v1/plans/{plan}?project=&revision=` | a plan with a revision, its content and what it defines | `plan`, `revision`, `content`, `definition` |
+| `PUT /v1/plans/{plan}/content` | a new revision, checked, with `base` | `updated` or `unchanged` |
+| `PATCH /v1/plans/{plan}` | `name` | `updated` or `unchanged` |
+| `GET /v1/plans/{plan}/revisions` | its revisions: number, size, time | `revisions` |
+| `DELETE /v1/plans/{plan}?project=` | removes it, with its revisions and copy | `removed` |
+
+- A plan: `id`, `project_id`, `project_name`, `name`, `state` (`draft` until step 2), `tasks` (how many, or null for a parent), `plans` (its children's names, or null), `parent` (the parent's name, or null), `revision`, `size`, `created_at`, `updated_at`.
+- `definition`: `goal`, `constraints`, and `tasks` in DAG order, each `id`, `after`, `prompt`, or `plans` in DAG order, each `id`, `after`; from step 2 each with its run's state. tide and `plan status` read it, so that no client parses the YAML.
+- `create` and `update` return `dropped`, the `after` entries reduction took out, empty when none.
+- New codes: `invalid_plan` (422), its `details.problems` a list of `{line, message}`; `plan_changed` (409), as `doc_changed` is for docs, its details holding the plan and `base`; `plan_in_use` (409), removing or renaming a plan a parent lists, its details naming the parent. wdx never edits a parent's content for you. Reused: `not_found`, `name_taken`, `invalid_name`, `invalid_argument`.
+- `Project.plans` in `getProject` and the project's stream, without content or definition, as `Project.docs`.
+- Logs name the plan, project, revision and size of every change, never the content.
+
+### The CLI
+
+Each command takes `--project-id <id> | --project-name <name>`, or the project of the working directory, and a plan is named by `--id` or `--name`, as `doc` does.
+
+| Command | Text output |
+|---|---|
+| `plan create --name <name> --path <file>\|-` | `plan sso-login created, with 4 tasks` |
+| `plan get (--id \| --name) [--revision <n>] [--out <file> [--overwrite]]` | the YAML, byte for byte; with `--out`, `revision 2 of sso-login written to <file>` |
+| `plan update (--id \| --name) --path <file>\|- --base <n>` | `sso-login is at revision 3, with 5 tasks`; `sso-login is unchanged at revision 3` |
+| `plan list` | a table: `NAME`, `STATE`, `TASKS`, `REVISION`, `UPDATED` |
+| `plan history (--id \| --name)` | a table: `REVISION`, `SIZE`, `CREATED` |
+| `plan rename (--id \| --name) --new-name <name>` | `plan sso-login renamed to sso` |
+| `plan remove (--id \| --name) [--yes]` | `plan sso-login removed` |
+| `plan status (--id \| --name)` | `sso-login: draft, 4 tasks` and its goal, then a table in DAG order: `TASK`, `AFTER`, `STATE` (empty until step 2); for a parent `auth: draft, 3 plans` and `PLAN`, `AFTER`, `STATE` |
+
+- `create` needs `--path`, a file or `-` for stdin: an empty plan is not a valid one, and a template would be a plan that runs. An AI sends the YAML on stdin (`wdx plan create --name auth --path - <<'EOF'`), with no file to write; a `--content` flag would put multi-line YAML in shell quoting. `wdx help plans` is what it writes from.
+- Text output adds a line per dropped `after`: `dropped docs after schema: api already waits for it`.
+- `invalid_plan` in text lists each problem as `<file>:<line>: <message>`, the file being `--path` or `stdin`, so that editors and AIs can jump to it.
+- `plan_changed`, `get --out`, `--overwrite`, `remove`'s question and `--yes`, and the completions follow `doc`'s, word for word with `plan`.
+- No `set`: a plan has no status or labels. `copy`, `run` and the rest come with their steps.
+
+### tide
+
+- The Plans section, `p` in `tide.section_order`, already taken and placed by the default `awdpc`. `p` alone stops being refused, as the section is no longer empty.
+- A row per plan, from the project's stream: name, state (`draft` muted) and `4 tasks` (`3 plans` for a parent), the state dropped first on a narrow row. A parent's children are listed under it, indented, in its DAG order; `Enter` on a parent's row folds them and again unfolds them, as for grouped agents. The heading counts them; with none, `no plans: see wdx help plans`. The `/` filter matches a name, and keeps a matching child's parent.
+- A click, or `Enter` on a plan that is not a parent, opens a `plan: sso-login` tab (`plan:<id>`, so a rename keeps it); on a parent, `o` opens it. The tab is read with `GetPlan` when opened and again when the stream brings a new revision. It shows the goal and the constraints, then a row per entry in DAG order: its id and `after`. `Enter` on a task shows its prompt under its row, and again hides it; on a child plan it opens that plan's tab.
+- Nothing in tide changes a plan, as with docs: the CLI makes every change.
+
+### docs/CLI_TIDE.md, help and README
+
+- A Plans table: reading a plan and its tasks, Same; create, update, rename, remove, history, By design, CLI only, as for docs.
+- `wdx help agents` gains plans: write one as `wdx help plans` says, create it with `wdx plan create`, and leave running it to the person until asked. Its command lines are checked, as the rest.
+- The README's feature list gains plans.
+
+### Steps of step 1
+
+Each builds and passes `make test` on its own.
+
+1. The migration and `internal/doc` taking the kind, with the docs' tests unchanged and new ones for the kinds kept apart.
+2. `internal/plan`'s definition: the check and DAG order, table tests.
+3. The API and daemon: spec, `make generate`, handlers, the codes, `Project.plans`, the copies.
+4. The CLI and `wdx help plans`.
+5. tide's Plans section and tab.
+6. docs/CLI_TIDE.md, `wdx help agents`, the README.
 
 ## Open
 
-- Whether a plan may start from a branch other than the default one, which landing a worktree would need first.
+Nothing for now. Stacking a child that waits for several plans, the last question, was settled: it waits for them all to be merged (Agreed).
