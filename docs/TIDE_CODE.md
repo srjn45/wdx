@@ -284,12 +284,13 @@ The tree shows which files a worktree changed, so that its changes can be found 
 
 ## The order of the sections
 
-`tide.section_order`, default `awcd`: a letter per section, `a` Agents, `w` Worktrees, `c` Code, `d` Docs (docs/DOCS.md).
+`tide.section_order`, default `awdpc`: a letter per section, `a` Agents, `w` Worktrees, `d` Docs (docs/DOCS.md), `p` Plans, `c` Code. Since 2026-11-03 (docs/TIDE_STATE.md) the default puts Docs before Code and leaves room for Plans between them.
 
-- It is a plain string checked by the table's `set`, not `choices`, since four sections make 24 orders and five would make 120.
-- Refused, with a reason naming the letters: an unknown letter, a letter twice, a capital, an empty value.
-- `d` came with docs, on 2026-11-03; `p` comes with plans. A rollback puts back the config file as it was, so an older version never reads them.
-- A section left out comes after the others, in the default order, so `ca` is Code, Agents, Worktrees. Leaving one out never hides it: a value of `awc` must neither hide docs when they arrive nor stop that update, which refuses a value the new version does not accept.
+- It is a plain string checked by the table's `set`, not `choices`, since five sections make hundreds of orders.
+- Refused, with a reason naming the letters: an unknown letter, a letter twice, a capital, an empty value, and `p` alone, which would show nothing until plans come.
+- `p` is accepted before plans are built, and shows nothing until then.
+- `d` came with docs, on 2026-11-03; `p` was accepted on 2026-11-03, before plans. A rollback puts back the config file as it was, so an older version never reads them.
+- A section left out is hidden, so `ca` shows Code, then Agents. Until 2026-11-03 a section left out came after the others; that change was breaking, as `awc` set before docs now hides Docs. The cursor never stays in a hidden section: it goes to the first row shown.
 - A save in tide's settings tab applies at once. `wdx setting set` elsewhere applies when tide next starts, since settings are not in the project's stream.
 - Built 2026-11-02. The first section's heading stays at the pane's top as the Agents heading did, and `↑` / `↓` go through the one list the sections make in their order, rather than each section knowing its neighbours.
 

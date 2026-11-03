@@ -1,6 +1,6 @@
 # tide's state
 
-Status: approved 2026-11-03; not built.
+Status: approved 2026-11-03; step 1 built on 2026-11-03.
 
 When you come back to tide, it shows what you left: the same project, tabs, cursor and focus. wdx is one binary (the daemon, the CLI and tide) with one state. The daemon keeps tide's state, so anything done through wdx, from the CLI or from tide, shows up in it whether tide is open or not.
 

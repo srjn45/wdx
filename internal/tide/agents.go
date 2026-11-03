@@ -557,16 +557,21 @@ const (
 	sectionDocs
 )
 
-// sectionLetters name the sections in the tide.section_order setting, in the
-// default order.
-var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'c': sectionCode, 'd': sectionDocs}
+// sectionLetters name the sections in the tide.section_order setting. The setting
+// also takes p, for Plans, which has no section yet.
+var sectionLetters = map[rune]section{'a': sectionAgents, 'w': sectionWorktrees, 'd': sectionDocs, 'c': sectionCode}
+
+// defaultSectionOrder is the setting's default, which tide.section_order in
+// internal/config repeats.
+const defaultSectionOrder = "awdpc"
 
 // sectionSettingKey is the setting that orders the sections.
 const sectionSettingKey = "tide.section_order"
 
-// sectionOrder returns the sections in the order the setting's letters give, then
-// those it leaves out, in the default order: leaving one out never hides it. A letter
-// it does not know, which the setting refuses, is passed over.
+// sectionOrder returns the sections the setting's letters name, in their order:
+// one left out is hidden. A letter it does not know, which the setting refuses or
+// whose section is not built, is passed over, and letters naming none of the
+// sections give the default order, so that the pane is never empty.
 func sectionOrder(letters string) []section {
 	var order []section
 	for _, r := range letters {
@@ -574,12 +579,20 @@ func sectionOrder(letters string) []section {
 			order = append(order, s)
 		}
 	}
-	for _, s := range []section{sectionAgents, sectionWorktrees, sectionCode, sectionDocs} {
-		if !slices.Contains(order, s) {
-			order = append(order, s)
-		}
+	if len(order) == 0 && letters != defaultSectionOrder {
+		return sectionOrder(defaultSectionOrder)
 	}
 	return order
+}
+
+// letter is the section's letter in the setting.
+func (s section) letter() string {
+	for r, named := range sectionLetters {
+		if named == s {
+			return string(r)
+		}
+	}
+	return ""
 }
 
 // cursorRow is the cursor's row in its section.
@@ -639,12 +652,28 @@ func (m *Model) paneItems() []paneItem {
 	return items
 }
 
-// sectionsInOrder returns the sections in the order set.
+// sectionsInOrder returns the sections shown, in the order set.
 func (m *Model) sectionsInOrder() []section {
 	if len(m.sections) == 0 {
-		return sectionOrder("")
+		return sectionOrder(defaultSectionOrder)
 	}
 	return m.sections
+}
+
+// keepCursorShown moves a cursor that is in a hidden section to the first row
+// shown, or to the first section when none has rows.
+func (m *Model) keepCursorShown() {
+	l, sections := m.list(), m.sectionsInOrder()
+	if l == nil || slices.Contains(sections, l.section) {
+		return
+	}
+	hidden := l.section
+	if i := slices.IndexFunc(m.paneItems(), func(it paneItem) bool { return !it.heading && !it.empty }); i >= 0 {
+		m.moveToItem(m.paneItems()[i])
+	} else {
+		l.section = sections[0]
+	}
+	m.log.Debug("cursor left a hidden section", "hidden", hidden.letter(), "section", l.section.letter())
 }
 
 // moveBy moves the cursor by step rows up the one list the sections make, past

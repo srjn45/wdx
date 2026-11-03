@@ -303,8 +303,8 @@ var settings = []setting{
 	},
 	{
 		key:         "tide.section_order",
-		description: "order of the sections of tide's left pane, a letter each: a agents, w worktrees, c code, d docs; those left out come after, in that order",
-		def:         "awcd",
+		description: "the sections tide's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans (to come), c code; those left out are hidden",
+		def:         SectionLetters,
 		set: func(c *Config, v string) error {
 			if err := checkSectionOrder(v); err != nil {
 				return err
@@ -348,23 +348,30 @@ func checkGitPath(v string) error {
 }
 
 // SectionLetters are the letters tide.section_order takes, in their default order.
-const SectionLetters = "awcd"
+const SectionLetters = "awdpc"
 
-// checkSectionOrder refuses an order that is empty, or has a letter twice or one
-// that names no section. It is not a list of choices: four sections make 24 orders.
+// sectionNames name the letters in tide.section_order's errors.
+const sectionNames = "a (agents), w (worktrees), d (docs), p (plans), c (code)"
+
+// checkSectionOrder refuses an order that is empty, has a letter twice or one that
+// names no section, or names only plans, which tide does not show yet. It is not a
+// list of choices: five sections make hundreds of orders.
 func checkSectionOrder(v string) error {
 	if v == "" {
-		return fmt.Errorf("give at least one of %s", strings.Join(strings.Split(SectionLetters, ""), ", "))
+		return fmt.Errorf("give at least one of %s", sectionNames)
 	}
 	seen := map[rune]bool{}
 	for _, r := range v {
 		switch {
 		case !strings.ContainsRune(SectionLetters, r):
-			return fmt.Errorf("%q has %q, which is none of a (agents), w (worktrees), c (code), d (docs)", v, r)
+			return fmt.Errorf("%q has %q, which is none of %s", v, r, sectionNames)
 		case seen[r]:
 			return fmt.Errorf("%q has %q twice", v, r)
 		}
 		seen[r] = true
+	}
+	if v == "p" {
+		return fmt.Errorf("%q shows no section until plans come: add another of %s", v, sectionNames)
 	}
 	return nil
 }

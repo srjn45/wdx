@@ -184,6 +184,7 @@ func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemo
 // active agent if they are not, and gives them their panes' sizes.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
+	m.keepCursorShown()
 	values := m.valuesSync()
 	diff := m.diffSync()
 	worktrees := m.worktreesSync()
