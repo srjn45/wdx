@@ -38,7 +38,7 @@ func newDocCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newDocCreateCmd(), newDocGetCmd(), newDocHistoryCmd(), newDocListCmd(), newDocRemoveCmd(),
-		newDocRenameCmd(), newDocSetCmd(), newDocUpdateCmd())
+		newDocRenameCmd(), newDocSetCmd(), newDocSyncToGitCmd(), newDocUpdateCmd())
 	return cmd
 }
 
@@ -527,6 +527,54 @@ func newDocRenameCmd() *cobra.Command {
 	return cmd
 }
 
+func newDocSyncToGitCmd() *cobra.Command {
+	var scope projectScope
+	var path string
+	cmd := &cobra.Command{
+		Use:   "sync-to-git [--project-id <id> | --project-name <name>] --path <dir>",
+		Short: "Write a project's docs, read-only, into a directory of its repository",
+		Long: "--path is relative to the project's main checkout, wherever this runs, and is\n" +
+			"created when missing. Each doc's latest revision is written as\n" +
+			"<name>.<format>; a file of that name that wdx did not write is left as it is.\n" +
+			"Files wdx wrote there of docs that are gone are removed, and only those:\n" +
+			".wdx-docs lists what it wrote. Nothing is staged or committed. The setting\n" +
+			"docs.git_path has the daemon do this on every change.",
+		Example: examples(
+			"Write the docs of the project you are in", identity.Name+" doc sync-to-git --path docs/wdx",
+			"Of another project, as JSON", identity.Name+" doc sync-to-git --project-name app --path docs/wdx --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			failurePrefix: "not synced",
+			outputNote: "How many docs were written and where, and the files removed or skipped.\n" +
+				`With --json: {"result": "synced", "path": "...", "written": [...], "removed": [...], "skipped": [...]}`,
+			resultList: string(api.ResultSynced),
+			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeInvalidPath, api.ErrorCodeNotFound,
+				api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			project, dir, err := docScope(cmd, scope)
+			if err != nil {
+				return err
+			}
+			// Relative to the repository, not to where this runs: never made absolute.
+			r, err := clientOf(cmd).SyncDocsToGit(cmd.Context(), project, dir, path)
+			if problemCode(err) == api.ErrorCodeInvalidPath {
+				return &hinted{err, "give a directory relative to the project's main checkout, outside .git"}
+			}
+			if err != nil {
+				return outsideHint(err, scope, "")
+			}
+			return printResult(cmd, docSynced{r, path})
+		},
+	}
+	scope.addFlags(cmd)
+	cmd.Flags().StringVar(&path, "path", "", "`dir` to write into, relative to the project's main checkout")
+	_ = cmd.MarkFlagRequired("path")
+	completeFlag(cmd, "path", cobra.NoFileCompletions)
+	return cmd
+}
+
 const removeDocQuestion = "remove doc"
 
 func newDocRemoveCmd() *cobra.Command {
@@ -784,6 +832,22 @@ func (r docContent) LogValue() slog.Value {
 		attrs = append(attrs, slog.Int("content_bytes", len(*r.Content)))
 	}
 	return slog.GroupValue(attrs...)
+}
+
+// docSynced is what a sync to git did, in the directory given as dir.
+type docSynced struct {
+	api.DocSyncResult
+	dir string
+}
+
+func (r docSynced) text(w io.Writer, st style.Style) {
+	fmt.Fprintf(w, "%s written to %s\n", plural(len(r.Written), "doc"), st.Name(r.dir))
+	if len(r.Removed) > 0 {
+		fmt.Fprintf(w, "removed %s\n", strings.Join(r.Removed, ", "))
+	}
+	if len(r.Skipped) > 0 {
+		fmt.Fprintf(w, "%s %s, as a file wdx did not write has the name\n", st.Warning("skipped"), strings.Join(r.Skipped, ", "))
+	}
 }
 
 // docList is a project's docs.

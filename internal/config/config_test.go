@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -74,9 +74,10 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
-		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		From: map[string]string{
 			"tide.section_order":     path + ":16",
+			"docs.git_path":          path + ":18",
 			"update.channel":         "default",
 			"update.base_url":        "default",
 			"terminal.shell":         path + ":11",
@@ -322,5 +323,19 @@ func TestSectionOrder(t *testing.T) {
 	}
 	if Default().TideSectionOrder != SectionLetters {
 		t.Errorf("default %q", Default().TideSectionOrder)
+	}
+}
+
+func TestGitPath(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"", "docs", "docs/wdx", "a/../docs", ".github/docs"} {
+		if err := checkGitPath(v); err != nil {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+	for v, why := range map[string]string{"/abs": "relative", "..": "leads out", "../docs": "leads out", "a/../../x": "leads out", ".git": "git's own", ".git/docs": "git's own"} {
+		if err := checkGitPath(v); err == nil || !strings.Contains(err.Error(), why) {
+			t.Errorf("%q: %v, want %q", v, err, why)
+		}
 	}
 }

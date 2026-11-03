@@ -24,11 +24,7 @@ type copies struct {
 // path is where d's copy is: a directory per project, named so that the files
 // still say which project each belongs to.
 func (c copies) path(projectName, name, format string) string {
-	file := name
-	if format != "" {
-		file += "." + format
-	}
-	return filepath.Join(c.projectDir(projectName), file)
+	return filepath.Join(c.projectDir(projectName), fileName(name, format))
 }
 
 // projectDir escapes the project's name as in a URL path, since a project's name

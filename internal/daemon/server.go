@@ -20,6 +20,7 @@ type server struct {
 	terminals    *terminal.Supervisor
 	agents       *agent.Manager
 	docs         *doc.Store
+	gitCopy      *gitCopy
 	self         api.Daemon
 	notices      *notices        // tells the streams about changes
 	stopping     <-chan struct{} // closed when the daemon starts stopping: the streams end

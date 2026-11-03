@@ -44,6 +44,7 @@ func (s *server) CreateDoc(ctx context.Context, req api.CreateDocRequestObject) 
 	if err != nil {
 		return nil, err
 	}
+	s.gitCopy.syncProject(ctx, d.ProjectID)
 	return api.CreateDoc201JSONResponse{Result: api.ResultCreated, Doc: docView(d)}, nil
 }
 
@@ -91,6 +92,7 @@ func (s *server) UpdateDoc(ctx context.Context, req api.UpdateDocRequestObject) 
 	result := api.ResultUnchanged
 	if changed {
 		result = api.ResultUpdated
+		s.gitCopy.syncProject(ctx, d.ProjectID)
 	}
 	return api.UpdateDoc200JSONResponse{Result: result, Doc: docView(d)}, nil
 }
@@ -108,6 +110,7 @@ func (s *server) UpdateDocContent(ctx context.Context, req api.UpdateDocContentR
 	if u.Changed {
 		previous := api.DocStatus(u.Previous)
 		r.Result, r.PreviousStatus = api.ResultUpdated, &previous
+		s.gitCopy.syncProject(ctx, u.Doc.ProjectID)
 	}
 	return r, nil
 }
@@ -136,6 +139,7 @@ func (s *server) DeleteDoc(ctx context.Context, req api.DeleteDocRequestObject) 
 	if d, err = s.docs.Remove(ctx, d.ID); err != nil {
 		return nil, err
 	}
+	s.gitCopy.syncProject(ctx, d.ProjectID)
 	return api.DeleteDoc200JSONResponse{Result: api.ResultRemoved, Doc: docView(d)}, nil
 }
 
@@ -201,4 +205,21 @@ func docView(d doc.Doc) api.Doc {
 		CreatedAt:   d.CreatedAt.UTC(),
 		UpdatedAt:   d.UpdatedAt.UTC(),
 	}
+}
+
+func (s *server) SyncDocsToGit(ctx context.Context, req api.SyncDocsToGitRequestObject) (api.SyncDocsToGitResponseObject, error) {
+	b := req.Body
+	p, err := s.docProject(ctx, b.Project, b.Dir)
+	if err != nil {
+		return nil, err
+	}
+	root, err := checkoutOf(p)
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.docs.SyncToGit(ctx, p.ID, root, b.Path)
+	if err != nil {
+		return nil, err
+	}
+	return api.SyncDocsToGit200JSONResponse{Result: api.ResultSynced, Path: r.Path, Written: r.Written, Removed: r.Removed, Skipped: r.Skipped}, nil
 }

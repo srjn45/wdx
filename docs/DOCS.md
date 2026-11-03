@@ -1,6 +1,6 @@
 # Docs
 
-Status: approved by the human on 2026-11-02; steps 1 to 4 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
+Status: approved by the human on 2026-11-02; steps 1 to 5 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
 
 ## Why
 
@@ -87,6 +87,11 @@ CREATE TABLE doc_revisions (
 - `wdx doc sync-to-git --path <dir>` writes every doc of the project into `<dir>`, a directory relative to the project's repository, in its main checkout, read-only, once. It also deletes files there of docs that no longer exist, and only those it wrote: wdx keeps a list of them in `<dir>/.wdx-docs`, so a file a person put there is never touched.
 - The setting `docs.git_path`, empty by default: a directory relative to each project's repository. When set, the daemon writes there on every change, as it does the hidden copy. One key rather than an `enabled` and a `path`, since empty means off; settings are global, so it applies to every project.
 - One way: what changes in the git copy is never read back, and the next write puts the doc back. wdx writes the files and nothing else; it never stages or commits, as background git must never write the index.
+- `--path` and the setting are relative to the project's main checkout, wherever the command runs: the one path on the command line not made absolute against the working directory, since the setting, which applies to every project, can mean nothing else, and the two agree. An absolute path, one leading out of the checkout through `..` or a symlink, or one into `.git`, is `invalid_path`. Approved on 2026-11-03, with the four below.
+- A file there of a doc's name that wdx did not write is never touched: that doc is skipped, logged, and listed under `skipped`.
+- `.wdx-docs` lists the files wdx wrote, one name per line, sorted, read-only, written last; it is committed with the docs, so a clone knows which files wdx owns.
+- Files of docs that are gone are removed first, then every doc is written: on a filesystem that ignores case, writing `Auth.md` and then removing `auth.md` would delete the doc just written. Every doc is written on every sync: a project has few, and an unchanged one gets the same bytes.
+- With the setting, the daemon syncs a doc's whole project after each change to one, once it has committed, and every project when it starts with the setting or a reload changes it, so that a path newly set is not empty until a doc changes. A failure is logged and fails nothing.
 - Read-only protects the local copy only: git records no write permission but the executable bit, so a clone gets ordinary files.
 - A project whose checkout is missing skips the write, logged.
 
@@ -101,7 +106,7 @@ CREATE TABLE doc_revisions (
 | `PATCH /v1/docs/{doc}` | status, labels, name | 200 `updated` or `unchanged` |
 | `GET /v1/docs/{doc}/revisions` | its revisions: number, size, time | `revisions` |
 | `DELETE /v1/docs/{doc}?project=&dir=` | removes a doc with its revisions and copies | 200 `removed` |
-| `POST /v1/docs/sync-to-git` | writes the project's git copy once, with `path`; added with step 5 | 200 `synced` |
+| `POST /v1/docs/sync-to-git` | writes the project's git copy once, with `path`: `path` (absolute), `written`, `removed` and `skipped` file names | 200 `synced` |
 
 - `{doc}` is a name, or `id:` and an id, as `{project}` is. The project comes from `project` or `dir`, as for terminals and agents; listing and creating need one of them, as docs belong to a project.
 - `labels` in a list is repeated (`labels=a&labels=b`), as the generated client sends an array; a label no doc could have, as one with a capital, is `invalid_argument` rather than matching nothing.
@@ -156,6 +161,6 @@ Each builds and passes `make test` on its own.
 2. **Done.** The hidden copies: writing after each change, and `CatchUpCopies` and `RemoveProjectCopies`, which step 3 has the daemon call on start and on removing a project.
 3. **Done.** The API and daemon: spec, `make generate`, handlers, error mapping, `Project.docs` and the stream, removing a project.
 4. **Done.** The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
-5. The git copy: `sync-to-git` and the `docs.git_path` setting.
+5. **Done.** The git copy: `sync-to-git` and the `docs.git_path` setting.
 6. tide: the Docs section and its tab, `tide.section_order`.
 7. docs/CLI_TIDE.md, README, and `wdx help agents` once it exists, so that agents know to read and change docs through `wdx doc`.

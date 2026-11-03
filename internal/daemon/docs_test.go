@@ -367,3 +367,96 @@ func TestDocContentNotLogged(t *testing.T) {
 		t.Errorf("want the text measured in requests and responses, got %v", measured)
 	}
 }
+
+// syncToGit syncs the docs of the project named project into path.
+func (td *testDaemon) syncToGit(t *testing.T, project, path string) *api.SyncDocsToGitResponse {
+	t.Helper()
+	r, err := td.client.SyncDocsToGitWithResponse(context.Background(), api.SyncDocs{Project: &project, Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestSyncDocsToGit(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	app := td.create(t, "app")
+	td.createDoc(t, "app", api.CreateDoc{Name: "auth", Content: optional("auth")})
+	clone := app.Worktrees[0].Path
+
+	r := td.syncToGit(t, "app", "docs/wdx")
+	if r.JSON200 == nil || r.JSON200.Result != api.ResultSynced || r.JSON200.Path != filepath.Join(clone, "docs", "wdx") ||
+		!slices.Equal(r.JSON200.Written, []string{"auth.md"}) || r.JSON200.Removed == nil || r.JSON200.Skipped == nil {
+		t.Fatalf("sync: %s", r.Body)
+	}
+	if b, err := os.ReadFile(filepath.Join(clone, "docs", "wdx", "auth.md")); err != nil || string(b) != "auth" {
+		t.Errorf("the file: %q, %v", b, err)
+	}
+
+	r = td.syncToGit(t, "app", "../out")
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPath)
+	r = td.syncToGit(t, "nope", "docs")
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+	if err := os.RemoveAll(clone); err != nil {
+		t.Fatal(err)
+	}
+	r = td.syncToGit(t, "app", "docs")
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeCheckoutMissing)
+}
+
+// TestDocsGitPath checks the setting keeps every project's docs written: on start,
+// on every change, and when a reload sets it anew.
+func TestDocsGitPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	app := td.create(t, "app")
+	td.createDoc(t, "app", api.CreateDoc{Name: "before"})
+	td.stop()
+	clone := app.Worktrees[0].Path
+	dir := filepath.Join(clone, "docs")
+	exists := func(name string) bool {
+		_, err := os.Stat(filepath.Join(dir, name))
+		return err == nil
+	}
+
+	path := "docs"
+	td = startOn(t, td.home, telemetry.Options{}, func(o *Options) {
+		o.DocsGitPath = path
+		o.Reload = func() (Settings, error) { return Settings{DocsGitPath: path}, nil }
+	})
+	if !exists("before.md") {
+		t.Fatal("not written on start")
+	}
+	d := td.createDoc(t, "app", api.CreateDoc{Name: "auth", Content: optional("one")})
+	if !exists("auth.md") {
+		t.Error("not written on create")
+	}
+	if r, err := td.client.UpdateDocContentWithResponse(ctx, "id:"+d.Id, nil, api.DocContentChange{Base: 1, Content: "two"}); err != nil || r.JSON200 == nil {
+		t.Fatalf("update: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "auth.md")); string(b) != "two" {
+		t.Errorf("after an update: %q", b)
+	}
+	if r, err := td.client.UpdateDocWithResponse(ctx, "id:"+d.Id, nil, api.UpdateDoc{Name: optional("auth-rfc")}); err != nil || r.JSON200 == nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if exists("auth.md") || !exists("auth-rfc.md") {
+		t.Error("not moved on rename")
+	}
+	if r, err := td.client.DeleteDocWithResponse(ctx, "id:"+d.Id, nil); err != nil || r.JSON200 == nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if exists("auth-rfc.md") {
+		t.Error("not removed on remove")
+	}
+
+	path = "elsewhere"
+	if r := reload(t, td); r.JSON200 == nil {
+		t.Fatalf("reload: %s", r.Body)
+	}
+	if _, err := os.Stat(filepath.Join(clone, "elsewhere", "before.md")); err != nil {
+		t.Errorf("not written when a reload set it: %v", err)
+	}
+}

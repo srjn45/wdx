@@ -778,3 +778,13 @@ func (c *Client) DeleteDoc(ctx context.Context, ref, project, dir string) (api.D
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
+
+// SyncDocsToGit writes the docs of the project named by project or holding dir into
+// path, a directory relative to its main checkout.
+func (c *Client) SyncDocsToGit(ctx context.Context, project, dir, path string) (api.DocSyncResult, error) {
+	r, err := c.api.SyncDocsToGitWithResponse(ctx, api.SyncDocs{Project: nonEmpty(project), Dir: nonEmpty(dir), Path: path})
+	if err != nil {
+		return api.DocSyncResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

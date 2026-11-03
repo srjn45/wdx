@@ -1350,6 +1350,37 @@ paths:
               schema: { $ref: "#/components/schemas/DocResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/docs/sync-to-git:
+    post:
+      operationId: syncDocsToGit
+      summary: Write a project's docs, read-only, into a directory of its repository
+      description: |
+        In the project named by project, or the one whose worktree holds dir;
+        one of them is required. path is relative to the project's main
+        checkout, whatever dir is; an absolute one, one leading out of the
+        checkout, through ".." or a symlink, or one into .git, is
+        invalid_path. The directory is created when missing.
+
+        Every doc's latest revision is written as <name>.<format>, read-only;
+        a file of that name that wdx did not write is left as it is, and the
+        doc skipped. Files wdx wrote there of docs that are gone are removed,
+        and only those: .wdx-docs lists what it wrote. Nothing is staged or
+        committed.
+
+        Errors: checkout_missing, invalid_path, not_found, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncDocs" }
+      responses:
+        "200":
+          description: What was written, with result synced.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocSyncResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/docs/{doc}:
     parameters:
       - $ref: "#/components/parameters/DocRef"
@@ -1608,7 +1639,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced]
 
     Worktree:
       type: object
@@ -2489,6 +2520,43 @@ components:
         remove_labels:
           type: array
           items: { type: string }
+
+    SyncDocs:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          nullable: true
+          description: The project's name, or "id:" and its id; excludes dir.
+        dir:
+          type: string
+          nullable: true
+          description: An absolute path in one of the project's worktrees; excludes project.
+        path:
+          type: string
+          minLength: 1
+          description: The directory to write into, relative to the project's main checkout.
+
+    DocSyncResult:
+      type: object
+      required: [result, path, written, removed, skipped]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        path: { type: string, description: The directory written into, absolute. }
+        written:
+          type: array
+          items: { type: string }
+          description: The files written, by name.
+        removed:
+          type: array
+          items: { type: string }
+          description: The files of docs that are gone, which wdx had written there.
+        skipped:
+          type: array
+          items: { type: string }
+          description: The docs' files not written, as a file wdx did not write has the name.
 
     DocList:
       type: object

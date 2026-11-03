@@ -334,3 +334,48 @@ func TestDocText(t *testing.T) {
 		}
 	}
 }
+
+func TestDocSyncToGit(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	newDoc(t, home, app, "auth", "auth")
+	newDoc(t, home, app, "design", "")
+	sub := filepath.Join(app, "src")
+	if err := os.MkdirAll(filepath.Join(app, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app, "docs", "design.md"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run in a subdirectory, the path is still the repository's.
+	v, exit := wdxJSONWith(t, home, in(sub), "doc", "sync-to-git", "--path", "docs")
+	if exit != api.ExitOK || v.Result != "synced" || v.Path != filepath.Join(app, "docs") ||
+		!slices.Equal(v.Written, []string{"auth.md"}) || !slices.Equal(v.Skipped, []string{"design.md"}) || len(v.Removed) != 0 {
+		t.Fatalf("sync: exit %d, %+v", exit, v)
+	}
+	if b, err := os.ReadFile(filepath.Join(app, "docs", "auth.md")); err != nil || string(b) != "auth" {
+		t.Fatalf("the file: %q, %v", b, err)
+	}
+	out := wdxWith(t, home, in(app), "doc", "sync-to-git", "--path", "docs")
+	if out.exit != api.ExitOK || out.stdout != "1 doc written to docs\nskipped design.md, as a file wdx did not write has the name\n" {
+		t.Fatalf("text: %+v", out)
+	}
+
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "sync-to-git", "--path", "../out")
+	wantError(t, v, exit, api.ErrorCodeInvalidPath, api.ExitRejected)
+	wantHint(t, v, "give a directory relative to the project's main checkout, outside .git")
+	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "doc", "sync-to-git", "--path", "docs")
+	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "sync-to-git")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	if err := os.RemoveAll(app); err != nil {
+		t.Fatal(err)
+	}
+	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "doc", "sync-to-git", "--project-name", "app", "--path", "docs")
+	wantError(t, v, exit, api.ErrorCodeCheckoutMissing, api.ExitRejected)
+}

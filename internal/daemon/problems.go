@@ -132,6 +132,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*doc.InvalidError](err); ok {
 		return api.ErrorCodeInvalidArgument, map[string]any{"argument": e.What}
 	}
+	if e, ok := errors.AsType[*doc.InvalidPathError](err); ok {
+		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}
+	}
 	if e, ok := errors.AsType[*doc.ChangedError](err); ok {
 		return api.ErrorCodeDocChanged, map[string]any{"doc": docView(e.Doc), "base": e.Base}
 	}

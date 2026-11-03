@@ -30,7 +30,7 @@ import (
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,

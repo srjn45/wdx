@@ -490,6 +490,10 @@ type jsonOutput struct {
 	Revision       *int64            `json:"revision"`
 	Content        *string           `json:"content"`
 	PreviousStatus *api.DocStatus    `json:"previous_status"`
+	Path           string            `json:"path"`
+	Written        []string          `json:"written"`
+	Removed        []string          `json:"removed"`
+	Skipped        []string          `json:"skipped"`
 
 	Terminal   *api.Terminal        `json:"terminal"`
 	Terminals  []api.Terminal       `json:"terminals"`

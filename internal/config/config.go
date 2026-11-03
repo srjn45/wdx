@@ -44,6 +44,9 @@ type Config struct {
 	Editor string
 	// TideSectionOrder orders the sections of tide's left pane, a letter each.
 	TideSectionOrder string
+	// DocsGitPath is the directory of each project's repository the daemon keeps
+	// its docs written into; "" for none.
+	DocsGitPath string
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -311,6 +314,37 @@ var settings = []setting{
 		},
 		get: func(c Config) string { return c.TideSectionOrder },
 	},
+	{
+		key:         "docs.git_path",
+		description: "directory of each project's repository, relative to its main checkout, that the daemon keeps the project's docs written into, read-only, on every change, as wdx doc sync-to-git does once; empty for none",
+		def:         "",
+		set: func(c *Config, v string) error {
+			if err := checkGitPath(v); err != nil {
+				return err
+			}
+			c.DocsGitPath = v
+			return nil
+		},
+		get: func(c Config) string { return c.DocsGitPath },
+	},
+}
+
+// checkGitPath fails for a docs.git_path that is not a relative path inside the
+// repository and outside .git, as far as the path alone says; the daemon checks
+// the rest, as a symlink leading out, when it writes.
+func checkGitPath(v string) error {
+	clean := filepath.Clean(v)
+	switch {
+	case v == "":
+		return nil
+	case filepath.IsAbs(v):
+		return fmt.Errorf("%q must be relative to the repository", v)
+	case clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)):
+		return fmt.Errorf("%q leads out of the repository", v)
+	case clean == ".git" || strings.HasPrefix(clean, ".git"+string(filepath.Separator)):
+		return fmt.Errorf("%q is in git's own directory", v)
+	}
+	return nil
 }
 
 // SectionLetters are the letters tide.section_order takes, in their default order.

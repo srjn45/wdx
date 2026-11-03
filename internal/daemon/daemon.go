@@ -63,6 +63,9 @@ type Options struct {
 	TerminalHistoryLines int64
 	// Editor is the editor files are edited with; editor.Default when "".
 	Editor string
+	// DocsGitPath is the directory of each project's repository its docs are kept
+	// written into; "" for none.
+	DocsGitPath string
 	// EditorCommand is what runs the editor named program on path, in place of
 	// its own command, as tests give; nil runs the editor.
 	EditorCommand func(program, path string) []string
@@ -128,6 +131,7 @@ type Settings struct {
 	TerminalShell        string
 	TerminalHistoryLines int64
 	Editor               string
+	DocsGitPath          string
 }
 
 // ReloadError is settings that could not be read again; the daemon keeps the
@@ -150,6 +154,7 @@ type Daemon struct {
 	agents    *agent.Manager
 	backups   *agent.Backups
 	docs      *doc.Store
+	gitCopy   *gitCopy
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
 	marks     *worktree.Marks
@@ -237,6 +242,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
+	d.gitCopy = newGitCopy(d.projects, d.docs, opts.DocsGitPath)
 	if opts.Executable == "" {
 		if opts.Executable, err = os.Executable(); err != nil {
 			return nil, err
@@ -296,6 +302,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if err := d.docs.CatchUpCopies(logged); err != nil {
 		d.log.Error("doc copies not caught up", "err", err)
 	}
+	d.gitCopy.syncAll(logged)
 	if err := d.backups.Sweep(logged); err != nil {
 		d.log.Error("agent backups not swept", "err", err)
 	}
@@ -354,6 +361,12 @@ func (d *Daemon) reload(ctx context.Context) error {
 		return &ReloadError{err}
 	}
 	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines, s.Editor)
+	if d.gitCopy.setPath(s.DocsGitPath) {
+		// Under the changes' lock, so that no doc's change syncs at the same time.
+		d.changes.Lock()
+		d.gitCopy.syncAll(ctx)
+		d.changes.Unlock()
+	}
 	if s.Metrics != d.opts.Metrics {
 		// The exporter outlives the request, so it logs as the daemon does.
 		if err := d.meter(logging.NewContext(context.WithoutCancel(ctx), d.log), s.Metrics); err != nil {
@@ -362,7 +375,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 		d.opts.Metrics = s.Metrics
 		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
 	}
-	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor)
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath)
 	return nil
 }
 
