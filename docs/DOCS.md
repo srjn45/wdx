@@ -153,7 +153,7 @@ Approved on 2026-11-03, as built:
 
 - The rows are the project's docs from its stream, by name; nothing more is asked of the daemon. The heading counts them. With none, the row says `no docs: see wdx doc create`, which fits the pane's usual width. A narrow row drops the labels first, then the status whole, as a word cut short would say another.
 - The filter matches a doc when its name and labels together hold every word typed.
-- `Enter` or a click opens the tab, and the focus stays in the list, as for a file, unless the list is zoomed.
+- `Enter` or a click opens the tab, and the focus stays in the list, as for a file, unless the list is zoomed; `Shift+Enter` or `o` goes to the tab (docs/TIDE_ENTER.md).
 - The tab is the doc's id (`doc:<id>`), so a rename keeps it and changes its title: `doc: auth-rfc r4 approved`. It shows the latest revision, read with `GetDoc`, and is read again only when the stream brings a new revision, not for a status or labels, nor on coming back to the tab.
 - An empty doc says `an empty doc`. A doc removed closes its tab and the status line says `doc auth-rfc removed`. A daemon that sends no docs closes none.
 - The tab has the file tab's keys but editing: the bar and `?` leave out `e`, and `e` does nothing.

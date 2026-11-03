@@ -44,7 +44,7 @@ Reading and editing a project's files without leaving tide: step 4 of the order 
 - Directories come before files, and both are sorted by name. Directories start folded. Each worktree keeps its own folds and cursor.
 - It looks and moves as the Agents list does, design A of its [design sheet](https://claude.ai/artifact/PNZzmDWdZeiMHY1PPBFLy6), by the human's choice: a green `▸` and bold name for the cursor, hidden while the pane has no focus; a tinted row and `◂` for the file in the current tab; `−` and `+` for folds, `├ └ │` for the tree, and past about level 8 the row shows its level (`⋯9 ├`). Names end in `…`. A changed file has git's letter and a changed directory a count, in [Changes in the tree](#changes-in-the-tree). With colour off the glyphs carry it all.
 - `↑↓` or `k j` move through the rows shown, and the heading stays pinned. `→` or `l` unfolds. `←` or `h` folds, or moves to the parent when already folded or on a file. A click on a row moves the cursor and opens a file or folds a directory; a click on `+` or `−` only folds.
-- `Enter` on a directory folds or unfolds it, as on a pipeline in that sheet. `Enter` on a file opens its tab, or goes to it, and the focus stays in the list.
+- `Enter` on a directory folds or unfolds it, as on a pipeline in that sheet. `Enter` on a file opens its tab, or goes to it, and the focus stays in the list; `Shift+Enter` or `o` goes to the tab, and on a directory `Shift+Enter` folds as `Enter` does (docs/TIDE_ENTER.md).
 - The tree is read again on the events in `docs/TIDE_WORKTREES.md` and on `f`. No file is watched, so an agent's edits show when it stops, as in Worktrees.
 
 ## The file tab

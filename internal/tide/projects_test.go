@@ -185,7 +185,7 @@ func keyMsgs(names ...string) []tea.KeyPressMsg {
 		"alt+down": key(tea.KeyDown, tea.ModAlt), "alt+up": key(tea.KeyUp, tea.ModAlt), "alt+left": key(tea.KeyLeft, tea.ModAlt),
 		"C-]": key(']', tea.ModCtrl), "backspace": key(tea.KeyBackspace, 0),
 		"left": key(tea.KeyLeft, 0), "right": key(tea.KeyRight, 0), "home": key(tea.KeyHome, 0), "end": key(tea.KeyEnd, 0),
-		"pgup": key(tea.KeyPgUp, 0), "pgdown": key(tea.KeyPgDown, 0),
+		"pgup": key(tea.KeyPgUp, 0), "pgdown": key(tea.KeyPgDown, 0), "shift+enter": key(tea.KeyEnter, tea.ModShift),
 		"alt+shift+left": key(tea.KeyLeft, tea.ModAlt|tea.ModShift), "alt+shift+right": key(tea.KeyRight, tea.ModAlt|tea.ModShift),
 	}
 	var msgs []tea.KeyPressMsg

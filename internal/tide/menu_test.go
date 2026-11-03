@@ -68,9 +68,9 @@ func menuPlaces(t *testing.T) []struct {
 		want []string
 	}{
 		{"no project", noProject, []string{"global: p q"}},
-		{"an agent in the list", agents, []string{"a-parent (agent): x c i r R", "list: / f", "global: p s q"}},
-		{"a worktree's file", worktreeFile, []string{"a (file): v", "list: / f", "global: p s q"}},
-		{"a file in Code", codeFile, []string{"dir/a.go (file): e n N r x", "list: / f", "global: p s q"}},
+		{"an agent in the list", agents, []string{"a-parent (agent): o x c i r R", "list: / f", "global: p s q"}},
+		{"a worktree's file", worktreeFile, []string{"a (file): o v", "list: / f", "global: p s q"}},
+		{"a file in Code", codeFile, []string{"dir/a.go (file): o e n N r x", "list: / f", "global: p s q"}},
 		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f", "global: p s q"}},
 		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f", "global: p s q"}},
 		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s q"}},
@@ -106,14 +106,15 @@ func TestMenuLettersOnce(t *testing.T) {
 	}
 }
 
-// TestMenuOldLetters: the letters the menu used to have for what moved do nothing.
+// TestMenuOldLetters: the letters the menu used to have for what moved do nothing;
+// o, once open project, is now open and go.
 func TestMenuOldLetters(t *testing.T) {
 	t.Parallel()
 	for _, p := range menuPlaces(t) {
 		if p.name == "the Project submenu" {
 			continue
 		}
-		for _, old := range []string{"o", "w", "d"} {
+		for _, old := range []string{"w", "d"} {
 			if p.m.menuOffers(old) {
 				t.Errorf("%s: %q still offered", p.name, old)
 			}

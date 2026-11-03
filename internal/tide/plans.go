@@ -170,9 +170,9 @@ func (m *Model) cursorPlan() (api.Plan, bool) {
 }
 
 // planEnter opens the tab of the plan under the cursor.
-func (m *Model) planEnter() {
+func (m *Model) planEnter(goToTab bool) {
 	if p, ok := m.cursorPlan(); ok {
-		m.openPlan(p)
+		m.openPlan(p, goToTab)
 	}
 }
 
@@ -217,17 +217,13 @@ func (m *Model) clickPlan(i, col int) {
 		m.keepPlanCursor()
 		return
 	}
-	m.planEnter()
+	m.planEnter(false)
 }
 
-// openPlan opens p's tab, or goes to it. The focus stays where it is, as for a doc,
-// unless the list is zoomed over the tab.
-func (m *Model) openPlan(p api.Plan) {
+// openPlan opens p's tab, or goes to it, the focus following as showOpened says.
+func (m *Model) openPlan(p api.Plan, goToTab bool) {
 	m.list().openTab(planTab(p.Id))
-	if m.layout.zoomed != none {
-		m.layout.setFocus(agent)
-		m.layout.zoomed = agent
-	}
+	m.showOpened(goToTab)
 	m.changed("plan")
 	m.log.Info("plan opened", "plan_id", p.Id, "name", p.Name)
 }

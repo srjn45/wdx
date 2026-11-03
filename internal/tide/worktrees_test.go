@@ -668,7 +668,7 @@ func TestVerifyInATide(t *testing.T) {
 	p.until(t, "the worktree", func(m *Model) bool { return m.hasUncommitted("work") })
 	m := p.m
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.worktree.Name == "work" }))
-	p.keys("enter")
+	p.keys("shift+enter")
 	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "v verified") })
 
 	// v marks the file the current line is in.
@@ -869,7 +869,7 @@ func TestReviewInATide(t *testing.T) {
 	p.until(t, "the worktree and its agent", func(m *Model) bool { return m.hasUncommitted("main") && len(m.runningAgentsIn("main")) == 1 })
 	m := p.m
 	m.moveToWorktree(0)
-	p.keys("enter")
+	p.keys("shift+enter")
 	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "+one") })
 	v := m.shownDiff()
 	line := slices.IndexFunc(v.unified, func(s string) bool { return s == "+one" })
@@ -1019,7 +1019,7 @@ func TestWorktreeDiffsLive(t *testing.T) {
 	m.foldWorktree("work", false)
 
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file != nil && r.file.Path == "file" }))
-	p.keys("enter")
+	p.keys("shift+enter")
 	if m.layout.focus != agent || !m.textShown() {
 		t.Fatalf("focus %v, tab %q", m.layout.focus, m.list().active)
 	}
@@ -1045,7 +1045,7 @@ func TestWorktreeDiffsLive(t *testing.T) {
 	m.layout.setFocus(project)
 	p.keys("C-q", refreshKey)
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file == nil && r.worktree.Name == "work" }))
-	p.keys("enter")
+	p.keys("shift+enter")
 	p.until(t, "the uncommitted view", func(m *Model) bool {
 		got := text(m)
 		return strings.Contains(got, "uncommitted: work") && strings.Contains(got, "+still to commit") && strings.Contains(got, "C commit")
@@ -1101,7 +1101,7 @@ func TestCommitSent(t *testing.T) {
 	p.until(t, "the worktree and its agent", func(m *Model) bool { return m.hasUncommitted("main") && len(m.runningAgentsIn("main")) == 1 })
 	m := p.m
 	m.moveToWorktree(0)
-	p.keys("enter")
+	p.keys("shift+enter")
 	p.until(t, "the uncommitted view", func(m *Model) bool { return strings.Contains(text(m), "C commit") })
 	p.keys(commitKey)
 	if m.commit == nil {
@@ -1169,7 +1169,7 @@ func TestRemoveWorktreeInATide(t *testing.T) {
 	})
 	m := p.m
 	m.moveToWorktree(row(m))
-	p.keys("enter")
+	p.keys("shift+enter")
 	if len(m.list().tabs) != 1 {
 		t.Fatalf("tabs: %v", m.list().tabs)
 	}
@@ -1342,7 +1342,7 @@ func landInTide(t *testing.T) (*program, string, string) {
 	})
 	m := p.m
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.worktree.Name == "work" }))
-	p.keys("enter")
+	p.keys("shift+enter")
 	p.until(t, "the bar", func(m *Model) bool { return strings.Contains(text(m), "L land") })
 	return p, dir, work
 }

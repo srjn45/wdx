@@ -19,6 +19,7 @@ const (
 	newTerminalKey   = "t"
 	projectMenuKey   = "p"
 	quitKey          = "q"
+	openAndGoKey     = "o"
 	openProjectKey   = "o" // of the Project submenu
 	switchProjectKey = "s" // of the Project submenu
 	closeProjectKey  = "c" // of the Project submenu
@@ -105,6 +106,9 @@ func (m *Model) selectionPart() menuPart {
 	add := func(key, label, short string, do func() tea.Cmd) {
 		items = append(items, menuItem{key, label, short, do})
 	}
+	if open, ok := m.rowOpener(); ok {
+		add(openAndGoKey, "open and go", "open", func() tea.Cmd { return open(true) })
+	}
 	if r, ok := m.removable(); ok {
 		add(removeKey, "remove", "remove", func() tea.Cmd {
 			m.confirm = &confirmBox{r: r}
@@ -177,7 +181,7 @@ func (m *Model) codeItems() []menuItem {
 	n, entry := m.codeEntry()
 	if entry && !n.dir {
 		items = append(items, menuItem{editFileKey, "edit", "edit", func() tea.Cmd {
-			m.openCodeFile(n.path)
+			m.openCodeFile(n.path, false)
 			return m.askEditor(m.list().active)
 		}})
 	}

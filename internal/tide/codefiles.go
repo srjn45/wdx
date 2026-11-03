@@ -445,7 +445,7 @@ func (m *Model) codeEntryChanged(msg codeEntryChanged) tea.Cmd {
 		}
 		m.statusNotice = "created " + path.Join(msg.worktree, msg.path)
 		if shown && !msg.directory {
-			m.openCodeFile(msg.path)
+			m.openCodeFile(msg.path, false)
 			return m.askEditor(l.active)
 		}
 	case api.ResultRenamed:

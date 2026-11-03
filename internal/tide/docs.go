@@ -127,19 +127,16 @@ func (m *Model) moveToDoc(i int) {
 	l.section, l.docRow, l.docCursor = sectionDocs, i, rows[i].doc.Id
 }
 
-// openDoc opens the tab of the doc under the cursor, or goes to it. The focus
-// stays in the list, as for a file, unless the list is zoomed over the tab.
-func (m *Model) openDoc() {
+// openDoc opens the tab of the doc under the cursor, or goes to it, the focus
+// following as showOpened says.
+func (m *Model) openDoc(goToTab bool) {
 	l, rows := m.list(), m.docRows()
 	if l.docRow >= len(rows) {
 		return
 	}
 	d := rows[l.docRow].doc
 	l.openTab(docTab(d.Id))
-	if m.layout.zoomed != none {
-		m.layout.setFocus(agent)
-		m.layout.zoomed = agent
-	}
+	m.showOpened(goToTab)
 	m.changed("doc")
 	m.log.Info("doc opened", "doc_id", d.Id, "name", d.Name)
 }

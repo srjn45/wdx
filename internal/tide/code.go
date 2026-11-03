@@ -281,29 +281,25 @@ func (s *projectScreen) updateCode(name string) tea.Cmd {
 		s.m.codeLeft()
 	case "right", "l":
 		s.m.codeRight()
-	case "enter":
+	case "enter", goEnter:
 		r, ok := s.m.codeCursorRow()
 		switch {
 		case !ok || r.node == nil:
 		case r.node.dir:
 			s.m.toggleCodeDir(r.node.path)
 		default:
-			s.m.openCodeFile(r.node.path)
+			s.m.openCodeFile(r.node.path, name == goEnter)
 		}
 	}
 	return nil
 }
 
-// openCodeFile opens the tab of the file at p of the worktree chosen, or goes to it.
-// The focus stays in the list, to go on through the tree, unless the list is zoomed
-// over the tab.
-func (m *Model) openCodeFile(p string) {
+// openCodeFile opens the tab of the file at p of the worktree chosen, or goes to it,
+// the focus following as showOpened says.
+func (m *Model) openCodeFile(p string, goToTab bool) {
 	l := m.list()
 	l.openTab(fileTab(l.code.worktree, p))
-	if m.layout.zoomed != none {
-		m.layout.setFocus(agent)
-		m.layout.zoomed = agent
-	}
+	m.showOpened(goToTab)
 	m.changed("file")
 	m.log.Info("file opened", "worktree", l.code.worktree, "path", p)
 }
@@ -537,7 +533,7 @@ func (s *projectScreen) clickCode(i, col, width int) {
 		m.toggleCodeDir(r.node.path)
 		return
 	}
-	m.openCodeFile(r.node.path)
+	m.openCodeFile(r.node.path, false)
 }
 
 // codeRowActive reports whether the tab shown is the row's file; a folded directory

@@ -304,12 +304,66 @@ func (m *Model) moveCursor(i int) {
 	l.row, l.cursor, l.section = i, rows[i].agent.Id, sectionAgents
 }
 
-// activate opens the tab of the agent under the cursor, or goes to it.
-func (m *Model) activate() {
+// activate opens the tab of the agent under the cursor, or goes to it, the focus
+// following as showOpened says.
+func (m *Model) activate(goToTab bool) {
 	if a, ok := m.cursorAgent(); ok {
 		m.list().openTab(a.Id)
+		m.showOpened(goToTab)
 		m.log.Info("agent active", "name", a.Name, "reason", "chosen")
 	}
+}
+
+// showOpened moves the focus to the tab just opened in the agent pane when
+// goToTab is set, or when the list is zoomed over it, where it could not be seen;
+// otherwise it stays in the list, to go on through it (docs/TIDE_ENTER.md).
+func (m *Model) showOpened(goToTab bool) {
+	if !goToTab && m.layout.zoomed == none {
+		return
+	}
+	m.layout.setFocus(agent)
+	if m.layout.zoomed != none {
+		m.layout.zoomed = agent
+	}
+}
+
+// goEnter is the key that opens a row's tab and goes to it, where the terminal
+// tells it from Enter; o does the same everywhere.
+const goEnter = "shift+enter"
+
+func isEnter(name string) bool {
+	return name == "enter" || name == goEnter
+}
+
+// rowOpener is what opens the tab of the left pane's row under the cursor, going to
+// it or not, when the row has one: a Code directory only folds.
+func (m *Model) rowOpener() (func(goToTab bool) tea.Cmd, bool) {
+	l := m.list()
+	if m.layout.focus != project || l == nil {
+		return nil, false
+	}
+	do := func(open func(bool)) func(bool) tea.Cmd {
+		return func(goToTab bool) tea.Cmd { open(goToTab); return nil }
+	}
+	switch l.section {
+	case sectionAgents:
+		_, ok := m.cursorAgent()
+		return do(m.activate), ok
+	case sectionWorktrees:
+		return m.openWorktreeRow, l.worktreeRow < len(m.worktreeRows())
+	case sectionCode:
+		r, ok := m.codeCursorRow()
+		if !ok || r.node == nil || r.node.dir {
+			return nil, false
+		}
+		return do(func(goToTab bool) { m.openCodeFile(r.node.path, goToTab) }), true
+	case sectionDocs:
+		return do(m.openDoc), l.docRow < len(m.docRows())
+	case sectionPlans:
+		_, ok := m.cursorPlan()
+		return do(m.planEnter), ok
+	}
+	return nil, false
 }
 
 // foldLeft closes the open parent under the cursor, and from any other row
@@ -535,10 +589,10 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		return s.updateWorktrees(name)
 	case l.section == sectionCode:
 		return s.updateCode(name)
-	case l.section == sectionDocs && name == "enter":
-		s.m.openDoc()
-	case l.section == sectionPlans && name == "enter":
-		s.m.planEnter()
+	case l.section == sectionDocs && isEnter(name):
+		s.m.openDoc(name == goEnter)
+	case l.section == sectionPlans && isEnter(name):
+		s.m.planEnter(name == goEnter)
 	case l.section == sectionPlans && (name == "left" || name == "h"):
 		s.m.planFold(true)
 	case l.section == sectionPlans && (name == "right" || name == "l"):
@@ -555,8 +609,8 @@ func (s *projectScreen) updateAgents(name string) {
 		s.m.foldLeft()
 	case "right", "l":
 		s.m.foldRight()
-	case "enter":
-		s.m.activate()
+	case "enter", goEnter:
+		s.m.activate(name == goEnter)
 	}
 }
 
@@ -566,8 +620,8 @@ func (s *projectScreen) updateWorktrees(name string) tea.Cmd {
 		s.m.worktreeFoldLeft()
 	case "right", "l":
 		s.m.worktreeFoldRight()
-	case "enter":
-		return s.m.openWorktreeRow()
+	case "enter", goEnter:
+		return s.m.openWorktreeRow(name == goEnter)
 	}
 	return nil
 }
@@ -794,7 +848,7 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 		return nil
 	case it.section == sectionDocs:
 		s.m.moveToDoc(it.row)
-		s.m.openDoc()
+		s.m.openDoc(false)
 		return nil
 	case it.section == sectionPlans:
 		s.m.clickPlan(it.row, col)
@@ -810,7 +864,7 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 		}
 	}
 	s.m.moveCursor(i)
-	s.m.activate()
+	s.m.activate(false)
 	return nil
 }
 
@@ -824,7 +878,7 @@ func (s *projectScreen) clickWorktree(i, col int) tea.Cmd {
 		return nil
 	}
 	s.m.moveToWorktree(i)
-	return s.m.openWorktreeRow()
+	return s.m.openWorktreeRow(false)
 }
 
 func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {

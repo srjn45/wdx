@@ -1,6 +1,6 @@
 # Opening from the left pane: stay or go
 
-Status: approved by the human on 2026-11-03.
+Status: approved by the human on 2026-11-03; built on 2026-11-03.
 
 Today `Enter` on a row of the left pane's list opens its tab in the right pane, but where the focus goes after that depends on the section:
 

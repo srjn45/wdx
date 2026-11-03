@@ -199,6 +199,7 @@ docs/TIDE_MENU.md designs it; this is what it does.
 - **Global:** `a` new agent and `t` new terminal while a project is shown, `p` the Project submenu, `s` settings, `q` quit.
 - **The Project submenu**, a popup of its own: `o` open project, `s` switch project, `c` close the project shown, `x` remove it from wdx. `Esc` closes it.
 - `p x` removes the project shown, as `wdx project remove` does, after a confirmation that it always asks: its agents, terminals and their history are deleted from wdx, its files on disk stay, and it names what runs, which stops. Something started since the stream last said is not stopped: the daemon refuses and the status line says why. tide then goes where it goes after closing.
+- `o` opens the tab of the left pane's row selected and goes to it, as `Shift+Enter` does (docs/TIDE_ENTER.md); it is offered on rows that open one.
 - `x` removes after a confirmation popup. `R` starts the agent again in a new session, as `wdx agent restart` does, after a confirmation that says what it is doing; `y` goes on even if it is busy. docs/AGENT_RESUME.md.
 - `g` starts again the agent or terminal selected, as `wdx agent start` and `wdx terminal start` do, while it is `exited`, `failed` or `lost`: an agent resumes its session, a terminal gets a fresh shell. It stops nothing and loses nothing, so it does not ask. Its pane goes live once the stream says it runs; a failure shows on the status line for an agent, in the pane for a terminal.
 - `p c` closes the project shown, as `wdx project close` does. Closing touches nothing on disk and can be undone, so it asks only when an agent or a terminal is running, saying that they stop and what opening it again does. Something started since the stream last said is not stopped: the daemon refuses and the status line says why. tide then goes where it goes at start: the switcher if another project is open, `Open Project` if none, unless a popup was opened meanwhile.
@@ -270,6 +271,8 @@ Switching projects is frequent too, so it is one chord.
 ### Panes without a PTY
 
 The project pane and its screens use plain keys for their own navigation (`j` / `k`, `enter`, `n`, ...). tide's shortcuts work there too, so navigation is the same in every pane, and the `C-q` menu's letters work without `C-q`.
+
+On a row of the left pane's list that opens a tab (an agent, a worktree or its file, a Code file, a doc, a plan), `Enter` opens it and the focus stays in the list; `Shift+Enter` opens it and goes to it, where the terminal tells it from `Enter` (the kitty keyboard protocol or modifyOtherKeys, which Bubble Tea asks for), and `o` (the menu's `open and go`) does so everywhere. In a zoomed list `Enter` goes too, the zoom with it, as the tab could not be seen. A Code directory only folds, on `Enter` and `Shift+Enter`. docs/TIDE_ENTER.md.
 
 ## Mouse
 

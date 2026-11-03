@@ -36,6 +36,9 @@ func newTideCmd() *cobra.Command {
 			"pane, so C-q \\ d detaches a wdx attach running there, and C-q then Alt and\n" +
 			"an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to\n" +
 			"the previous or next open project.\n" +
+			"In the left pane's list Enter opens the row's tab and stays in the list;\n" +
+			"Shift+Enter, or o where the terminal sends that as Enter, opens it and goes\n" +
+			"to it.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +
 			"The Code section lists a worktree's files: Enter shows one read-only and\n" +

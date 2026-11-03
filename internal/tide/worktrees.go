@@ -187,19 +187,16 @@ func (m *Model) foldWorktree(name string, closed bool) {
 	}
 }
 
-// openWorktreeRow opens the tab of the row under the cursor, or goes to it, and
-// focuses it: it is opened to be read.
-func (m *Model) openWorktreeRow() tea.Cmd {
+// openWorktreeRow opens the tab of the row under the cursor, or goes to it, the focus
+// following as showOpened says.
+func (m *Model) openWorktreeRow(goToTab bool) tea.Cmd {
 	l, rows := m.list(), m.worktreeRows()
 	if l.worktreeRow >= len(rows) {
 		return nil
 	}
 	r := rows[l.worktreeRow]
 	l.openTab(r.tab())
-	m.layout.setFocus(agent)
-	if m.layout.zoomed != none {
-		m.layout.zoomed = agent
-	}
+	m.showOpened(goToTab)
 	m.changed("diff")
 	m.log.Info("diff opened", "worktree", r.worktree.Name, "tab", r.key())
 	return m.refreshWorktrees(r.worktree.Name, true)

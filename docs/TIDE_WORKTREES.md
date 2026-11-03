@@ -27,7 +27,7 @@ One scrolling list with two headings, Agents first and Worktrees after it.
 - Every worktree `git worktree list` gives is listed, whether wdx made it or not, which also shows the stale ones to clean up. `missing` marks one whose directory is gone.
 - A worktree's children are its files with uncommitted changes: staged, unstaged and untracked, with git's status letter.
 - A worktree starts folded, since it can have many files, and its row says how many. `←→` folds it, as in the Agents list.
-- `Enter` on a file opens its file diff; `Enter` on a worktree opens its PR view. If that tab is open, it goes to it.
+- `Enter` on a file opens its file diff; `Enter` on a worktree opens its PR view. If that tab is open, it goes to it. The focus stays in the list; `Shift+Enter` or `o` goes to the tab (docs/TIDE_ENTER.md, since 2026-11-03; `Enter` used to go).
 
 The worktree row shows the commits ahead of the base with their added and removed lines, `landed` when none are ahead and nothing is uncommitted, and the agents running there. A new worktree with nothing in it also says `landed`: it has nothing to lose.
 
