@@ -444,7 +444,7 @@ plans:
   - an `after` naming no entry, the entry itself, or one twice;
   - a cycle, naming its entries in order (`schema → api → schema`).
 - The store checks what the YAML alone cannot, as problems with their lines too: a child plan that does not exist in the project, that is itself a plan of plans (one level only), that another parent already lists (its `parent_id`), or that is the plan itself. It writes the children's `parent_id` in the same transaction as the revision.
-- **Reduction**: after the check, an `after` entry that another path already reaches is dropped (the transitive reduction). When anything is dropped, wdx stores the YAML with those entries removed, through the node tree, which keeps comments and block text but may change indentation; with nothing dropped it stores the content byte for byte. The response lists what went in `dropped`, `[{entry, after}]`, so that the AI or person who wrote it knows the stored plan differs from what they sent. Every stored revision is then a valid, reduced plan.
+- **Reduction**: after the check, an `after` entry that another path already reaches is dropped (the transitive reduction). When anything is dropped, wdx stores the YAML with those entries removed, through the node tree, which keeps comments and block text but may change indentation; with nothing dropped it stores the content byte for byte. `Reduce(content) (Reduced, []Problem)` does the check and this, returning what to store, its definition and what went. The response lists it in `dropped`, `[{entry, after, via}]`, `via` being the other `after` that already waits for it, so that the AI or person who wrote it knows the stored plan differs from what they sent. Every stored revision is then a valid, reduced plan.
 - DAG order: Kahn's algorithm, always taking the ready entry that comes first in the file, so that a plan written in order reads as written, and the order is the same every time.
 - `wdx help plans`, a help topic, is the format's reference: every key, the rules above, and an example plan, which a test parses so that it cannot go stale.
 
@@ -462,7 +462,7 @@ plans:
 
 - A plan: `id`, `project_id`, `project_name`, `name`, `state` (`draft` until step 2), `tasks` (how many, or null for a parent), `plans` (its children's names, or null), `parent` (the parent's name, from `parent_id`, or null), `revision`, `size`, `created_at`, `updated_at`.
 - `definition`: `goal`, `constraints`, and `tasks` in DAG order, each `id`, `after`, `prompt`, or `plans` in DAG order, each `id`, `after`; from step 2 each with its run's state. tide and `plan status` read it, so that no client parses the YAML.
-- `create` and `update` return `dropped`, the `after` entries reduction took out, empty when none.
+- `create` and `update` return `dropped`, the `after` entries reduction took out (`entry`, `after`, `via`), empty when none.
 - New codes: `invalid_plan` (422), its `details.problems` a list of `{line, message}`; `plan_changed` (409), as `doc_changed` is for docs, its details holding the plan and `base`; `plan_in_use` (409), removing or renaming a plan a parent lists, its details naming the parent. wdx never edits a parent's content for you. Reused: `not_found`, `name_taken`, `invalid_name`, `invalid_argument`.
 - `Project.plans` in `getProject` and the project's stream, without content or definition, as `Project.docs`.
 - Logs name the plan, project, revision and size of every change, never the content.
