@@ -10,6 +10,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/tidestate"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -20,6 +21,7 @@ type server struct {
 	terminals    *terminal.Supervisor
 	agents       *agent.Manager
 	docs         *doc.Store
+	tabs         *tidestate.Store
 	gitCopy      *gitCopy
 	self         api.Daemon
 	notices      *notices        // tells the streams about changes

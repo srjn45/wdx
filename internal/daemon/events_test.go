@@ -19,6 +19,7 @@ import (
 type event struct {
 	name    string
 	project api.Project
+	tabs    []api.Tab
 	data    string
 }
 
@@ -56,7 +57,7 @@ func (td *testDaemon) followWith(t *testing.T, ref string, params *api.StreamPro
 				if e.name == "project" {
 					var v api.ProjectEnvelope
 					_ = json.Unmarshal([]byte(e.data), &v)
-					e.project = v.Project
+					e.project, e.tabs = v.Project, v.Tabs
 				}
 				events <- e
 				e = event{}
@@ -108,7 +109,7 @@ func (e event) String() string {
 	for _, term := range terminalsIn(e) {
 		terms = append(terms, term.Name+":"+string(term.State))
 	}
-	return fmt.Sprintf("project %s %s, terminals %v", e.project.Name, e.project.State, terms)
+	return fmt.Sprintf("project %s %s, terminals %v, %d tabs", e.project.Name, e.project.State, terms, len(e.tabs))
 }
 
 func terminalsIn(e event) []api.Terminal {

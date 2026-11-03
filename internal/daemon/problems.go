@@ -13,6 +13,7 @@ import (
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/tidestate"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -131,6 +132,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	}
 	if e, ok := errors.AsType[*doc.InvalidError](err); ok {
 		return api.ErrorCodeInvalidArgument, map[string]any{"argument": e.What}
+	}
+	if e, ok := errors.AsType[*tidestate.InvalidError](err); ok {
+		return api.ErrorCodeInvalidArgument, map[string]any{"argument": "tabs", "index": e.Index}
 	}
 	if e, ok := errors.AsType[*doc.InvalidPathError](err); ok {
 		return api.ErrorCodeInvalidPath, map[string]any{"path": e.Path}

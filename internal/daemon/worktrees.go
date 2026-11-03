@@ -344,6 +344,9 @@ func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeReque
 	if err := s.pullRequests.Forget(ctx, p.ID, w.Path); err != nil {
 		logging.FromContext(ctx).Error("pull request not forgotten", "path", w.Path, "err", err)
 	}
+	if err := s.tabs.RemoveWorktree(ctx, p.ID, w.Name); err != nil {
+		return nil, err
+	}
 	notified, err := s.tellRemoved(ctx, p.ID, w, c.Clone)
 	if err != nil {
 		return nil, err
@@ -448,6 +451,9 @@ func (s *server) RenameWorktreeFile(ctx context.Context, req api.RenameWorktreeF
 	}
 	s.tracker.Refresh(p.ID, req.Worktree)
 	from := filepath.Clean(req.Body.Path)
+	if err := s.tabs.RenamePath(ctx, p.ID, req.Worktree, from, path); err != nil {
+		return nil, err
+	}
 	return api.RenameWorktreeFile200JSONResponse{Result: api.ResultRenamed, Worktree: req.Worktree, Path: path, From: &from}, nil
 }
 
@@ -463,6 +469,9 @@ func (s *server) RemoveWorktreeFile(ctx context.Context, req api.RemoveWorktreeF
 		return nil, err
 	}
 	s.tracker.Refresh(p.ID, req.Worktree)
+	if err := s.tabs.RemovePath(ctx, p.ID, req.Worktree, filepath.Clean(req.Params.Path)); err != nil {
+		return nil, err
+	}
 	return api.RemoveWorktreeFile200JSONResponse{Result: api.ResultRemoved, Worktree: req.Worktree, Path: filepath.Clean(req.Params.Path)}, nil
 }
 

@@ -502,6 +502,8 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 
 	gittest.Git(t, dir, "merge", "-q", "--ff-only", "work")
+	work2, main := "work", "main"
+	td.replaceTabs(t, "api", api.Tab{Kind: api.TabKindPr, Worktree: &work2}, fileTab("work", "more"), api.Tab{Kind: api.TabKindPr, Worktree: &main})
 	r, err := td.client.RemoveWorktreeWithResponse(ctx, "work", params)
 	if err != nil || r.JSON200 == nil {
 		t.Fatalf("remove: %v, %s", err, r.Body)
@@ -520,6 +522,9 @@ func TestRemoveWorktree(t *testing.T) {
 	if err != nil || list.JSON200 == nil || len(list.JSON200.Worktrees) != 1 {
 		t.Errorf("list: %v, %s", err, list.Body)
 	}
+	td.waitProject(t, "api", "the worktree's tabs gone", func(e event) bool {
+		return tabsAre(e, api.Tab{Kind: api.TabKindPr, Worktree: &main})
+	})
 }
 
 // landing follows the stream until the worktree's landing with id has ended.

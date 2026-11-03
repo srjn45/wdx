@@ -34,6 +34,7 @@ import (
 	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/tidestate"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -154,6 +155,7 @@ type Daemon struct {
 	agents    *agent.Manager
 	backups   *agent.Backups
 	docs      *doc.Store
+	tabs      *tidestate.Store
 	gitCopy   *gitCopy
 	terminals *terminal.Supervisor
 	tracker   *worktree.Tracker
@@ -242,6 +244,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
+	d.tabs = tidestate.NewStore(d.db)
 	d.gitCopy = newGitCopy(d.projects, d.docs, opts.DocsGitPath)
 	if opts.Executable == "" {
 		if opts.Executable, err = os.Executable(); err != nil {

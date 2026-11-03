@@ -144,7 +144,11 @@ func (st *projectStream) next() (event string, data []byte, err error) {
 			v.WorktreeStatuses = &views
 		}
 	}
-	data, err = json.Marshal(api.ProjectEnvelope{Project: v})
+	tabs, err := st.s.tabs.Tabs(st.ctx, st.id)
+	if err != nil {
+		return "", nil, err
+	}
+	data, err = json.Marshal(api.ProjectEnvelope{Project: v, Tabs: tabViews(tabs)})
 	return "project", data, err
 }
 
