@@ -2,6 +2,79 @@
 
 Every release of wdx, generated from the commits by git-cliff: do not edit.
 
+## v0.3.0 - 2026-11-03
+
+### Breaking changes
+
+- show an agent's info in a tide tab and let it be renamed
+- keep a backup of an agent's conversation
+- stop an agent's background session whatever ends or starts it
+
+### Features
+
+- show which AI model an agent runs
+- change the settings in a tide tab
+- show an agent's model next to its aca
+- close a project in tide with C-q w
+- start an ended agent or terminal again in tide with C-q g
+- open a known project by name or id, or choose from a list
+- review worktrees and their diffs in tide
+- move around tide's diffs by change, file, line and search
+- review a worktree's uncommitted changes and ask its agent to commit
+- mark files verified in tide's diffs
+- comment on tide's diffs and send the comments as a review
+- find the agent working in a worktree, wherever it started
+- keep every message until its holder has typed it
+- start an agent on a task with wdx agent create --prompt
+- remove a worktree that landed
+- land a worktree on its base by rebase
+- start an agent again in a new session with wdx agent restart
+- land a worktree through a PR with gh
+- read a worktree's files through the API
+- list a worktree's files in tide's left pane
+- read a file in a tab of tide
+- colour a file's text in its tide tab
+- name the editor tide edits with, and install vi with wdx deps
+- run an editor on a worktree's file in the daemon
+- edit a file in its tide tab with e
+- ask to save or discard when closing an editor's tab
+- filter tide's left pane with /
+- send Alt+arrows to the program in focus with tide's C-q menu
+- support vim, nvim, nano, hx and emacs as tide's editor
+- create, rename and delete files and directories in tide's Code section
+- order tide's left pane with the tide.section_order setting
+- read a large repository's worktrees at once and its files with one walk
+- keep docs and their revisions in the database
+- keep a read-only copy of each doc's latest revision in the home
+- mark changed files in tide's Code tree
+- count the changed files under each directory in tide's Code tree
+- serve docs through the API
+- manage docs from the command line with wdx doc
+- write a project's docs into its repository with wdx doc sync-to-git
+- show the Code section's worktree in bold
+- show tide's hidden-tab arrows as ◀ and ▶, not dimmed
+- show a project's docs in tide's Docs section and tab
+
+### Fixes
+
+- find the newest dev release whatever order GitHub lists them in
+- name the newest dev release in a file each release moves
+- see a worktree's base move whenever it moves
+- keep file contents and comments out of the logs
+- follow a conversation Claude Code moves to the background
+- keep a file's mark when it is committed while the worktree is read
+- release a holder whose client connects as its shell exits
+- close the terminal's input only once its read has ended
+- keep a long notice in a text tab's bar, and describe tide's Code section
+- send arrow, editing and function keys with Shift, Alt or Ctrl as xterm does
+- never log a doc's content in the daemon's requests and responses
+- keep tide's Code cursor on a new entry until a read shows it
+
+### Performance
+
+- prepare the stores' statements once, and redact only lines with a URL
+- give cobra flag completions only in a run that completes
+
 ## v0.2.0 - 2026-11-01
 
 ### Breaking changes
