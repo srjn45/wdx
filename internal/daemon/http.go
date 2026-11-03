@@ -76,7 +76,18 @@ func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *ht
 	failed(w, r.WithContext(ctx), err)
 }
 
+// isViewPath reports whether path is one of tide's views, which touch only their
+// own tables and change nothing a stream sends, so wait for no other change and
+// wake no stream: the cursor moves at every key.
+func isViewPath(path string) bool {
+	project, rest, ok := strings.Cut(strings.TrimPrefix(path, projectsPath), "/")
+	return path == tideViewPath || strings.HasPrefix(path, projectsPath) && ok && project != "" && rest == viewPathEnd
+}
+
 const (
+	tideViewPath    = "/v1/tide/view"
+	projectsPath    = "/v1/projects/"
+	viewPathEnd     = "view"
 	reloadPath      = "/v1/daemon/reload"
 	settingsPath    = "/v1/settings/"
 	refreshPathEnds = "/worktrees/refresh"
@@ -84,9 +95,9 @@ const (
 
 func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A reload, a setting or a refresh touches nothing the changes use, and
-		// should not wait minutes for a clone to end.
-		if r.Method != http.MethodGet && r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) {
+		// A reload, a setting, a refresh or a view touches nothing the changes
+		// use, and should not wait minutes for a clone to end.
+		if r.Method != http.MethodGet && r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			// A change runs to its end when the client leaves: cut short, it

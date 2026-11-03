@@ -365,6 +365,78 @@ paths:
               schema: { $ref: "#/components/schemas/TabsResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/projects/{project}/view:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: getProjectView
+      summary: Read what tide shows of a project besides its tabs
+      description: |
+        tide's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
+        when none was saved.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The view.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: replaceProjectView
+      summary: Replace what tide shows of a project besides its tabs
+      description: |
+        Kept as given, as the daemon reads nothing in it. It neither waits for
+        other changes nor wakes the project's streams, which do not carry it.
+
+        Errors: not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/View" }
+      responses:
+        "200":
+          description: The view, with result updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ViewResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/tide/view:
+    get:
+      operationId: getTideView
+      summary: Read what tide shows as a whole, such as the project shown
+      description: |
+        tide's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
+        when none was saved.
+      responses:
+        "200":
+          description: The view.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: replaceTideView
+      summary: Replace what tide shows as a whole
+      description: |
+        Kept as given, as the daemon reads nothing in it. It does not wait for
+        other changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/View" }
+      responses:
+        "200":
+          description: The view, with result updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ViewResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/worktrees:
     get:
       operationId: listWorktrees
@@ -2119,6 +2191,24 @@ components:
         settings, a worktree's file, that file's diff, what a worktree changed,
         a doc.
       enum: [agent, info, settings, file, diff, pr, doc]
+
+    View:
+      type: object
+      required: [view]
+      properties:
+        view:
+          type: object
+          description: What tide shows, as tide wrote it; only tide reads it.
+          additionalProperties: true
+
+    ViewResult:
+      type: object
+      required: [result, view]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        view:
+          type: object
+          additionalProperties: true
 
     TabsUpdate:
       type: object
