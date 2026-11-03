@@ -67,6 +67,41 @@ An editor's tab is not a row: editors are terminals, and their tabs follow the t
 
 **Step 3a** builds the migration, `internal/tidestate`, the endpoint, the stream's `tabs` and the removals, tested from the daemon. tide does not use them yet. **Step 3b** has tide send its list on every change and show the list the stream brings, and a project starts on its saved tabs.
 
+## Step 3b: tide keeps its tabs through the daemon
+
+Today a project's tabs live in its `agentList` (`internal/tide/agents.go`), as strings: an agent's id, `info:` and an id, `settings`, `doc:` and an id, `file:`, `diff:` or `pr:` and a worktree and a file. tide follows only the stream of the project shown, and reads its tabs from that stream's events.
+
+**tide writes**
+- Every change to a project's tabs (one opened, closed or moved, or the list's first fill) sends the whole list with `replaceTabs`, in the background. An empty list is sent as `[]`.
+- The string form stays inside tide. Two functions turn a tab into an `api.Tab` and back. A string they do not know is not sent.
+- One request at a time per project. A change made while one is on its way waits, and only the latest list is sent once it returns. Requests sent at the same time could reach the daemon in any order, and the older list could win.
+- A refusal or a daemon that does not answer is logged, and the status line says `tabs not saved: <why>`. Nothing is retried: the next change sends the list again, and the next event brings the daemon's.
+
+**tide reads**
+- An event's `tabs` replace the project's when no request of tide's is waiting or on its way. Otherwise they are older than what tide has and are dropped. So what differs is what something else removed: a cascade, a trigger, or a file deleted or renamed through wdx. A file renamed through wdx keeps its tab under the new path.
+- The current tab stays when it is still in the list, and otherwise falls back as closing a tab does today: to the tab on its right, or on its left when it was the last. The focus leaves the agent pane when no tab is left, as today.
+- `tabsChanged`, which closes the tabs of agents gone or just removed, goes: the cascades and the trigger do it in the daemon, and the next event brings it.
+
+**A project's first event**
+- Its saved tabs open, and the first is current until step 4 keeps which one was.
+- With none saved, tide does as today: the first running agent gets a tab, which is then sent.
+- **`C-q r`:** a project with saved tabs takes them, and `--resume`'s `agent` picks the current one if it is among them. A project with none saved takes `--resume`'s `tabs` and sends them. That is what an older release reloading into this one hands over, before the daemon has any.
+
+**A tombstone's tab.** Today tide lets you open the tab of an agent that is already a tombstone, to read what it did, and keeps it. 3a's `replaceTabs` refuses an agent kept only as a tombstone. 3b drops that refusal: the agent is still the project's. The trigger closes the tabs open at the moment the agent becomes a tombstone, as `tabsChanged` does now. One opened after that stays until the row goes with its last child, which the cascade then closes. The API's description and the store's test change with it.
+
+**Not in 3b:** which tab is current, the cursor, focus and zoom (step 4), and missing tabs (step 5). A file deleted outside wdx keeps showing that it is gone, as today.
+
+**CLI_TIDE.md** gets a row under Projects: keep the tabs open across runs: tide only, by design, since the CLI opens no tabs.
+
+**Tests**
+- tide's model tests, with a daemon in the test process:
+  - opening and closing tabs sends the list;
+  - a removal through the API closes its tab from the stream;
+  - a new tide on the project opens the saved tabs, and with none the first running agent;
+  - a reload with `--resume` and no saved tabs sends those tabs;
+  - a stream event that comes while a request is on its way does not undo it.
+- The CLI's `TestTideReload` keeps passing.
+
 ## View
 
 Table `tide_view`, one row, and `tide_project_views`, one row per project.
