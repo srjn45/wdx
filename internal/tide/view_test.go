@@ -48,7 +48,7 @@ func TestViewKept(t *testing.T) {
 	h := newTestHome(t)
 	h.serve(t)
 	dir := h.newProject(t, "api", api.ProjectStateOpen)
-	h.newAgent(t, "api", dir, "a-one")
+	one := h.newAgent(t, "api", dir, "a-one")
 	two := h.newAgent(t, "api", dir, "b-two")
 	p := h.followTicking(t, atOnce)
 	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
@@ -61,7 +61,10 @@ func TestViewKept(t *testing.T) {
 	l.code.worktree = "main"
 	l.code.files = map[string]*codeFiles{"main": {open: map[string]bool{"src": true}}}
 	p.update(nil) // what changes the view outside a key is taken as the next update
-	p.until(t, "the view saved", viewSaved)
+	// The tabs go apart from the view: the next tide starts on what both say.
+	p.until(t, "the view and the tabs saved", func(m *Model) bool {
+		return viewSaved(m) && tabsSavedAs(one.Id, two.Id)(m)
+	})
 
 	next := h.followTicking(t, atOnce)
 	next.until(t, "the view placed", func(m *Model) bool {
@@ -90,11 +93,30 @@ func TestViewSettles(t *testing.T) {
 		waits = append(waits, msg)
 		return nil
 	}))
+	// settled ends the latest wait until the view is saved: events go on changing
+	// it, as the agents' states come, each starting a wait of its own.
+	settled := func() {
+		t.Helper()
+		timeout := waittest.After(t)
+		ended := map[int]bool{}
+		for !viewSaved(p.m) {
+			if n := len(waits); n > 0 && waits[n-1].change == p.m.view.changes && !ended[waits[n-1].change] {
+				ended[waits[n-1].change] = true
+				p.update(waits[n-1])
+				continue
+			}
+			select {
+			case msg := <-p.msgs:
+				p.update(msg)
+			case <-timeout:
+				t.Fatalf("the view never saved:\n%s", text(p.m))
+			}
+		}
+	}
 	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
 	p.keys("enter")
 	p.until(t, "a-one attached", agentAttached("a-one"))
-	p.update(waits[len(waits)-1])
-	p.until(t, "the view saved", viewSaved)
+	settled()
 
 	waits = nil
 	p.keys("down")
@@ -110,7 +132,7 @@ func TestViewSettles(t *testing.T) {
 	if !p.m.view.saving {
 		t.Fatal("no view went once the keys rested")
 	}
-	p.until(t, "the view saved", viewSaved)
+	settled()
 }
 
 // TestViewFlushedOnQuit: what changed less than the wait before quitting is kept.
