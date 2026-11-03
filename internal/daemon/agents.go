@@ -355,6 +355,9 @@ func agentView(a agent.Agent) api.Agent {
 		v.CurrentDir = &a.CurrentDir
 	}
 	v.Held = a.Held
+	if a.Plan != "" {
+		v.Task = &api.AgentTask{Plan: a.Plan, Task: a.Task}
+	}
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree
 	}

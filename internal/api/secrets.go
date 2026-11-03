@@ -72,11 +72,38 @@ func PlanResponseLogged(b []byte) any {
 		list := make([]any, len(tasks))
 		for i, t := range tasks {
 			task, _ := t.(map[string]any)
-			prompt, _ := task["prompt"].(string)
-			list[i] = map[string]any{"id": task["id"], "after": task["after"], "prompt_bytes": len(prompt)}
+			list[i] = planTaskLogged(task)
 		}
 		logged["tasks"] = list
 	}
 	v["definition"] = logged
 	return v
+}
+
+// PlanTaskResponseLogged is a response holding a plan's task as logged: its prompt
+// and its agent's summary are measured, never logged.
+func PlanTaskResponseLogged(b []byte) any {
+	var v map[string]any
+	if json.Unmarshal(b, &v) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	if task, ok := v["task"].(map[string]any); ok {
+		v["task"] = planTaskLogged(task)
+	}
+	return v
+}
+
+// planTaskLogged is a task with its prompt and summary measured.
+func planTaskLogged(task map[string]any) map[string]any {
+	logged := map[string]any{}
+	for k, value := range task {
+		logged[k] = value
+	}
+	for _, key := range []string{"prompt", "summary"} {
+		if text, ok := logged[key].(string); ok {
+			delete(logged, key)
+			logged[key+"_bytes"] = len(text)
+		}
+	}
+	return logged
 }

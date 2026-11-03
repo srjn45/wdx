@@ -47,6 +47,8 @@ type Config struct {
 	// DocsGitPath is the directory of each project's repository the daemon keeps
 	// its docs written into; "" for none.
 	DocsGitPath string
+	// PlanParallel is the most tasks each plan runs at once, unless its run says.
+	PlanParallel int
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -326,6 +328,20 @@ var settings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return c.DocsGitPath },
+	},
+	{
+		key:         "plan.parallel",
+		description: "the most tasks each plan runs at once, each an agent in a worktree of its own, unless wdx plan run --parallel says otherwise; from 1 to 20",
+		def:         "3",
+		set: func(c *Config, v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 || n > 20 {
+				return fmt.Errorf("%q is not a whole number from 1 to 20", v)
+			}
+			c.PlanParallel = n
+			return nil
+		},
+		get: func(c Config) string { return strconv.Itoa(c.PlanParallel) },
 	},
 }
 

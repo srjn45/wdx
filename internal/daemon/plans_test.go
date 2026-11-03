@@ -65,9 +65,9 @@ func TestPlanCreate(t *testing.T) {
 		Goal:        "Keep sessions in the database.",
 		Constraints: []string{},
 		Tasks: &[]api.PlanTask{
-			{Id: "schema", After: []string{}, Prompt: "Add the table."},
-			{Id: "api", After: []string{"schema"}, Prompt: "Use it."},
-			{Id: "docs", After: []string{"api"}, Prompt: "Document it."},
+			{Id: "schema", After: []string{}, Prompt: "Add the table.", State: api.PlanTaskStatePending, WaitingFor: []string{}},
+			{Id: "api", After: []string{"schema"}, Prompt: "Use it.", State: api.PlanTaskStatePending, WaitingFor: []string{"schema"}},
+			{Id: "docs", After: []string{"api"}, Prompt: "Document it.", State: api.PlanTaskStatePending, WaitingFor: []string{"api"}},
 		},
 	}
 	if !reflect.DeepEqual(def, want) || got.JSON200.Revision != 1 {

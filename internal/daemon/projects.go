@@ -296,6 +296,10 @@ func (s *server) opened(ctx context.Context, o project.Opened) (api.ProjectResul
 	if err != nil {
 		return api.ProjectResult{}, err
 	}
+	// Its plans' tasks start again, and their agents go on.
+	if err := s.runner.WakeUnfinished(ctx); err != nil {
+		return api.ProjectResult{}, err
+	}
 	started, err := s.byKind(ctx, rows)
 	if err != nil {
 		return api.ProjectResult{}, err

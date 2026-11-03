@@ -44,6 +44,9 @@ import (
 // take a while.
 const DefaultShutdownTimeout = 30 * time.Second
 
+// DefaultPlanParallel is plan.parallel's default, for a daemon given none.
+const DefaultPlanParallel = 3
+
 // Options configure a daemon.
 type Options struct {
 	Home    string
@@ -68,6 +71,9 @@ type Options struct {
 	// DocsGitPath is the directory of each project's repository its docs are kept
 	// written into; "" for none.
 	DocsGitPath string
+	// PlanParallel is the most tasks each plan runs at once unless its run says;
+	// DefaultPlanParallel when 0.
+	PlanParallel int
 	// EditorCommand is what runs the editor named program on path, in place of
 	// its own command, as tests give; nil runs the editor.
 	EditorCommand func(program, path string) []string
@@ -134,6 +140,7 @@ type Settings struct {
 	TerminalHistoryLines int64
 	Editor               string
 	DocsGitPath          string
+	PlanParallel         int
 }
 
 // ReloadError is settings that could not be read again; the daemon keeps the
@@ -147,22 +154,27 @@ func (e *ReloadError) Unwrap() error { return e.Err }
 
 // Daemon is a daemon listening on its socket.
 type Daemon struct {
-	opts      Options
-	log       *slog.Logger // the daemon's own lines: start and stop
-	lock      *os.File
-	listener  net.Listener
-	db        *sql.DB
-	projects  *project.Store
-	agents    *agent.Manager
-	backups   *agent.Backups
-	docs      *doc.Store
-	plans     *plan.Store
-	tabs      *tidestate.Store
-	gitCopy   *gitCopy
-	terminals *terminal.Supervisor
-	tracker   *worktree.Tracker
-	marks     *worktree.Marks
-	comments  *worktree.Comments
+	opts     Options
+	log      *slog.Logger // the daemon's own lines: start and stop
+	lock     *os.File
+	listener net.Listener
+	db       *sql.DB
+	projects *project.Store
+	agents   *agent.Manager
+	backups  *agent.Backups
+	docs     *doc.Store
+	plans    *plan.Store
+	runner   *plan.Runner
+	// stopRunner ends the runner, which steps between the requests.
+	stopRunner context.CancelFunc
+	// planParallel is plan.parallel, which a reload changes.
+	planParallel atomic.Int64
+	tabs         *tidestate.Store
+	gitCopy      *gitCopy
+	terminals    *terminal.Supervisor
+	tracker      *worktree.Tracker
+	marks        *worktree.Marks
+	comments     *worktree.Comments
 	// stopTracker ends what the tracker does, once no stream follows.
 	stopTracker context.CancelFunc
 	// lander lands worktrees, each in the background.
@@ -247,6 +259,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
 	d.plans = plan.NewStore(d.db, identity.PlansDir(opts.Home))
+	d.startRunner()
 	d.tabs = tidestate.NewStore(d.db)
 	d.gitCopy = newGitCopy(d.projects, d.docs, opts.DocsGitPath)
 	if opts.Executable == "" {
@@ -277,7 +290,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		StopReport:    opts.StopReport,
 		Limits:        opts.HolderLimits,
 		AgentLaunch:   agent.Launches(d.backups),
-		AgentEnded:    d.backups.Request,
+		AgentEnded: func(id string) {
+			d.backups.Request(id)
+			d.agentEnded(id)
+		},
 		AgentSession: func(ctx context.Context, id string) (string, error) {
 			a, err := agents.GetByTerminal(ctx, id)
 			return a.SessionID, err
@@ -317,6 +333,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	if err := d.backups.RequestAll(logged); err != nil {
 		d.log.Error("agent backups not requested", "err", err)
+	}
+	if err := d.runner.WakeUnfinished(logged); err != nil {
+		return nil, err
 	}
 	d.log.Info("daemon started",
 		"home", opts.Home,
@@ -370,6 +389,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 		return &ReloadError{err}
 	}
 	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines, s.Editor)
+	d.planParallel.Store(int64(cmp.Or(s.PlanParallel, DefaultPlanParallel)))
 	if d.gitCopy.setPath(s.DocsGitPath) {
 		// Under the changes' lock, so that no doc's change syncs at the same time.
 		d.changes.Lock()
@@ -384,7 +404,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 		d.opts.Metrics = s.Metrics
 		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
 	}
-	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath)
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath, "plan_parallel", s.PlanParallel)
 	return nil
 }
 
@@ -510,6 +530,10 @@ func (d *Daemon) cancelChanges() {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.runner != nil {
+		d.stopRunner()
+		d.runner.Wait() // it uses the agents, the tracker and the database
 	}
 	if d.lander != nil {
 		d.lander.Close() // it uses the terminals, the tracker and the pull requests

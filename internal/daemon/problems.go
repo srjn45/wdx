@@ -137,6 +137,18 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*plan.InUseError](err); ok {
 		return api.ErrorCodePlanInUse, map[string]any{"plan": planView(e.Plan), "parent": planView(e.Parent)}
 	}
+	if e, ok := errors.AsType[*plan.StartedError](err); ok {
+		return api.ErrorCodePlanStarted, map[string]any{"plan": planView(e.Plan)}
+	}
+	if e, ok := errors.AsType[*plan.TaskStateError](err); ok {
+		return api.ErrorCodeTaskState, map[string]any{"task": map[string]any{"id": e.Task.ID, "state": e.Task.State}}
+	}
+	if e, ok := errors.AsType[*plan.BranchExistsError](err); ok {
+		return api.ErrorCodeBranchExists, map[string]any{"branch": e.Branch}
+	}
+	if e, ok := errors.AsType[*plan.WrongBranchError](err); ok {
+		return api.ErrorCodeWrongBranch, map[string]any{"branch": e.Want}
+	}
 	if e, ok := errors.AsType[*doc.NameTakenError](err); ok {
 		return api.ErrorCodeNameTaken, map[string]any{"name": e.Name, "doc": docView(e.Doc)}
 	}
@@ -230,7 +242,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeWorktreeIsClone, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil
-	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
+	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, plan.ErrPlansDoNotRun), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
 		return api.ErrorCodeInvalidArgument, nil
 	}
 	return api.ErrorCodeInternal, nil

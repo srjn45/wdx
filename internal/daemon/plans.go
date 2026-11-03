@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -47,8 +48,81 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 	if err != nil {
 		return nil, err
 	}
-	logging.FromContext(ctx).Info("plan read", "plan_id", p.ID, "name", p.Name, "revision", r.Number, "size", r.Size)
-	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def)}, nil
+	run, ran, err := s.plans.Run(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	var runRef *plan.Run
+	if ran {
+		runRef = &run
+	}
+	names, err := s.agentNames(ctx, runRef)
+	if err != nil {
+		return nil, err
+	}
+	logging.FromContext(ctx).Info("plan read", "plan_id", p.ID, "name", p.Name, "revision", r.Number, "size", r.Size, "state", p.State)
+	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names), Run: runView(runRef)}, nil
+}
+
+func (s *server) RunPlan(ctx context.Context, req api.RunPlanRequestObject) (api.RunPlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	proj, err := s.projects.GetByID(ctx, p.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if proj.State == project.StateClosed {
+		return nil, &projectClosedError{project: proj}
+	}
+	if p, err = s.runner.Start(ctx, p.ID, int(deref(req.Body.Parallel))); err != nil {
+		return nil, err
+	}
+	return api.RunPlan200JSONResponse{Result: api.ResultStarted, Plan: planView(p)}, nil
+}
+
+func (s *server) FinishPlanTask(ctx context.Context, req api.FinishPlanTaskRequestObject) (api.FinishPlanTaskResponseObject, error) {
+	if strings.TrimSpace(req.Body.Summary) == "" {
+		return nil, &requestError{err: errors.New("summary is blank: the tasks after this one are told it")}
+	}
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.runner.TaskDone(ctx, p.ID, req.Task, req.Body.Summary); err != nil {
+		return nil, err
+	}
+	run, _, err := s.plans.Run(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.agentNames(ctx, &run)
+	if err != nil {
+		return nil, err
+	}
+	tasks := *definitionView(run.Definition, &run, names).Tasks
+	i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == req.Task })
+	return api.FinishPlanTask200JSONResponse{Result: api.ResultLanding, Task: tasks[i]}, nil
+}
+
+// agentNames returns the names of the agents of run's tasks, by id.
+func (s *server) agentNames(ctx context.Context, run *plan.Run) (map[string]string, error) {
+	names := map[string]string{}
+	if run == nil {
+		return names, nil
+	}
+	for _, t := range run.Tasks {
+		if t.AgentID == "" {
+			continue
+		}
+		a, err := s.agents.Store().Get(ctx, t.AgentID)
+		if err != nil {
+			return nil, err
+		}
+		names[t.AgentID] = a.Terminal.Name
+	}
+	return names, nil
 }
 
 func (s *server) UpdatePlan(ctx context.Context, req api.UpdatePlanRequestObject) (api.UpdatePlanResponseObject, error) {
@@ -179,10 +253,27 @@ func planView(p plan.Plan) api.Plan {
 	if p.Parent != "" {
 		v.Parent = &p.Parent
 	}
+	if p.State != plan.StateDraft {
+		done := int64(p.TasksDone)
+		v.TasksDone = &done
+	}
 	return v
 }
 
-func definitionView(d plan.Definition) api.PlanDefinition {
+func runView(r *plan.Run) *api.PlanRun {
+	if r == nil {
+		return nil
+	}
+	v := &api.PlanRun{State: api.PlanState(r.State), Revision: int64(r.Revision), Base: r.Base, Branch: r.Branch, StartedAt: r.StartedAt.UTC(), FinishedAt: optionalTime(r.FinishedAt)}
+	if r.Parallel != 0 {
+		v.Parallel = &r.Parallel
+	}
+	return v
+}
+
+// definitionView is d with each task as run has it, or pending when run is nil;
+// names are the run's agents' names, by id.
+func definitionView(d plan.Definition, run *plan.Run, names map[string]string) api.PlanDefinition {
 	v := api.PlanDefinition{Goal: d.Goal, Constraints: d.Constraints}
 	if v.Constraints == nil {
 		v.Constraints = []string{}
@@ -194,11 +285,51 @@ func definitionView(d plan.Definition) api.PlanDefinition {
 		}
 		v.Plans = &children
 	} else {
+		states, slots := map[string]plan.TaskRun{}, map[int]string{}
+		if run != nil {
+			for _, t := range run.Tasks {
+				states[t.ID] = t
+			}
+			for _, sl := range run.Slots {
+				slots[sl.Number] = sl.Path
+			}
+		}
 		tasks := make([]api.PlanTask, len(d.Tasks))
 		for i, t := range d.Tasks {
-			tasks[i] = api.PlanTask{Id: t.ID, After: t.After, Prompt: t.Prompt}
+			tasks[i] = taskView(t, states, slots, names)
 		}
 		v.Tasks = &tasks
+	}
+	return v
+}
+
+func taskView(t plan.Task, states map[string]plan.TaskRun, slots map[int]string, names map[string]string) api.PlanTask {
+	r, ok := states[t.ID]
+	if !ok {
+		r = plan.TaskRun{ID: t.ID, State: plan.TaskPending}
+	}
+	v := api.PlanTask{Id: t.ID, After: t.After, Prompt: t.Prompt, State: api.PlanTaskState(r.State), WaitingFor: []string{},
+		StartedAt: optionalTime(r.StartedAt), FinishedAt: optionalTime(r.FinishedAt)}
+	if r.Conflicts != nil {
+		v.Conflicts = &r.Conflicts
+	}
+	if path, ok := slots[r.Slot]; ok {
+		v.SlotPath = &path
+	}
+	for _, a := range t.After {
+		if s := states[a].State; s != plan.TaskDone && s != plan.TaskSkipped {
+			v.WaitingFor = append(v.WaitingFor, a)
+		}
+	}
+	if r.Failure != "" {
+		f := api.PlanTaskFailure(r.Failure)
+		v.Failure = &f
+	}
+	if r.AgentID != "" {
+		v.Agent = &api.PlanTaskAgent{Id: r.AgentID, Name: names[r.AgentID]}
+	}
+	if r.Summary != "" {
+		v.Summary = &r.Summary
 	}
 	return v
 }

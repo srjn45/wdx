@@ -1662,8 +1662,11 @@ paths:
         all. A plan a plan of plans lists cannot be renamed: plan_in_use,
         with the parent under details.parent.
 
+        A plan that has run cannot be renamed: plan_started, with the plan
+        under details.plan.
+
         Errors: invalid_name, invalid_path, name_taken (with the plan under
-        details.plan), not_found, plan_in_use, usage.
+        details.plan), not_found, plan_in_use, plan_started, usage.
       requestBody:
         required: true
         content:
@@ -1682,9 +1685,10 @@ paths:
       description: |
         A plan a plan of plans lists cannot be removed: plan_in_use, with the
         parent under details.parent. Removing a plan of plans leaves the
-        plans it listed with no parent.
+        plans it listed with no parent. A plan that has run cannot be
+        removed: plan_started, with the plan under details.plan.
 
-        Errors: invalid_path, not_found, plan_in_use, usage.
+        Errors: invalid_path, not_found, plan_in_use, plan_started, usage.
       responses:
         "200":
           description: The removed plan, with result removed.
@@ -1708,10 +1712,11 @@ paths:
         unchanged. When base is not the latest, plan_changed, with the plan
         under details.plan: read it again, apply the change and write it
         with the new base. A plan of plans' children follow its new
-        revision.
+        revision. A plan that has run cannot be changed: plan_started, with
+        the plan under details.plan.
 
         Errors: invalid_argument, invalid_path, invalid_plan, not_found,
-        plan_changed, usage.
+        plan_changed, plan_started, usage.
       requestBody:
         required: true
         content:
@@ -1740,6 +1745,75 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DocRevisionList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/run:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: runPlan
+      summary: Run a draft plan of tasks
+      description: |
+        Makes the branch plan/<name> at the tip of the project's default
+        branch and writes the run, result started; the daemon then starts an
+        agent for each task that can go, in worktrees of the plan's, and
+        lands each finished task on the branch, until every task is done. A
+        plan runs once.
+
+        Errors: branch_exists (plan/<name>, or a branch in its way, is
+        there), invalid_argument (a plan of plans, which does not run yet),
+        invalid_path, not_found, plan_in_use (a plan of plans lists it,
+        with the parent under details.parent), plan_started (it has run,
+        with the plan under details.plan), project_closed, usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunPlan" }
+      responses:
+        "200":
+          description: The plan, running, with result started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/tasks/{task}/done:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - name: task
+        in: path
+        required: true
+        description: The task's id in the plan.
+        schema: { type: string, minLength: 1 }
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: finishPlanTask
+      summary: Say a running task is done, with a summary, so that it lands on the plan's branch
+      description: |
+        Result landing: the daemon stops the task's agent and lands its
+        worktree on the plan's branch. The summary is told to the tasks
+        that wait for it, and is never logged.
+
+        Errors: invalid_path, not_committed (its worktree has changes or
+        files not committed), not_found (the plan, or a task its run does
+        not have), task_state (it is not running, with the task's id and
+        state under details.task), usage, wrong_branch (its worktree is not
+        on the task's branch, which details.branch names).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FinishPlanTask" }
+      responses:
+        "200":
+          description: The task, landing, with result landing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanTaskResult" }
         default: { $ref: "#/components/responses/Problem" }
 
 components:
@@ -1905,7 +1979,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing]
 
     Worktree:
       type: object
@@ -2679,7 +2753,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -2698,6 +2772,7 @@ components:
         held: { type: integer, description: "Messages for it that wait for a human: their holder died, and what they were meant for is gone." }
         current_dir: { type: string, nullable: true, description: "Where its AI CLI last said it worked, as after it moved into a worktree it made itself; null until it has, or when it does not say." }
         worktree: { type: string, nullable: true, description: "The name of the project's worktree holding dir, main for the clone; null when none does." }
+        task: { $ref: "#/components/schemas/AgentTask" }
         state: { $ref: "#/components/schemas/AgentState" }
         activity:
           type: string
@@ -2949,12 +3024,21 @@ components:
 
     PlanState:
       type: string
-      description: Where a plan is in its life; draft until it runs.
-      enum: [draft]
+      description: Where a plan is in its life; draft until it runs, then its run's state.
+      enum: [draft, running, paused, done, cancelled]
+
+    AgentTask:
+      type: object
+      nullable: true
+      description: The plan's task the agent does; null for none.
+      required: [plan, task]
+      properties:
+        plan: { type: string, description: The plan's name. }
+        task: { type: string, description: The task's id. }
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, state, tasks, plans, parent, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, state, tasks, tasks_done, plans, parent, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -2962,6 +3046,7 @@ components:
         project_name: { type: string }
         state: { $ref: "#/components/schemas/PlanState" }
         tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
+        tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft. }
         plans:
           type: array
           items: { type: string }
@@ -2995,7 +3080,7 @@ components:
 
     PlanTask:
       type: object
-      required: [id, after, prompt]
+      required: [id, after, prompt, state, waiting_for, failure, conflicts, agent, slot_path, summary, started_at, finished_at]
       properties:
         id: { type: string }
         after:
@@ -3003,6 +3088,76 @@ components:
           items: { type: string }
           description: The tasks it waits for.
         prompt: { type: string }
+        state: { $ref: "#/components/schemas/PlanTaskState" }
+        waiting_for:
+          type: array
+          items: { type: string }
+          description: The tasks of after not yet done or skipped; a pending task with none is ready, waiting for a worktree.
+        failure: { $ref: "#/components/schemas/PlanTaskFailure" }
+        conflicts:
+          type: array
+          items: { type: string }
+          nullable: true
+          description: The files a landing's rebase stopped on; null unless it is land_failed with rebase.
+        agent: { $ref: "#/components/schemas/PlanTaskAgent" }
+        slot_path: { type: string, nullable: true, description: The plan's worktree it has; null when it has none. }
+        summary: { type: string, nullable: true, description: What its agent said it did; null until it is done. }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+
+    PlanTaskState:
+      type: string
+      description: Where a task is in its plan's run; pending in a draft.
+      enum: [pending, running, landing, land_failed, failed, done, skipped]
+
+    PlanTaskFailure:
+      type: string
+      nullable: true
+      description: Why a task is failed or land_failed; null otherwise.
+      enum: [agent_ended, start_failed, slot_missing, rebase, check]
+
+    PlanTaskAgent:
+      type: object
+      nullable: true
+      description: The agent doing the task, or that did it; null when it has none.
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    PlanRun:
+      type: object
+      nullable: true
+      description: A plan's run; null for a draft.
+      required: [state, revision, base, branch, parallel, started_at, finished_at]
+      properties:
+        state: { $ref: "#/components/schemas/PlanState" }
+        revision: { type: integer, format: int64, description: The revision it runs. }
+        base: { type: string, description: The branch it started from. }
+        branch: { type: string, description: Where its tasks land, plan/<name>. }
+        parallel: { type: integer, nullable: true, description: The most tasks it runs at once; null follows plan.parallel. }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+
+    RunPlan:
+      type: object
+      additionalProperties: false
+      properties:
+        parallel: { type: integer, minimum: 1, maximum: 20, description: The most tasks it runs at once; plan.parallel when left out. }
+
+    FinishPlanTask:
+      type: object
+      required: [summary]
+      additionalProperties: false
+      properties:
+        summary: { type: string, minLength: 1, description: What was done, in a few lines, for the tasks that wait for it. }
+
+    PlanTaskResult:
+      type: object
+      required: [result, task]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        task: { $ref: "#/components/schemas/PlanTask" }
 
     PlanChild:
       type: object
@@ -3064,12 +3219,13 @@ components:
 
     PlanContent:
       type: object
-      required: [plan, revision, content, definition]
+      required: [plan, revision, content, definition, run]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
         revision: { type: integer, format: int64, description: The revision content is of. }
         content: { type: string }
         definition: { $ref: "#/components/schemas/PlanDefinition" }
+        run: { $ref: "#/components/schemas/PlanRun" }
 
     PlanResult:
       type: object
@@ -3163,6 +3319,9 @@ components:
         - invalid_plan
         - plan_changed
         - plan_in_use
+        - plan_started
+        - task_state
+        - wrong_branch
 
     Problem:
       type: object

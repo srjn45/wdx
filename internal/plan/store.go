@@ -70,6 +70,9 @@ func (s *Store) Create(ctx context.Context, projectID, name string, content []by
 // still its latest: otherwise it returns a *ChangedError. Content that reduces to
 // the latest revision's changes nothing.
 func (s *Store) Update(ctx context.Context, id string, base int, content []byte) (Saved, error) {
+	if _, err := s.draft(ctx, id); err != nil {
+		return Saved{}, err
+	}
 	d, err := s.docs.Get(ctx, id)
 	if err != nil {
 		return Saved{}, s.translate(ctx, err)
@@ -135,6 +138,9 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 		}
 		sum, err := s.summary(ctx, d)
 		if err != nil {
+			return Reduced{}, nil, err
+		}
+		if _, err := s.draft(ctx, d.ID); err != nil {
 			return Reduced{}, nil, err
 		}
 		switch {
@@ -252,9 +258,23 @@ func (s *Store) Remove(ctx context.Context, id string) (Plan, error) {
 	return p, nil
 }
 
-// unlisted returns the plan with id, or an *InUseError if a plan of plans lists it.
-func (s *Store) unlisted(ctx context.Context, id string) (Plan, error) {
+// draft returns the plan with id, or a *StartedError if it has run.
+func (s *Store) draft(ctx context.Context, id string) (Plan, error) {
 	p, err := s.Get(ctx, id)
+	if err != nil {
+		return Plan{}, err
+	}
+	if p.State != StateDraft {
+		logging.FromContext(ctx).Info("plan has run", "plan_id", id, "name", p.Name, "state", p.State)
+		return Plan{}, &StartedError{Plan: p}
+	}
+	return p, nil
+}
+
+// unlisted returns the plan with id, a draft, or an *InUseError if a plan of plans
+// lists it.
+func (s *Store) unlisted(ctx context.Context, id string) (Plan, error) {
+	p, err := s.draft(ctx, id)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -267,6 +287,16 @@ func (s *Store) unlisted(ctx context.Context, id string) (Plan, error) {
 	}
 	logging.FromContext(ctx).Info("plan in use", "plan_id", id, "name", p.Name, "parent", parent.Name)
 	return Plan{}, &InUseError{Plan: p, Parent: parent}
+}
+
+// TaskOfAgent returns the plan and the task of its run that the agent with agentID
+// does, and false when it does none.
+func (s *Store) TaskOfAgent(ctx context.Context, agentID string) (planID, taskID string, ok bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT plan_id, task_id FROM plan_tasks WHERE agent_id = ? LIMIT 1`, agentID).Scan(&planID, &taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", false, nil
+	}
+	return planID, taskID, err == nil, err
 }
 
 // RemoveProjectCopies deletes the copies of the plans of the project, and what is

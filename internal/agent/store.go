@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/srjn45/wdx/internal/db"
@@ -35,6 +36,8 @@ type Agent struct {
 	Draft      bool      // whether a human left text in its input box
 	Queued     int       // how many messages wait to go into it
 	Model      string    // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
+	Plan       string    // the name of the plan whose task it does; "" for none
+	Task       string    // the id of that task
 	Terminal   terminal.Terminal
 }
 
@@ -132,6 +135,14 @@ const worktreeOfDir = `
 	WHERE w.project_id = t.project_id AND (t.dir = w.path OR substr(t.dir, 1, length(w.path) + 1) = w.path || '/')
 	ORDER BY length(w.path) DESC LIMIT 1`
 
+// taskOfAgent finds the plan's task an agent does, by plan_tasks.agent_id. A plan is
+// a doc of the kind plan, its name kept as plan:<name> (docs/PLANS.md), which the
+// substr strips; the plan package says so.
+const taskOfAgent = `
+	SELECT substr(d.name, 6) || char(0) || pt.task_id
+	FROM plan_tasks pt JOIN docs d ON d.id = pt.plan_id
+	WHERE pt.agent_id = a.id LIMIT 1`
+
 // query returns the agents matching where, a constant condition on a, the
 // agents, t, their terminal rows, and p, their projects. Going by the terminal's
 // state, the status needs nothing done when the process ends, however it ends.
@@ -180,6 +191,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN a.model END,
 			a.current_dir,
 			(SELECT COUNT(*) FROM messages m WHERE m.terminal_id = a.terminal_id AND m.state = 'held'),
+			(`+taskOfAgent+`),
 			`+terminal.Columns+`
 		FROM agents a
 		JOIN terminals t ON t.id = a.terminal_id
@@ -195,15 +207,16 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent, parentName sql.NullString
 		var removed sql.NullInt64
-		var worktree, activity, model, currentDir sql.NullString
+		var worktree, activity, model, currentDir, task sql.NullString
 		var draft sql.NullBool
 		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &a.Held); err != nil {
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &a.Held, &task); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued, a.Model = activity.String, draft.Bool, int(queued.Int64), model.String
 		a.CurrentDir = currentDir.String
+		a.Plan, a.Task, _ = strings.Cut(task.String, "\x00")
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
 		}

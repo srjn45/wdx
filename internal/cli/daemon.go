@@ -134,6 +134,7 @@ func runForeground(cmd *cobra.Command) error {
 		TerminalHistoryLines: settings.TerminalHistoryLines,
 		Editor:               settings.Editor,
 		DocsGitPath:          settings.DocsGitPath,
+		PlanParallel:         settings.PlanParallel,
 		SettingStore:         settingStore{home: cfg.Home},
 		Reload: func() (daemon.Settings, error) {
 			now, err := config.LoadHome(cfg.Home)
@@ -169,6 +170,7 @@ func daemonSettings(cfg config.Config) daemon.Settings {
 		TerminalHistoryLines: cfg.TerminalHistoryLines,
 		Editor:               cfg.Editor,
 		DocsGitPath:          cfg.DocsGitPath,
+		PlanParallel:         cfg.PlanParallel,
 	}
 }
 

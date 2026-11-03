@@ -142,6 +142,9 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 			return Run{}, err
 		}
 	}
+	if err := touch(ctx, tx, id); err != nil {
+		return Run{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Run{}, err
 	}
@@ -265,6 +268,9 @@ func (s *Store) AddSlot(ctx context.Context, planID string, slot int, path strin
 	if _, err := db.Exec(ctx, s.db, `INSERT INTO plan_slots (plan_id, slot, path, created_at) VALUES (?, ?, ?, ?)`, planID, slot, path, time.Now().UnixMilli()); err != nil {
 		return err
 	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return err
+	}
 	logging.FromContext(ctx).Info("plan slot added", "plan_id", planID, "slot", slot, "path", path)
 	return nil
 }
@@ -273,6 +279,9 @@ func (s *Store) AddSlot(ctx context.Context, planID string, slot int, path strin
 // task still holding its number keeps it.
 func (s *Store) DropSlot(ctx context.Context, planID string, slot int) error {
 	if _, err := db.Exec(ctx, s.db, `DELETE FROM plan_slots WHERE plan_id = ? AND slot = ?`, planID, slot); err != nil {
+		return err
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("plan slot dropped", "plan_id", planID, "slot", slot)
@@ -347,6 +356,9 @@ func (s *Store) Finish(ctx context.Context, planID string) error {
 	if n == 0 {
 		return fmt.Errorf("plan %s is not running with every task done or skipped", planID)
 	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return err
+	}
 	logging.FromContext(ctx).Info("plan done", "plan_id", planID)
 	return nil
 }
@@ -360,8 +372,11 @@ func (s *Store) move(ctx context.Context, e db.Execer, planID, taskID string, fr
 		args = append(args, f)
 	}
 	n, err := db.Exec(ctx, e, query, args...)
-	if err != nil || n > 0 {
+	if err != nil {
 		return err
+	}
+	if n > 0 {
+		return touch(ctx, e, planID)
 	}
 	t, err := s.taskRun(ctx, planID, taskID)
 	if err != nil {
@@ -408,6 +423,14 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 		states[id] = rs
 	}
 	return states, rows.Err()
+}
+
+// touch moves the plan's updated_at on, as anything about it changed: its run is
+// part of it, and the projects' streams send a plan again only when its row
+// changes. Always forward, even within a millisecond.
+func touch(ctx context.Context, e db.Execer, planID string) error {
+	_, err := db.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?) WHERE id = ?`, time.Now().UnixMilli(), planID)
+	return err
 }
 
 func nullInt(n int) any {

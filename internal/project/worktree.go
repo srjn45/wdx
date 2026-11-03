@@ -191,6 +191,24 @@ func (s *Store) SetLandSettings(ctx context.Context, projectID string, v LandSet
 	return nil
 }
 
+// WorktreesDir is where the worktrees wdx makes go: .worktrees in the project's root.
+func (p Project) WorktreesDir() string {
+	return filepath.Join(p.root(), worktreesDir)
+}
+
+// AddWorktreeOn adds a worktree of p at path on branch, which is there and no
+// checkout has, and records it, as a plan's slot is made.
+func (s *Store) AddWorktreeOn(ctx context.Context, p Project, path, branch string) (string, error) {
+	root := p.root()
+	if err := excludeWorktrees(ctx, root); err != nil {
+		return "", err
+	}
+	if err := git.AddWorktreeOn(ctx, root, path, branch); err != nil {
+		return "", err
+	}
+	return s.recordWorktree(ctx, p.ID, path)
+}
+
 // ForgetWorktree removes the project's record of the checkout at path, if it has one:
 // a worktree wdx did not make has none.
 func (s *Store) ForgetWorktree(ctx context.Context, projectID, path string) error {

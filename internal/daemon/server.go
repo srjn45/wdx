@@ -35,6 +35,8 @@ type server struct {
 	comments     *worktree.Comments
 	lander       *worktree.Lander
 	pullRequests *worktree.PullRequests
+	runner       *plan.Runner
+	planParallel func() int
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

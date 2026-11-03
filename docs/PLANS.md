@@ -579,6 +579,7 @@ As Starting a task above, with these changes found against the code:
 - `Plan.state` becomes `draft`, `running`, `paused`, `done` or `cancelled`, every state of a run now, so that step 3 adds none to the enum, and `Plan` gains `tasks_done`, null for a draft.
 - `getPlan` gains `run`, null for a draft: `state`, `revision`, `base`, `branch`, `parallel` (null for the setting's), `started_at`, `finished_at`. Each task of `definition` gains `state`, `waiting_for` (its `after` not yet `done` or `skipped`, so that no client works it out), `failure`, `conflicts`, `agent` (`id` and `name`, or null), `slot_path`, `summary`, `started_at`, `finished_at`; all null for a draft but `state`, `pending`, and `waiting_for`.
 - `Agent.task`: `{plan, task}`, the plan's name and the task's id, or null.
+- Every change to a run moves its plan's `updated_at` on, as the field says it is when anything about the plan last changed: a project's stream sends only what changed, and a task going from `running` to `landing`, or failing, changes nothing else it carries. So tide reads the plan's tab again on every `updated_at`, not only on a new revision. (Found while building sub-step 3.)
 - New codes: `plan_started` (409), `task_state` (409, its details the task), `wrong_branch` (409). Reused: `not_found`, `project_closed`, `plan_in_use`, `branch_exists`, `not_committed`, `invalid_argument`.
 - Summaries are agents' output: the daemon and the CLI measure them in what they log, in `task done`'s request and in every plan and task they log, as they do the content.
 

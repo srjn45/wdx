@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -274,11 +275,138 @@ func TestSlotsAndTheirTasks(t *testing.T) {
 	if a, _ := f.run(t, p.ID).Task("a"); a.AgentID != "" || a.State != TaskRunning {
 		t.Errorf("its agent removed: %+v", a)
 	}
-	if _, err := f.store.Remove(ctx, p.ID); err != nil {
+	// A plan that has run goes only with its project.
+	if _, err := f.db.Exec(`DELETE FROM projects WHERE id = ?`, f.project); err != nil {
 		t.Fatal(err)
 	}
 	var left int
 	if err := f.db.QueryRow(`SELECT (SELECT count(*) FROM plan_runs) + (SELECT count(*) FROM plan_tasks) + (SELECT count(*) FROM plan_slots)`).Scan(&left); err != nil || left != 0 {
 		t.Errorf("left after its plan: %d, %v", left, err)
+	}
+}
+
+// Once a plan has run, only its run changes it, and no plan of plans takes it.
+func TestAPlanThatHasRunIsKept(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "auth", tasks("a"))
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+		t.Fatal(err)
+	}
+	refused := func(what string, err error) {
+		t.Helper()
+		if e, ok := errors.AsType[*StartedError](err); !ok || e.Plan.ID != p.ID {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+	_, err := f.store.Update(ctx, p.ID, 1, []byte(tasks("a", "b")))
+	refused("update", err)
+	_, err = f.store.Rename(ctx, p.ID, "other")
+	refused("rename", err)
+	_, err = f.store.Remove(ctx, p.ID)
+	refused("remove", err)
+	_, err = f.store.Create(ctx, f.project, "big", []byte("goal: g\nplans:\n  - id: auth\n"))
+	refused("listed by a new parent", err)
+	if got := f.get(t, "auth"); got.Revision != 1 || got.Parent != "" {
+		t.Errorf("changed: %+v", got)
+	}
+}
+
+func TestTaskOfAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "auth", tasks("a", "b"))
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+		t.Fatal(err)
+	}
+	f.agent(t, "agent-b")
+	if err := f.store.StartTask(ctx, f.db, p.ID, "b", "agent-b"); err != nil {
+		t.Fatal(err)
+	}
+	if plan, task, ok, err := f.store.TaskOfAgent(ctx, "agent-b"); err != nil || !ok || plan != p.ID || task != "b" {
+		t.Errorf("agent-b: %s %s %v %v", plan, task, ok, err)
+	}
+	if _, _, ok, err := f.store.TaskOfAgent(ctx, "agent-none"); err != nil || ok {
+		t.Errorf("an agent of no task: %v, %v", ok, err)
+	}
+}
+
+// Every change to a run moves its plan's updated_at on, so that the projects'
+// streams send the plan again.
+func TestARunChangeMovesThePlanOn(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "auth", tasks("a"))
+	last := p.UpdatedAt
+	moved := func(what string) {
+		t.Helper()
+		got := f.get(t, "auth").UpdatedAt
+		if !got.After(last) {
+			t.Errorf("%s: updated_at %v, was %v", what, got, last)
+		}
+		last = got
+	}
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+		t.Fatal(err)
+	}
+	moved("started")
+	if err := f.store.HoldSlot(ctx, p.ID, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	moved("slot held")
+	if err := f.store.AddSlot(ctx, p.ID, 1, "/s"); err != nil {
+		t.Fatal(err)
+	}
+	moved("slot added")
+	f.agent(t, "agent-a")
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	moved("task running")
+	if _, err := f.store.TaskDone(ctx, p.ID, "a", "s"); err != nil {
+		t.Fatal(err)
+	}
+	moved("task landing")
+	if err := f.store.Landed(ctx, p.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	moved("task done")
+	if err := f.store.DropSlot(ctx, p.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	moved("slot dropped")
+	if err := f.store.Finish(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	moved("finished")
+	if err := f.store.Landed(ctx, p.ID, "a"); err == nil {
+		t.Fatal("landed twice")
+	}
+	if got := f.get(t, "auth").UpdatedAt; !got.Equal(last) {
+		t.Errorf("a change refused moved it: %v, was %v", got, last)
+	}
+}
+
+func TestFirstMessage(t *testing.T) {
+	t.Parallel()
+	def, problems := Parse([]byte("goal: Users log in.\nconstraints:\n  - Run make check.\n  - No new deps.\ntasks:\n  - id: a\n    prompt: Add it.\n  - id: b\n    prompt: Show it.\n  - id: c\n    after: [a, b]\n    prompt: |-\n      Document it.\n      Both of it.\n"))
+	if problems != nil {
+		t.Fatal(problems)
+	}
+	run := Run{Definition: def, Tasks: []TaskRun{{ID: "a", Summary: "added the table"}, {ID: "b", Summary: "showed it"}, {ID: "c"}}}
+	want := "You are doing task c of the plan auth, run by wdx.\n" +
+		"Goal: Users log in.\n" +
+		"Constraints:\n- Run make check.\n- No new deps.\n" +
+		"Done before you, which this task waits for:\n- a: added the table\n- b: showed it\n" +
+		"Your task:\nDocument it.\nBoth of it.\n" +
+		"When it is done, commit your work on this branch, then run:\n    wdx plan task done --agent-id $WDX_AGENT_ID --summary \"<what you did, in a few lines>\"\n"
+	if got := firstMessage(run, "auth", "c"); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	if got := firstMessage(Run{Definition: Definition{Goal: "g", Tasks: []Task{{ID: "a", Prompt: "p"}}}}, "x", "a"); strings.Contains(got, "Constraints") || strings.Contains(got, "Done before you") {
+		t.Errorf("a first task with no constraints: %s", got)
 	}
 }
