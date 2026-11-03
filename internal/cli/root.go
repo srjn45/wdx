@@ -116,6 +116,9 @@ type Timeouts struct {
 	Holder holder.Limits
 	// ProjectStrip is how long tide shows the project strip after a switch.
 	ProjectStrip time.Duration
+	// UpdatePreflight is how long wdx update gives the new binary to run on
+	// the settings before installing it: update's preflightTimeout.
+	UpdatePreflight time.Duration
 }
 
 // termVars are the variables that describe the terminal wdx runs in.

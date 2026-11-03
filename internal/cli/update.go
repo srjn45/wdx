@@ -125,11 +125,12 @@ func updateOptions(cmd *cobra.Command) update.Options {
 		progress = cmd.ErrOrStderr()
 	}
 	return update.Options{
-		Home:    inv.env.Config.Home,
-		Binary:  inv.env.Executable,
-		Current: identity.Version,
-		BaseURL: inv.env.Config.UpdateBaseURL,
-		Environ: inv.env.Environ,
+		Home:      inv.env.Config.Home,
+		Binary:    inv.env.Executable,
+		Current:   identity.Version,
+		BaseURL:   inv.env.Config.UpdateBaseURL,
+		Environ:   inv.env.Environ,
+		Preflight: inv.env.Timeouts.UpdatePreflight,
 		Daemon: update.Daemon{
 			Stop: func(context.Context) error {
 				_, err := stopDaemon(cmd)

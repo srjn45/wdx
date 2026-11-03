@@ -29,6 +29,9 @@ type codeSection struct {
 	row      int                   // the cursor's row: the selector is the first
 	cursor   string                // what that row is, which it stays on as rows come and go
 	files    map[string]*codeFiles // by worktree, each keeping its folds
+	// awaiting is the worktree in which the cursor was put on what was just created
+	// or renamed, which keeps it there until a read after the change shows the row.
+	awaiting string
 }
 
 // codeFiles is what the section knows of a worktree's files.
@@ -45,6 +48,9 @@ type codeFiles struct {
 	asked     bool // it was read for seen, or is being
 	loading   bool
 	seen      string
+	// changes counts what tide created, renamed or deleted in the worktree, so that a
+	// read asked before one is not taken for what is there after it.
+	changes int
 }
 
 // codeNode is a file, or a directory with what is in it.
@@ -254,6 +260,9 @@ func (m *Model) keepCodeCursor() {
 		return
 	}
 	l.code.row = min(l.code.row, len(rows)-1)
+	if l.code.awaiting != "" && l.code.awaiting == l.code.worktree {
+		return
+	}
 	l.code.cursor = rows[l.code.row].key()
 }
 
@@ -407,7 +416,7 @@ func (m *Model) codeSync() tea.Cmd {
 	if f.loaded {
 		shown = &fileList{paths: f.paths, emptyDirs: f.emptyDirs}
 	}
-	return m.readCodeFiles(name, shown)
+	return m.readCodeFiles(name, shown, f.changes)
 }
 
 // codeRefresh has the files of the worktree chosen read again, whatever the stream
@@ -428,12 +437,14 @@ type fileList struct {
 
 // codeLoaded is the answer to reading a worktree's files, with their tree built off
 // the UI loop: it takes long in a large repository. same is a list like the one
-// shown, which has nothing to build.
+// shown, which has nothing to build. changes is how many changes tide had made when
+// it was asked.
 type codeLoaded struct {
 	projectID, worktree string
 	paths, emptyDirs    []string
 	tree                []*codeNode
 	same                bool
+	changes             int
 	err                 error
 }
 
@@ -450,7 +461,7 @@ func newCodeLoaded(projectID, worktree string, got fileList, shown *fileList) co
 
 // readCodeFiles asks the daemon for the files of the worktree called name. The
 // lists it compares are never changed in place, only replaced.
-func (m *Model) readCodeFiles(name string, shown *fileList) tea.Cmd {
+func (m *Model) readCodeFiles(name string, shown *fileList, changes int) tea.Cmd {
 	following := m.following
 	if following == nil || following.project == nil || m.client == nil {
 		return nil
@@ -459,9 +470,11 @@ func (m *Model) readCodeFiles(name string, shown *fileList) tea.Cmd {
 	return func() tea.Msg {
 		r, err := m.client.WorktreeFiles(m.ctx, name, "id:"+id, "")
 		if err != nil {
-			return codeLoaded{projectID: id, worktree: name, err: err}
+			return codeLoaded{projectID: id, worktree: name, changes: changes, err: err}
 		}
-		return newCodeLoaded(id, name, fileList{paths: r.Paths, emptyDirs: r.EmptyDirs}, shown)
+		msg := newCodeLoaded(id, name, fileList{paths: r.Paths, emptyDirs: r.EmptyDirs}, shown)
+		msg.changes = changes
+		return msg
 	}
 }
 
@@ -474,6 +487,12 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 	}
 	f := l.code.files[msg.worktree]
 	f.loading = false
+	if msg.changes != f.changes {
+		// Asked before tide changed an entry, it may not show the change; the change
+		// asked for another read, which codeSync now starts.
+		m.log.Info("files read before a change, dropped", "worktree", msg.worktree)
+		return
+	}
 	f.failed = msg.err != nil
 	if msg.err != nil {
 		m.log.Info("files not read", "worktree", msg.worktree, "err", msg.err)
@@ -486,6 +505,9 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 	f.paths, f.emptyDirs, f.tree, f.loaded = msg.paths, msg.emptyDirs, msg.tree, true
 	f.read++
 	m.log.Info("files read", "worktree", msg.worktree, "files", len(msg.paths), "changed", true)
+	if l.code.awaiting == msg.worktree {
+		l.code.awaiting = ""
+	}
 	if l == m.list() {
 		m.keepCodeCursor()
 	}

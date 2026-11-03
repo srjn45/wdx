@@ -426,7 +426,12 @@ func TestCodeDirectoryMarks(t *testing.T) {
 		},
 	} {
 		m := codeModel(nil, api.WorktreeStatus{Name: "main", Path: "/r", Files: tc.files, CommittedFiles: tc.committed})
-		if got := m.codeMarks().dirs; !maps.Equal(got, tc.want) {
+		// Only the weight and the count are drawn: of two marks that weigh the same,
+		// such as two committed, the one kept depends on the map's order.
+		drawnAlike := func(a, b codeMark) bool {
+			return a.weight() == b.weight() && a.committed == b.committed && a.count == b.count
+		}
+		if got := m.codeMarks().dirs; !maps.EqualFunc(got, tc.want, drawnAlike) {
 			t.Errorf("%s: %v, want %v", tc.what, got, tc.want)
 		}
 	}

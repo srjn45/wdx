@@ -420,6 +420,23 @@ func TestUpdateRollbackPromptYes(t *testing.T) {
 	in.wantProjects(t, "before")
 }
 
+// TestUpdatePreflightLimit gives the new binary no time to run on the settings: the
+// update refuses it and leaves the installed one. The tests lengthen this limit,
+// which a machine busy with other tests once ran past.
+func TestUpdatePreflightLimit(t *testing.T) {
+	t.Parallel()
+	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
+	in := install(t, base)
+	v, exit := wdxJSONWith(t, in.home, func(env *Env) {
+		in.env(env)
+		env.Timeouts.UpdatePreflight = time.Nanosecond
+	}, "update", "--apply")
+	if exit != api.ExitSystem || !strings.Contains(v.Detail, "does not run") {
+		t.Fatalf("want the new binary refused, got %d: %+v", exit, v)
+	}
+	in.wantInstalled(t, wdxBinary)
+}
+
 // TestUpdateRollbackPromptNo answers with Enter, which is no.
 func TestUpdateRollbackPromptNo(t *testing.T) {
 	t.Parallel()

@@ -418,8 +418,8 @@ func (m *Model) changeCodeEntry(msg tea.Msg) tea.Cmd {
 
 // codeEntryChanged takes the answer: a failure stays in the popup, to correct the
 // name or give up. Otherwise the popup closes, the files are read again, and the
-// cursor goes to what was created or renamed, or where the deleted was. A new file
-// opens in the editor.
+// cursor goes to what was created or renamed, staying on it until the read that
+// shows it, or to where the deleted was. A new file opens in the editor.
 func (m *Model) codeEntryChanged(msg codeEntryChanged) tea.Cmd {
 	if msg.err != nil {
 		m.log.Info("entry not changed", "worktree", msg.worktree, "err", msg.err)
@@ -440,6 +440,7 @@ func (m *Model) codeEntryChanged(msg codeEntryChanged) tea.Cmd {
 		return nil
 	}
 	f.asked = false
+	f.changes++
 	if f.open == nil {
 		f.open = map[string]bool{}
 	}
@@ -450,7 +451,7 @@ func (m *Model) codeEntryChanged(msg codeEntryChanged) tea.Cmd {
 			f.open[d] = true
 		}
 		if shown {
-			l.section, l.code.cursor = sectionCode, msg.path
+			l.section, l.code.cursor, l.code.awaiting = sectionCode, msg.path, msg.worktree
 		}
 		m.statusNotice = "created " + path.Join(msg.worktree, msg.path)
 		if shown && !msg.directory {
@@ -461,7 +462,7 @@ func (m *Model) codeEntryChanged(msg codeEntryChanged) tea.Cmd {
 		moveOpen(f.open, msg.from, msg.path)
 		m.moveFileTabs(l, msg.worktree, msg.from, msg.path)
 		if shown {
-			l.code.cursor = msg.path
+			l.code.cursor, l.code.awaiting = msg.path, msg.worktree
 		}
 		m.statusNotice = "renamed " + path.Join(msg.worktree, msg.from) + " to " + path.Base(msg.path)
 	case api.ResultRemoved:

@@ -146,6 +146,42 @@ func TestCodeEntryCreated(t *testing.T) {
 	}
 }
 
+// TestCodeCursorWaitsForTheNewRow: the cursor stays on what was created until a read
+// shows it, through what comes first on a loaded machine: the stream's update, and
+// the answer to a read asked before the change, which does not show it.
+func TestCodeCursorWaitsForTheNewRow(t *testing.T) {
+	t.Parallel()
+	m := fileModel(t)
+	l, f := m.list(), m.codeFilesShown()
+	f.asked = false
+	m.Update(nil) // a read asked before the change
+	if !f.loading {
+		t.Fatal("no read asked")
+	}
+	before := newCodeLoaded("proj-demo", "main", fileList{paths: f.paths}, nil)
+	before.changes = f.changes
+
+	m.Update(codeEntryChanged{projectID: "proj-demo", worktree: "main", result: api.ResultCreated, path: "pkg", directory: true})
+	m.worktreesChanged() // the stream's update
+	m.Update(before)
+	if l.code.cursor != "pkg" {
+		t.Fatalf("the cursor left what was created before it showed: %q", l.code.cursor)
+	}
+	if !f.loading {
+		t.Fatal("the files not read again after the change")
+	}
+
+	after := newCodeLoaded("proj-demo", "main", fileList{paths: f.paths, emptyDirs: []string{"pkg"}}, nil)
+	after.changes = f.changes
+	m.Update(after)
+	if r, ok := m.codeCursorRow(); !ok || r.key() != "pkg" || l.code.cursor != "pkg" {
+		t.Errorf("the cursor is not on the new row: %q, row %d", l.code.cursor, l.code.row)
+	}
+	if l.code.awaiting != "" {
+		t.Errorf("still awaiting %q", l.code.awaiting)
+	}
+}
+
 func TestCodeEntryRenamed(t *testing.T) {
 	t.Parallel()
 	m := fileModel(t)

@@ -232,7 +232,7 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	// A machine slowed down by other tests slows a run rather than fails it.
 	env.Timeouts.Completion = waittest.Limit(t)
 	limit := holdertest.Patience(t)
-	env.Timeouts.Start, env.Timeouts.AttachExit = limit, limit
+	env.Timeouts.Start, env.Timeouts.AttachExit, env.Timeouts.UpdatePreflight = limit, limit, limit
 	env.Timeouts.Holder = holdertest.Limits(t)
 	adjust(&env)
 	exit := Run(context.Background(), args, env)

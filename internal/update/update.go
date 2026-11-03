@@ -7,6 +7,7 @@
 package update
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,7 +30,7 @@ import (
 )
 
 // preflightTimeout is how long the new binary gets to write the settings
-// and to say its version.
+// and to say its version, unless Options.Preflight says otherwise.
 const preflightTimeout = 30 * time.Second
 
 // Options are what an update works on.
@@ -44,6 +45,9 @@ type Options struct {
 	Daemon  Daemon
 	// Progress gets a line for each step.
 	Progress io.Writer
+	// Preflight is how long the new binary gets to write the settings and to
+	// say its version: preflightTimeout when zero.
+	Preflight time.Duration
 }
 
 // Daemon stops and starts the daemon of the home.
@@ -565,7 +569,7 @@ func (o Options) progress(format string, args ...any) {
 // version command, run on that file, must say it is version. staged is the
 // file written, "" when the home has none or it is already as written.
 func preflight(ctx context.Context, o Options, binary, version, dir string) (staged string, s Settings, err error) {
-	ctx, cancel := context.WithTimeout(ctx, preflightTimeout)
+	ctx, cancel := context.WithTimeout(ctx, cmp.Or(o.Preflight, preflightTimeout))
 	defer cancel()
 	log := logging.FromContext(ctx)
 	fail := func(err error) (string, Settings, error) {
