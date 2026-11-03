@@ -16,6 +16,7 @@ import (
 // Store keeps plans as docs of the kind plan, which share docs' revisions and
 // copies, and checks every revision before it is kept.
 type Store struct {
+	db   *sql.DB
 	docs *doc.Store
 
 	mu        sync.Mutex
@@ -35,7 +36,7 @@ type summary struct {
 // NewStore returns a Store backed by database, keeping a copy of each plan's latest
 // revision in dir.
 func NewStore(database *sql.DB, dir string) *Store {
-	return &Store{docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}}
+	return &Store{db: database, docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}}
 }
 
 // Saved is what Create and Update did: the plan, the afters reduction dropped, and
@@ -185,13 +186,17 @@ func (s *Store) List(ctx context.Context, projectID string) ([]Plan, error) {
 	for _, d := range docs {
 		names[d.ID] = d.Name
 	}
+	runs, err := s.runStates(ctx, "d.project_id = ?", projectID)
+	if err != nil {
+		return nil, err
+	}
 	plans := make([]Plan, 0, len(docs))
 	for _, d := range docs {
 		sum, err := s.summary(ctx, d)
 		if err != nil {
 			return nil, err
 		}
-		plans = append(plans, view(d, sum, names[d.ParentID]))
+		plans = append(plans, view(d, sum, names[d.ParentID], runs[d.ID]))
 	}
 	return plans, nil
 }
@@ -295,16 +300,25 @@ func (s *Store) plan(ctx context.Context, d doc.Doc) (Plan, error) {
 		}
 		parent = pd.Name
 	}
-	return view(d, sum, parent), nil
+	runs, err := s.runStates(ctx, "r.plan_id = ?", d.ID)
+	if err != nil {
+		return Plan{}, err
+	}
+	return view(d, sum, parent, runs[d.ID]), nil
 }
 
-func view(d doc.Doc, sum summary, parent string) Plan {
+func view(d doc.Doc, sum summary, parent string, run runState) Plan {
+	state := StateDraft
+	if run.state != "" {
+		state = run.state
+	}
 	return Plan{
 		ID:          d.ID,
 		ProjectID:   d.ProjectID,
 		ProjectName: d.ProjectName,
 		Name:        d.Name,
-		State:       StateDraft,
+		State:       state,
+		TasksDone:   run.done,
 		Tasks:       sum.tasks,
 		Plans:       slices.Clone(sum.plans),
 		Parent:      parent,

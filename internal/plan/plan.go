@@ -9,7 +9,7 @@ import (
 	"github.com/srjn45/wdx/internal/doc"
 )
 
-// StateDraft is the state of a plan that has not run: every plan, until plans run.
+// StateDraft is the state of a plan that has not run; one that has is in its run's.
 const StateDraft = "draft"
 
 // Plan is a plan's row: what it is, without its content.
@@ -20,6 +20,7 @@ type Plan struct {
 	Name        string
 	State       string
 	Tasks       int      // how many it has; 0 for a plan of plans
+	TasksDone   int      // how many of them its run has done
 	Plans       []string // the plans it lists, in DAG order; nil for a plan of tasks
 	Parent      string   // the name of the plan of plans listing it; empty for none
 	Revision    int      // the latest
