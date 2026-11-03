@@ -100,8 +100,19 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `d` in the Code section, in popups | By design | A script or an AI changes files itself |
 | Choose the editor | `setting set editor` | the settings tab | Same | |
 | Order the left pane's sections | `setting set tide.section_order` | the settings tab, which applies it at once | Same | |
-| Filter the left pane's list | none | `/`: agents, worktrees, their changed files and the chosen worktree's paths | By design | A script filters the `--json` output itself |
+| Filter the left pane's list | none | `/`: agents, worktrees, their changed files, the chosen worktree's paths and docs | By design | A script filters the `--json` output itself |
 | Install the editor | `deps install --name vi` | none | By design | As every dependency: `deps` manages wdx itself |
+
+## Docs
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| List a project's docs | `doc list` | the Docs section | Same | tide's stays up to date (docs/DOCS.md) |
+| Filter docs | `--labels`, `--status` | `/`: a name or labels | Same | |
+| Read a doc | `doc get` | `Enter`: a read-only tab | Same | |
+| Read an older revision, history | `doc get --revision`, `doc history` | none | By design | AIs write docs, and tide only shows them for now |
+| Create, update, status and labels, rename, remove | `doc create`, `update`, `set`, `rename`, `remove` | none | By design | As above |
+| Write the docs into the repository | `doc sync-to-git`, `docs.git_path` | the settings tab, for the setting | By design | Writing them once is for a script; the setting is in both |
 
 ## Settings
 

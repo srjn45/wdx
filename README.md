@@ -1,6 +1,6 @@
 # wdx
 
-wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts), terminals and agents. Terminals are shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents run an AI coding agent, Claude Code for now, the same way, and go on in the same session when started again; an agent can have child agents and work in its own git worktree. `wdx tide`, the terminal IDE, shows a project with its agents and terminals in one window.
+wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts), terminals, agents and docs. Terminals are shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents run an AI coding agent, Claude Code for now, the same way, and go on in the same session when started again; an agent can have child agents and work in its own git worktree. Docs live in wdx rather than the repository, with a revision per change and a status, so people and agents see each one as soon as it is written. `wdx tide`, the terminal IDE, shows a project with its agents and terminals in one window.
 
 **Status: early development.** wdx is the successor of [warden](https://github.com/srjn45/warden) and runs side by side with it (its own `wdx` binary and `~/.wdx` home), but it does not replace warden yet.
 
@@ -31,6 +31,10 @@ wdx agent create --name reviewer           # Claude Code in the project you are 
 wdx agent create --name fix --worktree fix # the same in a new worktree, on a new branch
 wdx agent attach --name reviewer           # talk to it
 wdx agent list                             # what each is doing: working, idle, or waiting for you
+wdx doc create --path design.md            # a doc of the project, from a file
+wdx doc list
+wdx doc get --name design --out design.md --overwrite      # a copy to edit
+wdx doc update --name design --path design.md --base 1     # revision 2, unless another came first
 wdx terminal create --name server          # a shell in the project
 wdx terminal attach --name server
 
@@ -60,6 +64,7 @@ The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when 
 - [docs/AGENT.md](docs/AGENT.md): agents, which run an AI coding agent on the same process machinery; [docs/CHILD_AGENTS.md](docs/CHILD_AGENTS.md): child agents
 - [docs/SEND.md](docs/SEND.md): sending a message to a terminal or an agent (`wdx terminal send`, `wdx agent send`)
 - [docs/ATTACH.md](docs/ATTACH.md): attaching to a terminal (`wdx terminal attach`) and its history; [docs/VT.md](docs/VT.md): the terminal emulator it uses and what to fix in it
+- [docs/DOCS.md](docs/DOCS.md): docs kept by wdx, with revisions and statuses (`wdx doc`)
 - [docs/TIDE.md](docs/TIDE.md): the terminal IDE (`wdx tide`), what is built and what comes next
 - [AGENTS.md](AGENTS.md): how the code is organized, for people and AI agents working on it
 - The backlog: [docs/V1_FEATURES.md](docs/V1_FEATURES.md)

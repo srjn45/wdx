@@ -1,6 +1,6 @@
 # Docs
 
-Status: approved by the human on 2026-11-02; steps 1 to 6 built. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
+Status: approved by the human on 2026-11-02; steps 1 to 7 built, but for `wdx help agents`, which does not exist yet. "Agreed" is what the human said; "Design" came from the AI and was approved. docs/IDE.md has the wider picture.
 
 ## Why
 
@@ -173,4 +173,4 @@ Each builds and passes `make test` on its own.
 4. **Done.** The CLI: the commands but `sync-to-git`, help, examples, completions, integration tests.
 5. **Done.** The git copy: `sync-to-git` and the `docs.git_path` setting.
 6. **Done.** tide: the Docs section and its tab, `tide.section_order`.
-7. docs/CLI_TIDE.md, README, and `wdx help agents` once it exists, so that agents know to read and change docs through `wdx doc`.
+7. **Done**, but for `wdx help agents`. docs/CLI_TIDE.md, README, and `wdx help agents` once it exists, so that agents know to read and change docs through `wdx doc`.
