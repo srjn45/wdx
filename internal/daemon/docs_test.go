@@ -2,10 +2,12 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -327,5 +329,41 @@ func TestDocCopiesCaughtUpOnStart(t *testing.T) {
 	got, err := os.ReadFile(copy)
 	if err != nil || string(got) != "text" {
 		t.Errorf("the copy after a start: %q, %v", got, err)
+	}
+}
+
+// TestDocContentNotLogged checks a doc's text, which can hold secrets, is measured
+// in the requests and responses logged, never logged.
+func TestDocContentNotLogged(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	td.create(t, "app")
+	td.createDoc(t, "app", api.CreateDoc{Name: "auth", Content: optional("created-secret")})
+	if r, err := td.client.UpdateDocContentWithResponse(ctx, "auth", &api.UpdateDocContentParams{Project: optional("app")}, api.DocContentChange{Base: 1, Content: "updated-secret"}); err != nil || r.JSON200 == nil {
+		t.Fatalf("update: %v %s", err, r.Body)
+	}
+	if r, err := td.client.GetDocWithResponse(ctx, "auth", &api.GetDocParams{Project: optional("app")}); err != nil || r.JSON200 == nil {
+		t.Fatalf("get: %v %s", err, r.Body)
+	}
+
+	measured := map[string]bool{}
+	for _, line := range logLines(t, td.home) {
+		b, err := json.Marshal(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "-secret") {
+			t.Errorf("a doc's text is logged: %s", b)
+		}
+		if body, ok := line["body"].(map[string]any); ok && body["content_bytes"] != nil {
+			measured[line["msg"].(string)] = true
+		}
+		if response, ok := line["response"].(map[string]any); ok && response["content_bytes"] == float64(len("updated-secret")) {
+			measured[line["msg"].(string)] = true
+		}
+	}
+	if !measured["request received"] || !measured["request returned"] {
+		t.Errorf("want the text measured in requests and responses, got %v", measured)
 	}
 }

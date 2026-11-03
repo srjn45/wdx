@@ -180,6 +180,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = historyLogged(rec.body.Bytes())
 			case operation == "getAgentTranscript" && rec.status == http.StatusOK:
 				response = transcriptLogged(rec.body.Bytes())
+			case operation == "getDoc" && rec.status == http.StatusOK:
+				response = withTextMeasured(rec.body.Bytes(), "content")
 			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
 				response = api.WorktreeResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
@@ -204,8 +206,11 @@ func requestLogged(operation string, b []byte) any {
 	if worktreeRequests[operation] {
 		return map[string]any{"body_bytes": len(b)} // a comment, or a review's note
 	}
-	if operation == "createAgent" {
-		return createAgentLogged(b)
+	switch operation {
+	case "createAgent":
+		return withTextMeasured(b, "prompt")
+	case "createDoc", "updateDocContent":
+		return withTextMeasured(b, "content") // a doc can hold secrets
 	}
 	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)
@@ -221,15 +226,16 @@ func requestLogged(operation string, b []byte) any {
 	return logged
 }
 
-// createAgentLogged is createAgent's body as logged, its prompt measured.
-func createAgentLogged(b []byte) any {
+// withTextMeasured is the JSON object b as logged with the text under key replaced by its
+// length, under key and "_bytes"; b whole is measured when it is not an object.
+func withTextMeasured(b []byte, key string) any {
 	var r map[string]any
 	if json.Unmarshal(b, &r) != nil {
 		return map[string]any{"body_bytes": len(b)}
 	}
-	if prompt, ok := r["prompt"].(string); ok {
-		delete(r, "prompt")
-		r["prompt_bytes"] = len(prompt)
+	if text, ok := r[key].(string); ok {
+		delete(r, key)
+		r[key+"_bytes"] = len(text)
 	}
 	return r
 }
