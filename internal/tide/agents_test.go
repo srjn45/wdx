@@ -24,6 +24,20 @@ func sentAgents(m *Model, agents ...api.Agent) {
 	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &agents}}})
 }
 
+// removedThroughWdx sends the agents and the tabs a daemon would once a removal
+// through wdx took some of tide's tabs, the list tide has being the one it saved.
+func removedThroughWdx(m *Model, agents []api.Agent, tabs ...string) {
+	l := m.list()
+	l.tabsRead, l.savedTabs = true, savable(l.tabs)
+	identify(agents, nil)
+	list := []api.Tab{}
+	for _, tab := range tabs {
+		t, _ := apiTab(tab)
+		list = append(list, t)
+	}
+	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &agents}, Tabs: list}})
+}
+
 // identify gives agents, children of parent, what the daemon's would have.
 func identify(agents []api.Agent, parent *string) {
 	for i := range agents {

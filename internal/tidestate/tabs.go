@@ -195,13 +195,15 @@ func relative(path string) bool {
 }
 
 // notOwned says why a tab of an agent or a doc cannot be the project's: it is
-// another's, or an agent kept only as a tombstone. It is "" when it can.
+// another's. It is "" when it can. An agent kept as a tombstone is still the
+// project's: tide opens one to read what it did, and the trigger closes only
+// the tabs open when it became one.
 func notOwned(ctx context.Context, tx *sql.Tx, projectID string, t Tab) (string, error) {
 	var query, what, id string
 	switch {
 	case t.AgentID != "":
 		query, what, id = `SELECT count(*) FROM agents a JOIN terminals t ON t.id = a.terminal_id
-			WHERE a.id = ? AND t.project_id = ? AND a.removed_at IS NULL`, "agent", t.AgentID
+			WHERE a.id = ? AND t.project_id = ?`, "agent", t.AgentID
 	case t.DocID != "":
 		query, what, id = "SELECT count(*) FROM docs WHERE id = ? AND project_id = ?", "doc", t.DocID
 	default:

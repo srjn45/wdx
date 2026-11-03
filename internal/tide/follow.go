@@ -123,6 +123,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	p := msg.event.Project
 	f.project, f.ref, f.err, f.wait = &p, "id:"+p.Id, nil, 0
 	m.terminalsChanged()
+	m.tabsFromStream(msg.event.Tabs)
 	m.agentsChanged()
 	m.editorsChanged()
 	m.worktreesChanged()

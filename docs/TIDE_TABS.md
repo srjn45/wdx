@@ -52,7 +52,7 @@ The right pane shows one agent at a time today, the active one. This gives it a 
 - An agent created in tide (`C-q a`, `C-q c`) opens a tab. One spawned by another agent does not, or tabs would pile up.
 - Closing a tab selects the tab to its right or, when it was the last, the one to its left. Closing the only tab moves the focus to the left pane.
 - An agent that exits keeps its tab, showing its last screen read-only, as today.
-- Removing an agent (`C-q x`) closes its tab, even when the agent stays in the list as a tombstone because it has children. A tombstone can be opened again from the list.
+- Removing an agent (`C-q x`, or from the CLI) closes its tab, even when the agent stays in the list as a tombstone because it has children. A tombstone can be opened again from the list. Since 2026-11-03 the daemon closes them and the stream brings it (docs/TIDE_STATE.md).
 - Closing a tab asks nothing, since nothing is lost.
 
 ### Attaching
@@ -65,6 +65,7 @@ The right pane shows one agent at a time today, the active one. This gives it a 
 - Each project keeps its tabs for the run, as it keeps its cursor and active agent.
 - `C-q r` keeps them: `--resume` gets the open tabs, and `agent` stays the current one. A tab whose agent is gone is dropped. Only adding a field keeps resuming working from the run before.
 - A fresh start opens only the first running agent, as today.
+- Since 2026-11-03 the daemon keeps each project's tabs, so a fresh start and `C-q r` open the tabs kept, and `--resume` only says which is current (docs/TIDE_STATE.md).
 
 ## The active agent
 

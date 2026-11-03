@@ -68,36 +68,6 @@ func (m *Model) closeTab(tab, reason string) {
 	}
 }
 
-// tabsChanged closes the tabs of the agents gone or just removed, even when one
-// stays as a tombstone: one already a tombstone was opened on purpose, and the
-// first event of a run has nothing to compare with.
-func (m *Model) tabsChanged(agents []api.Agent) {
-	l := m.list()
-	tombstones := map[string]bool{}
-	for _, a := range agents {
-		if a.State == api.AgentStateRemoved {
-			tombstones[a.Id] = true
-		}
-	}
-	for _, tab := range slices.Clone(l.tabs) {
-		id := tabAgent(tab)
-		// A diff's or file's tab outlives what it shows, and says so.
-		if tab == settingsTab || isTextTab(tab) {
-			continue
-		}
-		if agentIndex(agents, id) < 0 || (tombstones[id] && l.tombstones != nil && !l.tombstones[id]) {
-			m.closeTab(tab, "agent removed")
-		}
-	}
-	l.tombstones = tombstones
-	if !slices.Contains(l.tabs, l.active) {
-		l.active = ""
-		if len(l.tabs) > 0 {
-			l.active = l.tabs[0]
-		}
-	}
-}
-
 // agentTab is an open tab with the agent it is of, if any.
 type agentTab struct {
 	tab   string

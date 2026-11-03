@@ -23,6 +23,9 @@ type ProjectStream struct {
 // was removed.
 type ProjectEvent struct {
 	Project api.Project
+	// Tabs are the tabs tide has open in the project; nil from a daemon too old
+	// to keep them.
+	Tabs    []api.Tab
 	Removed bool
 }
 
@@ -95,7 +98,7 @@ func decodeEvent(event, data string) (ProjectEvent, error) {
 		if err := json.Unmarshal([]byte(data), &v); err != nil {
 			return ProjectEvent{}, fmt.Errorf("project event unreadable: %w", err)
 		}
-		return ProjectEvent{Project: v.Project}, nil
+		return ProjectEvent{Project: v.Project, Tabs: v.Tabs}, nil
 	case "removed":
 		return ProjectEvent{Removed: true}, nil
 	}

@@ -191,8 +191,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	code := m.codeSync()
 	filter := m.codeFilterSync()
 	attach := m.attachSelected()
+	tabs := m.tabsSync()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, diff, worktrees, code, filter, attach)
+	return m, tea.Batch(cmd, values, diff, worktrees, code, filter, attach, tabs)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -202,6 +203,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sel = nil // the panes move
 	case projectsListed:
 		return m, m.listed(msg)
+	case tabsSaved:
+		m.tabsWereSaved(msg)
 	case daemonVersionMsg:
 		m.daemonVersion = msg.version
 		return m, m.tick(VersionCheckEvery, func(time.Time) tea.Msg { return checkDaemonVersion{} })

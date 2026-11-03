@@ -132,7 +132,6 @@ func TestReplaceRefused(t *testing.T) {
 		fileTab("main", "a/../b"):                   "not a clean path",
 		fileTab("main", "."):                        "not a clean path",
 		{Kind: KindAgent, AgentID: theirs}:          "no agent " + theirs,
-		{Kind: KindInfo, AgentID: gone}:             "no agent " + gone,
 		{Kind: KindAgent, AgentID: "agent-nowhere"}: "no agent agent-nowhere",
 		{Kind: KindDoc, DocID: theirDoc}:            "no doc " + theirDoc,
 	} {
@@ -142,6 +141,9 @@ func TestReplaceRefused(t *testing.T) {
 			t.Errorf("%#v: %v, want tab 1 refused for %q", tab, err, why)
 		}
 	}
+	// A tombstone is still the project's: tide opens one to read what it did.
+	f.replace(t, p, Tab{Kind: KindInfo, AgentID: gone})
+	f.replace(t, p, kept...)
 	err := f.store.Replace(context.Background(), p, []Tab{fileTab("main", "a"), fileTab("main", "a")})
 	if err == nil || !strings.Contains(err.Error(), "tab 1: the same tab") {
 		t.Errorf("twice: %v", err)

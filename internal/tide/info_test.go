@@ -330,7 +330,7 @@ func TestInfoClosesWithItsAgent(t *testing.T) {
 	t.Parallel()
 	m := infoModel()
 	keys(m, "i", "enter")
-	sentAgents(m, running("wise-owl"))
+	removedThroughWdx(m, []api.Agent{running("wise-owl")})
 	for _, tab := range m.list().tabs {
 		if tabAgent(tab) == "agent-swift-falcon" {
 			t.Fatalf("tabs %v", m.list().tabs)

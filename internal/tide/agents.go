@@ -41,8 +41,11 @@ type agentList struct {
 	active  string   // the current tab, whose agent the list marks; "" only with no tabs
 	tabs    []string // the tabs open, in their order: an agent's id, or infoTab of it
 	tabFrom int      // the first tab the strip shows
-	// tombstones are the agents the last event had as removed, nil before one came.
-	tombstones map[string]bool
+	// tabsRead is set once the project's stream brought the tabs the daemon kept;
+	// tide sends none before, or it would put its empty list in their place.
+	tabsRead   bool
+	savedTabs  []string        // the tabs as last sent or brought by the stream
+	savingTabs bool            // a list is on its way to the daemon
 	offset     int             // the rows scrolled past
 	opened     bool            // the project came once, and its first running agent became active
 	created    string          // the tab of an agent created here, current once the stream brings it
@@ -212,8 +215,8 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 }
 
 // agentsChanged keeps the cursor on its agent, or on the one that took its
-// row; the tab of an agent that is gone closes. The first time a project comes,
-// its first running agent gets a tab.
+// row. The first time a project comes with no tabs kept, its first running
+// agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
 	if l.created == settingsTab || isTextTab(l.created) {
@@ -234,7 +237,6 @@ func (m *Model) agentsChanged() {
 			m.log.Info("agent active", "name", agents[i].Name, "reason", "first running")
 		}
 	}
-	m.tabsChanged(agents)
 	m.keepAgentCursor()
 }
 

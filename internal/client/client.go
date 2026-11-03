@@ -779,6 +779,18 @@ func (c *Client) DeleteDoc(ctx context.Context, ref, project, dir string) (api.D
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// ReplaceTabs makes tabs the tabs tide has open in the project ref.
+func (c *Client) ReplaceTabs(ctx context.Context, ref string, tabs []api.Tab) (api.TabsResult, error) {
+	if tabs == nil {
+		tabs = []api.Tab{}
+	}
+	r, err := c.api.ReplaceTabsWithResponse(ctx, ref, api.TabsUpdate{Tabs: tabs})
+	if err != nil {
+		return api.TabsResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // SyncDocsToGit writes the docs of the project named by project or holding dir into
 // path, a directory relative to its main checkout.
 func (c *Client) SyncDocsToGit(ctx context.Context, project, dir, path string) (api.DocSyncResult, error) {

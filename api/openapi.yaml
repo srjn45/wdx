@@ -347,6 +347,8 @@ paths:
         list given becomes the project's whole list, in its order, in one step;
         an open or closed project alike. A removal made through wdx takes the
         tabs of what it removed by itself. The project's stream carries them.
+        An agent kept as a tombstone is still the project's: the tabs open when
+        it became one were closed then, and one opened after stays.
 
         Errors: invalid_argument (a tab's kind with the wrong fields, the same
         tab twice, an agent or a doc that is not the project's), not_found.

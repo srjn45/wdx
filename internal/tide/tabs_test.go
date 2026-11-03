@@ -489,19 +489,19 @@ func TestTabAgentRemoved(t *testing.T) {
 	m, agents := tabsModel(3)
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 
-	// Gone, its tab closes and the next takes over.
-	sentAgents(m, agents[0], agents[2])
+	// Gone, the daemon closed its tab, and the next takes over.
+	removedThroughWdx(m, []api.Agent{agents[0], agents[2]}, "agent-tab-0", "agent-tab-2")
 	wantCurrent(t, m, "tab-2")
 	if !slices.Equal(m.list().tabs, []string{"agent-tab-0", "agent-tab-2"}) {
 		t.Fatalf("tabs %v", m.list().tabs)
 	}
 
 	// An agent exited keeps its tab.
-	sentAgents(m, agents[0], exited("tab-2", 0))
+	removedThroughWdx(m, []api.Agent{agents[0], exited("tab-2", 0)}, "agent-tab-0", "agent-tab-2")
 	wantCurrent(t, m, "tab-2")
 
 	// The last gone, the focus moves to the list.
-	sentAgents(m)
+	removedThroughWdx(m, nil)
 	if m.layout.focus != project || len(m.list().tabs) != 0 {
 		t.Fatalf("focus %s, tabs %v", m.layout.focus, m.list().tabs)
 	}
@@ -518,7 +518,8 @@ func TestTabTombstone(t *testing.T) {
 	m := newAgentsModel(100, 41, removedParent(api.AgentStateRunning))
 	wantCurrent(t, m, "parent")
 
-	sentAgents(m, removedParent(api.AgentStateRemoved))
+	// The trigger closed its tab as it became a tombstone.
+	removedThroughWdx(m, []api.Agent{removedParent(api.AgentStateRemoved)})
 	if len(m.list().tabs) != 0 {
 		t.Fatalf("the removed agent keeps its tab: %v", m.list().tabs)
 	}
@@ -526,7 +527,7 @@ func TestTabTombstone(t *testing.T) {
 	m.moveCursor(0)
 	m.Update(keyMsgs("enter")[0])
 	wantCurrent(t, m, "parent")
-	sentAgents(m, removedParent(api.AgentStateRemoved))
+	removedThroughWdx(m, []api.Agent{removedParent(api.AgentStateRemoved)}, "agent-parent")
 	wantCurrent(t, m, "parent")
 }
 
@@ -588,13 +589,14 @@ func TestTabsResume(t *testing.T) {
 		t.Fatalf("resume %+v", r)
 	}
 
-	// A tab whose agent is gone is dropped; the current one stays current.
+	// With no tabs kept, the run before's are taken but for one whose agent is
+	// gone; the current one stays current.
 	next := New(m.ctx, Options{Style: style.New(false), Resume: r})
 	next.tick = noTick
 	next.Update(tea.WindowSizeMsg{Width: 100, Height: 41})
 	next.Update(projectsListed{projects: []api.ProjectSummary{{Name: "demo", State: api.ProjectStateOpen}}})
 	left := []api.Agent{agents[1], agents[2]}
-	next.Update(projectEvent{gen: next.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &left}}})
+	next.Update(projectEvent{gen: next.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Agents: &left}, Tabs: []api.Tab{}}})
 	wantCurrent(t, next, "tab-1")
 	if !slices.Equal(next.list().tabs, []string{"agent-tab-1", "agent-tab-2"}) {
 		t.Fatalf("tabs %v", next.list().tabs)
