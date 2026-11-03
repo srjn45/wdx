@@ -32,26 +32,40 @@ Later, a wdx on another machine reaching this one through the hub keeps its own 
 
 ## Tabs
 
-Table `tide_tabs`, one row per open tab per project, in order.
+Table `tide_tabs`, in the migration `0017_tide_tabs.sql`: one row per open tab per project, in order. The package `internal/tidestate` keeps it.
 
 | column | |
 |---|---|
-| `id` | `tab-` and random |
 | `project_id` | the project, `ON DELETE CASCADE` |
-| `position` | its place in the strip |
+| `position` | its place in the strip, from 0; the key is (`project_id`, `position`) |
 | `kind` | `agent`, `info`, `settings`, `file`, `diff`, `pr`, `doc` |
-| `agent_id` | for `agent` and `info`, `ON DELETE CASCADE` |
-| `worktree_id` | for `file`, `diff` and `pr`, `ON DELETE CASCADE` |
-| `doc_id` | for `doc`, `ON DELETE CASCADE` |
+| `agent_id` | for `agent` and `info`: `REFERENCES agents (id) ON DELETE CASCADE` |
+| `doc_id` | for `doc`: `REFERENCES docs (id) ON DELETE CASCADE` |
+| `worktree` | for `file`, `diff` and `pr`: the worktree's name, `main` for the clone, as the worktree API and tide name it. Not a foreign key, since git lists checkouts wdx never registered, as `verified_files` and `review_comments` say |
 | `path` | for `file` and `diff`: the file, relative to the worktree |
-| `label` | the name shown, kept so a missing tab can still be named |
 
-An editor's tab is not a row: editors are terminals, and their tabs follow the terminals, as now.
+A `CHECK` gives each kind exactly the columns it needs. No label is kept: only a file or a worktree can go missing (agents and docs are only removed through wdx), and its path names it.
 
-- **Removed through wdx:** removing an agent, worktree, doc or project, from the CLI or from tide, deletes its tabs in the same transaction through the cascades, whether tide is open or not.
-- **Files through wdx:** wdx's file delete and rename (`RemoveWorktreeFile`, `RenameWorktreeFile`) update `tide_tabs` in the domain. A deleted file's tabs go. A renamed file's tabs follow the new path and label.
-- **Closed project:** its tabs stay for when it is reopened.
+An editor's tab is not a row: editors are terminals, and their tabs follow the terminals, as now. Which view a `pr` tab shows (commits or what is not committed) is view state, step 4.
+
+**What removes or changes rows**
+- A project, an agent or a doc deleted: the foreign keys' cascades.
+- An agent removed while it has children stays as a tombstone (`agents.removed_at`), so no cascade fires. A trigger on that column deletes its tabs. It sits in the same migration, so no domain code has to remember it.
+- A worktree removed through wdx (`RemoveWorktree`): the daemon deletes its tabs, as it already forgets its pull request.
+- A file or directory deleted through wdx (`RemoveWorktreeFile`): the daemon deletes the tabs of that path and of every path under it.
+- A file or directory renamed (`RenameWorktreeFile`): the tabs of that path and under it follow, with the new path.
+- A closed project keeps its tabs.
 - **Remote (later):** a tab will then point at another daemon's resources, which no cascade reaches. That part will be redesigned with remote access.
+
+**API**
+- `PUT /v1/projects/{project}/tabs` (`replaceTabs`), body `{"tabs": [Tab]}`, replaces the project's whole list in one transaction. It answers 200 with `{"result": "updated", "tabs": [...]}`.
+  - A `Tab` is `{"kind", "agent_id", "doc_id", "worktree", "path"}`, with absent fields `null`.
+  - It fails with `invalid_argument` (422) for a kind given the wrong fields, or an agent or doc that is not the project's. The same tab twice is refused too. It fails with `not_found` for no such project.
+  - It is not refused for a closed project, as tide can show one's tabs.
+- The project stream's events gain `tabs`, always present, `[]` for none. A change to the tabs, by `replaceTabs` or by a removal above, sends an event, as any change to the project does.
+- `getProject` and `wdx project get` do not show them, as tabs are tide's alone.
+
+**Step 3a** builds the migration, `internal/tidestate`, the endpoint, the stream's `tabs` and the removals, tested from the daemon. tide does not use them yet. **Step 3b** has tide send its list on every change and show the list the stream brings, and a project starts on its saved tabs.
 
 ## View
 
@@ -91,6 +105,6 @@ A tab whose row is still there but whose target is gone was removed outside wdx.
 
 1. `section_order`.
 2. One tide per daemon.
-3. The `tide_tabs` table, its API and stream, the cascades and the file rename and delete, with tide reading and writing its tabs through them.
+3. The `tide_tabs` table, its API and stream, the cascades and the file rename and delete (3a), with tide reading and writing its tabs through them (3b).
 4. The view tables.
 5. Missing tabs.
