@@ -101,7 +101,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `d` in the Code section, in popups | By design | A script or an AI changes files itself |
 | Choose the editor | `setting set editor` | the settings tab | Same | |
 | Order the left pane's sections | `setting set tide.section_order` | the settings tab, which applies it at once | Same | |
-| Filter the left pane's list | none | `/`: agents, worktrees, their changed files, the chosen worktree's paths and docs | By design | A script filters the `--json` output itself |
+| Filter the left pane's list | none | `/`: agents, worktrees, their changed files, the chosen worktree's paths, docs and plans | By design | A script filters the `--json` output itself |
 | Install the editor | `deps install --name vi` | none | By design | As every dependency: `deps` manages wdx itself |
 
 ## Docs
@@ -114,6 +114,18 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Read an older revision, history | `doc get --revision`, `doc history` | none | By design | AIs write docs, and tide only shows them for now |
 | Create, update, status and labels, rename, remove | `doc create`, `update`, `set`, `rename`, `remove` | none | By design | As above |
 | Write the docs into the repository | `doc sync-to-git`, `docs.git_path` | the settings tab, for the setting | By design | Writing them once is for a script; the setting is in both |
+
+## Plans
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| List a project's plans | `plan list` | the Plans section, a plan of plans with its plans under it, folded with `←` `→` | Same | tide's stays up to date (docs/PLANS.md); the CLI's list is flat, with `3 plans` for a plan of plans |
+| Read what a plan defines: its goal, constraints and tasks or plans in DAG order | `plan status` | `Enter` or a click: a read-only tab | Same | |
+| Read a task's prompt | `plan status --json`, `plan get` | `Enter` on the task in the plan's tab | Same | |
+| Go from a plan of plans to one of its plans | `plan status --name <child>` | `Enter` on the plan in the tab | Same | |
+| Read the YAML, an older revision, history | `plan get`, `--revision`, `plan history` | none | By design | AIs write plans, and tide shows what they define |
+| Create, update, rename, remove | `plan create`, `update`, `rename`, `remove` | none | By design | As above |
+| The format's reference | `wdx help plans` | none | By design | Help topics are the CLI's; an AI writing a plan reads it there |
 
 ## Settings
 

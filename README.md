@@ -1,6 +1,6 @@
 # wdx
 
-wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts), terminals, agents and docs. Terminals are shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents run an AI coding agent, Claude Code for now, the same way, and go on in the same session when started again; an agent can have child agents and work in its own git worktree. Docs live in wdx rather than the repository, with a revision per change and a status, so people and agents see each one as soon as it is written. `wdx tide`, the terminal IDE, shows a project with its agents and terminals in one window.
+wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts), terminals, agents, docs and plans. Terminals are shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents run an AI coding agent, Claude Code for now, the same way, and go on in the same session when started again; an agent can have child agents and work in its own git worktree. Docs live in wdx rather than the repository, with a revision per change and a status, so people and agents see each one as soon as it is written. Plans break a feature into tasks for agents, each with the tasks it waits for, or a big plan into smaller ones; for now wdx keeps and checks them, and running them comes next. `wdx tide`, the terminal IDE, shows a project with its agents and terminals in one window.
 
 **Status: early development.** wdx is the successor of [warden](https://github.com/srjn45/warden) and runs side by side with it (its own `wdx` binary and `~/.wdx` home), but it does not replace warden yet.
 
@@ -42,7 +42,7 @@ wdx tide                                   # all of it in one window
 wdx help                                   # every command; wdx <command> --help for one
 ```
 
-Scripts and agents add `--json`: stdout then holds one JSON object, a result or a problem with a stable error `code`, and nothing prompts (`wdx help json`). `wdx help agents` is the manual for an AI agent wdx runs: child agents, messages, worktrees and docs.
+Scripts and agents add `--json`: stdout then holds one JSON object, a result or a problem with a stable error `code`, and nothing prompts (`wdx help json`). `wdx help agents` is the manual for an AI agent wdx runs: child agents, messages, worktrees, docs and plans; `wdx help plans` says how to write a plan.
 
 ## Updating
 
@@ -65,6 +65,7 @@ The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when 
 - [docs/SEND.md](docs/SEND.md): sending a message to a terminal or an agent (`wdx terminal send`, `wdx agent send`)
 - [docs/ATTACH.md](docs/ATTACH.md): attaching to a terminal (`wdx terminal attach`) and its history; [docs/VT.md](docs/VT.md): the terminal emulator it uses and what to fix in it
 - [docs/DOCS.md](docs/DOCS.md): docs kept by wdx, with revisions and statuses (`wdx doc`)
+- [docs/PLANS.md](docs/PLANS.md): plans, a feature broken into tasks for agents (`wdx plan`), being built in steps
 - [docs/TIDE.md](docs/TIDE.md): the terminal IDE (`wdx tide`), what is built and what comes next
 - [AGENTS.md](AGENTS.md): how the code is organized, for people and AI agents working on it
 - The backlog: [docs/V1_FEATURES.md](docs/V1_FEATURES.md)

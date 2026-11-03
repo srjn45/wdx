@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03; nothing built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2 is to be designed in detail next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 

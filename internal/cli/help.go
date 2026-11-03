@@ -608,7 +608,7 @@ var topics = []topic{
 	{"json", "what --json prints: results, errors and the help itself", jsonTopic},
 	{"settings", "every setting, its default and where it is read from", settingsTopic},
 	{"logs", "where runs are logged, and finding one by its debug_id", logsTopic},
-	{"agents", "how an AI agent wdx runs works through wdx: child agents, messages, worktrees, docs", agentsTopic},
+	{"agents", "how an AI agent wdx runs works through wdx: child agents, messages, worktrees, docs, plans", agentsTopic},
 	{"plans", "how to write a plan: its YAML, its rules, and examples", plansTopic},
 }
 
@@ -777,7 +777,19 @@ func agentsTopic(st style.Style) string {
 	) + `  ` + st.Name("doc_changed") + ` means another wrote first: get it again with ` + st.Flag("--overwrite") + `, apply
   your change, and update with the new base.
 ` + commands(w+" doc create --name <doc> --path <file> --labels <labels>", "") +
-		`  Approving or rejecting a doc is the person's to do, unless you are asked.`
+		`  Approving or rejecting a doc is the person's to do, unless you are asked.
+
+` + heading("Plans") + `  A plan breaks a feature into tasks for agents, each with the tasks it waits
+  for, or a big plan into smaller ones. ` + st.Command(w+" help plans") + ` says how to write one.
+  Send it on stdin, with no file to write:
+` + commands(w+" plan create --name <plan> --path -", "") + `  ` + st.Name("invalid_plan") + ` lists every problem with its line: fix them all and send
+  it again. To change a plan, as a doc, get a copy and write it back naming
+  the revision you read:
+` + commands(
+		w+" plan get --name <plan> --out <file>", "says the revision, here 2",
+		w+" plan update --name <plan> --path <file> --base 2", "",
+		w+" plan status --name <plan>", "its tasks in the order they run",
+	) + `  Running a plan is the person's to do, unless you are asked.`
 }
 
 // The examples of wdx help plans, which TestPlansTopicExamples creates.
