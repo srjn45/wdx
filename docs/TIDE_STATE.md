@@ -139,6 +139,46 @@ What tide shows besides its tabs, so that it comes back as it was left. The daem
 
 **CLI_TIDE.md:** the row for keeping the tabs becomes keeping what tide showed, tabs and view.
 
+## Step 4b: tide writes and reads its view
+
+**The JSON.** Two structs in `internal/tide`, with snake_case keys, a missing key meaning what tide does today:
+
+- `tideView`, for tide as a whole: `project_id`, `focus`, `zoomed`, `last_top` (pane names, as `--resume` has them), `terminal_open`.
+- `projectView`, one per project:
+  - `tab`: the current tab, as tide names it;
+  - `terminal`: the id of the terminal tab selected;
+  - `section`: where the cursor is, a letter as in `tide.section_order`;
+  - `agent`, `worktree`, `doc`, `code`: the row the cursor is on in each section. It is kept for every section, not only the cursor's, so that moving to another section finds its row as it was. Each is held the way tide already holds it to follow its row as rows come and go: an agent's id, a worktree's row key, a doc's id, a Code row's key.
+  - `folded`: the ids of the agents folded;
+  - `worktrees_open`: the worktrees unfolded;
+  - `code_worktree`: the worktree Code shows;
+  - `code_open`: by worktree, the directories unfolded.
+
+**Writing**
+- After each update, tide builds both views and compares them, as JSON, with what it last sent. One that differs starts a wait of `viewSettle` (half a second), through tide's `tick`, so tests shorten it. A later change starts the wait again. When the wait ends with nothing changed, the view goes, one request of each at a time, as the tabs do.
+- Only the shown project's view is built: what tide shows of another does not change while it is not shown.
+- `C-q q` and `C-q r` send what differs at once, then quit. They wait at most a second (`viewFlush`), so a daemon that does not answer never holds tide open.
+- A failure is logged at error level and not shown.
+
+**Reading**
+- **At start**, the request for tide's view goes before the projects are listed, in the same command. When the view names a project still open, by its id, tide shows it as `C-q r` does, with its focus, zoom and terminal pane. Otherwise it starts as today. A view that cannot be read is logged, and tide starts as today.
+- **A project's view** is read when tide first follows the project in this run, in the command that opens its stream, before the first event. So the cursor, folds and current tab are in place when the first event's rows come. Each section's existing code (`keepAgentCursor`, `keepWorktreeCursor`, `keepDocCursor`, `keepCodeCursor`) then finds the row or falls back to the nearest. A project followed again in the same run keeps what tide already has.
+- The current tab is taken when it is among the tabs the stream brings, otherwise the first. This replaces 3b's "the first is current".
+- Folds and unfolded directories that name nothing are kept as they are, and match nothing.
+
+**`C-q r`** still sends `--resume`, for a reload into an older release. A release that finds a view in the daemon uses it, and `--resume` only when the daemon has none, as after an update from a release before 4b.
+
+**Not kept, as the design says:** popups and confirms, text being typed, the filter, scroll offsets and hover.
+
+**Tests**
+- Model tests, with a daemon in the test process:
+  - a tide that moved the cursor, folded an agent, unfolded a directory and zoomed comes back so in a new tide on the same home;
+  - a project shown second keeps its own cursor and tab;
+  - quitting sends what changed less than `viewSettle` ago;
+  - holding a key sends one view, not one per key: the daemon logs one request;
+  - a view naming a project since closed starts on the switcher.
+- The current reload tests keep passing, `TestTideReload` in the CLI among them.
+
 ## How tide reads and writes it
 
 - tide writes its tabs and view through the API on each change, with endpoints only tide calls. There is no `wdx tab` command, since tabs are tide's alone. CLI_TIDE.md gets a row.
