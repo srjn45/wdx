@@ -93,6 +93,7 @@ type removal struct {
 	running        bool     // removing it stops what runs
 	doing          string   // what a restart would interrupt, if anything
 	hasChildren    bool     // it stays as a tombstone
+	stopping       []string // the agents and terminals removing a project stops
 	editors        []string // the editors closing a project stops, by worktree and file
 	worktree       *worktreeRemoval
 }
@@ -174,6 +175,9 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 		if r.kind == restartKind {
 			return m.restart(r)
 		}
+		if r.kind == projectRemovalKind {
+			return m.removeProject(r)
+		}
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
 		if r.worktree != nil {
 			return m.removeWorktree(r)
@@ -224,6 +228,9 @@ func (m *Model) confirmPopup() popup {
 	}
 	if c.r.kind == restartKind {
 		return m.restartPopup()
+	}
+	if c.r.kind == projectRemovalKind {
+		return m.removeProjectPopup()
 	}
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
 	if c.r.worktree != nil {

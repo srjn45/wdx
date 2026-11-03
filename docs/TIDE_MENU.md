@@ -1,6 +1,6 @@
 # tide's `C-q` menu, by level
 
-Status: approved by the human on 2026-11-03; steps 1 and 2 built on 2026-11-03; step 3 approved on 2026-11-03.
+Status: approved by the human on 2026-11-03; steps 1, 2 and 3 built on 2026-11-03.
 
 Today the `C-q` menu is one flat list of letters, each offered when it applies (`internal/tide/terminals.go`). It has grown to sixteen lines, mixing what acts on the thing in focus with what acts on tide or the project, and `n` means a new session in the menu but a new file in Code. This restructures the menu only: the keys of the right pane's tabs (diff, PR, read-only file, doc, settings, info) and of the popups stay as they are.
 

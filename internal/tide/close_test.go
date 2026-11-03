@@ -2,6 +2,8 @@ package tide
 
 import (
 	"context"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -119,5 +121,100 @@ func TestCloseProjectNotOffered(t *testing.T) {
 	p.keys("C-q", "p", "c")
 	if p.m.confirm != nil {
 		t.Fatalf("w with no project:\n%s", text(p.m))
+	}
+}
+
+// TestRemoveProjectRunning: removing asks first, saying what is deleted, what
+// stays and what stops, and n keeps it; without the menu in the left pane, y
+// removes it from wdx, leaving its files, and tide goes to the switcher as
+// another project is open.
+func TestRemoveProjectRunning(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newProject(t, "web", api.ProjectStateOpen)
+	h.newAgent(t, "api", dir, "a-one")
+	h.newTerminal(t, "api", dir, "shell")
+	p := h.openShown(t)
+	p.until(t, "api with a-one attached", func(m *Model) bool { return m.shown == "api" && agentAttached("a-one")(m) })
+	p.until(t, "shell running", func(m *Model) bool { return slices.Contains(m.runningInProject(), "shell") })
+
+	p.keys("C-q", "p")
+	wantText(t, p.m, "x  remove api")
+	p.keys("x")
+	wantText(t, p.m, "┃ Remove project", "Remove api from wdx?", "Its agents, terminals and their history are deleted from wdx. The files on disk stay.",
+		"Running now, they stop: a-one, shell", "y remove  n or Esc keep", "confirm: y remove")
+	p.keys("n")
+	if p.m.confirm != nil || h.projectState(t, "api") != api.ProjectStateOpen {
+		t.Fatalf("n: confirm %v", p.m.confirm)
+	}
+
+	p.keys("alt+left", "p", "x", "y")
+	p.until(t, "the switcher", func(m *Model) bool { return m.shown == "" && m.confirm == nil && m.switcher != nil })
+	wantText(t, p.m, "┃ Switch Project", "web")
+	if strings.Contains(text(p.m), "api") {
+		t.Fatalf("api still listed:\n%s", text(p.m))
+	}
+	if _, err := h.client().GetProject(context.Background(), "api"); err == nil {
+		t.Fatal("api still in wdx")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("its files went: %v", err)
+	}
+}
+
+// TestRemoveProjectLast: with nothing running the popup says nothing stops, and
+// the last project removed leaves Open Project.
+func TestRemoveProjectLast(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "the project", projectKnown)
+
+	p.keys("C-q", "p", "x")
+	wantText(t, p.m, "Remove api from wdx?")
+	if strings.Contains(text(p.m), "Running now") {
+		t.Fatalf("something said to run:\n%s", text(p.m))
+	}
+	p.keys("y")
+	p.until(t, "Open Project", func(m *Model) bool { return m.shown == "" && m.confirm == nil && len(m.opening) == 1 })
+	wantText(t, p.m, "┃ Open Project", "removed api")
+}
+
+// TestRemoveProjectRefused: something that started after the popup opened is
+// not stopped; the status line tells, and the project stays.
+func TestRemoveProjectRefused(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "the project", projectKnown)
+	p.keys("C-q", "p", "x")
+	if p.m.confirm == nil || p.m.confirm.r.running {
+		t.Fatalf("confirm %+v", p.m.confirm)
+	}
+	h.newTerminal(t, "api", dir, "shell")
+
+	p.keys("y")
+	p.until(t, "the refusal", func(m *Model) bool { return m.confirm == nil && m.statusNotice != "" })
+	if p.m.shown != "api" || h.projectState(t, "api") != api.ProjectStateOpen {
+		t.Fatalf("shown %q:\n%s", p.m.shown, text(p.m))
+	}
+}
+
+// TestRemoveProjectNotOffered: there is nothing to remove with no project shown.
+func TestRemoveProjectNotOffered(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	p := h.follow(t)
+	p.until(t, "Open Project", func(m *Model) bool { return len(m.opening) == 1 })
+	p.keys("C-q", "p")
+	if p.m.menuOffers(removeProjectKey) {
+		t.Fatal("offered with no project")
 	}
 }

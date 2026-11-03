@@ -22,6 +22,7 @@ const (
 	openProjectKey   = "o" // of the Project submenu
 	switchProjectKey = "s" // of the Project submenu
 	closeProjectKey  = "c" // of the Project submenu
+	removeProjectKey = "x" // of the Project submenu
 )
 
 // menuItem is a line of the menu: its key as Bubble Tea names it, what it does,
@@ -313,6 +314,14 @@ func (m *Model) projectPart() menuPart {
 				return nil
 			}
 			return m.closeProject(r, false)
+		}})
+	}
+	if r, ok := m.removableProject(); ok {
+		items = append(items, menuItem{removeProjectKey, "remove " + r.name, "remove", func() tea.Cmd {
+			m.switcher, m.opening = nil, nil
+			m.confirm = &confirmBox{r: r}
+			m.log.Info("project removal asked", "name", r.name)
+			return nil
 		}})
 	}
 	return menuPart{title: "Project", items: items}

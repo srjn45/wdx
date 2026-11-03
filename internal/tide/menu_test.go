@@ -76,7 +76,7 @@ func menuPlaces(t *testing.T) []struct {
 		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s q"}},
 		{"the settings tab", settings, []string{"settings: -", "global: p q"}},
 		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s q"}},
-		{"the Project submenu", projectMenu, []string{"Project: o s c"}},
+		{"the Project submenu", projectMenu, []string{"Project: o s c x"}},
 	}
 }
 

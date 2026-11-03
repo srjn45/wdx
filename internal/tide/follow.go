@@ -167,6 +167,14 @@ func (m *Model) broke(err error) tea.Cmd {
 // [Open Project].
 func (m *Model) projectGone() tea.Cmd {
 	name := m.shown
+	if c := m.confirm; c != nil && c.busy && c.r.kind == projectRemovalKind && c.r.name == name {
+		// Removed from here: the stream can say so before the answer comes, and
+		// tide goes where the answer would take it.
+		m.log.Info("project shown was removed", "name", name, "by", "tide")
+		m.confirm = nil
+		m.projects.drop(name)
+		return m.leaveGone(name, "removed "+name)
+	}
 	m.log.Info("project shown was removed", "name", name)
 	m.leaveProject()
 	m.opening = []screen{&openProjectScreen{projects: m.projects, notice: name + " was removed"}}

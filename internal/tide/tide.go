@@ -293,6 +293,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.restarted(msg)
 	case projectClosed:
 		return m, m.closed(msg)
+	case projectRemoved:
+		return m, m.projectWasRemoved(msg)
 	case valueSaved:
 		m.valueSavedMsg(msg)
 	case settingsListed:
