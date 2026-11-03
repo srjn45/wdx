@@ -177,10 +177,10 @@ What tide shows besides its tabs, so that it comes back as it was left. The daem
 **Tests**
 - Model tests, with a daemon in the test process:
   - a tide that moved the cursor, folded an agent, unfolded a directory and zoomed comes back so in a new tide on the same home;
-  - a project shown second keeps its own cursor and tab;
+  - a project shown second keeps its own cursor and tab, with the cursor on another row than the current tab's (`TestViewPerProject`, added on 2026-11-03: it found that the tab made current moved the cursor onto itself, as a new agent's tab does);
   - quitting sends what changed less than `viewSettle` ago;
   - holding a key sends one view, not one per key: the daemon logs one request;
-  - a view naming a project since closed starts on the switcher.
+  - a view naming a project since closed starts on the switcher, or where `--resume` says when it names one open.
 - The current reload tests keep passing, `TestTideReload` in the CLI among them.
 
 ## How tide reads and writes it

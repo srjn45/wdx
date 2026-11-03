@@ -166,8 +166,53 @@ func TestViewFlushedOnQuit(t *testing.T) {
 	}
 }
 
-// TestViewOfAClosedProject: a view naming a project closed since starts on the
-// switcher, as tide does with none.
+// TestViewPerProject: each project keeps its own current tab and cursor. A tide
+// started later shows the last project shown as it was left, and the other, once
+// switched to, as that one was.
+func TestViewPerProject(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	apiDir := h.newProject(t, "api", api.ProjectStateOpen)
+	webDir := h.newProject(t, "web", api.ProjectStateOpen)
+	one := h.newAgent(t, "api", apiDir, "a-one")
+	two := h.newAgent(t, "api", apiDir, "b-two")
+	three := h.newAgent(t, "web", webDir, "c-three")
+	four := h.newAgent(t, "web", webDir, "d-four")
+	left := func(project, tab, cursor string) func(*Model) bool {
+		return func(m *Model) bool {
+			l := m.list()
+			return m.shown == project && m.switcher == nil && l != nil && l.viewRead && l.active == tab && l.cursor == cursor
+		}
+	}
+
+	p := h.followTicking(t, atOnce)
+	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
+	p.keys("enter")
+	p.until(t, "a-one attached", agentAttached("a-one"))
+	p.keys("down", "enter")
+	p.until(t, "b-two attached", agentAttached("b-two"))
+	p.keys("up")
+	p.until(t, "api's view and tabs saved", func(m *Model) bool {
+		return left("api", two.Id, one.Id)(m) && viewSaved(m) && tabsSavedAs(one.Id, two.Id)(m)
+	})
+	p.keys("C-q", "p", "w", "e", "b", "enter")
+	p.until(t, "web shown", func(m *Model) bool { l := m.list(); return m.shown == "web" && l != nil && l.viewRead })
+	p.keys("enter")
+	p.until(t, "c-three attached", agentAttached("c-three"))
+	p.keys("down")
+	p.until(t, "web's view and tabs saved", func(m *Model) bool {
+		return left("web", three.Id, four.Id)(m) && viewSaved(m) && tabsSavedAs(three.Id)(m)
+	})
+
+	next := h.followTicking(t, atOnce)
+	next.until(t, "web as it was left", left("web", three.Id, four.Id))
+	next.keys("C-q", "p", "a", "p", "i", "enter")
+	next.until(t, "api as it was left", left("api", two.Id, one.Id))
+}
+
+// TestViewOfAClosedProject: a view naming a project closed since is not where tide
+// starts: --resume is, when it names one open, and the switcher otherwise.
 func TestViewOfAClosedProject(t *testing.T) {
 	t.Parallel()
 	h := newTestHome(t)
@@ -181,6 +226,10 @@ func TestViewOfAClosedProject(t *testing.T) {
 	if err := h.client().ReplaceTideView(context.Background(), json.RawMessage(`{"project_id":"`+web.Project.Id+`"}`)); err != nil {
 		t.Fatal(err)
 	}
-	p := h.followTicking(t, atOnce)
+	// Neither saves a view of its own, which the other would start on.
+	resumed := h.followResumed(t, neverSettles, &Resume{Project: "api"})
+	resumed.until(t, "api, as --resume says", func(m *Model) bool { return m.shown == "api" && m.switcher == nil })
+
+	p := h.followTicking(t, neverSettles)
 	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil && m.shown == "" })
 }

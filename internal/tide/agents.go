@@ -55,10 +55,13 @@ type agentList struct {
 	// missingTabs are the tabs whose file or worktree the last event said is gone,
 	// removed outside wdx: each stays, marked, until it is closed.
 	missingTabs map[string]bool
-	offset      int             // the rows scrolled past
-	opened      bool            // the project came once, and its first running agent became active
-	created     string          // the tab of an agent created here, current once the stream brings it
-	closed      map[string]bool // the ids of the parents folded; what is open inside them stays so
+	offset      int    // the rows scrolled past
+	opened      bool   // the project came once, and its first running agent became active
+	created     string // the tab of an agent created here, current once the stream brings it
+	// createdKeepsCursor says created is the tab the project's view kept as current,
+	// whose cursor the view put elsewhere: the cursor stays there.
+	createdKeepsCursor bool
+	closed             map[string]bool // the ids of the parents folded; what is open inside them stays so
 
 	section       section              // the section the cursor is in
 	worktreeRow   int                  // its row in the Worktrees section
@@ -235,13 +238,15 @@ func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
 	if l.created == settingsTab || isTextTab(l.created) {
 		l.openTab(l.created)
-		l.created = ""
+		l.created, l.createdKeepsCursor = "", false
 	}
 	if i := agentIndex(agents, tabAgent(l.created)); i >= 0 {
 		l.openTab(l.created)
-		l.cursor = agents[i].Id
-		l.reveal(agents, agents[i].Id)
-		l.created = ""
+		if !l.createdKeepsCursor {
+			l.cursor = agents[i].Id
+			l.reveal(agents, agents[i].Id)
+		}
+		l.created, l.createdKeepsCursor = "", false
 	}
 	if !l.opened {
 		l.opened = true
@@ -461,7 +466,7 @@ func (m *Model) agentCreated(msg agentCreated) {
 		return
 	}
 	// Made active by id: the stream may have brought it already, or will.
-	l.created = msg.agent.Id
+	l.created, l.createdKeepsCursor = msg.agent.Id, false
 	if f := m.following; f != nil && f.project != nil && f.project.Id == msg.projectID {
 		m.agentsChanged()
 	}

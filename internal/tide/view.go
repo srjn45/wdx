@@ -137,7 +137,7 @@ func (m *Model) currentProjectView() (string, projectView, bool) {
 // nearest, as rows come and go.
 func (m *Model) applyProjectView(projectID string, l *agentList, v projectView) {
 	if v.Tab != "" {
-		l.created = v.Tab // current once the stream brings it among the tabs
+		l.created, l.createdKeepsCursor = v.Tab, true // current once the stream brings it among the tabs
 	}
 	if v.Terminal != "" {
 		m.selectedTab[projectID] = v.Terminal

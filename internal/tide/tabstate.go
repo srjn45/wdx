@@ -180,7 +180,7 @@ func (m *Model) tabsFromStream(saved []api.Tab, revision int64) {
 		}
 		l.opened, l.tabs, l.savedTabs, l.active = true, tabs, tabs, tabs[0]
 		if !slices.Contains(tabs, l.created) {
-			l.created = "" // the run before's current tab, now closed
+			l.created, l.createdKeepsCursor = "", false // the run before's current tab, now closed
 		}
 		m.log.Info("tabs restored", "project_id", m.following.project.Id, "count", len(tabs))
 		return

@@ -34,7 +34,13 @@ func (h testHome) follow(t *testing.T) *program {
 // followTicking is follow with tick in place of tea.Tick, when not nil.
 func (h testHome) followTicking(t *testing.T, tick func(time.Duration, func(time.Time) tea.Msg) tea.Cmd) *program {
 	t.Helper()
-	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
+	return h.followResumed(t, tick, nil)
+}
+
+// followResumed is followTicking started as --resume r does, when not nil.
+func (h testHome) followResumed(t *testing.T, tick func(time.Duration, func(time.Time) tea.Msg) tea.Cmd, r *Resume) *program {
+	t.Helper()
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home, Resume: r})
 	t.Cleanup(func() {
 		m.unfollow()
 		m.detachAll()
