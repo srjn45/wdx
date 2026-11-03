@@ -666,10 +666,7 @@ func (m *Model) codeLine(r codeRow, marks treeMarks, cursor bool, width int) str
 		pointer = st.Focused("▸ ")
 	}
 	if r.node == nil {
-		name := codeSelectorName(m.list().code.worktree, width)
-		if cursor {
-			name = st.Name(name)
-		}
+		name := st.Name(codeSelectorName(m.list().code.worktree, width))
 		return pointer + st.Muted("<") + " " + name + " " + st.Muted(">")
 	}
 	active := m.codeRowActive(r)

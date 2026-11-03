@@ -486,6 +486,9 @@ func TestCodeMarksDrawn(t *testing.T) {
 			}
 		}
 	}
+	if got := m.codeLine(m.codeRowsShown()[0], marks, false, 31); !strings.Contains(got, st.Name("main")) {
+		t.Errorf("the worktree selector is not bold without the cursor: %q", got)
+	}
 }
 
 func mapWith(m map[string]bool, key string) map[string]bool {

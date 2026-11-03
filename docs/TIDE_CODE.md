@@ -32,6 +32,7 @@ Reading and editing a project's files without leaving tide: step 4 of the order 
 ### The worktree selector
 
 - It is a row of its own, the section's first, since a heading takes no cursor and a worktree's name can be long. `←→` on it moves through the worktrees, going round at the ends. `<` and `>` can be clicked.
+- The worktree's name is always bold, so that the selector stands apart from the tree below it (the human's choice, 2026-11-03).
 - `missing` worktrees are skipped.
 - It starts on the main checkout. Each project remembers its choice, through `C-q r` too. When the chosen worktree is removed it goes back to the main checkout.
 - Only worktrees: other branches, proposed in `docs/IDE.md`, are not part of this.
