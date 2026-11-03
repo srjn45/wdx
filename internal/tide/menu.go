@@ -126,6 +126,12 @@ func (m *Model) selectionPart() menuPart {
 			return nil
 		})
 	}
+	if a, ok := m.renamableAgent(); ok {
+		add(renameKey, "rename", "rename", func() tea.Cmd {
+			m.askRenameAgent(a)
+			return nil
+		})
+	}
 	if r, ok := m.restartable(); ok {
 		add(restartKey, "new session", "restart", func() tea.Cmd {
 			m.switcher, m.opening = nil, nil

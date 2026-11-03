@@ -68,12 +68,12 @@ func menuPlaces(t *testing.T) []struct {
 		want []string
 	}{
 		{"no project", noProject, []string{"global: p q"}},
-		{"an agent in the list", agents, []string{"a-parent (agent): x c i R", "list: / f", "global: p s q"}},
+		{"an agent in the list", agents, []string{"a-parent (agent): x c i r R", "list: / f", "global: p s q"}},
 		{"a worktree's file", worktreeFile, []string{"a (file): v", "list: / f", "global: p s q"}},
 		{"a file in Code", codeFile, []string{"dir/a.go (file): e n N r x", "list: / f", "global: p s q"}},
 		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f", "global: p s q"}},
 		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f", "global: p s q"}},
-		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i R -", "global: p s q"}},
+		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s q"}},
 		{"the settings tab", settings, []string{"settings: -", "global: p q"}},
 		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s q"}},
 		{"the Project submenu", projectMenu, []string{"Project: o s c"}},
@@ -113,9 +113,8 @@ func TestMenuOldLetters(t *testing.T) {
 		if p.name == "the Project submenu" {
 			continue
 		}
-		for _, old := range []string{"o", "w", "r", "d"} {
-			renameInCode := old == renameKey && strings.Contains(p.name, "Code")
-			if p.m.menuOffers(old) && !renameInCode {
+		for _, old := range []string{"o", "w", "d"} {
+			if p.m.menuOffers(old) {
 				t.Errorf("%s: %q still offered", p.name, old)
 			}
 		}

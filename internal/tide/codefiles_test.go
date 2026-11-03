@@ -56,10 +56,11 @@ func TestCodeFileKeys(t *testing.T) {
 		t.Fatal("r or x on the selector opened a popup")
 	}
 
-	// Out of Code, the menu has no rename.
+	// Out of Code, r renames the agent rather than a file.
 	m.moveCursor(0)
-	if m.menuOffers(renameKey) {
-		t.Error("r offered in the agents")
+	keys(m, renameKey)
+	if f, ok := m.openTop().(*fieldScreen); !ok || f.heading != "Rename agent" {
+		t.Errorf("r in the agents opened %#v", m.openTop())
 	}
 }
 

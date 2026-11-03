@@ -115,6 +115,61 @@ func (m *Model) renameAgent(id string) func(string) tea.Cmd {
 	}
 }
 
+// renameAgentAsked is the name typed in the popup r opens on an agent.
+type renameAgentAsked struct{ id, name string }
+
+// agentRenamed is the daemon's answer to it; the name comes with the stream.
+type agentRenamed struct{ err error }
+
+// renamableAgent is the agent r renames: the one selected, unless it was removed.
+func (m *Model) renamableAgent() (api.Agent, bool) {
+	a, ok := m.focusedAgent()
+	return a, ok && a.State != api.AgentStateRemoved
+}
+
+// askRenameAgent opens the popup that renames a, with its name to edit, as its
+// info tab's field does.
+func (m *Model) askRenameAgent(a api.Agent) {
+	m.switcher = nil
+	m.push(&fieldScreen{
+		heading: "Rename agent",
+		prompt:  "New name of " + a.Name + ":",
+		value:   a.Name,
+		empty:   "type a name",
+		working: "renaming…",
+		submit:  func(name string) tea.Msg { return renameAgentAsked{id: a.Id, name: name} },
+	})
+	m.log.Info("agent rename opened", "agent_id", a.Id)
+}
+
+// sendAgentRename asks the daemon for the name typed in the popup.
+func (m *Model) sendAgentRename(msg renameAgentAsked) tea.Cmd {
+	if m.client == nil {
+		return nil
+	}
+	m.log.Info("agent rename asked", "agent_id", msg.id, "name", msg.name)
+	return func() tea.Msg {
+		_, err := m.client.RenameAgent(m.ctx, "id:"+msg.id, "", "", msg.name)
+		return agentRenamed{err: err}
+	}
+}
+
+// agentRenamed closes the popup, or shows there why the name was refused, to
+// correct it or give up.
+func (m *Model) agentRenamed(msg agentRenamed) tea.Cmd {
+	if msg.err != nil {
+		m.log.Info("agent not renamed", "err", msg.err)
+		if s := m.openTop(); s != nil {
+			return s.update(screenFailed(msg))
+		}
+		m.statusNotice = msg.err.Error()
+		return nil
+	}
+	m.log.Info("agent renamed")
+	m.opening = nil
+	return nil
+}
+
 // valuesSync keeps the pane's memory to the tab shown: leaving the tab or the pane
 // ends an edit, and the settings are read when their tab comes to show.
 func (m *Model) valuesSync() tea.Cmd {

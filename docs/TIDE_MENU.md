@@ -1,6 +1,6 @@
 # tide's `C-q` menu, by level
 
-Status: approved by the human on 2026-11-03; step 1 built on 2026-11-03.
+Status: approved by the human on 2026-11-03; steps 1 and 2 built on 2026-11-03.
 
 Today the `C-q` menu is one flat list of letters, each offered when it applies (`internal/tide/terminals.go`). It has grown to sixteen lines, mixing what acts on the thing in focus with what acts on tide or the project, and `n` means a new session in the menu but a new file in Code. This restructures the menu only: the keys of the right pane's tabs (diff, PR, read-only file, doc, settings, info) and of the popups stay as they are.
 
@@ -37,7 +37,7 @@ Lines in parentheses show only when they apply.
 
 **Left pane, Agents, cursor on an agent**
 ```
-ample-deer (agent)   x remove · c new child · i info · R new session · (g start again)
+ample-deer (agent)   x remove · c new child · i info · r rename · R new session · (g start again)
 list                 / filter · f refresh
 global               a new agent · t new terminal · p project… · s settings · q quit
 ```
@@ -66,7 +66,7 @@ global               …
 
 **Right pane, an agent's tab**
 ```
-ample-deer (agent)   x remove · c new child · i info · R new session · (g start again)
+ample-deer (agent)   x remove · c new child · i info · r rename · R new session · (g start again)
                      - close tab · \ ] C-q M-arrow send to the program
 global               …
 ```

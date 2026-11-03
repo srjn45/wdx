@@ -249,6 +249,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.changeCodeEntry(msg)
 	case codeEntryChanged:
 		return m, m.codeEntryChanged(msg)
+	case renameAgentAsked:
+		return m, m.sendAgentRename(msg)
+	case agentRenamed:
+		return m, m.agentRenamed(msg)
 	case switchProject:
 		return m, m.show(msg.name)
 	case openCreate:

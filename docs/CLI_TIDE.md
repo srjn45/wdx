@@ -62,7 +62,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Choose a worktree for an agent with no parent | `--worktree` | only for a child | Later (tide) | Comes with the agent form or the worktrees work |
 | List agents | `agent list` | the left pane | Same | |
 | Show an agent | `agent get` | the info tab | Same | The fields differ and change as needed: `agent get` also has session, pid and times |
-| Rename an agent | `agent rename` | the info tab | Same | |
+| Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |
 | Talk to an agent | `agent attach` | its tab | Same | |
 | Scroll back through its output | `agent attach` | its tab | Same | |
 | Print its history for a script | none | not needed | Open (CLI) | `terminal history` serves shells only. An `agent history` would not give a script the conversation; see [An agent's history](#an-agents-history) |

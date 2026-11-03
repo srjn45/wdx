@@ -452,3 +452,46 @@ func TestInfoLive(t *testing.T) {
 		t.Fatalf("after the rename: %+v", a)
 	}
 }
+
+// TestRenameAgentLive renames against a daemon with r: on the agent under the
+// cursor without C-q, a name taken refused in the popup, then on its tab with C-q.
+func TestRenameAgentLive(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	dir := h.newProject(t, "api", api.ProjectStateOpen)
+	h.newAgent(t, "api", dir, "a-one")
+	h.newAgent(t, "api", dir, "b-two")
+	p := h.openShown(t)
+	p.until(t, "a-one attached", agentAttached("a-one"))
+
+	retype := func(old, name string) {
+		for range old {
+			p.keys("backspace")
+		}
+		p.keys(name, "enter")
+	}
+	p.keys("alt+left", renameKey)
+	wantText(t, p.m, "┃ Rename agent", "New name of a-one:")
+	retype("a-one", "b-two")
+	p.until(t, "the name refused", func(m *Model) bool {
+		f, ok := m.openTop().(*fieldScreen)
+		return ok && strings.Contains(f.failure, "already used")
+	})
+	retype("b-two", "c-three")
+	p.until(t, "the new name in the list", func(m *Model) bool {
+		a, ok := m.cursorAgent()
+		return ok && a.Name == "c-three" && m.openTop() == nil
+	})
+
+	p.keys("alt+right", "C-q", renameKey)
+	wantText(t, p.m, "┃ Rename agent", "New name of c-three:")
+	retype("c-three", "d-four")
+	p.until(t, "the new name on its tab", func(m *Model) bool {
+		a, ok := m.activeAgent()
+		return ok && a.Name == "d-four" && m.openTop() == nil
+	})
+	if a, _ := p.m.activeAgent(); a.State != api.AgentStateRunning {
+		t.Fatalf("after the rename: %+v", a)
+	}
+}
