@@ -1,6 +1,6 @@
 # tide's `C-q` menu, by level
 
-Status: approved by the human on 2026-11-03; steps 1 and 2 built on 2026-11-03.
+Status: approved by the human on 2026-11-03; steps 1 and 2 built on 2026-11-03; step 3 approved on 2026-11-03.
 
 Today the `C-q` menu is one flat list of letters, each offered when it applies (`internal/tide/terminals.go`). It has grown to sixteen lines, mixing what acts on the thing in focus with what acts on tide or the project, and `n` means a new session in the menu but a new file in Code. This restructures the menu only: the keys of the right pane's tabs (diff, PR, read-only file, doc, settings, info) and of the popups stay as they are.
 
@@ -112,6 +112,33 @@ Removing reload leaves the hidden `--resume` flag accepted, because an older tid
 
 1. **`feat!:` the menu by level.** The parts and their titles, the Project submenu, the letters above, the left pane's letters without `C-q` following them; `C-q r` removed with its code and tests but `--resume`. docs/TIDE.md's shortcut menu section, docs/TIDE_CODE.md's keys and docs/CLI_TIDE.md's rows updated. Tests: the menu's parts from each place in the list above; no two parts shown together share a letter, checked over every place; each moved key does its action, and its old letter does not.
 2. **`feat:` `r` renames the agent selected**, in a popup with its name, as the info tab's field does, through the same request. On the agent's selection in the left pane and on its tab.
-3. **`feat:` `x` in the Project submenu removes the project shown**, as `wdx project remove` does: from wdx only, files on disk untouched, its agents, terminals and their history gone. A confirmation says that and names the agents and terminals running; tide then goes where it goes after close. Its own design before it is built.
+3. **`feat:` `x` in the Project submenu removes the project shown**, designed below.
 
 The `!` in step 1 is for people, not scripts: no command, flag or JSON changes, but the keys a person uses do.
+
+## Step 3: removing the project shown
+
+Designed with the human on 2026-11-03, who chose the project shown only and the confirmation's words.
+
+- **`C-q p x`**, or `p x` in the left pane, while a project is shown. A closed project cannot be removed from tide: `wdx project remove` does that.
+- **It always asks**, as it cannot be undone:
+
+  ```
+  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃ Remove project                                          ┃
+  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+  ┃ Remove api from wdx?                                    ┃
+  ┃ Its agents, terminals and their history are deleted     ┃
+  ┃ from wdx. The files on disk stay.                       ┃
+  ┃ Running now, they stop: a-one, b-two, shell             ┃
+  ┃ Its editors stop, losing what they hold unsaved: ...    ┃
+  ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+  ┃ y remove  n or Esc keep                                 ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  ```
+
+  The running line names the agents and terminals running or starting, by the stream, and is left out with none; the editors' line is close's.
+- **`y`** sends `DELETE /v1/projects/{project}`, as `wdx project remove` does, stopping what runs only when the popup said something does. Something started since the stream last said is not stopped: the daemon refuses with `project_in_use` and the status line says why, as close does.
+- **Then** tide goes where it goes after close: the switcher if another project is open, `Open Project` if none, unless a popup was opened meanwhile. The project is gone from both.
+- **CLI and tide.** docs/CLI_TIDE.md's row `Remove a project` becomes Same: `project remove` and `C-q p x`.
+- **Tests:** the menu offers `x` in the Project submenu only with a project shown; against a daemon, the popup's words with and without something running, `n` keeping it, `y` removing it and tide going to the switcher or `Open Project`, and the refusal when something started after the popup opened.
