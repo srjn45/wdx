@@ -152,33 +152,33 @@ func TestTabStrip(t *testing.T) {
 		s := "┬─" + strings.Join(parts, "─") + "─"
 		return s + strings.Repeat("─", 70-ansi.StringWidth(s)) + "[⤢]─┐"
 	}
-	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "→"))
+	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "▶"))
 
 	for range 4 {
 		m.Update(key(tea.KeyRight, tea.ModAlt))
 	}
 	wantCurrent(t, m, "tab-4")
-	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "→"))
+	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "▶"))
 
 	// The tabs before it go, and the room left takes the last one.
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	wantCurrent(t, m, "tab-5")
-	wantTitle(t, m, row("←", tab2, tab3, tab4, tab5, tab6))
+	wantTitle(t, m, row("◀", tab2, tab3, tab4, tab5, tab6))
 
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key(tea.KeyRight, tea.ModAlt)) // nothing past the last
 	wantCurrent(t, m, "tab-6")
-	wantTitle(t, m, row("←", tab2, tab3, tab4, tab5, tab6))
+	wantTitle(t, m, row("◀", tab2, tab3, tab4, tab5, tab6))
 
 	// Back through the tabs shown, nothing moves, until the one hidden.
 	for range 4 {
 		m.Update(key(tea.KeyLeft, tea.ModAlt))
 	}
 	wantCurrent(t, m, "tab-2")
-	wantTitle(t, m, row("←", tab2, tab3, tab4, tab5, tab6))
+	wantTitle(t, m, row("◀", tab2, tab3, tab4, tab5, tab6))
 	m.Update(key(tea.KeyLeft, tea.ModAlt))
 	wantCurrent(t, m, "tab-1")
-	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "→"))
+	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "▶"))
 }
 
 func TestTabStripNoTabs(t *testing.T) {
@@ -219,6 +219,28 @@ func TestTabCurrentBold(t *testing.T) {
 		if !strings.Contains(got.String(), want) {
 			t.Fatalf("no %q in %q", want, got.String())
 		}
+	}
+}
+
+// wantArrowsPlain checks the arrows shown are in the text's own colour, as a
+// muted one is lost in the border line.
+func wantArrowsPlain(t *testing.T, m *Model) {
+	t.Helper()
+	st := m.st
+	defer func() { m.st = st }()
+	m.st = style.New(true)
+	frames, ok := m.frames()
+	if !ok {
+		t.Fatal("no frames")
+	}
+	var arrows []string
+	for _, l := range m.labels(agent, frames[agent]) {
+		if l.arrow {
+			arrows = append(arrows, l.styled)
+		}
+	}
+	if len(arrows) == 0 || slices.ContainsFunc(arrows, func(a string) bool { return a != tabHiddenLeft && a != tabHiddenRight }) {
+		t.Fatalf("arrows %q, want ◀ or ▶ unstyled", arrows)
 	}
 }
 
@@ -407,9 +429,10 @@ func TestTabClicks(t *testing.T) {
 	}
 
 	// An arrow selects the nearest tab hidden on its side.
-	m.Update(clickAt(tabX(t, m, "→"), 0))
+	m.Update(clickAt(tabX(t, m, "▶"), 0))
 	wantCurrent(t, m, "tab-5")
-	m.Update(clickAt(tabX(t, m, "←"), 0))
+	wantArrowsPlain(t, m)
+	m.Update(clickAt(tabX(t, m, "◀"), 0))
 	wantCurrent(t, m, "tab-1")
 
 	// Its button closes that tab, not the current one, and only the tab.

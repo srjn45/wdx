@@ -17,19 +17,19 @@ The right pane shows one agent at a time today, the active one. This gives it a 
 ### Too many tabs for the width
 
 ```
-┬─[● swift-falcon(-)]─[● auth-fix(-)]─[? docs(-)]─→────[⤢]─┐
-┬─←─[● auth-fix(-)]─[? docs(-)]─[● tests(-)]─→─────────[⤢]─┐
-┬─←─[? docs(-)]─[● tests(-)]─[○ server(-)]─────────────[⤢]─┐
+┬─[● swift-falcon(-)]─[● auth-fix(-)]─[? docs(-)]─▶────[⤢]─┐
+┬─◀─[● auth-fix(-)]─[? docs(-)]─[● tests(-)]─▶─────────[⤢]─┐
+┬─◀─[? docs(-)]─[● tests(-)]─[○ server(-)]─────────────[⤢]─┐
 ```
 
 - Only whole tabs are shown, as many as fit: room is left before the zoom button only when the next hidden tab, on either side, would not fit in it, counting the arrows it would change. The others stay hidden until the user switches towards them.
 - Names are not shortened to fit more tabs, so that every tab shown stays readable.
-- `→` follows the last tab shown when tabs are hidden to the right, and `←` comes first when tabs are hidden to the left. They take room only when shown, so the tabs shift by two columns when `←` comes or goes.
-- They are `←` and `→` because they join the border line into one long arrow, match the keys that move that way, are in nearly every font, and are one cell wide on almost every terminal. `◀` and `▶` can show as wide emoji, and `▸` is the Agents list's cursor.
+- `▶` follows the last tab shown when tabs are hidden to the right, and `◀` comes first when tabs are hidden to the left. They take room only when shown, so the tabs shift by two columns when `◀` comes or goes.
+- They are `◀` and `▶` in the text's own colour, not muted, the human's choice of 2026-11-03: the dim `←` and `→` first used were lost in the border line. A terminal or font that draws them as wide emoji puts the title line one column out; `▸` is not used, as it is the Agents list's cursor.
 - There is no animation. The strip moves only as far as it must to keep the current tab shown, so moving to a tab already shown does not move it.
 - When closing a tab or widening the window leaves room, hidden tabs come back into it.
 - A name too long for the strip on its own is cut, keeping the mark and `(-)`: `[● very-long-na…(-)]`.
-- A click on `←` or `→` selects the nearest hidden tab on that side, so the current tab is never out of view.
+- A click on `◀` or `▶` selects the nearest hidden tab on that side, so the current tab is never out of view.
 
 ### Keys
 
@@ -80,6 +80,6 @@ The current tab and the active agent are one thing, so what reads the active age
 
 1. Tabs in `agentList`, the title drawn from them, `Enter` opening and `C-q -` closing; only the current tab attached.
 2. `Alt+←`, `Alt+→` and `Alt+↑`.
-3. The sliding strip, with `←` and `→`.
+3. The sliding strip, with `◀` and `▶`.
 4. The mouse, with the double-click fix.
 5. `C-q r` keeping the tabs, then `docs/TIDE.md`, the help and `docs/ACA.md` if it applies.

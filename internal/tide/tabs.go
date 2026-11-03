@@ -18,8 +18,8 @@ import (
 
 const (
 	tabClose       = "(-)"
-	tabHiddenLeft  = "←"
-	tabHiddenRight = "→"
+	tabHiddenLeft  = "◀"
+	tabHiddenRight = "▶"
 	// tabFrame is what a tab takes besides its name: "[● (-)]".
 	tabFrame = 7
 	// tabMark is what the mark takes of that: itself and the space after it.
@@ -264,7 +264,7 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 	}
 	room := end - x
 	if first > 0 {
-		put(label{tab: first - 1, arrow: true}, m.st.Muted(tabHiddenLeft), 1)
+		put(label{tab: first - 1, arrow: true}, tabHiddenLeft, 1)
 		x++
 		room -= tabArrow
 	}
@@ -295,7 +295,7 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 	}
 	if last < len(tabs)-1 {
 		x++
-		put(label{tab: last + 1, arrow: true}, m.st.Muted(tabHiddenRight), 1)
+		put(label{tab: last + 1, arrow: true}, tabHiddenRight, 1)
 	}
 	return labels
 }

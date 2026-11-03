@@ -273,7 +273,7 @@ Supported, though most users will mostly use the keyboard.
 
 - Click a pane to focus it.
 - Double-click a frame title, both clicks on the same thing, or click a `[⤢]` button on it, to zoom.
-- Click a terminal tab or an agent tab to switch to it, an agent tab's `(-)` to close it, and `←` or `→` on the strip to go to the nearest tab hidden there.
+- Click a terminal tab or an agent tab to switch to it, an agent tab's `(-)` to close it, and `◀` or `▶` on the strip to go to the nearest tab hidden there.
 - Drag the dividers to resize.
 - The wheel scrolls a pane's scrollback.
 - Programs that request the mouse (vim, htop) get mouse events inside their pane.
