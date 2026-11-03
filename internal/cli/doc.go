@@ -142,7 +142,7 @@ func newDocCreateCmd() *cobra.Command {
 				}
 			}
 			if path != "" {
-				content, err := readDocContent(cmd, path)
+				content, err := readContent(cmd, path)
 				if err != nil {
 					return err
 				}
@@ -198,9 +198,9 @@ func docScope(cmd *cobra.Command, scope projectScope) (project, dir string, err 
 	return "", dir, err
 }
 
-// readDocContent reads the file path names, or stdin for -. Text that is not
+// readContent reads the file path names, or stdin for -. Text that is not
 // UTF-8 is refused here: the request's JSON would quietly replace what is not.
-func readDocContent(cmd *cobra.Command, path string) (string, error) {
+func readContent(cmd *cobra.Command, path string) (string, error) {
 	var b []byte
 	var err error
 	if path == "-" {
@@ -220,7 +220,7 @@ func readDocContent(cmd *cobra.Command, path string) (string, error) {
 	if !utf8.Valid(b) {
 		return "", &client.ProblemError{Problem: api.NewProblem(api.ErrorCodeInvalidArgument, "invalid content: it is not UTF-8 text")}
 	}
-	logging.FromContext(cmd.Context()).Info("doc content read", "path", path, "size", len(b))
+	logging.FromContext(cmd.Context()).Info("content read", "path", path, "size", len(b))
 	return string(b), nil
 }
 
@@ -268,7 +268,7 @@ func newDocGetCmd() *cobra.Command {
 				r.Content = &d.Content
 				return printResult(cmd, r)
 			}
-			if err := writeDocCopy(cmd.Context(), out, d.Content, overwrite); err != nil {
+			if err := writeCopy(cmd.Context(), out, d.Content, overwrite); err != nil {
 				return err
 			}
 			r.out = out
@@ -284,8 +284,8 @@ func newDocGetCmd() *cobra.Command {
 	return cmd
 }
 
-// writeDocCopy writes content to path, refusing a file there unless overwrite.
-func writeDocCopy(ctx context.Context, path, content string, overwrite bool) error {
+// writeCopy writes content to path, refusing a file there unless overwrite.
+func writeCopy(ctx context.Context, path, content string, overwrite bool) error {
 	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	if !overwrite {
 		flags |= os.O_EXCL
@@ -303,7 +303,7 @@ func writeDocCopy(ctx context.Context, path, content string, overwrite bool) err
 	if err = cmp.Or(err, f.Close()); err != nil {
 		return err
 	}
-	logging.FromContext(ctx).Info("doc copy written", "path", path, "size", len(content), "overwrite", overwrite)
+	logging.FromContext(ctx).Info("copy written", "path", path, "size", len(content), "overwrite", overwrite)
 	return nil
 }
 
@@ -336,7 +336,7 @@ func newDocUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			content, err := readDocContent(cmd, file)
+			content, err := readContent(cmd, file)
 			if err != nil {
 				return err
 			}

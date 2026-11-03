@@ -426,6 +426,13 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 				delete(obj, "content") // a doc is measured, not logged
 				obj["content_bytes"] = float64(len(content))
 			}
+			if obj["plan"] != nil && (obj["content"] != nil || obj["definition"] != nil) {
+				// A plan's text is measured, not logged.
+				if b, err := json.Marshal(api.PlanResponseLogged([]byte(out.stdout))); err == nil {
+					printed = nil
+					_ = json.Unmarshal(b, &printed)
+				}
+			}
 		}
 		if !reflect.DeepEqual(logged, printed) {
 			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
@@ -471,7 +478,10 @@ type jsonOutput struct {
 	WorktreeCreated *bool  `json:"worktree_created"`
 	Result          string `json:"result"`
 	Dropped         []struct {
-		Path string `json:"path"`
+		Path  string `json:"path"`  // a worktree project open dropped
+		Entry string `json:"entry"` // an after a plan's reduction dropped
+		After string `json:"after"`
+		Via   string `json:"via"`
 	} `json:"dropped"`
 	Project  *jsonProject `json:"project"`
 	Projects []struct {
@@ -484,16 +494,19 @@ type jsonOutput struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
 
-	Doc            *api.Doc          `json:"doc"`
-	Docs           []api.Doc         `json:"docs"`
-	Revisions      []api.DocRevision `json:"revisions"`
-	Revision       *int64            `json:"revision"`
-	Content        *string           `json:"content"`
-	PreviousStatus *api.DocStatus    `json:"previous_status"`
-	Path           string            `json:"path"`
-	Written        []string          `json:"written"`
-	Removed        []string          `json:"removed"`
-	Skipped        []string          `json:"skipped"`
+	Doc            *api.Doc            `json:"doc"`
+	Docs           []api.Doc           `json:"docs"`
+	Revisions      []api.DocRevision   `json:"revisions"`
+	Revision       *int64              `json:"revision"`
+	Content        *string             `json:"content"`
+	PreviousStatus *api.DocStatus      `json:"previous_status"`
+	Plan           *api.Plan           `json:"plan"`
+	Plans          []api.Plan          `json:"plans"`
+	Definition     *api.PlanDefinition `json:"definition"`
+	Path           string              `json:"path"`
+	Written        []string            `json:"written"`
+	Removed        []string            `json:"removed"`
+	Skipped        []string            `json:"skipped"`
 
 	Terminal   *api.Terminal        `json:"terminal"`
 	Terminals  []api.Terminal       `json:"terminals"`
@@ -909,7 +922,7 @@ func TestHelpJSON(t *testing.T) {
 	walk(nil)
 
 	v, _ := wdxJSON(t, t.TempDir(), "--help")
-	if c := v.Command; len(c.Topics) != 4 || c.Topics[0].Name != "json" || c.Topics[3].Name != "agents" {
+	if c := v.Command; len(c.Topics) != 5 || c.Topics[0].Name != "json" || c.Topics[4].Name != "plans" {
 		t.Fatalf("unexpected topics: %+v", c.Topics)
 	}
 	v, _ = wdxJSON(t, t.TempDir(), "help", "project", "open")

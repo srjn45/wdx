@@ -861,3 +861,73 @@ func (c *Client) SyncDocsToGit(ctx context.Context, project, dir, path string) (
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
+
+// ListPlans returns the plans of the project named by project or holding dir.
+func (c *Client) ListPlans(ctx context.Context, project, dir string) (api.PlanList, error) {
+	r, err := c.api.ListPlansWithResponse(ctx, &api.ListPlansParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// CreatePlan creates the plan body describes.
+func (c *Client) CreatePlan(ctx context.Context, body api.CreatePlan) (api.PlanResult, error) {
+	r, err := c.api.CreatePlanWithResponse(ctx, body)
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// GetPlan returns the plan ref names, "id:" and its id or its name in the project
+// named by project or holding dir, with revision's content and definition, the
+// latest when it is 0.
+func (c *Client) GetPlan(ctx context.Context, ref, project, dir string, revision int64) (api.PlanContent, error) {
+	params := api.GetPlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}
+	if revision != 0 {
+		params.Revision = &revision
+	}
+	r, err := c.api.GetPlanWithResponse(ctx, ref, &params)
+	if err != nil {
+		return api.PlanContent{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// RenamePlan gives the plan ref names, as GetPlan does, the name name.
+func (c *Client) RenamePlan(ctx context.Context, ref, project, dir, name string) (api.PlanResult, error) {
+	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdatePlan{Name: name})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// UpdatePlanContent writes content as the next revision of the plan ref names, as
+// GetPlan does, if base is still its latest.
+func (c *Client) UpdatePlanContent(ctx context.Context, ref, project, dir string, base int64, content string) (api.PlanResult, error) {
+	r, err := c.api.UpdatePlanContentWithResponse(ctx, ref, &api.UpdatePlanContentParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.DocContentChange{Base: base, Content: content})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// ListPlanRevisions returns the revisions of the plan ref names, as GetPlan does.
+func (c *Client) ListPlanRevisions(ctx context.Context, ref, project, dir string) (api.DocRevisionList, error) {
+	r, err := c.api.ListPlanRevisionsWithResponse(ctx, ref, &api.ListPlanRevisionsParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.DocRevisionList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// DeletePlan removes the plan ref names, as GetPlan does.
+func (c *Client) DeletePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.DeletePlanWithResponse(ctx, ref, &api.DeletePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

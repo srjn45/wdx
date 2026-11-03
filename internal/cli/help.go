@@ -609,6 +609,7 @@ var topics = []topic{
 	{"settings", "every setting, its default and where it is read from", settingsTopic},
 	{"logs", "where runs are logged, and finding one by its debug_id", logsTopic},
 	{"agents", "how an AI agent wdx runs works through wdx: child agents, messages, worktrees, docs", agentsTopic},
+	{"plans", "how to write a plan: its YAML, its rules, and examples", plansTopic},
 }
 
 func findTopic(name string) (topic, bool) {
@@ -777,4 +778,86 @@ func agentsTopic(st style.Style) string {
   your change, and update with the new base.
 ` + commands(w+" doc create --name <doc> --path <file> --labels <labels>", "") +
 		`  Approving or rejecting a doc is the person's to do, unless you are asked.`
+}
+
+// The examples of wdx help plans, which TestPlansTopicExamples creates.
+const (
+	planTasksExample = `goal: Keep sessions in the database instead of cookies.
+constraints:
+  - The public API does not change.
+tasks:
+  - id: schema
+    prompt: |
+      Add a sessions table with id, user_id and expires_at.
+  - id: store
+    after: [schema]
+    prompt: |
+      Write the session store on top of the table.
+  - id: api
+    after: [schema]
+    prompt: |
+      Change the login and logout handlers to use sessions.
+  - id: docs
+    after: [store, api]
+    prompt: |
+      Document the session lifetime in docs/AUTH.md.
+`
+	planPlansExample = `goal: Rewrite authentication.
+plans:
+  - id: auth-sessions
+  - id: auth-tokens
+    after: [auth-sessions]
+  - id: auth-cleanup
+    after: [auth-tokens]
+`
+)
+
+// plansTopic is the reference of a plan's YAML (docs/PLANS.md).
+func plansTopic(st style.Style) string {
+	w := identity.Name
+	indent := func(text string) string {
+		var b strings.Builder
+		for line := range strings.Lines(text) {
+			b.WriteString("    " + line)
+		}
+		return b.String()
+	}
+	key := func(name, text string) string { return "  " + st.Name(fmt.Sprintf("%-12s", name)) + " " + text + "\n" }
+	return `A plan is YAML, checked whenever it is saved: every problem is reported with its
+line, and nothing is saved until there are none.
+
+` + key("goal", "required: what the work is for; every task's agent is told it") +
+		key("constraints", "a list of rules every task's agent is told") +
+		key("tasks", "the tasks, each:") +
+		key("  id", "letters, numbers and -, at most 50, unique whatever the case") +
+		key("  prompt", "what the task's agent is asked to do") +
+		key("  after", "a list of the tasks it waits for") +
+		key("plans", "in place of tasks, for a plan of plans: plans of the project, each:") +
+		key("  id", "the plan's name") +
+		key("  after", "a list of the plans it waits for") + `
+A task with no after starts at once: nothing waits unless after says so. Tasks
+are listed in DAG order, after everything they wait for, keeping the order they
+are written in where they are free to go in either.
+
+An after that another path already covers is dropped when the plan is saved:
+with docs after store and schema, and store after schema, docs' after schema
+goes. The plan is stored without it, keeping comments, and ` + w + ` says what it
+dropped.
+
+` + st.Heading("A plan of tasks") + `
+` + indent(planTasksExample) + `
+` + st.Heading("A plan of plans") + `
+  A big plan broken into smaller ones, each landing as a PR of its own. It
+  lists plans of tasks the project already has, never plans of plans, and a
+  plan has one parent at most. A plan a plan of plans lists cannot be renamed
+  or removed until it is taken out.
+` + indent(planPlansExample) + `
+` + st.Heading("Saving one") + `
+  Send the YAML on stdin, with no file to write:
+    ` + st.Command(w+" plan create --name sso --path - <<'EOF'") + `
+    ...
+    ` + st.Command("EOF") + `
+  To change one, get a copy and write it back naming the revision you read:
+    ` + st.Command(w+" plan get --name sso --out sso.yaml") + `
+    ` + st.Command(w+" plan update --name sso --path sso.yaml --base 1")
 }

@@ -484,7 +484,8 @@ Each command takes `--project-id <id> | --project-name <name>`, or the project o
 
 - `create` needs `--path`, a file or `-` for stdin: an empty plan is not a valid one, and a template would be a plan that runs. An AI sends the YAML on stdin (`wdx plan create --name auth --path - <<'EOF'`), with no file to write; a `--content` flag would put multi-line YAML in shell quoting. `wdx help plans` is what it writes from.
 - Text output adds a line per dropped `after`: `dropped docs after schema: api already waits for it`.
-- `invalid_plan` in text lists each problem as `<file>:<line>: <message>`, the file being `--path` or `stdin`, so that editors and AIs can jump to it.
+- `invalid_plan` in text says `the plan in <file> has N problems`, then lists each as `<file>:<line>: <message>`, the file being `--path` or `stdin`, so that editors and AIs can jump to it; `--json` keeps the API's problem, with `details.problems`.
+- The CLI measures a plan's YAML, and the goal, constraints and prompts of `plan status`, in what it logs, as the daemon does (`api.PlanResponseLogged`, shared by both).
 - `plan_changed`, `get --out`, `--overwrite`, `remove`'s question and `--yes`, and the completions follow `doc`'s, word for word with `plan`.
 - No `set`: a plan has no status or labels. `copy`, `run` and the rest come with their steps.
 

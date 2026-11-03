@@ -95,7 +95,7 @@ func TestAgentsTopicCommands(t *testing.T) {
 
 func TestHelpTopicJSON(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"json", "settings", "logs", "agents"} {
+	for _, name := range []string{"json", "settings", "logs", "agents", "plans"} {
 		v, exit := wdxJSON(t, t.TempDir(), "help", name)
 		if exit != api.ExitOK || v.Topic == nil || v.Topic.Name != name || v.Topic.Text == "" || (v.Topic.Settings != nil) != (name == "settings") {
 			t.Fatalf("%s: unexpected topic %+v", name, v.Topic)

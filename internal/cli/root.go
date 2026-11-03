@@ -202,7 +202,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 	}
 	logReturned(log, cmd, start, exit, p.Code, p, err)
 	asJSON := wantsJSON(cmd, args)
-	printError(env, asJSON, style.New(!asJSON && colorOn(cmd, env, env.Stderr)), p, cmd.Annotations[failurePrefix])
+	printError(env, asJSON, style.New(!asJSON && colorOn(cmd, env, env.Stderr)), p, cmd.Annotations[failurePrefix], problemLines(p, err))
 	return exit
 }
 
@@ -227,22 +227,29 @@ func ConfigError(args []string, env Env, err error) int {
 	asJSON := slices.Contains(args, "--json")
 	// The color setting may be among those that failed.
 	st := style.New(!asJSON && !env.NoColor && isTerminal(env.Stderr))
-	printError(env, asJSON, st, p, "")
+	printError(env, asJSON, st, p, "", nil)
 	return api.Codes[api.ErrorCodeUsage].Exit
 }
 
 // printError writes p to stdout as JSON, or to stderr as text: what failed on
-// the first line, then the hint and the debug id.
-func printError(env Env, asJSON bool, st style.Style, p api.Problem, prefix string) {
+// the first line, then the hint and the debug id. Text given lines prints the
+// first in place of p's detail and the others under it, as a list of problems.
+func printError(env Env, asJSON bool, st style.Style, p api.Problem, prefix string, lines []string) {
 	if asJSON {
 		_ = writeJSON(env.Stdout, p)
 		return
 	}
 	msg := p.Detail
+	if len(lines) > 0 {
+		msg = lines[0]
+	}
 	if prefix != "" {
 		msg = prefix + ": " + msg
 	}
 	fmt.Fprintf(env.Stderr, "%s %s  %s\n", st.Failure(identity.Name+":"), msg, st.Failure("["+string(p.Code)+"]"))
+	for _, line := range lines[min(1, len(lines)):] {
+		fmt.Fprintf(env.Stderr, "  %s\n", line)
+	}
 	if p.Hint != nil {
 		fmt.Fprintf(env.Stderr, "  %s %s\n", st.Hint("hint:"), hintText(st, *p.Hint))
 	}
@@ -448,7 +455,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 	color := cfg.Color
 	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
 	completeFlag(root, "color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd(), newDocCmd())
+	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newPlanCmd())
 	setHelp(root)
 	root.InitDefaultHelpCmd()
 	setCompletions(root)
