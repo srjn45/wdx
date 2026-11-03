@@ -131,11 +131,12 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			}
 			a.SessionID = session
 			dir, _ := runDir(a)
-			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID)})
+			note := LaunchNote()
+			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Note: note})
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
-			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "dir", dir, "command", command)
+			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "dir", dir, "command", withoutNote(command, note))
 			return terminal.AgentLaunch{AgentID: a.ID, ACA: a.ACA, Command: command, Dir: dir}, nil
 		}
 		return terminal.AgentLaunch{}, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
@@ -331,6 +332,31 @@ func firstMessage(a Agent) string {
 		text += fmt.Sprintf(" You were last in %s, which no longer exists; you are in %s.", gone, dir)
 	}
 	return text
+}
+
+// LaunchNote is added to the system prompt of every agent wdx starts, so that it uses
+// wdx rather than its own means and knows where to read how (docs/IDE.md). It names no
+// command but the manual's, as it costs tokens in every session.
+func LaunchNote() string {
+	return fmt.Sprintf("You are running under %[1]s, which manages this project's AI coding agents, their worktrees and the project's docs. "+
+		"%[2]s in your environment is your id. "+
+		"%[1]s comes first: for child agents instead of your own subagents, for worktrees, for messages to other agents and for the project's docs, "+
+		"use %[1]s rather than your own means, so the person sees all the work in one place. "+
+		"If %[1]s fails, use your own means and say so. "+
+		"Before doing any of these, run `%[1]s help agents`: it says how. "+
+		"If another agent gave you your task, report your result to it through %[1]s when you finish.",
+		identity.Name, identity.Env("AGENT_ID"))
+}
+
+// withoutNote is command as logged: the note is the same at every start.
+func withoutNote(command []string, note string) []string {
+	logged := slices.Clone(command)
+	for i, arg := range logged {
+		if arg == note {
+			logged[i] = "<launch note>"
+		}
+	}
+	return logged
 }
 
 // Rename gives an agent a new name; a tombstone fails with a *RemovedError.

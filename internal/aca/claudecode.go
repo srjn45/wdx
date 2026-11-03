@@ -29,6 +29,11 @@ func (ClaudeCode) Command(l Launch) ([]string, error) {
 	if resume {
 		command = []string{"claude", "--resume", l.SessionID}
 	}
+	if l.Note != "" {
+		// Unlike a first message, it outlives a compaction. A resumed conversation keeps the
+		// system prompt it recorded until then (--system-prompt-snapshot, 2.1.317).
+		command = append(command, "--append-system-prompt", l.Note)
+	}
 	if l.BackupDir == "" {
 		return command, nil
 	}

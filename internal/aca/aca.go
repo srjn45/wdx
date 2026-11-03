@@ -98,4 +98,6 @@ type Launch struct {
 	// Shell is the user's login shell, which finds the AI CLI when something other than
 	// Command has to run it. Only Detached and StopDetached need it.
 	Shell string
+	// Note is added to the AI CLI's system prompt; "" adds nothing.
+	Note string
 }

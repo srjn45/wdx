@@ -58,7 +58,7 @@ func newFixture(t *testing.T, script string) fixture {
 	if _, err := d.Exec(`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-app', 'app', 'open', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
-	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Script: script}
+	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Notes: filepath.Join(t.TempDir(), "notes"), Script: script}
 	store := NewStore(d)
 	backups := NewBackups(ctx, store, home, []aca.AiCodingAgent{test}, 0)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
@@ -183,6 +183,38 @@ func TestLookups(t *testing.T) {
 	}
 	if _, err := f.agents.Store().Get(ctx, "agent-nothing"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Get of nothing: %v", err)
+	}
+}
+
+// TestEveryStartGivesTheNote: the first start and the next, as what the ACA does with
+// it on a resume is its own.
+func TestEveryStartGivesTheNote(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	a := f.create(t, "helper")
+	f.waitState(t, a.ID, terminal.StateExited)
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	notes, err := f.aca.NotesGiven()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note := LaunchNote(); !slices.Equal(notes, []string{note, note}) {
+		t.Fatalf("notes = %q, want the launch note twice", notes)
+	}
+}
+
+// TestLaunchNoteNamesTheManual: the note's one command, which the cli's help tests keep.
+func TestLaunchNoteNamesTheManual(t *testing.T) {
+	t.Parallel()
+	note := LaunchNote()
+	for _, want := range []string{"`" + identity.Name + " help agents`", identity.Env("AGENT_ID")} {
+		if !strings.Contains(note, want) {
+			t.Errorf("note %q does not name %q", note, want)
+		}
 	}
 }
 
@@ -990,5 +1022,14 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	}
 	if list := f.messagesOf(t, a); len(list) != 1 {
 		t.Errorf("two first messages: %+v", list)
+	}
+}
+
+// TestNoteNotLogged: a launch's log line keeps the command short.
+func TestNoteNotLogged(t *testing.T) {
+	t.Parallel()
+	got := withoutNote([]string{"claude", "--append-system-prompt", "use wdx"}, "use wdx")
+	if want := []string{"claude", "--append-system-prompt", "<launch note>"}; !slices.Equal(got, want) {
+		t.Errorf("logged = %q, want %q", got, want)
 	}
 }

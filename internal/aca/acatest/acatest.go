@@ -24,6 +24,8 @@ const defaultScript = "if [ -f run ]; then . ./run; fi; exec sleep 1000"
 type ACA struct {
 	// Launches, when set, records each start's session.
 	Launches string
+	// Notes, when set, records each start's note, one line each.
+	Notes string
 	// Script is what its shell runs; defaultScript when "".
 	Script string
 	// Conversation, when set, is the file BackUp takes the transcript from, and
@@ -109,11 +111,34 @@ func (a *ACA) Command(l aca.Launch) ([]string, error) {
 			return nil, err
 		}
 	}
+	if a.Notes != "" {
+		if err := appendLine(a.Notes, l.Note); err != nil {
+			return nil, err
+		}
+	}
 	script := a.Script
 	if script == "" {
 		script = defaultScript
 	}
 	return []string{"/bin/sh", "-c", script}, nil
+}
+
+func appendLine(path, line string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(f, line)
+	return errors.Join(err, f.Close())
+}
+
+// NotesGiven returns the notes a's Notes recorded, oldest first.
+func (a *ACA) NotesGiven() ([]string, error) {
+	data, err := os.ReadFile(a.Notes)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n"), nil
 }
 
 // Sessions returns the sessions a's Launches recorded, oldest first.
