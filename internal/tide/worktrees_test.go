@@ -1403,10 +1403,12 @@ func TestLandAsksAnAgentAfterAConflict(t *testing.T) {
 	p.until(t, "the box", func(m *Model) bool { return m.land != nil })
 	p.keys("y")
 	// The landing fails at the head the rebase was undone to, which the worktree's own
-	// status may show only later: until then L takes it as rebased since, and lands.
+	// status may show only later: until then L takes it as rebased since, and lands. A
+	// status read while the rebase was undone can show that head with the conflicted
+	// files still there, when L says to commit first.
 	p.until(t, "the conflict", func(m *Model) bool {
 		w, ok := m.worktreeNamed("work")
-		return ok && landingFailed(w) && deref(w.Head) == deref(w.Landing.Head) && m.land == nil &&
+		return ok && landingFailed(w) && deref(w.Head) == deref(w.Landing.Head) && len(w.Files) == 0 && m.land == nil &&
 			len(m.agents()) == 1 && m.agents()[0].State == api.AgentStateRunning
 	})
 	if !strings.Contains(m.statusNotice, "L asks an agent") {
