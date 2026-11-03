@@ -148,7 +148,7 @@ func (st *projectStream) next() (event string, data []byte, err error) {
 	if err != nil {
 		return "", nil, err
 	}
-	data, err = json.Marshal(api.ProjectEnvelope{Project: v, Tabs: tabViews(tabs), TabsRevision: revision})
+	data, err = json.Marshal(api.ProjectEnvelope{Project: v, Tabs: st.s.tabViews(st.id, tabs), TabsRevision: revision})
 	return "project", data, err
 }
 

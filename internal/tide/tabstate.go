@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // The daemon keeps each project's tabs (docs/TIDE_STATE.md): tide sends the list
@@ -152,9 +153,13 @@ func (m *Model) tabsFromStream(saved []api.Tab, revision int64) {
 		return
 	}
 	tabs := []string{}
+	l.missingTabs = map[string]bool{}
 	for _, t := range saved {
 		if tab, ok := tideTab(t); ok {
 			tabs = append(tabs, tab)
+			if t.Missing != nil && *t.Missing {
+				l.missingTabs[tab] = true
+			}
 		}
 	}
 	if !l.tabsRead {
@@ -205,4 +210,21 @@ func (m *Model) replaceTabs(tabs []string) {
 	if len(l.tabs) == 0 && m.layout.focus == agent {
 		m.focusProjectPane()
 	}
+}
+
+// missingShown reports whether the agent pane shows a tab whose file or worktree
+// was removed outside wdx.
+func (m *Model) missingShown() bool {
+	l := m.list()
+	return l != nil && l.missingTabs[l.active] && !m.editShown()
+}
+
+// missingLines say what the current tab showed and where it was, now gone.
+func (m *Model) missingLines(st style.Style) []string {
+	worktree, file := diffTabOf(m.list().active)
+	what := st.Muted("worktree ") + st.Name(worktree) + st.Muted(" is no longer there")
+	if w, ok := m.worktreeNamed(worktree); ok && !w.Missing && isFileTab(m.list().active) {
+		what = st.Muted("file ") + st.Name(file) + st.Muted(" is no longer in worktree ") + st.Name(worktree)
+	}
+	return []string{what, st.Command("C-q -") + st.Muted(" closes this tab")}
 }

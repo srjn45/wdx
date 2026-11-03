@@ -2184,6 +2184,13 @@ components:
           type: string
           nullable: true
           description: The file, relative to the worktree.
+        missing:
+          type: boolean
+          description: |
+            In responses: what the tab shows was removed outside wdx, and is
+            not there now (docs/TIDE_STATE.md). A file tab's file, or the
+            worktree of a file, diff or pr tab, as git lists it. Ignored in a
+            request.
 
     TabKind:
       type: string

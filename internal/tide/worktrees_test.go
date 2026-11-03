@@ -1068,7 +1068,8 @@ func TestWorktreeDiffsLive(t *testing.T) {
 		return strings.Contains(text(m), "pr: work") && v != nil && slices.Contains(v.unified, "+still to commit")
 	})
 
-	// A diff's tab stays when what it shows is gone, and says why.
+	// A diff's tab stays when its worktree is removed outside wdx, marked missing,
+	// and says what is gone.
 	if len(m.list().tabs) != 2 {
 		t.Errorf("tabs: %v", m.list().tabs)
 	}
@@ -1077,7 +1078,9 @@ func TestWorktreeDiffsLive(t *testing.T) {
 	if len(m.list().tabs) != 2 {
 		t.Errorf("tabs after: %v", m.list().tabs)
 	}
-	p.until(t, "the tab saying so", func(m *Model) bool { return strings.Contains(text(m), "could not be read") })
+	p.until(t, "the tab saying so", func(m *Model) bool {
+		return strings.Contains(text(m), "worktree work is no longer there") && strings.Contains(titleRow(m), "✗")
+	})
 }
 
 // TestCommitSent goes through a real daemon to a real agent's inbox: what Enter sends

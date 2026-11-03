@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/gittest"
 
 	"github.com/srjn45/wdx/internal/api"
 )
@@ -27,9 +32,15 @@ func (td *testDaemon) replaceTabs(t *testing.T, project string, tabs ...api.Tab)
 	return r
 }
 
-// tabsAre reports whether an event has exactly the tabs want, in their order.
+// tabsAre reports whether an event has exactly the tabs want, in their order,
+// whether missing or not.
 func tabsAre(e event, want ...api.Tab) bool {
-	got, _ := json.Marshal(e.tabs)
+	tabs := make([]api.Tab, len(e.tabs))
+	for i, t := range e.tabs {
+		t.Missing = nil
+		tabs[i] = t
+	}
+	got, _ := json.Marshal(tabs)
 	w, _ := json.Marshal(append([]api.Tab{}, want...))
 	return e.name == "project" && e.tabs != nil && string(got) == string(w)
 }
@@ -50,6 +61,9 @@ func TestReplaceTabs(t *testing.T) {
 		t.Fatalf("replace: %s", r.Body)
 	}
 	saved := r.JSON200.TabsRevision
+	for i := range r.JSON200.Tabs {
+		r.JSON200.Tabs[i].Missing = nil
+	}
 	answered, _ := json.Marshal(r.JSON200.Tabs)
 	if given, _ := json.Marshal(tabs); string(answered) != string(given) {
 		t.Errorf("answered %s, want %s", answered, given)
@@ -128,4 +142,43 @@ func TestTabsFollowFiles(t *testing.T) {
 		t.Fatalf("remove: %v %s", err, r.Body)
 	}
 	td.waitProject(t, "api", "the tabs removed", func(e event) bool { return tabsAre(e, fileTab("main", "a.go")) })
+}
+
+// missingIn returns the missing of each of an event's tabs.
+func missingIn(e event) []bool {
+	var list []bool
+	for _, t := range e.tabs {
+		list = append(list, t.Missing != nil && *t.Missing)
+	}
+	return list
+}
+
+// TestTabsMissing: a file tab is missing while its file is gone from the disk, and
+// a diff or pr tab while its worktree is; a diff of a deleted file is not.
+func TestTabsMissing(t *testing.T) {
+	t.Parallel()
+	td, p := startEditing(t, "")
+	dir := p.Worktrees[0].Path
+	work := filepath.Join(t.TempDir(), "work")
+	gittest.Git(t, dir, "worktree", "add", "-q", work, "-b", "work")
+	writeIn(t, work, "b.go", "package b\n")
+	diff, workName := "a.go", "work"
+	td.replaceTabs(t, "api", fileTab("main", "a.go"), api.Tab{Kind: api.TabKindDiff, Worktree: optional("main"), Path: &diff},
+		fileTab("work", "b.go"), api.Tab{Kind: api.TabKindPr, Worktree: &workName})
+	events, _ := td.followWith(t, "api", &api.StreamProjectParams{Worktrees: optional(true)})
+	missing := func(what string, want ...bool) {
+		t.Helper()
+		waitEvent(t, events, what, func(e event) bool { return e.name == "project" && slices.Equal(missingIn(e), want) })
+	}
+	missing("all there", false, false, false, false)
+
+	if err := os.Remove(filepath.Join(dir, "a.go")); err != nil {
+		t.Fatal(err)
+	}
+	missing("a.go gone, its diff still showing the deletion", true, false, false, false)
+	writeIn(t, dir, "a.go", "package a\n")
+	missing("a.go back", false, false, false, false)
+
+	gittest.Git(t, dir, "worktree", "remove", "--force", work) // outside wdx
+	missing("the worktree gone", false, false, true, true)
 }

@@ -18,6 +18,7 @@ import (
 
 const (
 	tabClose       = "(-)"
+	missingMark    = "✗" // a tab whose file or worktree was removed outside wdx
 	tabHiddenLeft  = "◀"
 	tabHiddenRight = "▶"
 	// tabFrame is what a tab takes besides its name: "[● (-)]".
@@ -70,20 +71,22 @@ func (m *Model) closeTab(tab, reason string) {
 
 // agentTab is an open tab with the agent it is of, if any.
 type agentTab struct {
-	tab   string
-	agent api.Agent
-	diff  string // what a diff's or file's tab is called now
+	tab     string
+	agent   api.Agent
+	diff    string // what a diff's or file's tab is called now
+	missing bool   // what it shows was removed outside wdx
 }
 
-// marked reports whether it shows a state mark: only an agent has a state.
-func (t agentTab) marked() bool { return t.tab != settingsTab && !isTextTab(t.tab) }
+// marked reports whether it shows a mark: an agent its state, and a tab whose file
+// or worktree is gone that it is.
+func (t agentTab) marked() bool { return t.missing || t.tab != settingsTab && !isTextTab(t.tab) }
 
 // title is what the strip calls it.
 func (t agentTab) title() string {
 	switch {
 	case isTextTab(t.tab):
 		return t.diff
-	case !t.marked():
+	case t.tab == settingsTab:
 		return settingsTab
 	case isInfoTab(t.tab):
 		return infoLabel + t.agent.Name
@@ -108,7 +111,7 @@ func (m *Model) openTabs() []agentTab {
 	var tabs []agentTab
 	for _, tab := range l.tabs {
 		if isTextTab(tab) {
-			tabs = append(tabs, agentTab{tab: tab, diff: m.diffTitle(tab)})
+			tabs = append(tabs, agentTab{tab: tab, diff: m.diffTitle(tab), missing: l.missingTabs[tab]})
 		} else if tab == settingsTab {
 			tabs = append(tabs, agentTab{tab: tab})
 		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
@@ -252,7 +255,11 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 			name = ansi.Truncate(name, max(room-t.frame(), 0), "…")
 		}
 		put(label{tab: i}, styled("["), 1)
-		if t.marked() {
+		switch {
+		case t.missing:
+			put(label{tab: i}, m.st.Failure(missingMark), 1)
+			name = " " + name
+		case t.marked():
 			put(label{tab: i}, agentMark(m.st, t.agent), 1)
 			name = " " + name
 		}

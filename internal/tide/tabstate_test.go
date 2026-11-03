@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -169,5 +170,60 @@ func TestTabsFlushedOnQuit(t *testing.T) {
 	}
 	if want := []string{one.Id, two.Id, infoTab(two.Id)}; !slices.Equal(kept, want) {
 		t.Fatalf("kept %v, want %v", kept, want)
+	}
+}
+
+// TestMissingTab: a tab whose file the daemon says is gone is marked ✗, its pane
+// says what is gone and where, it reads nothing, and C-q - closes it; one whose
+// file is back is whole again.
+func TestMissingTab(t *testing.T) {
+	t.Parallel()
+	worktrees := []api.WorktreeStatus{{Name: "main", Path: "/r"}}
+	m := worktreesModel(worktrees...)
+	tab := fileTab("main", "a.go")
+	l := m.list()
+	l.tabsRead, l.tabs, l.active, l.savedTabs = true, []string{tab}, tab, []string{tab}
+	m.layout.setFocus(agent)
+	sent := func(missing bool) {
+		a, _ := apiTab(tab)
+		a.Missing = &missing
+		m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", WorktreeStatuses: &worktrees}, Tabs: []api.Tab{a}}})
+	}
+	sent(true)
+	if row := titleRow(m); !strings.Contains(row, "[✗ ") {
+		t.Errorf("the strip %q", row)
+	}
+	if got := text(m); !strings.Contains(got, "file a.go is no longer in worktree main") || !strings.Contains(got, "C-q - closes this tab") {
+		t.Fatalf("the pane:\n%s", got)
+	}
+	if v := l.diffs[tab]; v != nil && v.asked {
+		t.Errorf("a missing tab was read: %+v", v)
+	}
+
+	sent(false)
+	if strings.Contains(titleRow(m), "✗") || strings.Contains(text(m), "no longer") {
+		t.Errorf("back, still missing:\n%s", text(m))
+	}
+	sent(true)
+	keys(m, "C-q", "-")
+	if len(l.tabs) != 0 {
+		t.Errorf("C-q - left %v", l.tabs)
+	}
+}
+
+// TestMissingWorktreeTab: a tab whose worktree is gone says so, not that its file is.
+func TestMissingWorktreeTab(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(api.WorktreeStatus{Name: "main", Path: "/r"})
+	tab := committedTab("feat")
+	l := m.list()
+	l.tabsRead, l.tabs, l.active, l.savedTabs = true, []string{tab}, tab, []string{tab}
+	m.layout.setFocus(agent)
+	a, _ := apiTab(tab)
+	yes := true
+	a.Missing = &yes
+	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: *m.following.project, Tabs: []api.Tab{a}}})
+	if got := text(m); !strings.Contains(got, "worktree feat is no longer there") {
+		t.Fatalf("the pane:\n%s", got)
 	}
 }

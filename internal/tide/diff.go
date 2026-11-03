@@ -247,8 +247,8 @@ func (m *Model) diffSync() tea.Cmd {
 	}
 	came := l.active != l.lastActive
 	l.lastActive = l.active
-	if !isTextTab(l.active) {
-		return nil
+	if !isTextTab(l.active) || l.missingTabs[l.active] {
+		return nil // a missing tab's pane says what is gone, and reads nothing
 	}
 	if l.diffs == nil {
 		l.diffs = map[string]*diffView{}
