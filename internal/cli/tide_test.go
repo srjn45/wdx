@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
-	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestTideRefused(t *testing.T) {
@@ -39,7 +38,7 @@ func TestTideRunning(t *testing.T) {
 	// Until it has, a C-q would come right after the Esc and read as Alt+C-q.
 	run.waitFor("the popup closed", func(text string) bool { return !strings.Contains(text, "┃ Open Project") })
 	run.input("\x11") // C-q: the menu
-	run.waitScreen("┃ o  open project")
+	run.waitScreen("┃ q  quit")
 	run.input("q")
 	if out := run.waitText(); out.exit != api.ExitOK {
 		t.Fatalf("quit: %+v", out)
@@ -78,7 +77,7 @@ func TestTideDetachesAttach(t *testing.T) {
 	run.input("d")
 	run.waitScreen("detached from terminal")
 	run.input("\x11")
-	run.waitScreen("┃ o  open project")
+	run.waitScreen("┃ q  quit")
 	run.input("q")
 	if out := run.waitText(); out.exit != api.ExitOK {
 		t.Fatalf("got %+v", out)
@@ -111,7 +110,7 @@ func TestTide(t *testing.T) {
 	run.waitScreen("agent · zoomed")
 	run.waitScreen("no agents: C-q a creates one")
 	run.input("\x11") // C-q: the menu
-	run.waitScreen("┃ o  open project")
+	run.waitScreen("┃ q  quit")
 	run.input("q")
 	out := run.waitText()
 	if out.exit != api.ExitOK || out.stdout != "tide closed\n" {
@@ -120,66 +119,20 @@ func TestTide(t *testing.T) {
 	run.waitScreen(callingText) // the window given back
 }
 
-// C-q r replaces tide with the binary: the same process, showing the same,
-// and the terminal under it never notices.
-func TestTideReload(t *testing.T) {
+// TestTideResume starts tide as an older release's C-q r does, through --resume:
+// it shows what the state says, with no popup to choose a project from.
+func TestTideResume(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	dir := newProjectDir(t, home, "app")
 	newTerminal(t, home, dir, "shell")
-	pid := func() int {
-		v, exit := wdxJSON(t, home, "terminal", "get", "--name", "shell", "--project-name", "app")
-		if exit != api.ExitOK || v.Terminal == nil || v.Terminal.Pid == nil {
-			t.Fatalf("get: exit %d, %+v", exit, v)
-		}
-		return *v.Terminal.Pid
-	}
-	before := pid()
-	run, proc := startBinaryInTerminal(t, home, home, 128, 24, []string{"tide"})
-	run.waitScreen("Switch Project")
-	run.input("\r") // the first open project: app
-	run.waitScreen("┌ [Project: app]")
-	run.waitScreen("[wdx ")
-	run.input("\x1b[1;3B") // Alt+↓: the terminal pane
-	run.waitScreen(" app · terminal · shell")
-	run.input("\x1d") // C-]: zoomed
+	state := `{"project":"app","focus":"terminal","zoomed":"terminal","last_top":"project","terminal_open":true}`
+	run := startInTerminal(t, home, home, 128, 24, []string{"tide", "--resume", state})
 	run.waitScreen("terminal · shell · zoomed")
-
 	run.input("\x11") // C-q: the menu
-	run.waitScreen("┃ r  reload tide")
-	run.input("r")
-	// Until the next tide has taken the terminal, the status line still on it is
-	// the old tide's, and a key goes to a process that is ending. The next one
-	// clears the screen as it enters, so what follows is its own: no popup to
-	// choose a project from, as only a resumed tide shows this with no key pressed.
-	run.waitAltScreens(2)
-	run.waitScreen("terminal · shell · zoomed")
-	if got := pid(); got != before {
-		t.Fatalf("the shell went from pid %v to %v", before, got)
-	}
-	run.input("\x11")
 	run.waitScreen("┃ q  quit")
 	run.input("q")
-	// Two runs in one process, which the checks of one run do not fit.
-	var out output
-	select {
-	case out = <-run.done:
-	case <-waittest.After(t):
-		t.Fatalf("tide did not end:\n%s", run.text())
-	}
-	if out.exit != api.ExitOK || out.stdout != "tide reloaded\ntide closed\n" {
+	if out := run.waitText(); out.exit != api.ExitOK || out.stdout != "tide closed\n" {
 		t.Fatalf("got %+v", out)
-	}
-	if out.pid != proc.Pid {
-		t.Fatalf("another process: %d, not %d", out.pid, proc.Pid)
-	}
-	var returned int
-	for _, l := range logLines(t, home, []string{"tide"}) {
-		if l.Msg == "command returned" && l.Pid == proc.Pid {
-			returned++
-		}
-	}
-	if returned != 2 {
-		t.Fatalf("%d runs logged their return, want 2", returned)
 	}
 }

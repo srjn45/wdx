@@ -250,12 +250,12 @@ func TestStartWithoutProjects(t *testing.T) {
 	if len(m.opening) != 0 {
 		t.Fatalf("Esc left it open:\n%s", text(m))
 	}
-	wantText(t, m, "[No Project]", "no project open", "C-q p switch project", "C-q o open project")
+	wantText(t, m, "[No Project]", "no project open", "C-q p s switch project", "C-q p o open project")
 	keys(m, `C-\`)
 	if m.layout.shown(terminal) {
 		t.Fatal("C-\\ showed terminals with no project")
 	}
-	keys(m, "C-q", "p")
+	keys(m, "C-q", "p", "s")
 	wantText(t, m, "┃ Switch Project", "▸ Open/Create Project")
 	keys(m, "enter")
 	if m.switcher != nil {
@@ -285,7 +285,7 @@ func TestStartWithOpenProjects(t *testing.T) {
 		t.Fatalf("Esc: switcher %v, shown %q", m.switcher, m.shown)
 	}
 	wantText(t, m, "[No Project]")
-	keys(m, "C-q", "o")
+	keys(m, "C-q", "p", "o")
 	wantText(t, m, "┃ Open Project", "▸ Open a local repository", "closed projects", "  alpha")
 }
 
@@ -309,7 +309,7 @@ func TestReopen(t *testing.T) {
 	}
 
 	// C-q o opens the popup from any pane, whose focus and zoom it leaves.
-	keys(m, "alt+right", "C-]", "C-q", "o")
+	keys(m, "alt+right", "C-]", "C-q", "p", "o")
 	if m.layout.focus != agent || m.layout.zoomed != agent {
 		t.Fatalf("C-q o: focus %s, zoomed %s", m.layout.focus, m.layout.zoomed)
 	}
@@ -317,7 +317,7 @@ func TestReopen(t *testing.T) {
 	if strings.Contains(text(m), "  alpha") {
 		t.Fatalf("alpha still listed closed:\n%s", text(m))
 	}
-	keys(m, "C-q", "o") // once is enough
+	keys(m, "C-q", "p", "o") // once is enough
 	keys(m, "esc")
 	if len(m.opening) != 0 || m.layout.focus != agent || m.layout.zoomed != agent {
 		t.Fatalf("Esc: popup %d screens, focus %s, zoomed %s", len(m.opening), m.layout.focus, m.layout.zoomed)
@@ -422,8 +422,8 @@ func TestSwitcher(t *testing.T) {
 		t.Fatalf("shown %q, switcher %v", m.shown, m.switcher)
 	}
 
-	keys(m, "C-q", "p", "down", "up", "enter") // the first: beta
-	keys(m, "C-q", "p")
+	keys(m, "C-q", "p", "s", "down", "up", "enter") // the first: beta
+	keys(m, "C-q", "p", "s")
 	wantText(t, m, "▸ gamma") // the one shown before
 	keys(m, "enter")
 	if m.shown != "gamma" || m.previous != "beta" {
@@ -432,7 +432,7 @@ func TestSwitcher(t *testing.T) {
 
 	// Above the first project is the way to [Open Project], where the closed
 	// ones are; Esc there closes it, rather than going back to the switcher.
-	keys(m, "C-q", "p", "up", "up")
+	keys(m, "C-q", "p", "s", "up", "up")
 	wantText(t, m, "▸ Open/Create Project")
 	keys(m, "down")
 	wantText(t, m, "▸ beta")
@@ -447,11 +447,11 @@ func TestSwitcher(t *testing.T) {
 	}
 
 	// The two popups take each other's place.
-	keys(m, "C-q", "p", "C-q", "o")
+	keys(m, "C-q", "p", "s", "C-q", "p", "o")
 	if m.switcher != nil || len(m.opening) != 1 {
 		t.Fatalf("C-q o: switcher %v, popup %d screens", m.switcher, len(m.opening))
 	}
-	keys(m, "C-q", "p")
+	keys(m, "C-q", "p", "s")
 	if m.switcher == nil || len(m.opening) != 0 {
 		t.Fatalf("C-q p: switcher %v, popup %d screens", m.switcher, len(m.opening))
 	}
@@ -473,7 +473,7 @@ func TestPopupQuestionKeepsFocus(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := h.start(t)
-	keys(m, "esc", "alt+right", "C-q", "o", "alp", "enter")
+	keys(m, "esc", "alt+right", "C-q", "p", "o", "alp", "enter")
 	if m.shown != "" || m.layout.focus != agent {
 		t.Fatalf("shown %q, focus %s", m.shown, m.layout.focus)
 	}
@@ -509,6 +509,7 @@ func TestPopupTakesTheMouse(t *testing.T) {
 	t.Parallel()
 	m, _ := newModel(100, 41)
 	m.Update(key('q', tea.ModCtrl))
+	m.Update(key('p', 0))
 	m.Update(key('o', 0)) // its command, listing the projects again, never runs
 	m.Update(clickAt(90, 2))
 	if m.layout.focus != project {
@@ -522,26 +523,29 @@ func TestPopupFrame(t *testing.T) {
 	m, _ := newModel(60, 24)
 	m.Update(key('q', tea.ModCtrl))
 	want := []string{
-		"                                  ",
-		"  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ",
-		"  ┃                            ┃  ",
-		"  ┃  ┏━━━━━━━━━━━━━━━━━━━━━━┓  ┃  ",
-		"  ┃  ┃ Menu                 ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ o  open project      ┃  ┃  ",
-		"  ┃  ┃ p  switch project    ┃  ┃  ",
-		"  ┃  ┃ s  settings          ┃  ┃  ",
-		"  ┃  ┃ f  refresh worktrees ┃  ┃  ",
-		"  ┃  ┃ q  quit              ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ Esc close            ┃  ┃  ",
-		"  ┃  ┗━━━━━━━━━━━━━━━━━━━━━━┛  ┃  ",
-		"  ┃                            ┃  ",
-		"  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ",
-		"                                  ",
+		"                         ",
+		"  ┏━━━━━━━━━━━━━━━━━━━┓  ",
+		"  ┃                   ┃  ",
+		"  ┃  ┏━━━━━━━━━━━━━┓  ┃  ",
+		"  ┃  ┃ Menu        ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ list        ┃  ┃  ",
+		"  ┃  ┃ /  filter   ┃  ┃  ",
+		"  ┃  ┃ f  refresh  ┃  ┃  ",
+		"  ┃  ┃             ┃  ┃  ",
+		"  ┃  ┃ global      ┃  ┃  ",
+		"  ┃  ┃ p  project… ┃  ┃  ",
+		"  ┃  ┃ s  settings ┃  ┃  ",
+		"  ┃  ┃ q  quit     ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ Esc close   ┃  ┃  ",
+		"  ┃  ┗━━━━━━━━━━━━━┛  ┃  ",
+		"  ┃                   ┃  ",
+		"  ┗━━━━━━━━━━━━━━━━━━━┛  ",
+		"                         ",
 	}
 	got := strings.Split(ansi.Strip(m.render()), "\n")
-	const x, y = 13, 3 // the middle of the 60 × 23 above the status line
+	const x, y = 17, 1 // the middle of the 60 × 23 above the status line
 	for i, w := range want {
 		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
 			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))
@@ -556,10 +560,10 @@ func TestPopupFrameSmallWindow(t *testing.T) {
 		width, height int
 		outer, margin bool
 	}{
-		{80, 24, true, true},
-		{80, 16, true, false},
-		{80, 14, false, false},
-		{24, 24, false, false},
+		{80, 21, true, true},
+		{80, 19, true, false},
+		{80, 18, false, false},
+		{20, 24, false, false},
 	} {
 		m, _ := newModel(tc.width, tc.height)
 		m.Update(key('q', tea.ModCtrl))

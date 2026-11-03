@@ -211,9 +211,9 @@ Designed with the human on 2026-11-02, who chose the directory picker, a name ty
 | `n` | a new file |
 | `N` | a new directory |
 | `r` | rename the file or directory under the cursor |
-| `d` | delete it |
+| `x` | delete it |
 
-- **Only in Code.** With the cursor in the section, these four come before the `C-q` menu's letters, which otherwise act without `C-q` in the project pane: `n` there is not the menu's new session, nor `r` its reload. `C-q n` and `C-q r` still are. Elsewhere the letters are the menu's.
+- **Only in Code.** They are the menu's lines for the selection there, so they act with `C-q` too, and nowhere else. Delete was `d` until 2026-11-03, when the menu was set out by level (docs/TIDE_MENU.md) and `x` came to remove the selection everywhere.
 - **New.** A popup picks the directory, as [Open Project › Local] picks one on disk: the worktree's directories, from the one under the cursor or the file's, going no higher than the worktree; `→` goes in, `←` up, typing filters, and the first row, `create the file here`, asks the name alone. A name taken, or one with a `/`, is refused in the popup, which stays to correct it. The cursor goes to what was made, its directories open, and a new file opens in the editor, as there is nothing to read in an empty file.
 - **Rename** asks the new name, with the old one to edit, and renames in place: no moving to another directory.
 - **Delete** asks, `keep it` selected first, saying how many files a directory holds and how many of them are untracked or changed, which git cannot bring back. It is for good: nothing goes to a trash. A symbolic link is deleted, not what it leads to.

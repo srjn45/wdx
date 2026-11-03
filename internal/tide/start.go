@@ -90,15 +90,15 @@ func (m *Model) noticeStopped(stopped *[]string) {
 	}
 }
 
-// restartKey is the menu's key for a new session of the agent in focus; r is taken by
-// reloading.
-const restartKey = "n"
+// restartKey is the menu's key for a new session of the agent in focus; n is a new
+// file, in Code.
+const restartKey = "R"
 
 // restartKind is the kind of a removal that restarts an agent instead: it asks just the
 // same, as what the agent was doing is lost.
 const restartKind = "restart"
 
-// restartable returns what C-q n would restart: the agent in focus. Stopped is not
+// restartable returns what C-q R would restart: the agent in focus. Stopped is not
 // offered: only a closed project's are, which has to be opened first.
 func (m *Model) restartable() (removal, bool) {
 	if m.layout.focus == terminal {

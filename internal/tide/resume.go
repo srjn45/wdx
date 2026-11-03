@@ -2,8 +2,6 @@ package tide
 
 import (
 	"encoding/json"
-	"fmt"
-	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -39,8 +37,10 @@ func (m *Model) checkDaemonVersion() tea.Cmd {
 // DaemonVersion is what the daemon last answered, "" when it did not.
 func (m *Model) DaemonVersion() string { return m.daemonVersion }
 
-// Resume is what a tide shows, which C-q r hands to the tide replacing it.
-// It crosses releases, so it holds names rather than numbers, and what a
+// Resume is what a tide showed, which an older release's C-q r hands through
+// --resume to the tide replacing it: this one has no reload, as quitting and
+// starting again shows the same from the daemon's view, but it must keep taking
+// it. It crosses releases, so it holds names rather than numbers, and what a
 // release does not know it ignores.
 type Resume struct {
 	Project      string `json:"project"`
@@ -58,12 +58,6 @@ type Resume struct {
 	CodeWorktree string `json:"code_worktree,omitempty"`
 }
 
-// String is r as the flag carries it.
-func (r Resume) String() (string, error) {
-	b, err := json.Marshal(r)
-	return string(b), err
-}
-
 // ParseResume reads what String wrote. Without a usable one tide starts as
 // it would otherwise.
 func ParseResume(s string) (*Resume, error) {
@@ -72,56 +66,6 @@ func ParseResume(s string) (*Resume, error) {
 		return nil, err
 	}
 	return &r, nil
-}
-
-// Reload is what the next run is to show once C-q r quit this one; nil when
-// tide just ended.
-func (m *Model) Reload() *Resume { return m.reload }
-
-// startReload ends tide so that the cli can replace it with the binary
-// installed. A binary that cannot run is found out here, while tide can still
-// stay open and say so. The terminals and agents never notice: their holders
-// are other processes, and the next run attaches to them again.
-func (m *Model) startReload() tea.Cmd {
-	if err := runnable(m.executable); err != nil {
-		m.log.Info("tide not reloaded", "executable", m.executable, "err", err)
-		m.statusNotice = "cannot reload: " + err.Error()
-		return nil
-	}
-	r := &Resume{
-		Project:      m.shown,
-		Focus:        m.layout.focus.String(),
-		Zoomed:       m.layout.zoomed.String(),
-		LastTop:      m.layout.lastTop.String(),
-		TerminalOpen: m.layout.terminalOpen,
-	}
-	if f := m.following; f != nil && f.project != nil {
-		r.ProjectID = f.project.Id
-		r.Terminal = m.selectedTab[f.project.Id]
-		if _, ok := m.activeAgent(); ok || m.settingsShown() || m.textShown() || m.editShown() || m.planShown() {
-			r.Agent = m.list().active
-		}
-		r.Tabs = m.list().tabs
-		r.CodeWorktree = m.list().code.worktree
-	}
-	m.reload = r
-	m.log.Info("tide reloading", "executable", m.executable, "project", m.shown)
-	quit := m.flushViews() // before the stream goes, with what it shows
-	m.unfollow()           // the daemon ends the stream, and logs it
-	m.detachAll()
-	return quit
-}
-
-// runnable reports why the file at path cannot be run.
-func runnable(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-		return fmt.Errorf("%s is not executable", path)
-	}
-	return nil
 }
 
 // resumed shows what the run before showed, when its project is still open.

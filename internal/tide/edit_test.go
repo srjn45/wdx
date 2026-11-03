@@ -191,19 +191,6 @@ func TestEditLive(t *testing.T) {
 	p.until(t, "the editor gone", func(m *Model) bool { return !m.editShown() && m.attachedIn(agent) == nil })
 }
 
-// C-q r keeps the editor's tab current, so that it attaches again.
-func TestEditTabThroughReload(t *testing.T) {
-	t.Parallel()
-	m := fileModel(t)
-	keys(m, "enter")
-	withEditors(m, aEditor)
-	m.executable = executableFile(t)
-	keys(m, "C-q", "r")
-	if r := m.Reload(); r == nil || r.Agent != aFile || !slices.Contains(r.Tabs, aFile) {
-		t.Fatalf("reload: %+v", r)
-	}
-}
-
 // TestCloseEditorTab checks closing an editor's tab asks first, even when it is not
 // the current one, and goes back to it.
 func TestCloseEditorTab(t *testing.T) {

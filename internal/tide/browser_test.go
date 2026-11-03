@@ -40,7 +40,7 @@ func (h testHome) browse(t *testing.T, dir, home string) *Model {
 	m := h.start(t)
 	m.workDir, m.userHome = dir, home
 	if m.switcher != nil {
-		keys(m, "esc", "C-q", "o")
+		keys(m, "esc", "C-q", "p", "o")
 	}
 	keys(m, "enter")
 	if _, ok := m.openTop().(*dirBrowser); !ok {

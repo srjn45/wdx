@@ -57,7 +57,7 @@ func TestClone(t *testing.T) {
 	if err := os.RemoveAll(clone); err != nil {
 		t.Fatal(err)
 	}
-	keys(m, "C-q", "o", "down", "down", "down", "enter")
+	keys(m, "C-q", "p", "o", "down", "down", "down", "enter")
 	wantText(t, m, "┃ Open Project › api", "no checkout", "▸ clone it again", "  remove it from wdx")
 	keys(m, "enter")
 	if m.shown != "api" || !exists(filepath.Join(clone, ".git")) {
@@ -84,7 +84,7 @@ func TestCloneNameTaken(t *testing.T) {
 	h.newProject(t, "api", api.ProjectStateOpen)
 	url := bareRemote(t, "api")
 	m := h.start(t)
-	keys(m, "esc", "C-q", "o", "down", "enter", url, "enter")
+	keys(m, "esc", "C-q", "p", "o", "down", "enter", url, "enter")
 	wantText(t, m, "┃ Open Project › Clone", "is already", "Another name", "> _")
 	keys(m, "esc") // back to the URL
 	wantText(t, m, "api.git_")

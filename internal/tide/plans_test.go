@@ -343,15 +343,3 @@ func TestPlanLive(t *testing.T) {
 	}
 	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "Two.") })
 }
-
-// TestPlanTabResumed: a reload comes back to the plan's tab shown.
-func TestPlanTabResumed(t *testing.T) {
-	t.Parallel()
-	m := plansModel(t)
-	keys(m, "enter")
-	m.executable = executableFile(t)
-	m.startReload()
-	if r := m.Reload(); r == nil || r.Agent != planTab("doc-auth") || !slices.Contains(r.Tabs, planTab("doc-auth")) {
-		t.Fatalf("resume %+v", r)
-	}
-}

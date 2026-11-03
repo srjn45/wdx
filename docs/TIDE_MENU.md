@@ -1,6 +1,6 @@
 # tide's `C-q` menu, by level
 
-Status: approved by the human on 2026-11-03, not built.
+Status: approved by the human on 2026-11-03; step 1 built on 2026-11-03.
 
 Today the `C-q` menu is one flat list of letters, each offered when it applies (`internal/tide/terminals.go`). It has grown to sixteen lines, mixing what acts on the thing in focus with what acts on tide or the project, and `n` means a new session in the menu but a new file in Code. This restructures the menu only: the keys of the right pane's tabs (diff, PR, read-only file, doc, settings, info) and of the popups stay as they are.
 
@@ -9,7 +9,7 @@ Today the `C-q` menu is one flat list of letters, each offered when it applies (
 The menu is in parts, one per level, from the narrowest to the widest, each with a title:
 
 - **selection**: the thing the action is about. In the left pane, the row under the cursor; in the right pane, the tab's agent; in the bottom pane, the tab's terminal. The title names it: `ample-deer (agent)`.
-- **section**: the left pane's section the cursor is in (`worktrees`).
+- **section**: the left pane's section the cursor is in. No action is at this level yet, so the part is not built; it comes with the first one.
 - **pane**: the left pane as a whole (`list`).
 - **global**: tide and the project shown.
 
@@ -38,22 +38,21 @@ Lines in parentheses show only when they apply.
 **Left pane, Agents, cursor on an agent**
 ```
 ample-deer (agent)   x remove · c new child · i info · R new session · (g start again)
-list                 / filter
+list                 / filter · f refresh
 global               a new agent · t new terminal · p project… · s settings · q quit
 ```
 
 **Left pane, Worktrees, cursor on a worktree or a file**
 ```
-feat-x (worktree)    v verify
-worktrees            f refresh
-list                 / filter
+feat-x (worktree)    v verify · (x remove, once landed)
+list                 / filter · f refresh
 global               …
 ```
 
 **Left pane, Code, cursor on a file or a directory**
 ```
 main.go (file)       e edit · n new file · N new dir · r rename · x delete
-list                 / filter
+list                 / filter · f refresh
 global               …
 ```
 
@@ -61,7 +60,7 @@ global               …
 
 **Left pane, Docs**
 ```
-list                 / filter
+list                 / filter · f refresh
 global               …
 ```
 
@@ -102,7 +101,7 @@ Kept, and simpler than today: every letter the menu shows works without `C-q` in
 | `C-q o` open project | `C-q p o` | Project submenu |
 | `C-q p` switch project | `C-q p s`; `C-q p s Enter` flips back | Project submenu. `Alt+Shift+←/→` still switch at once, and tide still starts on the switcher |
 | `C-q w` close project | `C-q p c` | Project submenu |
-| `C-q f` refresh worktrees, anywhere | `f` in the Worktrees section | The narrowest level where it makes sense |
+| `C-q f` refresh, anywhere | `f` in the left pane | It reads the worktrees, the Code tree and the file tab open again, so it belongs to the list; focus coming back to the left pane reads git anyway |
 | `C-q r` reload tide | gone | Quitting and starting again does the same, now that the daemon keeps tide's view (docs/TIDE_STATE.md); agents and terminals keep running either way |
 | Code's `d` delete | `x` | `x` removes the selection everywhere |
 | Renaming an agent in its info tab | also `r` on it | Quicker (step 2) |

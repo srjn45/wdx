@@ -30,9 +30,9 @@ func TestCloseProjectIdle(t *testing.T) {
 	p := h.openShown(t)
 	p.until(t, "the project", projectKnown)
 
-	p.keys("C-q")
-	wantText(t, p.m, "w  close api", "w close")
-	p.keys("w")
+	p.keys("C-q", "p")
+	wantText(t, p.m, "┃ Project", "c  close api", "c close")
+	p.keys("c")
 	if p.m.confirm != nil {
 		t.Fatalf("asked with nothing running:\n%s", text(p.m))
 	}
@@ -59,7 +59,7 @@ func TestCloseProjectRunning(t *testing.T) {
 	p := h.openShown(t)
 	p.until(t, "a-one attached", agentAttached("a-one"))
 
-	p.keys("C-q", "w")
+	p.keys("C-q", "p", "c")
 	wantText(t, p.m, "┃ Close project", "Close api?", "Its running agents and terminals stop.", "y close  n or Esc keep", "confirm: y close")
 	p.keys("n")
 	if p.m.confirm != nil || h.projectState(t, "api") != api.ProjectStateOpen {
@@ -67,7 +67,7 @@ func TestCloseProjectRunning(t *testing.T) {
 	}
 
 	// Without the menu in the project pane, as its other letters.
-	p.keys("w", "y")
+	p.keys("p", "c", "y")
 	wantText(t, p.m, "closing…")
 	p.until(t, "Open Project", func(m *Model) bool { return m.shown == "" && m.confirm == nil && len(m.opening) == 1 })
 	wantText(t, p.m, "┃ Open Project", "closed api")
@@ -116,7 +116,7 @@ func TestCloseProjectNotOffered(t *testing.T) {
 	if p.m.menuOffers(closeProjectKey) {
 		t.Fatal("offered with no project")
 	}
-	p.keys("C-q", "w")
+	p.keys("C-q", "p", "c")
 	if p.m.confirm != nil {
 		t.Fatalf("w with no project:\n%s", text(p.m))
 	}

@@ -31,7 +31,7 @@ One scrolling list with two headings, Agents first and Worktrees after it.
 
 The worktree row shows the commits ahead of the base with their added and removed lines, `landed` when none are ahead and nothing is uncommitted, and the agents running there. A new worktree with nothing in it also says `landed`: it has nothing to lose.
 
-The menu's `f`, or plain `f` in the list, reads every worktree again.
+`f` in the left pane, or `C-q f` there, reads every worktree again (docs/TIDE_MENU.md).
 
 A stale worktree shows `missing`, and removing it is under "Landing and removing" below.
 
@@ -81,7 +81,7 @@ Agreed on 2026-11-01: no continuous git polling, because of long `git pull` and 
 | `index`, `HEAD` or `logs/HEAD` changed in a worktree's git directory | file watch | that worktree |
 | The directory `<common>/worktrees` changed: a worktree added or removed | file watch | the list |
 | The base branch's ref or reflog changed | file watch | the commit summary of every worktree |
-| The user looks: the focus moves to the left pane, a diff tab opens, the refresh key (`C-q f`, or plain `f` in the left pane) | a request from tide | that worktree, or all of them |
+| The user looks: the focus moves to the left pane, a diff tab opens, the refresh key (`f` in the left pane) | a request from tide | that worktree, or all of them |
 | The watcher lost events | the watcher says so | the list and every worktree |
 
 Creating an agent and opening a project need no event of their own: the agent's row comes from the database, a worktree made for it is seen by the watch on `worktrees`, and a project being followed is read when following starts.

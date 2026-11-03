@@ -74,8 +74,8 @@ func (noProjectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	lines := []string{
 		st.Muted("no project open"),
 		"",
-		st.Command("C-q p") + " switch project",
-		st.Command("C-q o") + " open project",
+		st.Command("C-q p s") + " switch project",
+		st.Command("C-q p o") + " open project",
 	}
 	uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 }

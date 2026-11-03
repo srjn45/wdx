@@ -1,73 +1,10 @@
 package tide
 
 import (
-	"slices"
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/srjn45/wdx/internal/api"
 )
-
-// menuItem is a line of the C-q menu: its key, what it does, and the word
-// the status line uses for it.
-type menuItem struct {
-	key, label, short string
-}
-
-// menuItems are the menu's lines; the ones that cannot apply now are left
-// out.
-func (m *Model) menuItems() []menuItem {
-	items := []menuItem{{"o", "open project", "open"}, {"p", "switch project", "switch"}}
-	if _, ok := m.checkoutDir(); ok {
-		items = append(items, menuItem{"t", "new terminal", "terminal"}, menuItem{"a", "new agent", "agent"})
-	}
-	if s, ok := m.startable(); ok {
-		items = append(items, menuItem{startKey, "start " + s.name + " again", "start"})
-	}
-	if a, ok := m.childParent(); ok {
-		items = append(items, menuItem{"c", "new child of " + a.Name, "child"})
-	}
-	if r, ok := m.restartable(); ok {
-		items = append(items, menuItem{restartKey, "new session of " + r.name, "restart"})
-	}
-	if r, ok := m.removable(); ok {
-		items = append(items, menuItem{"x", "remove " + r.name, "remove"})
-	}
-	if a, ok := m.infoTarget(); ok {
-		items = append(items, menuItem{infoKey, "info of " + a.Name, "info"})
-	}
-	if m.settingsOffered() {
-		items = append(items, menuItem{settingsKey, "settings", "settings"})
-	}
-	if m.list() != nil {
-		items = append(items, menuItem{refreshKey, "refresh worktrees", "refresh"})
-	}
-	if r, ok := m.closableProject(); ok {
-		items = append(items, menuItem{closeProjectKey, "close " + r.name, "close"})
-	}
-	if t, ok := m.closableTab(); ok {
-		items = append(items, menuItem{closeTabKey, "close the tab of " + t.title(), "close tab"})
-	}
-	if m.programInFocus() {
-		items = append(items,
-			menuItem{`\`, `send C-\ to the program`, "send"},
-			menuItem{"]", "send C-] to the program", "send"},
-			menuItem{"C-q", "send C-q to the program", "send"},
-			menuItem{"M-arrow", "send Alt+arrow, with or without Shift, to the program", "send"})
-	}
-	if m.executable != "" && m.projects.loaded {
-		items = append(items, menuItem{"r", "reload tide", "reload"})
-	}
-	return append(items, menuItem{"q", "quit", "quit"})
-}
-
-// menuOffers reports whether the menu has a line for the key now. With the
-// project pane in focus such a key acts without the menu: nothing there takes
-// typing, as the programs in the other panes do.
-func (m *Model) menuOffers(name string) bool {
-	return slices.ContainsFunc(m.menuItems(), func(it menuItem) bool { return it.key == name })
-}
 
 // checkoutDir is where C-q t creates a terminal and C-q a an agent: the first
 // of the project shown's checkouts on disk, its main checkout unless it was
@@ -203,7 +140,7 @@ func (m *Model) focusedAgent() (api.Agent, bool) {
 	return api.Agent{}, false
 }
 
-// confirmBox asks before C-q x removes, which cannot be undone, and before C-q w
+// confirmBox asks before C-q x removes, which cannot be undone, and before C-q p c
 // stops what runs in a project.
 type confirmBox struct {
 	r    removal
@@ -308,13 +245,4 @@ func (m *Model) confirmPopup() popup {
 		body:   body,
 		footer: st.Command("y") + " remove  " + st.Command("n") + " or " + st.Command("Esc") + " keep",
 	}
-}
-
-// menuHint is the status line's summary of the menu's keys.
-func (m *Model) menuHint() string {
-	var keys []string
-	for _, it := range m.menuItems() {
-		keys = append(keys, it.key+" "+it.short)
-	}
-	return "menu: " + strings.Join(keys, "  ") + "  Esc close"
 }

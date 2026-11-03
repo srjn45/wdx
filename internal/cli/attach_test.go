@@ -206,20 +206,6 @@ func (a *attachRun) waitFor(what string, ok func(text string) bool) {
 	}
 }
 
-// waitAltScreens waits until the terminal has been told n times to enter the
-// alternate screen, which a program does once a run.
-func (a *attachRun) waitAltScreens(n int) {
-	a.t.Helper()
-	count := func() int {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		return bytes.Count(a.raw, []byte(ansi.SetModeAltScreenSaveCursor))
-	}
-	if !eventually(a.t, func() bool { return count() >= n }) {
-		a.t.Fatalf("the alternate screen entered %d times, want %d:\n%s", count(), n, a.text())
-	}
-}
-
 // waitText waits for the command to end and returns its output.
 func (a *attachRun) waitText() output {
 	a.t.Helper()

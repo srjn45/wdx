@@ -13,16 +13,16 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
-| List projects | `project list` | `C-q p`, `C-q o` | Same | |
-| Create a project | `project create` | `C-q o`, create | Same | |
-| Open a local repository | `project open --local` | `C-q o`, local | Same | |
-| Clone a repository | `project open --git` | `C-q o`, clone | Same | |
+| List projects | `project list` | `C-q p s`, `C-q p o` | Same | |
+| Create a project | `project create` | `C-q p o`, create | Same | |
+| Open a local repository | `project open --local` | `C-q p o`, local | Same | |
+| Clone a repository | `project open --git` | `C-q p o`, clone | Same | |
 | Answer a missing checkout | `--reclone`, `--remove` or a prompt | a choice screen | Same | |
-| Reopen a closed project | `project open --name`, `--id`, or the list | `C-q o`, then `Enter` on it | Same | |
-| Close a project | `project close` | `C-q w` | Same | |
+| Reopen a closed project | `project open --name`, `--id`, or the list | `C-q p o`, then `Enter` on it | Same | |
+| Close a project | `project close` | `C-q p c` | Same | |
 | Remove a project | `project remove` | only when no checkout is left | Later (tide) | Comes after close |
 | Project details | `project get` | no screen | By design | The agent, terminal and worktree lists already show a project |
-| Switch between projects | not needed | `C-q p`, `Alt+Shift+←/→` | By design | A command names its project with a flag, or takes it from the directory |
+| Switch between projects | not needed | `C-q p s`, `Alt+Shift+←/→` | By design | A command names its project with a flag, or takes it from the directory |
 | Keep what tide showed across runs | none, only the API | the tabs, the project shown, focus, zoom, cursor and folds kept by the daemon come back, and a removal through wdx closes its tab | By design | It is tide's view; the CLI shows none (docs/TIDE_STATE.md) |
 
 ## Messages
@@ -49,7 +49,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | See a worktree's PR | `worktree list --json` | on its row | By design | tide asks `gh` when a tab opens or on `f`. The CLI shows what was last said, as a list must not reach the network; `worktree remove` asks |
 | Say how a project lands | `project landing` | the box of `L` | Same | |
 | Remove a worktree that landed | `worktree remove` | `C-q x` on its row | By design | tide confirms, listing who is affected. The CLI asks nothing, as only what landed can go and a script must not stop at a question |
-| Read the worktrees again | not needed | `C-q f`, `f` in the list | By design | Each command reads anew |
+| Read the worktrees again | not needed | `f` in the left pane | By design | Each command reads anew |
 
 ## Agents
 
@@ -70,7 +70,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Read its conversation in brief | `agent transcript --brief` | not needed | By design | The agent reads it, in a new session, not a person |
 | Send a message from a script | `agent send` | not needed | By design | A person types into the ACA, which queues messages itself. `send` is how scripts and other agents reach an agent |
 | Start one that ended | `agent start` | `C-q g` | Same | |
-| Start it again in a new session | `agent restart`, with `--force` while it is busy | `C-q n`, after a confirmation | Same | The CLI refuses a busy agent, as a script cannot see it; tide says what it is doing and `y` goes on |
+| Start it again in a new session | `agent restart`, with `--force` while it is busy | `C-q R`, after a confirmation | Same | The CLI refuses a busy agent, as a script cannot see it; tide says what it is doing and `y` goes on |
 | Remove an agent | `agent remove` | `C-q x` | Same | |
 | Say which background session of an agent was stopped, by restarting, starting or removing it or closing or removing its project | `stopped_sessions`, and a line of text | The status line | Same | |
 
@@ -98,7 +98,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | See which files a worktree changed | `worktree list` for what is not committed, `worktree diff` for what is | the Code tree's letters and colours, and a count on each directory | By design | The CLI has no tree to mark; its lists say the same (docs/TIDE_CODE.md) |
 | Read a file, highlighted | none, only the API | `Enter` on it: a read-only tab | By design | As above |
 | Edit a file | none, only the API | `e`: the `editor` setting's editor in its tab; closing it asks to save or discard | By design | A script or an AI writes files itself; a person edits in an editor |
-| Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `d` in the Code section, in popups | By design | A script or an AI changes files itself |
+| Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `x` in the Code section, in popups | By design | A script or an AI changes files itself |
 | Choose the editor | `setting set editor` | the settings tab | Same | |
 | Order the left pane's sections | `setting set tide.section_order` | the settings tab, which applies it at once | Same | |
 | Filter the left pane's list | none | `/`: agents, worktrees, their changed files, the chosen worktree's paths, docs and plans | By design | A script filters the `--json` output itself |
@@ -139,7 +139,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 |---|---|---|---|
 | Live updates of a project | tide | By design | tide needs them to keep its screen current; a script can ask when it needs to know |
 | Sending raw keys from a script (Esc, arrows) | `attach` and tide | By design | Both are for a person at a keyboard. The `send` commands can grow this when a need appears |
-| Panes, tabs, focus, zoom, folding, selection, `C-q r` | tide | By design | They are tide's own interface |
+| Panes, tabs, focus, zoom, folding, selection, the menu's parts | tide | By design | They are tide's own interface |
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
 | Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
 

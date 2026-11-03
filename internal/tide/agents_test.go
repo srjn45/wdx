@@ -411,6 +411,7 @@ func TestProjectPaneLetters(t *testing.T) {
 	}
 	keys(m, "esc")
 
+	press("p")
 	press("o")
 	wantText(t, m, "┃ Open Project")
 	if cmd := press("q"); cmd != nil || !m.popupOpen() {
@@ -419,6 +420,7 @@ func TestProjectPaneLetters(t *testing.T) {
 	keys(m, "esc")
 
 	press("p")
+	press("s")
 	wantText(t, m, "┃ Switch Project")
 	press("q")
 	wantText(t, m, "> q_")
@@ -489,7 +491,7 @@ func TestRemoveAgentConfirmed(t *testing.T) {
 
 	// In the list, C-q x takes the agent under the cursor, not the active one.
 	p.keys("down", "C-q")
-	wantText(t, p.m, "x  remove b-two")
+	wantText(t, p.m, "b-two (agent)", "x  remove")
 	p.keys("x")
 	wantText(t, p.m, "┃ Remove agent", "Remove b-two?", "It is running: it is stopped.")
 	p.keys("n")
@@ -504,7 +506,7 @@ func TestRemoveAgentConfirmed(t *testing.T) {
 
 	// In the agent pane, it takes the active one; the pane empties.
 	p.keys("alt+right", "C-q")
-	wantText(t, p.m, "x  remove a-one")
+	wantText(t, p.m, "a-one (agent)", "x  remove")
 	p.keys("x", "y")
 	p.until(t, "a-one gone", func(m *Model) bool { return m.confirm == nil && len(m.agents()) == 0 })
 	if p.m.agentTerm != nil {
@@ -670,7 +672,7 @@ func TestAgentsTombstoneRow(t *testing.T) {
 		t.Fatalf("menu on a tombstone:\n%s", t1)
 	}
 	keys(m, "esc", "down", "C-q")
-	wantText(t, m, "c  new child of b-child", "x  remove b-child")
+	wantText(t, m, "b-child (agent)", "c  new child", "x  remove")
 }
 
 // TestAgentsDeepRow: past where a name would get under its room, the guide
@@ -709,7 +711,7 @@ func TestNewChildAgent(t *testing.T) {
 	p.until(t, "parent attached", agentAttached("parent"))
 
 	p.keys("C-q")
-	wantText(t, p.m, "c  new child of parent", "c child")
+	wantText(t, p.m, "parent (agent)", "c  new child", "c child")
 	p.keys("c")
 	wantText(t, p.m, "New child of parent", "Empty: the parent's, main")
 	// Esc asks again next time, and creates nothing.

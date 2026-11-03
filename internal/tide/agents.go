@@ -520,8 +520,6 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 	}
 	name := key.String()
 	switch {
-	case name == filterKey:
-		s.m.openFilter()
 	case name == "esc" && l.filter.on():
 		s.m.clearFilter()
 	case slices.Contains(upKeys, name):
@@ -565,8 +563,6 @@ func (s *projectScreen) updateWorktrees(name string) tea.Cmd {
 		s.m.worktreeFoldRight()
 	case "enter":
 		return s.m.openWorktreeRow()
-	case verifyKey:
-		return s.m.verifyRow()
 	}
 	return nil
 }

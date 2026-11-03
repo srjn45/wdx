@@ -351,7 +351,7 @@ func TestTabCloseKey(t *testing.T) {
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 
 	m.Update(key('q', tea.ModCtrl))
-	wantText(t, m, "-  close the tab of tab-1")
+	wantText(t, m, "tab-1 (agent)", "-  close tab")
 	m.Update(key('-', 0))
 
 	// The tab to its right takes over, and the agent stays.
@@ -580,14 +580,7 @@ func TestTabsAttachOnlyCurrent(t *testing.T) {
 func TestTabsResume(t *testing.T) {
 	t.Parallel()
 	m, agents := tabsModel(3)
-	m.Update(key(tea.KeyRight, tea.ModAlt))
-	m.executable = executableFile(t)
-	m.Update(key('q', tea.ModCtrl))
-	m.update(key('r', 0))
-	r := m.Reload()
-	if r == nil || r.Agent != "agent-tab-1" || !slices.Equal(r.Tabs, []string{"agent-tab-0", "agent-tab-1", "agent-tab-2"}) {
-		t.Fatalf("resume %+v", r)
-	}
+	r := &Resume{Project: "demo", ProjectID: "proj-demo", Focus: "agent", Agent: "agent-tab-1", Tabs: []string{"agent-tab-0", "agent-tab-1", "agent-tab-2"}}
 
 	// With no tabs kept, the run before's are taken but for one whose agent is
 	// gone; the current one stays current.

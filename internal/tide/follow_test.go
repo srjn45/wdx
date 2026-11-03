@@ -236,7 +236,7 @@ func TestNewTerminal(t *testing.T) {
 	}
 
 	// A second one gets selected once it comes.
-	p.keys("C-q", "o", "C-q", "t") // from a popup too, which it closes
+	p.keys("C-q", "p", "o", "C-q", "t") // from a popup too, which it closes
 	p.until(t, "the new tab selected", func(m *Model) bool {
 		sel, ok := m.selectedTerminal()
 		return len(tabs(m)) == 2 && ok && sel.Name != first
@@ -260,7 +260,7 @@ func TestRemoveTerminalConfirmed(t *testing.T) {
 	p.until(t, "the tab", tabsAre("shell"))
 
 	p.keys("alt+down", "C-q")
-	wantText(t, p.m, "x  remove shell")
+	wantText(t, p.m, "shell (terminal)", "x  remove")
 	p.keys("x")
 	wantText(t, p.m, "┃ Remove terminal", "Remove shell?", "It is running: its shell is stopped.", "y remove  n or Esc keep")
 

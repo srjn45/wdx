@@ -28,9 +28,9 @@ func newTideCmd() *cobra.Command {
 		Long: "tide takes the whole window: the project on the left, an agent on the right\n" +
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
-			"terminals and C-q opens the menu: o opens a project, p switches projects, t\n" +
-			"creates a terminal, x removes the terminal of the tab selected after asking,\n" +
-			"r reloads tide from the binary installed, keeping what it shows, and q quits;\n" +
+			"terminals and C-q opens the menu: what acts on the thing selected first, then\n" +
+			"on the left pane's list, then on tide and the project, such as a new agent\n" +
+			"or terminal, p for the Project submenu (open, switch, close) and q to quit;\n" +
 			"\\, ] and C-q send C-\\, C-] and C-q to the program in the focused\n" +
 			"pane, so C-q \\ d detaches a wdx attach running there, and C-q then Alt and\n" +
 			"an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to\n" +
@@ -40,7 +40,7 @@ func newTideCmd() *cobra.Command {
 			"The Code section lists a worktree's files: Enter shows one read-only and\n" +
 			"highlighted, e edits it in the editor the editor setting names, and closing\n" +
 			"that tab asks to save or discard. There n and N create a file or directory,\n" +
-			"r renames and d deletes, each in a popup. / filters the left pane's list as you\n" +
+			"r renames and x deletes, each in a popup. / filters the left pane's list as you\n" +
 			"type: Enter goes back to the list, Esc clears it.\n" +
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
 			"when closed. The terminal pane has a tab for each of the project's\n" +
@@ -54,13 +54,13 @@ func newTideCmd() *cobra.Command {
 		Annotations: map[string]string{
 			failurePrefix: "tide did not start",
 			outputNote:    "Once you quit, that tide closed; it gives the window back as it was.",
-			resultList:    annotation("closed", "reloaded"),
+			resultList:    annotation("closed"),
 			errorList:     codeList(api.ErrorCodeTideRunning),
 		},
 		RunE: runTide,
 	}
-	// How C-q r tells the next run what to show: no one types it, and a later
-	// release must keep it, since an earlier one reloads into that release.
+	// How an older release's C-q r tells the next run what to show: no one types
+	// it, and every release must keep it, since an older one reloads into it.
 	cmd.Flags().String(resumeFlag, "", "show what the `state` says, as the run before did")
 	_ = cmd.Flags().MarkHidden(resumeFlag)
 	completeFlag(cmd, resumeFlag, cobra.NoFileCompletions)
@@ -101,7 +101,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	defer lock.Close() // C-q r execs the next tide with it closed, which then takes it
+	defer lock.Close()
 	logging.FromContext(cmd.Context()).Info("tide lock taken", "path", lock.Name())
 	if env.TTY == nil {
 		return &usageError{errors.New("no terminal to run tide in: run it in one")}
@@ -131,23 +131,12 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	opts := tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
 		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
 		SectionOrder: env.Config.TideSectionOrder}
-	if env.Exec != nil {
-		opts.Executable = env.Executable
-	}
 	model := tide.New(ctx, opts)
 	p := tea.NewProgram(model, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
 		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	log.Info("tide started")
 	_, err = p.Run()
 	killed := errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil // the command is ending
-	if next := model.Reload(); next != nil && err == nil {
-		state, err := next.String()
-		if err != nil {
-			return err
-		}
-		inv.replaceWith = tideArgs(cmd, env, state)
-		return printResult(cmd, tideResult{Result: api.ResultReloaded})
-	}
 	if v := model.DaemonVersion(); style.VersionsDiffer(v) {
 		warnTideVersion(cmd, v)
 	}
@@ -155,15 +144,6 @@ func runTide(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	return printResult(cmd, tideResult{Result: api.ResultClosed})
-}
-
-// tideArgs is the command line of the tide that replaces this one.
-func tideArgs(cmd *cobra.Command, env Env, state string) []string {
-	args := []string{env.Executable, "tide", "--" + resumeFlag, state}
-	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
-		args = append(args, "--color", f.Value.String())
-	}
-	return args
 }
 
 // tideResult is how tide ended.

@@ -106,10 +106,10 @@ type screen interface {
 ### Starting tide
 
 - tide is meant to stay open, so it does not remember a project across runs: the user picks one.
-- With no open project (the first run, or every one closed since), tide starts with the `Open Project` popup (`C-q o`) open.
-- With open projects, even one, tide starts with the `Switch Project` popup (`C-q p`) open.
-- `Esc` closes either, leaving `[No Project]` in the left pane, which says "no project open" and names `C-q p` and `C-q o`.
-- While no project is shown, the terminal pane is hidden and the agent pane says "no project open". `C-q p` and `C-q o` work there as anywhere.
+- With no open project (the first run, or every one closed since), tide starts with the `Open Project` popup (`C-q p o`) open.
+- With open projects, even one, tide starts with the `Switch Project` popup (`C-q p s`) open.
+- `Esc` closes either, leaving `[No Project]` in the left pane, which says "no project open" and names `C-q p s` and `C-q p o`.
+- While no project is shown, the terminal pane is hidden and the agent pane says "no project open". `C-q p s` and `C-q p o` work there as anywhere.
 - With no daemon, the left pane says so with the hint `wdx daemon start` and a key to try again. tide never starts the daemon itself, as no command does.
 
 ### `Open Project`
@@ -161,9 +161,9 @@ A failure (not a git repository, a clone that failed) shows in the screen, which
 ## Data from the daemon
 
 - tide changes things only through the API's create, update and delete requests.
-- tide reads with get and list requests where they fit: the projects at start, the closed ones for `Open Project`, the open ones for the strip and `C-q p`.
+- tide reads with get and list requests where they fit: the projects at start, the closed ones for `Open Project`, the open ones for the strip and `C-q p s`.
 - The current project's detail comes from an event stream the daemon pushes: every change under the project (a terminal started or exited, an agent going idle or waiting for input) reaches tide at once. Each event is the whole project, never a delta, so tide replaces what it holds and a reconnect needs no replay. Server-sent events on the daemon's socket, `GET /v1/projects/{project}/events`; designed in docs/TIDE_B2.md.
-- So that switching never waits on the daemon, the strip and `C-q p` use the open projects tide fetched at start and after each change it made, refreshed in the background whenever they show.
+- So that switching never waits on the daemon, the strip and `C-q p s` use the open projects tide fetched at start and after each change it made, refreshed in the background whenever they show.
 
 ## Focus
 
@@ -190,17 +190,20 @@ These three keys are configurable, since `C-]` and `C-\` are awkward on some non
 
 ### Shortcut menu (`C-q`)
 
-- A menu of actions with one-letter keys, e.g. `t` new terminal, `x` remove the entity in focus (the selected terminal, later an agent; always after a confirmation), `a` new agent, `o` open project, `p` switch project, `d` agent detail, `r` resize mode, `?` help, `q` quit tide.
-- Pressing the letter right away fires the action (`C-q n`), with no delay.
-- Typing more than one letter turns it into a fuzzy command palette.
-- Screens open from this menu.
-- Built so far: `o` open project, `p` switch project (each in place of the other), `t` new terminal and `a` new agent (while a project is shown), `g` start again the agent or terminal in focus when it has ended (see below), `c` new child of the agent in focus, asking for an optional worktree, `x` remove the entity in focus (the terminal of the tab selected, the agent under the cursor or the active agent, after a confirmation popup), `w` close the project shown (see below), `-` close the current agent tab (while the agent pane has the focus), `\`, `]` and `C-q` send that ctrl key to the program in focus (agent or terminal pane), `q` quit. The menu lists only the lines that apply now, and the status line its keys.
-- `C-q n` starts the agent in focus again in a new session, as `wdx agent restart` does, after a confirmation that says what it is doing; `y` goes on even if it is busy. docs/AGENT_RESUME.md.
-- `C-q g` starts again the agent or terminal in focus, as `wdx agent start` and `wdx terminal start` do, while it is `exited`, `failed` or `lost`: an agent resumes its session, a terminal gets a fresh shell. It stops nothing and loses nothing, so it does not ask. Its pane goes live once the stream says it runs; a failure shows on the status line for an agent, in the pane for a terminal.
-- `C-q w` closes the project shown, as `wdx project close` does. Closing touches nothing on disk and can be undone, so it asks only when an agent or a terminal is running, saying that they stop and what opening it again does. Something started since the stream last said is not stopped: the daemon refuses and the status line says why. tide then goes where it goes at start: the switcher if another project is open, `Open Project` if none, unless a popup was opened meanwhile.
-- With the project pane in focus, the menu's letters also work without `C-q`, showing the same popups: nothing there takes typing but the filter's line, which `/` opens and which takes the letters until `Enter` or `Esc`, and the Code section, whose `n`, `N`, `r` and `d` come first while the cursor is in it (docs/TIDE_CODE.md). In the agent and terminal panes they go to the program, so those keep only `C-q`. `q` quits at once there too, which is safe because terminals and agents keep running.
-- `C-q r` reloads tide: the process replaces itself with the binary installed, in the same window, so an update reaches a tide left open. Terminals and agents never notice: their holders are other processes, and they stay on the binary they started from until their shell starts again (docs/TERMINALS.md). The next run gets what to show through the hidden flag `--resume`: the project, the focus, the zoom, the terminal pane, the tab selected, the agent tabs open and the active agent. Scroll positions, folds, open popups and the state of other projects go with the old run. A project closed meanwhile, or a state not understood, starts tide as usual. A later release must keep `--resume`, since an earlier one reloads into it; reloading into a release from before it fails with `usage` and gives the window back. A binary missing or not executable is found before quitting: tide stays open and says so in the status line. A failure of the replacement itself, which the check leaves very unlikely, ends tide with an error. The key is not offered until the projects are listed, where `r` tries the listing again.
-- The final list of actions and letters is still to be decided.
+docs/TIDE_MENU.md designs it; this is what it does.
+
+- A menu of actions with one-letter keys, in parts, the narrowest first, each under its title: what is selected (the row under the cursor in the left pane, the tab in the others), then the left pane's list (`list`), then tide and the project (`global`). A line shows only when it applies, and a part only with one. No two parts shown together share a letter.
+- Pressing the letter right away fires the action (`C-q x`), with no delay.
+- **The selection.** An agent, in the list or its tab: `x` remove, `c` new child, asking for an optional worktree, `i` info, `R` new session, `g` start again once it has ended. A terminal's tab: `x` remove, `g` start again. A worktree: `x` remove once landed; its file: `v` verify. In Code: `e` edit, `n` new file, `N` new directory, `r` rename, `x` delete (docs/TIDE_CODE.md). In the right pane, `-` closes the tab. With a program in focus (an agent, a terminal, an editor), `\`, `]` and `C-q` send that ctrl key to it.
+- **The list**, in the left pane: `/` filter, `f` read the worktrees, the Code tree and the file tab open again.
+- **Global:** `a` new agent and `t` new terminal while a project is shown, `p` the Project submenu, `s` settings, `q` quit.
+- **The Project submenu**, a popup of its own: `o` open project, `s` switch project, `c` close the project shown. `Esc` closes it.
+- `x` removes after a confirmation popup. `R` starts the agent again in a new session, as `wdx agent restart` does, after a confirmation that says what it is doing; `y` goes on even if it is busy. docs/AGENT_RESUME.md.
+- `g` starts again the agent or terminal selected, as `wdx agent start` and `wdx terminal start` do, while it is `exited`, `failed` or `lost`: an agent resumes its session, a terminal gets a fresh shell. It stops nothing and loses nothing, so it does not ask. Its pane goes live once the stream says it runs; a failure shows on the status line for an agent, in the pane for a terminal.
+- `p c` closes the project shown, as `wdx project close` does. Closing touches nothing on disk and can be undone, so it asks only when an agent or a terminal is running, saying that they stop and what opening it again does. Something started since the stream last said is not stopped: the daemon refuses and the status line says why. tide then goes where it goes at start: the switcher if another project is open, `Open Project` if none, unless a popup was opened meanwhile.
+- With the project pane in focus, every letter the menu shows works without `C-q`, `p` opening the Project submenu: nothing there takes typing but the filter's line, which `/` opens and which takes the letters until `Enter` or `Esc`. In the agent and terminal panes they go to the program, so those keep only `C-q`. `q` quits at once there too, which is safe because terminals and agents keep running.
+- tide has no reload since 2026-11-03: quitting and starting it again shows the same, from the view the daemon keeps (docs/TIDE_STATE.md), and agents and terminals keep running. It still takes the hidden flag `--resume`, which an older tide's `C-q r` passes to the binary installed: the project, the focus, the zoom, the terminal pane, the tab selected and the agent tabs. The daemon's view wins when it has one. A later release must keep it. Older docs that say `C-q r` keeps something describe that reload.
+- The status line lists the keys of the menu shown.
 
 ### Switching panes
 
@@ -230,7 +233,7 @@ Switching projects is frequent too, so it is one chord.
   ```
 
   It lists the open projects, the current one marked, and scrolls sideways to keep the current one in view when they overflow the width. It hides about a second after the last tap, or at once on any other key.
-- `C-q p`: the `Switch Project` popup, over the middle of the window, to find an open project by name, with ↑ / ↓ or by typing:
+- `C-q p s`: the `Switch Project` popup, over the middle of the window, to find an open project by name, with ↑ / ↓ or by typing:
 
   ```
 
@@ -256,10 +259,10 @@ Switching projects is frequent too, so it is one chord.
 
   Every popup (`Switch Project`, `Open Project`, the `C-q` menu, the confirmation) has this shape: a heavy frame with a bold title, the body and the keys set apart by lines; around it a blank gap and a muted outer frame; around that a blank margin. A layer is one row or two columns, which look about the same on a screen, since a terminal's cells are about twice as tall as they are wide. On a small window the margin goes first, then the outer frame and its gap, so the content keeps the room.
 
-  It lists the open projects by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p enter` flips back to it; at start, the first one.
+  It lists the open projects by name. Typing filters by fuzzy match on the name; ↑ / ↓ select; `enter` switches; `Esc` closes it. The project shown before the current one in this run is selected at first, so `C-q p s enter` flips back to it; at start, the first one.
 
   `Open/Create Project`, above the list and whatever the filter is, closes this popup and opens `Open Project`, where the closed projects are; `Esc` there closes it rather than coming back. `↑` from the first project reaches it, and it is selected when no project matches.
-- The `C-q` menu lists no projects: it opens at once, never waiting on the daemon. `C-q p` is the way to search and switch.
+- The `C-q` menu lists no projects: it opens at once, never waiting on the daemon. `C-q p s` is the way to search and switch.
 - Key probe (2026-10-29): `Alt+Shift+arrows` arrive as `CSI 1;4 A`–`D` on Linux and macOS. `Alt+1`…`9` never reach the terminal on GNOME, which switches its own tabs with them, and type characters on macOS (`¡`, `™`), as Option+letters do. `Ctrl+Tab` arrives as a plain Tab on Linux and not at all on macOS; `Alt+PageUp` / `PageDown` do not reach the terminal on macOS.
 - `Alt+Shift+↑` / `↓` are free for later.
 

@@ -47,7 +47,7 @@ Decided by the human when building it, on 2026-11-01:
 - **Carried `--instant` messages become general,** so that they cannot interrupt the agent reading its brief. The first message is instant, so that a later `--instant` cannot overtake it during startup. One sent after that can still interrupt the brief: the sender asked for it.
 - **A second restart replaces the first message** of a restart whose launch failed. Its id starts `msg-restart-`, and a restart deletes any still undelivered.
 - **Names.** `POST /v1/agents/{agent}/restart` with `{force}`, the code `agent_busy`, the result `restarted`, and `BeginSession` and `Brief` on `AiCodingAgent`.
-- **In tide,** `C-q n`, for a new session. The confirmation says what the agent is doing, and `y` restarts it with force.
+- **In tide,** `C-q R`, for a new session (`C-q n` until 2026-11-03). The confirmation says what the agent is doing, and `y` restarts it with force.
 - **`--brief`** answers in the shape of `agent transcript`: `from` is the line of `transcript.md` it starts at, and `lines` are the brief's own. It excludes `--tail`, `--from`, `--count` and `--path`.
 
 ### The brief

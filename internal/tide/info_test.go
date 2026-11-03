@@ -416,18 +416,6 @@ func TestValuesCursor(t *testing.T) {
 	p.draw(buf, uv.Rect(0, 0, 40, 1), rows, true, infoModel().st) // no room: nothing to panic on
 }
 
-func TestInfoResume(t *testing.T) {
-	t.Parallel()
-	m := infoModel()
-	keys(m, "i")
-	m.executable = executableFile(t)
-	keys(m, "C-q", "r")
-	r := m.Reload()
-	if r == nil || r.Agent != "info:agent-swift-falcon" || !slices.Contains(r.Tabs, "info:agent-swift-falcon") {
-		t.Fatalf("resume %+v", r)
-	}
-}
-
 // TestInfoLive renames against a daemon: the name comes back through the stream,
 // and one taken is refused in place.
 func TestInfoLive(t *testing.T) {

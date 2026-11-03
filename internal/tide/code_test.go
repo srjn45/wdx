@@ -590,24 +590,10 @@ func TestCodeReadsAgainOnWhatItDependsOn(t *testing.T) {
 	}
 }
 
-// C-q r keeps the worktree chosen.
-func TestCodeWorktreeThroughReload(t *testing.T) {
+// --resume, from an older release's C-q r, keeps the worktree chosen.
+func TestCodeWorktreeResumed(t *testing.T) {
 	t.Parallel()
-	m := codeModel([]string{"file"}, codeWorktreeList()...)
-	m.moveToCode(0)
-	keys(m, "right")
-	m.executable = executableFile(t)
-	m.Update(key('q', tea.ModCtrl))
-	m.update(key('r', 0))
-	r := m.Reload()
-	if r == nil || r.CodeWorktree != "auth-fix" {
-		t.Fatalf("reload: %+v", r)
-	}
-	s, err := r.String()
-	if err != nil {
-		t.Fatal(err)
-	}
-	back, err := ParseResume(s)
+	back, err := ParseResume(`{"project":"demo","project_id":"proj-demo","focus":"project","code_worktree":"auth-fix"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -914,18 +900,9 @@ func TestFileReadsAgain(t *testing.T) {
 	}
 }
 
-func TestFileTabKeptThroughReload(t *testing.T) {
+func TestFileTabResumed(t *testing.T) {
 	t.Parallel()
-	m := fileModel(t)
-	keys(m, "enter")
-	loadFile(m, aFile, sourceOf("one\n"))
-	m.executable = executableFile(t)
-	m.Update(key('q', tea.ModCtrl))
-	m.update(key('r', 0))
-	r := m.Reload()
-	if r == nil || r.Agent != aFile || !slices.Contains(r.Tabs, aFile) {
-		t.Fatalf("reload: %+v", r)
-	}
+	r := &Resume{Project: "demo", ProjectID: "proj-demo", Focus: "agent", Agent: aFile, Tabs: []string{aFile}}
 	next := New(context.Background(), Options{Style: style.New(false), Resume: r})
 	next.tick = noTick
 	next.Update(projectsListed{projects: []api.ProjectSummary{{Name: "demo", State: api.ProjectStateOpen}}})

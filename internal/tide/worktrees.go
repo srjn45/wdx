@@ -18,7 +18,7 @@ import (
 // changes. Enter on a file opens its diff, on a worktree what it has committed.
 
 const (
-	refreshKey   = "f" // of the menu
+	refreshKey   = "f" // of the menu's list part
 	worktreeHint = "↑↓ select  ←→ files  Enter diff  v verified  f refresh  / filter  Alt+arrows move  C-q menu"
 	rowSeparator = "\x00"
 )
@@ -616,12 +616,19 @@ func (m *Model) verifyAnsweredMsg(msg verifyAnswered) {
 // verifyRow marks the file under the cursor in the list: no diff was on the screen,
 // so what it has now is what is marked.
 func (m *Model) verifyRow() tea.Cmd {
-	l, rows := m.list(), m.worktreeRows()
-	if l.section != sectionWorktrees || l.worktreeRow >= len(rows) || rows[l.worktreeRow].file == nil {
+	if !m.verifiable() {
 		return nil
 	}
+	l, rows := m.list(), m.worktreeRows()
 	r := rows[l.worktreeRow]
 	return m.sendVerify(r.worktree.Name, r.file.Path, "")
+}
+
+// verifiable reports whether the cursor is on a worktree's file in the left pane,
+// which v marks verified.
+func (m *Model) verifiable() bool {
+	l, rows := m.list(), m.worktreeRows()
+	return m.layout.focus == project && l != nil && l.section == sectionWorktrees && l.worktreeRow < len(rows) && rows[l.worktreeRow].file != nil
 }
 
 // tabLeaf is the end of a path, as a tab's title has room for.

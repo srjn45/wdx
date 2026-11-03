@@ -21,15 +21,11 @@ func TestCodeTreeEmptyDirs(t *testing.T) {
 	}
 }
 
-// TestCodeFileKeysTakeOverInCode: n, N, r and d act on the Code section's files while
-// the cursor is there, before the menu's letters, which still act elsewhere.
-func TestCodeFileKeysTakeOverInCode(t *testing.T) {
+// TestCodeFileKeys: n, N, r and x act on the Code section's files while the cursor
+// is there, as the menu's lines for the selection, and not elsewhere.
+func TestCodeFileKeys(t *testing.T) {
 	t.Parallel()
 	m := fileModel(t)
-	m.executable = "/nonexistent/wdx" // so that the menu has r, to reload tide
-	if !m.menuOffers(renameKey) {
-		t.Fatal("the test needs r to be the menu's too")
-	}
 	keys(m, renameKey)
 	if f, ok := m.openTop().(*fieldScreen); !ok || f.value != "a.go" {
 		t.Fatalf("r on dir/a.go opened %#v, want its rename", m.openTop())
@@ -57,13 +53,13 @@ func TestCodeFileKeysTakeOverInCode(t *testing.T) {
 	}
 	keys(m, "esc", renameKey, deleteFileKey)
 	if m.openTop() != nil {
-		t.Fatal("r or d on the selector opened a popup")
+		t.Fatal("r or x on the selector opened a popup")
 	}
 
-	// Out of Code, r is the menu's again.
+	// Out of Code, the menu has no rename.
 	m.moveCursor(0)
-	if m.codeKeyTaken(renameKey) {
-		t.Error("r taken in the agents")
+	if m.menuOffers(renameKey) {
+		t.Error("r offered in the agents")
 	}
 }
 

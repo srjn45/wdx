@@ -40,7 +40,7 @@ func TestStartAgentAgain(t *testing.T) {
 	p.keys("alt+right")
 	exit()
 	p.keys("C-q")
-	wantText(t, p.m, "g  start a-one again", "g start")
+	wantText(t, p.m, "a-one (agent)", "g  start again", "g start")
 	p.keys("g")
 	live()
 	p.typed("echo ag''ain\n")
@@ -72,7 +72,7 @@ func TestStartTerminalAgain(t *testing.T) {
 		return ok && s.name == "shell"
 	})
 	p.keys("C-q")
-	wantText(t, p.m, "g  start shell again")
+	wantText(t, p.m, "shell (terminal)", "g  start again")
 	p.keys("g")
 	p.until(t, "it live again", func(m *Model) bool {
 		s, ok := m.selectedTerminal()
@@ -118,8 +118,8 @@ func TestRestartAgent(t *testing.T) {
 		t.Fatal("no agent")
 	}
 	p.keys("alt+right", "C-q")
-	wantText(t, p.m, "n  new session of a-one", "n restart")
-	p.keys("n")
+	wantText(t, p.m, "a-one (agent)", "R  new session", "R restart")
+	p.keys("R")
 	wantText(t, p.m, "Restart agent", "again in a new session?", "It is in the middle of something (")
 	p.keys("n")
 	if p.m.confirm != nil {
@@ -128,7 +128,7 @@ func TestRestartAgent(t *testing.T) {
 	if a, _ := p.m.activeAgent(); a.SessionId != before.SessionId {
 		t.Fatalf("declined, and yet a new session")
 	}
-	p.keys("C-q", "n", "y")
+	p.keys("C-q", "R", "y")
 	p.until(t, "a new session, live", func(m *Model) bool {
 		a, ok := m.activeAgent()
 		return ok && a.SessionId != before.SessionId && a.State == api.AgentStateRunning && agentAttached("a-one")(m) && m.agentTerm.live

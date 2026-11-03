@@ -85,7 +85,7 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 		m.drawPopup(buf, m.editorClosePopup(m.st))
 	}
 	if m.menu {
-		m.drawMenu(buf)
+		m.drawPopup(buf, m.menuPopup())
 	}
 	uv.NewStyledString(m.statusLine()).Draw(buf, uv.Rect(0, m.height-1, m.width, 1))
 	return buf, true
@@ -228,15 +228,6 @@ func (m *Model) labels(p pane, f uv.Rectangle) []label {
 	}
 	add(" ", -1, plain)
 	return labels
-}
-
-// drawMenu draws the menu in a popup.
-func (m *Model) drawMenu(buf uv.Screen) {
-	var body []string
-	for _, it := range m.menuItems() {
-		body = append(body, m.st.Command(it.key)+"  "+it.label)
-	}
-	m.drawPopup(buf, popup{title: "Menu", body: body, footer: m.st.Command("Esc") + " close"})
 }
 
 // popup is a box over the middle of the window: a title, a body and a

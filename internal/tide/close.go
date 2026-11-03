@@ -20,7 +20,7 @@ func (c *confirmBox) verb() string {
 	return "remove"
 }
 
-// closableProject returns the project C-q w would close: the one shown, known
+// closableProject returns the project C-q p c would close: the one shown, known
 // from its stream and still open.
 func (m *Model) closableProject() (removal, bool) {
 	f := m.following

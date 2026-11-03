@@ -1029,6 +1029,7 @@ func TestWorktreeDiffsLive(t *testing.T) {
 	})
 
 	writeFile(t, filepath.Join(work, "file"), "one\nedited\nthree\n")
+	m.layout.setFocus(project) // f reads again from the left pane, the open tab too
 	p.keys("C-q", refreshKey)
 	p.until(t, "the edit in the open tab", func(m *Model) bool { return strings.Contains(text(m), "+ edited") })
 
@@ -1041,8 +1042,8 @@ func TestWorktreeDiffsLive(t *testing.T) {
 
 	// Enter on the worktree shows what is not committed, while there is any.
 	writeFile(t, filepath.Join(work, "later"), "still to commit\n")
-	p.keys("C-q", refreshKey)
 	m.layout.setFocus(project)
+	p.keys("C-q", refreshKey)
 	m.moveToWorktree(slices.IndexFunc(m.worktreeRows(), func(r worktreeRow) bool { return r.file == nil && r.worktree.Name == "work" }))
 	p.keys("enter")
 	p.until(t, "the uncommitted view", func(m *Model) bool {
@@ -1173,7 +1174,7 @@ func TestRemoveWorktreeInATide(t *testing.T) {
 		t.Fatalf("tabs: %v", m.list().tabs)
 	}
 	p.keys("alt+left", "C-q")
-	wantText(t, m, "x  remove work")
+	wantText(t, m, "work (worktree)", "x  remove")
 	p.keys("x")
 	wantText(t, m, "Remove worktree", "Remove work?", "Its branch goes too")
 	p.keys("n")

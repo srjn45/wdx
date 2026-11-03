@@ -19,7 +19,7 @@ import (
 
 const (
 	codeSelectorHint = "↑↓ select  ←→ worktree  / filter  Alt+arrows move  C-q menu"
-	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  n/N new file/dir  r rename  d delete  / filter  C-q menu"
+	codeHint         = "↑↓ select  ←→ fold  Enter open  e edit  n/N new file/dir  r rename  x delete  / filter  C-q menu"
 	mainWorktree     = "main"
 )
 
@@ -290,17 +290,6 @@ func (s *projectScreen) updateCode(name string) tea.Cmd {
 		default:
 			s.m.openCodeFile(r.node.path)
 		}
-	case editFileKey:
-		if r, ok := s.m.codeCursorRow(); ok && r.node != nil && !r.node.dir {
-			s.m.openCodeFile(r.node.path)
-			return s.m.askEditor(s.m.list().active)
-		}
-	case newFileKey, newDirKey:
-		s.m.newCodeEntry(name == newDirKey)
-	case renameKey:
-		s.m.renameCodeEntry()
-	case deleteFileKey:
-		s.m.deleteCodeEntry()
 	}
 	return nil
 }

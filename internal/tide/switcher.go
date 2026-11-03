@@ -16,7 +16,7 @@ import (
 // openCreateLabel is the switcher's way to [Open Project].
 const openCreateLabel = "Open/Create Project"
 
-// switcherBox is the project switcher, C-q p: the open projects in a popup,
+// switcherBox is the project switcher, C-q p s: the open projects in a popup,
 // found by typing part of their names, and the way to [Open Project]
 // (docs/TIDE.md).
 type switcherBox struct {

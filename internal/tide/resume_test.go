@@ -3,8 +3,6 @@ package tide
 import (
 	"context"
 	"errors"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +12,6 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
-	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -108,71 +105,12 @@ func TestDaemonVersionAskedAgain(t *testing.T) {
 	}
 }
 
-func executableFile(t *testing.T) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "wdx")
-	if err := runtest.WriteExecutable(path, ""); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func isQuit(cmd tea.Cmd) bool {
-	if cmd == nil {
-		return false
-	}
-	_, ok := cmd().(tea.QuitMsg)
-	return ok
-}
-
-func TestReload(t *testing.T) {
+// TestResume starts as an older release's C-q r hands over, through --resume.
+func TestResume(t *testing.T) {
 	t.Parallel()
-	m, _ := newModel(120, 24)
 	agents := []api.Agent{{Id: "agent-a", Name: "a", State: api.AgentStateRunning}, {Id: "agent-b", Name: "b", State: api.AgentStateRunning}}
 	terms := []api.Terminal{{Id: "term-x", Name: "x", State: api.TerminalStateRunning, Dir: "/work/demo"}, {Id: "term-y", Name: "y", State: api.TerminalStateRunning, Dir: "/work/demo"}}
-	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", Terminals: &terms, Agents: &agents}}})
-	m.list().openTab("agent-b")
-	m.selectTab(1)
-	m.layout.setFocus(terminal)
-	m.layout.toggleZoom()
-
-	// Not offered without a binary to run.
-	m.executable = ""
-	m.Update(key('q', tea.ModCtrl))
-	_, cmd := m.Update(key('r', 0))
-	if m.Reload() != nil || isQuit(cmd) {
-		t.Fatal("reloaded without a binary")
-	}
-
-	// A binary that cannot run keeps tide open, and says so.
-	m.executable = filepath.Join(t.TempDir(), "gone")
-	m.Update(key('q', tea.ModCtrl))
-	if !strings.Contains(statusRow(m), "r reload") {
-		t.Fatalf("not in the menu's keys: %q", statusRow(m))
-	}
-	_, cmd = m.Update(key('r', 0))
-	if m.Reload() != nil || isQuit(cmd) || !strings.Contains(statusRow(m), "cannot reload") {
-		t.Fatalf("with no binary: %q", statusRow(m))
-	}
-
-	m.executable = executableFile(t)
-	m.Update(key('q', tea.ModCtrl))
-	m.update(key('r', 0))
-	r := m.Reload()
-	want := Resume{Project: "demo", ProjectID: "proj-demo", Focus: "terminal", Zoomed: "terminal", LastTop: "project", TerminalOpen: true, Terminal: "term-y", Agent: "agent-b", Tabs: []string{"agent-b"}}
-	if r == nil || !reflect.DeepEqual(*r, want) {
-		t.Fatalf("resume %+v, want %+v", r, want)
-	}
-	if m.following != nil {
-		t.Fatal("still following the project")
-	}
-
-	// The next run, which gets it through the flag, shows the same.
-	state, err := r.String()
-	if err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := ParseResume(state)
+	parsed, err := ParseResume(`{"project":"demo","project_id":"proj-demo","focus":"terminal","zoomed":"terminal","last_top":"project","terminal_open":true,"terminal":"term-y","agent":"agent-b","tabs":["agent-b"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,15 +161,15 @@ func TestResumeNotPossible(t *testing.T) {
 	}
 }
 
-// r lists the projects again after they could not be, rather than reloading.
+// r lists the projects again after they could not be.
 func TestRetryKeyBeforeProjectsListed(t *testing.T) {
 	t.Parallel()
-	m := New(context.Background(), Options{Style: style.New(false), Executable: executableFile(t)})
+	m := New(context.Background(), Options{Style: style.New(false)})
 	m.tick = noTick
 	m.Update(projectsListed{err: errors.New("no daemon")})
 	m.client = nil
 	cmd := m.key(key('r', 0))
-	if m.Reload() != nil || cmd == nil || !m.projects.listing {
-		t.Fatalf("reload %+v, listing %v", m.Reload(), m.projects.listing)
+	if cmd == nil || !m.projects.listing {
+		t.Fatalf("listing %v", m.projects.listing)
 	}
 }

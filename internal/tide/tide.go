@@ -26,11 +26,10 @@ import (
 // tide's own keys, as Bubble Tea names them; every other key goes to the
 // focused pane.
 const (
-	zoomKey         = "ctrl+]"
-	terminalKey     = `ctrl+\`
-	menuKey         = "ctrl+q"
-	closeTabKey     = "-" // of the menu
-	closeProjectKey = "w" // of the menu
+	zoomKey     = "ctrl+]"
+	terminalKey = `ctrl+\`
+	menuKey     = "ctrl+q"
+	closeTabKey = "-" // of the menu
 )
 
 // focusKeys are Alt and an arrow, whichever way the terminal sends them.
@@ -82,6 +81,7 @@ type Model struct {
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
 	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
 	menu           bool                                                                 // the menu is open
+	projectMenu    bool                                                                 // and shows its Project submenu
 	switcher       *switcherBox                                                         // the project switcher, while it is open
 	opening        []screen                                                             // [Open Project] and the screens above it, while that popup is open
 	strip          int                                                                  // how many times the project strip was shown
@@ -90,11 +90,9 @@ type Model struct {
 	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
 	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
 
-	executable    string                                    // from Options
 	versionOf     func(ctx context.Context) (string, error) // from Options
 	daemonVersion string                                    // what the daemon last answered, "" when it did not
 	resume        *Resume                                   // what to show first, until the projects are listed
-	reload        *Resume                                   // what the next run is to show, once C-q r was pressed
 	stripLinger   time.Duration                             // from Options
 	sections      []section                                 // the left pane's, in the order set
 
@@ -123,8 +121,6 @@ type Options struct {
 	ProjectsDir string
 	// Home is wdx's home, where the terminals' holders listen.
 	Home string
-	// Executable is the binary C-q r runs; "" offers no reload.
-	Executable string
 	// DaemonVersion asks the daemon its version, which the status line
 	// shows when it differs; nil asks nothing.
 	DaemonVersion func(ctx context.Context) (string, error)
@@ -169,7 +165,6 @@ func New(ctx context.Context, opts Options) *Model {
 		selectedTab: map[string]string{},
 		createdTab:  map[string]string{},
 		agentLists:  map[string]*agentList{},
-		executable:  opts.Executable,
 		versionOf:   opts.DaemonVersion,
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
@@ -514,12 +509,16 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	name := msg.String()
 	m.sel = nil
 	if m.menu {
-		m.menu = false
+		line, ok := m.menuLine(name) // of the menu shown, before it closes
+		m.closeMenu()
 		if altArrows[name] && m.programInFocus() {
 			m.log.Info("alt key sent to the program", "key", name, "pane", m.layout.focus)
 			return m.paneInput(m.layout.focus, msg)
 		}
-		return m.menuAction(name)
+		if ok {
+			return line.do()
+		}
+		return nil
 	}
 	m.terminalNotice, m.statusNotice = "", ""
 	if m.child != nil {
@@ -562,14 +561,12 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		m.layout.toggleTerminal()
 		m.changed("toggle terminal")
 	case menuKey:
-		m.menu = true
+		m.openMenu(false)
 	default:
 		d, ok := focusKeys[name]
 		switch {
 		case !ok && m.layout.focus == project && m.filterTyping():
 			return m.filterKeyTyped(msg)
-		case !ok && m.layout.focus == project && m.codeKeyTaken(name):
-			return m.projectPaneKey(msg)
 		case !ok && m.layout.focus == project && m.menuOffers(name):
 			return m.menuAction(name)
 		case !ok && m.layout.focus == project:
@@ -583,93 +580,6 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case m.layout.move(d):
 			m.changed("move")
 		}
-	}
-	return nil
-}
-
-// menuAction does what a letter of the C-q menu does, if it applies now.
-func (m *Model) menuAction(name string) tea.Cmd {
-	switch name {
-	case "o":
-		m.switcher = nil
-		return m.openProject()
-	case "p":
-		return m.openSwitcher()
-	case "t":
-		if _, ok := m.checkoutDir(); ok {
-			m.switcher, m.opening = nil, nil
-			return m.createTerminal()
-		}
-	case "a":
-		if _, ok := m.checkoutDir(); ok {
-			m.switcher, m.opening = nil, nil
-			return m.createAgent()
-		}
-	case "c":
-		if a, ok := m.childParent(); ok {
-			m.switcher, m.opening = nil, nil
-			m.child = &childBox{parent: a}
-			m.log.Info("child asked", "parent", a.Name)
-		}
-	case "x":
-		if r, ok := m.removable(); ok {
-			m.confirm = &confirmBox{r: r}
-			m.log.Info("removal asked", "kind", r.kind, "name", r.name)
-		}
-	case `\`, "]", menuKey:
-		if m.programInFocus() {
-			return m.sendToProgram(name)
-		}
-	case infoKey:
-		if a, ok := m.infoTarget(); ok {
-			m.switcher, m.opening = nil, nil
-			m.openInfo(a)
-		}
-	case settingsKey:
-		if m.settingsOffered() {
-			m.switcher, m.opening = nil, nil
-			m.openSettings()
-		}
-	case refreshKey:
-		if m.menuOffers(refreshKey) {
-			m.codeRefresh()
-			return m.refreshWorktrees("", true)
-		}
-	case startKey:
-		if s, ok := m.startable(); ok {
-			m.switcher, m.opening = nil, nil
-			return m.startAgain(s)
-		}
-	case restartKey:
-		if r, ok := m.restartable(); ok {
-			m.switcher, m.opening = nil, nil
-			m.confirm = &confirmBox{r: r}
-			m.log.Info("restart asked", "name", r.name)
-		}
-	case closeProjectKey:
-		if r, ok := m.closableProject(); ok {
-			m.switcher, m.opening = nil, nil
-			if r.running {
-				m.confirm = &confirmBox{r: r}
-				m.log.Info("closing asked", "name", r.name)
-				return nil
-			}
-			return m.closeProject(r, false)
-		}
-	case closeTabKey:
-		if t, ok := m.closableTab(); ok {
-			m.askCloseTab(t.tab, "asked")
-		}
-	case "r":
-		if m.menuOffers("r") {
-			return m.startReload()
-		}
-	case "q":
-		m.log.Info("tide quit")
-		quit := m.flushViews() // before the stream goes, with what it shows
-		m.unfollow()           // the daemon ends the stream, and logs it
-		m.detachAll()
-		return quit
 	}
 	return nil
 }

@@ -15,23 +15,13 @@ import (
 )
 
 // The Code section's keys that create, rename and delete files and directories, in
-// popups (docs/TIDE_CODE.md). While the cursor is in the section they take over the
-// menu's letters, which act there without C-q.
+// popups (docs/TIDE_CODE.md), the menu's lines for the selection there.
 const (
 	newFileKey    = "n"
 	newDirKey     = "N"
 	renameKey     = "r"
-	deleteFileKey = "d"
+	deleteFileKey = "x"
 )
-
-var codeFileKeys = []string{newFileKey, newDirKey, renameKey, deleteFileKey}
-
-// codeKeyTaken reports whether the key is one of the Code section's own, with the
-// cursor there.
-func (m *Model) codeKeyTaken(name string) bool {
-	l := m.list()
-	return l != nil && l.section == sectionCode && slices.Contains(codeFileKeys, name)
-}
 
 // codeEntry is the file or directory under the cursor; ok is false on the selector.
 func (m *Model) codeEntry() (n *codeNode, ok bool) {

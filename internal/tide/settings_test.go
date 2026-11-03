@@ -293,14 +293,7 @@ func TestSettingsClicks(t *testing.T) {
 func TestSettingsResume(t *testing.T) {
 	t.Parallel()
 	m := settingsModel()
-	m.executable = executableFile(t)
-	m.Update(key('q', tea.ModCtrl))
-	m.update(key('r', 0))
-	r := m.Reload()
-	if r == nil || r.Agent != settingsTab || !slices.Contains(r.Tabs, settingsTab) {
-		t.Fatalf("resume %+v", r)
-	}
-
+	r := &Resume{Project: "demo", ProjectID: "proj-demo", Focus: "agent", Agent: settingsTab, Tabs: []string{settingsTab}}
 	next := New(m.ctx, Options{Style: m.st, Resume: r})
 	next.tick = noTick
 	next.Update(tea.WindowSizeMsg{Width: 100, Height: 41})
