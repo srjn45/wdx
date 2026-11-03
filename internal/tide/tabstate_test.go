@@ -51,10 +51,12 @@ func TestTabsKeptByDaemon(t *testing.T) {
 		return slices.Equal(m.list().tabs, left) && m.list().active == infoTab(two.Id)
 	})
 
+	p.until(t, "the view saved", viewSaved) // so the next tide's current tab is the one kept
+
 	next := h.openShown(t)
 	next.until(t, "the tabs kept", func(m *Model) bool {
 		l := m.list()
-		return l != nil && l.tabsRead && slices.Equal(l.tabs, left) && l.active == two.Id
+		return l != nil && l.tabsRead && slices.Equal(l.tabs, left) && l.active == infoTab(two.Id)
 	})
 }
 

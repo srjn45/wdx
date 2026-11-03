@@ -3,6 +3,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -789,6 +790,66 @@ func (c *Client) ReplaceTabs(ctx context.Context, ref string, tabs []api.Tab) (a
 		return api.TabsResult{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// TideView reads what tide shows as a whole, {} when none was saved.
+func (c *Client) TideView(ctx context.Context) (json.RawMessage, error) {
+	r, err := c.api.GetTideViewWithResponse(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(v.View)
+}
+
+// ReplaceTideView keeps view, a JSON object, as what tide shows as a whole.
+func (c *Client) ReplaceTideView(ctx context.Context, view json.RawMessage) error {
+	v, err := viewObject(view)
+	if err != nil {
+		return err
+	}
+	r, err := c.api.ReplaceTideViewWithResponse(ctx, api.View{View: v})
+	if err != nil {
+		return err
+	}
+	_, err = result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	return err
+}
+
+// ProjectView reads what tide shows of the project ref, {} when none was saved.
+func (c *Client) ProjectView(ctx context.Context, ref string) (json.RawMessage, error) {
+	r, err := c.api.GetProjectViewWithResponse(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	v, err := result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(v.View)
+}
+
+// ReplaceProjectView keeps view, a JSON object, as what tide shows of the project ref.
+func (c *Client) ReplaceProjectView(ctx context.Context, ref string, view json.RawMessage) error {
+	v, err := viewObject(view)
+	if err != nil {
+		return err
+	}
+	r, err := c.api.ReplaceProjectViewWithResponse(ctx, ref, api.View{View: v})
+	if err != nil {
+		return err
+	}
+	_, err = result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+	return err
+}
+
+// viewObject is a view as the API's object.
+func viewObject(view json.RawMessage) (map[string]any, error) {
+	v := map[string]any{}
+	return v, json.Unmarshal(view, &v)
 }
 
 // SyncDocsToGit writes the docs of the project named by project or holding dir into

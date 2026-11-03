@@ -160,8 +160,12 @@ func TestEditLive(t *testing.T) {
 
 	// A tide started anew, as after this one quit, finds the editor and gives it a tab.
 	other := h.follow(t)
-	other.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
-	other.keys("enter")
+	// It starts on the project when the first tide's view was saved by then, and
+	// on the switcher otherwise.
+	other.until(t, "a start", func(m *Model) bool { return m.switcher != nil || m.shown != "" })
+	if other.m.switcher != nil {
+		other.keys("enter")
+	}
 	other.until(t, "the editor's tab", func(m *Model) bool {
 		return m.list() != nil && slices.Contains(m.list().tabs, fileTab("main", "file.go"))
 	})

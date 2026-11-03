@@ -46,6 +46,7 @@ type agentList struct {
 	tabsRead   bool
 	savedTabs  []string        // the tabs as last sent or brought by the stream
 	savingTabs bool            // a list is on its way to the daemon
+	viewRead   bool            // the daemon's view of the project was put in place, or there was none
 	offset     int             // the rows scrolled past
 	opened     bool            // the project came once, and its first running agent became active
 	created    string          // the tab of an agent created here, current once the stream brings it

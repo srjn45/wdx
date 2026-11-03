@@ -27,6 +27,7 @@ type following struct {
 	project *api.Project  // as last sent; nil until the first event
 	err     error         // why the stream broke, while it is opened again
 	wait    time.Duration // before it is opened again
+	view    *projectView  // what the daemon kept of the project, read as the stream opened
 }
 
 // Messages of the stream, each of the stream gen.
@@ -35,6 +36,7 @@ type (
 		gen    int
 		stream *client.ProjectStream
 		err    error
+		view   *projectView
 	}
 	projectEvent struct {
 		gen   int
@@ -72,11 +74,14 @@ func (m *Model) unfollow() {
 	}
 }
 
+// open opens the stream, reading first what the daemon kept of the project, so
+// that it is in place when the first event's rows come.
 func (m *Model) open() tea.Cmd {
 	f := m.following
 	return func() tea.Msg {
+		view := m.readProjectView(f.ctx, f.ref)
 		s, err := m.openStream(f.ctx, f.ref)
-		return streamOpened{gen: f.gen, stream: s, err: err}
+		return streamOpened{gen: f.gen, stream: s, err: err, view: view}
 	}
 }
 
@@ -107,6 +112,9 @@ func (m *Model) streamOpened(msg streamOpened) tea.Cmd {
 		return m.broke(msg.err)
 	}
 	f.stream = msg.stream
+	if msg.view != nil {
+		f.view = msg.view
+	}
 	return m.next()
 }
 
@@ -122,6 +130,12 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	}
 	p := msg.event.Project
 	f.project, f.ref, f.err, f.wait = &p, "id:"+p.Id, nil, 0
+	if l := m.list(); !l.viewRead {
+		l.viewRead = true
+		if f.view != nil {
+			m.applyProjectView(p.Id, l, *f.view)
+		}
+	}
 	m.terminalsChanged()
 	m.tabsFromStream(msg.event.Tabs)
 	m.agentsChanged()

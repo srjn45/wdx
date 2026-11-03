@@ -23,7 +23,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Remove a project | `project remove` | only when no checkout is left | Later (tide) | Comes after close |
 | Project details | `project get` | no screen | By design | The agent, terminal and worktree lists already show a project |
 | Switch between projects | not needed | `C-q p`, `Alt+Shift+←/→` | By design | A command names its project with a flag, or takes it from the directory |
-| Keep the open tabs across runs | none, only the API | the tabs kept by the daemon come back, and a removal through wdx closes its tab | By design | Tabs are tide's view; the CLI opens none (docs/TIDE_STATE.md) |
+| Keep what tide showed across runs | none, only the API | the tabs, the project shown, focus, zoom, cursor and folds kept by the daemon come back, and a removal through wdx closes its tab | By design | It is tide's view; the CLI shows none (docs/TIDE_STATE.md) |
 
 ## Messages
 

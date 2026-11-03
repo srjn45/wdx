@@ -63,6 +63,8 @@ type Model struct {
 	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
 	createdTab     map[string]string                                                    // the terminal created here in each project, selected once the stream brings it
 	agentLists     map[string]*agentList                                                // the Agents list of each project shown, by project id, for the run
+	view           viewState                                                            // how far what tide shows is from what the daemon keeps
+	startView      *tideView                                                            // the view the daemon had at start; nil when it had none to read
 	term           *attachment                                                          // the terminal the terminal pane shows
 	agentTerm      *attachment                                                          // the active agent's terminal, which the agent pane shows
 	attaches       int                                                                  // how many attachments were made, numbering them
@@ -133,6 +135,9 @@ type Options struct {
 	StripLinger time.Duration
 	// SectionOrder is the tide.section_order setting; "" is the default order.
 	SectionOrder string
+	// ViewSettle is how long what tide shows stays the same before it is sent to
+	// the daemon; zero is half a second.
+	ViewSettle time.Duration
 }
 
 // click is where and when a click on a frame's title happened.
@@ -169,6 +174,7 @@ func New(ctx context.Context, opts Options) *Model {
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
 		sections:    sectionOrder(opts.SectionOrder),
+		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), sentProject: map[string][]byte{}},
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
@@ -178,7 +184,7 @@ func New(ctx context.Context, opts Options) *Model {
 	return m
 }
 
-func (m *Model) Init() tea.Cmd { return tea.Batch(m.listProjects(), m.checkDaemonVersion()) }
+func (m *Model) Init() tea.Cmd { return tea.Batch(m.readTideView(), m.checkDaemonVersion()) }
 
 // Update handles msg, then attaches the terminal of the tab selected and the
 // active agent if they are not, and gives them their panes' sizes.
@@ -192,8 +198,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	filter := m.codeFilterSync()
 	attach := m.attachSelected()
 	tabs := m.tabsSync()
+	view := m.viewSync()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, diff, worktrees, code, filter, attach, tabs)
+	return m, tea.Batch(cmd, values, diff, worktrees, code, filter, attach, tabs, view)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -205,6 +212,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.listed(msg)
 	case tabsSaved:
 		m.tabsWereSaved(msg)
+	case tideViewRead:
+		return m, m.tideViewWasRead(msg)
+	case viewSettled:
+		return m, m.viewSettledFor(msg)
+	case viewSent:
+		return m, m.viewWasSent(msg)
 	case daemonVersionMsg:
 		m.daemonVersion = msg.version
 		return m, m.tick(VersionCheckEvery, func(time.Time) tea.Msg { return checkDaemonVersion{} })
@@ -650,9 +663,10 @@ func (m *Model) menuAction(name string) tea.Cmd {
 		}
 	case "q":
 		m.log.Info("tide quit")
-		m.unfollow() // the daemon ends the stream, and logs it
+		quit := m.flushViews() // before the stream goes, with what it shows
+		m.unfollow()           // the daemon ends the stream, and logs it
 		m.detachAll()
-		return tea.Quit
+		return quit
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -27,11 +28,20 @@ type program struct {
 // follow starts tide on h, its stream followed, at 128 × 24.
 func (h testHome) follow(t *testing.T) *program {
 	t.Helper()
+	return h.followTicking(t, nil)
+}
+
+// followTicking is follow with tick in place of tea.Tick, when not nil.
+func (h testHome) followTicking(t *testing.T, tick func(time.Duration, func(time.Time) tea.Msg) tea.Cmd) *program {
+	t.Helper()
 	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home})
 	t.Cleanup(func() {
 		m.unfollow()
 		m.detachAll()
 	})
+	if tick != nil {
+		m.tick = tick
+	}
 	p := &program{m: m, msgs: make(chan tea.Msg, 1000)}
 	// Wide enough for the project pane's lines: 31 cells inside its borders.
 	p.update(tea.WindowSizeMsg{Width: 128, Height: 24})
@@ -308,8 +318,12 @@ func (p *program) typed(s string) {
 func (h testHome) openShown(t *testing.T) *program {
 	t.Helper()
 	p := h.follow(t)
-	p.until(t, "switcher", func(m *Model) bool { return m.switcher != nil })
-	p.keys("enter")
+	// A tide before it on h may have saved its view by then, which starts on the
+	// project; otherwise the switcher shows.
+	p.until(t, "a start", func(m *Model) bool { return m.switcher != nil || m.shown != "" })
+	if p.m.switcher != nil {
+		p.keys("enter")
+	}
 	return p
 }
 

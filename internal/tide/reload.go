@@ -106,9 +106,10 @@ func (m *Model) startReload() tea.Cmd {
 	}
 	m.reload = r
 	m.log.Info("tide reloading", "executable", m.executable, "project", m.shown)
-	m.unfollow() // the daemon ends the stream, and logs it
+	quit := m.flushViews() // before the stream goes, with what it shows
+	m.unfollow()           // the daemon ends the stream, and logs it
 	m.detachAll()
-	return tea.Quit
+	return quit
 }
 
 // runnable reports why the file at path cannot be run.
@@ -126,6 +127,9 @@ func runnable(path string) error {
 // resumed shows what the run before showed, when its project is still open.
 func (m *Model) resumed() (tea.Cmd, bool) {
 	r := m.resume
+	if v := m.viewResume(); v != nil {
+		r = v // the daemon's, which the next release keeps: --resume is for one before it
+	}
 	m.resume = nil
 	if r == nil || !m.isOpen(r.Project) {
 		return nil, false
