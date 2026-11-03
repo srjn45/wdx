@@ -1,6 +1,6 @@
 # Closing a tab from the left pane
 
-Status: approved by the human on 2026-11-03.
+Status: approved by the human on 2026-11-03; built on 2026-11-03.
 
 Today `-` (`C-q -`) closes a tab only with the right pane in focus: to close the tab of a row in the left pane's list, you go to the tab first. This lets the list close what it opens.
 

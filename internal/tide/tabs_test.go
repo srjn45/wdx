@@ -381,27 +381,19 @@ func TestTabCloseKey(t *testing.T) {
 	}
 }
 
-// C-q - closes nothing but with the agent pane in focus: elsewhere it could seem
-// to close a terminal's tab.
+// C-q - closes no tab from the terminal pane: there it could seem to close a
+// terminal's. The list's closes its row's (TestMinusClosesTheRowsTab).
 func TestTabCloseKeyElsewhere(t *testing.T) {
 	t.Parallel()
 	m, _ := tabsModel(2)
-	for _, focus := range []pane{project, terminal} {
-		m.layout.setFocus(focus)
-		m.Update(key('q', tea.ModCtrl))
-		if strings.Contains(text(m), "close the tab") {
-			t.Fatalf("%s: offered:\n%s", focus, text(m))
-		}
-		m.Update(key('-', 0))
-		if len(m.list().tabs) != 2 {
-			t.Fatalf("%s: closed a tab", focus)
-		}
+	m.layout.setFocus(terminal)
+	m.Update(key('q', tea.ModCtrl))
+	if strings.Contains(text(m), "close the tab") {
+		t.Fatalf("offered:\n%s", text(m))
 	}
-	// In the list, nor does - without the menu.
-	m.layout.setFocus(project)
 	m.Update(key('-', 0))
 	if len(m.list().tabs) != 2 {
-		t.Fatal("- closed a tab from the list")
+		t.Fatal("closed a tab")
 	}
 }
 

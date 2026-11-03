@@ -37,7 +37,7 @@ The right pane shows one agent at a time today, the active one. This gives it a 
 - `Alt+→` from the left pane returns to the current tab, not always tab 1.
 - `Alt+↑` in the right pane moves the focus to the left pane, leaving the current tab as it is. It is on trial: the human keeps both this and `Alt+←` and sees whether it stays.
 - `Alt+↓` goes to the terminal pane, as today.
-- `C-q -` closes the current tab. The menu offers it only while the right pane has the focus, so that it cannot seem to close a terminal tab.
+- `C-q -` closes the current tab. The menu offers it while the right pane has the focus, never with the terminal pane's, so that it cannot seem to close a terminal tab; in the list it closes the row's tab (docs/TIDE_CLOSE_ROW.md).
 - A zoom follows the focus, as it does for every move between panes.
 
 ### Mouse

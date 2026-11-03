@@ -366,6 +366,43 @@ func (m *Model) rowOpener() (func(goToTab bool) tea.Cmd, bool) {
 	return nil, false
 }
 
+// rowTab is the tab Enter on the row under the cursor in the left pane opens.
+func (m *Model) rowTab() (string, bool) {
+	l := m.list()
+	if m.layout.focus != project || l == nil {
+		return "", false
+	}
+	switch l.section {
+	case sectionAgents:
+		if a, ok := m.cursorAgent(); ok {
+			return a.Id, true
+		}
+	case sectionWorktrees:
+		if rows := m.worktreeRows(); l.worktreeRow < len(rows) {
+			return rows[l.worktreeRow].tab(), true
+		}
+	case sectionCode:
+		if r, ok := m.codeCursorRow(); ok && r.node != nil && !r.node.dir {
+			return fileTab(l.code.worktree, r.node.path), true
+		}
+	case sectionDocs:
+		if rows := m.docRows(); l.docRow < len(rows) {
+			return docTab(rows[l.docRow].doc.Id), true
+		}
+	case sectionPlans:
+		if p, ok := m.cursorPlan(); ok {
+			return planTab(p.Id), true
+		}
+	}
+	return "", false
+}
+
+// openRowTab is the row's tab, when it is open.
+func (m *Model) openRowTab() (string, bool) {
+	tab, ok := m.rowTab()
+	return tab, ok && slices.Contains(m.list().tabs, tab)
+}
+
 // foldLeft closes the open parent under the cursor, and from any other row
 // moves the cursor to its parent: it never closes a parent from below.
 func (m *Model) foldLeft() {

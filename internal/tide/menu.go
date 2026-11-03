@@ -161,6 +161,12 @@ func (m *Model) selectionPart() menuPart {
 			return nil
 		})
 	}
+	if tab, ok := m.openRowTab(); ok {
+		add(closeTabKey, "close tab", "close tab", func() tea.Cmd {
+			m.askCloseTab(tab, "asked from the list")
+			return nil
+		})
+	}
 	if m.programInFocus() {
 		send := func(key string) func() tea.Cmd { return func() tea.Cmd { return m.sendToProgram(key) } }
 		add(`\`, `send C-\ to the program`, "send", send(`\`))
