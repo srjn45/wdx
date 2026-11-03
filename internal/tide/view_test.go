@@ -196,7 +196,7 @@ func TestViewPerProject(t *testing.T) {
 	p.until(t, "api's view and tabs saved", func(m *Model) bool {
 		return left("api", two.Id, one.Id)(m) && viewSaved(m) && tabsSavedAs(one.Id, two.Id)(m)
 	})
-	p.keys("C-q", "p", "w", "e", "b", "enter")
+	p.keys("C-q", "p", "s", "w", "e", "b", "enter")
 	p.until(t, "web shown", func(m *Model) bool { l := m.list(); return m.shown == "web" && l != nil && l.viewRead })
 	p.keys("enter")
 	p.until(t, "c-three attached", agentAttached("c-three"))
@@ -207,7 +207,7 @@ func TestViewPerProject(t *testing.T) {
 
 	next := h.followTicking(t, atOnce)
 	next.until(t, "web as it was left", left("web", three.Id, four.Id))
-	next.keys("C-q", "p", "a", "p", "i", "enter")
+	next.keys("C-q", "p", "s", "a", "p", "i", "enter")
 	next.until(t, "api as it was left", left("api", two.Id, one.Id))
 }
 
