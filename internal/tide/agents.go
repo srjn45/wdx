@@ -97,6 +97,7 @@ type agentList struct {
 // agentListRow is a row of the Agents list.
 type agentListRow struct {
 	agent api.Agent
+	plan  string // a plan's row: the plan's name, which its agents' task names; empty on an agent's
 	depth int
 	guide string // the tree's lines before the fold mark
 	fold  string // foldOpen, foldClosed or, in a tree, blank at the top level
@@ -104,6 +105,56 @@ type agentListRow struct {
 	// waiting is how many of them are waiting, which a folded parent must not hide.
 	waiting int
 	match   bool // it matches the filter
+}
+
+// key names the row across events and in the folds: its agent's id, or its plan's
+// name, which a plan that has run cannot change.
+func (r agentListRow) key() string {
+	if r.plan != "" {
+		return planGroupKey(r.plan)
+	}
+	return r.agent.Id
+}
+
+// planGroupKey is the key of the row of the plan named name in the Agents section.
+func planGroupKey(name string) string { return planTabPrefix + strings.ToLower(name) }
+
+// groupOf is the key of the row a's row is under at the top: its plan's, when it
+// does a plan's task, as an agent with no parent; empty for none.
+func groupOf(a api.Agent) string {
+	if a.ParentAgentId == nil && a.Task != nil {
+		return planGroupKey(a.Task.Plan)
+	}
+	return ""
+}
+
+// agentEntry is what the top of the Agents section lists: an agent, or a plan with
+// its agents, at the place of its first.
+type agentEntry struct {
+	agent  api.Agent
+	plan   string
+	agents []api.Agent
+}
+
+// agentEntries groups the agents in top that do a plan's task under their plan.
+func agentEntries(top []api.Agent) []agentEntry {
+	var entries []agentEntry
+	at := map[string]int{}
+	for _, a := range top {
+		key := groupOf(a)
+		if key == "" {
+			entries = append(entries, agentEntry{agent: a})
+			continue
+		}
+		i, ok := at[key]
+		if !ok {
+			i = len(entries)
+			at[key] = i
+			entries = append(entries, agentEntry{plan: a.Task.Plan})
+		}
+		entries[i].agents = append(entries[i].agents, a)
+	}
+	return entries
 }
 
 // list returns the Agents list of the project shown, nil until it is known.
@@ -142,18 +193,25 @@ func childrenOf(a api.Agent) []api.Agent {
 
 // listRows returns the rows the Agents list shows: those under a folded parent
 // are left out, and with a filter those that neither match nor hold a match, the
-// rest open. The fold column is there only when something has children, so that a
-// flat list keeps the room.
+// rest open. The agents doing a plan's tasks are under a row for the plan
+// (docs/PLANS.md, step 5). The fold column is there only when something has
+// children, so that a flat list keeps the room.
 func (m *Model) listRows() []agentListRow {
 	l, top := m.list(), m.topAgents()
 	if l == nil {
 		return nil
 	}
-	tree := slices.ContainsFunc(top, func(a api.Agent) bool { return len(childrenOf(a)) > 0 })
+	entries := agentEntries(top)
+	tree := slices.ContainsFunc(entries, func(e agentEntry) bool { return e.plan != "" || len(childrenOf(e.agent)) > 0 })
 	words := l.filter.words()
 	var kept map[string]bool
 	if words != nil {
 		kept = keptAgents(top, words)
+		for _, e := range entries {
+			if e.plan != "" && matches(e.plan, words) {
+				keepAll(kept, e.agents) // a plan matching shows all its agents, as a parent does
+			}
+		}
 	}
 	shown := func(list []api.Agent) []api.Agent {
 		if kept == nil {
@@ -185,8 +243,36 @@ func (m *Model) listRows() []agentListRow {
 			}
 		}
 	}
-	walk(shown(top), "", 0)
+	for _, e := range entries {
+		if e.plan == "" {
+			if kept == nil || kept[e.agent.Id] {
+				walk([]api.Agent{e.agent}, "", 0)
+			}
+			continue
+		}
+		agents := shown(e.agents)
+		if len(agents) == 0 {
+			continue
+		}
+		r := agentListRow{plan: e.plan, fold: foldOpen, match: words != nil && matches(e.plan, words)}
+		if kept == nil && l.closed[r.key()] {
+			below := api.FlattenAgents(agents)
+			r.fold, r.below, r.waiting = foldClosed, len(below), waitingAgents(below)
+		}
+		rows = append(rows, r)
+		if r.fold == foldOpen {
+			_, next := treeGuides("", 0, false)
+			walk(agents, next, 1)
+		}
+	}
 	return rows
+}
+
+// keepAll keeps agents and all under them.
+func keepAll(kept map[string]bool, agents []api.Agent) {
+	for _, a := range api.FlattenAgents(agents) {
+		kept[a.Id] = true
+	}
 }
 
 // treeGuides returns the lines of a tree's row at depth, under the lines lead, and
@@ -206,7 +292,7 @@ func agentIndex(agents []api.Agent, id string) int {
 }
 
 func rowIndex(rows []agentListRow, id string) int {
-	return slices.IndexFunc(rows, func(r agentListRow) bool { return r.agent.Id == id })
+	return slices.IndexFunc(rows, func(r agentListRow) bool { return r.key() == id })
 }
 
 // shownAs returns the row of the agent with id or, while it is under a folded
@@ -217,7 +303,13 @@ func shownAs(rows []agentListRow, agents []api.Agent, id string) int {
 			return i
 		}
 		i := agentIndex(agents, id)
-		if i < 0 || agents[i].ParentAgentId == nil {
+		if i < 0 {
+			return -1
+		}
+		if group := groupOf(agents[i]); group != "" {
+			return rowIndex(rows, group)
+		}
+		if agents[i].ParentAgentId == nil {
 			return -1
 		}
 		id = *agents[i].ParentAgentId
@@ -225,11 +317,17 @@ func shownAs(rows []agentListRow, agents []api.Agent, id string) int {
 	return -1
 }
 
-// reveal opens the parents of the agent with id.
+// reveal opens the parents of the agent with id, and the plan it does a task of.
 func (l *agentList) reveal(agents []api.Agent, id string) {
 	for {
 		i := agentIndex(agents, id)
-		if i < 0 || agents[i].ParentAgentId == nil {
+		if i < 0 {
+			return
+		}
+		if group := groupOf(agents[i]); group != "" {
+			delete(l.closed, group)
+		}
+		if agents[i].ParentAgentId == nil {
 			return
 		}
 		id = *agents[i].ParentAgentId
@@ -270,23 +368,33 @@ func (m *Model) agentsChanged() {
 func (m *Model) keepAgentCursor() {
 	l, agents, rows := m.list(), m.agents(), m.listRows()
 	if i := shownAs(rows, agents, l.cursor); i >= 0 {
-		l.row, l.cursor = i, rows[i].agent.Id
+		l.row, l.cursor = i, rows[i].key()
 		return
 	}
 	l.row = max(min(l.row, len(rows)-1), 0)
 	l.cursor = ""
 	if len(rows) > 0 {
-		l.cursor = rows[l.row].agent.Id
+		l.cursor = rows[l.row].key()
 	}
 }
 
 // cursorAgent returns the agent under the cursor.
 func (m *Model) cursorAgent() (api.Agent, bool) {
 	l, rows := m.list(), m.listRows()
-	if l == nil || l.section != sectionAgents || l.row >= len(rows) {
+	if l == nil || l.section != sectionAgents || l.row >= len(rows) || rows[l.row].plan != "" {
 		return api.Agent{}, false
 	}
 	return rows[l.row].agent, true
+}
+
+// cursorPlanGroup returns the plan whose row in the Agents section is under the
+// cursor.
+func (m *Model) cursorPlanGroup() (api.Plan, bool) {
+	l, rows := m.list(), m.listRows()
+	if l == nil || l.section != sectionAgents || l.row >= len(rows) || rows[l.row].plan == "" {
+		return api.Plan{}, false
+	}
+	return m.planNamed(rows[l.row].plan)
 }
 
 // activeAgent returns the agent of the current tab.
@@ -307,12 +415,16 @@ func (m *Model) moveCursor(i int) {
 	if l == nil || i < 0 || i >= len(rows) {
 		return
 	}
-	l.row, l.cursor, l.section, l.onHeading = i, rows[i].agent.Id, sectionAgents, false
+	l.row, l.cursor, l.section, l.onHeading = i, rows[i].key(), sectionAgents, false
 }
 
 // activate opens the tab of the agent under the cursor, or goes to it, the focus
-// following as showOpened says.
+// following as showOpened says; on a plan's row, the plan's tab.
 func (m *Model) activate(goToTab bool) {
+	if p, ok := m.cursorPlanGroup(); ok {
+		m.openPlan(p, goToTab)
+		return
+	}
 	if a, ok := m.cursorAgent(); ok {
 		m.list().openTab(a.Id)
 		m.showOpened(goToTab)
@@ -419,11 +531,15 @@ func (m *Model) foldLeft() {
 	}
 	r := rows[l.row]
 	if r.fold == foldOpen && !m.filtering() {
-		l.closed[r.agent.Id] = true
+		l.closed[r.key()] = true
 		return
 	}
-	if r.agent.ParentAgentId != nil {
+	switch {
+	case r.plan != "":
+	case r.agent.ParentAgentId != nil:
 		m.moveCursor(rowIndex(rows, *r.agent.ParentAgentId))
+	case groupOf(r.agent) != "":
+		m.moveCursor(rowIndex(rows, groupOf(r.agent)))
 	}
 }
 
@@ -431,7 +547,7 @@ func (m *Model) foldLeft() {
 func (m *Model) foldRight() {
 	l, rows := m.list(), m.listRows()
 	if l.row < len(rows) && rows[l.row].fold == foldClosed && !m.filtering() {
-		delete(l.closed, rows[l.row].agent.Id)
+		delete(l.closed, rows[l.row].key())
 	}
 }
 
@@ -442,7 +558,7 @@ func (m *Model) toggleFold(i int) {
 	if m.filtering() {
 		return // what matches stays open
 	}
-	id := rows[i].agent.Id
+	id := rows[i].key()
 	if rows[i].fold == foldClosed {
 		delete(l.closed, id)
 	} else {
@@ -450,7 +566,7 @@ func (m *Model) toggleFold(i int) {
 	}
 	rows = m.listRows()
 	l.row = max(shownAs(rows, m.agents(), l.cursor), 0)
-	l.cursor = rows[l.row].agent.Id
+	l.cursor = rows[l.row].key()
 }
 
 // terminalOf is a's terminal, as the panes show one.
@@ -558,6 +674,9 @@ func (s *projectScreen) sectionHint() string {
 			return docHint
 		case l.section == sectionPlans:
 			return s.m.planHintFor()
+		}
+		if _, ok := s.m.cursorPlanGroup(); ok {
+			return planGroupHint
 		}
 	}
 	switch {
@@ -1059,7 +1178,11 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		case it.empty:
 			lines = append(lines, st.Muted(" no worktrees"))
 		case it.section == sectionAgents:
-			lines = append(lines, agentRow(st, rows[it.row], cursor, it.row == activeRow, width))
+			if r := rows[it.row]; r.plan != "" {
+				lines = append(lines, m.planGroupLine(r, cursor, width))
+			} else {
+				lines = append(lines, agentRow(st, r, cursor, it.row == activeRow, width))
+			}
 		case it.section == sectionWorktrees:
 			r := worktrees[it.row]
 			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
@@ -1141,6 +1264,61 @@ func fitGuide(guide string, depth, room int) (fitted string, left int) {
 // agentRow is r's row: the cursor when it is there, the tree's lines and fold
 // mark, its state mark, its name, and at the row's end what its state does not
 // tell and, when active, a mark that shows with color off too.
+// planGroupLine is the row of a plan in the Agents section, width wide: its fold
+// mark, its name, its state and progress as the Plans section has them, and, folded,
+// how many agents it hides or are waiting, and whether it needs the person. Its
+// tab's being the current one gives it the active mark.
+func (m *Model) planGroupLine(r agentListRow, cursor bool, width int) string {
+	st := m.st
+	p, known := m.planNamed(r.plan)
+	l := m.list()
+	active := known && l != nil && l.active == planTab(p.Id)
+	pointer, end := "  ", " "
+	if cursor {
+		pointer = st.Focused("▸ ")
+	}
+	if active {
+		end = " " + st.Focused("◂") + " "
+	}
+	label := r.plan
+	if known {
+		label = p.Name // an agent's task may name it in another case
+	}
+	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(r.fold+" plan "), 0)
+	name := ansi.Truncate(label, room, "…")
+	room -= ansi.StringWidth(name)
+	var parts []string
+	if known {
+		parts = append(parts, string(p.State)+" "+planProgress(p))
+	}
+	if detail := agentDetail(r); r.fold == foldClosed && detail != "" {
+		parts = append(parts, detail)
+	}
+	if known && m.planNeedsYou(p) && r.fold == foldClosed {
+		parts = append(parts, "needs you")
+	}
+	tail := ""
+	for _, part := range parts {
+		if ansi.StringWidth(" "+part) > room {
+			break // a word cut short would say another
+		}
+		room -= ansi.StringWidth(" " + part)
+		if part == "needs you" || strings.HasSuffix(part, " waiting") {
+			tail += " " + st.Warning(part)
+		} else {
+			tail += st.Muted(" " + part)
+		}
+	}
+	if cursor || active {
+		name = st.Name(name)
+	}
+	row := pointer + r.fold + " " + st.Muted("plan ") + name + tail + strings.Repeat(" ", max(room, 0)) + end
+	if active {
+		return st.ActiveRow(row)
+	}
+	return row
+}
+
 func agentRow(st style.Style, r agentListRow, cursor, active bool, width int) string {
 	a := r.agent
 	pointer, end, name := "  ", " ", a.Name

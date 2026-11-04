@@ -22,6 +22,7 @@ const (
 	planTabLabel  = "plan: "
 	planHint      = "↑↓ select  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 	parentHint    = "↑↓ select  ←→ fold  Enter open  m move  / filter  Alt+arrows move  C-q menu"
+	planGroupHint = "↑↓ select  ←→ fold  Enter open  / filter  Alt+arrows move  C-q menu" // a plan's row among agents or worktrees
 )
 
 // planTab is the tab of the plan with id, which a rename keeps.
