@@ -19,7 +19,8 @@ type Facts struct {
 	Run         Run
 	Parallel    int // in force: the run's, else the setting's
 	ProjectOpen bool
-	Agents      map[string]AgentState // the running tasks' agents, by id; one missing has ended
+	Landing     bool                  // a landing of the run's is going
+	Agents      map[string]AgentState // the agents of its tasks, by id; one missing has ended
 	SlotsGone   map[int]bool          // the slots whose directory is not on disk
 }
 
@@ -30,6 +31,9 @@ type ActionKind string
 const (
 	ActionDropSlot ActionKind = "drop_slot" // forget a slot that is gone and held by no work
 	ActionFail     ActionKind = "fail"      // a running task, with Failure
+	ActionStop     ActionKind = "stop"      // the live agent of a cancelled run's task
+	ActionRelease  ActionKind = "release"   // a slot the run no longer lends: kept if it holds work, else freed or removed
+	ActionClose    ActionKind = "close"     // a cancelled run, once its agents and slots are seen to
 	ActionLand     ActionKind = "land"      // a landing task, onto the run's branch
 	ActionStart    ActionKind = "start"     // a pending task, in Slot, or a new one when 0
 	ActionFinish   ActionKind = "finish"    // the run, every task done or skipped
@@ -38,7 +42,7 @@ const (
 // Action is one thing the runner is to do.
 type Action struct {
 	Kind    ActionKind
-	Task    string
+	Task    string // for a release, the task holding Slot, if any
 	Slot    int
 	Failure string
 }
@@ -48,6 +52,9 @@ type Action struct {
 // with no process.
 func Next(f Facts) []Action {
 	r := f.Run
+	if r.State == StateCancelled && r.FinishedAt.IsZero() {
+		return cancelling(f)
+	}
 	if r.State != StateRunning && r.State != StatePaused {
 		return nil
 	}
@@ -84,7 +91,14 @@ func Next(f Facts) []Action {
 		}
 	}
 	for _, t := range r.Tasks {
-		if t.State == TaskLanding {
+		if t.State == TaskSkipped && t.Slot != 0 {
+			actions = append(actions, Action{Kind: ActionRelease, Task: t.ID, Slot: t.Slot})
+		}
+	}
+	// A landing needs the project open for its check's terminal, and goes one at a
+	// time, so that each rebases onto the last.
+	for _, t := range r.Tasks {
+		if t.State == TaskLanding && f.ProjectOpen && !f.Landing {
 			actions = append(actions, Action{Kind: ActionLand, Task: t.ID})
 			break
 		}
@@ -98,10 +112,36 @@ func Next(f Facts) []Action {
 			finished = false
 		}
 	}
-	if finished && r.State == StateRunning {
+	// A paused run finishes too: it has nothing left to hold back.
+	if finished && !f.Landing {
 		actions = append(actions, Action{Kind: ActionFinish})
 	}
 	return actions
+}
+
+// cancelling returns what is left of cancelling a run: once no landing is going,
+// stop its tasks' live agents, then release every slot, then close it. Tasks keep
+// the states they had.
+func cancelling(f Facts) []Action {
+	if f.Landing {
+		return nil
+	}
+	var actions []Action
+	for _, t := range f.Run.Tasks {
+		if t.AgentID != "" && f.Agents[t.AgentID] == AgentLive {
+			actions = append(actions, Action{Kind: ActionStop, Task: t.ID})
+		}
+	}
+	holders := map[int]string{}
+	for _, t := range f.Run.Tasks {
+		if t.Slot != 0 {
+			holders[t.Slot] = t.ID
+		}
+	}
+	for _, sl := range f.Run.Slots {
+		actions = append(actions, Action{Kind: ActionRelease, Task: holders[sl.Number], Slot: sl.Number})
+	}
+	return append(actions, Action{Kind: ActionClose})
 }
 
 // starts returns the starts of r's pending tasks: first those a start cut short

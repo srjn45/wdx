@@ -3,6 +3,7 @@ package plan
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // diamond is a run of a, then b and c, then d after both, every task pending and
@@ -43,17 +44,23 @@ func TestNext(t *testing.T) {
 	land := func(task string) Action { return Action{Kind: ActionLand, Task: task} }
 	drop := func(slot int) Action { return Action{Kind: ActionDropSlot, Slot: slot} }
 	finish := Action{Kind: ActionFinish}
+	stop := func(task string) Action { return Action{Kind: ActionStop, Task: task} }
+	release := func(task string, slot int) Action { return Action{Kind: ActionRelease, Task: task, Slot: slot} }
+	closing := Action{Kind: ActionClose}
 
 	aDone := with(diamond(), "a", TaskDone, 0, "")
 	allDone := with(with(with(aDone, "b", TaskDone, 0, ""), "c", TaskDone, 0, ""), "d", TaskDone, 0, "")
 	paused := func(r Run) Run { r.State = StatePaused; return r }
 	state := func(r Run, s string) Run { r.State = s; return r }
+	closed := func(r Run) Run { r.FinishedAt = time.UnixMilli(1); return r }
+	cancelled := state(withSlots(with(with(aDone, "b", TaskRunning, 1, "ag"), "c", TaskLandFailed, 2, "ag2"), 1, 2, 3), StateCancelled)
 
 	tests := []struct {
 		name     string
 		run      Run
 		parallel int
 		closed   bool
+		landing  bool
 		agents   map[string]AgentState
 		gone     []int
 		want     []Action
@@ -82,13 +89,21 @@ func TestNext(t *testing.T) {
 		{name: "paused starts nothing", run: paused(aDone), parallel: 3},
 		{name: "paused still lands and fails", run: paused(with(with(aDone, "b", TaskLanding, 1, ""), "c", TaskRunning, 2, "ag")), parallel: 3, want: []Action{fail("c", FailureAgentEnded), land("b")}},
 		{name: "a closed project starts nothing", run: aDone, parallel: 3, closed: true},
-		{name: "a closed project still lands", run: with(aDone, "b", TaskLanding, 1, ""), parallel: 3, closed: true, want: []Action{land("b")}},
+		{name: "a closed project lands nothing", run: with(aDone, "b", TaskLanding, 1, ""), parallel: 3, closed: true},
+		{name: "no landing while one is going, but starts go on", run: withSlots(with(aDone, "b", TaskLanding, 1, ""), 1), parallel: 3, landing: true, want: []Action{start("c", 0)}},
+		{name: "a skipped task's slot is released", run: withSlots(with(aDone, "b", TaskSkipped, 1, ""), 1), parallel: 1, want: []Action{release("b", 1), start("c", 0)}},
+		{name: "a skipped task's slot gone is released, not dropped", run: withSlots(with(aDone, "b", TaskSkipped, 1, ""), 1), parallel: 1, gone: []int{1}, want: []Action{release("b", 1), start("c", 0)}},
+		{name: "a skipped task's slot is released before finishing", run: withSlots(with(allDone, "c", TaskSkipped, 1, ""), 1), parallel: 3, want: []Action{release("c", 1), finish}},
 		{name: "finished", run: allDone, parallel: 3, want: []Action{finish}},
 		{name: "finished with a skipped task", run: with(allDone, "c", TaskSkipped, 0, ""), parallel: 3, want: []Action{finish}},
 		{name: "a free slot gone, then finished", run: withSlots(allDone, 1), parallel: 3, gone: []int{1}, want: []Action{drop(1), finish}},
-		{name: "paused does not finish", run: paused(allDone), parallel: 3},
+		{name: "paused finishes", run: paused(allDone), parallel: 3, want: []Action{finish}},
+		{name: "no finish while a landing is going", run: allDone, parallel: 3, landing: true},
 		{name: "a run done", run: state(aDone, StateDone), parallel: 3},
-		{name: "a run cancelled", run: state(with(aDone, "b", TaskLanding, 1, ""), StateCancelled), parallel: 3},
+		{name: "a run cancelled: stop live agents, release every slot, close", run: cancelled, parallel: 3,
+			agents: map[string]AgentState{"ag": AgentLive, "ag2": AgentEnded}, want: []Action{stop("b"), release("b", 1), release("c", 2), release("", 3), closing}},
+		{name: "a run cancelled waits for its landing", run: cancelled, parallel: 3, landing: true, agents: map[string]AgentState{"ag": AgentLive}},
+		{name: "a run cancelled and closed", run: closed(cancelled), parallel: 3, agents: map[string]AgentState{"ag": AgentLive}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,7 +112,7 @@ func TestNext(t *testing.T) {
 			for _, n := range tc.gone {
 				gone[n] = true
 			}
-			got := Next(Facts{Run: tc.run, Parallel: tc.parallel, ProjectOpen: !tc.closed, Agents: tc.agents, SlotsGone: gone})
+			got := Next(Facts{Run: tc.run, Parallel: tc.parallel, ProjectOpen: !tc.closed, Landing: tc.landing, Agents: tc.agents, SlotsGone: gone})
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %+v, want %+v", got, tc.want)
 			}

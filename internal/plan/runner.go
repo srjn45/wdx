@@ -187,7 +187,7 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	}
 	var agents []string
 	for _, t := range run.Tasks {
-		if t.State == TaskRunning && t.AgentID != "" {
+		if t.AgentID != "" {
 			agents = append(agents, t.AgentID)
 		}
 	}

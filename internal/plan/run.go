@@ -109,6 +109,17 @@ func (e *TaskStateError) Error() string {
 	return fmt.Sprintf("task %s is %s, not %s", e.Task.ID, e.Task.State, strings.Join(e.From, " or "))
 }
 
+// NotRunningError is returned for what only a run going on takes, such as a pause or
+// a task's retry, from a plan that is a draft, done or cancelled.
+type NotRunningError struct {
+	PlanID string
+	State  string // StateDraft for a plan that has not run
+}
+
+func (e *NotRunningError) Error() string {
+	return fmt.Sprintf("plan %s is %s, not running or paused", e.PlanID, e.State)
+}
+
 // Start runs the plan with id: it writes its run, of the latest revision, with a
 // pending row for each of its tasks. A plan that has run returns a *StartedError.
 // Making the branch and starting the tasks are the caller's.
@@ -234,10 +245,11 @@ func (s *Store) slots(ctx context.Context, planID string) ([]Slot, error) {
 	return list, rows.Err()
 }
 
-// Unfinished returns the ids of the plans whose runs are running or paused, which
-// the daemon looks at again when it starts.
+// Unfinished returns the ids of the plans whose runs are running or paused, or
+// cancelled but not yet closed, which the daemon looks at again when it starts.
 func (s *Store) Unfinished(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT plan_id FROM plan_runs WHERE state IN (?, ?) ORDER BY started_at`, StateRunning, StatePaused)
+	rows, err := s.db.QueryContext(ctx, `SELECT plan_id FROM plan_runs WHERE state IN (?, ?) OR (state = ? AND finished_at IS NULL) ORDER BY started_at`,
+		StateRunning, StatePaused, StateCancelled)
 	if err != nil {
 		return nil, err
 	}
@@ -289,9 +301,12 @@ func (s *Store) DropSlot(ctx context.Context, planID string, slot int) error {
 }
 
 // StartTask makes the pending task running with its agent, in e, the transaction
-// that adds the agent.
+// that adds the agent or sends a resumed one its message. A task retried keeps the
+// time it first started, and is no longer failed.
 func (s *Store) StartTask(ctx context.Context, e db.Execer, planID, taskID, agentID string) error {
-	if err := s.move(ctx, e, planID, taskID, []string{TaskPending}, "state = ?, agent_id = ?, started_at = ?", TaskRunning, agentID, time.Now().UnixMilli()); err != nil {
+	if err := s.move(ctx, e, planID, taskID, []string{TaskPending},
+		"state = ?, agent_id = ?, started_at = COALESCE(started_at, ?), failure = NULL, conflicts = NULL",
+		TaskRunning, agentID, time.Now().UnixMilli()); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("plan task running", "plan_id", planID, "task_id", taskID, "agent_id", agentID)
@@ -307,9 +322,13 @@ func (s *Store) FailTask(ctx context.Context, planID, taskID, from, failure stri
 	return nil
 }
 
-// TaskDone makes the running task landing, with its agent's summary of it.
+// TaskDone makes the task landing, with a summary of it: a running one from its
+// agent, or a failed one from the person, who finished it.
 func (s *Store) TaskDone(ctx context.Context, planID, taskID, summary string) (TaskRun, error) {
-	if err := s.move(ctx, s.db, planID, taskID, []string{TaskRunning}, "state = ?, summary = ?", TaskLanding, summary); err != nil {
+	if err := s.goingOn(ctx, planID); err != nil {
+		return TaskRun{}, err
+	}
+	if err := s.move(ctx, s.db, planID, taskID, []string{TaskRunning, TaskFailed}, "state = ?, summary = ?", TaskLanding, summary); err != nil {
 		return TaskRun{}, err
 	}
 	logging.FromContext(ctx).Info("plan task landing", "plan_id", planID, "task_id", taskID, "summary_bytes", len(summary))
@@ -318,7 +337,8 @@ func (s *Store) TaskDone(ctx context.Context, planID, taskID, summary string) (T
 
 // Landed makes the landing task done, and frees its slot.
 func (s *Store) Landed(ctx context.Context, planID, taskID string) error {
-	if err := s.move(ctx, s.db, planID, taskID, []string{TaskLanding}, "state = ?, slot = NULL, finished_at = ?", TaskDone, time.Now().UnixMilli()); err != nil {
+	if err := s.move(ctx, s.db, planID, taskID, []string{TaskLanding},
+		"state = ?, slot = NULL, failure = NULL, conflicts = NULL, finished_at = ?", TaskDone, time.Now().UnixMilli()); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("plan task done", "plan_id", planID, "task_id", taskID)
@@ -343,18 +363,181 @@ func (s *Store) LandFailed(ctx context.Context, planID, taskID, failure string, 
 	return nil
 }
 
-// Finish makes the running run done, once every task is done or skipped.
-func (s *Store) Finish(ctx context.Context, planID string) error {
-	n, err := db.Exec(ctx, s.db, `
-		UPDATE plan_runs SET state = ?, finished_at = ?
-		WHERE plan_id = ? AND state = ?
-		AND NOT EXISTS (SELECT 1 FROM plan_tasks WHERE plan_id = ? AND state NOT IN (?, ?))`,
-		StateDone, time.Now().UnixMilli(), planID, StateRunning, planID, TaskDone, TaskSkipped)
+// RetryTask makes the failed or land_failed task pending again, keeping its slot,
+// so that the runner starts it as a start cut short: it resumes its agent, unless
+// fresh, or its slot went missing, when a new one starts in a new slot. Its failure
+// stays until it runs, for its start to say what went wrong.
+func (s *Store) RetryTask(ctx context.Context, planID, taskID string, fresh bool) (TaskRun, error) {
+	if err := s.goingOn(ctx, planID); err != nil {
+		return TaskRun{}, err
+	}
+	if err := s.move(ctx, s.db, planID, taskID, []string{TaskFailed, TaskLandFailed}, `state = ?,
+		agent_id = CASE WHEN ? OR failure = ? THEN NULL ELSE agent_id END,
+		slot = CASE WHEN failure = ? THEN NULL ELSE slot END`,
+		TaskPending, fresh, FailureSlotMissing, FailureSlotMissing); err != nil {
+		return TaskRun{}, err
+	}
+	logging.FromContext(ctx).Info("plan task retried", "plan_id", planID, "task_id", taskID, "fresh", fresh)
+	return s.taskRun(ctx, planID, taskID)
+}
+
+// LandTask makes the land_failed task landing again, once the person dealt with
+// what stopped it.
+func (s *Store) LandTask(ctx context.Context, planID, taskID string) (TaskRun, error) {
+	if err := s.goingOn(ctx, planID); err != nil {
+		return TaskRun{}, err
+	}
+	if err := s.move(ctx, s.db, planID, taskID, []string{TaskLandFailed}, "state = ?", TaskLanding); err != nil {
+		return TaskRun{}, err
+	}
+	logging.FromContext(ctx).Info("plan task landing again", "plan_id", planID, "task_id", taskID)
+	return s.taskRun(ctx, planID, taskID)
+}
+
+// SkipTask makes the task skipped, so that what waits for it goes on without its
+// work. Its slot is the runner's to release.
+func (s *Store) SkipTask(ctx context.Context, planID, taskID string) (TaskRun, error) {
+	if err := s.goingOn(ctx, planID); err != nil {
+		return TaskRun{}, err
+	}
+	if err := s.move(ctx, s.db, planID, taskID, []string{TaskPending, TaskFailed, TaskLandFailed}, "state = ?, finished_at = ?", TaskSkipped, time.Now().UnixMilli()); err != nil {
+		return TaskRun{}, err
+	}
+	logging.FromContext(ctx).Info("plan task skipped", "plan_id", planID, "task_id", taskID)
+	return s.taskRun(ctx, planID, taskID)
+}
+
+// LeaveSlot clears the slot the task holds, whatever its state: the slot was
+// released, freed for another task or no longer the plan's.
+func (s *Store) LeaveSlot(ctx context.Context, planID, taskID string) error {
+	if _, err := db.Exec(ctx, s.db, `UPDATE plan_tasks SET slot = NULL WHERE plan_id = ? AND task_id = ?`, planID, taskID); err != nil {
+		return err
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("plan slot left", "plan_id", planID, "task_id", taskID)
+	return nil
+}
+
+// Pause makes the running run paused, and reports false when it already was.
+func (s *Store) Pause(ctx context.Context, planID string) (bool, error) {
+	return s.changeRun(ctx, planID, StateRunning, StatePaused)
+}
+
+// Resume makes the paused run running, and reports false when it already was.
+func (s *Store) Resume(ctx context.Context, planID string) (bool, error) {
+	return s.changeRun(ctx, planID, StatePaused, StateRunning)
+}
+
+func (s *Store) changeRun(ctx context.Context, planID, from, to string) (bool, error) {
+	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state = ?`, to, planID, from)
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		state, err := s.runState(ctx, planID)
+		if err != nil || state == to {
+			return false, err
+		}
+		return false, &NotRunningError{PlanID: planID, State: state}
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return false, err
+	}
+	logging.FromContext(ctx).Info("plan run changed", "plan_id", planID, "from", from, "state", to)
+	return true, nil
+}
+
+// Cancel makes the running or paused run cancelled; the runner then stops its
+// agents, releases its slots and closes it.
+func (s *Store) Cancel(ctx context.Context, planID string) error {
+	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state IN (?, ?)`, StateCancelled, planID, StateRunning, StatePaused)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("plan %s is not running with every task done or skipped", planID)
+		state, err := s.runState(ctx, planID)
+		if err != nil {
+			return err
+		}
+		return &NotRunningError{PlanID: planID, State: state}
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("plan cancelled", "plan_id", planID)
+	return nil
+}
+
+// SetParallel sets the most tasks the running or paused run runs at once, and
+// reports false when it already was n.
+func (s *Store) SetParallel(ctx context.Context, planID string, n int) (bool, error) {
+	if err := s.goingOn(ctx, planID); err != nil {
+		return false, err
+	}
+	changed, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET parallel = ? WHERE plan_id = ? AND parallel IS NOT ?`, n, planID, n)
+	if err != nil || changed == 0 {
+		return false, err
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return false, err
+	}
+	logging.FromContext(ctx).Info("plan parallel set", "plan_id", planID, "parallel", n)
+	return true, nil
+}
+
+// Close writes when the cancelled run ended, once its agents are stopped and its
+// slots released.
+func (s *Store) Close(ctx context.Context, planID string) error {
+	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET finished_at = ? WHERE plan_id = ? AND state = ? AND finished_at IS NULL`, time.Now().UnixMilli(), planID, StateCancelled)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("plan %s is not cancelled and open", planID)
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("plan closed", "plan_id", planID)
+	return nil
+}
+
+// goingOn returns a *NotRunningError unless the plan's run is running or paused.
+func (s *Store) goingOn(ctx context.Context, planID string) error {
+	state, err := s.runState(ctx, planID)
+	if err != nil {
+		return err
+	}
+	if state != StateRunning && state != StatePaused {
+		return &NotRunningError{PlanID: planID, State: state}
+	}
+	return nil
+}
+
+// runState returns the state of the plan's run, StateDraft for none.
+func (s *Store) runState(ctx context.Context, planID string) (string, error) {
+	var state string
+	err := s.db.QueryRowContext(ctx, `SELECT state FROM plan_runs WHERE plan_id = ?`, planID).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return StateDraft, nil
+	}
+	return state, err
+}
+
+// Finish makes the running or paused run done, once every task is done or skipped.
+func (s *Store) Finish(ctx context.Context, planID string) error {
+	n, err := db.Exec(ctx, s.db, `
+		UPDATE plan_runs SET state = ?, finished_at = ?
+		WHERE plan_id = ? AND state IN (?, ?)
+		AND NOT EXISTS (SELECT 1 FROM plan_tasks WHERE plan_id = ? AND state NOT IN (?, ?))`,
+		StateDone, time.Now().UnixMilli(), planID, StateRunning, StatePaused, planID, TaskDone, TaskSkipped)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("plan %s is not going on with every task done or skipped", planID)
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
 		return err

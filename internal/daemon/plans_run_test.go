@@ -375,9 +375,10 @@ func TestPlanRefusals(t *testing.T) {
 		t.Fatalf("close: %v %s", err, closed.Body)
 	}
 	// b's agent, stopped with the project, is not failed: b is still running, so the
-	// person can say it is done; what it unblocks waits for the project to open.
+	// person can say it is done. Its landing, which needs the project open for the
+	// check, and what it unblocks wait for the project to open.
 	td.finishTask(t, repo, "auth", "b")
-	td.waitPlan(t, "auth", "b done, c waiting", stateIs("a:done b:done c:pending"))
+	td.waitPlan(t, "auth", "b landing, c waiting", stateIs("a:done b:landing c:pending"))
 	td.createPlan(t, "app", "later", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	r, err = td.client.RunPlanWithResponse(ctx, "later", params(), api.RunPlan{})
 	if err != nil {

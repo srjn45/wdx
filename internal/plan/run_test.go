@@ -410,3 +410,223 @@ func TestFirstMessage(t *testing.T) {
 		t.Errorf("a first task with no constraints: %s", got)
 	}
 }
+
+func notRunning(t *testing.T, err error, state string) {
+	t.Helper()
+	e, ok := errors.AsType[*NotRunningError](err)
+	if !ok || e.State != state {
+		t.Errorf("%v, want a plan %s, not running", err, state)
+	}
+}
+
+func TestTheAnswersToATask(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "auth", tasks("a", "b", "c"))
+	_, err := f.store.RetryTask(ctx, p.ID, "a", false)
+	notRunning(t, err, StateDraft)
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+		t.Fatal(err)
+	}
+	f.agent(t, "agent-a")
+	task := func(id string) TaskRun {
+		t.Helper()
+		tr, _ := f.run(t, p.ID).Task(id)
+		return tr
+	}
+	if err := f.store.HoldSlot(ctx, p.ID, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`UPDATE plan_tasks SET started_at = 5 WHERE task_id = 'a'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.RetryTask(ctx, p.ID, "a", false); taskState(t, err).Task.State != TaskRunning {
+		t.Errorf("retried while running: %v", err)
+	}
+
+	if err := f.store.FailTask(ctx, p.ID, "a", TaskRunning, FailureAgentEnded); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.store.RetryTask(ctx, p.ID, "a", false); err != nil || a.State != TaskPending || a.AgentID != "agent-a" || a.Slot != 1 || a.Failure != FailureAgentEnded {
+		t.Errorf("retried, to resume its agent: %+v, %v", a, err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if a := task("a"); a.State != TaskRunning || a.Failure != "" || a.StartedAt.UnixMilli() != 5 {
+		t.Errorf("running again: %+v", a)
+	}
+
+	if err := f.store.FailTask(ctx, p.ID, "a", TaskRunning, FailureAgentEnded); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.store.RetryTask(ctx, p.ID, "a", true); err != nil || a.AgentID != "" || a.Slot != 1 {
+		t.Errorf("retried fresh: %+v, %v", a, err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.FailTask(ctx, p.ID, "a", TaskRunning, FailureSlotMissing); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.store.RetryTask(ctx, p.ID, "a", false); err != nil || a.AgentID != "" || a.Slot != 0 {
+		t.Errorf("retried with its slot missing: %+v, %v", a, err)
+	}
+
+	if _, err := f.store.LandTask(ctx, p.ID, "a"); taskState(t, err).Task.State != TaskPending {
+		t.Errorf("landed while pending: %v", err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.TaskDone(ctx, p.ID, "a", "s"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.LandFailed(ctx, p.ID, "a", FailureRebase, []string{"x.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.RetryTask(ctx, p.ID, "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if a := task("a"); a.Failure != "" || a.Conflicts != nil {
+		t.Errorf("running again after its conflicts: %+v", a)
+	}
+	if _, err := f.store.TaskDone(ctx, p.ID, "a", "s"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.LandFailed(ctx, p.ID, "a", FailureRebase, []string{"x.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := f.store.LandTask(ctx, p.ID, "a"); err != nil || a.State != TaskLanding {
+		t.Errorf("landing again: %+v, %v", a, err)
+	}
+	if err := f.store.Landed(ctx, p.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if a := task("a"); a.State != TaskDone || a.Failure != "" || a.Conflicts != nil {
+		t.Errorf("landed: %+v", a)
+	}
+
+	if err := f.store.StartTask(ctx, f.db, p.ID, "b", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.FailTask(ctx, p.ID, "b", TaskRunning, FailureAgentEnded); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := f.store.TaskDone(ctx, p.ID, "b", "by hand"); err != nil || b.State != TaskLanding || b.Summary != "by hand" {
+		t.Errorf("done by the person: %+v, %v", b, err)
+	}
+
+	if err := f.store.HoldSlot(ctx, p.ID, "c", 2); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := f.store.SkipTask(ctx, p.ID, "c"); err != nil || c.State != TaskSkipped || c.FinishedAt.IsZero() || c.Slot != 2 {
+		t.Errorf("skipped: %+v, %v", c, err)
+	}
+	if _, err := f.store.SkipTask(ctx, p.ID, "c"); taskState(t, err).Task.State != TaskSkipped {
+		t.Errorf("skipped twice: %v", err)
+	}
+	if err := f.store.LeaveSlot(ctx, p.ID, "c"); err != nil {
+		t.Fatal(err)
+	}
+	if c := task("c"); c.Slot != 0 {
+		t.Errorf("its slot left: %+v", c)
+	}
+}
+
+func TestTheAnswersToARun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "auth", tasks("a"))
+	_, err := f.store.Pause(ctx, p.ID)
+	notRunning(t, err, StateDraft)
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+		t.Fatal(err)
+	}
+	f.agent(t, "agent-a")
+	for _, step := range []struct {
+		name   string
+		change func(context.Context, string) (bool, error)
+		want   bool
+		state  string
+	}{
+		{"paused", f.store.Pause, true, StatePaused},
+		{"paused again", f.store.Pause, false, StatePaused},
+		{"resumed", f.store.Resume, true, StateRunning},
+		{"resumed again", f.store.Resume, false, StateRunning},
+	} {
+		if changed, err := step.change(ctx, p.ID); err != nil || changed != step.want || f.run(t, p.ID).State != step.state {
+			t.Errorf("%s: %v, %v, %s", step.name, changed, err, f.run(t, p.ID).State)
+		}
+	}
+	if changed, err := f.store.SetParallel(ctx, p.ID, 4); err != nil || !changed || f.run(t, p.ID).Parallel != 4 {
+		t.Errorf("parallel set: %v, %v", changed, err)
+	}
+	if changed, err := f.store.SetParallel(ctx, p.ID, 4); err != nil || changed {
+		t.Errorf("parallel set again: %v, %v", changed, err)
+	}
+	if err := f.store.StartTask(ctx, f.db, p.ID, "a", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.store.Cancel(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.run(t, p.ID); r.State != StateCancelled || !r.FinishedAt.IsZero() {
+		t.Errorf("cancelled: %+v", r)
+	}
+	if ids, err := f.store.Unfinished(ctx); err != nil || !reflect.DeepEqual(ids, []string{p.ID}) {
+		t.Errorf("unfinished while cancelling: %v, %v", ids, err)
+	}
+	notRunning(t, f.store.Cancel(ctx, p.ID), StateCancelled)
+	_, err = f.store.Resume(ctx, p.ID)
+	notRunning(t, err, StateCancelled)
+	_, err = f.store.SetParallel(ctx, p.ID, 2)
+	notRunning(t, err, StateCancelled)
+	_, err = f.store.TaskDone(ctx, p.ID, "a", "s")
+	notRunning(t, err, StateCancelled)
+	_, err = f.store.SkipTask(ctx, p.ID, "a")
+	notRunning(t, err, StateCancelled)
+	_, err = f.store.LandTask(ctx, p.ID, "a")
+	notRunning(t, err, StateCancelled)
+	if err := f.store.Close(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Close(ctx, p.ID); err == nil {
+		t.Error("closed twice")
+	}
+	if r := f.run(t, p.ID); r.FinishedAt.IsZero() {
+		t.Errorf("closed: %+v", r)
+	}
+	if ids, err := f.store.Unfinished(ctx); err != nil || len(ids) != 0 {
+		t.Errorf("unfinished once closed: %v, %v", ids, err)
+	}
+
+	q := f.create(t, "paused", tasks("a"))
+	if _, err := f.store.Start(ctx, q.ID, "main", "plan/paused", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.Pause(ctx, q.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Finish(ctx, q.ID); err == nil {
+		t.Error("finished with a task pending")
+	}
+	if _, err := f.store.SkipTask(ctx, q.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Finish(ctx, q.ID); err != nil {
+		t.Errorf("a paused run finished: %v", err)
+	}
+	if r := f.run(t, q.ID); r.State != StateDone {
+		t.Errorf("finished: %+v", r)
+	}
+}
