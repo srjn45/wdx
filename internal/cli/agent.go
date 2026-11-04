@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
@@ -27,7 +28,7 @@ func newAgentCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
+	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentModelsCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
 	return cmd
 }
 
@@ -127,7 +128,7 @@ func newAgentCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
 	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&model, "model", "", "`model` its AI coding agent uses, on every start (default: its own default)")
-	completeFlag(cmd, "model", cobra.NoFileCompletions)
+	completeFlag(cmd, "model", completeModels)
 	cmd.Flags().StringVar(&permissions, "permissions", "", "`mode`: full lets it do anything without asking, ask leaves that to your settings for it (default: full)")
 	completeFlag(cmd, "permissions", cobra.FixedCompletions(agentPermissions, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
@@ -135,6 +136,56 @@ func newAgentCreateCmd() *cobra.Command {
 
 // agentPermissions are the modes --permissions takes.
 var agentPermissions = []string{string(api.AgentPermissionsFull), string(api.AgentPermissionsAsk)}
+
+func newAgentModelsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "models",
+		Short: "List the models agent create --model takes",
+		Long: "The models of the AI coding agent new agents run, as it says. One marked\n" +
+			"default is what it runs with no --model; with none marked, it runs what your\n" +
+			"own settings for it say.",
+		Example: examples(
+			"List them", identity.Name+" agent models",
+			"As JSON", identity.Name+" agent models --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The AI coding agent's models, in its order.\n" +
+				`With --json: {"aca": "claude_code", "models": [{"id": ..., "name": ..., "default": ...}, ...]}`,
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			list, err := clientOf(cmd).ListAcaModels(cmd.Context(), aca.Default().ID())
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, acaModels(list))
+		},
+	}
+	return cmd
+}
+
+// acaModels is the models of an AI coding agent.
+type acaModels api.AcaModelList
+
+func (l acaModels) text(w io.Writer, st style.Style) {
+	fmt.Fprintf(w, "models of %s\n", st.Name(l.Aca))
+	var table style.Table
+	table.Row(st.Heading("ID"), st.Heading("NAME"))
+	marked := false
+	for _, m := range l.Models {
+		name := m.Name
+		if m.Default {
+			name += " " + st.Muted("(default)")
+			marked = true
+		}
+		table.Row(st.Name(m.Id), name)
+	}
+	table.Write(w)
+	if !marked {
+		fmt.Fprintln(w, st.Muted("with no --model, your own setting for it"))
+	}
+}
 
 func newAgentListCmd() *cobra.Command {
 	var scope projectScope

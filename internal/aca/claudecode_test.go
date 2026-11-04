@@ -1,6 +1,7 @@
 package aca_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -137,5 +138,18 @@ func TestClaudeCodeAskPassesNoPermissions(t *testing.T) {
 	}
 	if want := []string{"claude", "--session-id", "s-1"}; !slices.Equal(got, want) {
 		t.Errorf("command = %q, want %q", got, want)
+	}
+}
+
+// TestClaudeCodeModels: its aliases, which its --model takes, none its default.
+func TestClaudeCodeModels(t *testing.T) {
+	t.Parallel()
+	models, err := aca.ClaudeCode{}.Models(context.Background(), aca.Launch{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []aca.Model{{ID: "fable", Name: "Fable"}, {ID: "opus", Name: "Opus"}, {ID: "sonnet", Name: "Sonnet"}, {ID: "haiku", Name: "Haiku"}}
+	if !slices.Equal(models, want) {
+		t.Errorf("models = %+v, want %+v", models, want)
 	}
 }

@@ -114,6 +114,28 @@ func TestCreateAgent(t *testing.T) {
 	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPath)
 }
 
+func TestListAcaModels(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	r, err := td.client.ListAcaModelsWithResponse(ctx, "claude_code")
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("list: %v %s", err, r.Body)
+	}
+	var ids []string
+	for _, m := range r.JSON200.Models {
+		ids = append(ids, m.Id)
+	}
+	if r.JSON200.Aca != "claude_code" || !slices.Equal(ids, []string{"fable", "opus", "sonnet", "haiku"}) {
+		t.Errorf("models = %+v", r.JSON200)
+	}
+	r, err = td.client.ListAcaModelsWithResponse(ctx, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusNotFound, api.ErrorCodeNotFound)
+}
+
 func TestAgentNamesAreSharedWithTerminals(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

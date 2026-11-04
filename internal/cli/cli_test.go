@@ -528,6 +528,8 @@ type jsonOutput struct {
 	Terminals  []api.Terminal       `json:"terminals"`
 	Agent      *api.Agent           `json:"agent"`
 	Agents     []api.Agent          `json:"agents"`
+	Aca        string               `json:"aca"`
+	Models     []api.AcaModel       `json:"models"`
 	History    *api.TerminalHistory `json:"history"`
 	Transcript *api.AgentTranscript `json:"transcript"`
 	Started    []api.Terminal       `json:"started"`

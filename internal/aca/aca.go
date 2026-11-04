@@ -42,6 +42,16 @@ type AiCodingAgent interface {
 	Detached(ctx context.Context, l Launch) ([]DetachedSession, error)
 	// StopDetached stops one of what Detached found. Its conversation stays.
 	StopDetached(ctx context.Context, l Launch, d DetachedSession) error
+	// Models is what it offers this user now, as it says, in its order; l gives only
+	// Shell and UserHome, for one that runs its CLI to ask.
+	Models(ctx context.Context, l Launch) ([]Model, error)
+}
+
+// Model is one model an AI coding agent offers.
+type Model struct {
+	ID      string // what its model flag takes, and Launch.Model carries
+	Name    string // what a person reads
+	Default bool   // whether it runs this one when given none
 }
 
 // DetachedSession is a session of an agent running outside its terminal.

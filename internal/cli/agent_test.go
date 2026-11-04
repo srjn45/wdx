@@ -130,6 +130,22 @@ func TestAgentCreateModelAndPermissions(t *testing.T) {
 	}
 }
 
+func TestAgentModels(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	v, exit := wdxJSON(t, home, "agent", "models")
+	if exit != api.ExitOK || v.Aca != "claude_code" || len(v.Models) != 4 || v.Models[0].Id != "fable" || v.Models[0].Default {
+		t.Fatalf("exit %d, %+v", exit, v)
+	}
+	out := wdx(t, home, "agent", "models")
+	if out.exit != api.ExitOK || out.stdout != "models of claude_code\nID      NAME\nfable   Fable\nopus    Opus\nsonnet  Sonnet\nhaiku   Haiku\nwith no --model, your own setting for it\n" {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+	if got := complete(t, home, "agent", "create", "--model", ""); !slices.Equal(got, []string{"fable\tFable", "opus\tOpus", "sonnet\tSonnet", "haiku\tHaiku"}) {
+		t.Errorf("--model completes %q", got)
+	}
+}
+
 func TestAgentCreateInClosedProject(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

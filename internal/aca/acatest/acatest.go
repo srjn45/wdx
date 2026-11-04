@@ -101,6 +101,11 @@ func (a *ACA) StopDetached(_ context.Context, _ aca.Launch, d aca.DetachedSessio
 	return nil
 }
 
+// Models implements aca.AiCodingAgent: Claude Code's, as its id is.
+func (a *ACA) Models(ctx context.Context, l aca.Launch) ([]aca.Model, error) {
+	return aca.ClaudeCode{}.Models(ctx, l)
+}
+
 // Command implements aca.AiCodingAgent.
 func (a *ACA) Command(l aca.Launch) ([]string, error) {
 	if a.Launches != "" {

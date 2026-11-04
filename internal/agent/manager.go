@@ -179,6 +179,26 @@ func (m *Manager) Store() *Store {
 	return m.store
 }
 
+// ErrUnknownACA is returned for an AI coding agent this daemon does not run.
+var ErrUnknownACA = errors.New("no such AI coding agent here")
+
+// Models returns the models the AI coding agent with id offers, as it says.
+func (m *Manager) Models(ctx context.Context, id string) ([]aca.Model, error) {
+	if id != m.aca.ID() {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownACA, id)
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	models, err := m.aca.Models(ctx, aca.Launch{UserHome: account.Home, Shell: account.LoginShell()})
+	if err != nil {
+		return nil, err
+	}
+	logging.FromContext(ctx).Info("models listed", "aca", id, "count", len(models))
+	return models, nil
+}
+
 // Launch is what an agent is started with every time, chosen when it is
 // created.
 type Launch struct {

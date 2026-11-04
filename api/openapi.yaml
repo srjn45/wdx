@@ -1369,6 +1369,30 @@ paths:
               schema: { $ref: "#/components/schemas/AgentTranscriptEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/acas/{aca}/models:
+    parameters:
+      - name: aca
+        in: path
+        required: true
+        description: The AI coding agent's id, as claude_code.
+        schema: { type: string, minLength: 1 }
+    get:
+      operationId: listAcaModels
+      summary: The models an AI coding agent offers
+      description: |
+        As the AI coding agent says, in its order: each model's id is what
+        createAgent's model takes. One marked default is what it runs when given
+        none; with none marked, it runs what the user's own settings for it say.
+
+        Errors: not_found, an AI coding agent this daemon does not run.
+      responses:
+        "200":
+          description: Its models.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcaModelList" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/editors:
     post:
       operationId: openEditor
@@ -2858,6 +2882,23 @@ components:
         project: { type: string, minLength: 1, description: 'The project''s name, or "id:" and its id; excludes dir.' }
         dir: { type: string, minLength: 1, description: An absolute path in one of the project's worktrees; excludes project. }
         path: { type: string, minLength: 1, description: The file's path, relative to the worktree. }
+
+    AcaModel:
+      type: object
+      required: [id, name, default]
+      properties:
+        id: { type: string, description: "What its model flag takes, and createAgent's model." }
+        name: { type: string, description: What a person reads. }
+        default: { type: boolean, description: Whether it is what the AI coding agent runs when given no model. }
+
+    AcaModelList:
+      type: object
+      required: [aca, models]
+      properties:
+        aca: { type: string, description: "The AI coding agent's id." }
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/AcaModel" }
 
     Editor:
       type: object

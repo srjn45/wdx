@@ -100,6 +100,18 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 	return r, nil
 }
 
+func (s *server) ListAcaModels(ctx context.Context, req api.ListAcaModelsRequestObject) (api.ListAcaModelsResponseObject, error) {
+	models, err := s.agents.Models(ctx, req.Aca)
+	if err != nil {
+		return nil, err
+	}
+	r := api.ListAcaModels200JSONResponse{Aca: req.Aca, Models: make([]api.AcaModel, 0, len(models))}
+	for _, model := range models {
+		r.Models = append(r.Models, api.AcaModel{Id: model.ID, Name: model.Name, Default: model.Default})
+	}
+	return r, nil
+}
+
 func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {

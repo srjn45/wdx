@@ -1,6 +1,7 @@
 package aca
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"regexp"
@@ -18,6 +19,13 @@ const ClaudeCodeID = "claude_code"
 
 // ID implements AiCodingAgent.
 func (ClaudeCode) ID() string { return ClaudeCodeID }
+
+// Models implements AiCodingAgent. Claude Code has no command that lists its models,
+// so these are its aliases, each the newest of its class. None is its default, which
+// is the user's own setting.
+func (ClaudeCode) Models(context.Context, Launch) ([]Model, error) {
+	return []Model{{ID: "fable", Name: "Fable"}, {ID: "opus", Name: "Opus"}, {ID: "sonnet", Name: "Sonnet"}, {ID: "haiku", Name: "Haiku"}}, nil
+}
 
 // Command implements AiCodingAgent. A session is resumed only once it has a
 // transcript: Claude Code writes none until something is typed, and resuming
