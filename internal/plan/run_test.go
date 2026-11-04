@@ -656,3 +656,24 @@ func TestTheAnswersToARun(t *testing.T) {
 		t.Errorf("finished: %+v", r)
 	}
 }
+
+func TestPlanAsOfItsRun(t *testing.T) {
+	t.Parallel()
+	run := Run{State: StateRunning, Tasks: []TaskRun{{State: TaskDone}, {State: TaskFailed}, {State: TaskLandFailed}, {State: TaskPending}, {State: TaskSkipped}}}
+	stale := Plan{State: StateRunning, TasksDone: 0, TasksFailed: 0}
+	if got := stale.AsOf(run); got.State != StateRunning || got.PausedReason != "" || got.TasksDone != 1 || got.TasksFailed != 2 {
+		t.Errorf("as of a running run: %+v", got)
+	}
+	closed := Plan{State: StatePaused, PausedReason: PausedProjectClosed, projectClosed: true}
+	if got := closed.AsOf(run); got.State != StatePaused || got.PausedReason != PausedProjectClosed {
+		t.Errorf("as of a running run in a closed project: %+v", got)
+	}
+	run.State = StatePaused
+	if got := stale.AsOf(run); got.State != StatePaused || got.PausedReason != PausedByPerson {
+		t.Errorf("as of a paused run: %+v", got)
+	}
+	run.State = StateDone
+	if got := closed.AsOf(run); got.State != StateDone || got.PausedReason != "" {
+		t.Errorf("as of a done run in a closed project: %+v", got)
+	}
+}

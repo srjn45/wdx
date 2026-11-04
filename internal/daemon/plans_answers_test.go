@@ -146,8 +146,11 @@ func TestPlanCheckFailsThenLands(t *testing.T) {
 	}
 
 	td.retry(t, "a", false)
-	c = td.waitPlan(t, "auth", "a running again", stateIs("a:running"))
-	if got := taskIn(c, "a").Agent.Id; got != agent || !td.agentLive(t, agent) {
+	// The task runs once its agent is told why, which is before the agent starts.
+	c = td.waitPlan(t, "auth", "a running again, its agent resumed", func(c api.PlanContent) bool {
+		return states(c) == "a:running" && td.agentLive(t, agent)
+	})
+	if got := taskIn(c, "a").Agent.Id; got != agent {
 		t.Errorf("a's agent: %s, want %s resumed", got, agent)
 	}
 	if got := gitOut(t, *a.SlotPath, "rev-parse", "HEAD"); got != committed {
@@ -251,8 +254,10 @@ func TestPlanTaskRetried(t *testing.T) {
 	}
 
 	td.retry(t, "a", false)
-	c = td.waitPlan(t, "auth", "a running again", stateIs("a:running"))
-	if got := *taskIn(c, "a").Agent; got != first || !td.agentLive(t, first.Id) {
+	c = td.waitPlan(t, "auth", "a running again, its agent resumed", func(c api.PlanContent) bool {
+		return states(c) == "a:running" && td.agentLive(t, first.Id)
+	})
+	if got := *taskIn(c, "a").Agent; got != first {
 		t.Errorf("a's agent: %+v, want %+v resumed", got, first)
 	}
 	told := td.messagesTo(t, first.Id)

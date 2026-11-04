@@ -55,6 +55,7 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 	var runRef *plan.Run
 	if ran {
 		runRef = &run
+		p = p.AsOf(run)
 	}
 	names, err := s.agentNames(ctx, runRef)
 	if err != nil {

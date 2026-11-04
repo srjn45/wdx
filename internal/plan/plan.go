@@ -22,15 +22,18 @@ type Plan struct {
 	// PausedReason says why a paused plan is: PausedByPerson, or
 	// PausedProjectClosed for one running whose project is closed; "" otherwise.
 	PausedReason string
-	Tasks        int      // how many it has; 0 for a plan of plans
-	TasksDone    int      // how many of them its run has done
-	TasksFailed  int      // how many of them are failed or land_failed, waiting for the person
-	Plans        []string // the plans it lists, in DAG order; nil for a plan of tasks
-	Parent       string   // the name of the plan of plans listing it; empty for none
-	Revision     int      // the latest
-	Size         int      // of the latest revision's text
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	Tasks        int // how many it has; 0 for a plan of plans
+	TasksDone    int // how many of them its run has done
+	TasksFailed  int // how many of them are failed or land_failed, waiting for the person
+	// projectClosed is whether its project was closed when it was read, which
+	// shows a running plan paused.
+	projectClosed bool
+	Plans         []string // the plans it lists, in DAG order; nil for a plan of tasks
+	Parent        string   // the name of the plan of plans listing it; empty for none
+	Revision      int      // the latest
+	Size          int      // of the latest revision's text
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Why a plan is paused.
@@ -90,4 +93,22 @@ type InUseError struct {
 
 func (e *InUseError) Error() string {
 	return fmt.Sprintf("plan %s is listed by plan %s: take it out of %s first", e.Plan.Name, e.Parent.Name, e.Parent.Name)
+}
+
+// AsOf returns p with the state and counts of r, its run read apart from it, so
+// that a response showing both says the same: a task that moved between the two
+// reads moves in both.
+func (p Plan) AsOf(r Run) Plan {
+	rs := runState{state: r.State, projectClosed: p.projectClosed}
+	for _, t := range r.Tasks {
+		switch t.State {
+		case TaskDone:
+			rs.done++
+		case TaskFailed, TaskLandFailed:
+			rs.failed++
+		}
+	}
+	p.State, p.PausedReason = rs.shown()
+	p.TasksDone, p.TasksFailed = rs.done, rs.failed
+	return p
 }
