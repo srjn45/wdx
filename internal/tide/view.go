@@ -18,8 +18,9 @@ const (
 	// defaultViewSettle is how long a view stays the same before it is sent:
 	// holding a key sends one view, not one per row.
 	defaultViewSettle = 500 * time.Millisecond
-	// viewFlush is how long quitting or reloading waits for the view to be sent.
-	viewFlush = time.Second
+	// defaultViewFlush is how long quitting or reloading waits for the tabs and the
+	// view to be sent.
+	defaultViewFlush = time.Second
 )
 
 // tideView is what tide shows as a whole.
@@ -52,11 +53,12 @@ type projectView struct {
 // viewState is how far the views are from what the daemon has.
 type viewState struct {
 	settle      time.Duration
-	read        bool   // tide's view was read at start; none is sent before
-	built       []byte // the views as last built, tide's then the project's
-	changes     int    // how many times they changed, numbering the waits
-	saving      bool   // a sending is on its way
-	again       bool   // they settled while one was: send once it is back
+	flush       time.Duration // how long quitting waits for what differs to be sent
+	read        bool          // tide's view was read at start; none is sent before
+	built       []byte        // the views as last built, tide's then the project's
+	changes     int           // how many times they changed, numbering the waits
+	saving      bool          // a sending is on its way
+	again       bool          // they settled while one was: send once it is back
 	sentTide    []byte
 	sentProject map[string][]byte // by project id
 }
@@ -268,13 +270,13 @@ func (m *Model) viewWasSent(msg viewSent) tea.Cmd {
 }
 
 // flushViews sends what differs at once, as tide quits or reloads, waiting at most
-// viewFlush; then quits. The tabs go first: a list still on its way is waited for,
+// m.view.flush; then quits. The tabs go first: a list still on its way is waited for,
 // and what changed since it went is sent after it, so that the older never wins.
 func (m *Model) flushViews() tea.Cmd {
 	if m.client == nil {
 		return tea.Quit
 	}
-	ctx, cancel := context.WithTimeout(m.ctx, viewFlush)
+	ctx, cancel := context.WithTimeout(m.ctx, m.view.flush)
 	tabs := m.flushTabs(ctx)
 	var views tea.Cmd
 	if m.view.read {

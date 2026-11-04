@@ -13,8 +13,9 @@ import (
 )
 
 // editorScript is the test's editor: it says which file it was started on, in the
-// directory it runs in, and stays.
-const editorScript = "#!/bin/sh\nprintf %s \"$1\" > editing\nexec sleep 60\n"
+// directory it runs in, and stays. The file is renamed into place, as a redirection
+// creates it empty before printf writes, and a test waiting for it could read that.
+const editorScript = "#!/bin/sh\nprintf %s \"$1\" > editing.new && mv editing.new editing\nexec sleep 60\n"
 
 // editorFixture is a fixture whose shell runs a command given to it, and whose
 // editor is editorScript, named vi.

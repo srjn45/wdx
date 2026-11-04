@@ -233,4 +233,7 @@ func TestPlanAnswersText(t *testing.T) {
 	if out.exit != api.ExitOK || out.stdout != "task a of sso skipped: what waits for it goes on without it\n" {
 		t.Errorf("skip: %+v", out)
 	}
+	// The skip has the runner start b on its own: until its agent is there, the
+	// home's cleanup may not find it, and its holder would outlive the test.
+	waitTasks(t, home, repo, "sso", "a:skipped b:running")
 }

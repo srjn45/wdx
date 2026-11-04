@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/style"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
@@ -154,7 +155,7 @@ func (h testHome) newProject(t *testing.T, name string, state api.ProjectState) 
 // listed.
 func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
-	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false)})
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), ViewFlush: waittest.Limit(t)})
 	m.tick = noTick
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.

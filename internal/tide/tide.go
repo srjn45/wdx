@@ -135,6 +135,9 @@ type Options struct {
 	// ViewSettle is how long what tide shows stays the same before it is sent to
 	// the daemon; zero is half a second.
 	ViewSettle time.Duration
+	// ViewFlush is how long quitting or reloading waits for the tabs and the view
+	// to be sent; zero is a second.
+	ViewFlush time.Duration
 }
 
 // click is where and when a click on a frame's title happened.
@@ -170,7 +173,7 @@ func New(ctx context.Context, opts Options) *Model {
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
 		sections:    sectionOrder(opts.SectionOrder),
-		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), sentProject: map[string][]byte{}},
+		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
