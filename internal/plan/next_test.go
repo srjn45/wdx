@@ -73,6 +73,7 @@ func TestNext(t *testing.T) {
 		{name: "a live agent is waited for", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, agents: map[string]AgentState{"ag": AgentLive}},
 		{name: "an agent stopped with its project is waited for", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, agents: map[string]AgentState{"ag": AgentStopped}},
 		{name: "an agent that ended", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, agents: map[string]AgentState{"ag": AgentEnded}, want: []Action{fail("a", FailureAgentEnded)}},
+		{name: "an agent removed fails its task", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, agents: map[string]AgentState{"ag": AgentRemoved}, want: []Action{fail("a", FailureAgentEnded)}},
 		{name: "an agent not found", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, want: []Action{fail("a", FailureAgentEnded)}},
 		{name: "an agent removed", run: withSlots(with(diamond(), "a", TaskRunning, 1, ""), 1), parallel: 3, agents: map[string]AgentState{"": AgentLive}, want: []Action{fail("a", FailureAgentEnded)}},
 		{name: "a slot gone under a running task", run: withSlots(with(diamond(), "a", TaskRunning, 1, "ag"), 1), parallel: 3, gone: []int{1}, want: []Action{fail("a", FailureSlotMissing)}},

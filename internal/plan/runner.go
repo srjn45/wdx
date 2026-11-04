@@ -878,8 +878,18 @@ func (r *Runner) landable(ctx context.Context, planID, taskID string, from []str
 }
 
 // RetryTask runs the failed or land_failed task again, resuming its agent unless
-// fresh, and wakes the plan to start it.
+// fresh or removed, and wakes the plan to start it.
 func (r *Runner) RetryTask(ctx context.Context, planID, taskID string, fresh bool) (TaskRun, error) {
+	if !fresh {
+		removed, err := r.agentRemoved(ctx, planID, taskID)
+		if err != nil {
+			return TaskRun{}, err
+		}
+		if removed {
+			logging.FromContext(ctx).Info("task's agent was removed: a new one starts", "task_id", taskID)
+			fresh = true
+		}
+	}
 	t, err := r.store.RetryTask(ctx, planID, taskID, fresh)
 	if err == nil {
 		r.Wake(planID)
@@ -929,4 +939,23 @@ func (r *Runner) SetParallel(ctx context.Context, planID string, n int) (bool, e
 		r.Wake(planID)
 	}
 	return changed, err
+}
+
+// agentRemoved reports whether the agent of the plan's task was removed, so that
+// there is none to resume.
+func (r *Runner) agentRemoved(ctx context.Context, planID, taskID string) (bool, error) {
+	run, ok, err := r.store.Run(ctx, planID)
+	if err != nil || !ok {
+		return false, err
+	}
+	task, found := run.Task(taskID)
+	if !found || task.AgentID == "" {
+		return false, nil
+	}
+	states, err := r.opts.AgentStates(ctx, []string{task.AgentID})
+	if err != nil {
+		return false, err
+	}
+	state, known := states[task.AgentID]
+	return !known || state == AgentRemoved, nil
 }

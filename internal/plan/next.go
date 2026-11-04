@@ -5,13 +5,18 @@ type AgentState int
 
 // The states of a task's agent, as Next tells them apart.
 const (
-	// AgentEnded ended by itself, did not start, was lost or was removed.
+	// AgentEnded ended by itself, did not start or was lost: it can be resumed.
 	AgentEnded AgentState = iota
 	AgentLive
 	// AgentStopped was stopped with its project, which starts it again when it
 	// opens: its task goes on then.
 	AgentStopped
+	// AgentRemoved was removed, so it cannot be resumed.
+	AgentRemoved
 )
+
+// ended reports whether an agent in state no longer runs, nor will by itself.
+func (s AgentState) ended() bool { return s == AgentEnded || s == AgentRemoved }
 
 // Facts is what Next decides from: a run, and what the runner found of the world
 // around it.
@@ -85,7 +90,7 @@ func Next(f Facts) []Action {
 		if t.State != TaskRunning || failed[t.ID] {
 			continue
 		}
-		if state, ok := f.Agents[t.AgentID]; t.AgentID == "" || !ok || state == AgentEnded {
+		if state, ok := f.Agents[t.AgentID]; t.AgentID == "" || !ok || state.ended() {
 			actions = append(actions, Action{Kind: ActionFail, Task: t.ID, Failure: FailureAgentEnded})
 			failed[t.ID] = true
 		}

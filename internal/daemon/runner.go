@@ -96,8 +96,8 @@ func (d *Daemon) startRunner() {
 	})
 }
 
-// agentStates is what the runner sees of the agents with ids: one removed or not
-// found has ended.
+// agentStates is what the runner sees of the agents with ids: one removed is
+// AgentRemoved, and one not found is left out, which the runner takes as removed.
 func (d *Daemon) agentStates(ctx context.Context, ids []string) (map[string]plan.AgentState, error) {
 	states := map[string]plan.AgentState{}
 	for _, id := range ids {
@@ -110,7 +110,7 @@ func (d *Daemon) agentStates(ctx context.Context, ids []string) (map[string]plan
 		}
 		switch {
 		case a.Tombstone():
-			states[id] = plan.AgentEnded
+			states[id] = plan.AgentRemoved
 		case a.Terminal.State.Live():
 			states[id] = plan.AgentLive
 		case a.Terminal.State == terminal.StateStopped:

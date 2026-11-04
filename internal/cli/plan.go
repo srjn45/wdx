@@ -34,8 +34,9 @@ func newPlanCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newPlanCreateCmd(), newPlanGetCmd(), newPlanHistoryCmd(), newPlanListCmd(), newPlanRemoveCmd(),
-		newPlanRenameCmd(), newPlanRunCmd(), newPlanStatusCmd(), newPlanTaskCmd(), newPlanUpdateCmd())
+	cmd.AddCommand(newPlanCancelCmd(), newPlanCreateCmd(), newPlanGetCmd(), newPlanHistoryCmd(), newPlanListCmd(), newPlanPauseCmd(),
+		newPlanRemoveCmd(), newPlanRenameCmd(), newPlanResumeCmd(), newPlanRunCmd(), newPlanSetCmd(), newPlanStatusCmd(), newPlanTaskCmd(),
+		newPlanUpdateCmd())
 	return cmd
 }
 
@@ -695,7 +696,7 @@ func (r planStatus) text(w io.Writer, st style.Style) {
 	if r.Run == nil {
 		fmt.Fprintf(w, "%s: %s, %s\n", st.Name(p.Name), planStateText(st, p.State), planSize(p))
 	} else {
-		fmt.Fprintf(w, "%s: %s, %s tasks done, on %s\n", st.Name(p.Name), planStateText(st, p.State), planProgress(p), st.Name(r.Run.Branch))
+		fmt.Fprintf(w, "%s: %s, %s tasks done%s, on %s\n", st.Name(p.Name), runStateText(st, p, r.Run), planProgress(p), planFailed(st, p), st.Name(r.Run.Branch))
 	}
 	field := fieldPrinter(w, st, 11)
 	field("goal", strings.TrimSpace(d.Goal))
@@ -756,7 +757,7 @@ func (l planList) text(w io.Writer, st style.Style) {
 	var table style.Table
 	table.Row(st.Heading("NAME"), st.Heading("STATE"), st.Heading("TASKS"), st.Heading("REVISION"), st.Heading("UPDATED"))
 	for _, p := range l.Plans {
-		table.Row(st.Name(p.Name), planStateText(st, p.State), planProgress(p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
+		table.Row(st.Name(p.Name), planStateText(st, p.State), planProgress(p)+planFailed(st, p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
 	}
 	table.Write(w)
 }

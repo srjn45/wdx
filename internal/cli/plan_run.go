@@ -99,11 +99,11 @@ func (r planStarted) text(w io.Writer, st style.Style) {
 func newPlanTaskCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
-		Short: "A task of a running plan: say it is done, or read it",
+		Short: "A task of a running plan: say it is done, read it, or answer one that cannot go on",
 		Args:  noArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newPlanTaskDoneCmd(), newPlanTaskGetCmd())
+	cmd.AddCommand(newPlanTaskDoneCmd(), newPlanTaskGetCmd(), newPlanTaskLandCmd(), newPlanTaskRetryCmd(), newPlanTaskSkipCmd())
 	return cmd
 }
 
@@ -279,6 +279,9 @@ func (r planTask) text(w io.Writer, st style.Style) {
 	if t.Conflicts != nil {
 		field("conflicts", strings.Join(*t.Conflicts, ", "))
 	}
+	if t.CheckTerminal != nil {
+		field("check", "its output in the terminal "+st.Name(*t.CheckTerminal))
+	}
 	fmt.Fprintf(w, "\n%s\n%s\n", st.Heading("PROMPT"), strings.TrimRight(t.Prompt, "\n"))
 	if t.Summary != nil {
 		fmt.Fprintf(w, "\n%s\n%s\n", st.Heading("SUMMARY"), strings.TrimRight(*t.Summary, "\n"))
@@ -316,6 +319,9 @@ func taskState(st style.Style, t api.PlanTask) string {
 		if t.Failure != nil {
 			s += ": " + strings.ReplaceAll(string(*t.Failure), "_", " ")
 		}
+		if t.CheckTerminal != nil {
+			s += " (terminal " + *t.CheckTerminal + ")"
+		}
 		return st.Failure(s)
 	}
 	return string(t.State)
@@ -327,6 +333,25 @@ func planProgress(p api.Plan) string {
 		return strconv.FormatInt(*p.TasksDone, 10) + "/" + strconv.FormatInt(*p.Tasks, 10)
 	}
 	return planSize(p)
+}
+
+// planFailed is how many of a plan's tasks wait for the person, as ", 1 failed",
+// styled; "" for none.
+func planFailed(st style.Style, p api.Plan) string {
+	if p.TasksFailed == nil || *p.TasksFailed == 0 {
+		return ""
+	}
+	return ", " + st.Failure(strconv.FormatInt(*p.TasksFailed, 10)+" failed")
+}
+
+// runStateText is a running plan's state as its run says it, with why it is
+// paused when its project is closed.
+func runStateText(st style.Style, p api.Plan, r *api.PlanRun) string {
+	s := planStateText(st, p.State)
+	if r != nil && r.PausedReason != nil && *r.PausedReason == api.PlanRunPausedReasonProjectClosed {
+		s += " (project closed)"
+	}
+	return s
 }
 
 // planStateText is a plan's state, styled: a draft muted.

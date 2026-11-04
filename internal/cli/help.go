@@ -887,9 +887,25 @@ dropped.
   for, and its prompt. Once its work is committed, it says so:
     ` + st.Command(w+" plan task done --agent-id $"+identity.Env("AGENT_ID")+" --summary <text>") + `
   ` + w + ` then stops it and rebases its work onto plan/sso, and what waited for it
-  starts. A task that cannot land, or whose agent ended, waits for you.
+  starts. Landing runs the project's landing check first, if it has one.
     ` + st.Command(w+" plan status --name sso") + `       every task's state
     ` + st.Command(w+" plan task get --plan sso --task <id>") + `   one task's prompt and summary
   Once every task is done, one worktree is left on plan/sso, to land as any.
-  A plan runs once, and cannot be changed once it has.`
+  A plan runs once, and cannot be changed once it has.
+
+` + st.Heading("When a task cannot go on") + `
+  A task is failed when its agent ended before saying it was done, did not
+  start, or lost its worktree; land failed when its rebase onto plan/sso
+  stopped on conflicts, or the check failed, its output kept in a terminal.
+  What waits for it waits for you, while the rest goes on:
+    ` + st.Command(w+" plan task retry --plan sso --task <id>") + `   its agent resumes, told what went wrong
+    ` + st.Command(w+" plan task retry ... --fresh") + `             a new agent, told of the earlier commits
+    ` + st.Command(w+" plan task land --plan sso --task <id>") + `    you dealt with it in its worktree yourself
+    ` + st.Command(w+" plan task done --plan sso --task <id> --summary <text>") + `   you finished a failed one
+    ` + st.Command(w+" plan task skip --plan sso --task <id>") + `    what waits for it goes on without it
+  A task keeps its worktree and commits through all of these.
+    ` + st.Command(w+" plan pause --name sso") + `  nothing new starts; ` + st.Command("resume") + ` goes on
+    ` + st.Command(w+" plan set --name sso --parallel <n>") + `   more or fewer tasks at once
+    ` + st.Command(w+" plan cancel --name sso") + `  stops it for good, keeping every worktree with work
+  Closing the project pauses its plans, and opening it resumes them.`
 }
