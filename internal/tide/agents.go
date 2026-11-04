@@ -80,10 +80,12 @@ type agentList struct {
 	docRow      int                  // the cursor's row in the Docs section
 	docCursor   string               // the id of its doc, which the cursor stays on as docs come and go
 	docNames    map[string]string    // the docs' names by id at the last event, to say which went
+	docFolders  map[string]bool      // the folders of the Docs section folded, by path (docs/FOLDERS.md)
 	planRow     int                  // the cursor's row in the Plans section
 	planCursor  string               // the id of its plan, which the cursor stays on as plans come and go
 	planNames   map[string]string    // the plans' names by id at the last event, to say which went
 	plansFolded map[string]bool      // the ids of the plans of plans folded
+	planFolders map[string]bool      // the folders of the Plans section folded, by path
 	planViews   map[string]*planView // what the plans' tabs hold, by tab
 	lastActive  string               // the tab current when last looked, to tell one coming to show
 	// editorsSeen is set once the project came and its editors got their tabs.
@@ -362,7 +364,8 @@ func (m *Model) rowOpener() (func(goToTab bool) tea.Cmd, bool) {
 		}
 		return do(func(goToTab bool) { m.openCodeFile(r.node.path, goToTab) }), true
 	case sectionDocs:
-		return do(m.openDoc), l.docRow < len(m.docRows())
+		r, ok := m.cursorDocRow()
+		return do(m.openDoc), ok && r.place.folder == ""
 	case sectionPlans:
 		_, ok := m.cursorPlan()
 		return do(m.planEnter), ok
@@ -390,8 +393,8 @@ func (m *Model) rowTab() (string, bool) {
 			return fileTab(l.code.worktree, r.node.path), true
 		}
 	case sectionDocs:
-		if rows := m.docRows(); l.docRow < len(rows) {
-			return docTab(rows[l.docRow].doc.Id), true
+		if r, ok := m.cursorDocRow(); ok && r.place.folder == "" {
+			return docTab(r.doc.Id), true
 		}
 	case sectionPlans:
 		if p, ok := m.cursorPlan(); ok {
@@ -600,6 +603,9 @@ func (s *projectScreen) sectionHint() string {
 		case l.section == sectionCode:
 			return codeHint
 		case l.section == sectionDocs:
+			if r, ok := s.m.cursorDocRow(); ok && r.place.folder != "" {
+				return folderHint
+			}
 			return docHint
 		case l.section == sectionPlans:
 			return s.m.planHintFor()
@@ -636,6 +642,10 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		return s.updateCode(name)
 	case l.section == sectionDocs && isEnter(name):
 		s.m.openDoc(name == goEnter)
+	case l.section == sectionDocs && (name == "left" || name == "h"):
+		s.m.docFold(true)
+	case l.section == sectionDocs && (name == "right" || name == "l"):
+		s.m.docFold(false)
 	case l.section == sectionPlans && isEnter(name):
 		s.m.planEnter(name == goEnter)
 	case l.section == sectionPlans && (name == "left" || name == "h"):

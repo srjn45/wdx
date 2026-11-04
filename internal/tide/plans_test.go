@@ -119,7 +119,7 @@ func TestPlanRowFits(t *testing.T) {
 			t.Errorf("%d: %q, want %q", width, got, want)
 		}
 	}
-	child := planRow{plan: aPlan("doc-a", "auth-a", 1, 2), child: true}
+	child := planRow{plan: aPlan("doc-a", "auth-a", 1, 2), child: true, place: treePlace{depth: 1, guide: "  "}}
 	if got := strings.TrimRight(planLine(st, child, false, false, false, 30), " "); got != "    auth-a draft 2 tasks" {
 		t.Errorf("a plan under its plan of plans: %q", got)
 	}

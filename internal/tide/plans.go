@@ -20,8 +20,8 @@ import (
 const (
 	planTabPrefix = "plan:"
 	planTabLabel  = "plan: "
-	planHint      = "↑↓ select  Enter open  / filter  Alt+arrows move  C-q menu"
-	parentHint    = "↑↓ select  ←→ fold  Enter open  / filter  Alt+arrows move  C-q menu"
+	planHint      = "↑↓ select  Enter open  m move  / filter  Alt+arrows move  C-q menu"
+	parentHint    = "↑↓ select  ←→ fold  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 )
 
 // planTab is the tab of the plan with id, which a rename keeps.
@@ -59,25 +59,41 @@ func (m *Model) planNamed(name string) (api.Plan, bool) {
 // isParent reports whether p is a plan of plans.
 func isParent(p api.Plan) bool { return p.Plans != nil }
 
-// planRow is a row of the Plans section.
+// planRow is a row of the Plans section: a plan, or a folder when place says so.
 type planRow struct {
 	plan     api.Plan
+	place    treePlace
 	child    bool // it is listed under its plan of plans
 	match    bool // it matches the filter
-	needsYou bool // a task of it failed or did not land, or its agent waits for input
+	needsYou bool // a task of it failed or did not land, or its agent waits for input; a folded folder's, of a plan in it
 }
 
-// planRows are the rows of the Plans section: each plan no other lists, and under a
-// plan of plans not folded the plans it lists, in its DAG order. With a filter, the
-// plans whose name holds its words, and a plan of plans with one of its plans that
-// does, folded or not.
+// key names the row across events: its plan's id, or its folder.
+func (r planRow) key() string {
+	if r.place.folder != "" {
+		return r.place.key()
+	}
+	return r.plan.Id
+}
+
+// planGroup is a plan no other lists, with the rows of the plans it lists.
+type planGroup struct {
+	plan     planRow
+	children []planRow
+}
+
+// planRows are the rows of the Plans section, in their folders: each plan no other
+// lists, and under a plan of plans not folded the plans it lists, in its DAG order,
+// which share its folder. With a filter, the plans whose name holds its words, and a
+// plan of plans with one of its plans that does, folded or not, under their folders
+// unfolded.
 func (m *Model) planRows() []planRow {
 	l := m.list()
 	if l == nil {
 		return nil
 	}
 	words := l.filter.words()
-	var rows []planRow
+	var groups []planGroup
 	for _, p := range m.plans() {
 		if p.Parent != nil {
 			continue
@@ -99,10 +115,32 @@ func (m *Model) planRows() []planRow {
 		if words != nil && !match && !slices.ContainsFunc(children, func(r planRow) bool { return r.match }) {
 			continue
 		}
-		rows = append(rows, planRow{plan: p, match: match, needsYou: m.planNeedsYou(p)})
-		rows = append(rows, children...)
+		groups = append(groups, planGroup{plan: planRow{plan: p, match: match, needsYou: m.planNeedsYou(p)}, children: children})
 	}
+	folded := l.planFolders
+	if words != nil {
+		folded = nil
+	}
+	var rows []planRow
+	folderTree(groups, func(g planGroup) string { return g.plan.plan.Folder }, folded, func(p treePlace, g *planGroup) {
+		if g == nil {
+			rows = append(rows, planRow{place: p, needsYou: p.fold == foldClosed && m.folderNeedsYou(p.folder)})
+			return
+		}
+		g.plan.place = p
+		rows = append(rows, g.plan)
+		for _, c := range g.children {
+			c.place = treePlace{depth: p.depth + 1, guide: p.next}
+			rows = append(rows, c)
+		}
+	})
 	return rows
+}
+
+// folderNeedsYou reports whether a plan in the folder at path, or under it, waits
+// for the person.
+func (m *Model) folderNeedsYou(path string) bool {
+	return slices.ContainsFunc(m.plans(), func(p api.Plan) bool { return inFolder(p.Folder, path) && m.planNeedsYou(p) })
 }
 
 // planNeedsYou reports whether the plan waits for the person: a task of it failed
@@ -149,7 +187,7 @@ func (m *Model) plansChanged() {
 // with none left it goes back to the agents.
 func (m *Model) keepPlanCursor() {
 	l, rows := m.list(), m.planRows()
-	if i := slices.IndexFunc(rows, func(r planRow) bool { return r.plan.Id == l.planCursor }); i >= 0 {
+	if i := slices.IndexFunc(rows, func(r planRow) bool { return r.key() == l.planCursor }); i >= 0 {
 		l.planRow = i
 		return
 	}
@@ -161,7 +199,7 @@ func (m *Model) keepPlanCursor() {
 		return
 	}
 	l.planRow = max(min(l.planRow, len(rows)-1), 0)
-	l.planCursor = rows[l.planRow].plan.Id
+	l.planCursor = rows[l.planRow].key()
 }
 
 // moveToPlan puts the cursor on the row i of the section.
@@ -170,30 +208,64 @@ func (m *Model) moveToPlan(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.planRow, l.planCursor, l.onHeading = sectionPlans, i, rows[i].plan.Id, false
+	l.section, l.planRow, l.planCursor, l.onHeading = sectionPlans, i, rows[i].key(), false
 }
 
-// cursorPlan returns the plan under the cursor.
-func (m *Model) cursorPlan() (api.Plan, bool) {
+// cursorPlanRow returns the row under the cursor in the Plans section.
+func (m *Model) cursorPlanRow() (planRow, bool) {
 	l, rows := m.list(), m.planRows()
-	if l.planRow >= len(rows) {
+	if l == nil || l.planRow >= len(rows) {
+		return planRow{}, false
+	}
+	return rows[l.planRow], true
+}
+
+// cursorPlan returns the plan under the cursor, none on a folder.
+func (m *Model) cursorPlan() (api.Plan, bool) {
+	r, ok := m.cursorPlanRow()
+	if !ok || r.place.folder != "" {
 		return api.Plan{}, false
 	}
-	return rows[l.planRow].plan, true
+	return r.plan, true
 }
 
-// planEnter opens the tab of the plan under the cursor.
+// planEnter opens the tab of the plan under the cursor; on a folder it folds or
+// unfolds it.
 func (m *Model) planEnter(goToTab bool) {
+	if r, ok := m.cursorPlanRow(); ok && r.place.folder != "" {
+		m.foldPlanFolder(r.place.folder, r.place.fold == foldOpen)
+		return
+	}
 	if p, ok := m.cursorPlan(); ok {
 		m.openPlan(p, goToTab)
 	}
 }
 
+// foldPlanFolder folds the folder at path, or unfolds it, the cursor going to it.
+func (m *Model) foldPlanFolder(path string, fold bool) {
+	l := m.list()
+	if setFolded(&l.planFolders, path, fold) {
+		m.log.Info("plan folder folded", "folder", path, "folded", fold)
+		m.changed("plan folder")
+	}
+	l.planCursor = folderRowKey + path
+	m.keepPlanCursor()
+}
+
 // planFold folds the plans of the plan of plans under the cursor, or unfolds them,
 // as ← and → do in the Agents section. ← on one of its plans folds it, the cursor
-// going to it.
+// going to it. On a folder it folds or unfolds the folder, and ← on a plan in a
+// folder, not a plan of plans unfolded, folds that folder.
 func (m *Model) planFold(fold bool) {
+	if r, ok := m.cursorPlanRow(); ok && r.place.folder != "" {
+		m.foldPlanFolder(r.place.folder, fold)
+		return
+	}
 	p, ok := m.cursorPlan()
+	if ok && fold && !atTop(p.Folder) && p.Parent == nil && (!isParent(p) || m.list().plansFolded[p.Id]) {
+		m.foldPlanFolder(p.Folder, true)
+		return
+	}
 	if ok && fold && p.Parent != nil {
 		if parent, found := m.planNamed(*p.Parent); found {
 			p = parent
@@ -225,7 +297,12 @@ func (m *Model) setPlanFolded(p api.Plan, fold bool) {
 func (m *Model) clickPlan(i, col int) {
 	rows := m.planRows()
 	m.moveToPlan(i)
-	if r := rows[i]; isParent(r.plan) && !r.child && col == ansi.StringWidth("▸ ") {
+	r := rows[i]
+	if r.place.folder != "" {
+		m.foldPlanFolder(r.place.folder, r.place.fold == foldOpen)
+		return
+	}
+	if isParent(r.plan) && !r.child && col == ansi.StringWidth("▸ ")+ansi.StringWidth(r.place.guide) {
 		m.setPlanFolded(r.plan, !m.list().plansFolded[r.plan.Id])
 		m.keepPlanCursor()
 		return
@@ -241,18 +318,29 @@ func (m *Model) openPlan(p api.Plan, goToTab bool) {
 	m.log.Info("plan opened", "plan_id", p.Id, "name", p.Name)
 }
 
-// planHintFor is the bar's hint in the section: a plan of plans folds.
+// planHintFor is the bar's hint in the section: a plan of plans and a folder fold.
 func (m *Model) planHintFor() string {
+	if r, ok := m.cursorPlanRow(); ok && r.place.folder != "" {
+		return folderHint
+	}
 	if p, ok := m.cursorPlan(); ok && isParent(p) {
 		return parentHint
 	}
 	return planHint
 }
 
-// planRowActive reports whether the row's plan is the current tab's.
+// planRowActive reports whether the row's plan is the current tab's, or the row is
+// a folded folder holding it.
 func (m *Model) planRowActive(r planRow) bool {
 	l := m.list()
-	return l != nil && l.active == planTab(r.plan.Id)
+	if l == nil {
+		return false
+	}
+	if r.place.folder != "" {
+		p, ok := m.planOf(strings.TrimPrefix(l.active, planTabPrefix))
+		return r.place.fold == foldClosed && isPlanTab(l.active) && ok && inFolder(p.Folder, r.place.folder)
+	}
+	return l.active == planTab(r.plan.Id)
 }
 
 // planSize is how many tasks a plan has, or plans for a plan of plans.
@@ -281,9 +369,9 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// planLine is the row r of the section, width wide: a plan of plans' fold mark, a
-// plan's indent under it, the name, its state and its size, the state giving way
-// first.
+// planLine is the row r of the section, width wide: the tree's lines, then a
+// folder's fold mark and name, or a plan of plans' fold mark, a plan's indent under
+// it, the name, its state and its size, the state giving way first.
 func planLine(st style.Style, r planRow, folded, cursor, active bool, width int) string {
 	pointer := "  "
 	if cursor {
@@ -293,16 +381,18 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	if active {
 		end = " " + st.Focused("◂") + " "
 	}
-	lead := ""
+	lead := treeLead(r.place)
 	switch {
-	case r.child:
-		lead = "  "
+	case r.place.folder != "" || r.child:
 	case isParent(r.plan) && folded:
-		lead = foldClosed + " "
+		lead = r.place.guide + foldClosed + " "
 	case isParent(r.plan):
-		lead = foldOpen + " "
+		lead = r.place.guide + foldOpen + " "
 	}
 	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
+	if r.place.folder != "" {
+		return folderLine(st, r.place, r.needsYou, pointer, end, cursor, active, room)
+	}
 	name := ansi.Truncate(r.plan.Name, room, "…")
 	room -= ansi.StringWidth(name)
 	size, state, need := " "+planProgress(r.plan), " "+string(r.plan.State), ""

@@ -46,8 +46,10 @@ type projectView struct {
 	Folded        []string            `json:"folded,omitempty"`         // the agents folded
 	WorktreesOpen []string            `json:"worktrees_open,omitempty"` // the worktrees unfolded
 	CodeWorktree  string              `json:"code_worktree,omitempty"`
-	CodeOpen      map[string][]string `json:"code_open,omitempty"` // by worktree, the directories unfolded
-	Collapsed     []string            `json:"collapsed,omitempty"` // the sections collapsed, by their letters
+	CodeOpen      map[string][]string `json:"code_open,omitempty"`    // by worktree, the directories unfolded
+	Collapsed     []string            `json:"collapsed,omitempty"`    // the sections collapsed, by their letters
+	DocsFolded    []string            `json:"docs_folded,omitempty"`  // the folders of the Docs section folded
+	PlansFolded   []string            `json:"plans_folded,omitempty"` // the folders of the Plans section folded
 }
 
 // viewState is how far the views are from what the daemon has.
@@ -123,7 +125,7 @@ func (m *Model) currentProjectView() (string, projectView, bool) {
 		Tab: l.active, Terminal: m.selectedTab[id], Section: l.section.letter(),
 		Agent: l.cursor, Worktree: l.worktreeKey, Doc: l.docCursor, Code: l.code.cursor,
 		Folded: sorted(l.closed), WorktreesOpen: sorted(l.worktreesOpen), CodeWorktree: l.code.worktree,
-		Collapsed: sorted(l.collapsed),
+		Collapsed: sorted(l.collapsed), DocsFolded: sorted(l.docFolders), PlansFolded: sorted(l.planFolders),
 	}
 	for _, name := range slices.Sorted(maps.Keys(l.code.files)) {
 		if open := sorted(l.code.files[name].open); len(open) > 0 {
@@ -153,6 +155,7 @@ func (m *Model) applyProjectView(projectID string, l *agentList, v projectView) 
 	}
 	l.cursor, l.worktreeKey, l.docCursor, l.code.cursor = v.Agent, v.Worktree, v.Doc, v.Code
 	l.closed, l.worktreesOpen, l.collapsed = setOf(v.Folded), setOf(v.WorktreesOpen), setOf(v.Collapsed)
+	l.docFolders, l.planFolders = setOf(v.DocsFolded), setOf(v.PlansFolded)
 	if v.CodeWorktree != "" {
 		l.code.worktree = v.CodeWorktree
 	}

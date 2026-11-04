@@ -141,6 +141,16 @@ func (m *Model) selectionPart() menuPart {
 			return nil
 		})
 	}
+	if d, p := m.movable(); d != nil || p != nil {
+		add(moveKey, "move to folder", "move", func() tea.Cmd {
+			if d != nil {
+				m.askMoveDoc(*d)
+			} else {
+				m.askMovePlan(*p)
+			}
+			return nil
+		})
+	}
 	if r, ok := m.restartable(); ok {
 		add(restartKey, "new session", "restart", func() tea.Cmd {
 			m.switcher, m.opening = nil, nil

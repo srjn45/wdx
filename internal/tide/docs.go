@@ -18,7 +18,7 @@ import (
 const (
 	docTabPrefix = "doc:"
 	docTabLabel  = "doc: "
-	docHint      = "↑↓ select  Enter open  / filter  Alt+arrows move  C-q menu"
+	docHint      = "↑↓ select  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 )
 
 // docKeys are what ? shows on a doc: a file's keys, but editing.
@@ -46,29 +46,75 @@ func (m *Model) docOf(id string) (api.Doc, bool) {
 	return api.Doc{}, false
 }
 
-// docRow is a row of the Docs section.
+// docRow is a row of the Docs section: a doc, or a folder when place says so.
 type docRow struct {
 	doc   api.Doc
+	place treePlace
 	match bool // it matches the filter
 }
 
-// docRows are the rows of the Docs section: with a filter, the docs whose name or
-// labels hold its words.
+// key names the row across events: its doc's id, or its folder.
+func (r docRow) key() string {
+	if r.place.folder != "" {
+		return r.place.key()
+	}
+	return r.doc.Id
+}
+
+// docRows are the rows of the Docs section, in their folders: with a filter, the
+// docs whose name or labels hold its words, under their folders unfolded.
 func (m *Model) docRows() []docRow {
 	l := m.list()
 	if l == nil {
 		return nil
 	}
 	words := l.filter.words()
-	var rows []docRow
-	for _, d := range m.docs() {
-		if words == nil {
-			rows = append(rows, docRow{doc: d})
-		} else if matches(d.Name+" "+strings.Join(d.Labels, " "), words) {
-			rows = append(rows, docRow{doc: d, match: true})
-		}
+	docs, folded := m.docs(), l.docFolders
+	if words != nil {
+		docs = slices.DeleteFunc(slices.Clone(docs), func(d api.Doc) bool { return !matches(d.Name+" "+strings.Join(d.Labels, " "), words) })
+		folded = nil
 	}
+	var rows []docRow
+	folderTree(docs, func(d api.Doc) string { return d.Folder }, folded, func(p treePlace, d *api.Doc) {
+		if d == nil {
+			rows = append(rows, docRow{place: p})
+			return
+		}
+		rows = append(rows, docRow{doc: *d, place: p, match: words != nil})
+	})
 	return rows
+}
+
+// cursorDocRow returns the row under the cursor in the Docs section.
+func (m *Model) cursorDocRow() (docRow, bool) {
+	l, rows := m.list(), m.docRows()
+	if l == nil || l.docRow >= len(rows) {
+		return docRow{}, false
+	}
+	return rows[l.docRow], true
+}
+
+// docFold folds the folder under the cursor, or unfolds it; ← on a doc in a folder
+// folds that folder, the cursor going to it.
+func (m *Model) docFold(fold bool) {
+	r, ok := m.cursorDocRow()
+	if !ok {
+		return
+	}
+	path := r.place.folder
+	if path == "" {
+		if !fold || atTop(r.doc.Folder) {
+			return
+		}
+		path = r.doc.Folder
+	}
+	l := m.list()
+	if setFolded(&l.docFolders, path, fold) {
+		m.log.Info("doc folder folded", "folder", path, "folded", fold)
+		m.changed("doc folder")
+	}
+	l.docCursor = folderRowKey + path
+	m.keepDocCursor()
 }
 
 // docsChanged keeps the cursor on its doc, and closes the tabs of the docs gone.
@@ -103,7 +149,7 @@ func (m *Model) docsChanged() {
 // none left it goes back to the agents.
 func (m *Model) keepDocCursor() {
 	l, rows := m.list(), m.docRows()
-	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.doc.Id == l.docCursor }); i >= 0 {
+	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.key() == l.docCursor }); i >= 0 {
 		l.docRow = i
 		return
 	}
@@ -115,7 +161,7 @@ func (m *Model) keepDocCursor() {
 		return
 	}
 	l.docRow = max(min(l.docRow, len(rows)-1), 0)
-	l.docCursor = rows[l.docRow].doc.Id
+	l.docCursor = rows[l.docRow].key()
 }
 
 // moveToDoc puts the cursor on the row i of the section.
@@ -124,17 +170,21 @@ func (m *Model) moveToDoc(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.docRow, l.docCursor, l.onHeading = sectionDocs, i, rows[i].doc.Id, false
+	l.section, l.docRow, l.docCursor, l.onHeading = sectionDocs, i, rows[i].key(), false
 }
 
 // openDoc opens the tab of the doc under the cursor, or goes to it, the focus
-// following as showOpened says.
+// following as showOpened says; on a folder it folds or unfolds it.
 func (m *Model) openDoc(goToTab bool) {
-	l, rows := m.list(), m.docRows()
-	if l.docRow >= len(rows) {
+	r, ok := m.cursorDocRow()
+	if !ok {
 		return
 	}
-	d := rows[l.docRow].doc
+	if r.place.folder != "" {
+		m.docFold(r.place.fold == foldOpen)
+		return
+	}
+	d, l := r.doc, m.list()
 	l.openTab(docTab(d.Id))
 	m.showOpened(goToTab)
 	m.changed("doc")
@@ -179,14 +229,23 @@ func (v *diffView) setDoc(c api.DocContent) {
 	v.lineOf = sourceLines(c.Content)
 }
 
-// docRowActive reports whether the row's doc is the current tab's.
+// docRowActive reports whether the row's doc is the current tab's, or the row is a
+// folded folder holding it.
 func (m *Model) docRowActive(r docRow) bool {
 	l := m.list()
-	return l != nil && l.active == docTab(r.doc.Id)
+	if l == nil {
+		return false
+	}
+	if r.place.folder != "" {
+		d, ok := m.docOf(strings.TrimPrefix(l.active, docTabPrefix))
+		return r.place.fold == foldClosed && isDocTab(l.active) && ok && inFolder(d.Folder, r.place.folder)
+	}
+	return l.active == docTab(r.doc.Id)
 }
 
-// docLine is the row r of the section, width wide: the name, the status and the
-// labels, which give way first.
+// docLine is the row r of the section, width wide: the tree's lines, then a
+// folder's fold mark and name, or a doc's name, status and labels, which give way
+// first.
 func docLine(st style.Style, r docRow, cursor, active bool, width int) string {
 	pointer := "  "
 	if cursor {
@@ -196,9 +255,13 @@ func docLine(st style.Style, r docRow, cursor, active bool, width int) string {
 	if active {
 		end = " " + st.Focused("◂") + " "
 	}
-	status := string(r.doc.Status)
-	room := max(width-style.Width(pointer)-style.Width(end), 0)
+	lead := treeLead(r.place)
+	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
+	if r.place.folder != "" {
+		return folderLine(st, r.place, false, pointer, end, cursor, active, room)
+	}
 	name := ansi.Truncate(r.doc.Name, room, "…")
+	status := string(r.doc.Status)
 	room -= ansi.StringWidth(name)
 	status = " " + status
 	if ansi.StringWidth(status) > room {
@@ -214,7 +277,7 @@ func docLine(st style.Style, r docRow, cursor, active bool, width int) string {
 	if cursor || active {
 		name = st.Name(name)
 	}
-	row := pointer + name + paintStatus(st, r.doc.Status, status) + st.Muted(labels) + gap + end
+	row := pointer + st.Muted(lead) + name + paintStatus(st, r.doc.Status, status) + st.Muted(labels) + gap + end
 	if active {
 		return st.ActiveRow(row)
 	}

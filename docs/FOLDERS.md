@@ -1,6 +1,6 @@
 # Folders for docs and plans
 
-Status: agreed with the human on 2026-11-04; designed in detail and approved on 2026-11-04 (In detail, below); step 1, storage, the API and the CLI, built on 2026-11-04; step 2, tide, is next. "Agreed" is what the human said; "In detail" is the design the human approved.
+Status: agreed with the human on 2026-11-04; designed in detail and approved on 2026-11-04 (In detail, below); step 1, storage, the API and the CLI, built on 2026-11-04; step 2, tide, built on 2026-11-04. The feature is complete. "Agreed" is what the human said; "In detail" is the design the human approved.
 
 A project's docs and plans are one flat list, in the database, the API and the CLI. A folder is a label each of them carries, a `/`-separated path such as `/hub/initial/spec`, which tide uses to show them as a tree. It means nothing else: no logic reads it, and nothing is stored for a folder itself.
 
@@ -66,7 +66,7 @@ A project's docs and plans are one flat list, in the database, the API and the C
 
 - **A folder is a row** in the Docs section and in the Plans section, drawn as the Code tree draws a directory: its last part (`initial`, not `/hub/initial`), the `−`/`+` fold mark, and the tree's guide lines. What is at `/` has no folder row, so a project that never sets one looks as it does now.
 - **Order at each level**: folders first, by name, then the docs or plans, in the order they come now.
-- **Folding as the Code tree folds**: `←` folds and `→` unfolds, a click on the mark does either, and `Enter` on a folder row toggles it. Folders start unfolded, as docs and plans are few next to files. The folds are kept per project in the view the daemon keeps (docs/TIDE_STATE.md), as the agents' are: `docs_folded` and `plans_folded`, the folders folded.
+- **Folding as the Code tree folds**: `←` folds and `→` unfolds, a click on the mark does either, and `Enter` on a folder row toggles it. Folders start unfolded, as docs and plans are few next to files. The folds are kept per project in the view the daemon keeps (docs/TIDE_STATE.md), as the agents' are: `docs_folded` and `plans_folded`, the folders folded. As built: a click anywhere on a folder's row toggles it, as on a directory's in the Code tree; `←` on a doc in a folder, or on a plan in one that is not a plan of plans unfolded, folds that folder and puts the cursor on it; a folded folder holding the tab shown carries its `◂`.
 - **A folded folder in Plans says `needs you`** when a plan in it does, as a folded agent does, so a stuck task is never hidden.
 - **The filter (`/`)** matches names and labels, as now, and shows each match under its folders, unfolded while it filters; a folder's own name is not matched.
 - **`m` moves** the doc or plan under the cursor: a popup with its folder to edit, as `r` renames an agent, sent as `UpdateDoc` or `UpdatePlan`. It is a line of the menu's selection part (`m move to folder`) on a doc or plan row, and works without `C-q` in the left pane. Not on a folder row: **moving a whole folder is left out**, as it would be one request per doc and not all or nothing; the person moves each, or uses the CLI in a loop. Suggested for later if wanted.
