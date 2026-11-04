@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,17 +15,42 @@ import (
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
-// answer does what the person's answer to a plan does, as a request would, holding
-// the changes' lock, and wakes the plan.
-func (td *testDaemon) answer(t *testing.T, planID string, do func(ctx context.Context, s *plan.Store) error) {
+func taskParams[P api.RetryPlanTaskParams | api.LandPlanTaskParams | api.SkipPlanTaskParams]() *P {
+	return &P{Project: optional("app")}
+}
+
+// retry, land and skip answer a task of the plan auth as the person does, and fail
+// the test when the daemon refuses.
+func (td *testDaemon) retry(t *testing.T, task string, fresh bool) {
 	t.Helper()
-	td.daemon.changes.Lock()
-	err := do(context.Background(), td.daemon.plans)
-	td.daemon.changes.Unlock()
-	if err != nil {
-		t.Fatal(err)
+	r, err := td.client.RetryPlanTaskWithResponse(context.Background(), "auth", task, taskParams[api.RetryPlanTaskParams](), api.RetryPlanTask{Fresh: &fresh})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultRetried || r.JSON200.Task.State != api.PlanTaskStatePending {
+		t.Fatalf("retry %s: %v %s", task, err, r.Body)
 	}
-	td.daemon.runner.Wake(planID)
+}
+
+func (td *testDaemon) land(t *testing.T, task string) {
+	t.Helper()
+	r, err := td.client.LandPlanTaskWithResponse(context.Background(), "auth", task, taskParams[api.LandPlanTaskParams]())
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultLanding {
+		t.Fatalf("land %s: %v %s", task, err, r.Body)
+	}
+}
+
+func (td *testDaemon) skip(t *testing.T, task string) {
+	t.Helper()
+	r, err := td.client.SkipPlanTaskWithResponse(context.Background(), "auth", task, taskParams[api.SkipPlanTaskParams]())
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultSkipped || r.JSON200.Task.State != api.PlanTaskStateSkipped {
+		t.Fatalf("skip %s: %v %s", task, err, r.Body)
+	}
+}
+
+func (td *testDaemon) cancel(t *testing.T) {
+	t.Helper()
+	r, err := td.client.CancelPlanWithResponse(context.Background(), "auth", &api.CancelPlanParams{Project: optional("app")})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultCancelled || r.JSON200.Plan.State != api.PlanStateCancelled {
+		t.Fatalf("cancel: %v %s", err, r.Body)
+	}
 }
 
 // messagesTo returns what the agent with id was told, oldest first.
@@ -100,11 +126,26 @@ func TestPlanCheckFailsThenLands(t *testing.T) {
 	if term, err := td.daemon.terminals.Store().GetByName(context.Background(), c.Plan.ProjectId, check); err != nil || term.State.Live() {
 		t.Errorf("the check's terminal %s: %+v, %v", check, term, err)
 	}
+	if a.CheckTerminal == nil || *a.CheckTerminal != check || c.Plan.TasksFailed == nil || *c.Plan.TasksFailed != 1 {
+		t.Errorf("a's check terminal %v, the plan's failed tasks %v", a.CheckTerminal, c.Plan.TasksFailed)
+	}
 
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.RetryTask(ctx, c.Plan.Id, "a", false)
-		return err
-	})
+	ctx := context.Background()
+	helper, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Project: optional("app"), Dir: *a.SlotPath, Name: optional("helper")})
+	if err != nil || helper.JSON201 == nil {
+		t.Fatalf("helper: %v %s", err, helper.Body)
+	}
+	r, err := td.client.LandPlanTaskWithResponse(ctx, "auth", "a", taskParams[api.LandPlanTaskParams]())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentWorking)
+	stop := true
+	if removed, err := td.client.DeleteAgentWithResponse(ctx, "helper", &api.DeleteAgentParams{Project: optional("app"), StopRunning: &stop}); err != nil || removed.JSON200 == nil {
+		t.Fatalf("remove the helper: %v %s", err, removed.Body)
+	}
+
+	td.retry(t, "a", false)
 	c = td.waitPlan(t, "auth", "a running again", stateIs("a:running"))
 	if got := taskIn(c, "a").Agent.Id; got != agent || !td.agentLive(t, agent) {
 		t.Errorf("a's agent: %s, want %s resumed", got, agent)
@@ -171,6 +212,9 @@ func TestPlanConflictLandedByThePerson(t *testing.T) {
 	td.finishTask(t, repo, "auth", "b")
 	c := td.waitPlan(t, "auth", "b land failed", stateIs("a:done b:land_failed"))
 	slot := *taskIn(c, "b").SlotPath
+	if taskIn(c, "b").CheckTerminal != nil {
+		t.Errorf("a rebase that stopped names a check: %+v", taskIn(c, "b"))
+	}
 
 	rebase := exec.Command("git", "-C", slot, "rebase", "plan/auth")
 	if out, err := rebase.CombinedOutput(); err == nil {
@@ -182,10 +226,7 @@ func TestPlanConflictLandedByThePerson(t *testing.T) {
 	gittest.Git(t, slot, "add", "shared.txt")
 	gittest.Git(t, slot, "-c", "core.editor=true", "-c", "user.name=t", "-c", "user.email=t@t", "rebase", "--continue")
 
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.LandTask(ctx, c.Plan.Id, "b")
-		return err
-	})
+	td.land(t, "b")
 	td.waitPlan(t, "auth", "b done", stateIs("a:done b:done"))
 	if got := gitOut(t, repo, "show", "plan/auth:shared.txt"); got != "a\nb" {
 		t.Errorf("shared.txt on plan/auth: %q", got)
@@ -204,15 +245,12 @@ func TestPlanTaskRetried(t *testing.T) {
 	first := *taskIn(c, "a").Agent
 	end := filepath.Join(repo, ".git", "end-a")
 	touch(t, end)
-	c = td.waitPlan(t, "auth", "a failed", stateIs("a:failed"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed"))
 	if err := os.Remove(end); err != nil {
 		t.Fatal(err)
 	}
 
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.RetryTask(ctx, c.Plan.Id, "a", false)
-		return err
-	})
+	td.retry(t, "a", false)
 	c = td.waitPlan(t, "auth", "a running again", stateIs("a:running"))
 	if got := *taskIn(c, "a").Agent; got != first || !td.agentLive(t, first.Id) {
 		t.Errorf("a's agent: %+v, want %+v resumed", got, first)
@@ -223,14 +261,11 @@ func TestPlanTaskRetried(t *testing.T) {
 	}
 
 	touch(t, end)
-	c = td.waitPlan(t, "auth", "a failed again", stateIs("a:failed"))
+	td.waitPlan(t, "auth", "a failed again", stateIs("a:failed"))
 	if err := os.Remove(end); err != nil {
 		t.Fatal(err)
 	}
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.RetryTask(ctx, c.Plan.Id, "a", true)
-		return err
-	})
+	td.retry(t, "a", true)
 	c = td.waitPlan(t, "auth", "a running fresh", stateIs("a:running"))
 	fresh := *taskIn(c, "a").Agent
 	if fresh.Name != "auth-a-2" || fresh.Id == first.Id || *taskIn(c, "a").SlotPath != filepath.Join(filepath.Dir(*taskIn(c, "a").SlotPath), "auth-1") {
@@ -255,11 +290,8 @@ func TestPlanSkippedTaskFreesItsSlot(t *testing.T) {
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
 	slot := *taskIn(c, "a").SlotPath
 	touch(t, filepath.Join(repo, ".git", "end-a"))
-	c = td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:pending"))
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.SkipTask(ctx, c.Plan.Id, "a")
-		return err
-	})
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:pending"))
+	td.skip(t, "a")
 	c = td.waitPlan(t, "auth", "b running", stateIs("a:skipped b:running"))
 	if got := *taskIn(c, "b").SlotPath; got != slot {
 		t.Errorf("b in %s, want %s", got, slot)
@@ -280,12 +312,9 @@ func TestPlanSkippedTaskKeepsItsWork(t *testing.T) {
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
 	slot := *taskIn(c, "a").SlotPath
 	touch(t, filepath.Join(repo, ".git", "end-a"))
-	c = td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:pending"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:pending"))
 	touch(t, filepath.Join(slot, "loose.txt"))
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error {
-		_, err := s.SkipTask(ctx, c.Plan.Id, "a")
-		return err
-	})
+	td.skip(t, "a")
 	c = td.waitPlan(t, "auth", "b running", stateIs("a:skipped b:running"))
 	if got := *taskIn(c, "b").SlotPath; got != filepath.Join(filepath.Dir(slot), "auth-2") {
 		t.Errorf("b in %s", got)
@@ -306,7 +335,7 @@ func TestPlanCancelled(t *testing.T) {
 	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
 	a, b := taskIn(c, "a"), taskIn(c, "b")
 	touch(t, filepath.Join(*b.SlotPath, "loose.txt"))
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error { return s.Cancel(ctx, c.Plan.Id) })
+	td.cancel(t)
 	c = td.waitPlan(t, "auth", "closed", func(c api.PlanContent) bool { return c.Run.FinishedAt != nil })
 	if states(c) != "a:running b:running" || c.Plan.State != api.PlanStateCancelled {
 		t.Errorf("cancelled: %s, %s", states(c), c.Plan.State)
@@ -332,7 +361,7 @@ func TestPlanCancelledDuringACheck(t *testing.T) {
 	slot := *taskIn(c, "a").SlotPath
 	td.finishTask(t, repo, "auth", "a")
 	waittest.For(t, "the check", func() bool { return exists(filepath.Join(repo, ".git", "checking")) })
-	td.answer(t, c.Plan.Id, func(ctx context.Context, s *plan.Store) error { return s.Cancel(ctx, c.Plan.Id) })
+	td.cancel(t)
 	c = td.waitPlan(t, "auth", "closed", func(c api.PlanContent) bool { return c.Run.FinishedAt != nil })
 	if states(c) != "a:landing" || !exists(slot) {
 		t.Errorf("cancelled: %s, slot kept %v", states(c), exists(slot))
@@ -364,4 +393,171 @@ func TestPlanCheckLeftRunningIsStopped(t *testing.T) {
 	if _, err := td.daemon.terminals.Store().GetByName(ctx, c.Plan.ProjectId, plan.CheckTerminal(slot)); err == nil {
 		t.Error("the check's terminal is still there")
 	}
+}
+
+// TestPlanRunAnswers: pause, resume and parallel, and what they and a task's answers
+// refuse; a plan shows paused while its project is closed, and goes on as it was
+// when it opens.
+func TestPlanRunAnswers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	td.planProject(t, "a exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	params := &api.PausePlanParams{Project: optional("app")}
+	pause := func() (*api.PlanResult, *api.Problem) {
+		r, err := td.client.PausePlanWithResponse(ctx, "auth", params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.JSON200, r.ApplicationproblemJSONDefault
+	}
+	resume := func() (*api.PlanResult, *api.Problem) {
+		r, err := td.client.ResumePlanWithResponse(ctx, "auth", &api.ResumePlanParams{Project: optional("app")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.JSON200, r.ApplicationproblemJSONDefault
+	}
+	update := func(body api.UpdatePlan) (*api.PlanResult, *api.Problem) {
+		r, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.JSON200, r.ApplicationproblemJSONDefault
+	}
+	retry := func(task string) *api.Problem {
+		r, err := td.client.RetryPlanTaskWithResponse(ctx, "auth", task, taskParams[api.RetryPlanTaskParams](), api.RetryPlanTask{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ApplicationproblemJSONDefault
+	}
+	skip := func(task string) *api.Problem {
+		r, err := td.client.SkipPlanTaskWithResponse(ctx, "auth", task, taskParams[api.SkipPlanTaskParams]())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ApplicationproblemJSONDefault
+	}
+	want := func(r *api.PlanResult, problem *api.Problem, result api.Result, state api.PlanState) {
+		t.Helper()
+		if r == nil || r.Result != result || r.Plan.State != state {
+			t.Errorf("got %+v, %+v; want %s, %s", r, problem, result, state)
+		}
+	}
+	parallel := func(n int) api.UpdatePlan { return api.UpdatePlan{Parallel: &n} }
+
+	_, problem := pause()
+	wantProblem(t, problem, http.StatusConflict, api.ErrorCodePlanNotRunning)
+	_, problem = update(parallel(2))
+	wantProblem(t, problem, http.StatusConflict, api.ErrorCodePlanNotRunning)
+	wantProblem(t, retry("a"), http.StatusConflict, api.ErrorCodePlanNotRunning)
+	_, problem = update(api.UpdatePlan{})
+	wantProblem(t, problem, http.StatusBadRequest, api.ErrorCodeUsage)
+	two := 2
+	_, problem = update(api.UpdatePlan{Name: optional("x"), Parallel: &two})
+	wantProblem(t, problem, http.StatusBadRequest, api.ErrorCodeUsage)
+
+	td.runPlan(t, "auth", 0)
+	td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
+	wantProblem(t, retry("a"), http.StatusConflict, api.ErrorCodeTaskState)
+	wantProblem(t, skip("a"), http.StatusConflict, api.ErrorCodeTaskState)
+	r, problem := update(parallel(4))
+	want(r, problem, api.ResultUpdated, api.PlanStateRunning)
+	r, problem = update(parallel(4))
+	want(r, problem, api.ResultUnchanged, api.PlanStateRunning)
+	r, problem = resume()
+	want(r, problem, api.ResultUnchanged, api.PlanStateRunning)
+	r, problem = pause()
+	want(r, problem, api.ResultPaused, api.PlanStatePaused)
+	r, problem = pause()
+	want(r, problem, api.ResultUnchanged, api.PlanStatePaused)
+	r, problem = resume()
+	want(r, problem, api.ResultResumed, api.PlanStateRunning)
+
+	closed, err := td.client.UpdateProjectWithResponse(ctx, "app", api.UpdateProject{State: api.ProjectStateClosed, StopRunning: optional(true)})
+	if err != nil || closed.JSON200 == nil {
+		t.Fatalf("close: %v %s", err, closed.Body)
+	}
+	c := td.waitPlan(t, "auth", "paused with its project", func(c api.PlanContent) bool { return c.Plan.State == api.PlanStatePaused })
+	if c.Run.State != api.PlanStatePaused || c.Run.PausedReason == nil || *c.Run.PausedReason != api.PlanRunPausedReasonProjectClosed {
+		t.Errorf("run: %+v", c.Run)
+	}
+	_, problem = resume()
+	wantProblem(t, problem, http.StatusConflict, api.ErrorCodeProjectClosed)
+	r, problem = pause()
+	want(r, problem, api.ResultPaused, api.PlanStatePaused)
+	opened, err := td.client.UpdateProjectWithResponse(ctx, "app", api.UpdateProject{State: api.ProjectStateOpen})
+	if err != nil || opened.JSON200 == nil {
+		t.Fatalf("open: %v %s", err, opened.Body)
+	}
+	c = td.waitPlan(t, "auth", "paused by the person", func(c api.PlanContent) bool {
+		return c.Run.PausedReason != nil && *c.Run.PausedReason == api.PlanRunPausedReasonPerson
+	})
+	if c.Plan.State != api.PlanStatePaused {
+		t.Errorf("plan: %+v", c.Plan)
+	}
+	r, problem = resume()
+	want(r, problem, api.ResultResumed, api.PlanStateRunning)
+	td.waitPlan(t, "auth", "running again", func(c api.PlanContent) bool { return c.Run.PausedReason == nil && c.Plan.State == api.PlanStateRunning })
+
+	td.cancel(t)
+	_, problem = pause()
+	wantProblem(t, problem, http.StatusConflict, api.ErrorCodePlanNotRunning)
+	cancelled, err := td.client.CancelPlanWithResponse(ctx, "auth", &api.CancelPlanParams{Project: optional("app")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, cancelled.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodePlanNotRunning)
+}
+
+// TestPlanFailedTaskDoneByThePerson: a failed task the person says is done lands, and
+// what waits for it starts.
+func TestPlanFailedTaskDoneByThePerson(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	repo := td.planProject(t, "a exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.runPlan(t, "auth", 0)
+	td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
+	touch(t, filepath.Join(repo, ".git", "end-a"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:pending"))
+	r, err := td.client.FinishPlanTaskWithResponse(context.Background(), "auth", "a", &api.FinishPlanTaskParams{Project: optional("app")}, api.FinishPlanTask{Summary: "by hand"})
+	if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultLanding {
+		t.Fatalf("done: %v %s", err, r.Body)
+	}
+	c := td.waitPlan(t, "auth", "b running", stateIs("a:done b:running"))
+	if s := taskIn(c, "a").Summary; s == nil || *s != "by hand" {
+		t.Errorf("a: %+v", taskIn(c, "a"))
+	}
+}
+
+// TestPlanMoreRoomStartsTasks: a run's parallel raised starts what waits for room,
+// and a plan resumed starts what its pause held back.
+func TestPlanMoreRoomStartsTasks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	td.planProject(t, "a exit\nb exit\nc exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n  - id: c\n    prompt: p\n")
+	td.runPlan(t, "auth", 1)
+	td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending c:pending"))
+	set := func(n int) {
+		t.Helper()
+		r, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Parallel: &n})
+		if err != nil || r.JSON200 == nil || r.JSON200.Result != api.ResultUpdated {
+			t.Fatalf("parallel %d: %v %s", n, err, r.Body)
+		}
+	}
+	set(2)
+	td.waitPlan(t, "auth", "b running", stateIs("a:running b:running c:pending"))
+	if r, err := td.client.PausePlanWithResponse(ctx, "auth", &api.PausePlanParams{Project: optional("app")}); err != nil || r.JSON200 == nil {
+		t.Fatalf("pause: %v %s", err, r.Body)
+	}
+	set(3) // wakes the plan, which starts nothing while paused
+	if r, err := td.client.ResumePlanWithResponse(ctx, "auth", &api.ResumePlanParams{Project: optional("app")}); err != nil || r.JSON200 == nil {
+		t.Fatalf("resume: %v %s", err, r.Body)
+	}
+	td.waitPlan(t, "auth", "c running", stateIs("a:running b:running c:running"))
 }

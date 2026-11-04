@@ -61,7 +61,7 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 		return nil, err
 	}
 	logging.FromContext(ctx).Info("plan read", "plan_id", p.ID, "name", p.Name, "revision", r.Number, "size", r.Size, "state", p.State)
-	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names), Run: runView(runRef)}, nil
+	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names), Run: runView(runRef, p)}, nil
 }
 
 func (s *server) RunPlan(ctx context.Context, req api.RunPlanRequestObject) (api.RunPlanResponseObject, error) {
@@ -93,17 +93,130 @@ func (s *server) FinishPlanTask(ctx context.Context, req api.FinishPlanTaskReque
 	if _, err := s.runner.TaskDone(ctx, p.ID, req.Task, req.Body.Summary); err != nil {
 		return nil, err
 	}
-	run, _, err := s.plans.Run(ctx, p.ID)
+	t, err := s.taskResult(ctx, p.ID, req.Task)
 	if err != nil {
 		return nil, err
+	}
+	return api.FinishPlanTask200JSONResponse{Result: api.ResultLanding, Task: t}, nil
+}
+
+// taskResult is the task of the plan's run, as a response shows it.
+func (s *server) taskResult(ctx context.Context, planID, taskID string) (api.PlanTask, error) {
+	run, _, err := s.plans.Run(ctx, planID)
+	if err != nil {
+		return api.PlanTask{}, err
 	}
 	names, err := s.agentNames(ctx, &run)
 	if err != nil {
-		return nil, err
+		return api.PlanTask{}, err
 	}
 	tasks := *definitionView(run.Definition, &run, names).Tasks
-	i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == req.Task })
-	return api.FinishPlanTask200JSONResponse{Result: api.ResultLanding, Task: tasks[i]}, nil
+	i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == taskID })
+	return tasks[i], nil
+}
+
+func (s *server) RetryPlanTask(ctx context.Context, req api.RetryPlanTaskRequestObject) (api.RetryPlanTaskResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.runner.RetryTask(ctx, p.ID, req.Task, deref(req.Body.Fresh)); err != nil {
+		return nil, err
+	}
+	t, err := s.taskResult(ctx, p.ID, req.Task)
+	if err != nil {
+		return nil, err
+	}
+	return api.RetryPlanTask200JSONResponse{Result: api.ResultRetried, Task: t}, nil
+}
+
+func (s *server) LandPlanTask(ctx context.Context, req api.LandPlanTaskRequestObject) (api.LandPlanTaskResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.runner.LandTask(ctx, p.ID, req.Task); err != nil {
+		return nil, err
+	}
+	t, err := s.taskResult(ctx, p.ID, req.Task)
+	if err != nil {
+		return nil, err
+	}
+	return api.LandPlanTask200JSONResponse{Result: api.ResultLanding, Task: t}, nil
+}
+
+func (s *server) SkipPlanTask(ctx context.Context, req api.SkipPlanTaskRequestObject) (api.SkipPlanTaskResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.runner.SkipTask(ctx, p.ID, req.Task); err != nil {
+		return nil, err
+	}
+	t, err := s.taskResult(ctx, p.ID, req.Task)
+	if err != nil {
+		return nil, err
+	}
+	return api.SkipPlanTask200JSONResponse{Result: api.ResultSkipped, Task: t}, nil
+}
+
+func (s *server) PausePlan(ctx context.Context, req api.PausePlanRequestObject) (api.PausePlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := s.runner.Pause(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	return api.PausePlan200JSONResponse{Result: changedResult(changed, api.ResultPaused), Plan: planView(p)}, nil
+}
+
+func (s *server) ResumePlan(ctx context.Context, req api.ResumePlanRequestObject) (api.ResumePlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	proj, err := s.projects.GetByID(ctx, p.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if proj.State == project.StateClosed {
+		return nil, &projectClosedError{project: proj}
+	}
+	changed, err := s.runner.Resume(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	return api.ResumePlan200JSONResponse{Result: changedResult(changed, api.ResultResumed), Plan: planView(p)}, nil
+}
+
+func (s *server) CancelPlan(ctx context.Context, req api.CancelPlanRequestObject) (api.CancelPlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.runner.Cancel(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	return api.CancelPlan200JSONResponse{Result: api.ResultCancelled, Plan: planView(p)}, nil
+}
+
+// changedResult is result when something changed, else unchanged.
+func changedResult(changed bool, result api.Result) api.Result {
+	if changed {
+		return result
+	}
+	return api.ResultUnchanged
 }
 
 // agentNames returns the names of the agents of run's tasks, by id.
@@ -130,11 +243,25 @@ func (s *server) UpdatePlan(ctx context.Context, req api.UpdatePlanRequestObject
 	if err != nil {
 		return nil, err
 	}
+	name, parallel := req.Body.Name, req.Body.Parallel
+	if (name == nil) == (parallel == nil) {
+		return nil, &requestError{err: errors.New("give exactly one of name and parallel")}
+	}
+	if parallel != nil {
+		changed, err := s.runner.SetParallel(ctx, p.ID, *parallel)
+		if err != nil {
+			return nil, err
+		}
+		if p, err = s.plans.Get(ctx, p.ID); err != nil {
+			return nil, err
+		}
+		return api.UpdatePlan200JSONResponse{Result: changedResult(changed, api.ResultUpdated), Plan: planView(p)}, nil
+	}
 	// Renaming to the name it has, case and all, writes nothing.
-	if req.Body.Name == p.Name {
+	if *name == p.Name {
 		return api.UpdatePlan200JSONResponse{Result: api.ResultUnchanged, Plan: planView(p)}, nil
 	}
-	if p, err = s.plans.Rename(ctx, p.ID, req.Body.Name); err != nil {
+	if p, err = s.plans.Rename(ctx, p.ID, *name); err != nil {
 		return nil, err
 	}
 	return api.UpdatePlan200JSONResponse{Result: api.ResultUpdated, Plan: planView(p)}, nil
@@ -254,19 +381,24 @@ func planView(p plan.Plan) api.Plan {
 		v.Parent = &p.Parent
 	}
 	if p.State != plan.StateDraft {
-		done := int64(p.TasksDone)
-		v.TasksDone = &done
+		done, failed := int64(p.TasksDone), int64(p.TasksFailed)
+		v.TasksDone, v.TasksFailed = &done, &failed
 	}
 	return v
 }
 
-func runView(r *plan.Run) *api.PlanRun {
+// runView is r as its plan p shows it: paused while its project is closed.
+func runView(r *plan.Run, p plan.Plan) *api.PlanRun {
 	if r == nil {
 		return nil
 	}
-	v := &api.PlanRun{State: api.PlanState(r.State), Revision: int64(r.Revision), Base: r.Base, Branch: r.Branch, StartedAt: r.StartedAt.UTC(), FinishedAt: optionalTime(r.FinishedAt)}
+	v := &api.PlanRun{State: api.PlanState(p.State), Revision: int64(r.Revision), Base: r.Base, Branch: r.Branch, StartedAt: r.StartedAt.UTC(), FinishedAt: optionalTime(r.FinishedAt)}
 	if r.Parallel != 0 {
 		v.Parallel = &r.Parallel
+	}
+	if p.PausedReason != "" {
+		reason := api.PlanRunPausedReason(p.PausedReason)
+		v.PausedReason = &reason
 	}
 	return v
 }
@@ -315,6 +447,10 @@ func taskView(t plan.Task, states map[string]plan.TaskRun, slots map[int]string,
 	}
 	if path, ok := slots[r.Slot]; ok {
 		v.SlotPath = &path
+		if r.State == plan.TaskLandFailed && r.Failure == plan.FailureCheck {
+			check := plan.CheckTerminal(path)
+			v.CheckTerminal = &check
+		}
 	}
 	for _, a := range t.After {
 		if s := states[a].State; s != plan.TaskDone && s != plan.TaskSkipped {

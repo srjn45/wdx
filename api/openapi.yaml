@@ -1656,17 +1656,23 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     patch:
       operationId: updatePlan
-      summary: Rename a plan
+      summary: Rename a draft plan, or change how many tasks a run runs at once
       description: |
-        Result updated, or unchanged when the name is the plan's, case and
-        all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-        with the parent under details.parent.
+        Exactly one of name and parallel. Result updated, or unchanged when
+        the name is the plan's, case and all, or the run's parallel is
+        already that.
 
-        A plan that has run cannot be renamed: plan_started, with the plan
-        under details.plan.
+        name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+        with the parent under details.parent; nor can a plan that has run,
+        plan_started, with the plan under details.plan.
+
+        parallel: only for a run running or paused, plan_not_running
+        otherwise, with the plan under details.plan. The runner starts more
+        at once when it rises; tasks at work go on when it falls.
 
         Errors: invalid_name, invalid_path, name_taken (with the plan under
-        details.plan), not_found, plan_in_use, plan_started, usage.
+        details.plan), not_found, plan_in_use, plan_not_running,
+        plan_started, usage.
       requestBody:
         required: true
         content:
@@ -1780,6 +1786,146 @@ paths:
               schema: { $ref: "#/components/schemas/PlanResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/plans/{plan}/pause:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: pausePlan
+      summary: Pause a running plan, so that nothing new starts while tasks at work go on and land
+      description: |
+        Result paused, or unchanged when it was paused. A plan paused while its project is closed stays paused when the project opens.
+
+        Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+      responses:
+        "200":
+          description: The plan, with result paused or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/resume:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: resumePlan
+      summary: Resume a paused plan
+      description: |
+        Result resumed, or unchanged when it was running. Refused while its project is closed, as nothing could run: project_closed.
+
+        Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage, project_closed.
+      responses:
+        "200":
+          description: The plan, with result resumed or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: cancelPlan
+      summary: Cancel a running or paused plan, which cannot run again
+      description: |
+        Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
+
+        Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+      responses:
+        "200":
+          description: The plan, with result cancelled or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/tasks/{task}/retry:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - name: task
+        in: path
+        required: true
+        description: The task's id in the plan.
+        schema: { type: string, minLength: 1 }
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: retryPlanTask
+      summary: Run a failed or land_failed task again
+      description: |
+        Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+
+        Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RetryPlanTask" }
+      responses:
+        "200":
+          description: The task, with result retried.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanTaskResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/tasks/{task}/land:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - name: task
+        in: path
+        required: true
+        description: The task's id in the plan.
+        schema: { type: string, minLength: 1 }
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: landPlanTask
+      summary: Land a land_failed task again, once the person dealt with what stopped it
+      description: |
+        Result landing: the daemon rebases it onto the plan's branch, runs the check, and moves the branch.
+
+        Errors: agent_working (an agent is at work in its worktree), invalid_path, not_committed, not_found, plan_not_running, task_state (it is not land_failed), usage, wrong_branch.
+      responses:
+        "200":
+          description: The task, with result landing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanTaskResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/plans/{plan}/tasks/{task}/skip:
+    parameters:
+      - $ref: "#/components/parameters/PlanRef"
+      - name: task
+        in: path
+        required: true
+        description: The task's id in the plan.
+        schema: { type: string, minLength: 1 }
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: skipPlanTask
+      summary: Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+      description: |
+        Result skipped. Its worktree, if it holds work, is kept as an ordinary worktree on its branch; if not, it is freed for another task.
+
+        Errors: invalid_path, not_found, plan_not_running, task_state (it is not pending, failed or land_failed), usage.
+      responses:
+        "200":
+          description: The task, with result skipped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanTaskResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/plans/{plan}/tasks/{task}/done:
     parameters:
       - $ref: "#/components/parameters/PlanRef"
@@ -1792,17 +1938,19 @@ paths:
       - $ref: "#/components/parameters/TerminalDir"
     post:
       operationId: finishPlanTask
-      summary: Say a running task is done, with a summary, so that it lands on the plan's branch
+      summary: Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
       description: |
         Result landing: the daemon stops the task's agent and lands its
         worktree on the plan's branch. The summary is told to the tasks
         that wait for it, and is never logged.
 
-        Errors: invalid_path, not_committed (its worktree has changes or
+        Errors: agent_working (a failed task's worktree has an agent at
+        work), invalid_path, not_committed (its worktree has changes or
         files not committed), not_found (the plan, or a task its run does
-        not have), task_state (it is not running, with the task's id and
-        state under details.task), usage, wrong_branch (its worktree is not
-        on the task's branch, which details.branch names).
+        not have), plan_not_running, task_state (it is not running or
+        failed, with the task's id and state under details.task), usage,
+        wrong_branch (its worktree is not on the task's branch, which
+        details.branch names).
       requestBody:
         required: true
         content:
@@ -1979,7 +2127,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped]
 
     Worktree:
       type: object
@@ -3038,7 +3186,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, state, tasks, tasks_done, plans, parent, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, state, tasks, tasks_done, tasks_failed, plans, parent, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3047,6 +3195,7 @@ components:
         state: { $ref: "#/components/schemas/PlanState" }
         tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
         tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft. }
+        tasks_failed: { type: integer, format: int64, nullable: true, description: How many of them are failed or land_failed, waiting for the person; null for a draft. }
         plans:
           type: array
           items: { type: string }
@@ -3080,7 +3229,7 @@ components:
 
     PlanTask:
       type: object
-      required: [id, after, prompt, state, waiting_for, failure, conflicts, agent, slot_path, summary, started_at, finished_at]
+      required: [id, after, prompt, state, waiting_for, failure, conflicts, check_terminal, agent, slot_path, summary, started_at, finished_at]
       properties:
         id: { type: string }
         after:
@@ -3099,6 +3248,7 @@ components:
           items: { type: string }
           nullable: true
           description: The files a landing's rebase stopped on; null unless it is land_failed with rebase.
+        check_terminal: { type: string, nullable: true, description: The terminal holding the output of the check that failed; null unless it is land_failed with check. }
         agent: { $ref: "#/components/schemas/PlanTaskAgent" }
         slot_path: { type: string, nullable: true, description: The plan's worktree it has; null when it has none. }
         summary: { type: string, nullable: true, description: What its agent said it did; null until it is done. }
@@ -3129,9 +3279,14 @@ components:
       type: object
       nullable: true
       description: A plan's run; null for a draft.
-      required: [state, revision, base, branch, parallel, started_at, finished_at]
+      required: [state, paused_reason, revision, base, branch, parallel, started_at, finished_at]
       properties:
         state: { $ref: "#/components/schemas/PlanState" }
+        paused_reason:
+          type: string
+          nullable: true
+          enum: [person, project_closed]
+          description: Why it is paused, null unless it is; project_closed shows a running plan paused while its project is closed, which goes on as it was when the project opens.
         revision: { type: integer, format: int64, description: The revision it runs. }
         base: { type: string, description: The branch it started from. }
         branch: { type: string, description: Where its tasks land, plan/<name>. }
@@ -3204,10 +3359,17 @@ components:
 
     UpdatePlan:
       type: object
-      required: [name]
+      additionalProperties: false
+      description: Exactly one of name and parallel.
+      properties:
+        name: { type: string, description: A draft's new name. }
+        parallel: { type: integer, minimum: 1, maximum: 20, description: The most tasks its run runs at once. }
+
+    RetryPlanTask:
+      type: object
       additionalProperties: false
       properties:
-        name: { type: string, description: Its new name. }
+        fresh: { type: boolean, description: Start a new agent even when the task's could be resumed. }
 
     PlanList:
       type: object
@@ -3322,6 +3484,7 @@ components:
         - plan_started
         - task_state
         - wrong_branch
+        - plan_not_running
 
     Problem:
       type: object

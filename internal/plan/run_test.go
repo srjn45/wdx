@@ -440,7 +440,7 @@ func TestRetryNote(t *testing.T) {
 func notRunning(t *testing.T, err error, state string) {
 	t.Helper()
 	e, ok := errors.AsType[*NotRunningError](err)
-	if !ok || e.State != state {
+	if !ok || e.Plan.State != state {
 		t.Errorf("%v, want a plan %s, not running", err, state)
 	}
 }

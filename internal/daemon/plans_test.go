@@ -190,7 +190,7 @@ func TestPlansOfPlansThroughTheAPI(t *testing.T) {
 		t.Errorf("the child's definition: %+v", def)
 	}
 
-	rename, err := td.client.UpdatePlanWithResponse(ctx, "auth-a", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: "auth-one"})
+	rename, err := td.client.UpdatePlanWithResponse(ctx, "auth-a", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: optional("auth-one")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,11 +204,11 @@ func TestPlansOfPlansThroughTheAPI(t *testing.T) {
 	}
 	wantProblem(t, remove.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodePlanInUse)
 
-	same, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: "auth"})
+	same, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: optional("auth")})
 	if err != nil || same.JSON200 == nil || same.JSON200.Result != api.ResultUnchanged {
 		t.Errorf("renamed to its own name: %v %s", err, same.Body)
 	}
-	renamed, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: "auth-all"})
+	renamed, err := td.client.UpdatePlanWithResponse(ctx, "auth", &api.UpdatePlanParams{Project: optional("app")}, api.UpdatePlan{Name: optional("auth-all")})
 	if err != nil || renamed.JSON200 == nil || renamed.JSON200.Result != api.ResultUpdated || renamed.JSON200.Plan.Name != "auth-all" {
 		t.Errorf("renamed: %v %s", err, renamed.Body)
 	}

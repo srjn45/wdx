@@ -44,6 +44,9 @@ type RunnerOptions struct {
 	// ResumeAgent goes on with an agent in its session, told text, with linked
 	// written in the transaction that tells it, and starts it if it is not running.
 	ResumeAgent func(ctx context.Context, agentID, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error
+	// AgentIn returns the name of a live agent of the project working in dir, ""
+	// for none.
+	AgentIn func(ctx context.Context, projectID, dir string) (string, error)
 	// AgentNameTaken reports whether an agent of the project has name.
 	AgentNameTaken func(ctx context.Context, projectID, name string) (bool, error)
 	// StopAgent ends an agent so that its project opening does not start it again.
@@ -794,23 +797,67 @@ func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, erro
 	return r.store.Get(ctx, id)
 }
 
-// TaskDone says the running task is done, with its agent's summary, once its slot
-// holds every change committed on the task's branch, and wakes the plan to land it.
+// TaskDone says the task is done, with a summary, once its slot holds every change
+// committed on the task's branch, and wakes the plan to land it: a running task,
+// from its agent, or a failed one the person finished, once no agent works in its
+// slot.
 func (r *Runner) TaskDone(ctx context.Context, planID, taskID, summary string) (TaskRun, error) {
-	run, ok, err := r.store.Run(ctx, planID)
+	if _, err := r.landable(ctx, planID, taskID, []string{TaskRunning, TaskFailed}); err != nil {
+		return TaskRun{}, err
+	}
+	done, err := r.store.TaskDone(ctx, planID, taskID, summary)
+	if err != nil {
+		return TaskRun{}, err
+	}
+	r.Wake(planID)
+	return done, nil
+}
+
+// LandTask lands the land_failed task again, once the person dealt with what
+// stopped it: its slot holds every change committed on its branch, and no agent
+// works in it.
+func (r *Runner) LandTask(ctx context.Context, planID, taskID string) (TaskRun, error) {
+	if _, err := r.landable(ctx, planID, taskID, []string{TaskLandFailed}); err != nil {
+		return TaskRun{}, err
+	}
+	t, err := r.store.LandTask(ctx, planID, taskID)
+	if err != nil {
+		return TaskRun{}, err
+	}
+	r.Wake(planID)
+	return t, nil
+}
+
+// landable returns the task, in one of the states from, of a run going on, once its
+// slot can land: every change committed, on the task's branch, and, for a task not
+// running, no agent at work in it, as nothing may write there during the landing.
+func (r *Runner) landable(ctx context.Context, planID, taskID string, from []string) (TaskRun, error) {
+	if err := r.store.goingOn(ctx, planID); err != nil {
+		return TaskRun{}, err
+	}
+	run, _, err := r.store.Run(ctx, planID)
 	if err != nil {
 		return TaskRun{}, err
 	}
 	task, found := run.Task(taskID)
-	if !ok || !found {
+	if !found {
 		return TaskRun{}, fmt.Errorf("%w: plan %s has no task %s in a run", ErrNotFound, planID, taskID)
 	}
-	if task.State != TaskRunning {
-		return TaskRun{}, &TaskStateError{PlanID: planID, Task: task, From: []string{TaskRunning}}
+	if !slices.Contains(from, task.State) {
+		return TaskRun{}, &TaskStateError{PlanID: planID, Task: task, From: from}
 	}
 	sl, ok := slotOf(run, task.Slot)
 	if !ok {
 		return TaskRun{}, fmt.Errorf("task %s holds no slot", taskID)
+	}
+	if task.State != TaskRunning {
+		name, err := r.opts.AgentIn(ctx, run.ProjectID, sl.Path)
+		if err != nil {
+			return TaskRun{}, err
+		}
+		if name != "" {
+			return TaskRun{}, fmt.Errorf("%w: %s is in %s", worktree.ErrAgentWorking, name, sl.Path)
+		}
 	}
 	changes, err := git.Changes(ctx, sl.Path)
 	if err != nil {
@@ -827,10 +874,59 @@ func (r *Runner) TaskDone(ctx context.Context, planID, taskID, summary string) (
 	if on != want {
 		return TaskRun{}, &WrongBranchError{Want: want, On: on}
 	}
-	done, err := r.store.TaskDone(ctx, planID, taskID, summary)
-	if err != nil {
-		return TaskRun{}, err
+	return task, nil
+}
+
+// RetryTask runs the failed or land_failed task again, resuming its agent unless
+// fresh, and wakes the plan to start it.
+func (r *Runner) RetryTask(ctx context.Context, planID, taskID string, fresh bool) (TaskRun, error) {
+	t, err := r.store.RetryTask(ctx, planID, taskID, fresh)
+	if err == nil {
+		r.Wake(planID)
 	}
-	r.Wake(planID)
-	return done, nil
+	return t, err
+}
+
+// SkipTask skips the task, and wakes the plan to release its slot and start what
+// waits for it.
+func (r *Runner) SkipTask(ctx context.Context, planID, taskID string) (TaskRun, error) {
+	t, err := r.store.SkipTask(ctx, planID, taskID)
+	if err == nil {
+		r.Wake(planID)
+	}
+	return t, err
+}
+
+// Pause pauses the plan's run, and reports false when it already was.
+func (r *Runner) Pause(ctx context.Context, planID string) (bool, error) {
+	return r.store.Pause(ctx, planID)
+}
+
+// Resume resumes the plan's run, and wakes it, reporting false when it was running.
+func (r *Runner) Resume(ctx context.Context, planID string) (bool, error) {
+	changed, err := r.store.Resume(ctx, planID)
+	if changed {
+		r.Wake(planID)
+	}
+	return changed, err
+}
+
+// Cancel cancels the plan's run, and wakes it to stop its agents and landing and
+// release its slots.
+func (r *Runner) Cancel(ctx context.Context, planID string) error {
+	err := r.store.Cancel(ctx, planID)
+	if err == nil {
+		r.Wake(planID)
+	}
+	return err
+}
+
+// SetParallel sets the most tasks the plan's run runs at once, and wakes it, as
+// more may start, reporting false when it already was n.
+func (r *Runner) SetParallel(ctx context.Context, planID string, n int) (bool, error) {
+	changed, err := r.store.SetParallel(ctx, planID, n)
+	if changed {
+		r.Wake(planID)
+	}
+	return changed, err
 }

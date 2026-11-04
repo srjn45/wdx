@@ -331,7 +331,7 @@ func TestPlanRefusals(t *testing.T) {
 		}
 		return r.ApplicationproblemJSONDefault
 	}
-	wantProblem(t, done("a", "s"), http.StatusNotFound, api.ErrorCodeNotFound)
+	wantProblem(t, done("a", "s"), http.StatusConflict, api.ErrorCodePlanNotRunning)
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending c:pending"))
 	slot := *taskIn(c, "a").SlotPath

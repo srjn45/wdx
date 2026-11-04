@@ -185,6 +185,7 @@ const (
 	ErrorCodePathExists         ErrorCode = "path_exists"
 	ErrorCodePlanChanged        ErrorCode = "plan_changed"
 	ErrorCodePlanInUse          ErrorCode = "plan_in_use"
+	ErrorCodePlanNotRunning     ErrorCode = "plan_not_running"
 	ErrorCodePlanStarted        ErrorCode = "plan_started"
 	ErrorCodePortInUse          ErrorCode = "port_in_use"
 	ErrorCodePrFailed           ErrorCode = "pr_failed"
@@ -304,6 +305,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePlanChanged:
 		return true
 	case ErrorCodePlanInUse:
+		return true
+	case ErrorCodePlanNotRunning:
 		return true
 	case ErrorCodePlanStarted:
 		return true
@@ -435,6 +438,24 @@ const (
 func (e NewSourceType) Valid() bool {
 	switch e {
 	case NewSourceTypeNew:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanRunPausedReason.
+const (
+	PlanRunPausedReasonPerson        PlanRunPausedReason = "person"
+	PlanRunPausedReasonProjectClosed PlanRunPausedReason = "project_closed"
+)
+
+// Valid indicates whether the value is a known member of the PlanRunPausedReason enum.
+func (e PlanRunPausedReason) Valid() bool {
+	switch e {
+	case PlanRunPausedReasonPerson:
+		return true
+	case PlanRunPausedReasonProjectClosed:
 		return true
 	default:
 		return false
@@ -584,6 +605,7 @@ func (e ProjectState) Valid() bool {
 
 // Defines values for Result.
 const (
+	ResultCancelled  Result = "cancelled"
 	ResultCloned     Result = "cloned"
 	ResultClosed     Result = "closed"
 	ResultCreated    Result = "created"
@@ -592,6 +614,7 @@ const (
 	ResultLanded     Result = "landed"
 	ResultLanding    Result = "landing"
 	ResultOpened     Result = "opened"
+	ResultPaused     Result = "paused"
 	ResultPrOpened   Result = "pr_opened"
 	ResultQueued     Result = "queued"
 	ResultRegistered Result = "registered"
@@ -599,6 +622,9 @@ const (
 	ResultRemoved    Result = "removed"
 	ResultRenamed    Result = "renamed"
 	ResultRestarted  Result = "restarted"
+	ResultResumed    Result = "resumed"
+	ResultRetried    Result = "retried"
+	ResultSkipped    Result = "skipped"
 	ResultStarted    Result = "started"
 	ResultSynced     Result = "synced"
 	ResultUnchanged  Result = "unchanged"
@@ -608,6 +634,8 @@ const (
 // Valid indicates whether the value is a known member of the Result enum.
 func (e Result) Valid() bool {
 	switch e {
+	case ResultCancelled:
+		return true
 	case ResultCloned:
 		return true
 	case ResultClosed:
@@ -624,6 +652,8 @@ func (e Result) Valid() bool {
 		return true
 	case ResultOpened:
 		return true
+	case ResultPaused:
+		return true
 	case ResultPrOpened:
 		return true
 	case ResultQueued:
@@ -637,6 +667,12 @@ func (e Result) Valid() bool {
 	case ResultRenamed:
 		return true
 	case ResultRestarted:
+		return true
+	case ResultResumed:
+		return true
+	case ResultRetried:
+		return true
+	case ResultSkipped:
 		return true
 	case ResultStarted:
 		return true
@@ -1437,6 +1473,9 @@ type Plan struct {
 	// TasksDone How many of them its run has done; null for a draft.
 	TasksDone *int64 `json:"tasks_done"`
 
+	// TasksFailed How many of them are failed or land_failed
+	TasksFailed *int64 `json:"tasks_failed"`
+
 	// UpdatedAt When anything about it last changed.
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -1522,6 +1561,9 @@ type PlanRun struct {
 	// Parallel The most tasks it runs at once; null follows plan.parallel.
 	Parallel *int `json:"parallel"`
 
+	// PausedReason Why it is paused, null unless it is; project_closed shows a running plan paused while its project is closed, which goes on as it was when the project opens.
+	PausedReason *PlanRunPausedReason `json:"paused_reason"`
+
 	// Revision The revision it runs.
 	Revision  int64     `json:"revision"`
 	StartedAt time.Time `json:"started_at"`
@@ -1529,6 +1571,9 @@ type PlanRun struct {
 	// State Where a plan is in its life; draft until it runs, then its run's state.
 	State PlanState `json:"state"`
 }
+
+// PlanRunPausedReason Why it is paused, null unless it is; project_closed shows a running plan paused while its project is closed, which goes on as it was when the project opens.
+type PlanRunPausedReason string
 
 // PlanState Where a plan is in its life; draft until it runs, then its run's state.
 type PlanState string
@@ -1540,6 +1585,9 @@ type PlanTask struct {
 
 	// Agent The agent doing the task, or that did it; null when it has none.
 	Agent *PlanTaskAgent `json:"agent"`
+
+	// CheckTerminal The terminal holding the output of the check that failed; null unless it is land_failed with check.
+	CheckTerminal *string `json:"check_terminal"`
 
 	// Conflicts The files a landing's rebase stopped on; null unless it is land_failed with rebase.
 	Conflicts *[]string `json:"conflicts"`
@@ -1762,6 +1810,12 @@ type RestartAgent struct {
 // Result The most significant thing that happened.
 type Result string
 
+// RetryPlanTask defines model for RetryPlanTask.
+type RetryPlanTask struct {
+	// Fresh Start a new agent even when the task's could be resumed.
+	Fresh *bool `json:"fresh,omitempty"`
+}
+
 // RunPlan defines model for RunPlan.
 type RunPlan struct {
 	// Parallel The most tasks it runs at once; plan.parallel when left out.
@@ -1970,10 +2024,13 @@ type UpdateDoc struct {
 	Status *DocStatus `json:"status,omitempty"`
 }
 
-// UpdatePlan defines model for UpdatePlan.
+// UpdatePlan Exactly one of name and parallel.
 type UpdatePlan struct {
-	// Name Its new name.
-	Name string `json:"name"`
+	// Name A draft's new name.
+	Name *string `json:"name,omitempty"`
+
+	// Parallel The most tasks its run runs at once.
+	Parallel *int `json:"parallel,omitempty"`
 }
 
 // UpdateProject defines model for UpdateProject.
@@ -2637,8 +2694,35 @@ type UpdatePlanParams struct {
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
 
+// CancelPlanParams defines parameters for CancelPlan.
+type CancelPlanParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // UpdatePlanContentParams defines parameters for UpdatePlanContent.
 type UpdatePlanContentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// PausePlanParams defines parameters for PausePlan.
+type PausePlanParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// ResumePlanParams defines parameters for ResumePlan.
+type ResumePlanParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -2666,6 +2750,33 @@ type RunPlanParams struct {
 
 // FinishPlanTaskParams defines parameters for FinishPlanTask.
 type FinishPlanTaskParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// LandPlanTaskParams defines parameters for LandPlanTask.
+type LandPlanTaskParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// RetryPlanTaskParams defines parameters for RetryPlanTask.
+type RetryPlanTaskParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// SkipPlanTaskParams defines parameters for SkipPlanTask.
+type SkipPlanTaskParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -2990,6 +3101,9 @@ type RunPlanJSONRequestBody = RunPlan
 
 // FinishPlanTaskJSONRequestBody defines body for FinishPlanTask for application/json ContentType.
 type FinishPlanTaskJSONRequestBody = FinishPlanTask
+
+// RetryPlanTaskJSONRequestBody defines body for RetryPlanTask for application/json ContentType.
+type RetryPlanTaskJSONRequestBody = RetryPlanTask
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProject
@@ -3801,39 +3915,60 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/plans/{plan} (the `GetPlan` operationId).
 	GetPlan(ctx context.Context, plan PlanRef, params *GetPlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdatePlanWithBody Rename a plan
+	// UpdatePlanWithBody Rename a draft plan, or change how many tasks a run runs at once
 	//
-	// Result updated, or unchanged when the name is the plan's, case and
-	// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-	// with the parent under details.parent.
+	// Exactly one of name and parallel. Result updated, or unchanged when
+	// the name is the plan's, case and all, or the run's parallel is
+	// already that.
 	//
-	// A plan that has run cannot be renamed: plan_started, with the plan
-	// under details.plan.
+	// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+	// with the parent under details.parent; nor can a plan that has run,
+	// plan_started, with the plan under details.plan.
+	//
+	// parallel: only for a run running or paused, plan_not_running
+	// otherwise, with the plan under details.plan. The runner starts more
+	// at once when it rises; tasks at work go on when it falls.
 	//
 	// Errors: invalid_name, invalid_path, name_taken (with the plan under
-	// details.plan), not_found, plan_in_use, plan_started, usage.
+	// details.plan), not_found, plan_in_use, plan_not_running,
+	// plan_started, usage.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlanWithBody(ctx context.Context, plan PlanRef, params *UpdatePlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdatePlan Rename a plan
+	// UpdatePlan Rename a draft plan, or change how many tasks a run runs at once
 	//
-	// Result updated, or unchanged when the name is the plan's, case and
-	// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-	// with the parent under details.parent.
+	// Exactly one of name and parallel. Result updated, or unchanged when
+	// the name is the plan's, case and all, or the run's parallel is
+	// already that.
 	//
-	// A plan that has run cannot be renamed: plan_started, with the plan
-	// under details.plan.
+	// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+	// with the parent under details.parent; nor can a plan that has run,
+	// plan_started, with the plan under details.plan.
+	//
+	// parallel: only for a run running or paused, plan_not_running
+	// otherwise, with the plan under details.plan. The runner starts more
+	// at once when it rises; tasks at work go on when it falls.
 	//
 	// Errors: invalid_name, invalid_path, name_taken (with the plan under
-	// details.plan), not_found, plan_in_use, plan_started, usage.
+	// details.plan), not_found, plan_in_use, plan_not_running,
+	// plan_started, usage.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlan(ctx context.Context, plan PlanRef, params *UpdatePlanParams, body UpdatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelPlan Cancel a running or paused plan, which cannot run again
+	//
+	// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+	//
+	// Corresponds with POST /v1/plans/{plan}/cancel (the `CancelPlan` operationId).
+	CancelPlan(ctx context.Context, plan PlanRef, params *CancelPlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdatePlanContentWithBody Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	//
@@ -3872,6 +4007,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 	UpdatePlanContent(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
+	//
+	// Result paused, or unchanged when it was paused. A plan paused while its project is closed stays paused when the project opens.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+	//
+	// Corresponds with POST /v1/plans/{plan}/pause (the `PausePlan` operationId).
+	PausePlan(ctx context.Context, plan PlanRef, params *PausePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResumePlan Resume a paused plan
+	//
+	// Result resumed, or unchanged when it was running. Refused while its project is closed, as nothing could run: project_closed.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage, project_closed.
+	//
+	// Corresponds with POST /v1/plans/{plan}/resume (the `ResumePlan` operationId).
+	ResumePlan(ctx context.Context, plan PlanRef, params *ResumePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPlanRevisions A plan's revisions, latest first, without content
 	//
@@ -3918,39 +4071,83 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/plans/{plan}/run (the `RunPlan` operationId).
 	RunPlan(ctx context.Context, plan PlanRef, params *RunPlanParams, body RunPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// FinishPlanTaskWithBody Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTaskWithBody Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	//
 	// Result landing: the daemon stops the task's agent and lands its
 	// worktree on the plan's branch. The summary is told to the tasks
 	// that wait for it, and is never logged.
 	//
-	// Errors: invalid_path, not_committed (its worktree has changes or
+	// Errors: agent_working (a failed task's worktree has an agent at
+	// work), invalid_path, not_committed (its worktree has changes or
 	// files not committed), not_found (the plan, or a task its run does
-	// not have), task_state (it is not running, with the task's id and
-	// state under details.task), usage, wrong_branch (its worktree is not
-	// on the task's branch, which details.branch names).
+	// not have), plan_not_running, task_state (it is not running or
+	// failed, with the task's id and state under details.task), usage,
+	// wrong_branch (its worktree is not on the task's branch, which
+	// details.branch names).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/done (the `FinishPlanTask` operationId).
 	FinishPlanTaskWithBody(ctx context.Context, plan PlanRef, task string, params *FinishPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// FinishPlanTask Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTask Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	//
 	// Result landing: the daemon stops the task's agent and lands its
 	// worktree on the plan's branch. The summary is told to the tasks
 	// that wait for it, and is never logged.
 	//
-	// Errors: invalid_path, not_committed (its worktree has changes or
+	// Errors: agent_working (a failed task's worktree has an agent at
+	// work), invalid_path, not_committed (its worktree has changes or
 	// files not committed), not_found (the plan, or a task its run does
-	// not have), task_state (it is not running, with the task's id and
-	// state under details.task), usage, wrong_branch (its worktree is not
-	// on the task's branch, which details.branch names).
+	// not have), plan_not_running, task_state (it is not running or
+	// failed, with the task's id and state under details.task), usage,
+	// wrong_branch (its worktree is not on the task's branch, which
+	// details.branch names).
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/done (the `FinishPlanTask` operationId).
 	FinishPlanTask(ctx context.Context, plan PlanRef, task string, params *FinishPlanTaskParams, body FinishPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LandPlanTask Land a land_failed task again, once the person dealt with what stopped it
+	//
+	// Result landing: the daemon rebases it onto the plan's branch, runs the check, and moves the branch.
+	//
+	// Errors: agent_working (an agent is at work in its worktree), invalid_path, not_committed, not_found, plan_not_running, task_state (it is not land_failed), usage, wrong_branch.
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/land (the `LandPlanTask` operationId).
+	LandPlanTask(ctx context.Context, plan PlanRef, task string, params *LandPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RetryPlanTaskWithBody Run a failed or land_failed task again
+	//
+	// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+	RetryPlanTaskWithBody(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RetryPlanTask Run a failed or land_failed task again
+	//
+	// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+	RetryPlanTask(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, body RetryPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+	//
+	// Result skipped. Its worktree, if it holds work, is kept as an ordinary worktree on its branch; if not, it is freed for another task.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not pending, failed or land_failed), usage.
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
+	SkipPlanTask(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjects List projects, without their worktrees, sorted by name
 	//
@@ -5602,17 +5799,23 @@ func (c *Client) GetPlan(ctx context.Context, plan PlanRef, params *GetPlanParam
 	return c.Client.Do(req)
 }
 
-// UpdatePlanWithBody Rename a plan
+// UpdatePlanWithBody Rename a draft plan, or change how many tasks a run runs at once
 //
-// Result updated, or unchanged when the name is the plan's, case and
-// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-// with the parent under details.parent.
+// Exactly one of name and parallel. Result updated, or unchanged when
+// the name is the plan's, case and all, or the run's parallel is
+// already that.
 //
-// A plan that has run cannot be renamed: plan_started, with the plan
-// under details.plan.
+// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+// with the parent under details.parent; nor can a plan that has run,
+// plan_started, with the plan under details.plan.
+//
+// parallel: only for a run running or paused, plan_not_running
+// otherwise, with the plan under details.plan. The runner starts more
+// at once when it rises; tasks at work go on when it falls.
 //
 // Errors: invalid_name, invalid_path, name_taken (with the plan under
-// details.plan), not_found, plan_in_use, plan_started, usage.
+// details.plan), not_found, plan_in_use, plan_not_running,
+// plan_started, usage.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5629,23 +5832,48 @@ func (c *Client) UpdatePlanWithBody(ctx context.Context, plan PlanRef, params *U
 	return c.Client.Do(req)
 }
 
-// UpdatePlan Rename a plan
+// UpdatePlan Rename a draft plan, or change how many tasks a run runs at once
 //
-// Result updated, or unchanged when the name is the plan's, case and
-// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-// with the parent under details.parent.
+// Exactly one of name and parallel. Result updated, or unchanged when
+// the name is the plan's, case and all, or the run's parallel is
+// already that.
 //
-// A plan that has run cannot be renamed: plan_started, with the plan
-// under details.plan.
+// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+// with the parent under details.parent; nor can a plan that has run,
+// plan_started, with the plan under details.plan.
+//
+// parallel: only for a run running or paused, plan_not_running
+// otherwise, with the plan under details.plan. The runner starts more
+// at once when it rises; tasks at work go on when it falls.
 //
 // Errors: invalid_name, invalid_path, name_taken (with the plan under
-// details.plan), not_found, plan_in_use, plan_started, usage.
+// details.plan), not_found, plan_in_use, plan_not_running,
+// plan_started, usage.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 func (c *Client) UpdatePlan(ctx context.Context, plan PlanRef, params *UpdatePlanParams, body UpdatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdatePlanRequest(c.Server, plan, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CancelPlan Cancel a running or paused plan, which cannot run again
+//
+// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+//
+// Corresponds with POST /v1/plans/{plan}/cancel (the `CancelPlan` operationId).
+func (c *Client) CancelPlan(ctx context.Context, plan PlanRef, params *CancelPlanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelPlanRequest(c.Server, plan, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5704,6 +5932,44 @@ func (c *Client) UpdatePlanContentWithBody(ctx context.Context, plan PlanRef, pa
 // Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 func (c *Client) UpdatePlanContent(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdatePlanContentRequest(c.Server, plan, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
+//
+// Result paused, or unchanged when it was paused. A plan paused while its project is closed stays paused when the project opens.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+//
+// Corresponds with POST /v1/plans/{plan}/pause (the `PausePlan` operationId).
+func (c *Client) PausePlan(ctx context.Context, plan PlanRef, params *PausePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPausePlanRequest(c.Server, plan, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResumePlan Resume a paused plan
+//
+// Result resumed, or unchanged when it was running. Refused while its project is closed, as nothing could run: project_closed.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage, project_closed.
+//
+// Corresponds with POST /v1/plans/{plan}/resume (the `ResumePlan` operationId).
+func (c *Client) ResumePlan(ctx context.Context, plan PlanRef, params *ResumePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResumePlanRequest(c.Server, plan, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5789,17 +6055,19 @@ func (c *Client) RunPlan(ctx context.Context, plan PlanRef, params *RunPlanParam
 	return c.Client.Do(req)
 }
 
-// FinishPlanTaskWithBody Say a running task is done, with a summary, so that it lands on the plan's branch
+// FinishPlanTaskWithBody Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 //
 // Result landing: the daemon stops the task's agent and lands its
 // worktree on the plan's branch. The summary is told to the tasks
 // that wait for it, and is never logged.
 //
-// Errors: invalid_path, not_committed (its worktree has changes or
+// Errors: agent_working (a failed task's worktree has an agent at
+// work), invalid_path, not_committed (its worktree has changes or
 // files not committed), not_found (the plan, or a task its run does
-// not have), task_state (it is not running, with the task's id and
-// state under details.task), usage, wrong_branch (its worktree is not
-// on the task's branch, which details.branch names).
+// not have), plan_not_running, task_state (it is not running or
+// failed, with the task's id and state under details.task), usage,
+// wrong_branch (its worktree is not on the task's branch, which
+// details.branch names).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5816,23 +6084,105 @@ func (c *Client) FinishPlanTaskWithBody(ctx context.Context, plan PlanRef, task 
 	return c.Client.Do(req)
 }
 
-// FinishPlanTask Say a running task is done, with a summary, so that it lands on the plan's branch
+// FinishPlanTask Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 //
 // Result landing: the daemon stops the task's agent and lands its
 // worktree on the plan's branch. The summary is told to the tasks
 // that wait for it, and is never logged.
 //
-// Errors: invalid_path, not_committed (its worktree has changes or
+// Errors: agent_working (a failed task's worktree has an agent at
+// work), invalid_path, not_committed (its worktree has changes or
 // files not committed), not_found (the plan, or a task its run does
-// not have), task_state (it is not running, with the task's id and
-// state under details.task), usage, wrong_branch (its worktree is not
-// on the task's branch, which details.branch names).
+// not have), plan_not_running, task_state (it is not running or
+// failed, with the task's id and state under details.task), usage,
+// wrong_branch (its worktree is not on the task's branch, which
+// details.branch names).
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /v1/plans/{plan}/tasks/{task}/done (the `FinishPlanTask` operationId).
 func (c *Client) FinishPlanTask(ctx context.Context, plan PlanRef, task string, params *FinishPlanTaskParams, body FinishPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewFinishPlanTaskRequest(c.Server, plan, task, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LandPlanTask Land a land_failed task again, once the person dealt with what stopped it
+//
+// Result landing: the daemon rebases it onto the plan's branch, runs the check, and moves the branch.
+//
+// Errors: agent_working (an agent is at work in its worktree), invalid_path, not_committed, not_found, plan_not_running, task_state (it is not land_failed), usage, wrong_branch.
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/land (the `LandPlanTask` operationId).
+func (c *Client) LandPlanTask(ctx context.Context, plan PlanRef, task string, params *LandPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLandPlanTaskRequest(c.Server, plan, task, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RetryPlanTaskWithBody Run a failed or land_failed task again
+//
+// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+func (c *Client) RetryPlanTaskWithBody(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRetryPlanTaskRequestWithBody(c.Server, plan, task, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RetryPlanTask Run a failed or land_failed task again
+//
+// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+func (c *Client) RetryPlanTask(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, body RetryPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRetryPlanTaskRequest(c.Server, plan, task, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+//
+// Result skipped. Its worktree, if it holds work, is kept as an ordinary worktree on its branch; if not, it is freed for another task.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not pending, failed or land_failed), usage.
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
+func (c *Client) SkipPlanTask(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSkipPlanTaskRequest(c.Server, plan, task, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9116,6 +9466,79 @@ func NewUpdatePlanRequestWithBody(server string, plan PlanRef, params *UpdatePla
 	return req, nil
 }
 
+// NewCancelPlanRequest constructs an http.Request for the CancelPlan method
+func NewCancelPlanRequest(server string, plan PlanRef, params *CancelPlanParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewUpdatePlanContentRequest calls the generic UpdatePlanContent builder with application/json body
 func NewUpdatePlanContentRequest(server string, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -9198,6 +9621,152 @@ func NewUpdatePlanContentRequestWithBody(server string, plan PlanRef, params *Up
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPausePlanRequest constructs an http.Request for the PausePlan method
+func NewPausePlanRequest(server string, plan PlanRef, params *PausePlanParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/pause", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResumePlanRequest constructs an http.Request for the ResumePlan method
+func NewResumePlanRequest(server string, plan PlanRef, params *ResumePlanParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/resume", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9450,6 +10019,259 @@ func NewFinishPlanTaskRequestWithBody(server string, plan PlanRef, task string, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLandPlanTaskRequest constructs an http.Request for the LandPlanTask method
+func NewLandPlanTaskRequest(server string, plan PlanRef, task string, params *LandPlanTaskParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task", task, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/tasks/%s/land", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRetryPlanTaskRequest calls the generic RetryPlanTask builder with application/json body
+func NewRetryPlanTaskRequest(server string, plan PlanRef, task string, params *RetryPlanTaskParams, body RetryPlanTaskJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRetryPlanTaskRequestWithBody(server, plan, task, params, "application/json", bodyReader)
+}
+
+// NewRetryPlanTaskRequestWithBody constructs an http.Request for the RetryPlanTask method, with any body, and a specified content type
+func NewRetryPlanTaskRequestWithBody(server string, plan PlanRef, task string, params *RetryPlanTaskParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task", task, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/tasks/%s/retry", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSkipPlanTaskRequest constructs an http.Request for the SkipPlanTask method
+func NewSkipPlanTaskRequest(server string, plan PlanRef, task string, params *SkipPlanTaskParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task", task, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/tasks/%s/skip", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -12803,39 +13625,62 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/plans/{plan} (the `GetPlan` operationId).
 	GetPlanWithResponse(ctx context.Context, plan PlanRef, params *GetPlanParams, reqEditors ...RequestEditorFn) (*GetPlanResponse, error)
 
-	// UpdatePlanWithBodyWithResponse Rename a plan
+	// UpdatePlanWithBodyWithResponse Rename a draft plan, or change how many tasks a run runs at once
 	//
-	// Result updated, or unchanged when the name is the plan's, case and
-	// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-	// with the parent under details.parent.
+	// Exactly one of name and parallel. Result updated, or unchanged when
+	// the name is the plan's, case and all, or the run's parallel is
+	// already that.
 	//
-	// A plan that has run cannot be renamed: plan_started, with the plan
-	// under details.plan.
+	// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+	// with the parent under details.parent; nor can a plan that has run,
+	// plan_started, with the plan under details.plan.
+	//
+	// parallel: only for a run running or paused, plan_not_running
+	// otherwise, with the plan under details.plan. The runner starts more
+	// at once when it rises; tasks at work go on when it falls.
 	//
 	// Errors: invalid_name, invalid_path, name_taken (with the plan under
-	// details.plan), not_found, plan_in_use, plan_started, usage.
+	// details.plan), not_found, plan_in_use, plan_not_running,
+	// plan_started, usage.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlanWithBodyWithResponse(ctx context.Context, plan PlanRef, params *UpdatePlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePlanResponse, error)
 
-	// UpdatePlanWithResponse Rename a plan
+	// UpdatePlanWithResponse Rename a draft plan, or change how many tasks a run runs at once
 	//
-	// Result updated, or unchanged when the name is the plan's, case and
-	// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-	// with the parent under details.parent.
+	// Exactly one of name and parallel. Result updated, or unchanged when
+	// the name is the plan's, case and all, or the run's parallel is
+	// already that.
 	//
-	// A plan that has run cannot be renamed: plan_started, with the plan
-	// under details.plan.
+	// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+	// with the parent under details.parent; nor can a plan that has run,
+	// plan_started, with the plan under details.plan.
+	//
+	// parallel: only for a run running or paused, plan_not_running
+	// otherwise, with the plan under details.plan. The runner starts more
+	// at once when it rises; tasks at work go on when it falls.
 	//
 	// Errors: invalid_name, invalid_path, name_taken (with the plan under
-	// details.plan), not_found, plan_in_use, plan_started, usage.
+	// details.plan), not_found, plan_in_use, plan_not_running,
+	// plan_started, usage.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlanWithResponse(ctx context.Context, plan PlanRef, params *UpdatePlanParams, body UpdatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanResponse, error)
+
+	// CancelPlanWithResponse Cancel a running or paused plan, which cannot run again
+	//
+	// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/cancel (the `CancelPlan` operationId).
+	CancelPlanWithResponse(ctx context.Context, plan PlanRef, params *CancelPlanParams, reqEditors ...RequestEditorFn) (*CancelPlanResponse, error)
 
 	// UpdatePlanContentWithBodyWithResponse Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	//
@@ -12874,6 +13719,28 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 	UpdatePlanContentWithResponse(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error)
+
+	// PausePlanWithResponse Pause a running plan, so that nothing new starts while tasks at work go on and land
+	//
+	// Result paused, or unchanged when it was paused. A plan paused while its project is closed stays paused when the project opens.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/pause (the `PausePlan` operationId).
+	PausePlanWithResponse(ctx context.Context, plan PlanRef, params *PausePlanParams, reqEditors ...RequestEditorFn) (*PausePlanResponse, error)
+
+	// ResumePlanWithResponse Resume a paused plan
+	//
+	// Result resumed, or unchanged when it was running. Refused while its project is closed, as nothing could run: project_closed.
+	//
+	// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage, project_closed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/resume (the `ResumePlan` operationId).
+	ResumePlanWithResponse(ctx context.Context, plan PlanRef, params *ResumePlanParams, reqEditors ...RequestEditorFn) (*ResumePlanResponse, error)
 
 	// ListPlanRevisionsWithResponse A plan's revisions, latest first, without content
 	//
@@ -12922,39 +13789,87 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/plans/{plan}/run (the `RunPlan` operationId).
 	RunPlanWithResponse(ctx context.Context, plan PlanRef, params *RunPlanParams, body RunPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*RunPlanResponse, error)
 
-	// FinishPlanTaskWithBodyWithResponse Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTaskWithBodyWithResponse Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	//
 	// Result landing: the daemon stops the task's agent and lands its
 	// worktree on the plan's branch. The summary is told to the tasks
 	// that wait for it, and is never logged.
 	//
-	// Errors: invalid_path, not_committed (its worktree has changes or
+	// Errors: agent_working (a failed task's worktree has an agent at
+	// work), invalid_path, not_committed (its worktree has changes or
 	// files not committed), not_found (the plan, or a task its run does
-	// not have), task_state (it is not running, with the task's id and
-	// state under details.task), usage, wrong_branch (its worktree is not
-	// on the task's branch, which details.branch names).
+	// not have), plan_not_running, task_state (it is not running or
+	// failed, with the task's id and state under details.task), usage,
+	// wrong_branch (its worktree is not on the task's branch, which
+	// details.branch names).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/done (the `FinishPlanTask` operationId).
 	FinishPlanTaskWithBodyWithResponse(ctx context.Context, plan PlanRef, task string, params *FinishPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FinishPlanTaskResponse, error)
 
-	// FinishPlanTaskWithResponse Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTaskWithResponse Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	//
 	// Result landing: the daemon stops the task's agent and lands its
 	// worktree on the plan's branch. The summary is told to the tasks
 	// that wait for it, and is never logged.
 	//
-	// Errors: invalid_path, not_committed (its worktree has changes or
+	// Errors: agent_working (a failed task's worktree has an agent at
+	// work), invalid_path, not_committed (its worktree has changes or
 	// files not committed), not_found (the plan, or a task its run does
-	// not have), task_state (it is not running, with the task's id and
-	// state under details.task), usage, wrong_branch (its worktree is not
-	// on the task's branch, which details.branch names).
+	// not have), plan_not_running, task_state (it is not running or
+	// failed, with the task's id and state under details.task), usage,
+	// wrong_branch (its worktree is not on the task's branch, which
+	// details.branch names).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/done (the `FinishPlanTask` operationId).
 	FinishPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *FinishPlanTaskParams, body FinishPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*FinishPlanTaskResponse, error)
+
+	// LandPlanTaskWithResponse Land a land_failed task again, once the person dealt with what stopped it
+	//
+	// Result landing: the daemon rebases it onto the plan's branch, runs the check, and moves the branch.
+	//
+	// Errors: agent_working (an agent is at work in its worktree), invalid_path, not_committed, not_found, plan_not_running, task_state (it is not land_failed), usage, wrong_branch.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/land (the `LandPlanTask` operationId).
+	LandPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *LandPlanTaskParams, reqEditors ...RequestEditorFn) (*LandPlanTaskResponse, error)
+
+	// RetryPlanTaskWithBodyWithResponse Run a failed or land_failed task again
+	//
+	// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+	RetryPlanTaskWithBodyWithResponse(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RetryPlanTaskResponse, error)
+
+	// RetryPlanTaskWithResponse Run a failed or land_failed task again
+	//
+	// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+	RetryPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, body RetryPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*RetryPlanTaskResponse, error)
+
+	// SkipPlanTaskWithResponse Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+	//
+	// Result skipped. Its worktree, if it holds work, is kept as an ordinary worktree on its branch; if not, it is freed for another task.
+	//
+	// Errors: invalid_path, not_found, plan_not_running, task_state (it is not pending, failed or land_failed), usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
+	SkipPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*SkipPlanTaskResponse, error)
 
 	// ListProjectsWithResponse List projects, without their worktrees, sorted by name
 	//
@@ -15125,6 +16040,54 @@ func (r UpdatePlanResponse) ContentType() string {
 	return ""
 }
 
+type CancelPlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelPlanResponse) GetJSON200() *PlanResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CancelPlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelPlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelPlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelPlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelPlanResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type UpdatePlanContentResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15167,6 +16130,102 @@ func (r UpdatePlanContentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdatePlanContentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PausePlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PausePlanResponse) GetJSON200() *PlanResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PausePlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PausePlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PausePlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PausePlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PausePlanResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResumePlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResumePlanResponse) GetJSON200() *PlanResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ResumePlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResumePlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResumePlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResumePlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResumePlanResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15311,6 +16370,150 @@ func (r FinishPlanTaskResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r FinishPlanTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type LandPlanTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanTaskResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LandPlanTaskResponse) GetJSON200() *PlanTaskResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LandPlanTaskResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LandPlanTaskResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LandPlanTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LandPlanTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LandPlanTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RetryPlanTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanTaskResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RetryPlanTaskResponse) GetJSON200() *PlanTaskResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RetryPlanTaskResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RetryPlanTaskResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RetryPlanTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RetryPlanTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RetryPlanTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SkipPlanTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanTaskResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SkipPlanTaskResponse) GetJSON200() *PlanTaskResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SkipPlanTaskResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SkipPlanTaskResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SkipPlanTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SkipPlanTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SkipPlanTaskResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -18130,17 +19333,23 @@ func (c *ClientWithResponses) GetPlanWithResponse(ctx context.Context, plan Plan
 	return ParseGetPlanResponse(rsp)
 }
 
-// UpdatePlanWithBodyWithResponse Rename a plan
+// UpdatePlanWithBodyWithResponse Rename a draft plan, or change how many tasks a run runs at once
 //
-// Result updated, or unchanged when the name is the plan's, case and
-// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-// with the parent under details.parent.
+// Exactly one of name and parallel. Result updated, or unchanged when
+// the name is the plan's, case and all, or the run's parallel is
+// already that.
 //
-// A plan that has run cannot be renamed: plan_started, with the plan
-// under details.plan.
+// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+// with the parent under details.parent; nor can a plan that has run,
+// plan_started, with the plan under details.plan.
+//
+// parallel: only for a run running or paused, plan_not_running
+// otherwise, with the plan under details.plan. The runner starts more
+// at once when it rises; tasks at work go on when it falls.
 //
 // Errors: invalid_name, invalid_path, name_taken (with the plan under
-// details.plan), not_found, plan_in_use, plan_started, usage.
+// details.plan), not_found, plan_in_use, plan_not_running,
+// plan_started, usage.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18153,17 +19362,23 @@ func (c *ClientWithResponses) UpdatePlanWithBodyWithResponse(ctx context.Context
 	return ParseUpdatePlanResponse(rsp)
 }
 
-// UpdatePlanWithResponse Rename a plan
+// UpdatePlanWithResponse Rename a draft plan, or change how many tasks a run runs at once
 //
-// Result updated, or unchanged when the name is the plan's, case and
-// all. A plan a plan of plans lists cannot be renamed: plan_in_use,
-// with the parent under details.parent.
+// Exactly one of name and parallel. Result updated, or unchanged when
+// the name is the plan's, case and all, or the run's parallel is
+// already that.
 //
-// A plan that has run cannot be renamed: plan_started, with the plan
-// under details.plan.
+// name: a plan a plan of plans lists cannot be renamed, plan_in_use,
+// with the parent under details.parent; nor can a plan that has run,
+// plan_started, with the plan under details.plan.
+//
+// parallel: only for a run running or paused, plan_not_running
+// otherwise, with the plan under details.plan. The runner starts more
+// at once when it rises; tasks at work go on when it falls.
 //
 // Errors: invalid_name, invalid_path, name_taken (with the plan under
-// details.plan), not_found, plan_in_use, plan_started, usage.
+// details.plan), not_found, plan_in_use, plan_not_running,
+// plan_started, usage.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18174,6 +19389,23 @@ func (c *ClientWithResponses) UpdatePlanWithResponse(ctx context.Context, plan P
 		return nil, err
 	}
 	return ParseUpdatePlanResponse(rsp)
+}
+
+// CancelPlanWithResponse Cancel a running or paused plan, which cannot run again
+//
+// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/cancel (the `CancelPlan` operationId).
+func (c *ClientWithResponses) CancelPlanWithResponse(ctx context.Context, plan PlanRef, params *CancelPlanParams, reqEditors ...RequestEditorFn) (*CancelPlanResponse, error) {
+	rsp, err := c.CancelPlan(ctx, plan, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelPlanResponse(rsp)
 }
 
 // UpdatePlanContentWithBodyWithResponse Write a plan's content as a new revision, checked and reduced, if base is still its latest
@@ -18224,6 +19456,40 @@ func (c *ClientWithResponses) UpdatePlanContentWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseUpdatePlanContentResponse(rsp)
+}
+
+// PausePlanWithResponse Pause a running plan, so that nothing new starts while tasks at work go on and land
+//
+// Result paused, or unchanged when it was paused. A plan paused while its project is closed stays paused when the project opens.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/pause (the `PausePlan` operationId).
+func (c *ClientWithResponses) PausePlanWithResponse(ctx context.Context, plan PlanRef, params *PausePlanParams, reqEditors ...RequestEditorFn) (*PausePlanResponse, error) {
+	rsp, err := c.PausePlan(ctx, plan, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePausePlanResponse(rsp)
+}
+
+// ResumePlanWithResponse Resume a paused plan
+//
+// Result resumed, or unchanged when it was running. Refused while its project is closed, as nothing could run: project_closed.
+//
+// Errors: invalid_path, not_found, plan_not_running (a draft, done or cancelled, with the plan under details.plan), usage, project_closed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/resume (the `ResumePlan` operationId).
+func (c *ClientWithResponses) ResumePlanWithResponse(ctx context.Context, plan PlanRef, params *ResumePlanParams, reqEditors ...RequestEditorFn) (*ResumePlanResponse, error) {
+	rsp, err := c.ResumePlan(ctx, plan, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResumePlanResponse(rsp)
 }
 
 // ListPlanRevisionsWithResponse A plan's revisions, latest first, without content
@@ -18291,17 +19557,19 @@ func (c *ClientWithResponses) RunPlanWithResponse(ctx context.Context, plan Plan
 	return ParseRunPlanResponse(rsp)
 }
 
-// FinishPlanTaskWithBodyWithResponse Say a running task is done, with a summary, so that it lands on the plan's branch
+// FinishPlanTaskWithBodyWithResponse Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 //
 // Result landing: the daemon stops the task's agent and lands its
 // worktree on the plan's branch. The summary is told to the tasks
 // that wait for it, and is never logged.
 //
-// Errors: invalid_path, not_committed (its worktree has changes or
+// Errors: agent_working (a failed task's worktree has an agent at
+// work), invalid_path, not_committed (its worktree has changes or
 // files not committed), not_found (the plan, or a task its run does
-// not have), task_state (it is not running, with the task's id and
-// state under details.task), usage, wrong_branch (its worktree is not
-// on the task's branch, which details.branch names).
+// not have), plan_not_running, task_state (it is not running or
+// failed, with the task's id and state under details.task), usage,
+// wrong_branch (its worktree is not on the task's branch, which
+// details.branch names).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18314,17 +19582,19 @@ func (c *ClientWithResponses) FinishPlanTaskWithBodyWithResponse(ctx context.Con
 	return ParseFinishPlanTaskResponse(rsp)
 }
 
-// FinishPlanTaskWithResponse Say a running task is done, with a summary, so that it lands on the plan's branch
+// FinishPlanTaskWithResponse Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 //
 // Result landing: the daemon stops the task's agent and lands its
 // worktree on the plan's branch. The summary is told to the tasks
 // that wait for it, and is never logged.
 //
-// Errors: invalid_path, not_committed (its worktree has changes or
+// Errors: agent_working (a failed task's worktree has an agent at
+// work), invalid_path, not_committed (its worktree has changes or
 // files not committed), not_found (the plan, or a task its run does
-// not have), task_state (it is not running, with the task's id and
-// state under details.task), usage, wrong_branch (its worktree is not
-// on the task's branch, which details.branch names).
+// not have), plan_not_running, task_state (it is not running or
+// failed, with the task's id and state under details.task), usage,
+// wrong_branch (its worktree is not on the task's branch, which
+// details.branch names).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18335,6 +19605,74 @@ func (c *ClientWithResponses) FinishPlanTaskWithResponse(ctx context.Context, pl
 		return nil, err
 	}
 	return ParseFinishPlanTaskResponse(rsp)
+}
+
+// LandPlanTaskWithResponse Land a land_failed task again, once the person dealt with what stopped it
+//
+// Result landing: the daemon rebases it onto the plan's branch, runs the check, and moves the branch.
+//
+// Errors: agent_working (an agent is at work in its worktree), invalid_path, not_committed, not_found, plan_not_running, task_state (it is not land_failed), usage, wrong_branch.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/land (the `LandPlanTask` operationId).
+func (c *ClientWithResponses) LandPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *LandPlanTaskParams, reqEditors ...RequestEditorFn) (*LandPlanTaskResponse, error) {
+	rsp, err := c.LandPlanTask(ctx, plan, task, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLandPlanTaskResponse(rsp)
+}
+
+// RetryPlanTaskWithBodyWithResponse Run a failed or land_failed task again
+//
+// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+func (c *ClientWithResponses) RetryPlanTaskWithBodyWithResponse(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RetryPlanTaskResponse, error) {
+	rsp, err := c.RetryPlanTaskWithBody(ctx, plan, task, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRetryPlanTaskResponse(rsp)
+}
+
+// RetryPlanTaskWithResponse Run a failed or land_failed task again
+//
+// Result retried: the task is pending again, keeping its worktree and its commits, and starts when there is room under its run's parallel. Its agent is resumed, told what went wrong, unless fresh, or its worktree is gone, when a new agent starts, named <plan>-<task>-<n>, told a previous attempt left its commits.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not failed or land_failed, with the task's id and state under details.task), usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/retry (the `RetryPlanTask` operationId).
+func (c *ClientWithResponses) RetryPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *RetryPlanTaskParams, body RetryPlanTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*RetryPlanTaskResponse, error) {
+	rsp, err := c.RetryPlanTask(ctx, plan, task, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRetryPlanTaskResponse(rsp)
+}
+
+// SkipPlanTaskWithResponse Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+//
+// Result skipped. Its worktree, if it holds work, is kept as an ordinary worktree on its branch; if not, it is freed for another task.
+//
+// Errors: invalid_path, not_found, plan_not_running, task_state (it is not pending, failed or land_failed), usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
+func (c *ClientWithResponses) SkipPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*SkipPlanTaskResponse, error) {
+	rsp, err := c.SkipPlanTask(ctx, plan, task, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSkipPlanTaskResponse(rsp)
 }
 
 // ListProjectsWithResponse List projects, without their worktrees, sorted by name
@@ -20412,6 +21750,39 @@ func ParseUpdatePlanResponse(rsp *http.Response) (*UpdatePlanResponse, error) {
 	return response, nil
 }
 
+// ParseCancelPlanResponse parses an HTTP response from a CancelPlanWithResponse call
+func ParseCancelPlanResponse(rsp *http.Response) (*CancelPlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelPlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseUpdatePlanContentResponse parses an HTTP response from a UpdatePlanContentWithResponse call
 func ParseUpdatePlanContentResponse(rsp *http.Response) (*UpdatePlanContentResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20421,6 +21792,72 @@ func ParseUpdatePlanContentResponse(rsp *http.Response) (*UpdatePlanContentRespo
 	}
 
 	response := &UpdatePlanContentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePausePlanResponse parses an HTTP response from a PausePlanWithResponse call
+func ParsePausePlanResponse(rsp *http.Response) (*PausePlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PausePlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResumePlanResponse parses an HTTP response from a ResumePlanWithResponse call
+func ParseResumePlanResponse(rsp *http.Response) (*ResumePlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResumePlanResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -20520,6 +21957,105 @@ func ParseFinishPlanTaskResponse(rsp *http.Response) (*FinishPlanTaskResponse, e
 	}
 
 	response := &FinishPlanTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanTaskResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLandPlanTaskResponse parses an HTTP response from a LandPlanTaskWithResponse call
+func ParseLandPlanTaskResponse(rsp *http.Response) (*LandPlanTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LandPlanTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanTaskResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRetryPlanTaskResponse parses an HTTP response from a RetryPlanTaskWithResponse call
+func ParseRetryPlanTaskResponse(rsp *http.Response) (*RetryPlanTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RetryPlanTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanTaskResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSkipPlanTaskResponse parses an HTTP response from a SkipPlanTaskWithResponse call
+func ParseSkipPlanTaskResponse(rsp *http.Response) (*SkipPlanTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SkipPlanTaskResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -22004,21 +23540,39 @@ type ServerInterface interface {
 	// GetPlan A plan with one revision's content and what it defines, the latest by default
 	// (GET /v1/plans/{plan})
 	GetPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params GetPlanParams)
-	// UpdatePlan Rename a plan
+	// UpdatePlan Rename a draft plan, or change how many tasks a run runs at once
 	// (PATCH /v1/plans/{plan})
 	UpdatePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params UpdatePlanParams)
+	// CancelPlan Cancel a running or paused plan, which cannot run again
+	// (POST /v1/plans/{plan}/cancel)
+	CancelPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CancelPlanParams)
 	// UpdatePlanContent Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	// (PUT /v1/plans/{plan}/content)
 	UpdatePlanContent(w http.ResponseWriter, r *http.Request, plan PlanRef, params UpdatePlanContentParams)
+	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
+	// (POST /v1/plans/{plan}/pause)
+	PausePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params PausePlanParams)
+	// ResumePlan Resume a paused plan
+	// (POST /v1/plans/{plan}/resume)
+	ResumePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params ResumePlanParams)
 	// ListPlanRevisions A plan's revisions, latest first, without content
 	// (GET /v1/plans/{plan}/revisions)
 	ListPlanRevisions(w http.ResponseWriter, r *http.Request, plan PlanRef, params ListPlanRevisionsParams)
 	// RunPlan Run a draft plan of tasks
 	// (POST /v1/plans/{plan}/run)
 	RunPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params RunPlanParams)
-	// FinishPlanTask Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTask Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	// (POST /v1/plans/{plan}/tasks/{task}/done)
 	FinishPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params FinishPlanTaskParams)
+	// LandPlanTask Land a land_failed task again, once the person dealt with what stopped it
+	// (POST /v1/plans/{plan}/tasks/{task}/land)
+	LandPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params LandPlanTaskParams)
+	// RetryPlanTask Run a failed or land_failed task again
+	// (POST /v1/plans/{plan}/tasks/{task}/retry)
+	RetryPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params RetryPlanTaskParams)
+	// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+	// (POST /v1/plans/{plan}/tasks/{task}/skip)
+	SkipPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params SkipPlanTaskParams)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -23539,6 +25093,61 @@ func (siw *ServerInterfaceWrapper) UpdatePlan(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// CancelPlan operation middleware
+func (siw *ServerInterfaceWrapper) CancelPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CancelPlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelPlan(w, r, plan, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdatePlanContent operation middleware
 func (siw *ServerInterfaceWrapper) UpdatePlanContent(w http.ResponseWriter, r *http.Request) {
 
@@ -23585,6 +25194,116 @@ func (siw *ServerInterfaceWrapper) UpdatePlanContent(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePlanContent(w, r, plan, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PausePlan operation middleware
+func (siw *ServerInterfaceWrapper) PausePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PausePlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PausePlan(w, r, plan, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumePlan operation middleware
+func (siw *ServerInterfaceWrapper) ResumePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResumePlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumePlan(w, r, plan, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -23759,6 +25478,198 @@ func (siw *ServerInterfaceWrapper) FinishPlanTask(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FinishPlanTask(w, r, plan, task, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LandPlanTask operation middleware
+func (siw *ServerInterfaceWrapper) LandPlanTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LandPlanTaskParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LandPlanTask(w, r, plan, task, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryPlanTask operation middleware
+func (siw *ServerInterfaceWrapper) RetryPlanTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RetryPlanTaskParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryPlanTask(w, r, plan, task, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SkipPlanTask operation middleware
+func (siw *ServerInterfaceWrapper) SkipPlanTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SkipPlanTaskParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SkipPlanTask(w, r, plan, task, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -25873,6 +27784,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/plans/{plan}/content", wrapper.UpdatePlanContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/plans/{plan}/revisions", wrapper.ListPlanRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/run", wrapper.RunPlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/pause", wrapper.PausePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/resume", wrapper.ResumePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/cancel", wrapper.CancelPlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/retry", wrapper.RetryPlanTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/land", wrapper.LandPlanTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/skip", wrapper.SkipPlanTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/done", wrapper.FinishPlanTask)
 
 	return m
@@ -27045,6 +28962,46 @@ func (response UpdatePlandefaultApplicationProblemPlusJSONResponse) VisitUpdateP
 	return err
 }
 
+type CancelPlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params CancelPlanParams
+}
+
+type CancelPlanResponseObject interface {
+	VisitCancelPlanResponse(w http.ResponseWriter) error
+}
+
+type CancelPlan200JSONResponse PlanResult
+
+func (response CancelPlan200JSONResponse) VisitCancelPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelPlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CancelPlandefaultApplicationProblemPlusJSONResponse) VisitCancelPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdatePlanContentRequestObject struct {
 	Plan   PlanRef `json:"plan"`
 	Params UpdatePlanContentParams
@@ -27075,6 +29032,86 @@ type UpdatePlanContentdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdatePlanContentdefaultApplicationProblemPlusJSONResponse) VisitUpdatePlanContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PausePlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params PausePlanParams
+}
+
+type PausePlanResponseObject interface {
+	VisitPausePlanResponse(w http.ResponseWriter) error
+}
+
+type PausePlan200JSONResponse PlanResult
+
+func (response PausePlan200JSONResponse) VisitPausePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PausePlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response PausePlandefaultApplicationProblemPlusJSONResponse) VisitPausePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumePlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params ResumePlanParams
+}
+
+type ResumePlanResponseObject interface {
+	VisitResumePlanResponse(w http.ResponseWriter) error
+}
+
+type ResumePlan200JSONResponse PlanResult
+
+func (response ResumePlan200JSONResponse) VisitResumePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumePlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ResumePlandefaultApplicationProblemPlusJSONResponse) VisitResumePlanResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -27198,6 +29235,130 @@ type FinishPlanTaskdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response FinishPlanTaskdefaultApplicationProblemPlusJSONResponse) VisitFinishPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LandPlanTaskRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Task   string  `json:"task"`
+	Params LandPlanTaskParams
+}
+
+type LandPlanTaskResponseObject interface {
+	VisitLandPlanTaskResponse(w http.ResponseWriter) error
+}
+
+type LandPlanTask200JSONResponse PlanTaskResult
+
+func (response LandPlanTask200JSONResponse) VisitLandPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LandPlanTaskdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response LandPlanTaskdefaultApplicationProblemPlusJSONResponse) VisitLandPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPlanTaskRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Task   string  `json:"task"`
+	Params RetryPlanTaskParams
+	Body   *RetryPlanTaskJSONRequestBody
+}
+
+type RetryPlanTaskResponseObject interface {
+	VisitRetryPlanTaskResponse(w http.ResponseWriter) error
+}
+
+type RetryPlanTask200JSONResponse PlanTaskResult
+
+func (response RetryPlanTask200JSONResponse) VisitRetryPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPlanTaskdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RetryPlanTaskdefaultApplicationProblemPlusJSONResponse) VisitRetryPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SkipPlanTaskRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Task   string  `json:"task"`
+	Params SkipPlanTaskParams
+}
+
+type SkipPlanTaskResponseObject interface {
+	VisitSkipPlanTaskResponse(w http.ResponseWriter) error
+}
+
+type SkipPlanTask200JSONResponse PlanTaskResult
+
+func (response SkipPlanTask200JSONResponse) VisitSkipPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SkipPlanTaskdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SkipPlanTaskdefaultApplicationProblemPlusJSONResponse) VisitSkipPlanTaskResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -28993,21 +31154,39 @@ type StrictServerInterface interface {
 	// GetPlan A plan with one revision's content and what it defines, the latest by default
 	// (GET /v1/plans/{plan})
 	GetPlan(ctx context.Context, request GetPlanRequestObject) (GetPlanResponseObject, error)
-	// UpdatePlan Rename a plan
+	// UpdatePlan Rename a draft plan, or change how many tasks a run runs at once
 	// (PATCH /v1/plans/{plan})
 	UpdatePlan(ctx context.Context, request UpdatePlanRequestObject) (UpdatePlanResponseObject, error)
+	// CancelPlan Cancel a running or paused plan, which cannot run again
+	// (POST /v1/plans/{plan}/cancel)
+	CancelPlan(ctx context.Context, request CancelPlanRequestObject) (CancelPlanResponseObject, error)
 	// UpdatePlanContent Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	// (PUT /v1/plans/{plan}/content)
 	UpdatePlanContent(ctx context.Context, request UpdatePlanContentRequestObject) (UpdatePlanContentResponseObject, error)
+	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
+	// (POST /v1/plans/{plan}/pause)
+	PausePlan(ctx context.Context, request PausePlanRequestObject) (PausePlanResponseObject, error)
+	// ResumePlan Resume a paused plan
+	// (POST /v1/plans/{plan}/resume)
+	ResumePlan(ctx context.Context, request ResumePlanRequestObject) (ResumePlanResponseObject, error)
 	// ListPlanRevisions A plan's revisions, latest first, without content
 	// (GET /v1/plans/{plan}/revisions)
 	ListPlanRevisions(ctx context.Context, request ListPlanRevisionsRequestObject) (ListPlanRevisionsResponseObject, error)
 	// RunPlan Run a draft plan of tasks
 	// (POST /v1/plans/{plan}/run)
 	RunPlan(ctx context.Context, request RunPlanRequestObject) (RunPlanResponseObject, error)
-	// FinishPlanTask Say a running task is done, with a summary, so that it lands on the plan's branch
+	// FinishPlanTask Say a running task is done, or a failed one the person finished, with a summary, so that it lands on the plan's branch
 	// (POST /v1/plans/{plan}/tasks/{task}/done)
 	FinishPlanTask(ctx context.Context, request FinishPlanTaskRequestObject) (FinishPlanTaskResponseObject, error)
+	// LandPlanTask Land a land_failed task again, once the person dealt with what stopped it
+	// (POST /v1/plans/{plan}/tasks/{task}/land)
+	LandPlanTask(ctx context.Context, request LandPlanTaskRequestObject) (LandPlanTaskResponseObject, error)
+	// RetryPlanTask Run a failed or land_failed task again
+	// (POST /v1/plans/{plan}/tasks/{task}/retry)
+	RetryPlanTask(ctx context.Context, request RetryPlanTaskRequestObject) (RetryPlanTaskResponseObject, error)
+	// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
+	// (POST /v1/plans/{plan}/tasks/{task}/skip)
+	SkipPlanTask(ctx context.Context, request SkipPlanTaskRequestObject) (SkipPlanTaskResponseObject, error)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -30011,6 +32190,33 @@ func (sh *strictHandler) UpdatePlan(w http.ResponseWriter, r *http.Request, plan
 	}
 }
 
+// CancelPlan operation middleware
+func (sh *strictHandler) CancelPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CancelPlanParams) {
+	var request CancelPlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelPlan(ctx, request.(CancelPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelPlanResponseObject); ok {
+		if err := validResponse.VisitCancelPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // UpdatePlanContent operation middleware
 func (sh *strictHandler) UpdatePlanContent(w http.ResponseWriter, r *http.Request, plan PlanRef, params UpdatePlanContentParams) {
 	var request UpdatePlanContentRequestObject
@@ -30038,6 +32244,60 @@ func (sh *strictHandler) UpdatePlanContent(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdatePlanContentResponseObject); ok {
 		if err := validResponse.VisitUpdatePlanContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PausePlan operation middleware
+func (sh *strictHandler) PausePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params PausePlanParams) {
+	var request PausePlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PausePlan(ctx, request.(PausePlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PausePlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PausePlanResponseObject); ok {
+		if err := validResponse.VisitPausePlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumePlan operation middleware
+func (sh *strictHandler) ResumePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params ResumePlanParams) {
+	var request ResumePlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumePlan(ctx, request.(ResumePlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumePlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumePlanResponseObject); ok {
+		if err := validResponse.VisitResumePlanResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -30134,6 +32394,97 @@ func (sh *strictHandler) FinishPlanTask(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(FinishPlanTaskResponseObject); ok {
 		if err := validResponse.VisitFinishPlanTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LandPlanTask operation middleware
+func (sh *strictHandler) LandPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params LandPlanTaskParams) {
+	var request LandPlanTaskRequestObject
+
+	request.Plan = plan
+	request.Task = task
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LandPlanTask(ctx, request.(LandPlanTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LandPlanTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LandPlanTaskResponseObject); ok {
+		if err := validResponse.VisitLandPlanTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetryPlanTask operation middleware
+func (sh *strictHandler) RetryPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params RetryPlanTaskParams) {
+	var request RetryPlanTaskRequestObject
+
+	request.Plan = plan
+	request.Task = task
+	request.Params = params
+
+	var body RetryPlanTaskJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetryPlanTask(ctx, request.(RetryPlanTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetryPlanTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetryPlanTaskResponseObject); ok {
+		if err := validResponse.VisitRetryPlanTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SkipPlanTask operation middleware
+func (sh *strictHandler) SkipPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params SkipPlanTaskParams) {
+	var request SkipPlanTaskRequestObject
+
+	request.Plan = plan
+	request.Task = task
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SkipPlanTask(ctx, request.(SkipPlanTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SkipPlanTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SkipPlanTaskResponseObject); ok {
+		if err := validResponse.VisitSkipPlanTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -31357,363 +33708,383 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"rfHv/ycAAP//",
+	"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",
+	"RO2xjrnGv/9/AQAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

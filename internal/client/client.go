@@ -897,7 +897,7 @@ func (c *Client) GetPlan(ctx context.Context, ref, project, dir string, revision
 
 // RenamePlan gives the plan ref names, as GetPlan does, the name name.
 func (c *Client) RenamePlan(ctx context.Context, ref, project, dir, name string) (api.PlanResult, error) {
-	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdatePlan{Name: name})
+	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdatePlan{Name: &name})
 	if err != nil {
 		return api.PlanResult{}, err
 	}
@@ -950,6 +950,71 @@ func (c *Client) RunPlan(ctx context.Context, ref, project, dir string, parallel
 // with summary.
 func (c *Client) FinishPlanTask(ctx context.Context, ref, project, dir, task, summary string) (api.PlanTaskResult, error) {
 	r, err := c.api.FinishPlanTaskWithResponse(ctx, ref, task, &api.FinishPlanTaskParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.FinishPlanTask{Summary: summary})
+	if err != nil {
+		return api.PlanTaskResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// SetPlanParallel sets the most tasks the run of the plan ref names, as GetPlan
+// does, runs at once.
+func (c *Client) SetPlanParallel(ctx context.Context, ref, project, dir string, parallel int) (api.PlanResult, error) {
+	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdatePlan{Parallel: &parallel})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// PausePlan pauses the plan ref names, as GetPlan does.
+func (c *Client) PausePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.PausePlanWithResponse(ctx, ref, &api.PausePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// ResumePlan resumes the plan ref names, as GetPlan does.
+func (c *Client) ResumePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.ResumePlanWithResponse(ctx, ref, &api.ResumePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// CancelPlan cancels the plan ref names, as GetPlan does.
+func (c *Client) CancelPlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.CancelPlanWithResponse(ctx, ref, &api.CancelPlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// RetryPlanTask runs the task of the plan ref names, as GetPlan does, again, with a
+// new agent when fresh.
+func (c *Client) RetryPlanTask(ctx context.Context, ref, project, dir, task string, fresh bool) (api.PlanTaskResult, error) {
+	r, err := c.api.RetryPlanTaskWithResponse(ctx, ref, task, &api.RetryPlanTaskParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.RetryPlanTask{Fresh: &fresh})
+	if err != nil {
+		return api.PlanTaskResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// LandPlanTask lands the task of the plan ref names, as GetPlan does, again.
+func (c *Client) LandPlanTask(ctx context.Context, ref, project, dir, task string) (api.PlanTaskResult, error) {
+	r, err := c.api.LandPlanTaskWithResponse(ctx, ref, task, &api.LandPlanTaskParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanTaskResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// SkipPlanTask skips the task of the plan ref names, as GetPlan does.
+func (c *Client) SkipPlanTask(ctx context.Context, ref, project, dir, task string) (api.PlanTaskResult, error) {
+	r, err := c.api.SkipPlanTaskWithResponse(ctx, ref, task, &api.SkipPlanTaskParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
 	if err != nil {
 		return api.PlanTaskResult{}, err
 	}

@@ -151,7 +151,7 @@ func TestPlanTaskDone(t *testing.T) {
 		return wdxJSONWith(t, home, in(repo), append([]string{"plan", "task", "done"}, args...)...)
 	}
 	v, exit := done("--plan", "sso", "--task", "a", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanNotRunning, api.ExitRejected)
 	v, exit = done("--plan", "sso", "--summary", "s")
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	v, exit = done("--plan", "sso", "--task", "a", "--agent-id", "agent-x", "--summary", "s")

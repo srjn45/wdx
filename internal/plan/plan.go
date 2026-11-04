@@ -18,16 +18,26 @@ type Plan struct {
 	ProjectID   string
 	ProjectName string
 	Name        string
-	State       string
-	Tasks       int      // how many it has; 0 for a plan of plans
-	TasksDone   int      // how many of them its run has done
-	Plans       []string // the plans it lists, in DAG order; nil for a plan of tasks
-	Parent      string   // the name of the plan of plans listing it; empty for none
-	Revision    int      // the latest
-	Size        int      // of the latest revision's text
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	State       string // its run's, shown paused while its project is closed; StateDraft for none
+	// PausedReason says why a paused plan is: PausedByPerson, or
+	// PausedProjectClosed for one running whose project is closed; "" otherwise.
+	PausedReason string
+	Tasks        int      // how many it has; 0 for a plan of plans
+	TasksDone    int      // how many of them its run has done
+	TasksFailed  int      // how many of them are failed or land_failed, waiting for the person
+	Plans        []string // the plans it lists, in DAG order; nil for a plan of tasks
+	Parent       string   // the name of the plan of plans listing it; empty for none
+	Revision     int      // the latest
+	Size         int      // of the latest revision's text
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
+
+// Why a plan is paused.
+const (
+	PausedByPerson      = "person"
+	PausedProjectClosed = "project_closed"
+)
 
 // Revision is one revision of a plan, without its content.
 type Revision = doc.Revision

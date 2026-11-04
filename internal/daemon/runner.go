@@ -13,6 +13,7 @@ import (
 	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
+	"github.com/srjn45/wdx/internal/worktree"
 )
 
 // startRunner starts what runs the plans, before the terminals' supervisor, which
@@ -57,6 +58,19 @@ func (d *Daemon) startRunner() {
 		ResumeAgent: func(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error {
 			_, err := d.agents.ResumeLinked(ctx, id, text, linked)
 			return err
+		},
+		AgentIn: func(ctx context.Context, projectID, dir string) (string, error) {
+			list, err := d.agents.Store().List(ctx, projectID)
+			if err != nil {
+				return "", err
+			}
+			slot := worktree.Status{Path: dir}
+			for _, a := range list {
+				if a.Terminal.State.Live() && slot.Holds(workingDir(a)) {
+					return a.Terminal.Name, nil
+				}
+			}
+			return "", nil
 		},
 		AgentNameTaken: func(ctx context.Context, projectID, name string) (bool, error) {
 			_, err := d.agents.Store().GetByName(ctx, projectID, name)

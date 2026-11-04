@@ -338,24 +338,26 @@ func (s *Store) plan(ctx context.Context, d doc.Doc) (Plan, error) {
 }
 
 func view(d doc.Doc, sum summary, parent string, run runState) Plan {
-	state := StateDraft
+	state, reason := StateDraft, ""
 	if run.state != "" {
-		state = run.state
+		state, reason = run.shown()
 	}
 	return Plan{
-		ID:          d.ID,
-		ProjectID:   d.ProjectID,
-		ProjectName: d.ProjectName,
-		Name:        d.Name,
-		State:       state,
-		TasksDone:   run.done,
-		Tasks:       sum.tasks,
-		Plans:       slices.Clone(sum.plans),
-		Parent:      parent,
-		Revision:    d.Revision,
-		Size:        d.Size,
-		CreatedAt:   d.CreatedAt,
-		UpdatedAt:   d.UpdatedAt,
+		ID:           d.ID,
+		ProjectID:    d.ProjectID,
+		ProjectName:  d.ProjectName,
+		Name:         d.Name,
+		State:        state,
+		PausedReason: reason,
+		TasksDone:    run.done,
+		TasksFailed:  run.failed,
+		Tasks:        sum.tasks,
+		Plans:        slices.Clone(sum.plans),
+		Parent:       parent,
+		Revision:     d.Revision,
+		Size:         d.Size,
+		CreatedAt:    d.CreatedAt,
+		UpdatedAt:    d.UpdatedAt,
 	}
 }
 

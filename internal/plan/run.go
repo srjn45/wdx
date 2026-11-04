@@ -112,12 +112,21 @@ func (e *TaskStateError) Error() string {
 // NotRunningError is returned for what only a run going on takes, such as a pause or
 // a task's retry, from a plan that is a draft, done or cancelled.
 type NotRunningError struct {
-	PlanID string
-	State  string // StateDraft for a plan that has not run
+	Plan Plan
 }
 
 func (e *NotRunningError) Error() string {
-	return fmt.Sprintf("plan %s is %s, not running or paused", e.PlanID, e.State)
+	return fmt.Sprintf("plan %s is %s, not running or paused", e.Plan.Name, e.Plan.State)
+}
+
+// notRunning returns the *NotRunningError of the plan with id, or why it could not
+// be read.
+func (s *Store) notRunning(ctx context.Context, id string) error {
+	p, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	return &NotRunningError{Plan: p}
 }
 
 // Start runs the plan with id: it writes its run, of the latest revision, with a
@@ -440,7 +449,7 @@ func (s *Store) changeRun(ctx context.Context, planID, from, to string) (bool, e
 		if err != nil || state == to {
 			return false, err
 		}
-		return false, &NotRunningError{PlanID: planID, State: state}
+		return false, s.notRunning(ctx, planID)
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
 		return false, err
@@ -457,11 +466,7 @@ func (s *Store) Cancel(ctx context.Context, planID string) error {
 		return err
 	}
 	if n == 0 {
-		state, err := s.runState(ctx, planID)
-		if err != nil {
-			return err
-		}
-		return &NotRunningError{PlanID: planID, State: state}
+		return s.notRunning(ctx, planID)
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
 		return err
@@ -511,7 +516,7 @@ func (s *Store) goingOn(ctx context.Context, planID string) error {
 		return err
 	}
 	if state != StateRunning && state != StatePaused {
-		return &NotRunningError{PlanID: planID, State: state}
+		return s.notRunning(ctx, planID)
 	}
 	return nil
 }
@@ -582,16 +587,32 @@ func (s *Store) taskRun(ctx context.Context, planID, taskID string) (TaskRun, er
 
 // runState is what a plan's row shows of its run.
 type runState struct {
-	state string
-	done  int
+	state         string
+	done, failed  int
+	projectClosed bool
+}
+
+// shown is the state the plan shows, and why it is paused: a run going on in a
+// closed project is paused, as nothing of it can run, and goes on as it was when
+// the project opens.
+func (rs runState) shown() (state, reason string) {
+	switch {
+	case rs.state == StatePaused:
+		return StatePaused, PausedByPerson
+	case rs.state == StateRunning && rs.projectClosed:
+		return StatePaused, PausedProjectClosed
+	}
+	return rs.state, ""
 }
 
 // runStates returns the runs' states of the plans matched by where, on docs d, by
 // plan id.
 func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[string]runState, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.plan_id, r.state, (SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state = 'done')
-		FROM plan_runs r JOIN docs d ON d.id = r.plan_id WHERE `+where, args...)
+		SELECT r.plan_id, r.state, p.state = 'closed',
+			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state = 'done'),
+			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state IN ('failed', 'land_failed'))
+		FROM plan_runs r JOIN docs d ON d.id = r.plan_id JOIN projects p ON p.id = d.project_id WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +621,7 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 	for rows.Next() {
 		var id string
 		var rs runState
-		if err := rows.Scan(&id, &rs.state, &rs.done); err != nil {
+		if err := rows.Scan(&id, &rs.state, &rs.projectClosed, &rs.done, &rs.failed); err != nil {
 			return nil, err
 		}
 		states[id] = rs

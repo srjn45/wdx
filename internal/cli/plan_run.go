@@ -147,8 +147,8 @@ func newPlanTaskDoneCmd() *cobra.Command {
 			failurePrefix: "not done",
 			outputNote:    "The task, landing.\n" + `With --json: {"result": "landing", "task": {...}}`,
 			resultList:    string(api.ResultLanding),
-			errorList: codeList(api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeTaskState, api.ErrorCodeWrongBranch,
-				api.ErrorCodeDaemonUnavailable),
+			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeTaskState,
+				api.ErrorCodeWrongBranch, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(summary) == "" {
