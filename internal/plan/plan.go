@@ -32,6 +32,7 @@ type Plan struct {
 	Plans         []string  // the plans it lists, in DAG order; nil for a plan of tasks
 	Parent        string    // the name of the plan of plans listing it; empty for none
 	ArchivedAt    time.Time // when it was archived, hiding it from plan list; zero when it is not
+	Slots         []SlotUse // its run's slots, while it has any
 	Revision      int       // the latest
 	Size          int       // of the latest revision's text
 	CreatedAt     time.Time
@@ -112,5 +113,15 @@ func (p Plan) AsOf(r Run) Plan {
 	}
 	p.State, p.PausedReason = rs.shown()
 	p.TasksDone, p.TasksFailed = rs.done, rs.failed
+	p.Slots = nil
+	for _, sl := range r.Slots {
+		u := SlotUse{Number: sl.Number, Path: sl.Path}
+		for _, t := range r.Tasks {
+			if t.Slot == sl.Number {
+				u.Task = t.ID
+			}
+		}
+		p.Slots = append(p.Slots, u)
+	}
 	return p
 }

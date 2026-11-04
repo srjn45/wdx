@@ -216,6 +216,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*git.WorktreeRemoveError](err); ok {
 		return api.ErrorCodeWorktreeNotRemoved, nil
 	}
+	if e, ok := errors.AsType[*worktreeInPlanError](err); ok {
+		return api.ErrorCodeWorktreeInPlan, map[string]any{"plan": planView(e.plan)}
+	}
 	if e, ok := errors.AsType[*projectClosedError](err); ok {
 		return api.ErrorCodeProjectClosed, map[string]any{"project": projectView(e.project)}
 	}

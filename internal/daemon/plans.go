@@ -445,6 +445,10 @@ func planView(p plan.Plan) api.Plan {
 	if p.Parent != "" {
 		v.Parent = &p.Parent
 	}
+	v.Slots = make([]api.PlanSlot, 0, len(p.Slots))
+	for _, sl := range p.Slots {
+		v.Slots = append(v.Slots, api.PlanSlot{Slot: sl.Number, Path: sl.Path, Task: textOrNull(sl.Task)})
+	}
 	if !p.ArchivedAt.IsZero() {
 		at := p.ArchivedAt.UTC()
 		v.ArchivedAt = &at

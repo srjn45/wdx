@@ -93,6 +93,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodeTaskState:          {http.StatusConflict, ExitRejected, "the plan's task is not in a state the request needs"},
 	ErrorCodePlanNotRunning:     {http.StatusConflict, ExitRejected, "the plan is not running or paused"},
 	ErrorCodePlanNotFinished:    {http.StatusConflict, ExitRejected, "the plan is not done or cancelled"},
+	ErrorCodeWorktreeInPlan:     {http.StatusConflict, ExitRejected, "the worktree is a slot of a plan going on"},
 	ErrorCodeWrongBranch:        {http.StatusConflict, ExitRejected, "the worktree is not on the branch the request needs"},
 	ErrorCodeAcaUnsupported:     {http.StatusConflict, ExitRejected, "the agent's AI coding agent cannot do this yet"},
 	ErrorCodeAcaUnavailable:     {http.StatusConflict, ExitRejected, "the AI coding agent is not installed or is disabled, or none is installed and enabled"},

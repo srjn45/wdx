@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -863,7 +863,7 @@ tide groups what a plan runs: its agents under a row for the plan in the Agents 
 ### The guard
 
 - **A new code, `worktree_in_plan`** (409): `worktree land` and `worktree remove` (`POST /v1/worktrees/{worktree}/land`, `DELETE /v1/projects/{project}/worktrees/{worktree}`) on a path in `plan_slots`, with the plan under `details.plan`. The hint: `it is a slot of plan sso, which lands its tasks on plan/sso: wdx plan status --name sso`.
-- Once the plan is done or cancelled its slots are no longer slots (Finishing, and `cancel`), and are landed and removed as any.
+- Once the plan is done or cancelled its slots are no longer slots (Finishing, and `cancel`), and are landed and removed as any. As built: the guard comes before the other checks of both requests (a landing not set up, a worktree not landed), so that a slot is always told it is one; a run's slots in a response are read with the run, as its tasks are (`Plan.AsOf`).
 
 ### docs/CLI_TIDE.md
 

@@ -14,6 +14,7 @@ import (
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/terminal"
@@ -257,6 +258,11 @@ func (s *server) LandWorktree(ctx context.Context, req api.LandWorktreeRequestOb
 	if p.State == project.StateClosed {
 		return nil, &projectClosedError{project: p}
 	}
+	if w, err := worktree.Find(ctx, c, req.Worktree); err == nil {
+		if err := s.notInPlan(ctx, w); err != nil {
+			return nil, err
+		}
+	}
 	settings, ok, err := s.projects.LandSettings(ctx, p.ID)
 	if err != nil {
 		return nil, err
@@ -319,10 +325,36 @@ func (s *server) SetProjectLanding(ctx context.Context, req api.SetProjectLandin
 
 // RemoveWorktree removes a worktree that landed. Its agents are told once it is
 // gone, so that a refusal by git never sends them away from a worktree still there.
+// worktreeInPlanError is returned for landing or removing a slot of a plan going on,
+// which the plan lands itself, and needs until it is over.
+type worktreeInPlanError struct {
+	worktree string
+	plan     plan.Plan
+}
+
+func (e *worktreeInPlanError) Error() string {
+	return fmt.Sprintf("worktree %s is a slot of plan %s, which is %s", e.worktree, e.plan.Name, e.plan.State)
+}
+
+// notInPlan returns a *worktreeInPlanError when w is a slot of a plan going on.
+func (s *server) notInPlan(ctx context.Context, w worktree.Status) error {
+	p, ok, err := s.plans.SlotAt(ctx, w.Path)
+	if err != nil || !ok {
+		return err
+	}
+	logging.FromContext(ctx).Info("worktree in a plan", "worktree", w.Name, "plan_id", p.ID)
+	return &worktreeInPlanError{worktree: w.Name, plan: p}
+}
+
 func (s *server) RemoveWorktree(ctx context.Context, req api.RemoveWorktreeRequestObject) (api.RemoveWorktreeResponseObject, error) {
 	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
 	if err != nil {
 		return nil, err
+	}
+	if w, err := worktree.Find(ctx, c, req.Worktree); err == nil {
+		if err := s.notInPlan(ctx, w); err != nil {
+			return nil, err
+		}
 	}
 	w, err := worktree.Removable(ctx, c, req.Worktree, s.pullRequests)
 	if err != nil {

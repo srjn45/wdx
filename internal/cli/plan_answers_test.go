@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,6 +78,18 @@ func TestPlanRunAnswered(t *testing.T) {
 	v, exit = run("set", "--name", "sso", "--parallel", "2")
 	want(v, exit, "unchanged", api.PlanStateRunning)
 	waitTasks(t, home, repo, "sso", "a:running b:running")
+	if st, exit := run("status", "--name", "sso"); exit == api.ExitOK && len(st.Plan.Slots) > 0 {
+		slot := filepath.Base(st.Plan.Slots[0].Path)
+		hint := "it is a slot of plan sso, which lands its tasks on plan/sso: wdx plan status --name sso"
+		v, exit = wdxJSONWith(t, home, in(repo), "worktree", "land", "--name", slot)
+		wantError(t, v, exit, api.ErrorCodeWorktreeInPlan, api.ExitRejected)
+		wantHint(t, v, hint)
+		v, exit = wdxJSONWith(t, home, in(repo), "worktree", "remove", "--name", slot)
+		wantError(t, v, exit, api.ErrorCodeWorktreeInPlan, api.ExitRejected)
+		wantHint(t, v, hint)
+	} else {
+		t.Errorf("no slots on a running plan: exit %d, %+v", exit, st.Plan)
+	}
 
 	if v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != api.ExitOK {
 		t.Fatalf("close: exit %d, %+v", exit, v)

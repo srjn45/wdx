@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -190,7 +191,7 @@ func newWorktreeLandCmd() *cobra.Command {
 			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeFastForwardFailed,
 				api.ErrorCodeInvalidPath, api.ErrorCodeLandNotConfigured, api.ErrorCodeLandingRunning, api.ErrorCodeNoLocalBase,
 				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeNothingToLand, api.ErrorCodePrFailed, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed,
-				api.ErrorCodeRebaseFailed, api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodeRebaseFailed, api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkLandingMethod(method); err != nil {
@@ -206,7 +207,7 @@ func newWorktreeLandCmd() *cobra.Command {
 				if problemCode(err) == api.ErrorCodeLandNotConfigured {
 					return &hinted{err, "say how with " + identity.Name + " project landing --check <command> or --no-check"}
 				}
-				return outsideHint(err, scope, "")
+				return outsideHint(inPlanHint(err), scope, "")
 			}
 			l, err := waitLanding(cmd, started)
 			if err != nil {
@@ -231,6 +232,16 @@ func newWorktreeLandCmd() *cobra.Command {
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	completeFlag(cmd, "method", landingMethods)
 	return cmd
+}
+
+// inPlanHint says where a slot of a plan going on goes: the plan lands its tasks.
+func inPlanHint(err error) error {
+	var p api.Plan
+	if e, ok := errors.AsType[*client.ProblemError](err); !ok || e.Problem.Code != api.ErrorCodeWorktreeInPlan || !decodeDetail(e.Problem, "plan", &p) {
+		return err
+	}
+	return &hinted{err, fmt.Sprintf("it is a slot of plan %s, which lands its tasks on %s: %s plan status --name %s",
+		p.Name, planBranch(p.Name), identity.Name, p.Name)}
 }
 
 // landingMethods completes how a worktree can land.
@@ -352,7 +363,7 @@ func newWorktreeRemoveCmd() *cobra.Command {
 		Annotations: map[string]string{
 			outputNote: "What went, and who was told.\n" + `With --json: {"result": "removed", "worktree": "...", ...}`,
 			resultList: "removed",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeWorktreeIsClone,
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone,
 				api.ErrorCodeWorktreeNotLanded, api.ErrorCodeWorktreeNotRemoved, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -362,7 +373,7 @@ func newWorktreeRemoveCmd() *cobra.Command {
 			}
 			r, err := clientOf(cmd).RemoveWorktree(cmd.Context(), name, ref, dir)
 			if err != nil {
-				return outsideHint(err, scope, "")
+				return outsideHint(inPlanHint(err), scope, "")
 			}
 			return printResult(cmd, worktreeRemoved(r))
 		},

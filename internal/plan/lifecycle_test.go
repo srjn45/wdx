@@ -156,3 +156,54 @@ func TestArchive(t *testing.T) {
 		t.Errorf("archiving no plan: %v", err)
 	}
 }
+
+// TestSlotUses: a plan shows its run's slots, with the task in each, and SlotAt
+// finds the plan of a slot's path, until the slot is dropped.
+func TestSlotUses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.create(t, "sso", tasks("a", "b"))
+	if got := f.get(t, "sso").Slots; len(got) != 0 {
+		t.Errorf("a draft's slots: %+v", got)
+	}
+	f.agent(t, "agent-a")
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/sso", 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []func() error{
+		func() error { return f.store.AddSlot(ctx, p.ID, 1, "/r/.worktrees/sso-1") },
+		func() error { return f.store.AddSlot(ctx, p.ID, 2, "/r/.worktrees/sso-2") },
+		func() error { return f.store.HoldSlot(ctx, p.ID, "a", 1) },
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []SlotUse{{Number: 1, Path: "/r/.worktrees/sso-1", Task: "a"}, {Number: 2, Path: "/r/.worktrees/sso-2"}}
+	if got := f.get(t, "sso").Slots; !slices.Equal(got, want) {
+		t.Errorf("slots %+v, want %+v", got, want)
+	}
+	if list, err := f.store.List(ctx, f.project); err != nil || len(list) != 1 || !slices.Equal(list[0].Slots, want) {
+		t.Errorf("listed slots: %+v, %v", list, err)
+	}
+	run, _, err := f.store.Run(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.get(t, "sso").AsOf(run).Slots; !slices.Equal(got, want) {
+		t.Errorf("slots as of the run: %+v", got)
+	}
+	if got, ok, err := f.store.SlotAt(ctx, "/r/.worktrees/sso-2"); err != nil || !ok || got.ID != p.ID {
+		t.Errorf("the plan of a slot: %+v, %v, %v", got, ok, err)
+	}
+	if _, ok, err := f.store.SlotAt(ctx, "/r/.worktrees/other"); err != nil || ok {
+		t.Errorf("a worktree no plan has: %v, %v", ok, err)
+	}
+	if err := f.store.DropSlot(ctx, p.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := f.store.SlotAt(ctx, "/r/.worktrees/sso-2"); err != nil || ok {
+		t.Errorf("a slot dropped: %v, %v", ok, err)
+	}
+}

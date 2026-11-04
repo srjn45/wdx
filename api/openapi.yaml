@@ -473,8 +473,11 @@ paths:
         do not hold it up. Editors running there are stopped, with what they hold
         unsaved. Terminals running there are left as they are.
 
-        Errors: invalid_path, not_found, usage, worktree_is_clone,
-        worktree_not_landed, worktree_not_removed.
+        A slot of a plan going on is refused: worktree_in_plan, with the plan
+        under details.plan.
+
+        Errors: invalid_path, not_found, usage, worktree_in_plan,
+        worktree_is_clone, worktree_not_landed, worktree_not_removed.
       responses:
         "200":
           description: What went, with result removed.
@@ -498,11 +501,14 @@ paths:
         to the one open. It goes on in the background: "landing" in the worktree's
         status says how far it got and how it ended, in the codes base_moved,
         check_failed, fast_forward_failed, pr_failed, push_failed and rebase_failed.
-        Each leaves the base where it was.
+        Each leaves the base where it was. A slot of a plan going on is refused, as
+        the plan lands its tasks itself: worktree_in_plan, with the plan under
+        details.plan.
 
         Errors: agent_working, dependency_missing, detached_head, invalid_path,
         land_not_configured, landing_running, no_local_base, not_committed, not_found,
-        nothing_to_land, project_closed, usage, worktree_busy, worktree_is_clone.
+        nothing_to_land, project_closed, usage, worktree_busy, worktree_in_plan,
+        worktree_is_clone.
       parameters:
         - name: method
           in: query
@@ -3394,7 +3400,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, parent, archived_at, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, parent, archived_at, slots, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3412,6 +3418,10 @@ components:
           description: The plans it lists, in DAG order; null for a plan of tasks.
         parent: { type: string, nullable: true, description: The plan of plans listing it; null for none. }
         archived_at: { type: string, format: date-time, nullable: true, description: When it was archived, which leaves it out of listPlans; null when it is not. }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/PlanSlot" }
+          description: Its run's worktrees, by number, while it has any; empty for a draft and a run over, whose worktrees are then ordinary.
         revision: { type: integer, format: int64, description: The latest. }
         size: { type: integer, format: int64, description: Bytes of the latest revision. }
         created_at: { type: string, format: date-time }
@@ -3568,6 +3578,14 @@ components:
         folder: { type: string, default: /, description: See createPlan. }
         content: { type: string, description: The plan's YAML. }
 
+    PlanSlot:
+      type: object
+      required: [slot, path, task]
+      properties:
+        slot: { type: integer, description: Its number, 1 first. }
+        path: { type: string, description: The worktree's absolute path. }
+        task: { type: string, nullable: true, description: The id of the task in it; null for a free one. }
+
     CopyPlan:
       type: object
       required: [name]
@@ -3712,6 +3730,7 @@ components:
         - plan_not_finished
         - aca_unsupported
         - aca_unavailable
+        - worktree_in_plan
 
     Problem:
       type: object

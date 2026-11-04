@@ -275,13 +275,19 @@ func (s *Store) List(ctx context.Context, projectID string) ([]Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	slots, err := s.slotUses(ctx, "d.project_id = ?", projectID)
+	if err != nil {
+		return nil, err
+	}
 	plans := make([]Plan, 0, len(docs))
 	for _, d := range docs {
 		sum, err := s.summary(ctx, d)
 		if err != nil {
 			return nil, err
 		}
-		plans = append(plans, view(d, sum, names[d.ParentID], runs[d.ID]))
+		p := view(d, sum, names[d.ParentID], runs[d.ID])
+		p.Slots = slots[d.ID]
+		plans = append(plans, p)
 	}
 	return plans, nil
 }
@@ -413,7 +419,13 @@ func (s *Store) plan(ctx context.Context, d doc.Doc) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return view(d, sum, parent, runs[d.ID]), nil
+	slots, err := s.slotUses(ctx, "sl.plan_id = ?", d.ID)
+	if err != nil {
+		return Plan{}, err
+	}
+	p := view(d, sum, parent, runs[d.ID])
+	p.Slots = slots[d.ID]
+	return p, nil
 }
 
 func view(d doc.Doc, sum summary, parent string, run runState) Plan {

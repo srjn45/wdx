@@ -87,6 +87,53 @@ type Slot struct {
 	CreatedAt time.Time
 }
 
+// SlotUse is a slot of a plan's run as the plan shows it: the task in it, empty for
+// a free one.
+type SlotUse struct {
+	Number int
+	Path   string
+	Task   string
+}
+
+// slotUses returns the slots of the plans matched by where, on docs d, by plan id,
+// each with the task holding it.
+func (s *Store) slotUses(ctx context.Context, where string, args ...any) (map[string][]SlotUse, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sl.plan_id, sl.slot, sl.path, coalesce(t.task_id, '')
+		FROM plan_slots sl JOIN docs d ON d.id = sl.plan_id
+		LEFT JOIN plan_tasks t ON t.plan_id = sl.plan_id AND t.slot = sl.slot
+		WHERE `+where+` ORDER BY sl.plan_id, sl.slot`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	uses := map[string][]SlotUse{}
+	for rows.Next() {
+		var id string
+		var u SlotUse
+		if err := rows.Scan(&id, &u.Number, &u.Path, &u.Task); err != nil {
+			return nil, err
+		}
+		uses[id] = append(uses[id], u)
+	}
+	return uses, rows.Err()
+}
+
+// SlotAt returns the plan whose run has the slot at path, and false when no run
+// has: a plan's worktree is a slot only while it runs, or its cancel ends.
+func (s *Store) SlotAt(ctx context.Context, path string) (Plan, bool, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT plan_id FROM plan_slots WHERE path = ?`, path).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Plan{}, false, nil
+	}
+	if err != nil {
+		return Plan{}, false, err
+	}
+	p, err := s.Get(ctx, id)
+	return p, err == nil, err
+}
+
 // StartedError is returned for what only a draft takes, such as a run, from a plan
 // that has run.
 type StartedError struct {
