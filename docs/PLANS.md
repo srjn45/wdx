@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -758,6 +758,76 @@ Each builds and passes `make test` on its own.
 4. The CLI: the new commands, `list`, `status`, `task get`, help.
 5. tide: `needs you`, `p`, `c`, the answers' box.
 6. docs/CLI_TIDE.md and the README.
+
+## Step 4 in detail (approved 2026-11-04)
+
+The rest of the lifecycle: `copy`, to run a plan again or start from one, and `archive` and `unarchive`, to hide a plan that is over. No migration: `plan_runs.archived_at` came with step 2.
+
+### What changes from the architecture above
+
+- **Archiving has requests of its own**, `POST /v1/plans/{plan}/archive` and `/unarchive`, as pausing and resuming have, rather than `archived` on `PATCH`: the result then names what happened, `archived` or `unarchived`.
+- **A new code, `plan_not_finished`** (409), for archiving a plan that is not `done` or `cancelled`: `plan_not_running` says the opposite of what is wrong. A draft not wanted is removed, so it is refused too.
+- **The state stays the run's**: an archived plan is `done` or `cancelled`, with `archived_at` set. `archived` is not a value of `state`, so that a script reading `state` still learns how the run ended.
+
+### Copy
+
+- `POST /v1/plans/{plan}/copies`, with `name` and an optional `folder`: a new draft whose revision 1 is the plan's latest revision, in any state, archived too. Result `created`, `plan`, with `dropped` and `moved` as `createPlan`'s. The copy has none of the plan's history, run, branch or slots: it is a plan of its own, which runs on its own branch, `plan/<new name>`.
+- **Checked as a new plan**, as it goes through the store's `Create`: a name taken is `name_taken`; a copy of a plan of plans is `invalid_plan`, as each plan it lists already has a parent, which is what a plan of plans' copy would mean until step 6 decides it (the Open question there).
+- **Its folder** is the plan's unless `folder` is given. A copy of a plan a plan of plans lists has no parent, so it does not join that family.
+- Logged: `plan copied`, with both ids and names.
+
+### Archive and unarchive
+
+- `archive` sets `archived_at` on a `done` or `cancelled` run: `archived`, or `unchanged` when it is archived already. `unarchive` clears it: `unarchived`, or `unchanged`. Anything else is `plan_not_finished`, with the plan under `details.plan`.
+- **Nothing else changes**: the plan's branch, its worktree if done, its summaries and its history stay. Its tab stays open in tide. Removing it is still `plan_started`.
+- **A plan of plans** is a draft until step 6, so it is not archived yet; each plan it lists is archived on its own, and its row then leaves the parent's in tide until unarchived or found with `/`.
+- `GET /v1/plans` leaves the archived out unless `archived=true`. The project's stream carries them all, with `archived_at`, so that tide can find one.
+- Logged: `plan archived`, `plan unarchived`.
+
+### The API
+
+| Request | Does | Returns |
+|---|---|---|
+| `POST /v1/plans/{plan}/copies` | `name`, `folder` | 201 `created`, `plan`, `dropped`, `moved` |
+| `POST /v1/plans/{plan}/archive`, `/unarchive` | | `archived`, `unarchived` or `unchanged`, `plan` |
+| `GET /v1/plans?archived=true` | the archived too | `plans` |
+
+- `Plan` gains `archived_at`, null unless archived. `Result` gains `archived` and `unarchived`; `ErrorCode` gains `plan_not_finished`.
+
+### The CLI
+
+| Command | Does |
+|---|---|
+| `plan copy (--id \| --name) --new-name <name> [--folder <folder>]` | `plan sso-2 created from sso, with 3 tasks` |
+| `plan archive (--id \| --name)` | `plan sso archived: plan list --all shows it` |
+| `plan unarchive (--id \| --name)` | `plan sso unarchived` |
+| `plan list --all` | the archived too, `archived` after their state |
+
+- `plan_not_finished` gets the hint `only a done or cancelled plan is archived: wdx plan status says what it is`.
+- `wdx help plans` says a plan runs once, and running it again is `plan copy` then `plan run`.
+
+### tide
+
+- **Archived plans leave the Plans section**, and the heading counts only the others. The `/` filter finds them too, as it looks in collapsed sections, each muted with `archived` after its state: a filter is for finding something.
+- **In a plan's tab**, `a` archives a `done` or `cancelled` plan and unarchives an archived one, with no question, as nothing is lost either way; the tab's keys line says which. The status line says `plan sso archived`.
+- **`y` copies** the plan of the tab, as vim yanks: a popup with a name to edit, `sso-2` (the first `-<n>` free), as the popup that renames an agent does. The copy is a draft, which `r` then runs: a cancelled plan is run again in two keys and a name. A copy refused stays in the popup, to correct. On a plan of plans `y` says `a plan of plans is copied with the CLI once step 6 says how` rather than open a popup that would fail.
+
+### docs/CLI_TIDE.md
+
+- Rows: copy a plan (both), archive and unarchive (both; tide in the tab, the CLI by name), list the archived (`--all`; tide's filter).
+
+### Logging and tests
+
+- plan store: copy of a draft, a done plan, an archived plan and a child (no parent, the folder kept or given); a name taken; a plan of plans refused; archive and unarchive in each state, `unchanged` twice over; `List` with and without the archived.
+- daemon: one test per outcome of the three requests, and the stream carrying an archived plan with `archived_at`.
+- cli: one test per outcome of `copy`, `archive`, `unarchive`, `list --all`, and the text of each.
+- tide: an archived plan out of the section and its count, found by the filter and muted, `a` both ways in the tab, `y` with its name and a refusal, and `y` on a plan of plans.
+
+### Steps of step 4
+
+1. Copy, archive and unarchive in the store, the API and the CLI.
+2. tide: archived plans hidden and found, `a` and `y` in the tab.
+3. docs/CLI_TIDE.md, `wdx help plans` and the README.
 
 ## Open
 
