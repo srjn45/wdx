@@ -523,29 +523,30 @@ func TestPopupFrame(t *testing.T) {
 	m, _ := newModel(60, 24)
 	m.Update(key('q', tea.ModCtrl))
 	want := []string{
-		"                         ",
-		"  ┏━━━━━━━━━━━━━━━━━━━┓  ",
-		"  ┃                   ┃  ",
-		"  ┃  ┏━━━━━━━━━━━━━┓  ┃  ",
-		"  ┃  ┃ Menu        ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ list        ┃  ┃  ",
-		"  ┃  ┃ /  filter   ┃  ┃  ",
-		"  ┃  ┃ f  refresh  ┃  ┃  ",
-		"  ┃  ┃             ┃  ┃  ",
-		"  ┃  ┃ global      ┃  ┃  ",
-		"  ┃  ┃ p  project… ┃  ┃  ",
-		"  ┃  ┃ s  settings ┃  ┃  ",
-		"  ┃  ┃ q  quit     ┃  ┃  ",
-		"  ┃  ┣━━━━━━━━━━━━━┫  ┃  ",
-		"  ┃  ┃ Esc close   ┃  ┃  ",
-		"  ┃  ┗━━━━━━━━━━━━━┛  ┃  ",
-		"  ┃                   ┃  ",
-		"  ┗━━━━━━━━━━━━━━━━━━━┛  ",
-		"                         ",
+		"                                 ",
+		"  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ",
+		"  ┃                           ┃  ",
+		"  ┃  ┏━━━━━━━━━━━━━━━━━━━━━┓  ┃  ",
+		"  ┃  ┃ Menu                ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ list                ┃  ┃  ",
+		"  ┃  ┃ /  filter           ┃  ┃  ",
+		"  ┃  ┃ f  refresh          ┃  ┃  ",
+		"  ┃  ┃ z  collapse section ┃  ┃  ",
+		"  ┃  ┃                     ┃  ┃  ",
+		"  ┃  ┃ global              ┃  ┃  ",
+		"  ┃  ┃ p  project…         ┃  ┃  ",
+		"  ┃  ┃ s  settings         ┃  ┃  ",
+		"  ┃  ┃ q  quit             ┃  ┃  ",
+		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
+		"  ┃  ┃ Esc close           ┃  ┃  ",
+		"  ┃  ┗━━━━━━━━━━━━━━━━━━━━━┛  ┃  ",
+		"  ┃                           ┃  ",
+		"  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ",
+		"                                 ",
 	}
 	got := strings.Split(ansi.Strip(m.render()), "\n")
-	const x, y = 17, 1 // the middle of the 60 × 23 above the status line
+	const x, y = 13, 1 // the middle of the 60 × 23 above the status line
 	for i, w := range want {
 		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
 			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))
@@ -560,9 +561,9 @@ func TestPopupFrameSmallWindow(t *testing.T) {
 		width, height int
 		outer, margin bool
 	}{
-		{80, 21, true, true},
-		{80, 19, true, false},
-		{80, 18, false, false},
+		{80, 22, true, true},
+		{80, 20, true, false},
+		{80, 19, false, false},
 		{20, 24, false, false},
 	} {
 		m, _ := newModel(tc.width, tc.height)

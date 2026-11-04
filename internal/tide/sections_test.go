@@ -33,7 +33,7 @@ func headingRows(m *Model) []string {
 	var names []string
 	for _, line := range paneLines(m) {
 		for _, name := range []string{"Agents", "Worktrees", "Code", "Docs", "Plans"} {
-			if strings.HasPrefix(strings.TrimLeft(line, "│ "), name) {
+			if strings.HasPrefix(strings.TrimLeft(line, "│ ▸−+"), name) {
 				names = append(names, name)
 			}
 		}

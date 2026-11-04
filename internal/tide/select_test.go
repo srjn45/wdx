@@ -42,14 +42,15 @@ func TestSelect(t *testing.T) {
 
 	// Dragged into the agent pane and below the project pane, the selection
 	// stops at the project pane's edges.
-	m.Update(clickAt(in.Min.X, in.Min.Y))
-	dragTo(m, in.Max.X+10, in.Min.Y)
+	// It starts below the heading, a click on which collapses the section.
+	m.Update(clickAt(in.Min.X, in.Min.Y+1))
+	dragTo(m, in.Max.X+10, in.Min.Y+1)
 	dragTo(m, in.Max.X+20, frames[terminal].Min.Y+2)
 	if !reversed(m, in.Min.X, in.Min.Y+5) || reversed(m, in.Max.X, in.Min.Y+5) {
 		t.Fatal("the selection is not highlighted inside the pane only")
 	}
 	releaseAt(m, in.Max.X+20, frames[terminal].Min.Y+2)
-	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], " Agents          0\n no agents: C-q a c\n") {
+	if len(*copied) != 1 || !strings.HasPrefix((*copied)[0], " no agents: C-q a c\n − Worktrees\n") {
 		t.Fatalf("copied %q", *copied)
 	}
 	if strings.Count((*copied)[0], "no agents") != 1 || strings.Contains((*copied)[0], "shell") {

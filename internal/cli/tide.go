@@ -39,6 +39,7 @@ func newTideCmd() *cobra.Command {
 			"In the left pane's list Enter opens the row's tab and stays in the list;\n" +
 			"Shift+Enter, or o where the terminal sends that as Enter, opens it and goes\n" +
 			"to it; - closes the row's tab when it is open.\n" +
+			"z, or a click on a section's heading, collapses the section or expands it.\n" +
 			"The mouse focuses a pane, switches tabs and zooms with the [⤢] button;\n" +
 			"dragging selects text in a pane and copies it on release.\n" +
 			"The Code section lists a worktree's files: Enter shows one read-only and\n" +

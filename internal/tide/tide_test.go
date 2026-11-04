@@ -159,11 +159,11 @@ func TestRender(t *testing.T) {
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
 	want := `┌ [Pr─[⤢]─┬ agent ─────────────────[⤢]─┐
-│ Agents0 │no agents: C-q a creates one│
+│ − Agents│no agents: C-q a creates one│
 │ no agent│                            │
-│ Worktree│                            │
+│ − Worktr│                            │
 │ loading…│                            │
-│ Docs  0 │                            │
+│ − Docs0 │                            │
 │ no docs:│                            │
 ├ [● shell] [● tests] [● server] ──[⤢]─┤
 │● shell running                       │

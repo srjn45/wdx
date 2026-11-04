@@ -26,6 +26,8 @@ const minAgentName = 10
 const (
 	selectHint = "↑↓ select  Enter show  i info  / filter  Alt+arrows move  C-q menu"
 	treeHint   = "↑↓ select  ←→ fold  Enter show  i info  / filter  Alt+arrows move  C-q menu"
+	// headingHint is a collapsed section's, with the cursor on its heading.
+	headingHint = "↑↓ select  z expand  / filter  Alt+arrows move  C-q menu"
 )
 
 // The fold marks of a parent's row. ▸ is taken by the cursor.
@@ -64,6 +66,8 @@ type agentList struct {
 	closed             map[string]bool // the ids of the parents folded; what is open inside them stays so
 
 	section       section              // the section the cursor is in
+	onHeading     bool                 // the cursor is on its section's heading, which only a collapsed one allows
+	collapsed     map[string]bool      // the letters of the sections collapsed to their heading (docs/TIDE_COLLAPSE.md)
 	worktreeRow   int                  // its row in the Worktrees section
 	worktreeKey   string               // what that row is, which the cursor stays on as rows come and go
 	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
@@ -301,7 +305,7 @@ func (m *Model) moveCursor(i int) {
 	if l == nil || i < 0 || i >= len(rows) {
 		return
 	}
-	l.row, l.cursor, l.section = i, rows[i].agent.Id, sectionAgents
+	l.row, l.cursor, l.section, l.onHeading = i, rows[i].agent.Id, sectionAgents, false
 }
 
 // activate opens the tab of the agent under the cursor, or goes to it, the focus
@@ -587,6 +591,8 @@ func (s *projectScreen) sectionHint() string {
 	top := s.m.topAgents()
 	if l := s.m.list(); l != nil {
 		switch {
+		case l.onHeading:
+			return headingHint
 		case l.section == sectionWorktrees:
 			return worktreeHint
 		case l.section == sectionCode && l.code.row == 0:
@@ -622,6 +628,8 @@ func (s *projectScreen) update(msg tea.Msg) tea.Cmd {
 		s.m.moveUp()
 	case slices.Contains(downKeys, name):
 		s.m.moveDown()
+	case l.onHeading:
+		// a collapsed heading is no row: only moving off it and z act there
 	case l.section == sectionWorktrees:
 		return s.updateWorktrees(name)
 	case l.section == sectionCode:
@@ -711,6 +719,11 @@ func (s section) letter() string {
 	return ""
 }
 
+// title is the section's name, as its heading shows it.
+func (s section) title() string {
+	return map[section]string{sectionAgents: "Agents", sectionWorktrees: "Worktrees", sectionCode: "Code", sectionDocs: "Docs", sectionPlans: "Plans"}[s]
+}
+
 // cursorRow is the cursor's row in its section.
 func (l *agentList) cursorRow() int {
 	switch l.section {
@@ -733,6 +746,20 @@ type paneItem struct {
 	row     int // its row in the section, when it is neither of the next two
 	heading bool
 	empty   bool // it stands for the rows the section has none of
+	// collapsed marks the heading of a section showing no rows as it is collapsed:
+	// the cursor can stop there, and on no other heading.
+	collapsed bool
+}
+
+// stop reports whether the cursor can be on the item.
+func (it paneItem) stop() bool { return it.collapsed || !it.heading && !it.empty }
+
+// isCursor reports whether the cursor is on the item.
+func (l *agentList) isCursor(it paneItem) bool {
+	if l.onHeading {
+		return it.collapsed && it.section == l.section
+	}
+	return it.section == l.section && it.row == l.cursorRow() && !it.heading && !it.empty
 }
 
 // paneItems are the lines of the list: each section in the order set, with its
@@ -741,27 +768,13 @@ type paneItem struct {
 func (m *Model) paneItems() []paneItem {
 	var items []paneItem
 	for i, s := range m.sectionsInOrder() {
-		if i > 0 {
-			items = append(items, paneItem{section: s, heading: true})
+		n, empty := m.sectionRows(s)
+		collapsed := m.collapsedShown(s, n)
+		if i > 0 || collapsed {
+			items = append(items, paneItem{section: s, heading: true, collapsed: collapsed})
 		}
-		var n int
-		var empty bool
-		switch s {
-		case sectionAgents:
-			n = len(m.listRows())
-			empty = n == 0
-		case sectionWorktrees:
-			n = len(m.worktreeRows())
-			empty = n == 0
-		case sectionCode:
-			n = len(m.codeRowsShown())
-			empty = m.codeNote() != ""
-		case sectionDocs:
-			n = len(m.docRows())
-			empty = n == 0
-		case sectionPlans:
-			n = len(m.planRows())
-			empty = n == 0
+		if collapsed {
+			continue
 		}
 		for row := range n {
 			items = append(items, paneItem{section: s, row: row})
@@ -771,6 +784,100 @@ func (m *Model) paneItems() []paneItem {
 		}
 	}
 	return items
+}
+
+// sectionRows returns how many rows the section has, and whether a line stands
+// for the rows it has none of.
+func (m *Model) sectionRows(s section) (n int, empty bool) {
+	switch s {
+	case sectionAgents:
+		n = len(m.listRows())
+		return n, n == 0
+	case sectionWorktrees:
+		n = len(m.worktreeRows())
+		return n, n == 0
+	case sectionCode:
+		return len(m.codeRowsShown()), m.codeNote() != ""
+	case sectionDocs:
+		n = len(m.docRows())
+		return n, n == 0
+	case sectionPlans:
+		n = len(m.planRows())
+		return n, n == 0
+	}
+	return 0, true
+}
+
+// collapsedShown reports whether the section, with its n rows, shows only its
+// heading: it is collapsed, and the filter, which looks in collapsed sections too,
+// matches none of its rows.
+func (m *Model) collapsedShown(s section, n int) bool {
+	l := m.list()
+	if l == nil || !l.collapsed[s.letter()] {
+		return false
+	}
+	matches := n
+	if s == sectionCode {
+		matches-- // the worktree's selector is no match
+	}
+	return !m.filtering() || matches <= 0
+}
+
+// sectionCollapsedShown is collapsedShown with the section's rows as they are.
+func (m *Model) sectionCollapsedShown(s section) bool {
+	n, _ := m.sectionRows(s)
+	return m.collapsedShown(s, n)
+}
+
+// toggleSection collapses the section to its heading, or expands it. A cursor
+// in a section collapsed goes to its heading; one on the heading of a section
+// expanded goes to its first row, or the nearest row when it has none.
+func (m *Model) toggleSection(s section, reason string) {
+	l := m.list()
+	if l == nil {
+		return
+	}
+	if l.collapsed == nil {
+		l.collapsed = map[string]bool{}
+	}
+	collapse := !l.collapsed[s.letter()]
+	if collapse {
+		l.collapsed[s.letter()] = true
+		m.log.Info("section collapsed", "section", s.letter(), "reason", reason)
+	} else {
+		delete(l.collapsed, s.letter())
+		m.log.Info("section expanded", "section", s.letter(), "reason", reason)
+	}
+	switch {
+	case l.section != s:
+	case collapse:
+		l.onHeading = m.sectionCollapsedShown(s)
+	case l.onHeading:
+		l.onHeading = false
+		m.cursorFrom(s)
+	}
+}
+
+// cursorFrom puts the cursor on the first row from the section's start down, or
+// the nearest above when there is none.
+func (m *Model) cursorFrom(s section) {
+	items := m.paneItems()
+	at := slices.IndexFunc(items, func(it paneItem) bool { return it.section == s })
+	if at < 0 {
+		return
+	}
+	for j := at; j < len(items); j++ {
+		if items[j].stop() {
+			m.moveToItem(items[j])
+			return
+		}
+	}
+	for j := at - 1; j >= 0; j-- {
+		if items[j].stop() {
+			m.moveToItem(items[j])
+			return
+		}
+	}
 }
 
 // sectionsInOrder returns the sections shown, in the order set.
@@ -785,7 +892,11 @@ func (m *Model) sectionsInOrder() []section {
 // shown, or to the first section when none has rows.
 func (m *Model) keepCursorShown() {
 	l, sections := m.list(), m.sectionsInOrder()
-	if l == nil || slices.Contains(sections, l.section) {
+	if l == nil {
+		return
+	}
+	if slices.Contains(sections, l.section) {
+		m.keepCursorOffHidden()
 		return
 	}
 	hidden := l.section
@@ -797,26 +908,43 @@ func (m *Model) keepCursorShown() {
 	m.log.Debug("cursor left a hidden section", "hidden", hidden.letter(), "section", l.section.letter())
 }
 
+// keepCursorOffHidden keeps the cursor off the rows a collapsed section hides,
+// on its heading, and off the heading of a section showing its rows.
+func (m *Model) keepCursorOffHidden() {
+	l := m.list()
+	switch shown := m.sectionCollapsedShown(l.section); {
+	case shown && !l.onHeading:
+		l.onHeading = true
+		m.log.Debug("cursor on a collapsed section's heading", "section", l.section.letter())
+	case !shown && l.onHeading:
+		l.onHeading = false
+		m.log.Debug("cursor off the heading of a section shown", "section", l.section.letter())
+	}
+}
+
 // moveBy moves the cursor by step rows up the one list the sections make, past
 // headings and what stands for rows; at either end it stays.
 func (m *Model) moveBy(step int) {
 	l, items := m.list(), m.paneItems()
-	i := slices.IndexFunc(items, func(it paneItem) bool {
-		return it.section == l.section && it.row == l.cursorRow() && !it.heading && !it.empty
-	})
+	i := slices.IndexFunc(items, l.isCursor)
 	if i < 0 && step < 0 {
 		return
 	}
 	for j := i + step; j >= 0 && j < len(items); j += step {
-		if it := items[j]; !it.heading && !it.empty {
+		if it := items[j]; it.stop() {
 			m.moveToItem(it)
 			return
 		}
 	}
 }
 
-// moveToItem puts the cursor on the row it is.
+// moveToItem puts the cursor on the row it is, or the collapsed heading.
 func (m *Model) moveToItem(it paneItem) {
+	if it.heading {
+		l := m.list()
+		l.section, l.onHeading = it.section, true
+		return
+	}
 	switch it.section {
 	case sectionAgents:
 		m.moveCursor(it.row)
@@ -844,10 +972,7 @@ func (m *Model) setSectionOrder(letters string) {
 func (m *Model) visibleItems(height int) (shown []paneItem, top section) {
 	l, items := m.list(), m.paneItems()
 	body := max(height-1, 1)
-	cursor := slices.IndexFunc(items, func(it paneItem) bool {
-		return it.section == l.section && it.row == l.cursorRow() && !it.heading && !it.empty
-	})
-	cursor = max(cursor, 0)
+	cursor := max(slices.IndexFunc(items, l.isCursor), 0)
 	l.offset = max(min(l.offset, cursor), cursor-body+1)
 	l.offset = max(min(l.offset, len(items)-body), 0)
 	first := l.offset
@@ -863,20 +988,27 @@ func (m *Model) visibleItems(height int) (shown []paneItem, top section) {
 // there and shows what the row is.
 func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 	l := s.m.list()
-	if l == nil || row < 1 {
+	if l == nil || row < 0 {
 		return nil
 	}
 	if l.filter.on() && row == height-1 {
 		s.m.openFilter()
 		return nil
 	}
-	shown, _ := s.m.visibleItems(s.m.listHeight(height))
+	shown, top := s.m.visibleItems(s.m.listHeight(height))
+	if row == 0 {
+		s.m.toggleSection(top, "heading clicked")
+		return nil
+	}
 	if row-1 >= len(shown) {
 		return nil
 	}
 	it := shown[row-1]
 	switch {
-	case it.heading || it.empty:
+	case it.heading:
+		s.m.toggleSection(it.section, "heading clicked")
+		return nil
+	case it.empty:
 		return nil
 	case it.section == sectionWorktrees:
 		return s.clickWorktree(it.row, col)
@@ -922,7 +1054,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	m := s.m
 	l, width := m.list(), area.Dx()
 	if l == nil {
-		lines := []string{sectionHeading(st, " Agents", "", width), st.Muted(" loading…")}
+		lines := []string{sectionHeading(st, headingLead(false, false)+sectionAgents.title(), "", width), st.Muted(" loading…")}
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
@@ -932,23 +1064,27 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	if m.worktreeStatuses() != nil {
 		worktreeCount = fmt.Sprint(len(m.worktreeStatuses())) + " "
 	}
-	headings := map[section]string{
-		sectionAgents:    sectionHeading(st, " Agents", agentCount, width),
-		sectionWorktrees: sectionHeading(st, " Worktrees", worktreeCount, width),
-		sectionCode:      sectionHeading(st, " Code", "", width),
-		sectionDocs:      sectionHeading(st, " Docs", fmt.Sprint(len(m.docs()))+" ", width),
-		sectionPlans:     sectionHeading(st, " Plans", fmt.Sprint(len(m.plans()))+" ", width),
+	counts := map[section]string{
+		sectionAgents:    agentCount,
+		sectionWorktrees: worktreeCount,
+		sectionDocs:      fmt.Sprint(len(m.docs())) + " ",
+		sectionPlans:     fmt.Sprint(len(m.plans())) + " ",
+	}
+	heading := func(s section) string {
+		it := paneItem{section: s, heading: true, collapsed: m.sectionCollapsedShown(s)}
+		cursor := l.isCursor(it) && m.layout.focus == project
+		return sectionHeading(st, headingLead(l.collapsed[s.letter()], cursor)+s.title(), counts[s], width)
 	}
 
 	shown, top := m.visibleItems(m.listHeight(area.Dy()))
-	lines := []string{headings[top]}
+	lines := []string{heading(top)}
 	// A parent folded over the active agent carries its mark.
 	activeRow := shownAs(rows, agents, tabAgent(l.active))
 	for _, it := range shown {
-		cursor := it.section == l.section && it.row == l.cursorRow() && m.layout.focus == project
+		cursor := l.isCursor(it) && m.layout.focus == project
 		switch {
 		case it.heading:
-			lines = append(lines, headings[it.section])
+			lines = append(lines, heading(it.section))
 		case it.empty && it.section == sectionCode:
 			lines = append(lines, st.Muted(" "+m.codeNote()))
 		case it.empty && m.filtering():
@@ -991,6 +1127,19 @@ func (m *Model) listHeight(height int) int {
 		return max(height-1, 1)
 	}
 	return height
+}
+
+// headingLead is what a section's heading starts with: the cursor's pointer when
+// it is there, and the mark of a section collapsed or open.
+func headingLead(collapsed, cursor bool) string {
+	lead := " "
+	if cursor {
+		lead = "▸"
+	}
+	if collapsed {
+		return lead + foldClosed + " "
+	}
+	return lead + foldOpen + " "
 }
 
 // sectionHeading is a section's band, with its count at the right end.

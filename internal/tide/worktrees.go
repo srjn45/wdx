@@ -140,7 +140,7 @@ func (m *Model) moveToWorktree(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.worktreeRow, l.worktreeKey = sectionWorktrees, i, rows[i].key()
+	l.section, l.worktreeRow, l.worktreeKey, l.onHeading = sectionWorktrees, i, rows[i].key(), false
 }
 
 // moveUp moves the cursor up the one list the sections make.

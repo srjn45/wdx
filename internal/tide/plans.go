@@ -158,7 +158,7 @@ func (m *Model) moveToPlan(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.planRow, l.planCursor = sectionPlans, i, rows[i].plan.Id
+	l.section, l.planRow, l.planCursor, l.onHeading = sectionPlans, i, rows[i].plan.Id, false
 }
 
 // cursorPlan returns the plan under the cursor.

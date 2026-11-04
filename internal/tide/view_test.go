@@ -59,6 +59,7 @@ func TestViewKept(t *testing.T) {
 	l := p.m.list()
 	l.closed["agent-folded"] = true // a fold is kept by its id, whatever it names
 	l.code.worktree = "main"
+	l.collapsed = map[string]bool{"d": true}
 	l.code.files = map[string]*codeFiles{"main": {open: map[string]bool{"src": true}}}
 	p.update(nil) // what changes the view outside a key is taken as the next update
 	// The tabs go apart from the view: the next tide starts on what both say.
@@ -73,8 +74,8 @@ func TestViewKept(t *testing.T) {
 	})
 	got := next.m.list()
 	if next.m.layout.zoomed != agent || !got.closed["agent-folded"] || got.code.worktree != "main" ||
-		got.code.files["main"] == nil || !got.code.files["main"].open["src"] {
-		t.Fatalf("zoomed %s, folded %v, code %q %+v", next.m.layout.zoomed, got.closed, got.code.worktree, got.code.files["main"])
+		got.code.files["main"] == nil || !got.code.files["main"].open["src"] || !got.collapsed["d"] {
+		t.Fatalf("zoomed %s, folded %v, code %q %+v, collapsed %v", next.m.layout.zoomed, got.closed, got.code.worktree, got.code.files["main"], got.collapsed)
 	}
 }
 

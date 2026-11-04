@@ -195,7 +195,7 @@ docs/TIDE_MENU.md designs it; this is what it does.
 - A menu of actions with one-letter keys, in parts, the narrowest first, each under its title: what is selected (the row under the cursor in the left pane, the tab in the others), then the left pane's list (`list`), then tide and the project (`global`). A line shows only when it applies, and a part only with one. No two parts shown together share a letter.
 - Pressing the letter right away fires the action (`C-q x`), with no delay.
 - **The selection.** An agent, in the list or its tab: `x` remove, `c` new child, asking for an optional worktree, `i` info, `r` rename, in a popup with its name to edit, `R` new session, `g` start again once it has ended. A terminal's tab: `x` remove, `g` start again. A worktree: `x` remove once landed; its file: `v` verify. In Code: `e` edit, `n` new file, `N` new directory, `r` rename, `x` delete (docs/TIDE_CODE.md). In the right pane, `-` closes the tab; in the list, the tab of the row under the cursor, when it is open (docs/TIDE_CLOSE_ROW.md). With a program in focus (an agent, a terminal, an editor), `\`, `]` and `C-q` send that ctrl key to it.
-- **The list**, in the left pane: `/` filter, `f` read the worktrees, the Code tree and the file tab open again.
+- **The list**, in the left pane: `/` filter, `f` read the worktrees, the Code tree and the file tab open again, `z` collapse the cursor's section to its heading or expand it (docs/TIDE_COLLAPSE.md).
 - **Global:** `a` new agent and `t` new terminal while a project is shown, `p` the Project submenu, `s` settings, `q` quit.
 - **The Project submenu**, a popup of its own: `o` open project, `s` switch project, `c` close the project shown, `x` remove it from wdx. `Esc` closes it.
 - `p x` removes the project shown, as `wdx project remove` does, after a confirmation that it always asks: its agents, terminals and their history are deleted from wdx, its files on disk stay, and it names what runs, which stops. Something started since the stream last said is not stopped: the daemon refuses and the status line says why. tide then goes where it goes after closing.
@@ -279,6 +279,7 @@ On a row of the left pane's list that opens a tab (an agent, a worktree or its f
 Supported, though most users will mostly use the keyboard.
 
 - Click a pane to focus it.
+- Click a section's heading in the left pane to collapse the section or expand it (docs/TIDE_COLLAPSE.md).
 - Double-click a frame title, both clicks on the same thing, or click a `[⤢]` button on it, to zoom.
 - Click a terminal tab or an agent tab to switch to it, an agent tab's `(-)` to close it, and `◀` or `▶` on the strip to go to the nearest tab hidden there.
 - Drag the dividers to resize.

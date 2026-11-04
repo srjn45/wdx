@@ -20,6 +20,7 @@ const (
 	projectMenuKey   = "p"
 	quitKey          = "q"
 	openAndGoKey     = "o"
+	collapseKey      = "z" // of the list part
 	openProjectKey   = "o" // of the Project submenu
 	switchProjectKey = "s" // of the Project submenu
 	closeProjectKey  = "c" // of the Project submenu
@@ -102,6 +103,9 @@ func (m *Model) closeMenu() {
 // selectionPart is what acts on the thing selected: the row under the cursor in
 // the left pane, the tab in the others.
 func (m *Model) selectionPart() menuPart {
+	if l := m.list(); m.layout.focus == project && l != nil && l.onHeading {
+		return menuPart{title: m.selectionTitle()} // a heading is no row
+	}
 	var items []menuItem
 	add := func(key, label, short string, do func() tea.Cmd) {
 		items = append(items, menuItem{key, label, short, do})
@@ -232,6 +236,9 @@ func (m *Model) listSelectionTitle() string {
 	if l == nil {
 		return "selection"
 	}
+	if l.onHeading {
+		return l.section.title() + " (section)"
+	}
 	switch l.section {
 	case sectionAgents:
 		if a, ok := m.cursorAgent(); ok {
@@ -259,14 +266,23 @@ func (m *Model) listSelectionTitle() string {
 
 // panePart is what acts on the left pane's list as a whole.
 func (m *Model) panePart() menuPart {
-	if m.layout.focus != project || m.list() == nil {
+	l := m.list()
+	if m.layout.focus != project || l == nil {
 		return menuPart{title: "list"}
+	}
+	collapse, short := "collapse section", "collapse"
+	if l.collapsed[l.section.letter()] {
+		collapse, short = "expand section", "expand"
 	}
 	return menuPart{title: "list", items: []menuItem{
 		{filterKey, "filter", "filter", func() tea.Cmd { m.openFilter(); return nil }},
 		{refreshKey, "refresh", "refresh", func() tea.Cmd {
 			m.codeRefresh()
 			return m.refreshWorktrees("", true)
+		}},
+		{collapseKey, collapse, short, func() tea.Cmd {
+			m.toggleSection(l.section, "asked")
+			return nil
 		}},
 	}}
 }

@@ -272,7 +272,7 @@ func (m *Model) moveToCode(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.code.row, l.code.cursor = sectionCode, i, rows[i].key()
+	l.section, l.code.row, l.code.cursor, l.onHeading = sectionCode, i, rows[i].key(), false
 }
 
 func (s *projectScreen) updateCode(name string) tea.Cmd {

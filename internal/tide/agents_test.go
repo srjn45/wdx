@@ -201,7 +201,7 @@ func TestAgentsScroll(t *testing.T) {
 	for range 10 {
 		m.Update(keyMsgs("up")[0])
 	}
-	if !strings.Contains(row(t, m, "agent-02"), "▸") || !strings.Contains(text(m), "│ Agents") {
+	if !strings.Contains(row(t, m, "agent-02"), "▸") || !strings.Contains(text(m), "│ − Agents") {
 		t.Fatalf("the cursor at the top of what shows, under the heading:\n%s", text(m))
 	}
 
@@ -216,8 +216,7 @@ func TestAgentsClick(t *testing.T) {
 	t.Parallel()
 	m := newAgentsModel(100, 41, demoAgents()...)
 
-	// On the heading and below the rows, nothing happens.
-	m.Update(clickAt(5, 1))
+	// Below the rows, nothing happens; the heading is TestCollapseByClick's.
 	m.Update(clickAt(5, 20))
 	if a, _ := m.activeAgent(); a.Name != "swift-falcon" {
 		t.Fatalf("active %s", a.Name)

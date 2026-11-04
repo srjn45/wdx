@@ -1,6 +1,6 @@
 # Collapsing the left pane's sections
 
-Status: approved by the human on 2026-11-04.
+Status: approved by the human on 2026-11-04; built on 2026-11-04.
 
 Today every section of the left pane (Agents, Worktrees, Docs, Plans, Code) always shows its rows, and the only way to hide one is to leave its letter out of `tide.section_order`, for every project and until the setting changes again. With a long Code tree or many docs, the other sections get pushed out of view. This lets you collapse a section for as long as you want it out of the way, with a click or a key.
 
@@ -17,7 +17,7 @@ Today every section of the left pane (Agents, Worktrees, Docs, Plans, Code) alwa
 - **The menu's selection part has nothing on a collapsed heading**, as it is not a row. `-` and `Enter` do nothing there.
 - **Kept per project**, as the folds are: the view the daemon keeps (docs/TIDE_STATE.md) gains `collapsed`, the letters of the collapsed sections as `tide.section_order` names them. A project starts with every section open.
 - **Collapsing hides only the rows.** The section's data stays up to date from events, its tabs stay open, and its count keeps changing.
-- **Anything else that moves the cursor into a collapsed section expands it.** For example, a cursor saved inside a section that is now collapsed. The cursor is never on a hidden row.
+- **Anything else that leaves the cursor in a collapsed section puts it on that section's heading**, and the section stays collapsed. This happens when the filter is cleared with the cursor on a match there, and when a project's view comes back. The cursor is never on a hidden row. (The design first said such a section expands. That would undo a collapse the view kept, and the collapse the filter's clearing restores, so it was changed while building.)
 - **The filter (`/`) looks in collapsed sections too.** While it filters, a collapsed section with a match shows its matches under a `+` heading, and one with no match shows its heading only. When the filter is cleared, those sections are collapsed again. The filter is for finding something, and a match hidden by a collapse would look like no match.
 
 | Where | Click | `z` |
@@ -45,7 +45,7 @@ Today every section of the left pane (Agents, Worktrees, Docs, Plans, Code) alwa
 
 - Clicking a heading collapses and expands its section. This covers the pinned heading and a heading below it.
 - `z` on a row, on a collapsed heading, and through `C-q z`, with the cursor where the rule says.
-- Moving down and up stops on a collapsed heading, never on an open one.
+- Moving down and up stops on a collapsed heading, never on an open one. Expanding an empty section from its heading puts the cursor on the nearest row.
 - With the filter on, a collapsed section with a match shows it; once the filter is cleared it is collapsed again.
-- The collapsed sections are saved in the view and come back. A saved cursor inside a collapsed section expands that section.
+- The collapsed sections are saved in the view and come back.
 - The menu shows `z collapse section` or `z expand section`, and nothing in the selection part on a heading.

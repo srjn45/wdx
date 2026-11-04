@@ -124,7 +124,7 @@ func (m *Model) moveToDoc(i int) {
 	if i < 0 || i >= len(rows) {
 		return
 	}
-	l.section, l.docRow, l.docCursor = sectionDocs, i, rows[i].doc.Id
+	l.section, l.docRow, l.docCursor, l.onHeading = sectionDocs, i, rows[i].doc.Id, false
 }
 
 // openDoc opens the tab of the doc under the cursor, or goes to it, the focus
