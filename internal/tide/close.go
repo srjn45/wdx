@@ -24,6 +24,8 @@ func (c *confirmBox) verb() string {
 		return "close"
 	case runPlanKind:
 		return "run"
+	case cancelPlanKind:
+		return "cancel"
 	}
 	return "remove"
 }

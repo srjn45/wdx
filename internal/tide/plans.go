@@ -61,9 +61,10 @@ func isParent(p api.Plan) bool { return p.Plans != nil }
 
 // planRow is a row of the Plans section.
 type planRow struct {
-	plan  api.Plan
-	child bool // it is listed under its plan of plans
-	match bool // it matches the filter
+	plan     api.Plan
+	child    bool // it is listed under its plan of plans
+	match    bool // it matches the filter
+	needsYou bool // a task of it failed or did not land, or its agent waits for input
 }
 
 // planRows are the rows of the Plans section: each plan no other lists, and under a
@@ -90,7 +91,7 @@ func (m *Model) planRows() []planRow {
 				}
 				match := words != nil && matches(c.Name, words)
 				if words == nil || match || matches(p.Name, words) {
-					children = append(children, planRow{plan: c, child: true, match: match})
+					children = append(children, planRow{plan: c, child: true, match: match, needsYou: m.planNeedsYou(c)})
 				}
 			}
 		}
@@ -98,10 +99,21 @@ func (m *Model) planRows() []planRow {
 		if words != nil && !match && !slices.ContainsFunc(children, func(r planRow) bool { return r.match }) {
 			continue
 		}
-		rows = append(rows, planRow{plan: p, match: match})
+		rows = append(rows, planRow{plan: p, match: match, needsYou: m.planNeedsYou(p)})
 		rows = append(rows, children...)
 	}
 	return rows
+}
+
+// planNeedsYou reports whether the plan waits for the person: a task of it failed
+// or did not land, or the agent of one waits for input.
+func (m *Model) planNeedsYou(p api.Plan) bool {
+	if p.TasksFailed != nil && *p.TasksFailed > 0 {
+		return true
+	}
+	return slices.ContainsFunc(m.agents(), func(a api.Agent) bool {
+		return a.Task != nil && strings.EqualFold(a.Task.Plan, p.Name) && agentWaiting(a)
+	})
 }
 
 // plansChanged keeps the cursor on its plan, and closes the tabs of the plans gone.
@@ -293,9 +305,16 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
 	name := ansi.Truncate(r.plan.Name, room, "…")
 	room -= ansi.StringWidth(name)
-	size, state := " "+planProgress(r.plan), " "+string(r.plan.State)
+	size, state, need := " "+planProgress(r.plan), " "+string(r.plan.State), ""
+	if r.needsYou {
+		need = " needs you"
+	}
+	if ansi.StringWidth(need) > room {
+		need = "" // a word cut short would say another
+	}
+	room -= ansi.StringWidth(need)
 	if ansi.StringWidth(size) > room {
-		size = "" // a word cut short would say another
+		size = ""
 	}
 	room -= ansi.StringWidth(size)
 	if ansi.StringWidth(state) > room {
@@ -309,7 +328,7 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	if r.plan.State == api.PlanStateDraft {
 		state = st.Muted(state)
 	}
-	row := pointer + st.Muted(lead) + name + state + size + gap + end
+	row := pointer + st.Muted(lead) + name + state + size + st.Warning(need) + gap + end
 	if active {
 		return st.ActiveRow(row)
 	}
@@ -448,6 +467,12 @@ func (m *Model) planTabRows() []valueRow {
 				first = false
 				continue
 			}
+			if goingOn(c.Plan.State) && (t.State == api.PlanTaskStateFailed || t.State == api.PlanTaskStateLandFailed) {
+				r.verb, r.open = "answer it", m.askTask(c.Plan, t)
+				rows = append(rows, r)
+				first = false
+				continue
+			}
 			what := "the prompt"
 			if t.Summary != nil {
 				what = "the prompt and summary"
@@ -497,15 +522,33 @@ func (m *Model) openChild(name string) func() tea.Cmd {
 }
 
 // planTabState is the plan's state as its tab says it: a draft says how to run it,
-// a run where its tasks land.
+// a run where its tasks land, how many wait for the person, and its keys.
 func planTabState(c *api.PlanContent) string {
+	p := c.Plan
 	switch {
-	case c.Plan.State == api.PlanStateDraft && c.Plan.Tasks != nil:
+	case p.State == api.PlanStateDraft && p.Tasks != nil:
 		return "draft: r runs it"
-	case c.Run != nil:
-		return fmt.Sprintf("%s on %s, %s tasks done", c.Plan.State, c.Run.Branch, planProgress(c.Plan))
+	case c.Run == nil:
+		return string(p.State)
 	}
-	return string(c.Plan.State)
+	s := string(p.State)
+	closed := c.Run.PausedReason != nil && *c.Run.PausedReason == api.PlanRunPausedReasonProjectClosed
+	if closed {
+		s += " (project closed)"
+	}
+	s += fmt.Sprintf(" on %s, %s tasks done", c.Run.Branch, planProgress(p))
+	if p.TasksFailed != nil && *p.TasksFailed > 0 {
+		s += fmt.Sprintf(", %d failed", *p.TasksFailed)
+	}
+	switch {
+	case p.State == api.PlanStateRunning:
+		s += ": p pauses it, c cancels it"
+	case p.State == api.PlanStatePaused && !closed:
+		s += ": p resumes it, c cancels it"
+	case p.State == api.PlanStatePaused:
+		s += ": c cancels it"
+	}
+	return s
 }
 
 // taskLine is a task's state as its row says it, with its agent: a pending task
@@ -525,6 +568,9 @@ func taskLine(t api.PlanTask) string {
 	}
 	if t.Failure != nil {
 		s += ": " + strings.ReplaceAll(string(*t.Failure), "_", " ")
+	}
+	if t.CheckTerminal != nil {
+		s += " (terminal " + *t.CheckTerminal + ")"
 	}
 	if t.Agent != nil {
 		s += " · " + t.Agent.Name
@@ -547,21 +593,50 @@ func (m *Model) goToTaskAgent(id string) func() tea.Cmd {
 const runPlanKind = "plan run"
 
 // planKey takes a key the plan's tab has, and reports whether it took it: r runs
-// a draft, once confirmed.
+// a draft, once confirmed; p pauses a running plan and resumes a paused one; c
+// cancels one going on, once confirmed.
 func (m *Model) planKey(msg tea.Msg) (tea.Cmd, bool) {
 	k, ok := msg.(tea.KeyPressMsg)
-	if !ok || k.String() != "r" || m.values.edit != nil {
+	if !ok || m.values.edit != nil {
 		return nil, false
 	}
 	l := m.list()
 	v := l.planViews[l.active]
-	if v == nil || v.content == nil || v.content.Plan.State != api.PlanStateDraft || v.content.Plan.Tasks == nil {
+	if v == nil || v.content == nil {
 		return nil, false
 	}
-	p := v.content.Plan
-	m.confirm = &confirmBox{r: removal{kind: runPlanKind, id: p.Id, name: p.Name}}
-	m.log.Info("plan run asked", "plan_id", p.Id, "name", p.Name)
-	return nil, true
+	p, run := v.content.Plan, v.content.Run
+	switch k.String() {
+	case "r":
+		if p.State != api.PlanStateDraft || p.Tasks == nil {
+			return nil, false
+		}
+		m.confirm = &confirmBox{r: removal{kind: runPlanKind, id: p.Id, name: p.Name}}
+		m.log.Info("plan run asked", "plan_id", p.Id, "name", p.Name)
+		return nil, true
+	case "p":
+		closed := run != nil && run.PausedReason != nil && *run.PausedReason == api.PlanRunPausedReasonProjectClosed
+		if p.State == api.PlanStateRunning {
+			return m.pausePlan(p, true), true
+		}
+		if p.State == api.PlanStatePaused && !closed {
+			return m.pausePlan(p, false), true
+		}
+		return nil, false
+	case "c":
+		if !goingOn(p.State) {
+			return nil, false
+		}
+		m.confirm = &confirmBox{r: removal{kind: cancelPlanKind, id: p.Id, name: p.Name}}
+		m.log.Info("plan cancel asked", "plan_id", p.Id, "name", p.Name)
+		return nil, true
+	}
+	return nil, false
+}
+
+// goingOn reports whether a plan in state has a run to pause, cancel or answer.
+func goingOn(state api.PlanState) bool {
+	return state == api.PlanStateRunning || state == api.PlanStatePaused
 }
 
 // planRan is the answer to running a plan.

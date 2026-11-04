@@ -181,6 +181,9 @@ func (m *Model) confirmKey(name string) tea.Cmd {
 		if r.kind == runPlanKind {
 			return m.runPlan(r)
 		}
+		if r.kind == cancelPlanKind {
+			return m.cancelPlan(r)
+		}
 		m.log.Info("removal confirmed", "kind", r.kind, "name", r.name)
 		if r.worktree != nil {
 			return m.removeWorktree(r)
@@ -237,6 +240,9 @@ func (m *Model) confirmPopup() popup {
 	}
 	if c.r.kind == runPlanKind {
 		return m.runPlanPopup()
+	}
+	if c.r.kind == cancelPlanKind {
+		return m.cancelPlanPopup()
 	}
 	body := []string{"Remove " + st.Name(c.r.name) + "?"}
 	if c.r.worktree != nil {

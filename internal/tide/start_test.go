@@ -181,3 +181,55 @@ func TestRunPlan(t *testing.T) {
 		return ok && a.Name == "auth-a"
 	})
 }
+
+// TestAnswerPlan: a task whose agent was removed is retried from its tab, and the
+// plan is paused, resumed and cancelled with p and c.
+func TestAnswerPlan(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	c := h.client()
+	got, err := c.GetProject(ctx, "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, got.Project.Worktrees[0].Path, "commit", "-q", "--allow-empty", "-m", "init")
+	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    prompt: p\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RunPlan(ctx, "auth", "api", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	p := h.openShown(t)
+	p.until(t, "the plan listed", func(m *Model) bool { _, ok := m.planOf(created.Plan.Id); return ok })
+	p.m.openPlan(created.Plan, true)
+	p.m.layout.setFocus(agent)
+	p.until(t, "a running", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a") })
+	if _, err := c.DeleteAgent(ctx, "auth-a", "api", "", true); err != nil {
+		t.Fatal(err)
+	}
+	p.until(t, "a failed", func(m *Model) bool { return strings.Contains(text(m), "failed: agent ended") })
+	p.until(t, "the plan needing you", func(m *Model) bool { return strings.Contains(text(m), "needs you") })
+	p.keys("enter")
+	wantText(t, p.m, "Task a", "r retry")
+	p.keys("r")
+	p.until(t, "a running with a new agent", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a-2") })
+	if p.m.taskBox != nil {
+		t.Error("the box stayed once answered")
+	}
+
+	p.keys("p")
+	p.until(t, "paused", func(m *Model) bool { return strings.Contains(text(m), "p resumes it, c cancels it") })
+	p.keys("p")
+	p.until(t, "running again", func(m *Model) bool { return strings.Contains(text(m), "p pauses it, c cancels it") })
+	p.keys("c")
+	wantText(t, p.m, "Cancel auth?")
+	p.keys("y")
+	p.until(t, "cancelled", func(m *Model) bool { return strings.Contains(text(m), "cancelled on plan/auth") })
+	if p.m.confirm != nil {
+		t.Error("the confirmation stayed once answered")
+	}
+}

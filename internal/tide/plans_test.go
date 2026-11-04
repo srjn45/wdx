@@ -2,14 +2,21 @@ package tide
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/runtest"
 )
 
 func aPlan(id, name string, revision int64, tasks int) api.Plan {
@@ -401,3 +408,141 @@ func TestPlanRunShown(t *testing.T) {
 }
 
 func optionalInt(n int64) *int64 { return &n }
+
+// TestPlanNeedsYou: a plan with a task that failed, or whose agent waits for
+// input, says it needs the person.
+func TestPlanNeedsYou(t *testing.T) {
+	t.Parallel()
+	m := plansModel(t)
+	sso := aPlan("doc-sso", "sso", 2, 4)
+	sso.State, sso.TasksDone, sso.TasksFailed = api.PlanStateRunning, optionalInt(1), optionalInt(0)
+	plans := slices.Clone(m.plans())
+	plans[3] = sso
+	setPlans(m, plans...)
+	wantText(t, m, "sso running 1/4 ")
+	if strings.Contains(text(m), "needs you") {
+		t.Error("a plan going well needs the person")
+	}
+	working, waiting := api.AgentActivityWorking, api.AgentActivityWaiting
+	agents := []api.Agent{{Id: "agent-a", Name: "sso-api", Activity: &working, Task: &api.AgentTask{Plan: "SSO", Task: "api"}}}
+	m.following.project.Agents = &agents
+	if strings.Contains(text(m), "needs you") {
+		t.Error("a plan whose agent works needs the person")
+	}
+	agents[0].Activity = &waiting
+	wantText(t, m, "sso running 1/4 needs you")
+	m.following.project.Agents = nil
+	sso.TasksFailed = optionalInt(1)
+	plans[3] = sso
+	setPlans(m, plans...)
+	wantText(t, m, "sso running 1/4 needs you")
+}
+
+// TestPlanTabAnswers: a running plan's tab says its keys, and a failed or
+// land_failed task's Enter opens the box of its answers.
+func TestPlanTabAnswers(t *testing.T) {
+	t.Parallel()
+	m := plansModel(t)
+	sso := aPlan("doc-sso", "sso", 2, 2)
+	sso.State, sso.TasksDone, sso.TasksFailed = api.PlanStateRunning, optionalInt(0), optionalInt(2)
+	plans := slices.Clone(m.plans())
+	plans[3] = sso
+	setPlans(m, plans...)
+	m.moveToPlan(3)
+	keys(m, "enter")
+	ended, check := api.PlanTaskFailureAgentEnded, api.PlanTaskFailureCheck
+	checkName := "land-sso-1"
+	tasks := []api.PlanTask{
+		{Id: "api", After: []string{}, Prompt: "p", State: api.PlanTaskStateFailed, WaitingFor: []string{}, Failure: &ended},
+		{Id: "cli", After: []string{}, Prompt: "p", State: api.PlanTaskStateLandFailed, WaitingFor: []string{}, Failure: &check, CheckTerminal: &checkName},
+	}
+	content := api.PlanContent{Plan: sso, Revision: 2, Run: &api.PlanRun{State: api.PlanStateRunning, Branch: "plan/sso"},
+		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &tasks}}
+	loadPlan(m, "doc-sso", content)
+	wantText(t, m, "running on plan/sso, 0/2 tasks done, 2 failed: p pauses it, c cancels it",
+		"failed: agent ended", "land failed: check (terminal land-sso-1)")
+
+	keys(m, "alt+right")
+	wantText(t, m, "Enter answer it")
+	keys(m, "enter")
+	wantText(t, m, "Task api", "r retry", "f retry with a new agent", "s skip it")
+	if strings.Contains(text(m), "l land it again") || strings.Contains(text(m), "t show the check") {
+		t.Errorf("a failed task offers what only a land_failed one has:\n%s", text(m))
+	}
+	terms := []api.Terminal{{Id: "term-x", Name: "shell"}, {Id: "term-c", Name: checkName}}
+	m.following.project.Terminals = &terms
+	keys(m, "l", "t")
+	if m.taskBox == nil || m.taskBox.busy {
+		t.Fatalf("l or t did something for a failed task: %+v", m.taskBox)
+	}
+	retries := retriesTo(t, m)
+	for _, c := range []struct {
+		key   string
+		fresh bool
+	}{{"f", true}, {"r", false}} {
+		keys(m, c.key)
+		if got := <-retries; got != c.fresh {
+			t.Errorf("%s retried with fresh %v", c.key, got)
+		}
+		if m.taskBox != nil {
+			t.Errorf("%s left the box open", c.key)
+		}
+		keys(m, "enter")
+	}
+	keys(m, "esc")
+	if m.taskBox != nil {
+		t.Fatal("Esc kept the box")
+	}
+
+	keys(m, "down", "enter")
+	wantText(t, m, "Task cli", "l land it again", "t show the check's output")
+	keys(m, "t")
+	if got, ok := m.selectedTerminal(); m.taskBox != nil || !ok || got.Name != checkName || m.layout.focus != terminal {
+		t.Errorf("t: box %+v, terminal %+v, focus %v", m.taskBox, got, m.layout.focus)
+	}
+
+	m.Update(planAnswered{what: "retry", planID: "doc-sso", task: "api", err: errors.New("task api is running")})
+	if m.statusNotice != "task api is running" {
+		t.Errorf("a refusal: notice %q", m.statusNotice)
+	}
+
+	paused := sso
+	paused.State = api.PlanStatePaused
+	closedReason := api.PlanRunPausedReasonProjectClosed
+	content.Plan, content.Run = paused, &api.PlanRun{State: api.PlanStatePaused, Branch: "plan/sso", PausedReason: &closedReason}
+	loadPlan(m, "doc-sso", content)
+	wantText(t, m, "paused (project closed) on plan/sso, 0/2 tasks done, 2 failed: c cancels it")
+	m.layout.setFocus(agent)
+	if _, took := m.planKey(tea.KeyPressMsg{Code: 'p', Text: "p"}); took {
+		t.Error("p takes a plan its closed project pauses")
+	}
+	keys(m, "c")
+	wantText(t, m, "Cancel plan", "Cancel sso?", "y cancel it")
+	keys(m, "n")
+	if m.confirm != nil {
+		t.Fatal("still asking")
+	}
+}
+
+// retriesTo points m's client at a daemon of its own, which answers a task's
+// retry and sends whether it was fresh.
+func retriesTo(t *testing.T, m *Model) <-chan bool {
+	t.Helper()
+	socket := filepath.Join(runtest.Dir(t), "wdx.sock")
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retries := make(chan bool, 4)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body api.RetryPlanTask
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		retries <- body.Fresh != nil && *body.Fresh
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.PlanTaskResult{Result: api.ResultRetried, Task: api.PlanTask{Id: "api", After: []string{}, WaitingFor: []string{}, State: api.PlanTaskStatePending}})
+	})}
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(func() { srv.Close() })
+	m.client = client.New(client.Options{Socket: socket, DebugID: "dbg-0123456789ab"})
+	return retries
+}

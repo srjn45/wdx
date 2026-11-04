@@ -78,6 +78,7 @@ type Model struct {
 	editorKeys     map[string]string                                                    // what to type into an editor once its tab attaches, by terminal id
 	land           *landBox                                                             // what L asks, while it is open
 	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
+	taskBox        *taskAnswers                                                         // the answers to a plan's task that cannot go on, while open
 	terminalNotice string                                                               // why the last terminal request failed, until the next key
 	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
 	menu           bool                                                                 // the menu is open
@@ -293,6 +294,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.restarted(msg)
 	case planRan:
 		m.planRanMsg(msg)
+	case planAnswered:
+		m.planAnsweredMsg(msg)
 	case projectClosed:
 		return m, m.closed(msg)
 	case projectRemoved:
@@ -543,6 +546,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.confirm != nil {
 		return m.confirmKey(name)
+	}
+	if m.taskBox != nil {
+		return m.taskBoxKey(name)
 	}
 	if m.editorClose != nil {
 		m.editorCloseKey(name)

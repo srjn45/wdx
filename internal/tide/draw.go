@@ -69,6 +69,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.confirm != nil {
 		m.drawPopup(buf, m.confirmPopup())
 	}
+	if m.taskBox != nil {
+		m.drawPopup(buf, m.taskBoxPopup())
+	}
 	if m.commit != nil {
 		m.drawPopup(buf, m.commitPopup())
 	}
@@ -380,6 +383,9 @@ func (m *Model) statusLine() string {
 	case m.confirm != nil:
 		state = style.StatusPrefix
 		right = "confirm: y " + m.confirm.verb() + "  n or Esc keep"
+	case m.taskBox != nil:
+		state = style.StatusPrefix
+		right = "task: answer the box  Esc close"
 	case m.commit != nil:
 		state = style.StatusPrefix
 		right = "Enter send  Esc cancel"
