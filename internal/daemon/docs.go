@@ -36,6 +36,7 @@ func (s *server) CreateDoc(ctx context.Context, req api.CreateDocRequestObject) 
 	}
 	d, err := s.docs.Create(ctx, p.ID, doc.New{
 		Name:    b.Name,
+		Folder:  deref(b.Folder),
 		Format:  format,
 		Labels:  deref(b.Labels),
 		Status:  doc.Status(deref(b.Status)),
@@ -63,8 +64,8 @@ func (s *server) GetDoc(ctx context.Context, req api.GetDocRequestObject) (api.G
 
 func (s *server) UpdateDoc(ctx context.Context, req api.UpdateDocRequestObject) (api.UpdateDocResponseObject, error) {
 	b := req.Body
-	if b.Name != nil && (b.Status != nil || b.AddLabels != nil || b.RemoveLabels != nil) {
-		return nil, &requestError{err: errors.New("give name, or status and labels, not both")}
+	if b.Name != nil && (b.Folder != nil || b.Status != nil || b.AddLabels != nil || b.RemoveLabels != nil) {
+		return nil, &requestError{err: errors.New("give name, or folder, status and labels, not both")}
 	}
 	d, err := s.findDoc(ctx, req.Doc, req.Params.Project, req.Params.Dir)
 	if err != nil {
@@ -81,6 +82,7 @@ func (s *server) UpdateDoc(ctx context.Context, req api.UpdateDocRequestObject) 
 		}
 	} else {
 		d, changed, err = s.docs.Set(ctx, d.ID, doc.Change{
+			Folder:       b.Folder,
 			Status:       doc.Status(deref(b.Status)),
 			AddLabels:    deref(b.AddLabels),
 			RemoveLabels: deref(b.RemoveLabels),
@@ -197,6 +199,7 @@ func docView(d doc.Doc) api.Doc {
 		Name:        d.Name,
 		ProjectId:   d.ProjectID,
 		ProjectName: d.ProjectName,
+		Folder:      d.Folder,
 		Format:      d.Format,
 		Labels:      d.Labels,
 		Status:      api.DocStatus(d.Status),

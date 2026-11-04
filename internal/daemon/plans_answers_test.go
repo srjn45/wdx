@@ -472,6 +472,19 @@ func TestPlanRunAnswers(t *testing.T) {
 	want(r, problem, api.ResultUpdated, api.PlanStateRunning)
 	r, problem = update(parallel(4))
 	want(r, problem, api.ResultUnchanged, api.PlanStateRunning)
+	three := 3
+	_, problem = update(api.UpdatePlan{Parallel: &three, Folder: optional("a.b")})
+	wantProblem(t, problem, http.StatusUnprocessableEntity, api.ErrorCodeInvalidArgument)
+	r, problem = update(parallel(4))
+	want(r, problem, api.ResultUnchanged, api.PlanStateRunning) // the folder refused, parallel was not changed
+	r, problem = update(api.UpdatePlan{Folder: optional("/run")})
+	want(r, problem, api.ResultUpdated, api.PlanStateRunning)
+	if r != nil && r.Plan.Folder != "/run" {
+		t.Errorf("a running plan moved to %s", r.Plan.Folder)
+	}
+	five := 5
+	r, problem = update(api.UpdatePlan{Parallel: &five, Folder: optional("/run")})
+	want(r, problem, api.ResultUpdated, api.PlanStateRunning) // parallel changed, the folder did not
 	r, problem = resume()
 	want(r, problem, api.ResultUnchanged, api.PlanStateRunning)
 	r, problem = pause()

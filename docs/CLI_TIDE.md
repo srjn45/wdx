@@ -118,6 +118,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Read an older revision, history | `doc get --revision`, `doc history` | none | By design | AIs write docs, and tide only shows them for now |
 | Create, update, status and labels, rename, remove | `doc create`, `update`, `set`, `rename`, `remove` | none | By design | As above |
 | Write the docs into the repository | `doc sync-to-git`, `docs.git_path` | the settings tab, for the setting | By design | Writing them once is for a script; the setting is in both |
+| A doc's or plan's folder | `--folder` on `doc create`, `plan create`; `doc set --folder`, `plan set --folder`; a `FOLDER` column in `doc list` and `plan list` | none yet | Later (tide) | Step 2 of docs/FOLDERS.md: the Docs and Plans sections as a tree, and `m` to move one. tide creates no doc, so it will set a folder only by moving one; moving a whole folder at once is on neither |
 
 ## Plans
 

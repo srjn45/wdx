@@ -18,6 +18,7 @@ type Plan struct {
 	ProjectID   string
 	ProjectName string
 	Name        string
+	Folder      string // the folder tide shows it in, its family's; "/" for the top
 	State       string // its run's, shown paused while its project is closed; StateDraft for none
 	// PausedReason says why a paused plan is: PausedByPerson, or
 	// PausedProjectClosed for one running whose project is closed; "" otherwise.

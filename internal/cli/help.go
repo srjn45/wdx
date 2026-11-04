@@ -868,7 +868,9 @@ dropped.
   A big plan broken into smaller ones, each landing as a PR of its own. It
   lists plans of tasks the project already has, never plans of plans, and a
   plan has one parent at most. A plan a plan of plans lists cannot be renamed
-  or removed until it is taken out.
+  or removed until it is taken out. It shares its parent's folder, where tide
+  shows them: those it lists move to the parent's when saved, and plan set
+  --folder on any of them moves them all.
 ` + indent(planPlansExample) + `
 ` + st.Heading("Saving one") + `
   Send the YAML on stdin, with no file to write:

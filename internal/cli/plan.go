@@ -126,9 +126,9 @@ func problemLines(p api.Problem, err error) []string {
 
 func newPlanCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, path string
+	var name, path, folder string
 	cmd := &cobra.Command{
-		Use:   "create --name <name> (--path <file> | --path -) [--project-id <id> | --project-name <name>]",
+		Use:   "create --name <name> (--path <file> | --path -) [--folder <folder>] [--project-id <id> | --project-name <name>]",
 		Short: "Create a plan from its YAML",
 		Long: "The YAML is the file --path names, or stdin with --path -, which an AI uses\n" +
 			"to send it with no file to write; " + identity.Name + " help plans says how to write it.\n" +
@@ -136,16 +136,20 @@ func newPlanCreateCmd() *cobra.Command {
 			"have letters, numbers and - only, at most 95, and are unique among a\n" +
 			"project's plans whatever their case; a doc may have the same name.\n\n" +
 			"An after another path already covers is dropped, and said so: the plan is\n" +
-			"stored without it.",
+			"stored without it.\n\n" +
+			"Its folder, / by default, is only where tide shows it, cleaned and checked as\n" +
+			"a doc's (" + identity.Name + " doc --help). A plan of plans and the plans it lists share\n" +
+			"one: those it lists move to its folder, and moved names them.",
 		Example: examples(
 			"From a file, in the project you are in", identity.Name+" plan create --name sso --path sso.yaml",
+			"In a folder", identity.Name+" plan create --name sso --path sso.yaml --folder /hub",
 			"From stdin, as JSON", identity.Name+" plan create --project-name app --name sso --path - --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not created",
-			outputNote: "The plan, at revision 1, and each after dropped.\n" +
-				`With --json: {"result": "created", "plan": {...}, "dropped": [{"entry": ..., "after": ..., "via": ...}, ...]}`,
+			outputNote: "The plan, at revision 1, each after dropped, and the plans it lists moved to its folder.\n" +
+				`With --json: {"result": "created", "plan": {...}, "dropped": [{"entry": ..., "after": ..., "via": ...}, ...], "moved": [...]}`,
 			resultList: string(api.ResultCreated),
 			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPlan, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
@@ -159,7 +163,11 @@ func newPlanCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r, err := clientOf(cmd).CreatePlan(cmd.Context(), api.CreatePlan{Project: optional(project), Dir: optional(dir), Name: name, Content: content})
+			body := api.CreatePlan{Project: optional(project), Dir: optional(dir), Name: name, Content: content}
+			if cmd.Flags().Changed("folder") {
+				body.Folder = &folder
+			}
+			r, err := clientOf(cmd).CreatePlan(cmd.Context(), body)
 			switch problemCode(err) {
 			case api.ErrorCodeNameTaken:
 				return &hinted{err, "choose another --name, or change the plan with " + identity.Name + " plan update"}
@@ -175,6 +183,7 @@ func newPlanCreateCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the plan")
 	cmd.Flags().StringVar(&path, "path", "", "`file` holding the plan's YAML, - for stdin")
+	addFolderFlag(cmd, &folder, "`folder` tide shows it in, such as /hub (default: /, the top)")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("path")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
@@ -261,8 +270,8 @@ func newPlanUpdateCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not updated",
-			outputNote: "The plan's revision now, and each after dropped.\n" +
-				`With --json: {"result": "updated", "plan": {...}, "dropped": [...]}`,
+			outputNote: "The plan's revision now, each after dropped, and the plans it lists moved to its folder.\n" +
+				`With --json: {"result": "updated", "plan": {...}, "dropped": [...], "moved": [...]}`,
 			resultList: annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
 			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidPlan, api.ErrorCodeNotFound, api.ErrorCodePlanChanged,
 				api.ErrorCodePlanStarted, api.ErrorCodeDaemonUnavailable),
@@ -329,7 +338,7 @@ func newPlanListCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The plans by name, without their YAML; an empty list when there are none.\n" + `With --json: {"plans": [...]}`,
+			outputNote: "The plans by folder, then name, without their YAML; an empty list when there are none.\n" + `With --json: {"plans": [...]}`,
 			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -603,6 +612,15 @@ func planSize(p api.Plan) string {
 }
 
 // droppedLines writes a line for each after reduction dropped.
+// nameList is names joined for a sentence, each styled as a name.
+func nameList(st style.Style, names []string) string {
+	styled := make([]string, len(names))
+	for i, n := range names {
+		styled[i] = st.Name(n)
+	}
+	return strings.Join(styled, ", ")
+}
+
 func droppedLines(w io.Writer, st style.Style, dropped *[]api.PlanDropped) {
 	if dropped == nil {
 		return
@@ -626,6 +644,9 @@ func (r planSaved) text(w io.Writer, st style.Style) {
 		fmt.Fprintf(w, "%s is at revision %s, with %s\n", st.Name(p.Name), st.Success(strconv.FormatInt(p.Revision, 10)), planSize(p))
 	}
 	droppedLines(w, st, r.Dropped)
+	if r.Moved != nil && len(*r.Moved) > 0 {
+		fmt.Fprintf(w, "%s %s to %s, as it lists them\n", st.Success("moved"), nameList(st, *r.Moved), st.Name(p.Folder))
+	}
 	if r.Result == api.ResultCreated {
 		planFields(w, st, p)
 	}
@@ -634,6 +655,7 @@ func (r planSaved) text(w io.Writer, st style.Style) {
 func planFields(w io.Writer, st style.Style, p api.Plan) {
 	field := fieldPrinter(w, st, 8)
 	field("project", p.ProjectName)
+	field("folder", p.Folder)
 	field("state", planStateText(st, p.State))
 	field("revision", strconv.FormatInt(p.Revision, 10))
 	if p.Parent != nil {
@@ -755,9 +777,9 @@ func (l planList) text(w io.Writer, st style.Style) {
 		return
 	}
 	var table style.Table
-	table.Row(st.Heading("NAME"), st.Heading("STATE"), st.Heading("TASKS"), st.Heading("REVISION"), st.Heading("UPDATED"))
+	table.Row(st.Heading("FOLDER"), st.Heading("NAME"), st.Heading("STATE"), st.Heading("TASKS"), st.Heading("REVISION"), st.Heading("UPDATED"))
 	for _, p := range l.Plans {
-		table.Row(st.Name(p.Name), planStateText(st, p.State), planProgress(p)+planFailed(st, p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
+		table.Row(p.Folder, st.Name(p.Name), planStateText(st, p.State), planProgress(p)+planFailed(st, p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
 	}
 	table.Write(w)
 }

@@ -1463,7 +1463,11 @@ paths:
         most 100, unique in the project ignoring case. A format is A-Z, a-z
         and 0-9, at most 10, or empty. Labels are a-z, 0-9, "_" and "-", at
         most 50 each and 20 in all. Content is UTF-8 with no NUL, at most
-        2 MiB. Docs work in a closed project too.
+        2 MiB. A folder is cleaned (whitespace dropped, lowercased, a leading
+        "/" added, every run of "/" made one and a trailing one dropped), then
+        must be a-z, 0-9, "_", "-" and "/", or it is invalid_argument; it is
+        only a label tide shows the docs under. Docs work in a closed project
+        too.
 
         Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
         the doc under details.doc), not_found, usage.
@@ -1534,10 +1538,11 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     patch:
       operationId: updateDoc
-      summary: Change a doc's status or labels, or rename it
+      summary: Change a doc's folder, status or labels, or rename it
       description: |
-        Never makes a revision and needs no base. name excludes status,
-        add_labels and remove_labels; asking for nothing is a usage error. A
+        Never makes a revision and needs no base. name excludes folder,
+        status, add_labels and remove_labels; asking for nothing is a usage
+        error. A
         label in both add_labels and remove_labels is invalid_argument;
         removing a label the doc does not have is not an error. Result
         updated, or unchanged when nothing differs.
@@ -1645,7 +1650,9 @@ paths:
         problem in it is reported at once, as invalid_plan with
         details.problems. Every after another path already covers is
         dropped, rewriting the YAML; dropped lists them. A plan of plans
-        makes each plan it lists its child.
+        makes each plan it lists its child, and gives it its folder; moved
+        names those whose folder changed. A folder is cleaned and checked as
+        createDoc's.
 
         Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
         name_taken (with the plan under details.plan), not_found, usage.
@@ -1685,11 +1692,17 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     patch:
       operationId: updatePlan
-      summary: Rename a draft plan, or change how many tasks a run runs at once
+      summary: Rename a draft plan, move it to a folder, or change how many tasks a run runs at once
       description: |
-        Exactly one of name and parallel. Result updated, or unchanged when
-        the name is the plan's, case and all, or the run's parallel is
-        already that.
+        name, or folder, parallel or both; asking for nothing is a usage
+        error. Result updated, or unchanged when the name is the plan's, case
+        and all, the folder is already its, and the run's parallel is already
+        that.
+
+        folder: in any state, cleaned and checked as createDoc's. A plan of
+        plans and the plans it lists move together, whichever of them is
+        named; moved names the others whose folder changed. With parallel,
+        a plan not running changes neither.
 
         name: a plan a plan of plans lists cannot be renamed, plan_in_use,
         with the parent under details.parent; nor can a plan that has run,
@@ -1699,9 +1712,9 @@ paths:
         otherwise, with the plan under details.plan. The runner starts more
         at once when it rises; tasks at work go on when it falls.
 
-        Errors: invalid_name, invalid_path, name_taken (with the plan under
-        details.plan), not_found, plan_in_use, plan_not_running,
-        plan_started, usage.
+        Errors: invalid_argument, invalid_name, invalid_path, name_taken
+        (with the plan under details.plan), not_found, plan_in_use,
+        plan_not_running, plan_started, usage.
       requestBody:
         required: true
         content:
@@ -1747,8 +1760,8 @@ paths:
         unchanged. When base is not the latest, plan_changed, with the plan
         under details.plan: read it again, apply the change and write it
         with the new base. A plan of plans' children follow its new
-        revision. A plan that has run cannot be changed: plan_started, with
-        the plan under details.plan.
+        revision and take its folder, as moved says. A plan that has run
+        cannot be changed: plan_started, with the plan under details.plan.
 
         Errors: invalid_argument, invalid_path, invalid_plan, not_found,
         plan_changed, plan_started, usage.
@@ -3092,12 +3105,13 @@ components:
 
     Doc:
       type: object
-      required: [id, name, project_id, project_name, format, labels, status, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, folder, format, labels, status, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
+        folder: { type: string, description: "The folder tide shows it in, as /hub/initial; / for the top (wdx help docs)." }
         format: { type: string, description: "Its file extension, as md; empty for none." }
         labels:
           type: array
@@ -3131,6 +3145,7 @@ components:
           nullable: true
           description: An absolute path in one of the project's worktrees; excludes project.
         name: { type: string, description: See createDoc. }
+        folder: { type: string, default: /, description: See createDoc. }
         format: { type: string, default: md, description: Its file extension; see createDoc. }
         labels:
           type: array
@@ -3152,6 +3167,7 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, description: Its new name; excludes the others. }
+        folder: { type: string, description: Its new folder; see createDoc. }
         status: { $ref: "#/components/schemas/DocStatus" }
         add_labels:
           type: array
@@ -3247,12 +3263,13 @@ components:
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, state, tasks, tasks_done, tasks_failed, plans, parent, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, parent, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
+        folder: { type: string, description: "The folder tide shows it in, as /hub/initial; / for the top. A plan of plans and the plans it lists always have the same one (wdx help plans)." }
         state: { $ref: "#/components/schemas/PlanState" }
         tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
         tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft. }
@@ -3416,14 +3433,16 @@ components:
           nullable: true
           description: An absolute path in one of the project's worktrees; excludes project.
         name: { type: string, description: See createPlan. }
+        folder: { type: string, default: /, description: See createPlan. }
         content: { type: string, description: The plan's YAML. }
 
     UpdatePlan:
       type: object
       additionalProperties: false
-      description: Exactly one of name and parallel.
+      description: name, or folder, parallel or both.
       properties:
-        name: { type: string, description: A draft's new name. }
+        name: { type: string, description: A draft's new name; excludes the others. }
+        folder: { type: string, description: Its new folder, and its family's; see updatePlan. }
         parallel: { type: integer, minimum: 1, maximum: 20, description: The most tasks its run runs at once. }
 
     RetryPlanTask:
@@ -3460,6 +3479,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/PlanDropped" }
           description: The afters reduction took out, empty when none; set by createPlan and updatePlanContent only.
+        moved:
+          type: array
+          items: { type: string }
+          description: The other plans whose folder changed with this one's, as a plan of plans and its plans share one, empty when none; set by createPlan, updatePlanContent and updatePlan only.
 
     ErrorCode:
       type: string

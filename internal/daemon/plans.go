@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
@@ -31,12 +32,12 @@ func (s *server) CreatePlan(ctx context.Context, req api.CreatePlanRequestObject
 	if err != nil {
 		return nil, err
 	}
-	saved, err := s.plans.Create(ctx, p.ID, b.Name, []byte(b.Content))
+	saved, err := s.plans.Create(ctx, p.ID, b.Name, deref(b.Folder), []byte(b.Content))
 	if err != nil {
 		return nil, err
 	}
 	dropped := droppedViews(saved.Dropped)
-	return api.CreatePlan201JSONResponse{Result: api.ResultCreated, Plan: planView(saved.Plan), Dropped: &dropped}, nil
+	return api.CreatePlan201JSONResponse{Result: api.ResultCreated, Plan: planView(saved.Plan), Dropped: &dropped, Moved: &saved.Moved}, nil
 }
 
 func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api.GetPlanResponseObject, error) {
@@ -240,32 +241,48 @@ func (s *server) agentNames(ctx context.Context, run *plan.Run) (map[string]stri
 }
 
 func (s *server) UpdatePlan(ctx context.Context, req api.UpdatePlanRequestObject) (api.UpdatePlanResponseObject, error) {
+	name, folder, parallel := req.Body.Name, req.Body.Folder, req.Body.Parallel
+	if (name == nil) == (folder == nil && parallel == nil) {
+		return nil, &requestError{err: errors.New("give name, or folder, parallel or both")}
+	}
 	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
 	if err != nil {
 		return nil, err
 	}
-	name, parallel := req.Body.Name, req.Body.Parallel
-	if (name == nil) == (parallel == nil) {
-		return nil, &requestError{err: errors.New("give exactly one of name and parallel")}
+	if name != nil {
+		// Renaming to the name it has, case and all, writes nothing.
+		if *name == p.Name {
+			return api.UpdatePlan200JSONResponse{Result: api.ResultUnchanged, Plan: planView(p), Moved: &[]string{}}, nil
+		}
+		if p, err = s.plans.Rename(ctx, p.ID, *name); err != nil {
+			return nil, err
+		}
+		return api.UpdatePlan200JSONResponse{Result: api.ResultUpdated, Plan: planView(p), Moved: &[]string{}}, nil
 	}
+	// The folder is checked before parallel changes anything, and parallel is set
+	// before the folder, so that a request refused changes neither.
+	if folder != nil {
+		if _, err := doc.CleanFolder(*folder); err != nil {
+			return nil, err
+		}
+	}
+	changed, moved := false, []string{}
 	if parallel != nil {
-		changed, err := s.runner.SetParallel(ctx, p.ID, *parallel)
-		if err != nil {
+		if changed, err = s.runner.SetParallel(ctx, p.ID, *parallel); err != nil {
 			return nil, err
 		}
-		if p, err = s.plans.Get(ctx, p.ID); err != nil {
+	}
+	if folder != nil {
+		var folderChanged bool
+		if _, folderChanged, moved, err = s.plans.Move(ctx, p.ID, *folder); err != nil {
 			return nil, err
 		}
-		return api.UpdatePlan200JSONResponse{Result: changedResult(changed, api.ResultUpdated), Plan: planView(p)}, nil
+		changed = changed || folderChanged
 	}
-	// Renaming to the name it has, case and all, writes nothing.
-	if *name == p.Name {
-		return api.UpdatePlan200JSONResponse{Result: api.ResultUnchanged, Plan: planView(p)}, nil
-	}
-	if p, err = s.plans.Rename(ctx, p.ID, *name); err != nil {
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
 		return nil, err
 	}
-	return api.UpdatePlan200JSONResponse{Result: api.ResultUpdated, Plan: planView(p)}, nil
+	return api.UpdatePlan200JSONResponse{Result: changedResult(changed, api.ResultUpdated), Plan: planView(p), Moved: &moved}, nil
 }
 
 func (s *server) UpdatePlanContent(ctx context.Context, req api.UpdatePlanContentRequestObject) (api.UpdatePlanContentResponseObject, error) {
@@ -282,7 +299,7 @@ func (s *server) UpdatePlanContent(ctx context.Context, req api.UpdatePlanConten
 		result = api.ResultUpdated
 	}
 	dropped := droppedViews(saved.Dropped)
-	return api.UpdatePlanContent200JSONResponse{Result: result, Plan: planView(saved.Plan), Dropped: &dropped}, nil
+	return api.UpdatePlanContent200JSONResponse{Result: result, Plan: planView(saved.Plan), Dropped: &dropped, Moved: &saved.Moved}, nil
 }
 
 func (s *server) ListPlanRevisions(ctx context.Context, req api.ListPlanRevisionsRequestObject) (api.ListPlanRevisionsResponseObject, error) {
@@ -366,6 +383,7 @@ func planView(p plan.Plan) api.Plan {
 		Name:        p.Name,
 		ProjectId:   p.ProjectID,
 		ProjectName: p.ProjectName,
+		Folder:      p.Folder,
 		State:       api.PlanState(p.State),
 		Revision:    int64(p.Revision),
 		Size:        int64(p.Size),

@@ -43,6 +43,15 @@ func TestPlanRunAnswered(t *testing.T) {
 	wantHint(t, v, "only a running or paused plan takes this: wdx plan status says what it is")
 	v, exit = run("set", "--name", "sso", "--parallel", "2")
 	wantError(t, v, exit, api.ErrorCodePlanNotRunning, api.ExitRejected)
+	v, exit = run("set", "--name", "sso", "--folder", "/x")
+	want(v, exit, "updated", api.PlanStateDraft)
+	if v.Plan != nil && v.Plan.Folder != "/x" {
+		t.Errorf("a draft moved to %s", v.Plan.Folder)
+	}
+	v, exit = run("set", "--name", "sso", "--folder", "a.b")
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
+	v, exit = run("set", "--name", "sso")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	v, exit = run("set", "--name", "sso", "--parallel", "21")
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
 	if !strings.Contains(v.Detail, "--parallel 21 is not from 1 to 20") {

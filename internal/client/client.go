@@ -975,10 +975,10 @@ func (c *Client) FinishPlanTask(ctx context.Context, ref, project, dir, task, su
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-// SetPlanParallel sets the most tasks the run of the plan ref names, as GetPlan
-// does, runs at once.
-func (c *Client) SetPlanParallel(ctx context.Context, ref, project, dir string, parallel int) (api.PlanResult, error) {
-	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, api.UpdatePlan{Parallel: &parallel})
+// SetPlan changes the folder, the run's parallel or both of the plan ref names, as
+// GetPlan does: body has no name, which RenamePlan sends.
+func (c *Client) SetPlan(ctx context.Context, ref, project, dir string, body api.UpdatePlan) (api.PlanResult, error) {
+	r, err := c.api.UpdatePlanWithResponse(ctx, ref, &api.UpdatePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, body)
 	if err != nil {
 		return api.PlanResult{}, err
 	}

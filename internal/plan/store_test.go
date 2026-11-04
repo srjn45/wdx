@@ -45,7 +45,7 @@ func tasks(ids ...string) string {
 
 func (f fixture) create(t *testing.T, name, content string) Plan {
 	t.Helper()
-	s, err := f.store.Create(context.Background(), f.project, name, []byte(content))
+	s, err := f.store.Create(context.Background(), f.project, name, "", []byte(content))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestCreate(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	content := "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n  - id: c\n    after: [a, b]\n    prompt: p\n"
-	s, err := f.store.Create(ctx, f.project, "auth", []byte(content))
+	s, err := f.store.Create(ctx, f.project, "auth", "", []byte(content))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,10 +101,10 @@ func TestCreate(t *testing.T) {
 	}
 
 	var taken *NameTakenError
-	if _, err := f.store.Create(ctx, f.project, "AUTH", []byte(tasks("a"))); !errors.As(err, &taken) || taken.Plan.ID != p.ID {
+	if _, err := f.store.Create(ctx, f.project, "AUTH", "", []byte(tasks("a"))); !errors.As(err, &taken) || taken.Plan.ID != p.ID {
 		t.Errorf("a name taken: %v", err)
 	}
-	if got := problems(t, func() error { _, err := f.store.Create(ctx, f.project, "x", []byte("goal: g\n")); return err }()); len(got) != 1 {
+	if got := problems(t, func() error { _, err := f.store.Create(ctx, f.project, "x", "", []byte("goal: g\n")); return err }()); len(got) != 1 {
 		t.Errorf("not a plan: %v", got)
 	}
 	if list, err := f.store.List(ctx, f.project); err != nil || len(list) != 1 {
@@ -133,7 +133,7 @@ func TestPlansOfPlans(t *testing.T) {
 
 	f.create(t, "other", tasks("z"))
 	got := problems(t, func() error {
-		_, err := f.store.Create(ctx, f.project, "big", []byte("goal: g\nplans:\n  - id: auth-a\n  - id: auth\n  - id: nowhere\n  - id: big\n  - id: other\n"))
+		_, err := f.store.Create(ctx, f.project, "big", "", []byte("goal: g\nplans:\n  - id: auth-a\n  - id: auth\n  - id: nowhere\n  - id: big\n  - id: other\n"))
 		return err
 	}())
 	want := []string{
@@ -231,5 +231,67 @@ func TestRemoveForgets(t *testing.T) {
 	f.store.RemoveProjectCopies(ctx, f.project, "wdx")
 	if len(f.store.summaries) != 0 {
 		t.Errorf("kept after its project's removal: %+v", f.store.summaries)
+	}
+}
+
+// TestFolders: a plan of plans and the plans it lists share one folder, whichever
+// of them moves, and each answer names the others moved.
+func TestFolders(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	folderOf := func(name string) string { t.Helper(); return f.get(t, name).Folder }
+	if s, err := f.store.Create(ctx, f.project, "a", "/x", []byte(tasks("t"))); err != nil || s.Plan.Folder != "/x" || len(s.Moved) != 0 {
+		t.Fatalf("created in a folder: %+v, %v", s, err)
+	}
+	f.create(t, "b", tasks("t"))
+	f.create(t, "c", tasks("t"))
+	if _, err := f.store.Create(ctx, f.project, "bad", "a.b", []byte(tasks("t"))); err == nil {
+		t.Error("created in a folder with a dot")
+	}
+
+	s, err := f.store.Create(ctx, f.project, "big", "Hub", []byte("goal: g\nplans:\n  - id: a\n  - id: b\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Plan.Folder != "/hub" || !reflect.DeepEqual(s.Moved, []string{"a", "b"}) || folderOf("a") != "/hub" || folderOf("b") != "/hub" {
+		t.Errorf("a plan of plans created in /hub: %+v, moved %q; a in %s, b in %s", s.Plan, s.Moved, folderOf("a"), folderOf("b"))
+	}
+
+	p, changed, moved, err := f.store.Move(ctx, f.get(t, "a").ID, "/y")
+	if err != nil || !changed || p.Folder != "/y" || !reflect.DeepEqual(moved, []string{"b", "big"}) {
+		t.Errorf("moving a plan it lists: %+v, changed %v, moved %q, %v", p, changed, moved, err)
+	}
+	if _, changed, moved, err := f.store.Move(ctx, f.get(t, "big").ID, "/y/"); err != nil || changed || moved == nil || len(moved) != 0 {
+		t.Errorf("moving to its folder: changed %v, moved %#v, %v", changed, moved, err)
+	}
+
+	big := f.get(t, "big")
+	s, err = f.store.Update(ctx, big.ID, big.Revision, []byte("goal: g\nplans:\n  - id: a\n  - id: c\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(s.Moved, []string{"c"}) || folderOf("c") != "/y" || folderOf("b") != "/y" {
+		t.Errorf("an update listing c: moved %q; c in %s, b let go in %s", s.Moved, folderOf("c"), folderOf("b"))
+	}
+	big = f.get(t, "big")
+	if s, err := f.store.Update(ctx, big.ID, big.Revision, []byte("goal: g\nplans:\n  - id: a\n  - id: c\n")); err != nil || s.Changed || len(s.Moved) != 0 {
+		t.Errorf("an update changing nothing: %+v, %v", s, err)
+	}
+	// Plans from before folders may be apart; content that does not change moves
+	// none of them, and says so.
+	if _, err := f.db.Exec("UPDATE docs SET folder = '/q' WHERE id = ?", f.get(t, "c").ID); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := f.store.Update(ctx, big.ID, big.Revision, []byte("goal: g\nplans:\n  - id: a\n  - id: c\n")); err != nil || len(s.Moved) != 0 || folderOf("c") != "/q" {
+		t.Errorf("an update changing nothing: moved %q, c in %s, %v", s.Moved, folderOf("c"), err)
+	}
+
+	f.create(t, "d", tasks("t"))
+	if _, _, _, err := f.store.Move(ctx, f.get(t, "d").ID, "/q"); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := f.store.Create(ctx, f.project, "other", "Q/", []byte("goal: g\nplans:\n  - id: d\n")); err != nil || len(s.Moved) != 0 {
+		t.Errorf("a plan of plans created in the folder of the plan it lists, spelled otherwise: moved %q, %v", s.Moved, err)
 	}
 }

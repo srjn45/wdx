@@ -307,7 +307,7 @@ func TestAPlanThatHasRunIsKept(t *testing.T) {
 	refused("rename", err)
 	_, err = f.store.Remove(ctx, p.ID)
 	refused("remove", err)
-	_, err = f.store.Create(ctx, f.project, "big", []byte("goal: g\nplans:\n  - id: auth\n"))
+	_, err = f.store.Create(ctx, f.project, "big", "", []byte("goal: g\nplans:\n  - id: auth\n"))
 	refused("listed by a new parent", err)
 	if got := f.get(t, "auth"); got.Revision != 1 || got.Parent != "" {
 		t.Errorf("changed: %+v", got)

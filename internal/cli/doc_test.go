@@ -62,10 +62,15 @@ func TestDocCreate(t *testing.T) {
 	if exit != api.ExitOK || v.Doc.ProjectName != "lib" || v.Doc.Format != "md" || v.Doc.Size != 4 || v.Doc.Status != api.DocStatusReview {
 		t.Fatalf("from stdin in another project: exit %d, %+v", exit, v.Doc)
 	}
-	v, exit = wdxJSONWith(t, home, in(app), "doc", "create", "--name", "empty", "--format", "")
-	if exit != api.ExitOK || v.Doc.Size != 0 || v.Doc.Format != "" {
-		t.Fatalf("empty, with no format: exit %d, %+v", exit, v.Doc)
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "create", "--name", "empty", "--format", "", "--folder", "Hub/Initial/")
+	if exit != api.ExitOK || v.Doc.Size != 0 || v.Doc.Format != "" || v.Doc.Folder != "/hub/initial" {
+		t.Fatalf("empty, with no format, in a folder: exit %d, %+v", exit, v.Doc)
 	}
+	if out := wdxWith(t, home, in(app), "doc", "list"); !hasRow(out.stdout, "/hub/initial", "empty") {
+		t.Errorf("the list has no row of empty in its folder: %+v", out)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "create", "--name", "bad", "--folder", "a.b")
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 
 	v, exit = wdxJSONWith(t, home, in(app), "doc", "create", "--path", file)
 	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
@@ -239,6 +244,16 @@ func TestDocSet(t *testing.T) {
 	if exit != api.ExitOK || v.Result != "unchanged" {
 		t.Fatalf("setting what it has: exit %d, %+v", exit, v)
 	}
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "set", "--name", "auth", "--folder", "Hub")
+	if exit != api.ExitOK || v.Result != "updated" || v.Doc.Folder != "/hub" || v.Doc.Status != api.DocStatusReview {
+		t.Fatalf("moved: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "set", "--name", "auth", "--folder", "/hub/")
+	if exit != api.ExitOK || v.Result != "unchanged" {
+		t.Fatalf("moved to its folder: exit %d, %+v", exit, v)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "doc", "set", "--name", "auth", "--folder", "a.b")
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "doc", "set", "--name", "auth", "--add-labels", "RFC")
 	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "doc", "set", "--name", "auth", "--status", "done")
@@ -317,13 +332,13 @@ func TestDocText(t *testing.T) {
 		stderr string
 	}{
 		{[]string{"doc", "create", "--path", file, "--labels", "rfc", "--status", "approved"}, "doc auth created\n", ""},
-		{[]string{"doc", "list"}, "NAME", ""},
+		{[]string{"doc", "list"}, "FOLDER  NAME", ""},
 		{[]string{"doc", "update", "--name", "auth", "--path", writeDocFile(t, "new.md", "two"), "--base", "1"}, "auth is at revision 2\n", "auth was approved; it is wip again\n"},
 		{[]string{"doc", "update", "--name", "auth", "--path", writeDocFile(t, "same.md", "two"), "--base", "2"}, "auth is unchanged at revision 2\n", ""},
 		{[]string{"doc", "history", "--name", "auth"}, "REVISION", ""},
 		{[]string{"doc", "get", "--name", "auth"}, "two", ""},
 		{[]string{"doc", "get", "--name", "auth", "--out", filepath.Join(t.TempDir(), "a.md")}, "revision 2 of auth written to ", ""},
-		{[]string{"doc", "set", "--name", "auth", "--status", "review", "--remove-labels", "rfc"}, "doc auth is review, with no labels\n", ""},
+		{[]string{"doc", "set", "--name", "auth", "--status", "review", "--remove-labels", "rfc"}, "doc auth is review, in /, with no labels\n", ""},
 		{[]string{"doc", "rename", "--name", "auth", "--new-name", "auth-rfc"}, "doc auth renamed to auth-rfc\n", ""},
 		{[]string{"doc", "remove", "--name", "auth-rfc", "--yes"}, "doc auth-rfc removed\n", ""},
 		{[]string{"doc", "list"}, "no docs\n", ""},

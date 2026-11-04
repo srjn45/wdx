@@ -489,8 +489,9 @@ type jsonStack struct {
 }
 
 type jsonOutput struct {
-	WorktreeCreated *bool  `json:"worktree_created"`
-	Result          string `json:"result"`
+	WorktreeCreated *bool    `json:"worktree_created"`
+	Result          string   `json:"result"`
+	Moved           []string `json:"moved"`
 	Dropped         []struct {
 		Path  string `json:"path"`  // a worktree project open dropped
 		Entry string `json:"entry"` // an after a plan's reduction dropped

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -84,8 +85,7 @@ func newPlanResumeCmd() *cobra.Command {
 // planAnswered is a plan paused, resumed, cancelled or given a new parallel.
 type planAnswered struct {
 	api.PlanResult
-	verb     string
-	parallel int
+	verb string
 }
 
 func (r planAnswered) text(w io.Writer, st style.Style) {
@@ -103,10 +103,6 @@ func (r planAnswered) text(w io.Writer, st style.Style) {
 	case r.verb == "cancel":
 		fmt.Fprintf(w, "plan %s %s: its agents stop, its worktrees holding work stay, and so does %s\n",
 			name, st.Success("cancelled"), st.Name(planBranch(r.Plan.Name)))
-	case unchanged:
-		fmt.Fprintf(w, "plan %s already runs up to %s at once\n", name, plural(r.parallel, "task"))
-	default:
-		fmt.Fprintf(w, "plan %s %s up to %s at once\n", name, st.Success("runs"), plural(r.parallel, "task"))
 	}
 }
 
@@ -187,45 +183,86 @@ func confirmPlanCancel(cmd *cobra.Command, ref planRef, path, project, dir strin
 func newPlanSetCmd() *cobra.Command {
 	var ref planRef
 	var parallel int
+	var folder string
 	cmd := &cobra.Command{
-		Use:   "set (--id <id> | --name <name>) --parallel <n> [--project-id <id> | --project-name <name>]",
-		Short: "Change how many tasks a running or paused plan runs at once",
-		Long: "More start at once when it rises; tasks at work go on when it falls. The\n" +
-			"setting plan.parallel is the number for every plan whose run sets none.",
+		Use:   "set (--id <id> | --name <name>) [--parallel <n>] [--folder <folder>] [--project-id <id> | --project-name <name>]",
+		Short: "Change a plan's folder, or how many tasks a running or paused plan runs at once",
+		Long: "--parallel: more start at once when it rises; tasks at work go on when it\n" +
+			"falls. The setting plan.parallel is the number for every plan whose run sets\n" +
+			"none.\n\n" +
+			"--folder: in any state, cleaned and checked as a doc's (" + identity.Name + " doc --help). A plan\n" +
+			"of plans and the plans it lists move together, whichever is named; moved\n" +
+			"names the others. With --parallel, a plan not running changes neither.",
 		Example: examples(
 			"Four tasks at once", identity.Name+" plan set --name sso --parallel 4",
+			"Move it, and its family, to a folder", identity.Name+" plan set --name sso --folder /hub",
 			"As JSON", identity.Name+" plan set --name sso --parallel 1 --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not changed",
-			outputNote:    "The plan.\n" + `With --json: {"result": "updated", "plan": {...}}`,
+			outputNote:    "The plan, and the others moved with it.\n" + `With --json: {"result": "updated", "plan": {...}, "moved": [...]}`,
 			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
+			errorList:     codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if parallel < 1 || parallel > 20 {
-				return &usageError{fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
+			var body api.UpdatePlan
+			if cmd.Flags().Changed("parallel") {
+				if parallel < 1 || parallel > 20 {
+					return &usageError{fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
+				}
+				body.Parallel = &parallel
+			}
+			if cmd.Flags().Changed("folder") {
+				body.Folder = &folder
 			}
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
 				return err
 			}
-			r, err := clientOf(cmd).SetPlanParallel(cmd.Context(), path, project, dir, parallel)
+			r, err := clientOf(cmd).SetPlan(cmd.Context(), path, project, dir, body)
 			if problemCode(err) == api.ErrorCodePlanNotRunning {
 				return planNotRunningHint(err)
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planAnswered{PlanResult: r, verb: "set", parallel: parallel})
+			return printResult(cmd, planSet{PlanResult: r, parallel: body.Parallel, folder: body.Folder != nil})
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().IntVar(&parallel, "parallel", 0, "the most tasks it runs at once, a `number` from 1 to 20")
-	_ = cmd.MarkFlagRequired("parallel")
+	addFolderFlag(cmd, &folder, "`folder` to move it and its family to, such as /hub; / is the top")
+	cmd.MarkFlagsOneRequired("parallel", "folder")
 	completeFlag(cmd, "parallel", cobra.NoFileCompletions)
 	return cmd
+}
+
+// planSet is what plan set changed: parallel when it was given, the folder when
+// folder.
+type planSet struct {
+	api.PlanResult
+	parallel *int
+	folder   bool
+}
+
+func (r planSet) text(w io.Writer, st style.Style) {
+	name := st.Name(r.Plan.Name)
+	already := ""
+	if r.Result == api.ResultUnchanged {
+		already = "already "
+	}
+	var parts []string
+	if r.parallel != nil {
+		parts = append(parts, already+"runs up to "+plural(*r.parallel, "task")+" at once")
+	}
+	if r.folder {
+		parts = append(parts, "is "+already+"in "+st.Name(r.Plan.Folder))
+	}
+	fmt.Fprintf(w, "plan %s %s\n", name, strings.Join(parts, ", and "))
+	if r.Moved != nil && len(*r.Moved) > 0 {
+		fmt.Fprintf(w, "%s with it: %s\n", st.Success("moved"), nameList(st, *r.Moved))
+	}
 }
 
 // newPlanTaskAnswerCmd is a person's answer to a task: verb the command, result

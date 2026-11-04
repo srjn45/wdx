@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -32,6 +33,7 @@ type Doc struct {
 	ProjectID   string
 	ProjectName string
 	Name        string
+	Folder      string // the folder tide shows it in, cleaned; "/" for the top
 	Format      string // the extension its copies get, such as md; empty for none
 	Labels      []string
 	Status      Status
@@ -135,7 +137,33 @@ var (
 	planNameChars = regexp.MustCompile(`^[A-Za-z0-9-]{1,95}$`)
 	formatChars   = regexp.MustCompile(`^[A-Za-z0-9]{0,10}$`)
 	labelChars    = regexp.MustCompile(`^[a-z0-9_-]{1,50}$`)
+	folderChars   = regexp.MustCompile(`^[a-z0-9_/-]+$`)
+	slashes       = regexp.MustCompile(`/+`)
 )
+
+// TopFolder is the folder of a doc given none: tide shows it at the top.
+const TopFolder = "/"
+
+// CleanFolder returns folder as it is kept (docs/FOLDERS.md): with no whitespace,
+// lowercase, starting with one /, every run of / made one and no / at its end, so
+// that a folder has one spelling. What is then left must be a-z, 0-9, _, - and /,
+// or it is an *InvalidError.
+func CleanFolder(folder string) (string, error) {
+	cleaned := strings.ToLower(strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, folder))
+	cleaned = slashes.ReplaceAllString("/"+cleaned, "/")
+	if cleaned != TopFolder {
+		cleaned = strings.TrimSuffix(cleaned, "/")
+	}
+	if !folderChars.MatchString(cleaned) {
+		return "", &InvalidError{What: "folder", Reason: fmt.Sprintf("%q can only have letters, numbers, _, - and /", folder)}
+	}
+	return cleaned, nil
+}
 
 func (k Kind) checkName(name string) error {
 	if name == "" {

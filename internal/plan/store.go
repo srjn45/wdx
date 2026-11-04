@@ -39,22 +39,31 @@ func NewStore(database *sql.DB, dir string) *Store {
 	return &Store{db: database, docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}}
 }
 
-// Saved is what Create and Update did: the plan, the afters reduction dropped, and
-// whether a revision was made.
+// Saved is what Create and Update did: the plan, the afters reduction dropped,
+// whether a revision was made, and the plans it lists whose folder became its.
 type Saved struct {
 	Plan    Plan
 	Dropped []Dropped
 	Changed bool
+	Moved   []string
 }
 
-// Create adds a plan named name to the project with projectID, its content
-// checked and reduced as revision 1.
-func (s *Store) Create(ctx context.Context, projectID, name string, content []byte) (Saved, error) {
+// Create adds a plan named name to the project with projectID, in folder, its
+// content checked and reduced as revision 1. The plans it lists take its folder.
+func (s *Store) Create(ctx context.Context, projectID, name, folder string, content []byte) (Saved, error) {
+	folder, err := doc.CleanFolder(folder)
+	if err != nil {
+		return Saved{}, err
+	}
 	r, children, err := s.check(ctx, projectID, name, "", content)
 	if err != nil {
 		return Saved{}, err
 	}
-	d, err := s.docs.Create(ctx, projectID, doc.New{Name: name, Format: "yaml", Content: r.Content, Children: children})
+	moved, err := s.leaving(ctx, children, folder)
+	if err != nil {
+		return Saved{}, err
+	}
+	d, err := s.docs.Create(ctx, projectID, doc.New{Name: name, Folder: folder, Format: "yaml", Content: r.Content, Children: children})
 	if err != nil {
 		return Saved{}, s.translate(ctx, err)
 	}
@@ -62,8 +71,45 @@ func (s *Store) Create(ctx context.Context, projectID, name string, content []by
 	if err != nil {
 		return Saved{}, err
 	}
-	logging.FromContext(ctx).Info("plan created", "plan_id", p.ID, "name", p.Name, "project_id", projectID, "tasks", p.Tasks, "plans", len(p.Plans), "dropped", len(r.Dropped))
-	return Saved{Plan: p, Dropped: r.Dropped, Changed: true}, nil
+	logging.FromContext(ctx).Info("plan created", "plan_id", p.ID, "name", p.Name, "project_id", projectID, "folder", folder, "tasks", p.Tasks, "plans", len(p.Plans), "dropped", len(r.Dropped), "moved", len(moved))
+	return Saved{Plan: p, Dropped: r.Dropped, Changed: true, Moved: moved}, nil
+}
+
+// leaving returns the names of the plans with ids not in folder, which a plan of
+// plans listing them is about to move there.
+func (s *Store) leaving(ctx context.Context, ids []string, folder string) ([]string, error) {
+	moved := []string{}
+	for _, id := range ids {
+		d, err := s.docs.Get(ctx, id)
+		if err != nil {
+			return nil, s.translate(ctx, err)
+		}
+		if d.Folder != folder {
+			moved = append(moved, d.Name)
+		}
+	}
+	return moved, nil
+}
+
+// Move puts the plan with id in folder, in any state, with its family: a plan of
+// plans and the plans it lists share one folder, whichever of them moves. It
+// returns the plan, whether its folder changed, and the names of the others moved.
+func (s *Store) Move(ctx context.Context, id, folder string) (Plan, bool, []string, error) {
+	d, changed, moved, err := s.docs.Move(ctx, id, folder)
+	if err != nil {
+		return Plan{}, false, nil, s.translate(ctx, err)
+	}
+	p, err := s.plan(ctx, d)
+	if err != nil {
+		return Plan{}, false, nil, err
+	}
+	if moved == nil {
+		moved = []string{}
+	}
+	if changed {
+		logging.FromContext(ctx).Info("plan folder changed", "plan_id", id, "name", p.Name, "folder", p.Folder, "moved", len(moved))
+	}
+	return p, changed, moved, nil
 }
 
 // Update makes content, checked and reduced, the plan's next revision, if base is
@@ -81,18 +127,25 @@ func (s *Store) Update(ctx context.Context, id string, base int, content []byte)
 	if err != nil {
 		return Saved{}, err
 	}
+	moved, err := s.leaving(ctx, children, d.Folder)
+	if err != nil {
+		return Saved{}, err
+	}
 	u, err := s.docs.UpdateWithChildren(ctx, id, base, r.Content, children)
 	if err != nil {
 		return Saved{}, s.translate(ctx, err)
+	}
+	if !u.Changed {
+		moved = []string{} // the children come from the content, which is as it was
 	}
 	p, err := s.plan(ctx, u.Doc)
 	if err != nil {
 		return Saved{}, err
 	}
 	if u.Changed {
-		logging.FromContext(ctx).Info("plan updated", "plan_id", p.ID, "name", p.Name, "revision", p.Revision, "tasks", p.Tasks, "plans", len(p.Plans), "dropped", len(r.Dropped))
+		logging.FromContext(ctx).Info("plan updated", "plan_id", p.ID, "name", p.Name, "revision", p.Revision, "tasks", p.Tasks, "plans", len(p.Plans), "dropped", len(r.Dropped), "moved", len(moved))
 	}
-	return Saved{Plan: p, Dropped: r.Dropped, Changed: u.Changed}, nil
+	return Saved{Plan: p, Dropped: r.Dropped, Changed: u.Changed, Moved: moved}, nil
 }
 
 // check reduces content and checks the plans it lists, if any, against the project:
@@ -182,7 +235,7 @@ func (s *Store) GetByName(ctx context.Context, projectID, name string) (Plan, er
 	return s.plan(ctx, d)
 }
 
-// List returns the plans of the project with projectID by name.
+// List returns the plans of the project with projectID by folder, then name.
 func (s *Store) List(ctx context.Context, projectID string) ([]Plan, error) {
 	docs, err := s.docs.List(ctx, projectID, nil, "")
 	if err != nil {
@@ -347,6 +400,7 @@ func view(d doc.Doc, sum summary, parent string, run runState) Plan {
 		ProjectID:     d.ProjectID,
 		ProjectName:   d.ProjectName,
 		Name:          d.Name,
+		Folder:        d.Folder,
 		State:         state,
 		PausedReason:  reason,
 		TasksDone:     run.done,

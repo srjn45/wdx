@@ -1,6 +1,6 @@
 # Folders for docs and plans
 
-Status: agreed with the human on 2026-11-04; designed in detail and approved on 2026-11-04 (In detail, below); step 1 is next. "Agreed" is what the human said; "In detail" is the design the human approved.
+Status: agreed with the human on 2026-11-04; designed in detail and approved on 2026-11-04 (In detail, below); step 1, storage, the API and the CLI, built on 2026-11-04; step 2, tide, is next. "Agreed" is what the human said; "In detail" is the design the human approved.
 
 A project's docs and plans are one flat list, in the database, the API and the CLI. A folder is a label each of them carries, a `/`-separated path such as `/hub/initial/spec`, which tide uses to show them as a tree. It means nothing else: no logic reads it, and nothing is stored for a folder itself.
 
@@ -36,7 +36,7 @@ A project's docs and plans are one flat list, in the database, the API and the C
   - when a parent is saved (`create` or `update`) listing a child, the child takes the parent's folder, in the transaction that writes `parent_id`;
   - a child the parent stops listing keeps the folder it has;
   - a parent created with `--folder` gives that folder to its children.
-- **The answer says who moved with it**: a plan's `updated` result gains `moved`, the names of the other plans whose folder changed with it, `[]` when none. The text says `moved sso-login and 3 plans to /hub`. A parent's `create` and `update` that move children list them in `moved` too.
+- **The answer says who moved with it**: a plan's `updated` result gains `moved`, the names of the other plans whose folder changed with it, `[]` when none. The text names them: `plan set` prints `plan sso is in /hub`, then `moved with it: auth-a, auth-b`; a parent's `create` and `update` print `moved auth-a, auth-b to /hub, as it lists them`. (The design had a count, `moved sso-login and 3 plans to /hub`; changed while building step 1, as the names say more in one line.) A parent's `create` and `update` that move children list them in `moved` too.
 - Logged: `plan folder changed`, with the plan and how many moved with it.
 
 ### Storage
@@ -55,12 +55,12 @@ A project's docs and plans are one flat list, in the database, the API and the C
 
 - `doc create --folder <folder>` and `plan create --folder <folder>`.
 - `doc set --folder <folder>`, beside `--status` and the labels.
-- `plan set --folder <folder>`: `plan set` now takes `--parallel`, `--folder` or both, at least one (a `usage` error otherwise).
+- `plan set --folder <folder>`: `plan set` now takes `--parallel`, `--folder` or both, at least one (a `usage` error otherwise). Its text says each: `plan sso runs up to 4 tasks at once, and is in /hub`, then `moved with it: auth-a, auth-b`.
 - `doc list` and `plan list` gain a `FOLDER` column, first, and are sorted by folder, then name, so a folder's docs are together. `--json` gives `folder` on each.
 - **No `--folder` filter on `list`**: `--json` and `jq` already do it, and nothing has asked for it. Easy to add later.
 - `doc sync-to-git` writes the docs flat, as now.
 - `plan copy` (plans step 4) copies the folder.
-- `wdx help docs` and `wdx help plans` say what a folder is, in a sentence each.
+- `wdx doc --help` says what a folder is, as there is no `wdx help docs` topic, and `wdx help plans` says how a plan of plans shares its folder. (Changed while building step 1: the design named a `help docs` topic that does not exist.)
 
 ### tide
 

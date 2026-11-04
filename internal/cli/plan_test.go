@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,8 +46,8 @@ func TestPlanCreate(t *testing.T) {
 	if len(v.Dropped) != 1 || v.Dropped[0].Entry != "docs" || v.Dropped[0].After != "schema" || v.Dropped[0].Via != "api" {
 		t.Fatalf("dropped: %+v", v.Dropped)
 	}
-	v, exit = wdxJSONWith(t, home, both(in(app), stdin(planYAML)), "plan", "create", "--project-name", "lib", "--name", "sso", "--path", "-")
-	if exit != api.ExitOK || v.Plan.ProjectName != "lib" {
+	v, exit = wdxJSONWith(t, home, both(in(app), stdin(planYAML)), "plan", "create", "--project-name", "lib", "--name", "sso", "--path", "-", "--folder", "Hub")
+	if exit != api.ExitOK || v.Plan.ProjectName != "lib" || v.Plan.Folder != "/hub" {
 		t.Fatalf("from stdin in another project: exit %d, %+v", exit, v.Plan)
 	}
 
@@ -63,6 +64,8 @@ func TestPlanCreate(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "plan", "create", "--name", "x")
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = wdxJSONWith(t, home, in(app), "plan", "create", "--name", "bad", "--path", file, "--folder", "a.b")
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 	v, exit = wdxJSONWith(t, home, both(in(t.TempDir()), stdin(planYAML)), "plan", "create", "--name", "x", "--path", "-")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id")
@@ -198,7 +201,24 @@ func TestPlansOfPlansCommands(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodePlanInUse, api.ExitRejected)
 	wantHint(t, v, "take it out of auth first: wdx plan get --name auth --out <file>, then wdx plan update")
 
-	out := wdxWith(t, home, in(app), "plan", "status", "--name", "auth")
+	v, exit = wdxJSONWith(t, home, in(app), "plan", "set", "--name", "auth-a", "--folder", "/hub")
+	if exit != api.ExitOK || v.Result != "updated" || v.Plan.Folder != "/hub" || !slices.Equal(v.Moved, []string{"auth"}) {
+		t.Fatalf("a plan a plan of plans lists moved: exit %d, %+v", exit, v)
+	}
+	out := wdxWith(t, home, in(app), "plan", "set", "--name", "auth", "--folder", "/x")
+	if want := "plan auth is in /x\nmoved with it: auth-a\n"; out.exit != api.ExitOK || out.stdout != want {
+		t.Errorf("a plan of plans moved: %+v, want %q", out, want)
+	}
+	if out := wdxWith(t, home, in(app), "plan", "list"); !hasRow(out.stdout, "/x", "auth-a") {
+		t.Errorf("the list has no row of auth-a in its folder: %+v", out)
+	}
+	newPlan(t, home, app, "auth-b", planYAML)
+	out = wdxWith(t, home, both(in(app), stdin("goal: g\nplans:\n  - id: auth-b\n")), "plan", "create", "--name", "big", "--path", "-", "--folder", "/x")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "moved auth-b to /x, as it lists them\n") {
+		t.Errorf("a plan of plans created: %+v", out)
+	}
+
+	out = wdxWith(t, home, in(app), "plan", "status", "--name", "auth")
 	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "auth: draft, 1 plan\n") || !strings.Contains(out.stdout, "PLAN") || !strings.Contains(out.stdout, "auth-a") {
 		t.Fatalf("the parent's status: %+v", out)
 	}
@@ -206,6 +226,16 @@ func TestPlansOfPlansCommands(t *testing.T) {
 	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "parent") {
 		t.Fatalf("the child's status: %+v", out)
 	}
+}
+
+// hasRow reports whether a table in text has a row starting with cells.
+func hasRow(text string, cells ...string) bool {
+	for line := range strings.Lines(text) {
+		if fields := strings.Fields(line); len(fields) >= len(cells) && slices.Equal(fields[:len(cells)], cells) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPlanRename(t *testing.T) {
@@ -272,7 +302,7 @@ func TestPlanText(t *testing.T) {
 		stdout string
 	}{
 		{[]string{"plan", "create", "--name", "sso", "--path", file}, "plan sso created, with 3 tasks\ndropped docs after schema: api already waits for it\n"},
-		{[]string{"plan", "list"}, "NAME"},
+		{[]string{"plan", "list"}, "FOLDER  NAME"},
 		{[]string{"plan", "status", "--name", "sso"}, "sso: draft, 3 tasks\n  goal        Keep sessions in the database.\n"},
 		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "one.yaml", "goal: g\ntasks:\n  - id: a\n    prompt: p\n"), "--base", "1"}, "sso is at revision 2, with 1 task\n"},
 		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "same.yaml", "goal: g\ntasks:\n  - id: a\n    prompt: p\n"), "--base", "2"}, "sso is unchanged at revision 2\n"},

@@ -33,7 +33,11 @@ func newDocCmd() *cobra.Command {
 			"as it is written. Every change of its content is a new revision, made on the\n" +
 			"revision it was read at: get a copy with doc get --out, change it, and write\n" +
 			"it back with doc update --base. Its status says whether it is agreed on:\n" +
-			"wip, review, approved or rejected; changing its content makes it wip.",
+			"wip, review, approved or rejected; changing its content makes it wip.\n\n" +
+			"Its folder, such as /hub/initial, is only where tide shows it, / for the\n" +
+			"top: a folder given is cleaned (whitespace dropped, lowercased, one / between\n" +
+			"its parts and at its start) and then has a-z, 0-9, _, - and / only. Names\n" +
+			"stay unique within a project whatever the folder.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
@@ -44,6 +48,11 @@ func newDocCmd() *cobra.Command {
 
 // docStatuses are the statuses a doc can have, as --status completes them.
 var docStatuses = []string{string(api.DocStatusWip), string(api.DocStatusReview), string(api.DocStatusApproved), string(api.DocStatusRejected)}
+
+func addFolderFlag(cmd *cobra.Command, folder *string, usage string) {
+	cmd.Flags().StringVar(folder, "folder", "", usage)
+	completeFlag(cmd, "folder", cobra.NoFileCompletions)
+}
 
 func addStatusFlag(cmd *cobra.Command, status *string, usage string) {
 	cmd.Flags().StringVar(status, "status", "", usage)
@@ -97,10 +106,10 @@ func (r docRef) notFoundHint(err error) error {
 
 func newDocCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, path, format, status string
+	var name, path, format, status, folder string
 	var labels []string
 	cmd := &cobra.Command{
-		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--path <file> | --path -] [--format <ext>] [--labels <a,b>] [--status <status>]",
+		Use:   "create [--project-id <id> | --project-name <name>] [--name <name>] [--path <file> | --path -] [--folder <folder>] [--format <ext>] [--labels <a,b>] [--status <status>]",
 		Short: "Create a doc, from a file or empty",
 		Long: "Its content is the file --path names, stdin with --path -, or nothing. The\n" +
 			"name is the file's without its extension unless --name is given, and is\n" +
@@ -112,6 +121,7 @@ func newDocCreateCmd() *cobra.Command {
 		Example: examples(
 			"Add a file of the project you are in as a doc", identity.Name+" doc create --path docs/auth.md",
 			"Name it, label it and pick the project", identity.Name+" doc create --project-name app --path notes.md --name auth-rfc --labels auth,rfc",
+			"In a folder", identity.Name+" doc create --path docs/auth.md --folder /hub/initial",
 			"From stdin, as JSON", identity.Name+" doc create --name auth-rfc --path - --status review --json",
 		),
 		Args: cobra.NoArgs,
@@ -124,6 +134,9 @@ func newDocCreateCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			body := api.CreateDoc{Name: name, Labels: optionalSlice(labels), Status: optionalStatus(status)}
+			if cmd.Flags().Changed("folder") {
+				body.Folder = &folder
+			}
 			if cmd.Flags().Changed("format") {
 				body.Format = &format
 			}
@@ -166,6 +179,7 @@ func newDocCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&format, "format", "", "`extension` of its copies, such as md or txt (default: the file's, else md)")
 	cmd.Flags().StringSliceVar(&labels, "labels", nil, "`labels` to give it, comma-separated")
 	addStatusFlag(cmd, &status, "`status` to create it in: wip, review, approved or rejected (default: wip)")
+	addFolderFlag(cmd, &folder, "`folder` tide shows it in, such as /hub/initial (default: /, the top)")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	completeFlag(cmd, "path", completeFiles)
 	completeFlag(cmd, "format", cobra.NoFileCompletions)
@@ -390,7 +404,7 @@ func newDocListCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The docs by name, without content; an empty list when there are none.\n" + `With --json: {"docs": [...]}`,
+			outputNote: "The docs by folder, then name, without content; an empty list when there are none.\n" + `With --json: {"docs": [...]}`,
 			errorList:  codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -445,21 +459,22 @@ func newDocHistoryCmd() *cobra.Command {
 
 func newDocSetCmd() *cobra.Command {
 	var ref docRef
-	var status string
+	var status, folder string
 	var add, remove []string
 	cmd := &cobra.Command{
-		Use:   "set (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--status <status>] [--add-labels <a,b>] [--remove-labels <a,b>]",
-		Short: "Change a doc's status or labels",
+		Use:   "set (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] [--folder <folder>] [--status <status>] [--add-labels <a,b>] [--remove-labels <a,b>]",
+		Short: "Change a doc's folder, status or labels",
 		Long: "Its content and revision stay as they are, and no base is needed. Removing a\n" +
 			"label it does not have is not an error.",
 		Example: examples(
 			"Approve a doc of the project you are in", identity.Name+" doc set --name auth-rfc --status approved",
 			"Change its labels, as JSON", identity.Name+" doc set --id doc-1a2b3c4d --add-labels auth --remove-labels draft --json",
+			"Move it to a folder", identity.Name+" doc set --name auth-rfc --folder /hub/initial",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not changed",
-			outputNote:    "The doc's status and labels now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
+			outputNote:    "The doc's status, folder and labels now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
 			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
 			errorList:     codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
@@ -469,6 +484,9 @@ func newDocSetCmd() *cobra.Command {
 				return err
 			}
 			body := api.UpdateDoc{Status: optionalStatus(status), AddLabels: optionalSlice(add), RemoveLabels: optionalSlice(remove)}
+			if cmd.Flags().Changed("folder") {
+				body.Folder = &folder
+			}
 			r, err := clientOf(cmd).UpdateDoc(cmd.Context(), path, project, dir, body)
 			if err != nil {
 				return ref.notFoundHint(err)
@@ -480,7 +498,8 @@ func newDocSetCmd() *cobra.Command {
 	addStatusFlag(cmd, &status, "`status` to give it: wip, review, approved or rejected")
 	cmd.Flags().StringSliceVar(&add, "add-labels", nil, "`labels` to add, comma-separated")
 	cmd.Flags().StringSliceVar(&remove, "remove-labels", nil, "`labels` to remove, comma-separated")
-	cmd.MarkFlagsOneRequired("status", "add-labels", "remove-labels")
+	addFolderFlag(cmd, &folder, "`folder` to move it to, such as /hub/initial; / is the top")
+	cmd.MarkFlagsOneRequired("folder", "status", "add-labels", "remove-labels")
 	completeFlag(cmd, "add-labels", completeDocLabels)
 	completeFlag(cmd, "remove-labels", completeDocLabels)
 	return cmd
@@ -757,6 +776,7 @@ func (r docResult) text(w io.Writer, st style.Style) {
 func docFields(w io.Writer, st style.Style, d api.Doc) {
 	field := fieldPrinter(w, st, 8)
 	field("project", d.ProjectName)
+	field("folder", d.Folder)
 	field("status", docStatusText(st, d.Status))
 	field("revision", strconv.FormatInt(d.Revision, 10))
 	if len(d.Labels) > 0 {
@@ -792,7 +812,7 @@ func (r docSet) text(w io.Writer, st style.Style) {
 	if len(d.Labels) > 0 {
 		labels = "labels " + strings.Join(d.Labels, ", ")
 	}
-	fmt.Fprintf(w, "doc %s is %s%s, with %s\n", st.Name(d.Name), already, docStatusText(st, d.Status), labels)
+	fmt.Fprintf(w, "doc %s is %s%s, in %s, with %s\n", st.Name(d.Name), already, docStatusText(st, d.Status), st.Name(d.Folder), labels)
 }
 
 // docRenamed is a doc a command renamed from the name or id it was given by.
@@ -859,9 +879,9 @@ func (l docList) text(w io.Writer, st style.Style) {
 		return
 	}
 	var table style.Table
-	table.Row(st.Heading("NAME"), st.Heading("STATUS"), st.Heading("REVISION"), st.Heading("LABELS"), st.Heading("UPDATED"))
+	table.Row(st.Heading("FOLDER"), st.Heading("NAME"), st.Heading("STATUS"), st.Heading("REVISION"), st.Heading("LABELS"), st.Heading("UPDATED"))
 	for _, d := range l.Docs {
-		table.Row(st.Name(d.Name), docStatusText(st, d.Status), strconv.FormatInt(d.Revision, 10), st.Muted(strings.Join(d.Labels, ", ")),
+		table.Row(d.Folder, st.Name(d.Name), docStatusText(st, d.Status), strconv.FormatInt(d.Revision, 10), st.Muted(strings.Join(d.Labels, ", ")),
 			d.UpdatedAt.Local().Format(time.DateTime))
 	}
 	table.Write(w)
