@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/db"
@@ -132,7 +134,8 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			a.SessionID = session
 			dir, _ := runDir(a)
 			note := LaunchNote()
-			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Note: note})
+			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Note: note,
+				Model: a.RequestedModel, Permissions: a.Permissions})
 			if err != nil {
 				return terminal.AgentLaunch{}, err
 			}
@@ -176,24 +179,52 @@ func (m *Manager) Store() *Store {
 	return m.store
 }
 
+// Launch is what an agent is started with every time, chosen when it is
+// created.
+type Launch struct {
+	Model       string          // passed to its ACA as its model; "" is the ACA's default
+	Permissions aca.Permissions // "" is aca.PermissionsFull
+}
+
+// ErrInvalidModel is returned for a model with whitespace or a control character in
+// it, or longer than maxModel, which no ACA names a model with. Nothing else is
+// checked: the ACA says whether it knows it.
+var ErrInvalidModel = errors.New("the model cannot have whitespace or control characters, or be longer than 200 bytes")
+
+const maxModel = 200
+
+// withDefaults is l checked, its permissions aca.PermissionsFull when it has none.
+func (l Launch) withDefaults() (Launch, error) {
+	if len(l.Model) > maxModel || strings.ContainsFunc(l.Model, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return Launch{}, fmt.Errorf("%w: %q", ErrInvalidModel, l.Model)
+	}
+	l.Permissions = cmp.Or(l.Permissions, aca.PermissionsFull)
+	return l, nil
+}
+
 // Create adds an agent named name, or a generated codename when name is
 // empty, to the project, under the agent with parentID unless it is "", and
-// starts its AI coding agent in dir in a new session. A parent that is not in
-// the project is not found, and a tombstone returns a *RemovedError. One that
-// does not start leaves the agent failed and returns a *StartError.
-func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID string) (Agent, error) {
-	return m.create(ctx, projectID, name, dir, parentID, "", nil)
+// starts its AI coding agent in dir in a new session, with l then and on every
+// later start. A parent that is not in the project is not found, and a tombstone
+// returns a *RemovedError. One that does not start leaves the agent failed and
+// returns a *StartError.
+func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID string, l Launch) (Agent, error) {
+	return m.create(ctx, projectID, name, dir, parentID, l, "", nil)
 }
 
 // CreateLinked is Create for an agent with no parent that is told first first, and
 // whose linked writes what points at it, both in the transaction that adds it: so
 // that it is never there without its first message, nor what points at it without
 // it.
-func (m *Manager) CreateLinked(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
-	return m.create(ctx, projectID, name, dir, "", first, linked)
+func (m *Manager) CreateLinked(ctx context.Context, projectID, name, dir string, l Launch, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+	return m.create(ctx, projectID, name, dir, "", l, first, linked)
 }
 
-func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID string, l Launch, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+	l, err := l.withDefaults()
+	if err != nil {
+		return Agent{}, err
+	}
 	if parentID != "" {
 		parent, err := m.store.Get(ctx, parentID)
 		if err != nil {
@@ -215,7 +246,7 @@ func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID, fi
 		return Agent{}, err
 	}
 	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx db.Execer, terminalID string) error {
-		if err := m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID); err != nil {
+		if err := m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID, l); err != nil {
 			return err
 		}
 		if first != "" {

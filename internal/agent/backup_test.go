@@ -144,7 +144,7 @@ func TestATombstoneKeepsItsBackup(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "")
 	parent := f.create(t, "parent")
-	child, err := f.agents.Create(ctx, f.project, "child", f.dir, parent.ID)
+	child, err := f.agents.Create(ctx, f.project, "child", f.dir, parent.ID, Launch{})
 	if err != nil {
 		t.Fatal(err)
 	}

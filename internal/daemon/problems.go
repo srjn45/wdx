@@ -247,6 +247,8 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeNotGitRepo, nil
 	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, plan.ErrPlansDoNotRun), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
 		return api.ErrorCodeInvalidArgument, nil
+	case errors.Is(err, agent.ErrInvalidModel):
+		return api.ErrorCodeInvalidArgument, map[string]any{"argument": "model"}
 	}
 	return api.ErrorCodeInternal, nil
 }

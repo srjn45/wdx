@@ -78,7 +78,7 @@ type Options struct {
 	// its own command, as tests give; nil runs the editor.
 	EditorCommand func(program, path string) []string
 	// ACA is what new agents run, and among the ones agents may have been
-	// created with; aca.ClaudeCode when nil.
+	// created with; aca.Default() when nil.
 	ACA aca.AiCodingAgent
 
 	// ShutdownTimeout is how long requests in flight get once the daemon
@@ -273,7 +273,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	// exits.
 	terminals.OnChange(d.notices.notify)
 	if opts.ACA == nil {
-		opts.ACA = aca.ClaudeCode{}
+		opts.ACA = aca.Default()
 	}
 	agents := agent.NewStore(d.db)
 	d.backups = agent.NewBackups(logged, agents, opts.Home, []aca.AiCodingAgent{opts.ACA}, opts.TrashRetention)

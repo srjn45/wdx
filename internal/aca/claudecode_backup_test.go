@@ -3,6 +3,7 @@ package aca_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -271,6 +272,38 @@ func TestClaudeCodeSettingsRecordEachSession(t *testing.T) {
 	}
 	if got := b.backUp(t); got != "s-2" {
 		t.Errorf("session = %q", got)
+	}
+}
+
+// TestClaudeCodeSettingsTurnOffTheSandboxForFull: and the warning bypassing approvals
+// starts with, which would stop the agent until a human answered it. With ask, the
+// user's own settings decide both.
+func TestClaudeCodeSettingsTurnOffTheSandboxForFull(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		permissions aca.Permissions
+		want        string
+	}{
+		{aca.PermissionsFull, "map[enabled:false] true"},
+		{aca.PermissionsAsk, "<nil> <nil>"},
+	} {
+		b := newClaudeBackup(t)
+		b.launch.Permissions = tc.permissions
+		got, err := aca.ClaudeCode{}.Command(b.launch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(got[len(got)-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var settings map[string]any
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+		if got := fmt.Sprint(settings["sandbox"], " ", settings["skipDangerousModePermissionPrompt"]); got != tc.want {
+			t.Errorf("%s: sandbox and the warning's skip = %s, want %s", tc.permissions, got, tc.want)
+		}
 	}
 }
 

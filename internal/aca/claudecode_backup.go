@@ -44,13 +44,20 @@ const (
 
 // claudeCodeWriteSettings writes the settings that have Claude Code append each
 // session it starts to the backup, /clear's among them, and returns their path.
-// Given with --settings, they add to the user's own hooks.
-func claudeCodeWriteSettings(backup string) (string, error) {
+// Given with --settings, they add to the user's own hooks. With PermissionsFull they
+// also turn off the sandbox and the warning bypassing approvals starts with.
+func claudeCodeWriteSettings(backup string, permissions Permissions) (string, error) {
 	log := "'" + strings.ReplaceAll(filepath.Join(backup, claudeCodeSessionsFile), "'", `'\''`) + "'"
 	settings := map[string]any{"hooks": map[string]any{"SessionStart": []any{map[string]any{
 		"matcher": "",
 		"hooks":   []any{map[string]any{"type": "command", "command": "cat >> " + log + "; echo >> " + log}},
 	}}}}
+	if permissions == PermissionsFull {
+		// The warning Claude Code shows the first time would stop the agent until a
+		// human answers it, and settings given with --settings come before the user's.
+		settings["skipDangerousModePermissionPrompt"] = true
+		settings["sandbox"] = map[string]any{"enabled": false}
+	}
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return "", err

@@ -45,6 +45,14 @@ type Launch struct {
 - wdx generates the session id, a UUID, when it creates the agent. A `/clear` starts another session, and the agent's `session_id` follows it: a start goes on with the latest conversation (docs/AGENT_RESUME.md).
 - A `--settings` file adds a hook that tells wdx each session, and a transcript Claude Code has deleted comes back from wdx's backup.
 
+### Kept for every start
+
+An agent is created with a model and permissions (the wdx doc AGENT_CREATE), in the `requested_model` and `permissions` columns (`0023_agent_launch.sql`), and `agent.Launches`, the one place every start goes through (create, `agent start`, `agent restart`, a relaunch with its project or after the daemon restarts), passes both in `Launch.Model` and `Launch.Permissions`. Neither changes after creation for now.
+
+- `model`: as the ACA's own model flag takes it; none is its default. For Claude Code `--model <model>`: `fable`, `opus`, `sonnet` and `haiku` are always the newest of their class.
+- `permissions`: `full`, the default, asks for no approval, with network access and no sandbox; `ask` is the ACA's default, as the user's settings for it say. For Claude Code `full` is `--permission-mode bypassPermissions`, and its `--settings` file sets `skipDangerousModePermissionPrompt`, so that the warning it shows the first time does not stop the agent, and `sandbox.enabled: false`; `ask` passes nothing.
+- Agents created before read `ask`, with no model, as that is what they ran with.
+
 ## The table
 
 `internal/db/migrations/0004_agents.sql` only adds, so it needs no `breaks-older`. An older binary sees an agent's terminal as a plain terminal, and relaunching it there starts a shell.

@@ -26,6 +26,8 @@ type ACA struct {
 	Launches string
 	// Notes, when set, records each start's note, one line each.
 	Notes string
+	// Kept, when set, records each start's model and permissions, one line each.
+	Kept string
 	// Script is what its shell runs; defaultScript when "".
 	Script string
 	// Conversation, when set, is the file BackUp takes the transcript from, and
@@ -116,6 +118,11 @@ func (a *ACA) Command(l aca.Launch) ([]string, error) {
 			return nil, err
 		}
 	}
+	if a.Kept != "" {
+		if err := appendLine(a.Kept, l.Model+" "+string(l.Permissions)); err != nil {
+			return nil, err
+		}
+	}
 	script := a.Script
 	if script == "" {
 		script = defaultScript
@@ -135,6 +142,16 @@ func appendLine(path, line string) error {
 // NotesGiven returns the notes a's Notes recorded, oldest first.
 func (a *ACA) NotesGiven() ([]string, error) {
 	data, err := os.ReadFile(a.Notes)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n"), nil
+}
+
+// KeptGiven returns the model and permissions of each start, as "<model> <permissions>",
+// oldest first.
+func (a *ACA) KeptGiven() ([]string, error) {
+	data, err := os.ReadFile(a.Kept)
 	if err != nil {
 		return nil, err
 	}

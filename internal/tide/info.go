@@ -70,6 +70,8 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "id", values: []string{a.Id}},
 		{key: "aca", values: []string{a.Aca}},
 		{key: "model", values: present(a.Model, identical)},
+		{key: "requested_model", values: present(a.RequestedModel, identical)},
+		{key: "permissions", values: []string{string(a.Permissions)}},
 		{key: "project_name", values: []string{a.ProjectName}, gap: true},
 		{key: "dir", values: []string{a.Dir}},
 		{key: "current_dir", values: present(a.CurrentDir, identical)},

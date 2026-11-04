@@ -52,7 +52,7 @@ func (d *Daemon) startRunner() {
 			return d.tabs.RemoveWorktree(ctx, projectID, filepath.Base(path))
 		},
 		CreateAgent: func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (string, error) {
-			a, err := d.agents.CreateLinked(ctx, projectID, name, dir, first, linked)
+			a, err := d.agents.CreateLinked(ctx, projectID, name, dir, agent.Launch{}, first, linked)
 			return a.ID, err
 		},
 		ResumeAgent: func(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error {

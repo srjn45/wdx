@@ -98,6 +98,38 @@ func TestAgentCreate(t *testing.T) {
 	}
 }
 
+func TestAgentCreateModelAndPermissions(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+
+	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "default")
+	if exit != api.ExitOK || v.Agent.RequestedModel != nil || v.Agent.Permissions != api.AgentPermissionsFull {
+		t.Fatalf("by default: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--name", "asked", "--model", "sonnet", "--permissions", "ask")
+	if exit != api.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
+		t.Fatalf("asked: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
+	}
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "get", "--name", "asked")
+	if exit != api.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
+		t.Fatalf("read back: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
+	}
+	out := wdxWith(t, home, in(app), "agent", "get", "--name", "asked")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "  model       asked for sonnet\n  permissions ask\n") {
+		t.Fatalf("unexpected text: %+v", out)
+	}
+
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--model", "opus 4")
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
+	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--model", "")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	for _, mode := range []string{"some", ""} {
+		v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--permissions", mode)
+		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	}
+}
+
 func TestAgentCreateInClosedProject(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
@@ -651,7 +683,7 @@ func TestAgentCreateWorktree(t *testing.T) {
 		t.Fatalf("text: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "agent", "get", "--name", "txt")
-	if !strings.Contains(out.stdout, "worktree text-one") {
+	if !strings.Contains(out.stdout, "worktree    text-one") {
 		t.Fatalf("get: %+v", out)
 	}
 

@@ -33,9 +33,9 @@ func newAgentCmd() *cobra.Command {
 
 func newAgentCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, parentID, parentName, worktree, prompt string
+	var name, parentID, parentName, worktree, prompt, model, permissions string
 	cmd := &cobra.Command{
-		Use:   "create [--prompt <text>] [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>]",
+		Use:   "create [--prompt <text>] [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>] [--model <model>] [--permissions <mode>]",
 		Short: "Create an agent and start its AI coding agent",
 		Long: "Without a project flag, the agent belongs to the project the working\n" +
 			"directory is in, and starts there. With one, it starts in the working\n" +
@@ -54,7 +54,12 @@ func newAgentCreateCmd() *cobra.Command {
 			"Removing the agent leaves the worktree.\n\n" +
 			"With --prompt it starts on that task: the first message in its inbox, as\n" +
 			identity.Name + " agent send gives it, typed in once it is ready for it. A prompt that\n" +
-			"cannot be sent leaves the agent running, and the result says why.",
+			"cannot be sent leaves the agent running, and the result says why.\n\n" +
+			"With --model its AI coding agent uses that model, named as its own model flag\n" +
+			"takes it: for Claude Code fable, opus, sonnet, haiku or a model's full name.\n" +
+			"--permissions full, the default, lets it do anything without asking, with\n" +
+			"network access and no sandbox; ask leaves that to your settings for it. Both\n" +
+			"are kept for every later start: restart and resume use them too.",
 		Example: examples(
 			"Create an agent in the project you are in", identity.Name+" agent create",
 			"Start one on a task", identity.Name+" agent create --name reviewer --prompt summarize",
@@ -63,6 +68,8 @@ func newAgentCreateCmd() *cobra.Command {
 			"Create a child of an agent", identity.Name+" agent create --parent-name reviewer",
 			"Create a child by the parent's id, as JSON", identity.Name+" agent create --parent-id agent-1a2b3c4d --json",
 			"Create a child in a worktree of its own", identity.Name+" agent create --parent-name reviewer --worktree fix-login",
+			"Pick its model", identity.Name+" agent create --model sonnet",
+			"Have it ask before acting, as your settings say", identity.Name+" agent create --permissions ask",
 			"As JSON", identity.Name+" agent create --json",
 		),
 		Args: cobra.NoArgs,
@@ -70,13 +77,23 @@ func newAgentCreateCmd() *cobra.Command {
 			failurePrefix: "not created",
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}, and "worktree_created": true when its worktree is new`,
 			resultList:    "created",
-			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeWorktreeFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed(promptFlag) && strings.TrimSpace(prompt) == "" {
 				return &usageError{errors.New("--prompt is empty")}
+			}
+			if cmd.Flags().Changed("model") && model == "" {
+				return &usageError{errors.New("--model is empty")}
+			}
+			var mode *api.AgentPermissions
+			if cmd.Flags().Changed("permissions") {
+				if !api.AgentPermissions(permissions).Valid() {
+					return &usageError{fmt.Errorf("--permissions is %q, not one of %s", permissions, strings.Join(agentPermissions, ", "))}
+				}
+				mode = ptr(api.AgentPermissions(permissions))
 			}
 			dir, err := workDir(cmd)
 			if err != nil {
@@ -86,7 +103,8 @@ func newAgentCreateCmd() *cobra.Command {
 			if parentID != "" {
 				parent = "id:" + parentID
 			}
-			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree), Prompt: optional(prompt)})
+			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree), Prompt: optional(prompt),
+				Model: optional(model), Permissions: mode})
 			if err != nil {
 				if parentID == "" {
 					err = outsideHint(err, scope, "")
@@ -108,8 +126,15 @@ func newAgentCreateCmd() *cobra.Command {
 	completeFlag(cmd, "worktree", cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
 	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&model, "model", "", "`model` its AI coding agent uses, on every start (default: its own default)")
+	completeFlag(cmd, "model", cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&permissions, "permissions", "", "`mode`: full lets it do anything without asking, ask leaves that to your settings for it (default: full)")
+	completeFlag(cmd, "permissions", cobra.FixedCompletions(agentPermissions, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
+
+// agentPermissions are the modes --permissions takes.
+var agentPermissions = []string{string(api.AgentPermissionsFull), string(api.AgentPermissionsAsk)}
 
 func newAgentListCmd() *cobra.Command {
 	var scope projectScope
@@ -662,7 +687,7 @@ type agentDetail api.AgentEnvelope
 
 func (d agentDetail) text(w io.Writer, st style.Style) {
 	a := d.Agent
-	field := fieldPrinter(w, st, 8)
+	field := fieldPrinter(w, st, 11)
 	fmt.Fprintf(w, "agent %s in %s\n", st.Name(a.Name), st.Name(a.ProjectName))
 	field("state", agentStateText(st, a))
 	if a.Activity != nil {
@@ -692,9 +717,10 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	}
 	field("dir", a.Dir)
 	field("aca", a.Aca)
-	if a.Model != nil {
-		field("model", *a.Model)
+	if model := agentModelDetail(st, a); model != "" {
+		field("model", model)
 	}
+	field("permissions", string(a.Permissions))
 	field("session", a.SessionId)
 	if a.Pid != nil {
 		field("pid", strconv.Itoa(*a.Pid))
@@ -710,6 +736,17 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if a.RemovedAt != nil {
 		field("removed", a.RemovedAt.Local().Format(time.DateTime))
 	}
+}
+
+// agentModelDetail is the model a last showed, and the one it was asked to use.
+func agentModelDetail(st style.Style, a api.Agent) string {
+	switch {
+	case a.RequestedModel == nil:
+		return agentModelText(a)
+	case a.Model == nil:
+		return st.Muted("asked for " + *a.RequestedModel)
+	}
+	return *a.Model + " " + st.Muted("(asked for "+*a.RequestedModel+")")
 }
 
 // agentModelText is the model a last showed; nothing before it has.

@@ -17,6 +17,7 @@ An ACA cannot compile without these.
 | The conversation in brief | `Brief()`, `internal/aca/claudecode_brief.go`; docs/AGENT_RESUME.md | reads `transcript.md`, so it knows `renderLine`'s format, from the latest compaction summary or the first request, no further back than a `/clear`. An ACA with no summary starts from the first request |
 | What runs outside its terminal | `Detached()`, `StopDetached()`, `internal/aca/claudecode_backup.go`; docs/AGENT_RESUME.md | sessions linked by `continued-in` in a transcript, as `claude agents --json` lists them, stopped by `claude stop <id>` through the login shell, by restarting, starting or removing the agent and closing or removing its project. Nothing runs when no transcript has a link |
 | Giving it wdx's launch note | `Command()` with `Launch.Note`, `internal/aca/claudecode.go`; the text is `LaunchNote`, `internal/agent/manager.go`; docs/IDE.md | `--append-system-prompt <note>`, at every start, new or resumed; a resumed conversation keeps the prompt it recorded until it is compacted (`--system-prompt-snapshot`, checked on 2.1.317) |
+| Its model and permissions, kept for every start | `Command()` with `Launch.Model` and `Launch.Permissions`, `internal/aca/claudecode.go`, and the settings file, `claudeCodeWriteSettings`, `internal/aca/claudecode_backup.go`; docs/AGENT.md | `--model <model>`; `full` is `--permission-mode bypassPermissions`, with `skipDangerousModePermissionPrompt` and `sandbox.enabled: false` in the `--settings` file; `ask` passes nothing |
 | Giving it a message | `Deliver()`, `internal/aca/claudecode.go`; docs/SEND.md | bracketed paste, about 150 ms, then Enter as a separate key; a paste-end marker in the message is taken out |
 | Stopping its turn | `Interrupt()`, `internal/aca/claudecode.go`; docs/SEND.md | Esc |
 | Reading its activity, draft and model from its screen | `ScreenParser()`, `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | the footer rules, the banner and `/model` lines; its fixes reach a running agent when it is relaunched |
@@ -27,12 +28,13 @@ Code that names one ACA, or assumes what they all do.
 
 | What | Where | Needed for another ACA |
 |---|---|---|
-| The ACA new agents run, and the only one known | `Options.ACA` and its default, `internal/daemon/daemon.go` | a way to choose one, and a list of all of them |
+| The ACA new agents run, and the only one known | `Options.ACA`, `internal/daemon/daemon.go`, by default `aca.Default()`, `internal/aca/aca.go` | a way to choose one, and a list of all of them |
+| Help names Claude Code's model aliases | `agent create`'s `Long`, `internal/cli/agent.go` | the words, until the ACA lists its models |
 | wdx chooses the session id before the first start, as a UUID | `newSessionID`, `internal/agent/manager.go` | an ACA that names its own sessions cannot be given one |
 | The test ACA reports Claude Code's id | `ID()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | Help says "Claude Code for now" | `newAgentCmd`'s `Long`, `internal/cli/agent.go` | the words |
 | The `aca` field's example | `Agent.aca`, `api/openapi.yaml` | nothing; only an example |
-| Every ACA a holder knows, by id | `ByID`, `internal/aca/aca.go`, called by the hidden `wdx holder` command in `internal/cli/holder.go`: a holder is its own process, told `--aca <id>` | add it to `ByID` as well as to the daemon's list; `agent.Launches` keeps its own, through which tests hand in theirs |
+| Every ACA a holder knows, by id, and the one place one is made | `ByID`, `internal/aca/aca.go`, called by the hidden `wdx holder` command in `internal/cli/holder.go`: a holder is its own process, told `--aca <id>` | add it to `ByID` as well as to the daemon's list; `agent.Launches` keeps its own, through which tests hand in theirs |
 | The test ACA's parser and delivering are Claude Code's, as a holder goes by the id | `ScreenParser()`, `Deliver()`, `Interrupt()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | An ACA queues what is typed during a turn, so the `inboxReader` delivers on `working`; checked on Claude Code 2.1.316 | `nextAction`, `internal/holder/inbox.go`; docs/SEND.md | an ACA that does not queue needs a way to say to hold while working |
 | A message to an ACA its holder does not know is typed as into a shell | `newHolderCmd`, `internal/cli/holder.go`; docs/SEND.md | settle this before a holder can be older than an ACA |

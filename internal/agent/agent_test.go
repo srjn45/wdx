@@ -58,7 +58,7 @@ func newFixture(t *testing.T, script string) fixture {
 	if _, err := d.Exec(`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-app', 'app', 'open', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
-	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Notes: filepath.Join(t.TempDir(), "notes"), Script: script}
+	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Notes: filepath.Join(t.TempDir(), "notes"), Kept: filepath.Join(t.TempDir(), "kept"), Script: script}
 	store := NewStore(d)
 	backups := NewBackups(ctx, store, home, []aca.AiCodingAgent{test}, 0)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
@@ -80,7 +80,7 @@ func newFixture(t *testing.T, script string) fixture {
 
 func (f fixture) create(t *testing.T, name string) Agent {
 	t.Helper()
-	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, "")
+	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, "", Launch{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +204,60 @@ func TestEveryStartGivesTheNote(t *testing.T) {
 	}
 	if note := LaunchNote(); !slices.Equal(notes, []string{note, note}) {
 		t.Fatalf("notes = %q, want the launch note twice", notes)
+	}
+}
+
+// TestEveryStartKeepsTheModelAndPermissions: a restart, as the daemon restarting does,
+// goes through the same launch.
+func TestEveryStartKeepsTheModelAndPermissions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	a, err := f.agents.Create(ctx, f.project, "helper", f.dir, "", Launch{Model: "claude-opus-4-8[effort=high]", Permissions: aca.PermissionsAsk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.RequestedModel != "claude-opus-4-8[effort=high]" || a.Permissions != aca.PermissionsAsk {
+		t.Errorf("created with %q %q", a.RequestedModel, a.Permissions)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	kept, err := f.aca.KeptGiven()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "claude-opus-4-8[effort=high] ask"; !slices.Equal(kept, []string{want, want}) {
+		t.Fatalf("starts were given %q, want %q twice", kept, want)
+	}
+}
+
+// TestCreateAllowsEverythingByDefault: with no model, the ACA's own.
+func TestCreateAllowsEverythingByDefault(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "exit 0")
+	a := f.create(t, "helper")
+	if a.RequestedModel != "" || a.Permissions != aca.PermissionsFull {
+		t.Errorf("created with %q %q", a.RequestedModel, a.Permissions)
+	}
+	f.waitState(t, a.ID, terminal.StateExited)
+	if kept, err := f.aca.KeptGiven(); err != nil || !slices.Equal(kept, []string{" full"}) {
+		t.Fatalf("start was given %q, %v", kept, err)
+	}
+}
+
+func TestCreateRefusesAModelNoACANames(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "")
+	for _, model := range []string{"opus 4", "opus\n", "a\x00b", strings.Repeat("m", 201)} {
+		if _, err := f.agents.Create(context.Background(), f.project, "", f.dir, "", Launch{Model: model}); !errors.Is(err, ErrInvalidModel) {
+			t.Errorf("model %q: %v", model, err)
+		}
+	}
+	if list, err := f.agents.Store().List(context.Background(), ""); err != nil || len(list) != 0 {
+		t.Errorf("agents = %v, %v", list, err)
 	}
 }
 
@@ -364,7 +418,7 @@ func TestStopAndRelaunchWithTheProject(t *testing.T) {
 
 func (f fixture) createChild(t *testing.T, name, parentID string) Agent {
 	t.Helper()
-	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, parentID)
+	a, err := f.agents.Create(context.Background(), f.project, name, f.dir, parentID, Launch{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,13 +441,13 @@ func TestCreateChild(t *testing.T) {
 	if parent.ParentID != "" || child.ParentID != parent.ID {
 		t.Fatalf("parents: %q, %q", parent.ParentID, child.ParentID)
 	}
-	if _, err := f.agents.Create(ctx, f.project, "x", f.dir, "agent-none"); !errors.Is(err, ErrNotFound) {
+	if _, err := f.agents.Create(ctx, f.project, "x", f.dir, "agent-none", Launch{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown parent: %v", err)
 	}
 	if _, err := f.db.Exec(`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-lib', 'lib', 'open', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.agents.Create(ctx, "proj-lib", "x", f.dir, parent.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := f.agents.Create(ctx, "proj-lib", "x", f.dir, parent.ID, Launch{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("parent of another project: %v", err)
 	}
 }
@@ -430,14 +484,14 @@ func TestTombstone(t *testing.T) {
 	for what, err := range map[string]error{
 		"start":  third(f.agents.Start(ctx, top.ID)),
 		"remove": third(f.agents.Remove(ctx, top.ID, true)),
-		"child":  second(f.agents.Create(ctx, f.project, "x", f.dir, top.ID)),
+		"child":  second(f.agents.Create(ctx, f.project, "x", f.dir, top.ID, Launch{})),
 	} {
 		if _, ok := errors.AsType[*RemovedError](err); !ok {
 			t.Errorf("%s of a tombstone: %v", what, err)
 		}
 	}
 	// The name stays taken.
-	if _, err := f.agents.Create(ctx, f.project, "top", f.dir, ""); err == nil {
+	if _, err := f.agents.Create(ctx, f.project, "top", f.dir, "", Launch{}); err == nil {
 		t.Fatal("want the name taken")
 	}
 
@@ -846,7 +900,7 @@ func TestRemoveStopsWhatRunsOutsideTheTerminal(t *testing.T) {
 		t.Parallel()
 		f := newFixture(t, "exit 0")
 		parent := f.create(t, "parent")
-		if _, err := f.agents.Create(ctx, f.project, "child", f.dir, parent.ID); err != nil {
+		if _, err := f.agents.Create(ctx, f.project, "child", f.dir, parent.ID, Launch{}); err != nil {
 			t.Fatal(err)
 		}
 		f.waitState(t, parent.ID, terminal.StateExited)
@@ -1001,7 +1055,7 @@ func TestRestartOfATombstoneOrAFailedLaunch(t *testing.T) {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	a, err := f.agents.Create(ctx, f.project, "helper", dir, "")
+	a, err := f.agents.Create(ctx, f.project, "helper", dir, "", Launch{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1052,7 +1106,7 @@ func TestCreateLinked(t *testing.T) {
 		t.Fatal(err)
 	}
 	var linkedID string
-	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, "do the schema", func(ctx context.Context, tx db.Execer, agentID string) error {
+	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, Launch{}, "do the schema", func(ctx context.Context, tx db.Execer, agentID string) error {
 		linkedID = agentID
 		_, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 7 WHERE id = ?`, f.project)
 		return err
@@ -1077,7 +1131,7 @@ func TestCreateLinked(t *testing.T) {
 		t.Errorf("arrived as %q", got)
 	}
 
-	_, err = f.agents.CreateLinked(ctx, f.project, "app-api", f.dir, "do the api", func(ctx context.Context, tx db.Execer, agentID string) error {
+	_, err = f.agents.CreateLinked(ctx, f.project, "app-api", f.dir, Launch{}, "do the api", func(ctx context.Context, tx db.Execer, agentID string) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 8 WHERE id = ?`, f.project); err != nil {
 			return err
 		}
@@ -1151,7 +1205,7 @@ func TestCreateLinkedFirstMessageWaits(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t, "")
-	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, "do the schema", nil)
+	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, Launch{}, "do the schema", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

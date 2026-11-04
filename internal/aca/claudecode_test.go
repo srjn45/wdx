@@ -99,3 +99,43 @@ func TestClaudeCodeIgnoresAnotherSessionsTranscript(t *testing.T) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
+
+// TestClaudeCodeGivesTheModelAndPermissions: to a resumed session too, as both are
+// kept for every start.
+func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	launch := aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Model: "sonnet", Permissions: aca.PermissionsFull}
+	got, err := aca.ClaudeCode{}.Command(launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"claude", "--session-id", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"}; !slices.Equal(got, want) {
+		t.Errorf("new session: command = %q, want %q", got, want)
+	}
+	dir := filepath.Join(home, ".claude", "projects", "-work")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "s-1.jsonl"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err = aca.ClaudeCode{}.Command(launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"claude", "--resume", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"}; !slices.Equal(got, want) {
+		t.Errorf("resumed: command = %q, want %q", got, want)
+	}
+}
+
+func TestClaudeCodeAskPassesNoPermissions(t *testing.T) {
+	t.Parallel()
+	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir(), Permissions: aca.PermissionsAsk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"claude", "--session-id", "s-1"}; !slices.Equal(got, want) {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+}

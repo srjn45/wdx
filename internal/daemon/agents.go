@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/logging"
@@ -79,7 +80,11 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 			worktreeCreated = &created
 		}
 	}
-	a, err := s.agents.Create(ctx, p.ID, deref(b.Name), dir, parentID)
+	launch := agent.Launch{Model: deref(b.Model)}
+	if b.Permissions != nil {
+		launch.Permissions = aca.Permissions(*b.Permissions)
+	}
+	a, err := s.agents.Create(ctx, p.ID, deref(b.Name), dir, parentID, launch)
 	if err != nil {
 		return nil, err
 	}
@@ -361,6 +366,10 @@ func agentView(a agent.Agent) api.Agent {
 	if a.Worktree != "" {
 		v.Worktree = &a.Worktree
 	}
+	if a.RequestedModel != "" {
+		v.RequestedModel = &a.RequestedModel
+	}
+	v.Permissions = api.AgentPermissions(a.Permissions)
 	if a.Activity != "" {
 		activity := api.AgentActivity(a.Activity)
 		v.Activity, v.Draft, v.Queued = &activity, &a.Draft, &a.Queued

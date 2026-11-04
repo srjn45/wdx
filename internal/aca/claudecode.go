@@ -13,8 +13,11 @@ import (
 // ClaudeCode is Anthropic's Claude Code CLI.
 type ClaudeCode struct{}
 
+// ClaudeCodeID is ClaudeCode's ID.
+const ClaudeCodeID = "claude_code"
+
 // ID implements AiCodingAgent.
-func (ClaudeCode) ID() string { return "claude_code" }
+func (ClaudeCode) ID() string { return ClaudeCodeID }
 
 // Command implements AiCodingAgent. A session is resumed only once it has a
 // transcript: Claude Code writes none until something is typed, and resuming
@@ -29,6 +32,12 @@ func (ClaudeCode) Command(l Launch) ([]string, error) {
 	if resume {
 		command = []string{"claude", "--resume", l.SessionID}
 	}
+	if l.Model != "" {
+		command = append(command, "--model", l.Model)
+	}
+	if l.Permissions == PermissionsFull {
+		command = append(command, "--permission-mode", "bypassPermissions")
+	}
 	if l.Note != "" {
 		// Unlike a first message, it outlives a compaction. A resumed conversation keeps the
 		// system prompt it recorded until then (--system-prompt-snapshot, 2.1.317).
@@ -37,7 +46,7 @@ func (ClaudeCode) Command(l Launch) ([]string, error) {
 	if l.BackupDir == "" {
 		return command, nil
 	}
-	settings, err := claudeCodeWriteSettings(l.BackupDir)
+	settings, err := claudeCodeWriteSettings(l.BackupDir, l.Permissions)
 	if err != nil {
 		return nil, fmt.Errorf("write the settings of its backup: %w", err)
 	}

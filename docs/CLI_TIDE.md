@@ -60,6 +60,8 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Start it on a task | `--prompt` | type it into the agent | Later (tide) | Comes with the agent form, with the name and the rest |
 | Choose the name when creating | `--name` | a generated name, editable in the info tab | Later (tide) | Comes with an agent form, once there are more fields (ACA, model, role, name) |
 | Choose a worktree for an agent with no parent | `--worktree` | only for a child | Later (tide) | Comes with the agent form or the worktrees work |
+| Choose its model and permissions when creating | `--model`, `--permissions` | the defaults: the ACA's model, `full` | Later (tide) | Comes with the agent form (the wdx doc AGENT_CREATE, step 3) |
+| See its model and permissions | `agent get` | the info tab | Same | |
 | List agents | `agent list` | the left pane | Same | |
 | Show an agent | `agent get` | the info tab | Same | The fields differ and change as needed: `agent get` also has session, pid and times |
 | Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |

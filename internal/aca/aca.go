@@ -75,8 +75,8 @@ type Backup struct {
 // first, which only ever grows.
 const TranscriptFile = "transcript.md"
 
-// ByID is the AI coding agent named id, for what cannot be handed one: the
-// holder is a process of its own, told an id. docs/AGENT_STATE.md.
+// ByID is the AI coding agent named id, and the one place one is made, so that
+// a later switch to turn one off has one place to do it. docs/AGENT_STATE.md.
 func ByID(id string) (AiCodingAgent, bool) {
 	for _, known := range []AiCodingAgent{ClaudeCode{}} {
 		if known.ID() == id {
@@ -85,6 +85,23 @@ func ByID(id string) (AiCodingAgent, bool) {
 	}
 	return nil, false
 }
+
+// Default is what new agents run.
+func Default() AiCodingAgent {
+	known, _ := ByID(ClaudeCodeID)
+	return known
+}
+
+// Permissions is what an agent may do without asking, kept for every start.
+type Permissions string
+
+const (
+	// PermissionsFull asks for no approval, with network access and no sandbox.
+	PermissionsFull Permissions = "full"
+	// PermissionsAsk is the AI coding agent's own default, as the user's settings
+	// for it say.
+	PermissionsAsk Permissions = "ask"
+)
 
 // Launch is one start of an agent.
 type Launch struct {
@@ -100,4 +117,9 @@ type Launch struct {
 	Shell string
 	// Note is added to the AI CLI's system prompt; "" adds nothing.
 	Note string
+	// Model is what to pass as its model, as the user asked for it; "" is its
+	// default.
+	Model string
+	// Permissions is what it may do without asking; "" is PermissionsAsk.
+	Permissions Permissions
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/screen"
@@ -36,9 +37,13 @@ type Agent struct {
 	Draft      bool      // whether a human left text in its input box
 	Queued     int       // how many messages wait to go into it
 	Model      string    // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
-	Plan       string    // the name of the plan whose task it does; "" for none
-	Task       string    // the id of that task
-	Terminal   terminal.Terminal
+	// RequestedModel is the model it is started with every time, as it was asked
+	// for; "" is its ACA's default.
+	RequestedModel string
+	Permissions    aca.Permissions // what it may do without asking, on every start
+	Plan           string          // the name of the plan whose task it does; "" for none
+	Task           string          // the id of that task
+	Terminal       terminal.Terminal
 }
 
 // Tombstone reports whether a was removed and stays only for its children.
@@ -189,7 +194,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			CASE WHEN t.state = 'running' THEN a.model END,
-			a.current_dir,
+			a.current_dir, a.requested_model, a.permissions,
 			(SELECT COUNT(*) FROM messages m WHERE m.terminal_id = a.terminal_id AND m.state = 'held'),
 			(`+taskOfAgent+`),
 			`+terminal.Columns+`
@@ -207,15 +212,15 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent, parentName sql.NullString
 		var removed sql.NullInt64
-		var worktree, activity, model, currentDir, task sql.NullString
+		var worktree, activity, model, currentDir, requestedModel, task sql.NullString
 		var draft sql.NullBool
 		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &a.Held, &task); err != nil {
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &requestedModel, &a.Permissions, &a.Held, &task); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued, a.Model = activity.String, draft.Bool, int(queued.Int64), model.String
-		a.CurrentDir = currentDir.String
+		a.CurrentDir, a.RequestedModel = currentDir.String, requestedModel.String
 		a.Plan, a.Task, _ = strings.Cut(task.String, "\x00")
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
@@ -240,14 +245,12 @@ func (s *Store) children(ctx context.Context, id string) (int, error) {
 
 // insert adds an agent on the terminal row with terminalID, under the agent
 // with parentID unless it is "", in e, the transaction that adds the row.
-func (s *Store) insert(ctx context.Context, e db.Execer, id, terminalID, acaID, sessionID, parentID string) error {
-	var parent sql.NullString
-	if parentID != "" {
-		parent = sql.NullString{String: parentID, Valid: true}
-	}
-	_, err := db.Exec(ctx, e, "INSERT INTO agents (id, terminal_id, aca, session_id, parent_agent_id) VALUES (?, ?, ?, ?, ?)", id, terminalID, acaID, sessionID, parent)
+func (s *Store) insert(ctx context.Context, e db.Execer, id, terminalID, acaID, sessionID, parentID string, l Launch) error {
+	_, err := db.Exec(ctx, e, "INSERT INTO agents (id, terminal_id, aca, session_id, parent_agent_id, requested_model, permissions) VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)",
+		id, terminalID, acaID, sessionID, parentID, l.Model, l.Permissions)
 	if err == nil {
-		logging.FromContext(ctx).Info("agent created", "agent_id", id, "terminal_id", terminalID, "aca", acaID, "session_id", sessionID, "parent_agent_id", parentID)
+		logging.FromContext(ctx).Info("agent created", "agent_id", id, "terminal_id", terminalID, "aca", acaID, "session_id", sessionID, "parent_agent_id", parentID,
+			"requested_model", l.Model, "permissions", l.Permissions)
 	}
 	return err
 }

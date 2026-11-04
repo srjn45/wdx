@@ -1105,12 +1105,17 @@ paths:
         git unless git already ignores it. A worktree created stays when the
         agent then fails, and the next request finds it.
 
+        With model, its AI coding agent is told to use that model, and with
+        permissions it may do that without asking; both are kept for every
+        later start. A model with whitespace or a control character, or longer
+        than 200 bytes, is invalid_argument; nothing else about it is checked.
+
         An agent that does not start is left failed and returns start_failed
         with the agent under details.agent.
 
-        Errors: agent_removed, branch_exists, invalid_name, invalid_path,
-        name_taken, not_found, path_exists, project_closed, start_failed,
-        worktree_failed.
+        Errors: agent_removed, branch_exists, invalid_argument, invalid_name,
+        invalid_path, name_taken, not_found, path_exists, project_closed,
+        start_failed, worktree_failed.
       requestBody:
         required: true
         content:
@@ -2901,7 +2906,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, requested_model, permissions, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -2930,6 +2935,8 @@ components:
         draft: { type: boolean, nullable: true, description: "Whether a human left text in its input box, never the text, while running; otherwise null." }
         queued: { type: integer, nullable: true, description: "How many messages wait to go into it, as behind a draft, while running; otherwise null." }
         model: { type: string, nullable: true, description: "The AI model's name as its ACA last showed it, such as Haiku 5.5, for display, while running; otherwise null, as before it has shown one. A change it does not show, such as an automatic fallback, is not seen." }
+        requested_model: { type: string, nullable: true, description: "The model it is started with every time, as it was asked for; null for its AI coding agent's default." }
+        permissions: { $ref: "#/components/schemas/AgentPermissions" }
         pid: { type: integer, nullable: true, description: "The AI coding agent's, while it has one." }
         exit_code:
           type: integer
@@ -3023,6 +3030,19 @@ components:
           type: string
           nullable: true
           description: Its task, as the first message in its inbox, which waits until it is ready for it; see sendAgent.
+        model:
+          type: string
+          nullable: true
+          description: The model its AI coding agent is told to use on every start, as that one's model flag takes it; by default its own default.
+        permissions:
+          allOf: [{ $ref: "#/components/schemas/AgentPermissions" }]
+          nullable: true
+          description: What it may do without asking, on every start; full by default.
+
+    AgentPermissions:
+      type: string
+      description: "What an agent may do without asking: full asks for no approval, with network access and no sandbox; ask is what its AI coding agent does by default, as the user's settings for it say."
+      enum: [full, ask]
 
     DocStatus:
       type: string
