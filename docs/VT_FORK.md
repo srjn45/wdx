@@ -43,7 +43,7 @@ The alternate screen, which `less`, `vim` and Claude Code use, kept its own scro
 wdx keeps a terminal's history itself and reads lines off the vt as they scroll, so it wants no scrollback at all, but `SetScrollbackSize(0)` was ignored and the default 10,000 lines stayed. 0 or less now disables it, and a later size enables it again. Offered upstream as #1029.
 
 **`dfddc21` perf(ansi): allocate the parser's data buffer as a string's data arrives** (2026-11-04)
-Every emulator told its parser to keep a 4 MB buffer for OSC and DCS strings and the parser allocated it whole, up front, though almost no string ever needs it. Measuring the cli tests for docs/FLAKES.md's memory-cap row found the 35 emulators alive at the heap's peak were 140 MB of a 220 MB live heap. The size is a ceiling now: the buffer starts empty, doubles as data arrives and never passes the size; what came past was dropped before too. The cli test binary's live heap peak went from 205 MB to 80 MB. Upstream has issue #973 and PR #1001 asking for a knob instead; ours is to be offered once it has run in wdx a while.
+Every emulator told its parser to keep a 4 MB buffer for OSC and DCS strings and the parser allocated it whole, up front, though almost no string ever needs it. Measuring the cli tests for docs/FLAKES.md's memory-cap row found the 35 emulators alive at the heap's peak were 140 MB of a 220 MB live heap. The size is a ceiling now: the buffer starts empty, doubles as data arrives and never passes the size; what came past was dropped before too. The cli test binary's live heap peak went from 205 MB to 80 MB. Offered upstream as PR #1032, closing issue #973; PR #1001 asks for a knob instead.
 
 ### Reading state back, to repaint the terminal elsewhere
 
@@ -74,6 +74,6 @@ A program in a wdx terminal could not use the kitty keyboard protocol: the vt di
 | `1514f04`, `eb0b774`, `09f7f7b`, `2204d30`, `4724e9a` | someone else's open PR makes the same fix (#1003, #986/#1006, #881, #948, #946); ours drop from the branch at the `make vt-sync` that follows their merge |
 | `5b44726`, `002f129`, `034ba5e` getters | Discussion #1030; a PR once a maintainer answers |
 | `4d06ff8`, `5fddd20` kitty | Discussion #1031; a PR once a maintainer answers |
-| `dfddc21` parser buffer | to offer, after it has run in wdx a while; upstream's #973 and #1001 are about the same 4 MB |
+| `dfddc21` parser buffer | PR #1032, closing #973; #1001 is a knob for the same 4 MB |
 
 When upstream takes a change, `make vt-sync` drops our commit, and when both modules' changes are all upstream the two `replace` lines go and so does the fork.
