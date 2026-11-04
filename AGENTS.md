@@ -65,6 +65,7 @@ scripts/ci-range.sh prints the commits a CI run is about
 scripts/test-contention.sh runs the tests several times at once on a machine kept busy (make test-contention, in CI and nightly)
 scripts/test-update.sh updates a wdx built from the tree to a release dist.sh builds of it and rolls it back (make test-update, in CI)
 scripts/vt-sync.sh rebases the vt fork onto upstream and moves go.mod to it (make vt-sync); docs/VT.md
+scripts/tide-lag-sample.sh gathers, on a machine where tide lags, what the wdx doc TIDE_LAG asks for: the holder logs, the wdx processes and a CPU sample of tide (sample on macOS, perf on Linux)
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
 .github/workflows/ci.yml  runs make check and the tests on every push to main and every PR; docs/RELEASING.md
 .github/workflows/release.yml  publishes the GitHub Release of every pushed tag, through scripts/publish.sh
