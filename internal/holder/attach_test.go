@@ -405,6 +405,22 @@ func TestAttachAnswersWithoutClients(t *testing.T) {
 	}
 }
 
+// TestAttachAnswersKittyFlagsWithoutClients: with no client attached, the
+// holder's screen tells the program the kitty keyboard flags it pushed.
+func TestAttachAnswersKittyFlagsWithoutClients(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	answer := filepath.Join(f.home, "answer")
+	f.startShell(t, "term-00000333", fmt.Sprintf(`stty raw -echo; printf '\033[>1u\033[?u'; dd bs=1 count=5 2>/dev/null > %s; exec sleep 60`, answer))
+	var got []byte
+	if !waittest.Until(t, func() bool {
+		got, _ = os.ReadFile(answer)
+		return string(got) == "\x1b[?1u"
+	}) {
+		t.Fatalf("got %q, want the screen to answer the flags", got)
+	}
+}
+
 // TestAttachLeavesQueriesToTheClient queries the cursor position while a
 // client is attached: its terminal answers, not the holder's screen.
 func TestAttachLeavesQueriesToTheClient(t *testing.T) {

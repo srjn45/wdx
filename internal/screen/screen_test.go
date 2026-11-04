@@ -38,6 +38,9 @@ func TestScreenSnapshot(t *testing.T) {
 		"line drawing":   "\x1b(0lqk",
 		"shift out":      "\x1b)0\x0elqk",
 		"main under alt": "shell\r\n\x1b[1m$ \x1b]8;;https://example.com\x07\x1b[?1049h\x1b[0;7mless",
+		"kitty flags":    "\x1b[>1u\x1b[>9u",
+		"kitty on alt":   "\x1b[>1u\x1b[?1049h\x1b[>9u\x1b[>1u",
+		"kitty left alt": "shell\x1b[?1049h\x1b[>8u\x1b[?1049l\x1b[>1u",
 	}
 	files, err := filepath.Glob("testdata/*.out")
 	if err != nil || len(files) == 0 {
@@ -77,8 +80,8 @@ func TestScreenSnapshot(t *testing.T) {
 }
 
 // screenDiffs lists how b differs from a: both screens' cells, cursors and
-// pens, the alternate screen, margins, character sets, title and the modes
-// a's output set.
+// pens, the alternate screen, margins, character sets, title, kitty
+// keyboard flags and the modes a's output set.
 func screenDiffs(a, b *Screen) []string {
 	diffs := cellDiffs("main", a.vt.MainScreen(), b.vt.MainScreen())
 	diffs = append(diffs, cursorDiffs("main", a.vt.MainScreen(), b.vt.MainScreen())...)
@@ -144,6 +147,11 @@ func stateDiffs(a, b *Screen) []string {
 	}
 	if a.Title() != b.Title() {
 		diffs = append(diffs, fmt.Sprintf("title %q vs %q", a.Title(), b.Title()))
+	}
+	mainA, altA := a.vt.KittyFlags()
+	mainB, altB := b.vt.KittyFlags()
+	if !slices.Equal(mainA, mainB) || !slices.Equal(altA, altB) {
+		diffs = append(diffs, fmt.Sprintf("kitty flags %v %v vs %v %v", mainA, altA, mainB, altB))
 	}
 	ma, mb := a.vt.Modes(), b.vt.Modes()
 	for m, setting := range ma {
@@ -345,6 +353,42 @@ func TestScreenModifiedKeys(t *testing.T) {
 		s.SendKey(c.key)
 		var got []byte
 		for len(got) < len(c.want) {
+			select {
+			case p := <-sent:
+				got = append(got, p...)
+			case <-waittest.After(t):
+				t.Fatalf("%v: got %q, want %q", c.key, got, c.want)
+			}
+		}
+		if string(got) != c.want {
+			t.Errorf("%v: got %q, want %q", c.key, got, c.want)
+		}
+	}
+}
+
+// TestScreenKittyKeys: once the program pushes kitty keyboard flags, the vt
+// encodes keys by them, modified arrows too, rather than as xterm does; and
+// as xterm once they are popped.
+func TestScreenKittyKeys(t *testing.T) {
+	t.Parallel()
+	sent := make(chan []byte, 16)
+	s := New(80, 24, func(p []byte) { sent <- p })
+	defer s.Close()
+	for _, c := range []struct {
+		output string
+		key    uv.KeyPressEvent
+		want   string
+	}{
+		{"\x1b[>1u", uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModShift}, "\x1b[13;2u"},
+		{"", uv.KeyPressEvent{Code: uv.KeyEnter}, "\r"},
+		// xterm's Meta is 8, the protocol's 32.
+		{"", uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModMeta}, "\x1b[1;33A"},
+		{"\x1b[<u", uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModMeta}, "\x1b[1;9A"},
+	} {
+		s.Write([]byte(c.output))
+		s.SendKey(c.key)
+		var got []byte
+		for len(got) < len(c.want) && strings.HasPrefix(c.want, string(got)) {
 			select {
 			case p := <-sent:
 				got = append(got, p...)

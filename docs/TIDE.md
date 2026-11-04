@@ -308,4 +308,4 @@ Supported, though most users will mostly use the keyboard.
 - Resizing: whether dividers can move away from 1:3 and 1:4 (drag, or a resize mode in the menu), and whether a changed size persists.
 - The shortcut menu's actions and letters, and how screens are opened.
 - Rendering performance with several live PTY panes, and color, wide-character and cursor fidelity. To measure in a spike.
-- Possible later: richer keys (kitty keyboard protocol) in modern terminals such as Ghostty, kitty, iTerm2 and WezTerm.
+- Richer keys (kitty keyboard protocol) in modern terminals such as Ghostty, kitty, iTerm2 and WezTerm: the panes' programs have levels 1 and 8 since 2026-11-04 (docs/KITTY_KEYS.md); tide's own keys use what Bubble Tea asks for.

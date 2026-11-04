@@ -65,6 +65,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |
 | Talk to an agent | `agent attach` | its tab | Same | |
 | Scroll back through its output | `agent attach` | its tab | Same | |
+| Keys only the kitty keyboard protocol tells apart (`Shift+Enter`) | `agent attach`, `terminal attach` | its tab | Same | Both are termview, whose vt encodes them (docs/KITTY_KEYS.md) |
 | Print its history for a script | none | not needed | Open (CLI) | `terminal history` serves shells only. An `agent history` would not give a script the conversation; see [An agent's history](#an-agents-history) |
 | Read or grep its conversation | `agent transcript` | none | Open (tide) | Not needed in tide yet: docs/AGENT_RESUME.md is about keeping it. |
 | Read its conversation in brief | `agent transcript --brief` | not needed | By design | The agent reads it, in a new session, not a person |

@@ -311,13 +311,28 @@ func (s *Screen) Cursor() Cursor {
 	return Cursor{X: p.X, Y: p.Y, Hidden: s.vt.CursorHidden(), Shape: shape, Blink: blink}
 }
 
-// SendKey sends a key to the program, encoded as the modes it set ask.
+// SendKey sends a key to the program, encoded as the modes and the kitty
+// keyboard flags it set ask (docs/KITTY_KEYS.md).
 func (s *Screen) SendKey(k uv.KeyPressEvent) {
-	if seq, ok := modifiedKey(k); ok {
+	if seq, ok := modifiedKey(k); ok && s.kittyFlags() == 0 {
 		s.vt.SendText(seq)
 		return
 	}
 	s.vt.SendKey(k)
+}
+
+// kittyFlags are the kitty keyboard flags in force: the top of the stack of
+// the screen that shows, 0 when it is empty. The vt encodes keys by them.
+func (s *Screen) kittyFlags() int {
+	main, alt := s.vt.KittyFlags()
+	stack := main
+	if s.vt.IsAltScreen() {
+		stack = alt
+	}
+	if len(stack) == 0 {
+		return 0
+	}
+	return stack[len(stack)-1]
 }
 
 // modifiedKey encodes an arrow, editing or function key pressed with Shift,
@@ -363,18 +378,30 @@ func (s *Screen) Paste(text string) {
 // size: a soft reset, the main screen's cells and cursor, then, when it
 // shows, the alternate screen's, so that leaving it shows the main screen;
 // the modes the output set, the margins, the cursor with its pen and link,
-// the character sets and the title. The character set GR invokes is not
+// the character sets, the title and the kitty keyboard flags of both
+// screens, every entry of their stacks, so that a pop leaves a client's vt
+// where it leaves this one. The character set GR invokes is not
 // carried: it applies only to bytes UTF-8 output never sends alone.
 func (s *Screen) Snapshot() []byte {
 	e := s.vt
 	var b strings.Builder
 	b.WriteString("\x1b[!p\x1b[H\x1b[2J") // soft reset, home, clear
+	main, alt := e.KittyFlags()
+	if !e.IsAltScreen() && len(alt) > 0 {
+		// The alternate screen's stack, for when the program enters it
+		// again: 1047 switches screens and leaves the cursor alone.
+		b.WriteString("\x1b[?1047h")
+		pushKittyFlags(&b, alt)
+		b.WriteString("\x1b[?1047l")
+	}
+	pushKittyFlags(&b, main)
 	paint(&b, e.MainScreen())
 	if e.IsAltScreen() {
 		// Entering the alternate screen saves the main screen's cursor,
 		// which leaving it restores.
 		pen(&b, e.MainScreen().Cursor(), uv.Position{})
 		b.WriteString("\x1b[?1049h\x1b[0m\x1b]8;;\x07\x1b[H\x1b[2J")
+		pushKittyFlags(&b, alt)
 		paint(&b, e.AltScreen())
 	}
 	modes := e.Modes()
@@ -407,6 +434,13 @@ func (s *Screen) Snapshot() []byte {
 		b.WriteString(ansi.SetWindowTitle(t))
 	}
 	return []byte(b.String())
+}
+
+// pushKittyFlags pushes a stack of kitty keyboard flags, oldest first.
+func pushKittyFlags(b *strings.Builder, stack []int) {
+	for _, flags := range stack {
+		b.WriteString(ansi.PushKittyKeyboard(flags))
+	}
 }
 
 // paint writes the cells of scr, a vt screen of the screen's size.

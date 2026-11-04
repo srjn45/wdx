@@ -190,6 +190,52 @@ func TestPaneEncodesForTheProgram(t *testing.T) {
 	d.waitText("^[[<65;1;1M")
 }
 
+// TestPaneSendsKittyKeys: once the program pushes kitty keyboard flags,
+// Shift+Enter reaches it as the protocol says, and Enter as before. A key it
+// did not ask for is sent as before, which sends Shift+Enter as nothing.
+func TestPaneSendsKittyKeys(t *testing.T) {
+	t.Parallel()
+	shiftEnter := tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+	t.Run("pushed while attached", func(t *testing.T) {
+		t.Parallel()
+		// The shell pushes once the pane is attached, so that the push
+		// reaches the pane as output, not in the snapshot.
+		sh := startShell(t, `stty raw -echo; printf 'attached?\r\n'; while [ ! -f "$0.go" ]; do sleep 0.01; done; printf '\033[>1uready\r\n'; exec cat -v`)
+		d := sh.attach()
+		d.waitText("attached?")
+		if err := os.WriteFile(filepath.Join(sh.home, "shell.go"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		d.waitText("ready")
+		d.send(shiftEnter)
+		d.send(tea.KeyPressMsg{Code: tea.KeyEnter})
+		d.waitText("^[[13;2u^M")
+	})
+	t.Run("pushed before the attach", func(t *testing.T) {
+		t.Parallel()
+		// The lines after the push scroll into history only once the
+		// holder's screen has read the push: then only the snapshot can
+		// carry it to the pane.
+		sh := startShell(t, `stty raw -echo; printf '\033[>1u'; for i in $(seq 30); do printf 'line %s\r\n' $i; done; exec cat -v`)
+		sh.waitHistory(7)
+		d := sh.attach()
+		d.waitText("line 30")
+		d.send(shiftEnter)
+		d.waitText("^[[13;2u")
+	})
+	t.Run("not pushed", func(t *testing.T) {
+		t.Parallel()
+		d := attach(t, `stty raw -echo; printf 'ready\r\n'; exec cat -v`)
+		d.waitText("ready")
+		d.send(shiftEnter)
+		d.typeText("x")
+		d.waitText("x")
+		if strings.Contains(d.m.Text(), "^[") {
+			t.Fatalf("Shift+Enter sent an escape sequence:\n%s", d.m.Text())
+		}
+	})
+}
+
 // TestPaneWheelOnAlternateScreen turns the wheel over a program on the
 // alternate screen that did not ask for the mouse: it gets arrow keys.
 func TestPaneWheelOnAlternateScreen(t *testing.T) {

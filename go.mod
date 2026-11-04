@@ -82,8 +82,8 @@ require (
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
-replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt v0.1.1-0.20261102233117-4724e9a83b8b
+replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt v0.1.1-0.20261104143213-5fddd201f70d
 
-replace github.com/charmbracelet/x/ansi => github.com/srjn45/x/ansi v0.11.10-0.20261102233117-4724e9a83b8b
+replace github.com/charmbracelet/x/ansi => github.com/srjn45/x/ansi v0.11.10-0.20261104143213-5fddd201f70d
 
 replace github.com/muesli/cancelreader => ./third_party/cancelreader

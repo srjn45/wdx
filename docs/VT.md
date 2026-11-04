@@ -78,6 +78,7 @@ What `screen` has to track itself, or cannot do at all.
 | 12 | A soft-wrap flag on lines | History cannot be reflowed to another width; a long line wrapped at 80 columns stays two lines | Mark lines that continue on the next |
 | 13 | Compact scrollback lines | A line costs ~9.4 KB (a full `uv.Cell` per column); not a problem for `screen`, which keeps none | Smaller cells for stored lines |
 | 14 | One scroll region per terminal | The vt keeps one per screen (main and alternate), unlike xterm; `screen` tracks both | One region, as xterm |
+| 18 | The kitty keyboard protocol: a program could not ask for it, and `Shift+Enter` was sent as nothing | Done in the fork (`4d06ff8`, `5fddd20`) for levels 1 and 8: each screen's stack of flags, `CSI ? u` answered, keys encoded by the flags, `KittyFlags()`; a snapshot carries both stacks (docs/KITTY_KEYS.md) | Levels 2, 4 and 16, and xterm's modifyOtherKeys, when a program needs them |
 
 ## Not bugs
 

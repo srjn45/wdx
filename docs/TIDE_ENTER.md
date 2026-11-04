@@ -37,7 +37,7 @@ The worktree rows are the odd ones out, and an agent opened from a zoomed list o
 
 Most terminals send `Shift+Enter` as the same byte as `Enter` (`\r`). It can be told apart only through the kitty keyboard protocol (kitty, WezTerm, foot, Ghostty, recent iTerm2) or xterm's modifyOtherKeys, both of which tmux passes on only with `extended-keys` set. The probe run on 2026-11-03 showed `\r` for all three of `Enter`, `Shift+Enter` and `Ctrl+Enter` without either.
 
-tide asks for nothing new: Bubble Tea v2 already asks the terminal for both at start (`cursed_renderer.go`, modifyOtherKeys 2 and kitty flag 1), and where one is spoken the key arrives as `shift+enter`. Keys typed into a pane's program are unaffected: termview hands the key to the pane's vt, which encodes it as that program asked.
+tide asks for nothing new: Bubble Tea v2 already asks the terminal for both at start (`cursed_renderer.go`, modifyOtherKeys 2 and kitty flag 1), and where one is spoken the key arrives as `shift+enter`. Keys typed into a pane's program are unaffected: termview hands the key to the pane's vt, which encodes it as that program asked: a program that asks for the kitty keyboard protocol gets `Shift+Enter` as `CSI 13;2u` (docs/KITTY_KEYS.md).
 
 So `Shift+Enter` works where the terminal tells it apart, and `o` works everywhere. Elsewhere `Shift+Enter` is an `Enter`, and opens and stays.
 

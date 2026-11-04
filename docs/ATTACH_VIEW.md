@@ -45,6 +45,7 @@ Every key goes to the program in the terminal, except:
 - Arrow keys never scroll: they go to the program, for the shell's history and the line being edited.
 - While scrolled back, a key that is not a scroll key returns to the live screen and goes to the program, as in a terminal's own scrollback; so does scrolling past the bottom. New output does not pull the view down.
 - `C-?` (ctrl+shift+/) for the shortcut list: most terminals send it as DEL, the same byte as Backspace, so it cannot be told apart. Where the terminal speaks the kitty keyboard protocol (kitty, WezTerm, foot, Ghostty), which Bubble Tea can ask for, `C-?` opens the list too; `C-\ ?` works everywhere.
+- Keys reach the program encoded as it asked. A program that asks for the kitty keyboard protocol (levels 1 and 8, docs/KITTY_KEYS.md) gets the keys it tells apart, such as `Shift+Enter` as `CSI 13;2u`, where the terminal on the screen tells them apart too.
 
 ## Mouse
 
