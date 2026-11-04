@@ -265,6 +265,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.sendAgentRename(msg)
 	case agentRenamed:
 		return m, m.agentRenamed(msg)
+	case copyAsked:
+		return m, m.sendCopy(msg)
+	case planCopied:
+		return m, m.planCopiedMsg(msg)
 	case moveAsked:
 		return m, m.sendMove(msg)
 	case moved:

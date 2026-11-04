@@ -1027,7 +1027,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		sectionAgents:    agentCount,
 		sectionWorktrees: worktreeCount,
 		sectionDocs:      fmt.Sprint(len(m.docs())) + " ",
-		sectionPlans:     fmt.Sprint(len(m.plans())) + " ",
+		sectionPlans:     fmt.Sprint(m.shownPlans()) + " ",
 	}
 	heading := func(s section) string {
 		it := paneItem{section: s, heading: true, collapsed: m.sectionCollapsedShown(s)}

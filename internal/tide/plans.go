@@ -93,16 +93,18 @@ func (m *Model) planRows() []planRow {
 		return nil
 	}
 	words := l.filter.words()
+	// The archived are out of the section, but for the filter, which is for finding.
+	hidden := func(p api.Plan) bool { return words == nil && isArchived(p) }
 	var groups []planGroup
 	for _, p := range m.plans() {
-		if p.Parent != nil {
+		if p.Parent != nil || hidden(p) {
 			continue
 		}
 		var children []planRow
 		if isParent(p) && (words != nil || !l.plansFolded[p.Id]) {
 			for _, name := range *p.Plans {
 				c, ok := m.planNamed(name)
-				if !ok {
+				if !ok || hidden(c) {
 					continue
 				}
 				match := words != nil && matches(c.Name, words)
@@ -140,12 +142,31 @@ func (m *Model) planRows() []planRow {
 // folderNeedsYou reports whether a plan in the folder at path, or under it, waits
 // for the person.
 func (m *Model) folderNeedsYou(path string) bool {
-	return slices.ContainsFunc(m.plans(), func(p api.Plan) bool { return inFolder(p.Folder, path) && m.planNeedsYou(p) })
+	return slices.ContainsFunc(m.plans(), func(p api.Plan) bool {
+		return inFolder(p.Folder, path) && m.planNeedsYou(p)
+	})
+}
+
+// isArchived reports whether p is archived, which leaves it out of the section.
+func isArchived(p api.Plan) bool { return p.ArchivedAt != nil }
+
+// shownPlans counts the plans the section's heading counts: not the archived.
+func (m *Model) shownPlans() int {
+	n := 0
+	for _, p := range m.plans() {
+		if !isArchived(p) {
+			n++
+		}
+	}
+	return n
 }
 
 // planNeedsYou reports whether the plan waits for the person: a task of it failed
 // or did not land, or the agent of one waits for input.
 func (m *Model) planNeedsYou(p api.Plan) bool {
+	if isArchived(p) {
+		return false // it is over
+	}
 	if p.TasksFailed != nil && *p.TasksFailed > 0 {
 		return true
 	}
@@ -396,6 +417,9 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	name := ansi.Truncate(r.plan.Name, room, "…")
 	room -= ansi.StringWidth(name)
 	size, state, need := " "+planProgress(r.plan), " "+string(r.plan.State), ""
+	if isArchived(r.plan) {
+		state += ", archived"
+	}
 	if r.needsYou {
 		need = " needs you"
 	}
@@ -415,7 +439,7 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	if cursor || active {
 		name = st.Name(name)
 	}
-	if r.plan.State == api.PlanStateDraft {
+	if r.plan.State == api.PlanStateDraft || isArchived(r.plan) {
 		state = st.Muted(state)
 	}
 	row := pointer + st.Muted(lead) + name + state + size + st.Warning(need) + gap + end
@@ -617,7 +641,7 @@ func planTabState(c *api.PlanContent) string {
 	p := c.Plan
 	switch {
 	case p.State == api.PlanStateDraft && p.Tasks != nil:
-		return "draft: r runs it"
+		return "draft: r runs it, y copies it"
 	case c.Run == nil:
 		return string(p.State)
 	}
@@ -637,6 +661,10 @@ func planTabState(c *api.PlanContent) string {
 		s += ": p resumes it, c cancels it"
 	case p.State == api.PlanStatePaused:
 		s += ": c cancels it"
+	case isArchived(p):
+		s += ", archived: a unarchives it, y copies it"
+	default:
+		s += ": a archives it, y copies it"
 	}
 	return s
 }
@@ -684,7 +712,8 @@ const runPlanKind = "plan run"
 
 // planKey takes a key the plan's tab has, and reports whether it took it: r runs
 // a draft, once confirmed; p pauses a running plan and resumes a paused one; c
-// cancels one going on, once confirmed.
+// cancels one going on, once confirmed; a archives a done or cancelled one, or
+// unarchives it; y copies it, in any state.
 func (m *Model) planKey(msg tea.Msg) (tea.Cmd, bool) {
 	k, ok := msg.(tea.KeyPressMsg)
 	if !ok || m.values.edit != nil {
@@ -719,6 +748,14 @@ func (m *Model) planKey(msg tea.Msg) (tea.Cmd, bool) {
 		}
 		m.confirm = &confirmBox{r: removal{kind: cancelPlanKind, id: p.Id, name: p.Name}}
 		m.log.Info("plan cancel asked", "plan_id", p.Id, "name", p.Name)
+		return nil, true
+	case archiveKey:
+		if p.State != api.PlanStateDone && p.State != api.PlanStateCancelled {
+			return nil, false
+		}
+		return m.archivePlan(p, !isArchived(p)), true
+	case copyKey:
+		m.askCopyPlan(p)
 		return nil, true
 	}
 	return nil, false
