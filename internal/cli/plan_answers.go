@@ -20,12 +20,18 @@ func planNotRunningHint(err error) error {
 	return &hinted{err, "only a running or paused plan takes this: " + identity.Name + " plan status says what it is"}
 }
 
-// newPlanRunAnswerCmd is pause or resume: verb the command, done what it does,
-// ask the client call.
-func newPlanRunAnswerCmd(verb, short, long string, result api.Result, extraErrors []api.ErrorCode,
+// planNotFinishedHint says what a plan that is not done or cancelled takes.
+func planNotFinishedHint(err error) error {
+	return &hinted{err, "only a done or cancelled plan is archived: " + identity.Name + " plan status says what it is"}
+}
+
+// newPlanRunAnswerCmd is pause, resume, archive or unarchive: verb the command,
+// result what it returns, errs the codes it can fail with besides not_found, ask
+// the client call.
+func newPlanRunAnswerCmd(verb, short, long string, result api.Result, errs []api.ErrorCode,
 	ask func(c *client.Client, cmd *cobra.Command, path, project, dir string) (api.PlanResult, error)) *cobra.Command {
 	var ref planRef
-	errs := append([]api.ErrorCode{api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning}, extraErrors...)
+	errs = append([]api.ErrorCode{api.ErrorCodeNotFound}, errs...)
 	cmd := &cobra.Command{
 		Use:   verb + " (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
 		Short: short,
@@ -50,6 +56,8 @@ func newPlanRunAnswerCmd(verb, short, long string, result api.Result, extraError
 			switch problemCode(err) {
 			case api.ErrorCodePlanNotRunning:
 				return planNotRunningHint(err)
+			case api.ErrorCodePlanNotFinished:
+				return planNotFinishedHint(err)
 			case api.ErrorCodeProjectClosed:
 				return &hinted{err, "open it first with " + identity.Name + " project open; its plans go on as they were"}
 			}
@@ -66,7 +74,7 @@ func newPlanRunAnswerCmd(verb, short, long string, result api.Result, extraError
 func newPlanPauseCmd() *cobra.Command {
 	return newPlanRunAnswerCmd("pause", "Pause a running plan: nothing new starts, and tasks at work go on and land",
 		"A plan paused while its project is closed stays paused when the project opens.",
-		api.ResultPaused, nil,
+		api.ResultPaused, []api.ErrorCode{api.ErrorCodePlanNotRunning},
 		func(c *client.Client, cmd *cobra.Command, path, project, dir string) (api.PlanResult, error) {
 			return c.PausePlan(cmd.Context(), path, project, dir)
 		})
@@ -76,7 +84,7 @@ func newPlanResumeCmd() *cobra.Command {
 	return newPlanRunAnswerCmd("resume", "Resume a paused plan, which starts what its pause held back",
 		"Refused while its project is closed, as nothing could run: a plan running when\n"+
 			"its project closed shows paused, and goes on by itself when the project opens.",
-		api.ResultResumed, []api.ErrorCode{api.ErrorCodeProjectClosed},
+		api.ResultResumed, []api.ErrorCode{api.ErrorCodePlanNotRunning, api.ErrorCodeProjectClosed},
 		func(c *client.Client, cmd *cobra.Command, path, project, dir string) (api.PlanResult, error) {
 			return c.ResumePlan(cmd.Context(), path, project, dir)
 		})
@@ -100,6 +108,14 @@ func (r planAnswered) text(w io.Writer, st style.Style) {
 		fmt.Fprintf(w, "plan %s was already running\n", name)
 	case r.verb == "resume":
 		fmt.Fprintf(w, "plan %s %s again\n", name, st.Success("running"))
+	case r.verb == "archive" && unchanged:
+		fmt.Fprintf(w, "plan %s was already archived\n", name)
+	case r.verb == "archive":
+		fmt.Fprintf(w, "plan %s %s: %s plan list --all shows it\n", name, st.Success("archived"), identity.Name)
+	case r.verb == "unarchive" && unchanged:
+		fmt.Fprintf(w, "plan %s was not archived\n", name)
+	case r.verb == "unarchive":
+		fmt.Fprintf(w, "plan %s %s\n", name, st.Success("unarchived"))
 	case r.verb == "cancel":
 		fmt.Fprintf(w, "plan %s %s: its agents stop, its worktrees holding work stay, and so does %s\n",
 			name, st.Success("cancelled"), st.Name(planBranch(r.Plan.Name)))

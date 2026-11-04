@@ -34,7 +34,7 @@ func newPlanCmd() *cobra.Command {
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newPlanCancelCmd(), newPlanCreateCmd(), newPlanGetCmd(), newPlanHistoryCmd(), newPlanListCmd(), newPlanPauseCmd(),
+	cmd.AddCommand(newPlanArchiveCmd(), newPlanCopyCmd(), newPlanUnarchiveCmd(), newPlanCancelCmd(), newPlanCreateCmd(), newPlanGetCmd(), newPlanHistoryCmd(), newPlanListCmd(), newPlanPauseCmd(),
 		newPlanRemoveCmd(), newPlanRenameCmd(), newPlanResumeCmd(), newPlanRunCmd(), newPlanSetCmd(), newPlanStatusCmd(), newPlanTaskCmd(),
 		newPlanUpdateCmd())
 	return cmd
@@ -328,12 +328,15 @@ func planInUseHint(err error) error {
 
 func newPlanListCmd() *cobra.Command {
 	var scope projectScope
+	var all bool
 	cmd := &cobra.Command{
-		Use:   "list [--project-id <id> | --project-name <name>]",
+		Use:   "list [--project-id <id> | --project-name <name>] [--all]",
 		Short: "List a project's plans",
-		Long:  "Without a project flag, the plans of the project the working directory is in.",
+		Long: "Without a project flag, the plans of the project the working directory is in.\n" +
+			"The archived are left out unless --all is given.",
 		Example: examples(
 			"The plans of the project you are in", identity.Name+" plan list",
+			"The archived too", identity.Name+" plan list --all",
 			"Of another project, as JSON", identity.Name+" plan list --project-name app --json",
 		),
 		Args: cobra.NoArgs,
@@ -346,7 +349,7 @@ func newPlanListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			list, err := clientOf(cmd).ListPlans(cmd.Context(), project, dir)
+			list, err := clientOf(cmd).ListPlans(cmd.Context(), project, dir, all)
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
@@ -354,6 +357,7 @@ func newPlanListCmd() *cobra.Command {
 		},
 	}
 	scope.addFlags(cmd)
+	cmd.Flags().BoolVar(&all, "all", false, "list the archived plans too")
 	return cmd
 }
 
@@ -554,7 +558,7 @@ func completePlans(key string) cobra.CompletionFunc {
 		if !scope.given() {
 			dir = invocationOf(cmd).env.WorkDir
 		}
-		list, err := clientOf(cmd).ListPlans(ctx, scope.ref(), dir)
+		list, err := clientOf(cmd).ListPlans(ctx, scope.ref(), dir, true)
 		if err != nil {
 			logging.FromContext(cmd.Context()).Info("no plans to complete", "err", err)
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -612,6 +616,14 @@ func planSize(p api.Plan) string {
 }
 
 // droppedLines writes a line for each after reduction dropped.
+// archivedText says a plan is archived, after its state.
+func archivedText(st style.Style, p api.Plan) string {
+	if p.ArchivedAt == nil {
+		return ""
+	}
+	return st.Muted(", archived")
+}
+
 // nameList is names joined for a sentence, each styled as a name.
 func nameList(st style.Style, names []string) string {
 	styled := make([]string, len(names))
@@ -656,7 +668,7 @@ func planFields(w io.Writer, st style.Style, p api.Plan) {
 	field := fieldPrinter(w, st, 8)
 	field("project", p.ProjectName)
 	field("folder", p.Folder)
-	field("state", planStateText(st, p.State))
+	field("state", planStateText(st, p.State)+archivedText(st, p))
 	field("revision", strconv.FormatInt(p.Revision, 10))
 	if p.Parent != nil {
 		field("parent", st.Name(*p.Parent))
@@ -716,7 +728,7 @@ type planStatus struct {
 func (r planStatus) text(w io.Writer, st style.Style) {
 	p, d := r.Plan, r.Definition
 	if r.Run == nil {
-		fmt.Fprintf(w, "%s: %s, %s\n", st.Name(p.Name), planStateText(st, p.State), planSize(p))
+		fmt.Fprintf(w, "%s: %s%s, %s\n", st.Name(p.Name), planStateText(st, p.State), archivedText(st, p), planSize(p))
 	} else {
 		fmt.Fprintf(w, "%s: %s, %s tasks done%s, on %s\n", st.Name(p.Name), runStateText(st, p, r.Run), planProgress(p), planFailed(st, p), st.Name(r.Run.Branch))
 	}
@@ -779,7 +791,7 @@ func (l planList) text(w io.Writer, st style.Style) {
 	var table style.Table
 	table.Row(st.Heading("FOLDER"), st.Heading("NAME"), st.Heading("STATE"), st.Heading("TASKS"), st.Heading("REVISION"), st.Heading("UPDATED"))
 	for _, p := range l.Plans {
-		table.Row(p.Folder, st.Name(p.Name), planStateText(st, p.State), planProgress(p)+planFailed(st, p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
+		table.Row(p.Folder, st.Name(p.Name), planStateText(st, p.State)+archivedText(st, p), planProgress(p)+planFailed(st, p), strconv.FormatInt(p.Revision, 10), p.UpdatedAt.Local().Format(time.DateTime))
 	}
 	table.Write(w)
 }

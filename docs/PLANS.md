@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -783,6 +783,7 @@ The rest of the lifecycle: `copy`, to run a plan again or start from one, and `a
 - **A plan of plans** is a draft until step 6, so it is not archived yet; each plan it lists is archived on its own, and its row then leaves the parent's in tide until unarchived or found with `/`.
 - `GET /v1/plans` leaves the archived out unless `archived=true`. The project's stream carries them all, with `archived_at`, so that tide can find one.
 - Logged: `plan archived`, `plan unarchived`.
+- As built: a cancelled plan is archived only once its cancel is over (`finished_at`), as the runner is still stopping its agents and releasing its slots until then; before, it is `plan_not_finished`. The CLI's completion of plan names offers the archived too, as `copy` and `unarchive` take them.
 
 ### The API
 

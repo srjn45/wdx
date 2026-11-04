@@ -29,10 +29,11 @@ type Plan struct {
 	// projectClosed is whether its project was closed when it was read, which
 	// shows a running plan paused.
 	projectClosed bool
-	Plans         []string // the plans it lists, in DAG order; nil for a plan of tasks
-	Parent        string   // the name of the plan of plans listing it; empty for none
-	Revision      int      // the latest
-	Size          int      // of the latest revision's text
+	Plans         []string  // the plans it lists, in DAG order; nil for a plan of tasks
+	Parent        string    // the name of the plan of plans listing it; empty for none
+	ArchivedAt    time.Time // when it was archived, hiding it from plan list; zero when it is not
+	Revision      int       // the latest
+	Size          int       // of the latest revision's text
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }

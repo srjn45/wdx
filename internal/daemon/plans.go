@@ -23,7 +23,53 @@ func (s *server) ListPlans(ctx context.Context, req api.ListPlansRequestObject) 
 	if err != nil {
 		return nil, err
 	}
+	if !deref(req.Params.Archived) {
+		list = slices.DeleteFunc(list, func(p plan.Plan) bool { return !p.ArchivedAt.IsZero() })
+	}
 	return api.ListPlans200JSONResponse{Plans: planViews(list)}, nil
+}
+
+func (s *server) CopyPlan(ctx context.Context, req api.CopyPlanRequestObject) (api.CopyPlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := s.plans.Copy(ctx, p.ID, req.Body.Name, req.Body.Folder)
+	if err != nil {
+		return nil, err
+	}
+	dropped := droppedViews(saved.Dropped)
+	return api.CopyPlan201JSONResponse{Result: api.ResultCreated, Plan: planView(saved.Plan), Dropped: &dropped, Moved: &saved.Moved}, nil
+}
+
+func (s *server) ArchivePlan(ctx context.Context, req api.ArchivePlanRequestObject) (api.ArchivePlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := s.plans.Archive(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	return api.ArchivePlan200JSONResponse{Result: changedResult(changed, api.ResultArchived), Plan: planView(p)}, nil
+}
+
+func (s *server) UnarchivePlan(ctx context.Context, req api.UnarchivePlanRequestObject) (api.UnarchivePlanResponseObject, error) {
+	p, err := s.findPlan(ctx, req.Plan, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := s.plans.Unarchive(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p, err = s.plans.Get(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	return api.UnarchivePlan200JSONResponse{Result: changedResult(changed, api.ResultUnarchived), Plan: planView(p)}, nil
 }
 
 func (s *server) CreatePlan(ctx context.Context, req api.CreatePlanRequestObject) (api.CreatePlanResponseObject, error) {
@@ -398,6 +444,10 @@ func planView(p plan.Plan) api.Plan {
 	}
 	if p.Parent != "" {
 		v.Parent = &p.Parent
+	}
+	if !p.ArchivedAt.IsZero() {
+		at := p.ArchivedAt.UTC()
+		v.ArchivedAt = &at
 	}
 	if p.State != plan.StateDraft {
 		done, failed := int64(p.TasksDone), int64(p.TasksFailed)

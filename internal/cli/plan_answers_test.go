@@ -122,6 +122,65 @@ func TestPlanCancelAsks(t *testing.T) {
 	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "plan sso cancelled: its agents stop, its worktrees holding work stay, and so does plan/sso\n") {
 		t.Errorf("answered yes: %+v", out)
 	}
+	testPlanLifecycle(t, home, repo)
+}
+
+// testPlanLifecycle archives, lists, copies and unarchives the plan sso, cancelled
+// in repo, and refuses a draft's archive.
+func testPlanLifecycle(t *testing.T, home, repo string) {
+	t.Helper()
+	run := func(args ...string) (jsonOutput, int) {
+		t.Helper()
+		return wdxJSONWith(t, home, in(repo), append([]string{"plan"}, args...)...)
+	}
+	text := func(want string, args ...string) {
+		t.Helper()
+		if out := wdxWith(t, home, in(repo), append([]string{"plan"}, args...)...); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, want) {
+			t.Errorf("%v: %+v, want from %q", args, out, want)
+		}
+	}
+	if !eventually(t, func() bool { v, _ := run("status", "--name", "sso"); return v.Run != nil && v.Run.FinishedAt != nil }) {
+		t.Fatal("the cancel did not end")
+	}
+	text("plan sso archived: wdx plan list --all shows it\n", "archive", "--name", "sso")
+	v, exit := run("archive", "--name", "sso")
+	if exit != api.ExitOK || v.Result != "unchanged" || v.Plan.ArchivedAt == nil {
+		t.Errorf("archived again: exit %d, %+v", exit, v)
+	}
+	text("plan sso was already archived\n", "archive", "--name", "sso")
+	if v, exit := run("list"); exit != api.ExitOK || len(v.Plans) != 0 {
+		t.Errorf("list: exit %d, %+v", exit, v.Plans)
+	}
+	if v, exit := run("list", "--all"); exit != api.ExitOK || len(v.Plans) != 1 || v.Plans[0].ArchivedAt == nil {
+		t.Errorf("list --all: exit %d, %+v", exit, v.Plans)
+	}
+	text("FOLDER", "list", "--all")
+	if out := wdxWith(t, home, in(repo), "plan", "list", "--all"); !strings.Contains(out.stdout, "cancelled, archived") {
+		t.Errorf("list --all text: %+v", out)
+	}
+
+	v, exit = run("copy", "--name", "sso", "--new-name", "sso-2")
+	if exit != api.ExitOK || v.Result != "created" || v.Plan.Name != "sso-2" || v.Plan.State != api.PlanStateDraft || v.Plan.ArchivedAt != nil {
+		t.Errorf("copy: exit %d, %+v", exit, v)
+	}
+	text("plan sso-3 created from sso, with 1 task\n", "copy", "--name", "sso", "--new-name", "sso-3")
+	if v, exit := run("copy", "--name", "sso", "--new-name", "sso-4", "--folder", "Later"); exit != api.ExitOK || v.Plan.Folder != "/later" {
+		t.Errorf("copy in a folder: exit %d, %+v", exit, v)
+	}
+	v, exit = run("copy", "--name", "sso", "--new-name", "SSO-2")
+	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantHint(t, v, "choose another --new-name")
+	v, exit = run("copy", "--name", "sso")
+	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	v, exit = run("archive", "--name", "sso-2")
+	wantError(t, v, exit, api.ErrorCodePlanNotFinished, api.ExitRejected)
+	wantHint(t, v, "only a done or cancelled plan is archived: wdx plan status says what it is")
+
+	text("plan sso unarchived\n", "unarchive", "--name", "sso")
+	v, exit = run("unarchive", "--name", "sso")
+	if exit != api.ExitOK || v.Result != "unchanged" || v.Plan.ArchivedAt != nil {
+		t.Errorf("unarchived again: exit %d, %+v", exit, v)
+	}
 }
 
 // TestPlanTaskAnswered: each outcome of retry, land and skip, and what status, list

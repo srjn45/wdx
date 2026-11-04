@@ -92,6 +92,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodePlanStarted:        {http.StatusConflict, ExitRejected, "the plan has run: only a draft can be changed or run"},
 	ErrorCodeTaskState:          {http.StatusConflict, ExitRejected, "the plan's task is not in a state the request needs"},
 	ErrorCodePlanNotRunning:     {http.StatusConflict, ExitRejected, "the plan is not running or paused"},
+	ErrorCodePlanNotFinished:    {http.StatusConflict, ExitRejected, "the plan is not done or cancelled"},
 	ErrorCodeWrongBranch:        {http.StatusConflict, ExitRejected, "the worktree is not on the branch the request needs"},
 }
 

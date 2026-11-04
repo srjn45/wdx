@@ -203,6 +203,7 @@ const (
 	ErrorCodePathExists         ErrorCode = "path_exists"
 	ErrorCodePlanChanged        ErrorCode = "plan_changed"
 	ErrorCodePlanInUse          ErrorCode = "plan_in_use"
+	ErrorCodePlanNotFinished    ErrorCode = "plan_not_finished"
 	ErrorCodePlanNotRunning     ErrorCode = "plan_not_running"
 	ErrorCodePlanStarted        ErrorCode = "plan_started"
 	ErrorCodePortInUse          ErrorCode = "port_in_use"
@@ -323,6 +324,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePlanChanged:
 		return true
 	case ErrorCodePlanInUse:
+		return true
+	case ErrorCodePlanNotFinished:
 		return true
 	case ErrorCodePlanNotRunning:
 		return true
@@ -623,6 +626,7 @@ func (e ProjectState) Valid() bool {
 
 // Defines values for Result.
 const (
+	ResultArchived   Result = "archived"
 	ResultCancelled  Result = "cancelled"
 	ResultCloned     Result = "cloned"
 	ResultClosed     Result = "closed"
@@ -645,6 +649,7 @@ const (
 	ResultSkipped    Result = "skipped"
 	ResultStarted    Result = "started"
 	ResultSynced     Result = "synced"
+	ResultUnarchived Result = "unarchived"
 	ResultUnchanged  Result = "unchanged"
 	ResultUpdated    Result = "updated"
 )
@@ -652,6 +657,8 @@ const (
 // Valid indicates whether the value is a known member of the Result enum.
 func (e Result) Valid() bool {
 	switch e {
+	case ResultArchived:
+		return true
 	case ResultCancelled:
 		return true
 	case ResultCloned:
@@ -695,6 +702,8 @@ func (e Result) Valid() bool {
 	case ResultStarted:
 		return true
 	case ResultSynced:
+		return true
+	case ResultUnarchived:
 		return true
 	case ResultUnchanged:
 		return true
@@ -1169,6 +1178,15 @@ type AgentTranscriptEnvelope struct {
 	Transcript AgentTranscript `json:"transcript"`
 }
 
+// CopyPlan defines model for CopyPlan.
+type CopyPlan struct {
+	// Folder Its folder; the plan's when absent. See createPlan.
+	Folder *string `json:"folder,omitempty"`
+
+	// Name The copy's name; see createPlan.
+	Name string `json:"name"`
+}
+
 // CreateAgent defines model for CreateAgent.
 type CreateAgent struct {
 	// Dir Absolute path it starts in; see createAgent.
@@ -1507,7 +1525,9 @@ type OpenEditor struct {
 
 // Plan defines model for Plan.
 type Plan struct {
-	CreatedAt time.Time `json:"created_at"`
+	// ArchivedAt When it was archived
+	ArchivedAt *time.Time `json:"archived_at"`
+	CreatedAt  time.Time  `json:"created_at"`
 
 	// Folder The folder tide shows it in, as /hub/initial; / for the top. A plan of plans and the plans it lists always have the same one (wdx help plans).
 	Folder string `json:"folder"`
@@ -2735,6 +2755,9 @@ type ListPlansParams struct {
 
 	// Dir An absolute path in one of the project's worktrees; excludes project.
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+
+	// Archived List the archived plans too.
+	Archived *bool `form:"archived,omitempty" json:"archived,omitempty"`
 }
 
 // DeletePlanParams defines parameters for DeletePlan.
@@ -2767,6 +2790,15 @@ type UpdatePlanParams struct {
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
 }
 
+// ArchivePlanParams defines parameters for ArchivePlan.
+type ArchivePlanParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
 // CancelPlanParams defines parameters for CancelPlan.
 type CancelPlanParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
@@ -2778,6 +2810,15 @@ type CancelPlanParams struct {
 
 // UpdatePlanContentParams defines parameters for UpdatePlanContent.
 type UpdatePlanContentParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// CopyPlanParams defines parameters for CopyPlan.
+type CopyPlanParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -2850,6 +2891,15 @@ type RetryPlanTaskParams struct {
 
 // SkipPlanTaskParams defines parameters for SkipPlanTask.
 type SkipPlanTaskParams struct {
+	// Project The project's name, or "id:" and its id; excludes dir.
+	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Dir An absolute path in one of the project's worktrees; excludes project.
+	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// UnarchivePlanParams defines parameters for UnarchivePlan.
+type UnarchivePlanParams struct {
 	// Project The project's name, or "id:" and its id; excludes dir.
 	Project *TerminalProject `form:"project,omitempty" json:"project,omitempty"`
 
@@ -3168,6 +3218,9 @@ type UpdatePlanJSONRequestBody = UpdatePlan
 
 // UpdatePlanContentJSONRequestBody defines body for UpdatePlanContent for application/json ContentType.
 type UpdatePlanContentJSONRequestBody = DocContentChange
+
+// CopyPlanJSONRequestBody defines body for CopyPlan for application/json ContentType.
+type CopyPlanJSONRequestBody = CopyPlan
 
 // RunPlanJSONRequestBody defines body for RunPlan for application/json ContentType.
 type RunPlanJSONRequestBody = RunPlan
@@ -3952,10 +4005,11 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/messages/{message}/resend (the `ResendMessage` operationId).
 	ResendMessage(ctx context.Context, message string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListPlans List a project's plans by name
+	// ListPlans List a project's plans by folder, then name
 	//
 	// The plans of the project named by project, or of the project whose
 	// worktree holds dir; one of them is required. Content is never listed.
+	// The archived are left out unless archived is true.
 	//
 	// Errors: invalid_path, not_found, usage.
 	//
@@ -4081,6 +4135,18 @@ type ClientInterface interface {
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlan(ctx context.Context, plan PlanRef, params *UpdatePlanParams, body UpdatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ArchivePlan Archive a done or cancelled plan, leaving it out of listPlans
+	//
+	// Result archived, or unchanged when it was archived. Nothing else of
+	// it changes: its branch, worktree, summaries and history stay.
+	//
+	// Errors: invalid_path, not_found, plan_not_finished (a draft, running
+	// or paused, or cancelled with its agents still stopping, with the plan
+	// under details.plan), usage.
+	//
+	// Corresponds with POST /v1/plans/{plan}/archive (the `ArchivePlan` operationId).
+	ArchivePlan(ctx context.Context, plan PlanRef, params *ArchivePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CancelPlan Cancel a running or paused plan, which cannot run again
 	//
 	// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
@@ -4127,6 +4193,36 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 	UpdatePlanContent(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CopyPlanWithBody Create a draft from a plan's latest revision, in any state
+	//
+	// Checked as createPlan checks a new plan, in the same project: a name
+	// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+	// plans it lists already have a parent. It goes in folder, or the
+	// plan's. It has none of the plan's history, run, branch or worktrees.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+	// name_taken (with the plan under details.plan), not_found, usage.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+	CopyPlanWithBody(ctx context.Context, plan PlanRef, params *CopyPlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CopyPlan Create a draft from a plan's latest revision, in any state
+	//
+	// Checked as createPlan checks a new plan, in the same project: a name
+	// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+	// plans it lists already have a parent. It goes in folder, or the
+	// plan's. It has none of the plan's history, run, branch or worktrees.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+	// name_taken (with the plan under details.plan), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+	CopyPlan(ctx context.Context, plan PlanRef, params *CopyPlanParams, body CopyPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
 	//
@@ -4268,6 +4364,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
 	SkipPlanTask(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnarchivePlan Show an archived plan in listPlans again
+	//
+	// Result unarchived, or unchanged when it was not archived.
+	//
+	// Errors: invalid_path, not_found, plan_not_finished (as archivePlan),
+	// usage.
+	//
+	// Corresponds with POST /v1/plans/{plan}/unarchive (the `UnarchivePlan` operationId).
+	UnarchivePlan(ctx context.Context, plan PlanRef, params *UnarchivePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjects List projects, without their worktrees, sorted by name
 	//
@@ -5843,10 +5949,11 @@ func (c *Client) ResendMessage(ctx context.Context, message string, reqEditors .
 	return c.Client.Do(req)
 }
 
-// ListPlans List a project's plans by name
+// ListPlans List a project's plans by folder, then name
 //
 // The plans of the project named by project, or of the project whose
 // worktree holds dir; one of them is required. Content is never listed.
+// The archived are left out unless archived is true.
 //
 // Errors: invalid_path, not_found, usage.
 //
@@ -6042,6 +6149,28 @@ func (c *Client) UpdatePlan(ctx context.Context, plan PlanRef, params *UpdatePla
 	return c.Client.Do(req)
 }
 
+// ArchivePlan Archive a done or cancelled plan, leaving it out of listPlans
+//
+// Result archived, or unchanged when it was archived. Nothing else of
+// it changes: its branch, worktree, summaries and history stay.
+//
+// Errors: invalid_path, not_found, plan_not_finished (a draft, running
+// or paused, or cancelled with its agents still stopping, with the plan
+// under details.plan), usage.
+//
+// Corresponds with POST /v1/plans/{plan}/archive (the `ArchivePlan` operationId).
+func (c *Client) ArchivePlan(ctx context.Context, plan PlanRef, params *ArchivePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchivePlanRequest(c.Server, plan, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CancelPlan Cancel a running or paused plan, which cannot run again
 //
 // Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
@@ -6109,6 +6238,56 @@ func (c *Client) UpdatePlanContentWithBody(ctx context.Context, plan PlanRef, pa
 // Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 func (c *Client) UpdatePlanContent(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdatePlanContentRequest(c.Server, plan, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CopyPlanWithBody Create a draft from a plan's latest revision, in any state
+//
+// Checked as createPlan checks a new plan, in the same project: a name
+// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+// plans it lists already have a parent. It goes in folder, or the
+// plan's. It has none of the plan's history, run, branch or worktrees.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+// name_taken (with the plan under details.plan), not_found, usage.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+func (c *Client) CopyPlanWithBody(ctx context.Context, plan PlanRef, params *CopyPlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCopyPlanRequestWithBody(c.Server, plan, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CopyPlan Create a draft from a plan's latest revision, in any state
+//
+// Checked as createPlan checks a new plan, in the same project: a name
+// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+// plans it lists already have a parent. It goes in folder, or the
+// plan's. It has none of the plan's history, run, branch or worktrees.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+// name_taken (with the plan under details.plan), not_found, usage.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+func (c *Client) CopyPlan(ctx context.Context, plan PlanRef, params *CopyPlanParams, body CopyPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCopyPlanRequest(c.Server, plan, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6360,6 +6539,26 @@ func (c *Client) RetryPlanTask(ctx context.Context, plan PlanRef, task string, p
 // Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
 func (c *Client) SkipPlanTask(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSkipPlanTaskRequest(c.Server, plan, task, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnarchivePlan Show an archived plan in listPlans again
+//
+// Result unarchived, or unchanged when it was not archived.
+//
+// Errors: invalid_path, not_found, plan_not_finished (as archivePlan),
+// usage.
+//
+// Corresponds with POST /v1/plans/{plan}/unarchive (the `UnarchivePlan` operationId).
+func (c *Client) UnarchivePlan(ctx context.Context, plan PlanRef, params *UnarchivePlanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnarchivePlanRequest(c.Server, plan, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9379,6 +9578,18 @@ func NewListPlansRequest(server string, params *ListPlansParams) (*http.Request,
 
 		}
 
+		if params.Archived != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "archived", *params.Archived, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -9677,6 +9888,79 @@ func NewUpdatePlanRequestWithBody(server string, plan PlanRef, params *UpdatePla
 	return req, nil
 }
 
+// NewArchivePlanRequest constructs an http.Request for the ArchivePlan method
+func NewArchivePlanRequest(server string, plan PlanRef, params *ArchivePlanParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/archive", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCancelPlanRequest constructs an http.Request for the CancelPlan method
 func NewCancelPlanRequest(server string, plan PlanRef, params *CancelPlanParams) (*http.Request, error) {
 	var err error
@@ -9827,6 +10111,92 @@ func NewUpdatePlanContentRequestWithBody(server string, plan PlanRef, params *Up
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCopyPlanRequest calls the generic CopyPlan builder with application/json body
+func NewCopyPlanRequest(server string, plan PlanRef, params *CopyPlanParams, body CopyPlanJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCopyPlanRequestWithBody(server, plan, params, "application/json", bodyReader)
+}
+
+// NewCopyPlanRequestWithBody constructs an http.Request for the CopyPlan method, with any body, and a specified content type
+func NewCopyPlanRequestWithBody(server string, plan PlanRef, params *CopyPlanParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/copies", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -10431,6 +10801,79 @@ func NewSkipPlanTaskRequest(server string, plan PlanRef, task string, params *Sk
 	}
 
 	operationPath := fmt.Sprintf("/v1/plans/%s/tasks/%s/skip", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnarchivePlanRequest constructs an http.Request for the UnarchivePlan method
+func NewUnarchivePlanRequest(server string, plan PlanRef, params *UnarchivePlanParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "plan", plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/plans/%s/unarchive", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -13796,10 +14239,11 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/messages/{message}/resend (the `ResendMessage` operationId).
 	ResendMessageWithResponse(ctx context.Context, message string, reqEditors ...RequestEditorFn) (*ResendMessageResponse, error)
 
-	// ListPlansWithResponse List a project's plans by name
+	// ListPlansWithResponse List a project's plans by folder, then name
 	//
 	// The plans of the project named by project, or of the project whose
 	// worktree holds dir; one of them is required. Content is never listed.
+	// The archived are left out unless archived is true.
 	//
 	// Errors: invalid_path, not_found, usage.
 	//
@@ -13931,6 +14375,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /v1/plans/{plan} (the `UpdatePlan` operationId).
 	UpdatePlanWithResponse(ctx context.Context, plan PlanRef, params *UpdatePlanParams, body UpdatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanResponse, error)
 
+	// ArchivePlanWithResponse Archive a done or cancelled plan, leaving it out of listPlans
+	//
+	// Result archived, or unchanged when it was archived. Nothing else of
+	// it changes: its branch, worktree, summaries and history stay.
+	//
+	// Errors: invalid_path, not_found, plan_not_finished (a draft, running
+	// or paused, or cancelled with its agents still stopping, with the plan
+	// under details.plan), usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/archive (the `ArchivePlan` operationId).
+	ArchivePlanWithResponse(ctx context.Context, plan PlanRef, params *ArchivePlanParams, reqEditors ...RequestEditorFn) (*ArchivePlanResponse, error)
+
 	// CancelPlanWithResponse Cancel a running or paused plan, which cannot run again
 	//
 	// Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
@@ -13979,6 +14437,36 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/plans/{plan}/content (the `UpdatePlanContent` operationId).
 	UpdatePlanContentWithResponse(ctx context.Context, plan PlanRef, params *UpdatePlanContentParams, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error)
+
+	// CopyPlanWithBodyWithResponse Create a draft from a plan's latest revision, in any state
+	//
+	// Checked as createPlan checks a new plan, in the same project: a name
+	// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+	// plans it lists already have a parent. It goes in folder, or the
+	// plan's. It has none of the plan's history, run, branch or worktrees.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+	// name_taken (with the plan under details.plan), not_found, usage.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+	CopyPlanWithBodyWithResponse(ctx context.Context, plan PlanRef, params *CopyPlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CopyPlanResponse, error)
+
+	// CopyPlanWithResponse Create a draft from a plan's latest revision, in any state
+	//
+	// Checked as createPlan checks a new plan, in the same project: a name
+	// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+	// plans it lists already have a parent. It goes in folder, or the
+	// plan's. It has none of the plan's history, run, branch or worktrees.
+	//
+	// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+	// name_taken (with the plan under details.plan), not_found, usage.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+	CopyPlanWithResponse(ctx context.Context, plan PlanRef, params *CopyPlanParams, body CopyPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*CopyPlanResponse, error)
 
 	// PausePlanWithResponse Pause a running plan, so that nothing new starts while tasks at work go on and land
 	//
@@ -14130,6 +14618,18 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/plans/{plan}/tasks/{task}/skip (the `SkipPlanTask` operationId).
 	SkipPlanTaskWithResponse(ctx context.Context, plan PlanRef, task string, params *SkipPlanTaskParams, reqEditors ...RequestEditorFn) (*SkipPlanTaskResponse, error)
+
+	// UnarchivePlanWithResponse Show an archived plan in listPlans again
+	//
+	// Result unarchived, or unchanged when it was not archived.
+	//
+	// Errors: invalid_path, not_found, plan_not_finished (as archivePlan),
+	// usage.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/plans/{plan}/unarchive (the `UnarchivePlan` operationId).
+	UnarchivePlanWithResponse(ctx context.Context, plan PlanRef, params *UnarchivePlanParams, reqEditors ...RequestEditorFn) (*UnarchivePlanResponse, error)
 
 	// ListProjectsWithResponse List projects, without their worktrees, sorted by name
 	//
@@ -16348,6 +16848,54 @@ func (r UpdatePlanResponse) ContentType() string {
 	return ""
 }
 
+type ArchivePlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ArchivePlanResponse) GetJSON200() *PlanResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ArchivePlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ArchivePlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchivePlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchivePlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ArchivePlanResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CancelPlanResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -16438,6 +16986,54 @@ func (r UpdatePlanContentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdatePlanContentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CopyPlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CopyPlanResponse) GetJSON201() *PlanResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CopyPlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CopyPlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CopyPlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CopyPlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CopyPlanResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16822,6 +17418,54 @@ func (r SkipPlanTaskResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SkipPlanTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UnarchivePlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PlanResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UnarchivePlanResponse) GetJSON200() *PlanResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnarchivePlanResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UnarchivePlanResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnarchivePlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnarchivePlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnarchivePlanResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19577,10 +20221,11 @@ func (c *ClientWithResponses) ResendMessageWithResponse(ctx context.Context, mes
 	return ParseResendMessageResponse(rsp)
 }
 
-// ListPlansWithResponse List a project's plans by name
+// ListPlansWithResponse List a project's plans by folder, then name
 //
 // The plans of the project named by project, or of the project whose
 // worktree holds dir; one of them is required. Content is never listed.
+// The archived are left out unless archived is true.
 //
 // Errors: invalid_path, not_found, usage.
 //
@@ -19754,6 +20399,26 @@ func (c *ClientWithResponses) UpdatePlanWithResponse(ctx context.Context, plan P
 	return ParseUpdatePlanResponse(rsp)
 }
 
+// ArchivePlanWithResponse Archive a done or cancelled plan, leaving it out of listPlans
+//
+// Result archived, or unchanged when it was archived. Nothing else of
+// it changes: its branch, worktree, summaries and history stay.
+//
+// Errors: invalid_path, not_found, plan_not_finished (a draft, running
+// or paused, or cancelled with its agents still stopping, with the plan
+// under details.plan), usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/archive (the `ArchivePlan` operationId).
+func (c *ClientWithResponses) ArchivePlanWithResponse(ctx context.Context, plan PlanRef, params *ArchivePlanParams, reqEditors ...RequestEditorFn) (*ArchivePlanResponse, error) {
+	rsp, err := c.ArchivePlan(ctx, plan, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchivePlanResponse(rsp)
+}
+
 // CancelPlanWithResponse Cancel a running or paused plan, which cannot run again
 //
 // Result cancelled: the daemon stops its agents and any landing going, keeps each worktree of the plan holding work as an ordinary worktree, removes the others, and keeps its branch.
@@ -19819,6 +20484,48 @@ func (c *ClientWithResponses) UpdatePlanContentWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseUpdatePlanContentResponse(rsp)
+}
+
+// CopyPlanWithBodyWithResponse Create a draft from a plan's latest revision, in any state
+//
+// Checked as createPlan checks a new plan, in the same project: a name
+// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+// plans it lists already have a parent. It goes in folder, or the
+// plan's. It has none of the plan's history, run, branch or worktrees.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+// name_taken (with the plan under details.plan), not_found, usage.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+func (c *ClientWithResponses) CopyPlanWithBodyWithResponse(ctx context.Context, plan PlanRef, params *CopyPlanParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CopyPlanResponse, error) {
+	rsp, err := c.CopyPlanWithBody(ctx, plan, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCopyPlanResponse(rsp)
+}
+
+// CopyPlanWithResponse Create a draft from a plan's latest revision, in any state
+//
+// Checked as createPlan checks a new plan, in the same project: a name
+// taken is name_taken; a plan of plans' copy is invalid_plan, as the
+// plans it lists already have a parent. It goes in folder, or the
+// plan's. It has none of the plan's history, run, branch or worktrees.
+//
+// Errors: invalid_argument, invalid_name, invalid_path, invalid_plan,
+// name_taken (with the plan under details.plan), not_found, usage.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/copies (the `CopyPlan` operationId).
+func (c *ClientWithResponses) CopyPlanWithResponse(ctx context.Context, plan PlanRef, params *CopyPlanParams, body CopyPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*CopyPlanResponse, error) {
+	rsp, err := c.CopyPlan(ctx, plan, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCopyPlanResponse(rsp)
 }
 
 // PausePlanWithResponse Pause a running plan, so that nothing new starts while tasks at work go on and land
@@ -20036,6 +20743,24 @@ func (c *ClientWithResponses) SkipPlanTaskWithResponse(ctx context.Context, plan
 		return nil, err
 	}
 	return ParseSkipPlanTaskResponse(rsp)
+}
+
+// UnarchivePlanWithResponse Show an archived plan in listPlans again
+//
+// Result unarchived, or unchanged when it was not archived.
+//
+// Errors: invalid_path, not_found, plan_not_finished (as archivePlan),
+// usage.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/plans/{plan}/unarchive (the `UnarchivePlan` operationId).
+func (c *ClientWithResponses) UnarchivePlanWithResponse(ctx context.Context, plan PlanRef, params *UnarchivePlanParams, reqEditors ...RequestEditorFn) (*UnarchivePlanResponse, error) {
+	rsp, err := c.UnarchivePlan(ctx, plan, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnarchivePlanResponse(rsp)
 }
 
 // ListProjectsWithResponse List projects, without their worktrees, sorted by name
@@ -22146,6 +22871,39 @@ func ParseUpdatePlanResponse(rsp *http.Response) (*UpdatePlanResponse, error) {
 	return response, nil
 }
 
+// ParseArchivePlanResponse parses an HTTP response from a ArchivePlanWithResponse call
+func ParseArchivePlanResponse(rsp *http.Response) (*ArchivePlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchivePlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseCancelPlanResponse parses an HTTP response from a CancelPlanWithResponse call
 func ParseCancelPlanResponse(rsp *http.Response) (*CancelPlanResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -22199,6 +22957,39 @@ func ParseUpdatePlanContentResponse(rsp *http.Response) (*UpdatePlanContentRespo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCopyPlanResponse parses an HTTP response from a CopyPlanWithResponse call
+func ParseCopyPlanResponse(rsp *http.Response) (*CopyPlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CopyPlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest PlanResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
@@ -22459,6 +23250,39 @@ func ParseSkipPlanTaskResponse(rsp *http.Response) (*SkipPlanTaskResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest PlanTaskResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnarchivePlanResponse parses an HTTP response from a UnarchivePlanWithResponse call
+func ParseUnarchivePlanResponse(rsp *http.Response) (*UnarchivePlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnarchivePlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlanResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -23927,7 +24751,7 @@ type ServerInterface interface {
 	// ResendMessage Send a message still waiting to its terminal or agent, as it is now
 	// (POST /v1/messages/{message}/resend)
 	ResendMessage(w http.ResponseWriter, r *http.Request, message string)
-	// ListPlans List a project's plans by name
+	// ListPlans List a project's plans by folder, then name
 	// (GET /v1/plans)
 	ListPlans(w http.ResponseWriter, r *http.Request, params ListPlansParams)
 	// CreatePlan Create a plan at revision 1, checked and reduced
@@ -23942,12 +24766,18 @@ type ServerInterface interface {
 	// UpdatePlan Rename a draft plan, move it to a folder, or change how many tasks a run runs at once
 	// (PATCH /v1/plans/{plan})
 	UpdatePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params UpdatePlanParams)
+	// ArchivePlan Archive a done or cancelled plan, leaving it out of listPlans
+	// (POST /v1/plans/{plan}/archive)
+	ArchivePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params ArchivePlanParams)
 	// CancelPlan Cancel a running or paused plan, which cannot run again
 	// (POST /v1/plans/{plan}/cancel)
 	CancelPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CancelPlanParams)
 	// UpdatePlanContent Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	// (PUT /v1/plans/{plan}/content)
 	UpdatePlanContent(w http.ResponseWriter, r *http.Request, plan PlanRef, params UpdatePlanContentParams)
+	// CopyPlan Create a draft from a plan's latest revision, in any state
+	// (POST /v1/plans/{plan}/copies)
+	CopyPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CopyPlanParams)
 	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
 	// (POST /v1/plans/{plan}/pause)
 	PausePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params PausePlanParams)
@@ -23972,6 +24802,9 @@ type ServerInterface interface {
 	// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
 	// (POST /v1/plans/{plan}/tasks/{task}/skip)
 	SkipPlanTask(w http.ResponseWriter, r *http.Request, plan PlanRef, task string, params SkipPlanTaskParams)
+	// UnarchivePlan Show an archived plan in listPlans again
+	// (POST /v1/plans/{plan}/unarchive)
+	UnarchivePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params UnarchivePlanParams)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -25315,6 +26148,19 @@ func (siw *ServerInterfaceWrapper) ListPlans(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "archived" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "archived", r.URL.Query(), &params.Archived, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "archived"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "archived", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPlans(w, r, params)
 	}))
@@ -25518,6 +26364,61 @@ func (siw *ServerInterfaceWrapper) UpdatePlan(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ArchivePlan operation middleware
+func (siw *ServerInterfaceWrapper) ArchivePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ArchivePlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchivePlan(w, r, plan, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CancelPlan operation middleware
 func (siw *ServerInterfaceWrapper) CancelPlan(w http.ResponseWriter, r *http.Request) {
 
@@ -25619,6 +26520,61 @@ func (siw *ServerInterfaceWrapper) UpdatePlanContent(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePlanContent(w, r, plan, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CopyPlan operation middleware
+func (siw *ServerInterfaceWrapper) CopyPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CopyPlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CopyPlan(w, r, plan, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -26095,6 +27051,61 @@ func (siw *ServerInterfaceWrapper) SkipPlanTask(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SkipPlanTask(w, r, plan, task, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnarchivePlan operation middleware
+func (siw *ServerInterfaceWrapper) UnarchivePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan" -------------
+	var plan PlanRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan", r.PathValue("plan"), &plan, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UnarchivePlanParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dir" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dir", r.URL.Query(), &params.Dir, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dir"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dir", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnarchivePlan(w, r, plan, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -28211,6 +29222,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/plans/{plan}/revisions", wrapper.ListPlanRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/run", wrapper.RunPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/pause", wrapper.PausePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/copies", wrapper.CopyPlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/archive", wrapper.ArchivePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/unarchive", wrapper.UnarchivePlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/resume", wrapper.ResumePlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/cancel", wrapper.CancelPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/retry", wrapper.RetryPlanTask)
@@ -29427,6 +30441,46 @@ func (response UpdatePlandefaultApplicationProblemPlusJSONResponse) VisitUpdateP
 	return err
 }
 
+type ArchivePlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params ArchivePlanParams
+}
+
+type ArchivePlanResponseObject interface {
+	VisitArchivePlanResponse(w http.ResponseWriter) error
+}
+
+type ArchivePlan200JSONResponse PlanResult
+
+func (response ArchivePlan200JSONResponse) VisitArchivePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchivePlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ArchivePlandefaultApplicationProblemPlusJSONResponse) VisitArchivePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CancelPlanRequestObject struct {
 	Plan   PlanRef `json:"plan"`
 	Params CancelPlanParams
@@ -29497,6 +30551,47 @@ type UpdatePlanContentdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdatePlanContentdefaultApplicationProblemPlusJSONResponse) VisitUpdatePlanContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyPlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params CopyPlanParams
+	Body   *CopyPlanJSONRequestBody
+}
+
+type CopyPlanResponseObject interface {
+	VisitCopyPlanResponse(w http.ResponseWriter) error
+}
+
+type CopyPlan201JSONResponse PlanResult
+
+func (response CopyPlan201JSONResponse) VisitCopyPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CopyPlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CopyPlandefaultApplicationProblemPlusJSONResponse) VisitCopyPlanResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -29824,6 +30919,46 @@ type SkipPlanTaskdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SkipPlanTaskdefaultApplicationProblemPlusJSONResponse) VisitSkipPlanTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchivePlanRequestObject struct {
+	Plan   PlanRef `json:"plan"`
+	Params UnarchivePlanParams
+}
+
+type UnarchivePlanResponseObject interface {
+	VisitUnarchivePlanResponse(w http.ResponseWriter) error
+}
+
+type UnarchivePlan200JSONResponse PlanResult
+
+func (response UnarchivePlan200JSONResponse) VisitUnarchivePlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchivePlandefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response UnarchivePlandefaultApplicationProblemPlusJSONResponse) VisitUnarchivePlanResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -31610,7 +32745,7 @@ type StrictServerInterface interface {
 	// ResendMessage Send a message still waiting to its terminal or agent, as it is now
 	// (POST /v1/messages/{message}/resend)
 	ResendMessage(ctx context.Context, request ResendMessageRequestObject) (ResendMessageResponseObject, error)
-	// ListPlans List a project's plans by name
+	// ListPlans List a project's plans by folder, then name
 	// (GET /v1/plans)
 	ListPlans(ctx context.Context, request ListPlansRequestObject) (ListPlansResponseObject, error)
 	// CreatePlan Create a plan at revision 1, checked and reduced
@@ -31625,12 +32760,18 @@ type StrictServerInterface interface {
 	// UpdatePlan Rename a draft plan, move it to a folder, or change how many tasks a run runs at once
 	// (PATCH /v1/plans/{plan})
 	UpdatePlan(ctx context.Context, request UpdatePlanRequestObject) (UpdatePlanResponseObject, error)
+	// ArchivePlan Archive a done or cancelled plan, leaving it out of listPlans
+	// (POST /v1/plans/{plan}/archive)
+	ArchivePlan(ctx context.Context, request ArchivePlanRequestObject) (ArchivePlanResponseObject, error)
 	// CancelPlan Cancel a running or paused plan, which cannot run again
 	// (POST /v1/plans/{plan}/cancel)
 	CancelPlan(ctx context.Context, request CancelPlanRequestObject) (CancelPlanResponseObject, error)
 	// UpdatePlanContent Write a plan's content as a new revision, checked and reduced, if base is still its latest
 	// (PUT /v1/plans/{plan}/content)
 	UpdatePlanContent(ctx context.Context, request UpdatePlanContentRequestObject) (UpdatePlanContentResponseObject, error)
+	// CopyPlan Create a draft from a plan's latest revision, in any state
+	// (POST /v1/plans/{plan}/copies)
+	CopyPlan(ctx context.Context, request CopyPlanRequestObject) (CopyPlanResponseObject, error)
 	// PausePlan Pause a running plan, so that nothing new starts while tasks at work go on and land
 	// (POST /v1/plans/{plan}/pause)
 	PausePlan(ctx context.Context, request PausePlanRequestObject) (PausePlanResponseObject, error)
@@ -31655,6 +32796,9 @@ type StrictServerInterface interface {
 	// SkipPlanTask Skip a pending, failed or land_failed task, so that what waits for it goes on without its work
 	// (POST /v1/plans/{plan}/tasks/{task}/skip)
 	SkipPlanTask(ctx context.Context, request SkipPlanTaskRequestObject) (SkipPlanTaskResponseObject, error)
+	// UnarchivePlan Show an archived plan in listPlans again
+	// (POST /v1/plans/{plan}/unarchive)
+	UnarchivePlan(ctx context.Context, request UnarchivePlanRequestObject) (UnarchivePlanResponseObject, error)
 	// ListProjects List projects, without their worktrees, sorted by name
 	// (GET /v1/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -32684,6 +33828,33 @@ func (sh *strictHandler) UpdatePlan(w http.ResponseWriter, r *http.Request, plan
 	}
 }
 
+// ArchivePlan operation middleware
+func (sh *strictHandler) ArchivePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params ArchivePlanParams) {
+	var request ArchivePlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchivePlan(ctx, request.(ArchivePlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchivePlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchivePlanResponseObject); ok {
+		if err := validResponse.VisitArchivePlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CancelPlan operation middleware
 func (sh *strictHandler) CancelPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CancelPlanParams) {
 	var request CancelPlanRequestObject
@@ -32738,6 +33909,40 @@ func (sh *strictHandler) UpdatePlanContent(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdatePlanContentResponseObject); ok {
 		if err := validResponse.VisitUpdatePlanContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CopyPlan operation middleware
+func (sh *strictHandler) CopyPlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params CopyPlanParams) {
+	var request CopyPlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	var body CopyPlanJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CopyPlan(ctx, request.(CopyPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CopyPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CopyPlanResponseObject); ok {
+		if err := validResponse.VisitCopyPlanResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -32979,6 +34184,33 @@ func (sh *strictHandler) SkipPlanTask(w http.ResponseWriter, r *http.Request, pl
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SkipPlanTaskResponseObject); ok {
 		if err := validResponse.VisitSkipPlanTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnarchivePlan operation middleware
+func (sh *strictHandler) UnarchivePlan(w http.ResponseWriter, r *http.Request, plan PlanRef, params UnarchivePlanParams) {
+	var request UnarchivePlanRequestObject
+
+	request.Plan = plan
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnarchivePlan(ctx, request.(UnarchivePlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnarchivePlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnarchivePlanResponseObject); ok {
+		if err := validResponse.VisitUnarchivePlanResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -34246,357 +35478,366 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
+	"a/z7/xcAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -143,6 +143,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*plan.NotRunningError](err); ok {
 		return api.ErrorCodePlanNotRunning, map[string]any{"plan": planView(e.Plan)}
 	}
+	if e, ok := errors.AsType[*plan.NotFinishedError](err); ok {
+		return api.ErrorCodePlanNotFinished, map[string]any{"plan": planView(e.Plan)}
+	}
 	if e, ok := errors.AsType[*plan.TaskStateError](err); ok {
 		return api.ErrorCodeTaskState, map[string]any{"task": map[string]any{"id": e.Task.ID, "state": e.Task.State}}
 	}

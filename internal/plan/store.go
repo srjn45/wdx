@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/logging"
@@ -73,6 +74,31 @@ func (s *Store) Create(ctx context.Context, projectID, name, folder string, cont
 	}
 	logging.FromContext(ctx).Info("plan created", "plan_id", p.ID, "name", p.Name, "project_id", projectID, "folder", folder, "tasks", p.Tasks, "plans", len(p.Plans), "dropped", len(r.Dropped), "moved", len(moved))
 	return Saved{Plan: p, Dropped: r.Dropped, Changed: true, Moved: moved}, nil
+}
+
+// Copy creates a draft named name from the latest revision of the plan with id, in
+// any state, checked as Create checks a new plan: a plan of plans' copy is refused,
+// as the plans it lists have a parent. It goes in folder, or the plan's when folder
+// is nil, and has none of the plan's history or run.
+func (s *Store) Copy(ctx context.Context, id, name string, folder *string) (Saved, error) {
+	from, err := s.Get(ctx, id)
+	if err != nil {
+		return Saved{}, err
+	}
+	content, _, _, err := s.Content(ctx, id, 0)
+	if err != nil {
+		return Saved{}, err
+	}
+	to := from.Folder
+	if folder != nil {
+		to = *folder
+	}
+	saved, err := s.Create(ctx, from.ProjectID, name, to, content)
+	if err != nil {
+		return Saved{}, err
+	}
+	logging.FromContext(ctx).Info("plan copied", "plan_id", saved.Plan.ID, "name", saved.Plan.Name, "from_id", from.ID, "from_name", from.Name, "revision", from.Revision)
+	return saved, nil
 }
 
 // leaving returns the names of the plans with ids not in folder, which a plan of
@@ -406,6 +432,7 @@ func view(d doc.Doc, sum summary, parent string, run runState) Plan {
 		TasksDone:     run.done,
 		TasksFailed:   run.failed,
 		projectClosed: run.projectClosed,
+		ArchivedAt:    archivedAt(run),
 		Tasks:         sum.tasks,
 		Plans:         slices.Clone(sum.plans),
 		Parent:        parent,
@@ -414,6 +441,14 @@ func view(d doc.Doc, sum summary, parent string, run runState) Plan {
 		CreatedAt:     d.CreatedAt,
 		UpdatedAt:     d.UpdatedAt,
 	}
+}
+
+// archivedAt is when run was archived, zero when it was not.
+func archivedAt(run runState) time.Time {
+	if !run.archivedAt.Valid {
+		return time.Time{}
+	}
+	return time.UnixMilli(run.archivedAt.Int64).UTC()
 }
 
 // summary returns what d's latest revision defines, parsing it only when it is

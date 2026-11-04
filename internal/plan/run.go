@@ -119,6 +119,75 @@ func (e *NotRunningError) Error() string {
 	return fmt.Sprintf("plan %s is %s, not running or paused", e.Plan.Name, e.Plan.State)
 }
 
+// NotFinishedError is returned for archiving a plan that is not done or cancelled,
+// or whose cancel is still stopping its agents.
+type NotFinishedError struct {
+	Plan Plan
+}
+
+func (e *NotFinishedError) Error() string {
+	return fmt.Sprintf("plan %s is %s, not done or cancelled", e.Plan.Name, e.Plan.State)
+}
+
+// Archive hides the done or cancelled plan with id from plan list, reporting false
+// when it was hidden already. Nothing else of it changes. A plan in any other state,
+// or whose cancel has not ended, returns a *NotFinishedError.
+func (s *Store) Archive(ctx context.Context, planID string) (bool, error) {
+	return s.archive(ctx, planID, true)
+}
+
+// Unarchive shows the archived plan with id in plan list again, reporting false
+// when it was not archived.
+func (s *Store) Unarchive(ctx context.Context, planID string) (bool, error) {
+	return s.archive(ctx, planID, false)
+}
+
+func (s *Store) archive(ctx context.Context, planID string, archive bool) (bool, error) {
+	var archivedAt any
+	cond := "archived_at IS NOT NULL"
+	if archive {
+		archivedAt, cond = time.Now().UnixMilli(), "archived_at IS NULL"
+	}
+	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET archived_at = ?
+		WHERE plan_id = ? AND state IN (?, ?) AND finished_at IS NOT NULL AND `+cond, archivedAt, planID, StateDone, StateCancelled)
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		p, err := s.Get(ctx, planID)
+		if err != nil {
+			return false, err
+		}
+		finished, err := s.finished(ctx, planID)
+		if err != nil {
+			return false, err
+		}
+		if !finished {
+			logging.FromContext(ctx).Info("plan not finished", "plan_id", planID, "state", p.State)
+			return false, &NotFinishedError{Plan: p}
+		}
+		return false, nil
+	}
+	if err := touch(ctx, s.db, planID); err != nil {
+		return false, err
+	}
+	msg := "plan unarchived"
+	if archive {
+		msg = "plan archived"
+	}
+	logging.FromContext(ctx).Info(msg, "plan_id", planID)
+	return true, nil
+}
+
+// finished reports whether the plan with id has a run done or cancelled, its cancel
+// over.
+func (s *Store) finished(ctx context.Context, planID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM plan_runs WHERE plan_id = ? AND state IN (?, ?) AND finished_at IS NOT NULL`,
+		planID, StateDone, StateCancelled).Scan(&n)
+	return n > 0, err
+}
+
 // notRunning returns the *NotRunningError of the plan with id, or why it could not
 // be read.
 func (s *Store) notRunning(ctx context.Context, id string) error {
@@ -590,6 +659,7 @@ type runState struct {
 	state         string
 	done, failed  int
 	projectClosed bool
+	archivedAt    sql.NullInt64
 }
 
 // shown is the state the plan shows, and why it is paused: a run going on in a
@@ -609,7 +679,7 @@ func (rs runState) shown() (state, reason string) {
 // plan id.
 func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[string]runState, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.plan_id, r.state, p.state = 'closed',
+		SELECT r.plan_id, r.state, p.state = 'closed', r.archived_at,
 			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state = 'done'),
 			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state IN ('failed', 'land_failed'))
 		FROM plan_runs r JOIN docs d ON d.id = r.plan_id JOIN projects p ON p.id = d.project_id WHERE `+where, args...)
@@ -621,7 +691,7 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 	for rows.Next() {
 		var id string
 		var rs runState
-		if err := rows.Scan(&id, &rs.state, &rs.projectClosed, &rs.done, &rs.failed); err != nil {
+		if err := rows.Scan(&id, &rs.state, &rs.projectClosed, &rs.archivedAt, &rs.done, &rs.failed); err != nil {
 			return nil, err
 		}
 		states[id] = rs

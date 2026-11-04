@@ -881,9 +881,10 @@ func (c *Client) SyncDocsToGit(ctx context.Context, project, dir, path string) (
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-// ListPlans returns the plans of the project named by project or holding dir.
-func (c *Client) ListPlans(ctx context.Context, project, dir string) (api.PlanList, error) {
-	r, err := c.api.ListPlansWithResponse(ctx, &api.ListPlansParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+// ListPlans returns the plans of the project named by project or holding dir, the
+// archived too when archived.
+func (c *Client) ListPlans(ctx context.Context, project, dir string, archived bool) (api.PlanList, error) {
+	r, err := c.api.ListPlansWithResponse(ctx, &api.ListPlansParams{Project: nonEmpty(project), Dir: nonEmpty(dir), Archived: &archived})
 	if err != nil {
 		return api.PlanList{}, err
 	}
@@ -988,6 +989,34 @@ func (c *Client) SetPlan(ctx context.Context, ref, project, dir string, body api
 // PausePlan pauses the plan ref names, as GetPlan does.
 func (c *Client) PausePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
 	r, err := c.api.PausePlanWithResponse(ctx, ref, &api.PausePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// CopyPlan creates a draft named body's name from the latest revision of the plan
+// ref names, as GetPlan does.
+func (c *Client) CopyPlan(ctx context.Context, ref, project, dir string, body api.CopyPlan) (api.PlanResult, error) {
+	r, err := c.api.CopyPlanWithResponse(ctx, ref, &api.CopyPlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, body)
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// ArchivePlan archives the plan ref names, as GetPlan does.
+func (c *Client) ArchivePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.ArchivePlanWithResponse(ctx, ref, &api.ArchivePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.PlanResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// UnarchivePlan unarchives the plan ref names, as GetPlan does.
+func (c *Client) UnarchivePlan(ctx context.Context, ref, project, dir string) (api.PlanResult, error) {
+	r, err := c.api.UnarchivePlanWithResponse(ctx, ref, &api.UnarchivePlanParams{Project: nonEmpty(project), Dir: nonEmpty(dir)})
 	if err != nil {
 		return api.PlanResult{}, err
 	}
