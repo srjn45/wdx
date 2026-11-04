@@ -147,6 +147,9 @@ func (m *Model) landBarKey(name string) (barKey, bool) {
 	if !ok || name == "main" {
 		return barKey{}, false
 	}
+	if _, slot := m.slotAt(w.Path); slot {
+		return barKey{}, false // its plan lands it
+	}
 	switch {
 	case landingRunning(w):
 		return barKey{landKey, "landing…", 8}, true
@@ -164,6 +167,10 @@ func (m *Model) landBarKey(name string) (barKey, bool) {
 func (m *Model) askLand(tab string, v *diffView) tea.Cmd {
 	name, file := diffTabOf(tab)
 	if file != "" {
+		return nil
+	}
+	if s, ok := m.slotNamed(name); ok {
+		v.notice = fmt.Sprintf("%s is a slot of plan %s, which lands it on %s", name, s.plan.Name, planBranch(s.plan.Name))
 		return nil
 	}
 	key, ok := m.landBarKey(name)

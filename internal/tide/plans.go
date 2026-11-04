@@ -203,6 +203,7 @@ func (m *Model) plansChanged() {
 		}
 	}
 	m.keepPlanCursor()
+	m.keepWorktreeCursor() // a plan's slots are under its row
 }
 
 // keepPlanCursor keeps the cursor on its plan, or on the one that took its row;

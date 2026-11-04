@@ -50,6 +50,7 @@ type projectView struct {
 	Collapsed     []string            `json:"collapsed,omitempty"`    // the sections collapsed, by their letters
 	DocsFolded    []string            `json:"docs_folded,omitempty"`  // the folders of the Docs section folded
 	PlansFolded   []string            `json:"plans_folded,omitempty"` // the folders of the Plans section folded
+	SlotsFolded   []string            `json:"slots_folded,omitempty"` // the ids of the plans whose slots are folded
 }
 
 // viewState is how far the views are from what the daemon has.
@@ -126,6 +127,7 @@ func (m *Model) currentProjectView() (string, projectView, bool) {
 		Agent: l.cursor, Worktree: l.worktreeKey, Doc: l.docCursor, Code: l.code.cursor,
 		Folded: sorted(l.closed), WorktreesOpen: sorted(l.worktreesOpen), CodeWorktree: l.code.worktree,
 		Collapsed: sorted(l.collapsed), DocsFolded: sorted(l.docFolders), PlansFolded: sorted(l.planFolders),
+		SlotsFolded: sorted(l.slotsFolded),
 	}
 	for _, name := range slices.Sorted(maps.Keys(l.code.files)) {
 		if open := sorted(l.code.files[name].open); len(open) > 0 {
@@ -155,7 +157,7 @@ func (m *Model) applyProjectView(projectID string, l *agentList, v projectView) 
 	}
 	l.cursor, l.worktreeKey, l.docCursor, l.code.cursor = v.Agent, v.Worktree, v.Doc, v.Code
 	l.closed, l.worktreesOpen, l.collapsed = setOf(v.Folded), setOf(v.WorktreesOpen), setOf(v.Collapsed)
-	l.docFolders, l.planFolders = setOf(v.DocsFolded), setOf(v.PlansFolded)
+	l.docFolders, l.planFolders, l.slotsFolded = setOf(v.DocsFolded), setOf(v.PlansFolded), setOf(v.SlotsFolded)
 	if v.CodeWorktree != "" {
 		l.code.worktree = v.CodeWorktree
 	}

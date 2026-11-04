@@ -71,6 +71,7 @@ type agentList struct {
 	worktreeRow   int                  // its row in the Worktrees section
 	worktreeKey   string               // what that row is, which the cursor stays on as rows come and go
 	worktreesOpen map[string]bool      // the names of the worktrees unfolded: they start folded, as they can have many files
+	slotsFolded   map[string]bool      // the ids of the plans whose slots are folded
 	landAsked     map[string]string    // the landing this tide started, by worktree, until it ends
 	diffs         map[string]*diffView // what the diffs' tabs hold, by view: a worktree's tab has two
 	showCommits   map[string]bool      // the worktrees whose tab Tab turned to the commits, with changes still not committed
@@ -661,6 +662,8 @@ func (s *projectScreen) sectionHint() string {
 		switch {
 		case l.onHeading:
 			return headingHint
+		case l.section == sectionWorktrees && s.m.cursorOnSlots():
+			return planGroupHint
 		case l.section == sectionWorktrees:
 			return worktreeHint
 		case l.section == sectionCode && l.code.row == 0:
@@ -1119,7 +1122,12 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 func (s *projectScreen) clickWorktree(i, col int) tea.Cmd {
 	rows := s.m.worktreeRows()
 	r := rows[i]
-	if r.file == nil && len(r.worktree.Files) > 0 && col == ansi.StringWidth("▸ ") {
+	switch {
+	case r.isPlan() && col == ansi.StringWidth("▸ "):
+		s.m.foldSlots(r.plan.Id, !s.m.list().slotsFolded[r.plan.Id])
+		s.m.worktreesChanged()
+		return nil
+	case !r.isPlan() && r.file == nil && len(r.worktree.Files) > 0 && col == ansi.StringWidth("▸ ")+r.indent():
 		s.m.foldWorktree(r.worktree.Name, s.m.list().worktreesOpen[r.worktree.Name])
 		s.m.worktreesChanged()
 		return nil

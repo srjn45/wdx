@@ -255,6 +255,8 @@ func (m *Model) listSelectionTitle() string {
 		if rows := m.worktreeRows(); l.worktreeRow < len(rows) {
 			if r := rows[l.worktreeRow]; r.file != nil {
 				return r.file.Path + " (file)"
+			} else if r.isPlan() {
+				return r.plan.Name + " (plan)"
 			}
 			return rows[l.worktreeRow].worktree.Name + " (worktree)"
 		}

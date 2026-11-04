@@ -23,16 +23,34 @@ const (
 	rowSeparator = "\x00"
 )
 
-// worktreeRow is a row of the Worktrees section: a worktree, or a file of it.
+// worktreeRow is a row of the Worktrees section: a worktree, or a file of it, or a
+// plan's row with its slots under it (docs/PLANS.md, Step 5 in detail).
 type worktreeRow struct {
 	worktree api.WorktreeStatus
 	file     *api.WorktreeFile
-	match    bool // it matches the filter
+	plan     *api.Plan     // the plan of the row, or of the slot worktree is
+	slot     *api.PlanSlot // worktree is this slot of plan
+	match    bool          // it matches the filter
+}
+
+// isPlan reports whether the row is a plan's, its slots under it.
+func (r worktreeRow) isPlan() bool { return r.plan != nil && r.slot == nil }
+
+// indent is how far the row's worktree is from the section's edge: a slot is under
+// its plan.
+func (r worktreeRow) indent() int {
+	if r.slot != nil {
+		return 2
+	}
+	return 0
 }
 
 // key names the row across events, as an agent's id does its row.
 func (r worktreeRow) key() string {
-	if r.file != nil {
+	switch {
+	case r.isPlan():
+		return planTab(r.plan.Id)
+	case r.file != nil:
 		return r.worktree.Name + rowSeparator + r.file.Path
 	}
 	return r.worktree.Name
@@ -40,7 +58,10 @@ func (r worktreeRow) key() string {
 
 // tab is the tab the row opens.
 func (r worktreeRow) tab() string {
-	if r.file != nil {
+	switch {
+	case r.isPlan():
+		return planTab(r.plan.Id)
+	case r.file != nil:
 		return fileDiffTab(r.worktree.Name, r.file.Path)
 	}
 	return committedTab(r.worktree.Name)
@@ -55,9 +76,38 @@ func (m *Model) worktreeStatuses() []api.WorktreeStatus {
 	return nil
 }
 
+// planSlot is a slot of a plan.
+type planSlot struct {
+	plan api.Plan
+	slot api.PlanSlot
+}
+
+// slotAt returns the slot of a plan whose worktree is at path: a plan has slots only
+// while it runs.
+func (m *Model) slotAt(path string) (planSlot, bool) {
+	for _, p := range m.plans() {
+		for _, s := range p.Slots {
+			if s.Path == path {
+				return planSlot{plan: p, slot: s}, true
+			}
+		}
+	}
+	return planSlot{}, false
+}
+
+// slotNamed returns the slot whose worktree is called name.
+func (m *Model) slotNamed(name string) (planSlot, bool) {
+	if w, ok := m.worktreeNamed(name); ok {
+		return m.slotAt(w.Path)
+	}
+	return planSlot{}, false
+}
+
 // worktreeRows returns the rows the section shows: a folded worktree hides its
-// files. With a filter, a worktree shows when its name or branch matches, or a file
-// it changed does, with those files.
+// files, and a plan's row its slots, which are under it at the place of its first.
+// With a filter, a worktree shows when its name or branch matches, or a file it
+// changed does, with those files; a plan's row with the slots that show, or all of
+// them when its name matches.
 func (m *Model) worktreeRows() []worktreeRow {
 	l := m.list()
 	if l == nil {
@@ -65,20 +115,57 @@ func (m *Model) worktreeRows() []worktreeRow {
 	}
 	var rows []worktreeRow
 	words := l.filter.words()
-	for _, w := range m.worktreeStatuses() {
-		if words != nil {
-			rows = append(rows, filteredWorktreeRows(w, words)...)
-			continue
+	statuses := m.worktreeStatuses()
+	placed := map[string]bool{}
+	for _, w := range statuses {
+		s, ok := m.slotAt(w.Path)
+		switch {
+		case !ok:
+			rows = append(rows, m.worktreeOwnRows(w, words)...)
+		case !placed[s.plan.Id]:
+			placed[s.plan.Id] = true
+			rows = append(rows, m.slotRows(s.plan, statuses, words)...)
 		}
-		rows = append(rows, worktreeRow{worktree: w})
-		if !l.worktreesOpen[w.Name] {
-			continue
-		}
+	}
+	return rows
+}
+
+// worktreeOwnRows returns the rows of the worktree w and its files. A slot's name
+// holds its plan's, so the plan's matching is its slots' matching.
+func (m *Model) worktreeOwnRows(w api.WorktreeStatus, words []string) []worktreeRow {
+	if words != nil {
+		return filteredWorktreeRows(w, words)
+	}
+	rows := []worktreeRow{{worktree: w}}
+	if m.list().worktreesOpen[w.Name] {
 		for i := range w.Files {
 			rows = append(rows, worktreeRow{worktree: w, file: &w.Files[i]})
 		}
 	}
 	return rows
+}
+
+// slotRows returns the plan p's row and, unfolded, its slots' with their files.
+func (m *Model) slotRows(p api.Plan, statuses []api.WorktreeStatus, words []string) []worktreeRow {
+	head := worktreeRow{plan: &p, match: words != nil && matches(p.Name, words)}
+	if words == nil && m.list().slotsFolded[p.Id] {
+		return []worktreeRow{head}
+	}
+	var under []worktreeRow
+	for i := range p.Slots {
+		at := slices.IndexFunc(statuses, func(w api.WorktreeStatus) bool { return w.Path == p.Slots[i].Path })
+		if at < 0 {
+			continue // not read yet
+		}
+		for _, r := range m.worktreeOwnRows(statuses[at], words) {
+			r.plan, r.slot = &p, &p.Slots[i]
+			under = append(under, r)
+		}
+	}
+	if words != nil && !head.match && under == nil {
+		return nil
+	}
+	return append([]worktreeRow{head}, under...)
 }
 
 // filteredWorktreeRows returns the rows of w that the filter of words shows.
@@ -149,26 +236,54 @@ func (m *Model) moveUp() { m.moveBy(-1) }
 // moveDown moves the cursor down the one list the sections make.
 func (m *Model) moveDown() { m.moveBy(1) }
 
-// worktreeFoldLeft folds the worktree under the cursor; from a file it moves to
-// the file's worktree.
+// worktreeFoldLeft folds the worktree or plan under the cursor; from a file it moves
+// to the file's worktree, and from a slot folded to its plan.
 func (m *Model) worktreeFoldLeft() {
 	l, rows := m.list(), m.worktreeRows()
 	if l.worktreeRow >= len(rows) {
 		return
 	}
 	r := rows[l.worktreeRow]
-	if r.file != nil {
+	switch {
+	case r.isPlan():
+		m.foldSlots(r.plan.Id, true)
+	case r.file != nil:
 		m.moveToWorktree(slices.IndexFunc(rows, func(o worktreeRow) bool { return o.file == nil && o.worktree.Name == r.worktree.Name }))
-		return
+	case r.slot != nil && (len(r.worktree.Files) == 0 || m.worktreeFolded(r.worktree)):
+		m.moveToWorktree(slices.IndexFunc(rows, func(o worktreeRow) bool { return o.isPlan() && o.plan.Id == r.plan.Id }))
+	default:
+		m.foldWorktree(r.worktree.Name, true)
 	}
-	m.foldWorktree(r.worktree.Name, true)
 }
 
-// worktreeFoldRight opens the worktree under the cursor.
+// worktreeFoldRight opens the worktree or plan under the cursor.
 func (m *Model) worktreeFoldRight() {
 	l, rows := m.list(), m.worktreeRows()
-	if l.worktreeRow < len(rows) && rows[l.worktreeRow].file == nil {
-		m.foldWorktree(rows[l.worktreeRow].worktree.Name, false)
+	if l.worktreeRow >= len(rows) {
+		return
+	}
+	switch r := rows[l.worktreeRow]; {
+	case r.isPlan():
+		m.foldSlots(r.plan.Id, false)
+	case r.file == nil:
+		m.foldWorktree(r.worktree.Name, false)
+	}
+}
+
+// foldSlots folds the slots of the plan whose id is id under its row, or unfolds
+// them. They start unfolded, as a plan has few.
+func (m *Model) foldSlots(id string, closed bool) {
+	l := m.list()
+	if m.filtering() {
+		return // what matches stays open
+	}
+	if l.slotsFolded == nil {
+		l.slotsFolded = map[string]bool{}
+	}
+	if closed {
+		l.slotsFolded[id] = true
+	} else {
+		delete(l.slotsFolded, id)
 	}
 }
 
@@ -195,6 +310,10 @@ func (m *Model) openWorktreeRow(goToTab bool) tea.Cmd {
 		return nil
 	}
 	r := rows[l.worktreeRow]
+	if r.isPlan() {
+		m.openPlan(*r.plan, goToTab)
+		return nil
+	}
 	l.openTab(r.tab())
 	m.showOpened(goToTab)
 	m.changed("diff")
@@ -232,11 +351,16 @@ func (m *Model) worktreesSync() tea.Cmd {
 }
 
 // worktreeRowActive reports whether the tab shown is the row's; a folded worktree
-// carries the mark of its file's tab.
+// carries the mark of its file's tab, and a folded plan that of its slots'.
 func (m *Model) worktreeRowActive(r worktreeRow) bool {
 	l := m.list()
 	if r.tab() == l.active {
 		return true
+	}
+	if r.isPlan() {
+		worktree, _ := diffTabOf(l.active)
+		s, ok := m.slotNamed(worktree)
+		return isDiffTab(l.active) && ok && s.plan.Id == r.plan.Id && l.slotsFolded[r.plan.Id] && !m.filtering()
 	}
 	if worktree, file := diffTabOf(l.active); r.file == nil && isDiffTab(l.active) && file != "" && worktree == r.worktree.Name {
 		if words := m.filterWords(); words != nil {
@@ -282,7 +406,8 @@ func worktreeSummary(w api.WorktreeStatus) string {
 }
 
 // removableWorktree returns the worktree under the cursor, if it landed or its
-// directory is gone: C-q x removes nothing else, and the clone never.
+// directory is gone: C-q x removes nothing else, the clone never, nor a slot of a
+// plan running, whose daemon would refuse it.
 func (m *Model) removableWorktree() (removal, bool) {
 	l, rows := m.list(), m.worktreeRows()
 	if m.layout.focus != project || l == nil || l.section != sectionWorktrees || l.worktreeRow >= len(rows) {
@@ -290,7 +415,7 @@ func (m *Model) removableWorktree() (removal, bool) {
 	}
 	r := rows[l.worktreeRow]
 	w := r.worktree
-	if r.file != nil || w.Name == "main" {
+	if r.file != nil || r.plan != nil || w.Name == "main" {
 		return removal{}, false
 	}
 	if s := worktreeSummary(w); s != "landed" && s != "missing" && !mergedThroughPR(w) {
@@ -424,9 +549,13 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 	if active {
 		end = " " + st.Focused("◂") + " "
 	}
-	room := width - ansi.StringWidth("▸ ") - style.Width(end)
+	room := width - ansi.StringWidth("▸ ") - style.Width(end) - r.indent()
+	pointer += strings.Repeat(" ", r.indent())
 	var row string
-	if r.file != nil {
+	switch {
+	case r.isPlan():
+		row = pointer + m.slotsHeading(*r.plan, room, cursor || active) + end
+	case r.file != nil:
 		// Under its worktree's name: past the fold mark.
 		room -= ansi.StringWidth("  M ")
 		p := ansi.TruncateLeft(r.file.Path, max(ansi.StringWidth(r.file.Path)-max(room, 1)+1, 0), "…")
@@ -441,8 +570,8 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 			check = st.Success("✓") + " "
 		}
 		row = pointer + check + worktreeMark(st, r.file.Status) + " " + p + strings.Repeat(" ", max(room-ansi.StringWidth(stripped(p)), 0)) + end
-	} else {
-		row = pointer + m.worktreeHeading(r.worktree, room, cursor || active) + end
+	default:
+		row = pointer + m.worktreeHeading(r, room, cursor || active) + end
 	}
 	if active {
 		return st.ActiveRow(row)
@@ -453,10 +582,58 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 // stripped is s as it shows, without its style.
 func stripped(s string) string { return ansi.Strip(s) }
 
-// worktreeHeading is a worktree's row after the pointer: its fold mark, its name,
-// and at the end its summary, then the agents there when they fit.
-func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) string {
+// slotsHeading is a plan's row after the pointer: its fold mark, its name, and at the
+// end the branch its slots land on.
+func (m *Model) slotsHeading(p api.Plan, room int, strong bool) string {
 	st := m.st
+	fold := foldOpen
+	if m.list().slotsFolded[p.Id] && !m.filtering() {
+		fold = foldClosed
+	}
+	room -= ansi.StringWidth(fold + " plan ")
+	branch := planBranch(p.Name)
+	if room-ansi.StringWidth(branch)-1 < minAgentName {
+		branch = ""
+	} else {
+		room -= ansi.StringWidth(branch) + 1
+	}
+	name := ansi.Truncate(p.Name, max(room, 0), "…")
+	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
+	if strong {
+		name = st.Name(name)
+	}
+	if branch != "" {
+		branch = " " + st.Muted(branch)
+	}
+	return st.Muted(fold+" plan ") + name + gap + branch
+}
+
+// planBranch is the branch a plan's tasks land on.
+func planBranch(name string) string { return "plan/" + name }
+
+// slotText is what a slot's row says after its name: the task in it and that task's
+// agent, or that it is free.
+func (m *Model) slotText(s planSlot) string {
+	if s.slot.Task == nil {
+		return "free"
+	}
+	text := *s.slot.Task
+	agents := m.agents()
+	for i := len(agents) - 1; i >= 0; i-- {
+		a := agents[i]
+		if a.Task != nil && strings.EqualFold(a.Task.Plan, s.plan.Name) && a.Task.Task == text && a.State != api.AgentStateRemoved {
+			return text + " · " + a.Name
+		}
+	}
+	return text
+}
+
+// worktreeHeading is a worktree's row after the pointer: its fold mark, its name,
+// what a slot holds, and at the end its summary, then the agents there when they
+// fit; a slot's agent is already said.
+func (m *Model) worktreeHeading(r worktreeRow, room int, strong bool) string {
+	st := m.st
+	w := r.worktree
 	fold := "  "
 	folded := m.worktreeFolded(w)
 	if len(w.Files) > 0 {
@@ -466,8 +643,16 @@ func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) str
 		}
 	}
 	room -= ansi.StringWidth(fold)
+	slot, agents := "", m.agentsIn(w.Name)
+	if r.slot != nil {
+		agents = nil
+		if text := m.slotText(planSlot{plan: *r.plan, slot: *r.slot}); room-ansi.StringWidth(text)-1 >= minAgentName {
+			slot = text
+			room -= ansi.StringWidth(text) + 1
+		}
+	}
 	detail := ""
-	for _, d := range worktreeDetails(w, folded, m.agentsIn(w.Name)) {
+	for _, d := range worktreeDetails(w, folded, agents) {
 		if room-ansi.StringWidth(d)-1 >= minAgentName {
 			detail = d
 			break
@@ -483,6 +668,13 @@ func (m *Model) worktreeHeading(w api.WorktreeStatus, room int, strong bool) str
 		name = st.Name(name)
 	case w.Missing:
 		name = st.Muted(name)
+	}
+	switch slot {
+	case "":
+	case "free":
+		name += " " + st.Muted(slot)
+	default:
+		name += " " + slot
 	}
 	styled := detail
 	if detail != "" {
@@ -630,3 +822,10 @@ func (m *Model) verifiable() bool {
 
 // tabLeaf is the end of a path, as a tab's title has room for.
 func tabLeaf(p string) string { return path.Base(p) }
+
+// cursorOnSlots reports whether the cursor is on a plan's row in the Worktrees
+// section.
+func (m *Model) cursorOnSlots() bool {
+	l, rows := m.list(), m.worktreeRows()
+	return l != nil && l.section == sectionWorktrees && l.worktreeRow < len(rows) && rows[l.worktreeRow].isPlan()
+}
