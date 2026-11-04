@@ -3,6 +3,7 @@
 package acatest
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -39,10 +40,16 @@ type ACA struct {
 	// Running is what Detached finds, and Stopped what StopDetached took from it.
 	Running []aca.DetachedSession
 	Stopped []string
+	// ProgramName is what Program says, "sh" when "": a name never installed makes
+	// it an ACA that is not.
+	ProgramName string
 }
 
 // ID implements aca.AiCodingAgent.
 func (a *ACA) ID() string { return aca.ClaudeCode{}.ID() }
+
+// Program implements aca.AiCodingAgent.
+func (a *ACA) Program() string { return cmp.Or(a.ProgramName, "sh") }
 
 // ScreenParser implements aca.AiCodingAgent: Claude Code's, as a holder goes by
 // the id.
@@ -170,4 +177,57 @@ func (a *ACA) Sessions() ([]string, error) {
 		return nil, err
 	}
 	return strings.Fields(string(data)), nil
+}
+
+// Bare is an AI coding agent that has written nothing of its own but the
+// command: every stub of package aca and its NoScreenParser, as a new ACA starts.
+// Its program is a shell, as ACA's.
+type Bare struct {
+	aca.NoBackUp
+	aca.NoBeginSession
+	aca.NoBrief
+	aca.NoDetached
+	// Name is its id, and ProgramName what Program says, "sh" when "".
+	Name, ProgramName string
+}
+
+// ID implements aca.AiCodingAgent.
+func (b *Bare) ID() string { return b.Name }
+
+// Program implements aca.AiCodingAgent.
+func (b *Bare) Program() string { return cmp.Or(b.ProgramName, "sh") }
+
+// Command implements aca.AiCodingAgent.
+func (b *Bare) Command(aca.Launch) ([]string, error) {
+	return []string{"/bin/sh", "-c", defaultScript}, nil
+}
+
+// ScreenParser implements aca.AiCodingAgent.
+func (b *Bare) ScreenParser() aca.ScreenParser { return aca.NoScreenParser{} }
+
+// Deliver implements aca.AiCodingAgent: the message typed, then Enter.
+func (b *Bare) Deliver(w io.Writer, message string) error {
+	_, err := io.WriteString(w, message+"\r")
+	return err
+}
+
+// Interrupt implements aca.AiCodingAgent.
+func (b *Bare) Interrupt() []byte { return []byte("\x03") }
+
+// Models implements aca.AiCodingAgent.
+func (b *Bare) Models(context.Context, aca.Launch) ([]aca.Model, error) {
+	return []aca.Model{{ID: "bare-1", Name: "Bare One", Default: true}}, nil
+}
+
+// NotInstalled is a program LookProgram never finds: an ACA whose ProgramName it is
+// is not installed.
+const NotInstalled = "wdx-test-not-installed"
+
+// LookProgram stands in for the daemon's look through the login shell, which a
+// test's shell, a script, does not take: it finds every program but NotInstalled.
+func LookProgram(_ context.Context, program string) error {
+	if program == NotInstalled {
+		return fmt.Errorf("%s: not found", program)
+	}
+	return nil
 }

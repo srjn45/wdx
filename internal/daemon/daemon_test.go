@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db/dbtest"
@@ -76,7 +77,8 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	o := Options{
 		Home: home, Socket: td.socket, Log: logging.New(logs, slog.LevelDebug), Metrics: metrics,
 		Executable: exe, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
-		ACA: &acatest.ACA{Launches: filepath.Join(home, "test-launches")},
+		ACAs:        []aca.AiCodingAgent{&acatest.ACA{Launches: filepath.Join(home, "test-launches")}},
+		LookProgram: acatest.LookProgram,
 	}
 	// A machine slowed down by other tests slows them rather than fails them.
 	o.StopReport, o.HolderLimits = holdertest.Patience(t), holdertest.Limits(t)

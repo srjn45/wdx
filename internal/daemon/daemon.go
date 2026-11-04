@@ -77,9 +77,17 @@ type Options struct {
 	// EditorCommand is what runs the editor named program on path, in place of
 	// its own command, as tests give; nil runs the editor.
 	EditorCommand func(program, path string) []string
-	// ACA is what new agents run, and among the ones agents may have been
-	// created with; aca.Default() when nil.
-	ACA aca.AiCodingAgent
+	// ACAs are the AI coding agents it runs, in the order they are offered;
+	// aca.All() when nil.
+	ACAs []aca.AiCodingAgent
+	// ACAEnabled says by id which ACAs new agents may run; one missing may.
+	ACAEnabled map[string]bool
+	// LookProgram fails when an ACA's program is not found where agents start;
+	// through the shell terminals run when nil, as tests do not have it.
+	LookProgram func(ctx context.Context, program string) error
+	// ACACheckAge is how long what is found installed is kept for a list;
+	// agent.DefaultCheckAge when 0.
+	ACACheckAge time.Duration
 
 	// ShutdownTimeout is how long requests in flight get once the daemon
 	// is asked to stop, before the changes among them are cancelled;
@@ -141,6 +149,7 @@ type Settings struct {
 	Editor               string
 	DocsGitPath          string
 	PlanParallel         int
+	ACAEnabled           map[string]bool
 }
 
 // ReloadError is settings that could not be read again; the daemon keeps the
@@ -272,11 +281,18 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	// A terminal changes state outside requests too, as when its shell
 	// exits.
 	terminals.OnChange(d.notices.notify)
-	if opts.ACA == nil {
-		opts.ACA = aca.Default()
+	if opts.ACAs == nil {
+		opts.ACAs = aca.All()
 	}
+	look := opts.LookProgram
+	if look == nil {
+		// Called only once requests are served, when the supervisor exists.
+		look = func(ctx context.Context, program string) error { return d.terminals.LookProgram(ctx, program) }
+	}
+	acas := agent.NewACAs(opts.ACAs, look, opts.ACACheckAge)
+	acas.SetEnabled(opts.ACAEnabled)
 	agents := agent.NewStore(d.db)
-	d.backups = agent.NewBackups(logged, agents, opts.Home, []aca.AiCodingAgent{opts.ACA}, opts.TrashRetention)
+	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:    opts.Executable,
@@ -311,7 +327,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			}
 		},
 	})
-	d.agents = agent.NewManager(agents, d.terminals, d.backups, opts.ACA)
+	d.agents = agent.NewManager(agents, d.terminals, d.backups)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
@@ -390,6 +406,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 	}
 	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines, s.Editor)
 	d.planParallel.Store(int64(cmp.Or(s.PlanParallel, DefaultPlanParallel)))
+	d.agents.ACAs().SetEnabled(s.ACAEnabled)
 	if d.gitCopy.setPath(s.DocsGitPath) {
 		// Under the changes' lock, so that no doc's change syncs at the same time.
 		d.changes.Lock()
@@ -404,7 +421,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 		d.opts.Metrics = s.Metrics
 		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
 	}
-	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath, "plan_parallel", s.PlanParallel)
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath, "plan_parallel", s.PlanParallel, "aca_enabled", s.ACAEnabled)
 	return nil
 }
 

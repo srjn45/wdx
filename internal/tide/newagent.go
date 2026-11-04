@@ -10,6 +10,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // agentForm is the box of C-q a and C-q c, asking what a new agent is created with
@@ -20,7 +21,9 @@ type agentForm struct {
 	in          string     // the worktree that is, as the field's hint names it
 	field       formField  // the one with the cursor
 	name        string
-	model       string // what is typed in the model field, which filters the list
+	acas        []string // the AI coding agents new agents can run, the default first, once listed
+	aca         int      // the one chosen, an index into acas
+	model       string   // what is typed in the model field, which filters the list
 	worktree    string
 	permissions api.AgentPermissions
 	prompt      string
@@ -39,6 +42,7 @@ type formField int
 
 const (
 	formName formField = iota
+	formACA            // shown only with two ACAs or more to choose
 	formModel
 	formWorktree
 	formPermissions
@@ -58,14 +62,24 @@ const formFieldWidth = 40
 // defaultModel is the list's row for the ACA's own default, which passes no model.
 var defaultModel = api.AcaModel{Id: "", Name: "Default"}
 
-// modelsListed is the answer to listing the ACA's models.
+// noACA is what the status line says when no AI coding agent can run a new agent.
+var noACA = "no AI coding agent installed and enabled: " + identity.Name + " deps list"
+
+// acasListed is the answer to listing the ACAs new agents can run.
+type acasListed struct {
+	acas []api.Aca
+	err  error
+}
+
+// modelsListed is the answer to listing the models of aca.
 type modelsListed struct {
+	aca    string
 	models []api.AcaModel
 	err    error
 }
 
 // openAgentForm opens the box for a new agent under parent, or at the top level
-// when it is nil, and asks for the models.
+// when it is nil, and asks for the ACAs, then the models of the default.
 func (m *Model) openAgentForm(parent *api.Agent) tea.Cmd {
 	m.switcher, m.opening = nil, nil
 	f := &agentForm{parent: parent, permissions: api.AgentPermissionsFull}
@@ -80,14 +94,59 @@ func (m *Model) openAgentForm(parent *api.Agent) tea.Cmd {
 	}
 	m.agentForm = f
 	m.log.Info("agent form opened", "parent", parentName(parent), "dir", f.dir)
-	if m.aca == "" {
-		f.modelsRead = true
+	return func() tea.Msg {
+		r, err := m.client.ListAcas(m.ctx)
+		return acasListed{acas: r.Acas, err: err}
+	}
+}
+
+// acasWereListed fills the box's ACAs and asks for the default's models; with none
+// to run, the box closes and the status line says so.
+func (m *Model) acasWereListed(msg acasListed) tea.Cmd {
+	f := m.agentForm
+	if f == nil {
 		return nil
 	}
-	aca := m.aca
+	if msg.err != nil {
+		m.log.Info("acas not listed", "err", msg.err)
+		f.modelsRead, f.modelsErr = true, msg.err.Error()
+		return nil
+	}
+	if len(msg.acas) == 0 {
+		m.log.Info("agent form closed", "reason", "no aca")
+		m.agentForm, m.statusNotice = nil, noACA
+		return nil
+	}
+	for _, a := range msg.acas {
+		f.acas = append(f.acas, a.Id)
+	}
+	m.log.Info("acas listed", "count", len(f.acas))
+	return m.listModels()
+}
+
+// listModels asks for the models of the ACA chosen, forgetting the last one's.
+func (m *Model) listModels() tea.Cmd {
+	f := m.agentForm
+	aca := f.acas[f.aca]
+	f.models, f.modelsRead, f.modelsErr = nil, false, ""
+	f.model, f.selected, f.top = "", 0, 0
 	return func() tea.Msg {
 		r, err := m.client.ListAcaModels(m.ctx, aca)
-		return modelsListed{models: r.Models, err: err}
+		return modelsListed{aca: aca, models: r.Models, err: err}
+	}
+}
+
+// choosesACA says whether the box shows the ACA field: with one ACA there is
+// nothing to choose.
+func (f *agentForm) choosesACA() bool {
+	return len(f.acas) > 1
+}
+
+// moveField moves the cursor by delta, over the fields shown.
+func (f *agentForm) moveField(delta formField) {
+	f.field = (f.field + delta + formFields) % formFields
+	if f.field == formACA && !f.choosesACA() {
+		f.field = (f.field + delta + formFields) % formFields
 	}
 }
 
@@ -110,8 +169,8 @@ func (m *Model) worktreeAt(dir string) string {
 
 func (m *Model) modelsWereListed(msg modelsListed) {
 	f := m.agentForm
-	if f == nil {
-		return
+	if f == nil || len(f.acas) == 0 || msg.aca != f.acas[f.aca] {
+		return // the box closed, or another ACA was chosen meanwhile
 	}
 	f.modelsRead = true
 	if msg.err != nil {
@@ -206,9 +265,17 @@ func (m *Model) agentFormKey(msg tea.KeyPressMsg) tea.Cmd {
 	case name == "enter":
 		return m.submitAgentForm()
 	case name == "tab":
-		f.field = (f.field + 1) % formFields
+		f.moveField(1)
 	case name == "shift+tab":
-		f.field = (f.field + formFields - 1) % formFields
+		f.moveField(-1)
+	case f.field == formACA && (name == "left" || name == "right" || name == "space"):
+		step := 1
+		if name == "left" {
+			step = len(f.acas) - 1
+		}
+		f.aca = (f.aca + step) % len(f.acas)
+		m.log.Info("agent form aca chosen", "aca", f.acas[f.aca])
+		return m.listModels()
 	case f.field == formModel && name == "up":
 		f.moveSelection(-1)
 	case f.field == formModel && name == "down":
@@ -253,6 +320,9 @@ func (m *Model) submitAgentForm() tea.Cmd {
 	if name := strings.TrimSpace(f.name); name != "" {
 		body.Name = &name
 	}
+	if f.aca > 0 { // the default is the daemon's to choose, as an older one takes no aca
+		body.Aca = &f.acas[f.aca]
+	}
 	if model := f.chosenModel(); model != "" {
 		body.Model = &model
 	}
@@ -276,6 +346,10 @@ func (m *Model) agentFormFailed(err error) {
 			f.field = formName
 		case api.ErrorCodeInvalidArgument:
 			f.field = formModel
+		case api.ErrorCodeAcaUnavailable:
+			if f.choosesACA() {
+				f.field = formACA
+			}
 		case api.ErrorCodeBranchExists, api.ErrorCodePathExists, api.ErrorCodeWorktreeFailed:
 			f.field = formWorktree
 		}
@@ -312,6 +386,9 @@ func (m *Model) agentFormPopup() popup {
 	}
 	row(formName, "Name", text(formName, f.name))
 	under(st.Muted("empty: a generated one"))
+	if f.choosesACA() {
+		row(formACA, "ACA", st.Muted("‹ ")+f.acas[f.aca]+st.Muted(" ›"))
+	}
 	row(formModel, "Model", text(formModel, f.model))
 	body = append(body, m.modelRows()...)
 	row(formWorktree, "Worktree", text(formWorktree, f.worktree))
@@ -334,7 +411,7 @@ func (m *Model) agentFormPopup() popup {
 	switch f.field {
 	case formModel:
 		footer = st.Command("Enter") + " create  " + st.Command("Tab") + " next  " + st.Command("↑↓") + " model  " + st.Command("Esc") + " cancel"
-	case formPermissions:
+	case formPermissions, formACA:
 		footer = st.Command("Enter") + " create  " + st.Command("Tab") + " next  " + st.Command("←→") + " change  " + st.Command("Esc") + " cancel"
 	}
 	return popup{title: title, body: body, footer: footer}

@@ -49,7 +49,7 @@ type Backups struct {
 	ctx       context.Context
 	store     *Store
 	home      string
-	acas      []aca.AiCodingAgent
+	acas      *ACAs
 	retention time.Duration
 	// OnChange, when set, is told an agent's session changed.
 	OnChange func()
@@ -66,9 +66,9 @@ type Backups struct {
 }
 
 // NewBackups returns the backups of the agents in store, under home, of the
-// AI coding agents in acas; a removed agent's stays for retention, or
+// AI coding agents acas knows; a removed agent's stays for retention, or
 // DefaultTrashRetention when 0.
-func NewBackups(ctx context.Context, store *Store, home string, acas []aca.AiCodingAgent, retention time.Duration) *Backups {
+func NewBackups(ctx context.Context, store *Store, home string, acas *ACAs, retention time.Duration) *Backups {
 	if retention == 0 {
 		retention = DefaultTrashRetention
 	}
@@ -118,7 +118,7 @@ func (b *Backups) Request(terminalID string) {
 			return
 		}
 		if _, err := b.up(b.ctx, a); err != nil {
-			log.Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+			notUpToDate(logging.NewContext(b.ctx, log), a.ID, err)
 		}
 	})
 }
@@ -181,16 +181,25 @@ func (b *Backups) up(ctx context.Context, a Agent) (string, error) {
 	if merr == nil {
 		merr = atomicfile.Write(filepath.Join(dir, backupAgentFile), data, 0o600)
 	}
+	if errors.Is(err, aca.ErrNotSupported) && merr == nil {
+		return a.SessionID, aca.ErrNotSupported
+	}
 	return a.SessionID, errors.Join(err, merr)
 }
 
-func (b *Backups) known(id string) aca.AiCodingAgent {
-	for _, candidate := range b.acas {
-		if candidate.ID() == id {
-			return candidate
-		}
+// notUpToDate logs a backup of the agent id that up could not bring up to date: at
+// debug when its AI coding agent keeps none yet, which says nothing new at every start
+// and every idle.
+func notUpToDate(ctx context.Context, id string, err error) {
+	if errors.Is(err, aca.ErrNotSupported) {
+		logging.FromContext(ctx).Debug("agent backup not kept", "agent_id", id, "reason", "its AI coding agent keeps none yet")
+		return
 	}
-	return nil
+	logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
+}
+
+func (b *Backups) known(id string) aca.AiCodingAgent {
+	return b.acas.Known(id)
 }
 
 // Sweep moves the backups of agents that have no row to the trash, taking their
@@ -240,7 +249,10 @@ func (b *Backups) toTrash(ctx context.Context, id string) error {
 		if err == nil {
 			_, err = known.BackUp(ctx, aca.Launch{Dir: record.Dir, SessionID: record.SessionID, UserHome: account.Home, BackupDir: dir})
 		}
-		if err != nil {
+		switch {
+		case errors.Is(err, aca.ErrNotSupported):
+			log.Debug("last of the agent's backup not taken", "agent_id", id, "reason", "its AI coding agent keeps none yet")
+		case err != nil:
 			log.Error("last of the agent's backup not taken", "agent_id", id, "err", err)
 		}
 	}
@@ -344,8 +356,11 @@ type Transcript struct {
 func (b *Backups) transcript(ctx context.Context, a Agent, from *int64, count int) (Transcript, error) {
 	b.work.Lock()
 	defer b.work.Unlock()
-	if _, err := b.up(ctx, a); err != nil {
-		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+	if _, err := b.up(ctx, a); errors.Is(err, aca.ErrNotSupported) {
+		// An empty transcript would say the agent said nothing.
+		return Transcript{}, fmt.Errorf("the transcript of agent %s: %w", a.ID, err)
+	} else if err != nil {
+		notUpToDate(ctx, a.ID, err)
 	}
 	path := filepath.Join(identity.AgentDir(b.home, a.ID), aca.TranscriptFile)
 	t := Transcript{Path: path, Lines: []string{}}
@@ -402,7 +417,7 @@ func (b *Backups) beginSession(ctx context.Context, id, session string, linked f
 	}
 	previous, err := b.up(ctx, a)
 	if err != nil {
-		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
+		notUpToDate(ctx, id, err)
 	}
 	if a, err = b.store.Get(ctx, id); err != nil {
 		return nil, err
@@ -411,7 +426,7 @@ func (b *Backups) beginSession(ctx context.Context, id, session string, linked f
 	stopped := b.stopDetached(ctx, a)
 	if len(stopped) > 0 {
 		if previous, err = b.up(ctx, a); err != nil {
-			logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", id, "err", err)
+			notUpToDate(ctx, id, err)
 		}
 		if a, err = b.store.Get(ctx, id); err != nil {
 			return nil, err
@@ -419,7 +434,7 @@ func (b *Backups) beginSession(ctx context.Context, id, session string, linked f
 	}
 	known := b.known(a.ACA)
 	if known == nil {
-		return nil, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+		return nil, notKnown(a.ACA)
 	}
 	account, err := holder.LookupAccount(ctx)
 	if err != nil {
@@ -467,7 +482,7 @@ func (b *Backups) detached(ctx context.Context, a Agent) []aca.DetachedSession {
 	b.work.Lock()
 	defer b.work.Unlock()
 	if _, err := b.up(ctx, a); err != nil {
-		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+		notUpToDate(ctx, a.ID, err)
 	}
 	_, _, detached := b.detachedOf(ctx, a)
 	return detached
@@ -479,12 +494,12 @@ func (b *Backups) stop(ctx context.Context, a Agent) []string {
 	b.work.Lock()
 	defer b.work.Unlock()
 	if _, err := b.up(ctx, a); err != nil {
-		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+		notUpToDate(ctx, a.ID, err)
 	}
 	stopped := b.stopDetached(ctx, a)
 	if len(stopped) > 0 {
 		if _, err := b.up(ctx, a); err != nil {
-			logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+			notUpToDate(ctx, a.ID, err)
 		}
 	}
 	return stopped
@@ -515,13 +530,13 @@ func (b *Backups) brief(ctx context.Context, a Agent) (Transcript, error) {
 	b.work.Lock()
 	defer b.work.Unlock()
 	if _, err := b.up(ctx, a); err != nil {
-		logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+		notUpToDate(ctx, a.ID, err)
 	}
 	dir := identity.AgentDir(b.home, a.ID)
 	t := Transcript{Path: filepath.Join(dir, aca.TranscriptFile), Lines: []string{}}
 	known := b.known(a.ACA)
 	if known == nil {
-		return t, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+		return t, notKnown(a.ACA)
 	}
 	account, err := holder.LookupAccount(ctx)
 	if err != nil {
@@ -529,7 +544,7 @@ func (b *Backups) brief(ctx context.Context, a Agent) (Transcript, error) {
 	}
 	brief, err := known.Brief(ctx, aca.Launch{Dir: a.Terminal.Dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: dir}, briefLimit)
 	if err != nil {
-		return Transcript{}, err
+		return Transcript{}, fmt.Errorf("the brief of agent %s: %w", a.ID, err)
 	}
 	t.From, t.Next = brief.From, brief.Next
 	if len(brief.Start) == 0 {

@@ -52,7 +52,15 @@ An agent is created with a model and permissions (the wdx doc AGENT_CREATE), in 
 - `model`: as the ACA's own model flag takes it; none is its default. For Claude Code `--model <model>`: `fable`, `opus`, `sonnet` and `haiku` are always the newest of their class.
 - `permissions`: `full`, the default, asks for no approval, with network access and no sandbox; `ask` is the ACA's default, as the user's settings for it say. For Claude Code `full` is `--permission-mode bypassPermissions`, and its `--settings` file sets `skipDangerousModePermissionPrompt`, so that the warning it shows the first time does not stop the agent, and `sandbox.enabled: false`; `ask` passes nothing.
 - Agents created before read `ask`, with no model, as that is what they ran with.
-- What models there are, each ACA says through `Models()`: `GET /v1/acas/{aca}/models`, `wdx agent models`, and `--model`'s completion. Claude Code's are its aliases, fixed in wdx.
+- What models there are, each ACA says through `Models()`: `GET /v1/acas/{aca}/models`, `wdx agent models [--aca <id>]`, and `--model`'s completion. Claude Code's are its aliases, fixed in wdx.
+
+Which AI coding agent an agent runs is chosen at creation, `--aca <id>` or tide's form, among the usable ones: installed, as the login shell finds its program, and enabled by `aca.<id>.enabled`. By default the first usable, in the order `aca.All()` gives; `wdx agent acas` and `GET /v1/acas` list them. Otherwise `aca_unavailable` (the wdx doc ACA_SELECT):
+
+| | Not installed | Disabled |
+|---|---|---|
+| A running agent | goes on | goes on |
+| `agent start`, `agent restart`, a relaunch with its project or after the daemon restarts | refused before anything stops; a relaunch leaves it failed, saying why | runs |
+| `agent transcript`, `get`, `remove` | work | work |
 
 ## The table
 

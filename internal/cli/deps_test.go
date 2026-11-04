@@ -39,6 +39,12 @@ func ubuntu(env *Env) {
 			return []byte("permission denied while trying to connect to the Docker daemon socket\n"), errors.New("exit status 1")
 		},
 		ReadFile: func(string) ([]byte, error) { return []byte("ID=ubuntu\nID_LIKE=debian\n"), nil },
+		LookShell: func(_ context.Context, program string) error {
+			if found[program] {
+				return nil
+			}
+			return exec.ErrNotFound
+		},
 	}
 }
 
@@ -60,6 +66,7 @@ func TestDepsList(t *testing.T) {
 		{"nano", "missing", ""},
 		{"hx", "missing", ""},
 		{"emacs", "missing", ""},
+		{"claude", "missing", ""},
 	}
 	if len(v.Dependencies) != len(want) {
 		t.Fatalf("dependencies %+v", v.Dependencies)
@@ -73,6 +80,9 @@ func TestDepsList(t *testing.T) {
 		if d.Name != w.name || d.Status != w.status || program != w.program || d.Mandatory != (w.name == "git") || len(d.Features) == 0 {
 			t.Errorf("%s: got %+v", w.name, d)
 		}
+	}
+	if d := v.Dependencies[len(want)-1]; d.Detail == nil || *d.Detail != "claude is not found through the login shell" || d.Features[0] != "agents: claude_code" {
+		t.Errorf("claude: %+v", d)
 	}
 	if d := v.Dependencies[1]; d.Detail == nil || *d.Detail != "wl-copy is not installed" {
 		t.Errorf("clipboard detail %v", d.Detail)
@@ -143,6 +153,14 @@ func (m *machine) env(env *Env) {
 			return []byte("version 2.43.0\n"), nil
 		},
 		ReadFile: func(string) ([]byte, error) { return []byte("ID=" + m.distrib + "\n"), nil },
+		LookShell: func(_ context.Context, program string) error {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if !m.found[program] {
+				return exec.ErrNotFound
+			}
+			return nil
+		},
 		Run: func(_ context.Context, args []string, _ io.Reader, out io.Writer) error {
 			m.mu.Lock()
 			defer m.mu.Unlock()

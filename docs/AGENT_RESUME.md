@@ -99,6 +99,10 @@ Decided by the human on 2026-11-01:
 
 Checked on Claude Code 2.1.316, on a real job and through a login shell: `Detached` found it by `claude agents --json`, which lists `kind` `background`, a `pid` while it runs, and `status`, and `StopDetached` ended it. A job that has only just been asked for may have no `pid` for a moment, and is then not seen. `worktree-feat`'s real transcripts, in a scratch copy, gave a brief that reaches its last work at 19:55 and kept its session and directory. Moving a conversation itself could not be tried, as what triggers it is not known, so whether the hook fires in such a session is still open; following the link does not depend on it.
 
+## An ACA without these yet
+
+An ACA that has not written `BackUp`, `BeginSession` or `Brief` embeds `aca.NoBackUp`, `aca.NoBeginSession` and `aca.NoBrief`, which answer `aca.ErrNotSupported`, and `aca.NoDetached`, which finds nothing. Its agents start and are removed as any other, with no backup kept, logged at debug. `agent transcript` and `--brief` fail with `aca_unsupported` rather than return nothing, and `agent restart` with it before anything stops, as `aca.CanBeginSession` says (the wdx doc ACA_SELECT).
+
 ## Keeping an agent's history
 
 Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific, and only Claude Code's is built. `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.

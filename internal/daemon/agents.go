@@ -80,7 +80,7 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 			worktreeCreated = &created
 		}
 	}
-	launch := agent.Launch{Model: deref(b.Model)}
+	launch := agent.Launch{ACA: deref(b.Aca), Model: deref(b.Model)}
 	if b.Permissions != nil {
 		launch.Permissions = aca.Permissions(*b.Permissions)
 	}
@@ -97,6 +97,16 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 			r.PromptError = &text
 		}
 	}
+	return r, nil
+}
+
+func (s *server) ListAcas(ctx context.Context, _ api.ListAcasRequestObject) (api.ListAcasResponseObject, error) {
+	usable := s.agents.ACAs().Usable(ctx)
+	r := api.ListAcas200JSONResponse{Acas: make([]api.Aca, 0, len(usable))}
+	for i, a := range usable {
+		r.Acas = append(r.Acas, api.Aca{Id: a.ID(), Default: i == 0})
+	}
+	logging.FromContext(ctx).Info("acas listed", "count", len(usable))
 	return r, nil
 }
 

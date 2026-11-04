@@ -135,6 +135,7 @@ func runForeground(cmd *cobra.Command) error {
 		Editor:               settings.Editor,
 		DocsGitPath:          settings.DocsGitPath,
 		PlanParallel:         settings.PlanParallel,
+		ACAEnabled:           settings.ACAEnabled,
 		SettingStore:         settingStore{home: cfg.Home},
 		Reload: func() (daemon.Settings, error) {
 			now, err := config.LoadHome(cfg.Home)
@@ -171,6 +172,7 @@ func daemonSettings(cfg config.Config) daemon.Settings {
 		Editor:               cfg.Editor,
 		DocsGitPath:          cfg.DocsGitPath,
 		PlanParallel:         cfg.PlanParallel,
+		ACAEnabled:           cfg.ACAEnabled,
 	}
 }
 

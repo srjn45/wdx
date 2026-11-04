@@ -20,6 +20,9 @@ const ClaudeCodeID = "claude_code"
 // ID implements AiCodingAgent.
 func (ClaudeCode) ID() string { return ClaudeCodeID }
 
+// Program implements AiCodingAgent.
+func (ClaudeCode) Program() string { return "claude" }
+
 // Models implements AiCodingAgent. Claude Code has no command that lists its models,
 // so these are its aliases, each the newest of its class. None is its default, which
 // is the user's own setting.

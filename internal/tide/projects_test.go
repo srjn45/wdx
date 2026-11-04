@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
@@ -43,6 +44,7 @@ const testShell = "#!/bin/sh\nPS1='$ ' exec /bin/sh\n"
 // testHome is a home with the socket a daemon serving it listens on.
 type testHome struct {
 	home, socket string
+	acas         []aca.AiCodingAgent // what its daemon runs; the test ACA when nil
 }
 
 // removeAgents removes agents and all under them, children first: a list holds
@@ -88,11 +90,15 @@ func (h testHome) serve(t *testing.T) (stop func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	acas := h.acas
+	if acas == nil {
+		acas = []aca.AiCodingAgent{&acatest.ACA{}}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
 		Home: h.home, Socket: h.socket, Log: h.logger(t, "daemon"), GH: ghtest.New(t, h.home).Program,
 		Executable: exe, TerminalShell: shell, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalHistoryLines: 1000,
-		ACA:        &acatest.ACA{},
+		ACAs: acas, LookProgram: acatest.LookProgram,
 		StopReport: holdertest.Patience(t), HolderLimits: holdertest.Limits(t),
 		SettingStore: &testSettings{},
 	})
@@ -155,7 +161,7 @@ func (h testHome) newProject(t *testing.T, name string, state api.ProjectState) 
 // listed.
 func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
-	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), ViewFlush: waittest.Limit(t), ACA: "claude_code"})
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), ViewFlush: waittest.Limit(t)})
 	m.tick = noTick
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.

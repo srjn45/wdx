@@ -279,14 +279,34 @@ func (s *Supervisor) OpenEditor(ctx context.Context, projectID, dir, path string
 	if err != nil {
 		return Terminal{}, false, err
 	}
-	look, cancel := context.WithTimeout(ctx, lookEditorTimeout)
-	defer cancel()
-	if err := holder.LookPath(look, shell, dir, s.opts.Env, command[0]); err != nil {
+	if err := s.lookPath(ctx, shell, dir, command[0]); err != nil {
 		log.Info("editor not found", "editor", program, "program", command[0], "err", err)
 		return Terminal{}, false, &EditorMissingError{Editor: program}
 	}
 	t, err = s.createRunning(ctx, Terminal{Kind: KindEditor, ProjectID: projectID, Dir: dir, Editor: program, EditorPath: path}, nil, command)
 	return t, err == nil, err
+}
+
+// lookPath is holder.LookPath for at most lookEditorTimeout.
+func (s *Supervisor) lookPath(ctx context.Context, shell, dir, program string) error {
+	look, cancel := context.WithTimeout(ctx, lookEditorTimeout)
+	defer cancel()
+	return holder.LookPath(look, shell, dir, s.opts.Env, program)
+}
+
+// LookProgram fails when program is not found through the shell new terminals run,
+// started as a holder starts it, in the user's home: where an AI coding agent's
+// program is looked for.
+func (s *Supervisor) LookProgram(ctx context.Context, program string) error {
+	shell, err := s.shellFor(ctx)
+	if err != nil {
+		return err
+	}
+	account, err := holder.LookupAccount(ctx)
+	if err != nil {
+		return err
+	}
+	return s.lookPath(ctx, shell, account.Home, program)
 }
 
 // shellFor returns the shell new terminals run.

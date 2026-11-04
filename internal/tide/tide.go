@@ -95,7 +95,6 @@ type Model struct {
 	daemonVersion string                                    // what the daemon last answered, "" when it did not
 	resume        *Resume                                   // what to show first, until the projects are listed
 	stripLinger   time.Duration                             // from Options
-	aca           string                                    // from Options
 	sections      []section                                 // the left pane's, in the order set
 
 	values      valuePane     // the agent info or the settings shown, if any
@@ -139,9 +138,6 @@ type Options struct {
 	// ViewFlush is how long quitting or reloading waits for the tabs and the view
 	// to be sent; zero is a second.
 	ViewFlush time.Duration
-	// ACA is the id of the AI coding agent new agents run, whose models the new
-	// agent's box lists; "" lists none.
-	ACA string
 }
 
 // click is where and when a click on a frame's title happened.
@@ -176,7 +172,6 @@ func New(ctx context.Context, opts Options) *Model {
 		versionOf:   opts.DaemonVersion,
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
-		aca:         opts.ACA,
 		sections:    sectionOrder(opts.SectionOrder),
 		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
 	}
@@ -215,6 +210,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sel = nil // the panes move
 	case projectsListed:
 		return m, m.listed(msg)
+	case acasListed:
+		return m, m.acasWereListed(msg)
 	case modelsListed:
 		m.modelsWereListed(msg)
 		return m, nil

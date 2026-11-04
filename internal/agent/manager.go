@@ -110,6 +110,14 @@ func (e *SendError) Unwrap() error { return e.Err }
 // supervisor needs it before a Manager can exist.
 func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.AgentLaunch, error) {
 	return func(ctx context.Context, t terminal.Terminal) (terminal.AgentLaunch, error) {
+		// Before the backups' lock, as looking can take a while.
+		if a, err := b.store.GetByTerminal(ctx, t.ID); err != nil {
+			return terminal.AgentLaunch{}, err
+		} else if known := b.known(a.ACA); known != nil {
+			if err := b.acas.Installed(ctx, known); err != nil {
+				return terminal.AgentLaunch{}, err
+			}
+		}
 		b.work.Lock()
 		defer b.work.Unlock()
 		a, err := b.store.GetByTerminal(ctx, t.ID)
@@ -120,7 +128,7 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			session, err := b.up(ctx, a)
 			if err != nil {
 				// A start does not depend on its backup.
-				logging.FromContext(ctx).Error("agent backup not up to date", "agent_id", a.ID, "err", err)
+				notUpToDate(ctx, a.ID, err)
 			}
 			a.SessionID = session
 			account, err := holder.LookupAccount(ctx)
@@ -142,7 +150,7 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			logging.FromContext(ctx).Info("agent command chosen", "agent_id", a.ID, "aca", a.ACA, "session_id", a.SessionID, "dir", dir, "command", withoutNote(command, note))
 			return terminal.AgentLaunch{AgentID: a.ID, ACA: a.ACA, Command: command, Dir: dir}, nil
 		}
-		return terminal.AgentLaunch{}, fmt.Errorf("this %s does not know the AI coding agent %q", identity.Name, a.ACA)
+		return terminal.AgentLaunch{}, notKnown(a.ACA)
 	}
 }
 
@@ -165,13 +173,18 @@ type Manager struct {
 	store     *Store
 	terminals *terminal.Supervisor
 	backups   *Backups
-	aca       aca.AiCodingAgent // what new agents run
+	acas      *ACAs
 }
 
-// NewManager returns a Manager of the agents in store; new agents run
-// newAgents, and b keeps their backups.
-func NewManager(store *Store, terminals *terminal.Supervisor, b *Backups, newAgents aca.AiCodingAgent) *Manager {
-	return &Manager{store: store, terminals: terminals, backups: b, aca: newAgents}
+// NewManager returns a Manager of the agents in store, whose backups b keeps;
+// new agents run the ACAs of b, usable ones only.
+func NewManager(store *Store, terminals *terminal.Supervisor, b *Backups) *Manager {
+	return &Manager{store: store, terminals: terminals, backups: b, acas: b.acas}
+}
+
+// ACAs returns the AI coding agents the Manager runs.
+func (m *Manager) ACAs() *ACAs {
+	return m.acas
 }
 
 // Store returns the Store the Manager keeps its agents in.
@@ -182,16 +195,18 @@ func (m *Manager) Store() *Store {
 // ErrUnknownACA is returned for an AI coding agent this daemon does not run.
 var ErrUnknownACA = errors.New("no such AI coding agent here")
 
-// Models returns the models the AI coding agent with id offers, as it says.
+// Models returns the models the AI coding agent with id offers, as it says; only
+// one a new agent can run, as ACAs.ForNew says.
 func (m *Manager) Models(ctx context.Context, id string) ([]aca.Model, error) {
-	if id != m.aca.ID() {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownACA, id)
+	chosen, err := m.acas.ForNew(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	account, err := holder.LookupAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
-	models, err := m.aca.Models(ctx, aca.Launch{UserHome: account.Home, Shell: account.LoginShell()})
+	models, err := chosen.Models(ctx, aca.Launch{UserHome: account.Home, Shell: account.LoginShell()})
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +217,7 @@ func (m *Manager) Models(ctx context.Context, id string) ([]aca.Model, error) {
 // Launch is what an agent is started with every time, chosen when it is
 // created.
 type Launch struct {
+	ACA         string          // the id of the AI coding agent it runs; "" is the first usable
 	Model       string          // passed to its ACA as its model; "" is the ACA's default
 	Permissions aca.Permissions // "" is aca.PermissionsFull
 }
@@ -245,6 +261,11 @@ func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID str
 	if err != nil {
 		return Agent{}, err
 	}
+	chosen, err := m.acas.ForNew(ctx, l.ACA)
+	if err != nil {
+		return Agent{}, err
+	}
+	logging.FromContext(ctx).Info("aca chosen", "aca", chosen.ID(), "asked", l.ACA)
 	if parentID != "" {
 		parent, err := m.store.Get(ctx, parentID)
 		if err != nil {
@@ -266,7 +287,7 @@ func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID str
 		return Agent{}, err
 	}
 	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx db.Execer, terminalID string) error {
-		if err := m.store.insert(ctx, tx, id, terminalID, m.aca.ID(), sessionID, parentID, l); err != nil {
+		if err := m.store.insert(ctx, tx, id, terminalID, chosen.ID(), sessionID, parentID, l); err != nil {
 			return err
 		}
 		if first != "" {
@@ -301,6 +322,9 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, []string, error)
 	}
 	var stopped []string
 	if !a.Terminal.State.Live() {
+		if err := m.installed(ctx, a); err != nil {
+			return Agent{}, nil, err
+		}
 		for _, d := range m.backups.detached(ctx, a) {
 			if d.Working {
 				return Agent{}, nil, &BusyError{Agent: a, Detached: d.Session}
@@ -415,6 +439,14 @@ func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, []
 	if a.Tombstone() {
 		return Agent{}, nil, &RemovedError{Agent: a}
 	}
+	// Asked first: the restart stops the terminal and moves the row before the AI
+	// coding agent is told of the new session.
+	if known := m.backups.known(a.ACA); known != nil && !aca.CanBeginSession(known) {
+		return Agent{}, nil, fmt.Errorf("agent %s cannot be restarted in a new session: %w", a.ID, aca.ErrNotSupported)
+	}
+	if err := m.installed(ctx, a); err != nil {
+		return Agent{}, nil, err
+	}
 	if !force {
 		if a.busy() {
 			return Agent{}, nil, &BusyError{Agent: a}
@@ -445,6 +477,16 @@ func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, []
 	}
 	logging.FromContext(ctx).Info("agent restarted", "agent_id", id, "session_id", session, "forced", force, "detached_stopped", len(stopped))
 	return a.OnRow(t), stopped, nil
+}
+
+// installed fails with an *UnavailableError when a's AI coding agent is known and
+// not installed, before a start stops or moves anything; one not known fails at
+// its launch, as before.
+func (m *Manager) installed(ctx context.Context, a Agent) error {
+	if known := m.acas.Known(a.ACA); known != nil {
+		return m.acas.Installed(ctx, known)
+	}
+	return nil
 }
 
 // firstMessage is what tells a restarted agent to read its history.

@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\naca:\n  claude_code:\n    enabled: false\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -75,23 +75,25 @@ func TestFileSettings(t *testing.T) {
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
 		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", PlanParallel: 5, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		ACAEnabled: map[string]bool{"claude_code": false},
 		From: map[string]string{
-			"tide.section_order":     path + ":16",
-			"docs.git_path":          path + ":18",
-			"plan.parallel":          path + ":20",
-			"update.channel":         "default",
-			"update.base_url":        "default",
-			"terminal.shell":         path + ":11",
-			"terminal.history_lines": path + ":12",
-			"terminal.history_tail":  path + ":13",
-			"editor":                 path + ":14",
-			"home":                   "WDX_HOME",
-			"no_input":               path + ":5",
-			"color":                  path + ":9",
-			"log.level":              path + ":3",
-			"log.retention_days":     path + ":4",
-			"otel.endpoint":          path + ":7",
-			"otel.interval_seconds":  path + ":8",
+			"aca.claude_code.enabled": path + ":23",
+			"tide.section_order":      path + ":16",
+			"docs.git_path":           path + ":18",
+			"plan.parallel":           path + ":20",
+			"update.channel":          "default",
+			"update.base_url":         "default",
+			"terminal.shell":          path + ":11",
+			"terminal.history_lines":  path + ":12",
+			"terminal.history_tail":   path + ":13",
+			"editor":                  path + ":14",
+			"home":                    "WDX_HOME",
+			"no_input":                path + ":5",
+			"color":                   path + ":9",
+			"log.level":               path + ":3",
+			"log.retention_days":      path + ":4",
+			"otel.endpoint":           path + ":7",
+			"otel.interval_seconds":   path + ":8",
 		},
 	}
 	if !reflect.DeepEqual(c, want) {
@@ -304,6 +306,7 @@ func TestChoicesAreAccepted(t *testing.T) {
 	want := map[string][]string{
 		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
 		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi", "vim", "nvim", "nano", "hx", "emacs"},
+		"aca.claude_code.enabled": {"true", "false"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)

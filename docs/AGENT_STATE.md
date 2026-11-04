@@ -162,6 +162,8 @@ A parser fixed in a wdx release reaches a running agent only when it is relaunch
 
 Another way to read an ACA: ignore the screen while output keeps coming, and identify the activity only once it stops. It is the simple choice for an ACA whose last line does not say enough, so it stays an option when adding Codex, Cursor or Antigravity, chosen per ACA. Not built in this step.
 
+An ACA with no parser of its own yet returns `aca.NoScreenParser`, which reads only an input box: `unknown` with `InputBox` on every screen, so a moving screen reads `working`, a still one `idle`, and the inbox delivers on `idle`. Draft, turn and model are never seen. It delivers to any still screen, a login prompt among them, so each ACA checks its startup on recordings before it drops the stub (the wdx doc ACA_SELECT).
+
 Claude Code uses it only as the fallback for unreadable footers (see The motion fallback): as the main rule it would misread the Bash prompt, whose `●` blinks every 0.6 s for as long as it is open. An ACA that uses it needs the same check first: a recording of whether anything keeps moving at its prompts and at idle.
 
 ### Syncing to the daemon

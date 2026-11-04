@@ -5,12 +5,16 @@ package aca
 import (
 	"context"
 	"io"
+	"slices"
 )
 
 // AiCodingAgent is one AI CLI wdx can run in an agent.
 type AiCodingAgent interface {
 	// ID names it in the database and the API, as "claude_code".
 	ID() string
+	// Program is the program Command runs first, as "claude": what wdx looks for
+	// to know it is installed.
+	Program() string
 	// Command is what to run, first the program; it starts the session or
 	// resumes it. It runs through the user's login shell, which finds the
 	// program.
@@ -85,21 +89,38 @@ type Backup struct {
 // first, which only ever grows.
 const TranscriptFile = "transcript.md"
 
-// ByID is the AI coding agent named id, and the one place one is made, so that
-// a later switch to turn one off has one place to do it. docs/AGENT_STATE.md.
+// known is every AI coding agent wdx can run, in the order they are offered, and
+// the one place one is made: adding one is adding it here. docs/ACA.md.
+var known = []AiCodingAgent{ClaudeCode{}}
+
+// All is every AI coding agent wdx can run, in the order they are offered.
+func All() []AiCodingAgent {
+	return slices.Clone(known)
+}
+
+// IDs is the ids of All, in its order.
+func IDs() []string {
+	ids := make([]string, 0, len(known))
+	for _, a := range known {
+		ids = append(ids, a.ID())
+	}
+	return ids
+}
+
+// ByID is the AI coding agent named id among All.
 func ByID(id string) (AiCodingAgent, bool) {
-	for _, known := range []AiCodingAgent{ClaudeCode{}} {
-		if known.ID() == id {
-			return known, true
+	for _, a := range known {
+		if a.ID() == id {
+			return a, true
 		}
 	}
 	return nil, false
 }
 
-// Default is what new agents run.
+// Default is the first of All, for what needs one with no daemon to ask which
+// are usable.
 func Default() AiCodingAgent {
-	known, _ := ByID(ClaudeCodeID)
-	return known
+	return known[0]
 }
 
 // Permissions is what an agent may do without asking, kept for every start.

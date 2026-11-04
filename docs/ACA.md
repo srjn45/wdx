@@ -9,6 +9,7 @@ An ACA cannot compile without these.
 | What | Where | Claude Code |
 |---|---|---|
 | Its id in the database and the API | `ID()`, `internal/aca/claudecode.go` | `claude_code` |
+| Its program, which says it is installed | `Program()`, `internal/aca/claudecode.go`; looked for through the login shell by `agent.ACAs` and `wdx deps list` | `claude` |
 | The command that starts or resumes a session | `Command()`, `internal/aca/claudecode.go` | `claude --session-id <id>`, or `claude --resume <id>` once a transcript exists |
 | Where it keeps transcripts | `claudeCodeSessions`, `internal/aca/claudecode_backup.go` | the path its `SessionStart` hook tells, else `~/.claude/projects/*/<id>.jsonl` |
 | Where it last worked | `Backup.Dir` from `BackUp()`, `internal/aca/claudecode_backup.go`; docs/TIDE_WORKTREES.md | the last `cwd` of a transcript's lines, not a subagent's |
@@ -23,27 +24,38 @@ An ACA cannot compile without these.
 | Stopping its turn | `Interrupt()`, `internal/aca/claudecode.go`; docs/SEND.md | Esc |
 | Reading its activity, draft and model from its screen | `ScreenParser()`, `ClaudeCodeScreenParser`, `internal/aca/claudecode.go`; docs/AGENT_STATE.md | the footer rules, the banner and `/model` lines; its fixes reach a running agent when it is relaunched |
 
+An ACA that has not written a method yet uses a stand-in from `internal/aca`, embedded in its type and dropped once it writes the method (the wdx doc ACA_SELECT):
+
+| Stand-in | For | Answers | What its callers then do |
+|---|---|---|---|
+| `NoScreenParser` | `ScreenParser()` | `unknown` with an input box | the motion fallback decides the activity, and messages are delivered on `idle`; no draft, turn or model |
+| `NoBackUp` | `BackUp()` | `ErrNotSupported` | starts go on and the agent's record is still written, logged at debug; `agent transcript` fails with `aca_unsupported` |
+| `NoBeginSession` | `BeginSession()` | `ErrNotSupported`; `CanBeginSession` is false | `agent restart` fails with `aca_unsupported` before anything stops |
+| `NoBrief` | `Brief()` | `ErrNotSupported` | `agent transcript --brief` fails with `aca_unsupported` |
+| `NoDetached` | `Detached()`, `StopDetached()` | nothing | start, restart, remove and closing a project stop nothing outside the terminal |
+
 ## Outside `AiCodingAgent`
 
 Code that names one ACA, or assumes what they all do.
 
 | What | Where | Needed for another ACA |
 |---|---|---|
-| The ACA new agents run, and the only one known | `Options.ACA`, `internal/daemon/daemon.go`, by default `aca.Default()`, `internal/aca/aca.go` | a way to choose one, and a list of all of them |
-| The CLI asks for the models of `aca.Default()` | `newAgentModelsCmd` and `completeModels`, `internal/cli` | `--aca`, and the daemon's choice, once there are two |
-| Help names Claude Code's model aliases | `agent create`'s `Long`, `internal/cli/agent.go` | the words, until the ACA lists its models |
+| Every ACA wdx knows, in the order they are offered, and the one place one is made | `known`, read through `All`, `IDs`, `ByID` and `Default`, `internal/aca/aca.go` | one line in `known`: the daemon, the holder, the settings and the deps rows are built from it |
+| Which ACAs new agents can run: installed and enabled, the first the default | `agent.ACAs`, `internal/agent/acas.go`, given `daemon.Options.ACAs` (`aca.All()` by default) and the `aca.<id>.enabled` settings; served as `GET /v1/acas`, `wdx agent acas`, `--aca`'s completion and tide's form | nothing |
+| Whether one is enabled | `aca.<id>.enabled`, made per ACA by `acaSettings`, `internal/config/config.go`; docs/SETTINGS.md | nothing |
+| Whether one is installed, in the CLI | `acaDependencies`, `internal/cli/deps.go`; docs/DEPS.md | nothing |
 | wdx chooses the session id before the first start, as a UUID | `newSessionID`, `internal/agent/manager.go` | an ACA that names its own sessions cannot be given one |
 | The test ACA offers Claude Code's models | `Models()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | The test ACA reports Claude Code's id | `ID()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
-| Help says "Claude Code for now" | `newAgentCmd`'s `Long`, `internal/cli/agent.go` | the words |
 | The `aca` field's example | `Agent.aca`, `api/openapi.yaml` | nothing; only an example |
-| Every ACA a holder knows, by id, and the one place one is made | `ByID`, `internal/aca/aca.go`, called by the hidden `wdx holder` command in `internal/cli/holder.go`: a holder is its own process, told `--aca <id>` | add it to `ByID` as well as to the daemon's list; `agent.Launches` keeps its own, through which tests hand in theirs |
+| Every ACA a holder knows, by id | `ByID`, `internal/aca/aca.go`, called by the hidden `wdx holder` command in `internal/cli/holder.go`: a holder is its own process, told `--aca <id>` | nothing: `ByID` reads `known`; tests hand the daemon theirs through `Options.ACAs` |
 | The test ACA's parser and delivering are Claude Code's, as a holder goes by the id | `ScreenParser()`, `Deliver()`, `Interrupt()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | An ACA queues what is typed during a turn, so the `inboxReader` delivers on `working`; checked on Claude Code 2.1.316 | `nextAction`, `internal/holder/inbox.go`; docs/SEND.md | an ACA that does not queue needs a way to say to hold while working |
 | A message to an ACA its holder does not know is typed as into a shell | `newHolderCmd`, `internal/cli/holder.go`; docs/SEND.md | settle this before a holder can be older than an ACA |
 | The waits of the motion fallback, chosen on recordings of Claude Code, though the code knows no ACA | `StillTime`, `EchoTime`, `ReadMoment`, `internal/screen/motion.go`; docs/AGENT_STATE.md | check them on recordings of it, and make them per ACA if they differ |
 | The test ACA's backup copies a file it is given | `BackUp()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
 | The test ACA's brief is Claude Code's, on what a test writes | `Brief()`, `internal/aca/acatest/acatest.go` | nothing while one ACA exists |
+| A second test ACA with only stand-ins, and a look that finds every program but one | `acatest.Bare`, `acatest.LookProgram`, `internal/aca/acatest/acatest.go` | nothing |
 | A session can be resumed from a directory other than the one it began in, so a relaunch runs where the agent last worked; checked on Claude Code 2.1.316 | `runDir`, `internal/agent/manager.go`; docs/AGENT_RESUME.md | an ACA that looks by directory needs to be started where the session began |
 | The first message names `agent transcript --brief` and a restart's session is a UUID wdx chooses | `firstMessage`, `Restart`, `internal/agent/manager.go` | an ACA that names its own sessions, as above |
 | Recordings of its screens, and the scripts that make them | `internal/aca/testdata/claude_code/` | its own recordings |

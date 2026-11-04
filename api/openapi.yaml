@@ -1110,10 +1110,17 @@ paths:
         later start. A model with whitespace or a control character, or longer
         than 200 bytes, is invalid_argument; nothing else about it is checked.
 
+        With aca, it runs that AI coding agent, which must be installed and
+        enabled (listAcas); by default the first that is. One the daemon does not
+        know is not_found with details.argument aca; one not installed or
+        disabled, or none to run, is aca_unavailable, with details.aca,
+        details.reason (not_installed or disabled) and details.program, null
+        when none was asked for.
+
         An agent that does not start is left failed and returns start_failed
         with the agent under details.agent.
 
-        Errors: agent_removed, branch_exists, invalid_argument, invalid_name,
+        Errors: aca_unavailable, agent_removed, branch_exists, invalid_argument, invalid_name,
         invalid_path, name_taken, not_found, path_exists, project_closed,
         start_failed, worktree_failed.
       requestBody:
@@ -1202,9 +1209,11 @@ paths:
       description: |
         For an agent that exited, failed or was lost. One that does not start
         is left failed and returns start_failed with the agent under
-        details.agent.
+        details.agent. One whose AI coding agent is not installed is refused with
+        aca_unavailable, as createAgent says; one disabled still starts, as
+        disabling is for new agents.
 
-        Errors: agent_busy, agent_removed, agent_running, invalid_path, not_found, project_closed,
+        Errors: aca_unavailable, agent_busy, agent_removed, agent_running, invalid_path, not_found, project_closed,
         start_failed.
       responses:
         "200":
@@ -1230,10 +1239,13 @@ paths:
         held. A session the AI coding agent moved outside its terminal is stopped too, and
         named in stopped_sessions; at work, it counts as busy. One that is running and not idle with an empty input box refuses it with
         agent_busy, unless force. One that does not start is left failed, in the new
-        session, and returns start_failed with the agent under details.agent.
+        session, and returns start_failed with the agent under details.agent. An AI
+        coding agent that cannot begin a new session yet refuses it with
+        aca_unsupported, and one not installed with aca_unavailable, before
+        anything stops.
 
-        Errors: agent_busy, agent_removed, invalid_path, not_found, project_closed,
-        start_failed.
+        Errors: aca_unavailable, aca_unsupported, agent_busy, agent_removed, invalid_path, not_found,
+        project_closed, start_failed.
       requestBody:
         content:
           application/json:
@@ -1336,9 +1348,10 @@ paths:
         wdx's backup of the conversation, across its compactions and sessions,
         kept until the agent is removed and brought up to date first. Unlike
         getAgentHistory, this is what the agent and the human said and did, not
-        what the screen showed.
+        what the screen showed. An AI coding agent that keeps no backup yet, or
+        has no brief, fails with aca_unsupported.
 
-        Errors: invalid_path, not_found; tail with from or count, or brief with
+        Errors: aca_unsupported, invalid_path, not_found; tail with from or count, or brief with
         any of them, is a usage error.
       parameters:
         - name: brief
@@ -1369,6 +1382,25 @@ paths:
               schema: { $ref: "#/components/schemas/AgentTranscriptEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/acas:
+    get:
+      operationId: listAcas
+      summary: The AI coding agents new agents can run
+      description: |
+        Those installed, as each one's program is found through the login shell
+        terminals run, and enabled by the aca.<id>.enabled setting, in the order
+        wdx offers them; the first, marked default, is what createAgent runs when
+        given no aca. Empty when none can be used. What is installed is looked
+        for at most every 30 seconds for this list; a request refused for an AI
+        coding agent not installed always looks again first.
+      responses:
+        "200":
+          description: The AI coding agents.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcaList" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/acas/{aca}/models:
     parameters:
       - name: aca
@@ -1384,7 +1416,9 @@ paths:
         createAgent's model takes. One marked default is what it runs when given
         none; with none marked, it runs what the user's own settings for it say.
 
-        Errors: not_found, an AI coding agent this daemon does not run.
+        Errors: not_found, an AI coding agent this daemon does not know, with
+        details.argument aca; aca_unavailable, one not installed or disabled,
+        as createAgent says.
       responses:
         "200":
           description: Its models.
@@ -2982,6 +3016,21 @@ components:
         name: { type: string, description: What a person reads. }
         default: { type: boolean, description: Whether it is what the AI coding agent runs when given no model. }
 
+    AcaList:
+      type: object
+      required: [acas]
+      properties:
+        acas:
+          type: array
+          items: { $ref: "#/components/schemas/Aca" }
+
+    Aca:
+      type: object
+      required: [id, default]
+      properties:
+        id: { type: string, description: "The AI coding agent's id, as claude_code." }
+        default: { type: boolean, description: Whether createAgent runs it when given no aca. }
+
     AcaModelList:
       type: object
       required: [aca, models]
@@ -3170,6 +3219,10 @@ components:
           allOf: [{ $ref: "#/components/schemas/AgentPermissions" }]
           nullable: true
           description: What it may do without asking, on every start; full by default.
+        aca:
+          type: string
+          nullable: true
+          description: The id of the AI coding agent it runs, as claude_code; by default the first installed and enabled, as listAcas lists them.
 
     AgentPermissions:
       type: string
@@ -3657,6 +3710,8 @@ components:
         - wrong_branch
         - plan_not_running
         - plan_not_finished
+        - aca_unsupported
+        - aca_unavailable
 
     Problem:
       type: object

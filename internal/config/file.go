@@ -178,39 +178,7 @@ func render(table []setting, values map[string]*yaml.Node, dropped []string) []b
 	b.WriteString("# Every setting is optional; uncomment one to change it. See " + name + " help settings.\n")
 	comment(&b, "# ", name+" update, "+name+" setting set and "+name+" setting write rewrite this file: they keep the values set and add new settings, but not comments of your own.")
 
-	for _, group := range groups(table) {
-		b.WriteString("\n")
-		section, _, nested := strings.Cut(group[0].key, ".")
-		if !nested {
-			s := group[0]
-			comment(&b, "# ", sentence(s.description))
-			if v, ok := values[s.key]; ok {
-				b.WriteString(s.key + ": " + scalar(v) + "\n")
-			} else {
-				b.WriteString("# " + s.key + ": " + scalar(plain(s.def)) + "\n")
-			}
-			continue
-		}
-		set := slices.ContainsFunc(group, func(s setting) bool { _, ok := values[s.key]; return ok })
-		prefix := "#   " // the whole section commented
-		if set {
-			b.WriteString(section + ":\n")
-			prefix = "  "
-		} else {
-			b.WriteString("# " + section + ":\n")
-		}
-		for _, s := range group {
-			leaf := strings.TrimPrefix(s.key, section+".")
-			comment(&b, prefix+"# ", sentence(s.description))
-			if v, ok := values[s.key]; ok {
-				b.WriteString(prefix + leaf + ": " + scalar(v) + "\n")
-			} else if set {
-				b.WriteString(prefix + "# " + leaf + ": " + scalar(plain(s.def)) + "\n")
-			} else {
-				b.WriteString(prefix + leaf + ": " + scalar(plain(s.def)) + "\n")
-			}
-		}
-	}
+	renderLevel(&b, values, fileSettings(table), "", "", false)
 
 	if len(dropped) > 0 {
 		b.WriteString("\n" + droppedHeading + "\n")
@@ -221,30 +189,58 @@ func render(table []setting, values map[string]*yaml.Node, dropped []string) []b
 	return []byte(b.String())
 }
 
-// groups splits the settings of the config file by section: each top-level
-// setting alone, the settings under one section together, in the order the
-// table first names them.
-func groups(table []setting) [][]setting {
+// fileSettings are the settings of table the config file holds.
+func fileSettings(table []setting) []setting {
+	return slices.DeleteFunc(slices.Clone(table), func(s setting) bool { return s.fromEnv })
+}
+
+// renderLevel writes the settings of list, every key starting with base, each line
+// after prefix: a setting alone, the settings under one section together under its
+// heading, in the order the table first names them, at any depth. A section with
+// no value set is commented whole; commented says an outer one is.
+func renderLevel(b *strings.Builder, values map[string]*yaml.Node, list []setting, base, prefix string, commented bool) {
 	var order []string
-	bySection := map[string][]setting{}
-	for _, s := range table {
-		if s.fromEnv {
+	byName := map[string][]setting{}
+	for _, s := range list {
+		name, _, nested := strings.Cut(strings.TrimPrefix(s.key, base), ".")
+		if nested {
+			name += "."
+		}
+		if _, seen := byName[name]; !seen {
+			order = append(order, name)
+		}
+		byName[name] = append(byName[name], s)
+	}
+	for _, name := range order {
+		group := byName[name]
+		if base == "" {
+			b.WriteString("\n")
+		}
+		section, isSection := strings.CutSuffix(name, ".")
+		if !isSection {
+			s := group[0]
+			comment(b, prefix+"# ", sentence(s.description))
+			v, ok := values[s.key]
+			switch {
+			case ok:
+				b.WriteString(prefix + name + ": " + scalar(v) + "\n")
+			case commented:
+				b.WriteString(prefix + name + ": " + scalar(plain(s.def)) + "\n")
+			default:
+				b.WriteString(prefix + "# " + name + ": " + scalar(plain(s.def)) + "\n")
+			}
 			continue
 		}
-		section := s.key
-		if before, _, nested := strings.Cut(s.key, "."); nested {
-			section = before + "."
+		set := slices.ContainsFunc(group, func(s setting) bool { _, ok := values[s.key]; return ok })
+		inner := prefix + "  "
+		if set || commented {
+			b.WriteString(prefix + section + ":\n")
+		} else {
+			b.WriteString(prefix + "# " + section + ":\n")
+			inner = prefix + "#   "
 		}
-		if _, seen := bySection[section]; !seen {
-			order = append(order, section)
-		}
-		bySection[section] = append(bySection[section], s)
+		renderLevel(b, values, group, base+section+".", inner, commented || !set)
 	}
-	var list [][]setting
-	for _, section := range order {
-		list = append(list, bySection[section])
-	}
-	return list
 }
 
 // comment writes text wrapped at lineWidth, each line after prefix.
@@ -325,32 +321,31 @@ var listedKey = regexp.MustCompile(`^([a-z][a-z0-9_]*):(\s|$)`)
 
 // listedKeys returns the keys content lists, set or commented the way a
 // written config file comments them: "# log:" and "#   level: info" list
-// log.level as "log:" and "  level: debug" set it. The section of dropped
-// keys is left out.
+// log.level as "log:" and "  level: debug" set it, two columns for each level
+// deeper. The section of dropped keys is left out.
 func listedKeys(content []byte) map[string]bool {
 	text, _, _ := strings.Cut(string(content), "\n"+droppedHeading+"\n")
 	listed := map[string]bool{}
-	section := ""
+	var path []string
 	for line := range strings.Lines(text) {
 		line = strings.TrimRight(line, "\n")
 		if rest, ok := strings.CutPrefix(line, "#"); ok {
 			line = strings.TrimPrefix(rest, " ")
 		}
 		trimmed := strings.TrimLeft(line, " ")
-		indented := len(trimmed) < len(line)
-		if rest, ok := strings.CutPrefix(trimmed, "#"); ok && indented {
+		depth := len(line) - len(trimmed)
+		if rest, ok := strings.CutPrefix(trimmed, "#"); ok && depth > 0 {
+			// "# " stands where the line's own two columns would be.
 			trimmed = strings.TrimLeft(rest, " ")
+			depth += len(rest) - len(trimmed) - 1
 		}
 		m := listedKey.FindStringSubmatch(trimmed)
 		if m == nil {
 			continue
 		}
-		if indented {
-			listed[section+"."+m[1]] = true
-		} else {
-			section = m[1]
-			listed[m[1]] = true
-		}
+		level := min(depth/2, len(path))
+		path = append(path[:level], m[1])
+		listed[strings.Join(path, ".")] = true
 	}
 	return listed
 }

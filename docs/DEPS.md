@@ -32,7 +32,7 @@ Agreed with the human:
 | `hx` | no | as `vi` | `hx` is on the PATH | `sudo apt-get install -y hx` | `brew install helix` |
 | `emacs` | no | as `vi` | `emacs` is on the PATH | `sudo apt-get install -y emacs-nox` | `brew install emacs` |
 
-Later, with the agents: each agent's CLI (`claude`, `codex`, …), optional, enabling its agent, ready when installed and logged in.
+Each AI coding agent wdx knows has a row too, named by its program (`claude`), optional, enabling `agents: <id>`: ready when the program is found through the login shell, as the daemon looks before it offers the ACA (the wdx doc ACA_SELECT). The rows are built from `aca.All()`, so adding an ACA adds its row. Being logged in is not checked: that differs per ACA and needs the network. `deps install` does not take them; each installs as its maker says.
 
 Not listed: git's identity (`user.name`, `user.email`): wdx never commits today; the agents will, and their dependency checks it. Credentials for private clones: they cannot be checked without reaching the host; a failed clone says what went wrong instead.
 

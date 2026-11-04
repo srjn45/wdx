@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 )
 
@@ -125,4 +127,68 @@ func TestModelListScrolls(t *testing.T) {
 	if rows := m.modelRows(); strings.TrimSpace(rows[1]) != "" {
 		t.Fatalf("one match takes one row, the rest kept empty: %q", rows)
 	}
+}
+
+// TestNewAgentFormChoosesTheACA: with two ACAs the box shows the field; changing it
+// lists the other's models, and the agent runs it. The default is not sent.
+func TestNewAgentFormChoosesTheACA(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.acas = []aca.AiCodingAgent{&acatest.ACA{}, &acatest.Bare{Name: "bare"}}
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "no agents", func(m *Model) bool { return strings.Contains(text(m), "no agents: C-q a") })
+
+	openAgentForm(t, p)
+	wantText(t, p.m, "‹ claude_code ›", "fable")
+	p.keys("one", "\t", "right")
+	p.until(t, "bare's models", func(m *Model) bool {
+		f := m.agentForm
+		return f != nil && f.modelsRead && len(f.models) == 1 && f.models[0].Id == "bare-1"
+	})
+	wantText(t, p.m, "‹ bare ›", "Bare One")
+	p.keys("enter")
+	if a := agentNamed(t, p, "one"); a.Aca != "bare" || a.RequestedModel == nil || *a.RequestedModel != "bare-1" {
+		t.Fatalf("agent %+v", a)
+	}
+
+	openAgentForm(t, p)
+	p.keys("two", "enter")
+	if a := agentNamed(t, p, "two"); a.Aca != "claude_code" {
+		t.Fatalf("agent %+v", a)
+	}
+}
+
+// TestNewAgentFormHidesOneACA: with one ACA there is nothing to choose, and Tab goes
+// from the name to the model.
+func TestNewAgentFormHidesOneACA(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "no agents", func(m *Model) bool { return strings.Contains(text(m), "no agents: C-q a") })
+	openAgentForm(t, p)
+	if strings.Contains(text(p.m), "ACA") {
+		t.Errorf("the field shows:\n%s", text(p.m))
+	}
+	p.keys("\t")
+	if f := p.m.agentForm; f.field != formModel {
+		t.Errorf("Tab went to %d", f.field)
+	}
+}
+
+// TestNewAgentWithNoACA: with none installed and enabled the box does not stay, and
+// the status line says why.
+func TestNewAgentWithNoACA(t *testing.T) {
+	t.Parallel()
+	h := newTestHome(t)
+	h.acas = []aca.AiCodingAgent{&acatest.ACA{ProgramName: acatest.NotInstalled}}
+	h.serve(t)
+	h.newProject(t, "api", api.ProjectStateOpen)
+	p := h.openShown(t)
+	p.until(t, "no agents", func(m *Model) bool { return strings.Contains(text(m), "no agents: C-q a") })
+	p.keys("C-q", "a")
+	p.until(t, "the notice", func(m *Model) bool { return m.agentForm == nil && m.statusNotice == noACA })
 }

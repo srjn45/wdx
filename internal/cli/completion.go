@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
@@ -319,12 +318,34 @@ func completionResponse(printed string) []string {
 	return slices.DeleteFunc(strings.Split(printed, "\n"), func(line string) bool { return line == "" })
 }
 
-// completeModels offers the models of the AI coding agent new agents run, each with
-// its name.
+// completeACAs offers the AI coding agents new agents can run, as the daemon says.
+func completeACAs(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+	defer cancel()
+	list, err := clientOf(cmd).ListAcas(ctx)
+	if err != nil {
+		logging.FromContext(cmd.Context()).Info("no acas to complete", "err", err)
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	completions := make([]cobra.Completion, 0, len(list.Acas))
+	for _, a := range list.Acas {
+		completions = append(completions, a.Id)
+	}
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeModels offers the models of the AI coding agent --aca names, or of the
+// default, each with its name.
 func completeModels(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
 	defer cancel()
-	list, err := clientOf(cmd).ListAcaModels(ctx, aca.Default().ID())
+	acaID, _ := cmd.Flags().GetString("aca")
+	id, err := chosenACA(ctx, clientOf(cmd), acaID)
+	if err != nil {
+		logging.FromContext(cmd.Context()).Info("no models to complete", "err", err)
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	list, err := clientOf(cmd).ListAcaModels(ctx, id)
 	if err != nil {
 		logging.FromContext(cmd.Context()).Info("no models to complete", "err", err)
 		return nil, cobra.ShellCompDirectiveNoFileComp

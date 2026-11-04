@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,9 @@ type Dependency struct {
 	Name      string
 	Mandatory bool
 	Features  []string
+	// Shell says it is a program looked for through the login shell, where it
+	// runs, as an AI coding agent's is; wdx does not install it.
+	Shell bool
 }
 
 // Dependencies are every dependency, in the order they are listed.
@@ -67,6 +71,8 @@ type Probe struct {
 	// Run runs a command to install, with stdin and its output going to
 	// out; sudo may ask for a password on the terminal.
 	Run func(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error
+	// LookShell fails when program is not found through the login shell.
+	LookShell func(ctx context.Context, program string) error
 }
 
 // System is what the machine is, for choosing packages.
@@ -148,10 +154,10 @@ type Check struct {
 // checkTimeout bounds each program a check runs.
 const checkTimeout = 5 * time.Second
 
-// CheckAll checks every dependency.
-func CheckAll(ctx context.Context, p Probe) []Check {
-	checks := make([]Check, 0, len(Dependencies))
-	for _, d := range Dependencies {
+// CheckAll checks every dependency, then those of more, as the AI coding agents'.
+func CheckAll(ctx context.Context, p Probe, more ...Dependency) []Check {
+	checks := make([]Check, 0, len(Dependencies)+len(more))
+	for _, d := range slices.Concat(Dependencies, more) {
 		checks = append(checks, CheckOne(ctx, p, d))
 	}
 	return checks
@@ -171,6 +177,9 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 		c = checkGH(ctx, p)
 	case "vi", "vim", "nvim", "nano", "hx", "emacs":
 		c = checkEditor(p, d.Name)
+	}
+	if d.Shell {
+		c = checkShell(ctx, p, d.Name)
 	}
 	c.Dependency = d
 	logging.FromContext(ctx).Info("dependency checked", "name", d.Name, "status", c.Status, "program", c.Program, "version", c.Version, "detail", c.Detail)
@@ -257,6 +266,16 @@ func checkEditor(p Probe, name string) Check {
 		return Check{Status: Missing, Detail: name + " is not installed"}
 	}
 	return Check{Status: Ready, Program: program, Path: path}
+}
+
+// checkShell finds program through the login shell, where it runs.
+func checkShell(ctx context.Context, p Probe, program string) Check {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	if err := p.LookShell(ctx, program); err != nil {
+		return Check{Status: Missing, Detail: program + " is not found through the login shell"}
+	}
+	return Check{Status: Ready, Program: program}
 }
 
 // ClipboardTools are the programs that can set the clipboard in session

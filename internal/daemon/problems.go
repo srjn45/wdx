@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/doc"
@@ -41,6 +42,9 @@ func problemOf(ctx context.Context, err error) api.Problem {
 func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*requestError](err); ok {
 		return api.ErrorCodeUsage, nil
+	}
+	if e, ok := errors.AsType[*agent.UnavailableError](err); ok {
+		return api.ErrorCodeAcaUnavailable, map[string]any{"aca": orNull(e.ACA), "reason": orNull(e.Reason), "program": orNull(e.Program)}
 	}
 	if _, ok := errors.AsType[*ReloadError](err); ok {
 		return api.ErrorCodeReloadFailed, nil
@@ -250,8 +254,10 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeNotGitRepo, nil
 	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, plan.ErrPlansDoNotRun), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
 		return api.ErrorCodeInvalidArgument, nil
+	case errors.Is(err, aca.ErrNotSupported):
+		return api.ErrorCodeAcaUnsupported, nil
 	case errors.Is(err, agent.ErrUnknownACA):
-		return api.ErrorCodeNotFound, nil
+		return api.ErrorCodeNotFound, map[string]any{"argument": "aca"}
 	case errors.Is(err, agent.ErrInvalidModel):
 		return api.ErrorCodeInvalidArgument, map[string]any{"argument": "model"}
 	}
@@ -273,4 +279,12 @@ func failed(w http.ResponseWriter, r *http.Request, err error) {
 // badRequest writes a request the generated handlers could not decode.
 func badRequest(w http.ResponseWriter, r *http.Request, err error) {
 	failed(w, r, &requestError{err: err})
+}
+
+// orNull is v, or nil for "", which a problem's details show as null.
+func orNull(v string) any {
+	if v == "" {
+		return nil
+	}
+	return v
 }

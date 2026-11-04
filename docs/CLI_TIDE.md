@@ -62,7 +62,12 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Choose a worktree for an agent with no parent | `--worktree` | the form's Worktree | Same | |
 | Choose its model and permissions when creating | `--model`, `--permissions` | the form's Model and Permissions | Same | |
 | See its model and permissions | `agent get` | the info tab | Same | |
-| List the models to choose from | `agent models`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
+| List the models to choose from | `agent models [--aca]`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
+| Choose its AI coding agent when creating | `--aca` | the form's ACA field, shown with two or more | Same | |
+| List the AI coding agents to choose from | `agent acas`, `--aca`'s completion | the field's ‹ › | Same | |
+| See why an ACA is not offered | `deps list` (installed), `setting list` (enabled) | the settings tab (enabled); installed is not shown | Later (tide) | tide has no deps screen yet |
+| Turn an ACA off for new agents | `setting set --name aca.<id>.enabled` | the settings tab | Same | |
+| No ACA can be used | `agent create` and `agent models` fail with `aca_unavailable` | `C-q a`, `C-q c` say so on the status line | Same | |
 | List agents | `agent list` | the left pane | Same | |
 | Show an agent | `agent get` | the info tab | Same | The fields differ and change as needed: `agent get` also has session, pid and times |
 | Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |

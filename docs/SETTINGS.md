@@ -36,6 +36,7 @@ Decided on the way:
 | `docs.git_path` | the daemon, on every change to a doc | immediately: the docs of every project are written into the new directory; the old one is left as it is |
 | `tide.section_order` | `tide`, when it starts | a `tide` started later; a save in tide's settings tab, at once in that `tide` |
 | `otel.endpoint`, `otel.interval_seconds` | the daemon's metrics exporter | immediately; the metric's counts restart from zero, a normal counter reset for Grafana |
+| `aca.<id>.enabled`, one per AI coding agent wdx knows | the daemon, when a new agent is created or models are listed | immediately; agents that exist go on starting, as disabling is for new agents (the wdx doc ACA_SELECT) |
 | `home` | `WDX_HOME` | cannot be set; `list` and `get` show it |
 
 ## Results

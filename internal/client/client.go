@@ -230,6 +230,15 @@ func (c *Client) ListAgents(ctx context.Context, project, dir string) (api.Agent
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// ListAcas lists the AI coding agents new agents can run, the default first.
+func (c *Client) ListAcas(ctx context.Context) (api.AcaList, error) {
+	r, err := c.api.ListAcasWithResponse(ctx)
+	if err != nil {
+		return api.AcaList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // ListAcaModels returns the models the AI coding agent with id offers.
 func (c *Client) ListAcaModels(ctx context.Context, id string) (api.AcaModelList, error) {
 	r, err := c.api.ListAcaModelsWithResponse(ctx, id)

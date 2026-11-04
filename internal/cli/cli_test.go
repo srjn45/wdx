@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
@@ -140,7 +141,23 @@ func newHome(t *testing.T) string {
 // newHomeWithShell is newHome with script as its terminals' shell.
 func newHomeWithShell(t *testing.T, script string) string {
 	t.Helper()
+	return newHomeOf(t, script, nil)
+}
+
+// newHomeWithACAs is newHome whose daemon runs acas.
+func newHomeWithACAs(t *testing.T, acas ...aca.AiCodingAgent) string {
+	t.Helper()
+	return newHomeOf(t, testShell, acas)
+}
+
+// newHomeOf is newHome with script as its terminals' shell, whose daemon runs acas,
+// the test ACA when nil.
+func newHomeOf(t *testing.T, script string, acas []aca.AiCodingAgent) string {
+	t.Helper()
 	home := shortHome(t)
+	if acas == nil {
+		acas = []aca.AiCodingAgent{&acatest.ACA{Launches: launchesPath(home)}}
+	}
 	dbtest.Seed(t, identity.DBPath(home))
 	shell := filepath.Join(t.TempDir(), "shell")
 	if err := runtest.WriteExecutable(shell, script); err != nil {
@@ -154,7 +171,7 @@ func newHomeWithShell(t *testing.T, script string) string {
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
 		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),
-		ACA: &acatest.ACA{Launches: launchesPath(home)}, SettingStore: settingStore{home: home},
+		ACAs: acas, LookProgram: acatest.LookProgram, SettingStore: settingStore{home: home},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -531,6 +548,7 @@ type jsonOutput struct {
 	Agents     []api.Agent          `json:"agents"`
 	Aca        string               `json:"aca"`
 	Models     []api.AcaModel       `json:"models"`
+	Acas       []api.Aca            `json:"acas"`
 	History    *api.TerminalHistory `json:"history"`
 	Transcript *api.AgentTranscript `json:"transcript"`
 	Started    []api.Terminal       `json:"started"`

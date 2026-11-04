@@ -807,7 +807,7 @@ func (otherACA) ID() string { return "other" }
 func TestAgentStatusOfAHolderThatSaysNothing(t *testing.T) {
 	t.Parallel()
 	home := runtest.Dir(t)
-	td := startOn(t, home, telemetry.Options{}, func(o *Options) { o.ACA = otherACA{&acatest.ACA{}} })
+	td := startOn(t, home, telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{otherACA{&acatest.ACA{}}} })
 	app := td.create(t, "app").Worktrees[0].Path
 	a := td.createAgent(t, "", app, "helper")
 	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft || a.Model != nil {
@@ -855,7 +855,7 @@ func TestAgentTranscript(t *testing.T) {
 	if err := os.WriteFile(conversation, []byte("hello\n"+secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Conversation: conversation} })
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{&acatest.ACA{Conversation: conversation}} })
 	app := td.create(t, "app").Worktrees[0].Path
 	a := td.createAgent(t, "", app, "helper")
 
@@ -955,7 +955,7 @@ func TestAgentBackupFollowsTheAgent(t *testing.T) {
 		}
 	}
 	write("waiting\n")
-	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Conversation: conversation} })
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{&acatest.ACA{Conversation: conversation}} })
 	app := td.create(t, "app").Worktrees[0].Path
 	if err := os.WriteFile(filepath.Join(app, "run"), []byte(statusScript), 0o600); err != nil {
 		t.Fatal(err)
@@ -1003,7 +1003,7 @@ func TestRemovingAProjectMovesItsAgentsBackups(t *testing.T) {
 func TestAgentCurrentDirFollowsTheBackup(t *testing.T) {
 	t.Parallel()
 	said := filepath.Join(t.TempDir(), "dir")
-	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = &acatest.ACA{Dir: said} })
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{&acatest.ACA{Dir: said}} })
 	p := td.create(t, "api")
 	dir := p.Worktrees[0].Path
 	a := td.createAgent(t, "api", dir, "mover")
@@ -1149,7 +1149,7 @@ func TestCreateAgentWithAPrompt(t *testing.T) {
 func TestRestartSaysWhatItStoppedOutsideTheTerminal(t *testing.T) {
 	t.Parallel()
 	test := &acatest.ACA{}
-	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = test })
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{test} })
 	ctx := context.Background()
 	a := td.createAgent(t, "", td.create(t, "app").Worktrees[0].Path, "helper")
 
@@ -1176,7 +1176,7 @@ func TestRestartSaysWhatItStoppedOutsideTheTerminal(t *testing.T) {
 func TestClosingAProjectStopsWhatRunsOutsideItsTerminals(t *testing.T) {
 	t.Parallel()
 	test := &acatest.ACA{Script: "exit 0"}
-	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACA = test })
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{test} })
 	ctx := context.Background()
 	td.createExitedAgent(t, td.create(t, "app").Worktrees[0].Path, "helper")
 	closing := func(stop bool) *api.UpdateProjectResponse {

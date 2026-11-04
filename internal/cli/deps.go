@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/deps"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -61,6 +64,17 @@ func probe(env Env) deps.Probe {
 	}
 	if p.ReadFile == nil {
 		p.ReadFile = os.ReadFile
+	}
+	if p.LookShell == nil {
+		p.LookShell = func(ctx context.Context, program string) error {
+			account, err := holder.LookupAccount(ctx)
+			if err != nil {
+				return err
+			}
+			// The shell agents run in, as the daemon looks.
+			shell := cmp.Or(env.Config.TerminalShell, account.LoginShell())
+			return holder.LookPath(ctx, shell, account.Home, env.ShellEnv, program)
+		}
 	}
 	if p.Run == nil {
 		p.Run = func(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
@@ -194,9 +208,9 @@ func newDepsListCmd() *cobra.Command {
 				PackageManager: optional(sys.PackageManager),
 				Session:        optional(sys.Session),
 			}}
-			for _, c := range deps.CheckAll(cmd.Context(), p) {
+			for _, c := range deps.CheckAll(cmd.Context(), p, acaDependencies()...) {
 				v := newDependencyView(c)
-				if c.Status != deps.Ready {
+				if c.Status != deps.Ready && !c.Shell {
 					name := c.Name
 					if name == "container" {
 						name = "docker"
@@ -209,6 +223,16 @@ func newDepsListCmd() *cobra.Command {
 			return printResult(cmd, l)
 		},
 	}
+}
+
+// acaDependencies are the programs of the AI coding agents wdx knows, each
+// optional, enabling its agents.
+func acaDependencies() []deps.Dependency {
+	var list []deps.Dependency
+	for _, a := range aca.All() {
+		list = append(list, deps.Dependency{Name: a.Program(), Features: []string{"agents: " + a.ID()}, Shell: true})
+	}
+	return list
 }
 
 // installView is how to install a dependency here: the commands, or the

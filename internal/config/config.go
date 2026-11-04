@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/editor"
 	"github.com/srjn45/wdx/internal/identity"
 )
@@ -49,6 +51,9 @@ type Config struct {
 	DocsGitPath string
 	// PlanParallel is the most tasks each plan runs at once, unless its run says.
 	PlanParallel int
+	// ACAEnabled says, by the id of each AI coding agent wdx knows, whether new
+	// agents may run it.
+	ACAEnabled map[string]bool
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -129,7 +134,10 @@ func colorChoices() []string {
 	return choices
 }
 
-var settings = []setting{
+// settings is every setting: wdx's own, then one per AI coding agent.
+var settings = slices.Concat(ownSettings, acaSettings())
+
+var ownSettings = []setting{
 	{
 		key:         "home",
 		description: "directory holding the config file, database, logs and cloned projects",
@@ -343,6 +351,34 @@ var settings = []setting{
 		},
 		get: func(c Config) string { return strconv.Itoa(c.PlanParallel) },
 	},
+}
+
+// acaSettings are a setting for each AI coding agent wdx knows, made from its list,
+// so that adding one adds its setting: aca.<id>.enabled.
+func acaSettings() []setting {
+	var rows []setting
+	for _, id := range aca.IDs() {
+		rows = append(rows, setting{
+			key:         "aca." + id + ".enabled",
+			description: "whether new agents may run " + id + ", when it is installed: true or false",
+			def:         "true",
+			choices:     []string{"true", "false"},
+			set: func(c *Config, v string) error {
+				enabled, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("%q is not true or false", v)
+				}
+				c.ACAEnabled = maps.Clone(c.ACAEnabled)
+				if c.ACAEnabled == nil {
+					c.ACAEnabled = map[string]bool{}
+				}
+				c.ACAEnabled[id] = enabled
+				return nil
+			},
+			get: func(c Config) string { return strconv.FormatBool(c.ACAEnabled[id]) },
+		})
+	}
+	return rows
 }
 
 // checkGitPath fails for a docs.git_path that is not a relative path inside the

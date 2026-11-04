@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -21,22 +21,23 @@ func newAgentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Manage agents: AI coding agents that belong to a project and outlive the daemon",
-		Long: "An agent runs an AI coding agent, Claude Code for now, in its own process,\n" +
+		Long: "An agent runs an AI coding agent, such as Claude Code, in its own process,\n" +
 			"so it keeps running when the daemon restarts or is upgraded. Attach to talk\n" +
 			"to it. Closing its project stops it, and opening the project again starts\n" +
-			"it in the same session.",
+			"it in the same session. " + identity.Name + " agent acas lists the AI coding agents\n" +
+			"new agents can run.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentModelsCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
+	cmd.AddCommand(newAgentAcasCmd(), newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentModelsCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
 	return cmd
 }
 
 func newAgentCreateCmd() *cobra.Command {
 	var scope projectScope
-	var name, parentID, parentName, worktree, prompt, model, permissions string
+	var name, parentID, parentName, worktree, prompt, acaID, model, permissions string
 	cmd := &cobra.Command{
-		Use:   "create [--prompt <text>] [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>] [--model <model>] [--permissions <mode>]",
+		Use:   "create [--prompt <text>] [--project-id <id> | --project-name <name>] [--name <name>] [--parent-id <id> | --parent-name <name>] [--worktree <name>] [--aca <id>] [--model <model>] [--permissions <mode>]",
 		Short: "Create an agent and start its AI coding agent",
 		Long: "Without a project flag, the agent belongs to the project the working\n" +
 			"directory is in, and starts there. With one, it starts in the working\n" +
@@ -56,8 +57,10 @@ func newAgentCreateCmd() *cobra.Command {
 			"With --prompt it starts on that task: the first message in its inbox, as\n" +
 			identity.Name + " agent send gives it, typed in once it is ready for it. A prompt that\n" +
 			"cannot be sent leaves the agent running, and the result says why.\n\n" +
+			"With --aca it runs that AI coding agent, which must be installed and enabled;\n" +
+			"by default the first that is, as " + identity.Name + " agent acas lists them.\n\n" +
 			"With --model its AI coding agent uses that model, named as its own model flag\n" +
-			"takes it: for Claude Code fable, opus, sonnet, haiku or a model's full name.\n" +
+			"takes it: " + identity.Name + " agent models lists them, and any other is passed as given.\n" +
 			"--permissions full, the default, lets it do anything without asking, with\n" +
 			"network access and no sandbox; ask leaves that to your settings for it. Both\n" +
 			"are kept for every later start: restart and resume use them too.",
@@ -69,6 +72,7 @@ func newAgentCreateCmd() *cobra.Command {
 			"Create a child of an agent", identity.Name+" agent create --parent-name reviewer",
 			"Create a child by the parent's id, as JSON", identity.Name+" agent create --parent-id agent-1a2b3c4d --json",
 			"Create a child in a worktree of its own", identity.Name+" agent create --parent-name reviewer --worktree fix-login",
+			"Pick its AI coding agent", identity.Name+" agent create --aca claude_code",
 			"Pick its model", identity.Name+" agent create --model sonnet",
 			"Have it ask before acting, as your settings say", identity.Name+" agent create --permissions ask",
 			"As JSON", identity.Name+" agent create --json",
@@ -78,13 +82,16 @@ func newAgentCreateCmd() *cobra.Command {
 			failurePrefix: "not created",
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}, and "worktree_created": true when its worktree is new`,
 			resultList:    "created",
-			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+			errorList: codeList(api.ErrorCodeAcaUnavailable, api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeWorktreeFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed(promptFlag) && strings.TrimSpace(prompt) == "" {
 				return &usageError{errors.New("--prompt is empty")}
+			}
+			if cmd.Flags().Changed("aca") && acaID == "" {
+				return &usageError{errors.New("--aca is empty")}
 			}
 			if cmd.Flags().Changed("model") && model == "" {
 				return &usageError{errors.New("--model is empty")}
@@ -105,7 +112,7 @@ func newAgentCreateCmd() *cobra.Command {
 				parent = "id:" + parentID
 			}
 			r, err := clientOf(cmd).CreateAgent(cmd.Context(), api.CreateAgent{Project: optional(scope.ref()), Dir: dir, Name: optional(name), Parent: optional(parent), Worktree: optional(worktree), Prompt: optional(prompt),
-				Model: optional(model), Permissions: mode})
+				Aca: optional(acaID), Model: optional(model), Permissions: mode})
 			if err != nil {
 				if parentID == "" {
 					err = outsideHint(err, scope, "")
@@ -127,6 +134,8 @@ func newAgentCreateCmd() *cobra.Command {
 	completeFlag(cmd, "worktree", cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
 	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&acaID, "aca", "", "`id` of the AI coding agent it runs (default: the first installed and enabled)")
+	completeFlag(cmd, "aca", completeACAs)
 	cmd.Flags().StringVar(&model, "model", "", "`model` its AI coding agent uses, on every start (default: its own default)")
 	completeFlag(cmd, "model", completeModels)
 	cmd.Flags().StringVar(&permissions, "permissions", "", "`mode`: full lets it do anything without asking, ask leaves that to your settings for it (default: full)")
@@ -138,31 +147,112 @@ func newAgentCreateCmd() *cobra.Command {
 var agentPermissions = []string{string(api.AgentPermissionsFull), string(api.AgentPermissionsAsk)}
 
 func newAgentModelsCmd() *cobra.Command {
+	var acaID string
 	cmd := &cobra.Command{
-		Use:   "models",
+		Use:   "models [--aca <id>]",
 		Short: "List the models agent create --model takes",
-		Long: "The models of the AI coding agent new agents run, as it says. One marked\n" +
-			"default is what it runs with no --model; with none marked, it runs what your\n" +
-			"own settings for it say.",
+		Long: "The models of an AI coding agent new agents can run, as it says: --aca's,\n" +
+			"or by default the first installed and enabled. One marked default is what it\n" +
+			"runs with no --model; with none marked, it runs what your own settings for\n" +
+			"it say.",
 		Example: examples(
 			"List them", identity.Name+" agent models",
+			"List another AI coding agent's", identity.Name+" agent models --aca claude_code",
 			"As JSON", identity.Name+" agent models --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The AI coding agent's models, in its order.\n" +
 				`With --json: {"aca": "claude_code", "models": [{"id": ..., "name": ..., "default": ...}, ...]}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			list, err := clientOf(cmd).ListAcaModels(cmd.Context(), aca.Default().ID())
+			if cmd.Flags().Changed("aca") && acaID == "" {
+				return &usageError{errors.New("--aca is empty")}
+			}
+			id, err := chosenACA(cmd.Context(), clientOf(cmd), acaID)
 			if err != nil {
-				return err
+				return agentHint(err)
+			}
+			list, err := clientOf(cmd).ListAcaModels(cmd.Context(), id)
+			if err != nil {
+				return agentHint(err)
 			}
 			return printResult(cmd, acaModels(list))
 		},
 	}
+	cmd.Flags().StringVar(&acaID, "aca", "", "`id` of the AI coding agent (default: the first installed and enabled)")
+	completeFlag(cmd, "aca", completeACAs)
 	return cmd
+}
+
+// chosenACA is id, or when "" the daemon's default; with none installed and enabled,
+// the aca_unavailable the daemon gives a create.
+func chosenACA(ctx context.Context, c *client.Client, id string) (string, error) {
+	if id != "" {
+		return id, nil
+	}
+	list, err := c.ListAcas(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(list.Acas) == 0 {
+		p := api.NewProblem(api.ErrorCodeAcaUnavailable, "no AI coding agent is installed and enabled")
+		p.Details = &map[string]any{"aca": nil, "reason": nil, "program": nil}
+		return "", &client.ProblemError{Problem: p}
+	}
+	return list.Acas[0].Id, nil
+}
+
+func newAgentAcasCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "acas",
+		Short: "List the AI coding agents new agents can run",
+		Long: "Those installed, as the login shell finds each one's program, and enabled by\n" +
+			"its aca.<id>.enabled setting, in the order they are offered; the default is what\n" +
+			"agent create runs with no --aca. " + identity.Name + " deps list says which are installed,\n" +
+			"and " + identity.Name + " setting list which are enabled.",
+		Example: examples(
+			"List them", identity.Name+" agent acas",
+			"As JSON", identity.Name+" agent acas --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "The AI coding agents, the default first.\n" +
+				`With --json: {"acas": [{"id": "claude_code", "default": true}, ...]}`,
+			errorList: codeList(api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			list, err := clientOf(cmd).ListAcas(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, acaList(list))
+		},
+	}
+	return cmd
+}
+
+// acaList is the AI coding agents new agents can run.
+type acaList api.AcaList
+
+func (l acaList) text(w io.Writer, st style.Style) {
+	if len(l.Acas) == 0 {
+		fmt.Fprintln(w, "no AI coding agent installed and enabled")
+		fmt.Fprintln(w, st.Muted(identity.Name+" deps list says which are installed, "+identity.Name+" setting list which are enabled"))
+		return
+	}
+	fmt.Fprintln(w, "AI coding agents")
+	var table style.Table
+	table.Row(st.Heading("ID"))
+	for _, a := range l.Acas {
+		id := st.Name(a.Id)
+		if a.Default {
+			id += " " + st.Muted("(default)")
+		}
+		table.Row(id)
+	}
+	table.Write(w)
 }
 
 // acaModels is the models of an AI coding agent.
@@ -317,7 +407,7 @@ func newAgentStartCmd() *cobra.Command {
 			outputNote:    "The agent, running.\n" + `With --json: {"result": "started", "agent": {...}}`,
 			resultList:    "started",
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
-				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeAgentBusy, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeAgentBusy, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -364,7 +454,7 @@ func newAgentRestartCmd() *cobra.Command {
 			outputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}, with stopped_sessions when it stopped any`,
 			resultList:    "restarted",
 			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
-				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentBusy, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentBusy, api.ErrorCodeAcaUnsupported, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -625,8 +715,36 @@ func agentHint(err error) error {
 		return &hinted{err, "it is already running; attach to it with " + identity.Name + " agent attach"}
 	case api.ErrorCodeStartFailed:
 		return &hinted{err, "check its dir, then run " + identity.Name + " agent start"}
+	case api.ErrorCodeAcaUnavailable:
+		return &hinted{err, acaUnavailableHint(err)}
+	case api.ErrorCodeNotFound:
+		if detail(err, "argument") == "aca" {
+			return &hinted{err, identity.Name + " agent acas lists the AI coding agents that can be used"}
+		}
 	}
 	return err
+}
+
+// acaUnavailableHint says how to make the AI coding agent of an aca_unavailable
+// usable, by its reason.
+func acaUnavailableHint(err error) string {
+	switch detail(err, "reason") {
+	case "not_installed":
+		return "install " + detail(err, "program") + ", then check with " + identity.Name + " deps list"
+	case "disabled":
+		return "run " + identity.Name + " setting set --name aca." + detail(err, "aca") + ".enabled --value true"
+	}
+	return identity.Name + " deps list says which are installed, " + identity.Name + " setting list which are enabled"
+}
+
+// detail is the string under key in the details of err's problem, "" when none.
+func detail(err error, key string) string {
+	e, ok := errors.AsType[*client.ProblemError](err)
+	if !ok || e.Problem.Details == nil {
+		return ""
+	}
+	v, _ := (*e.Problem.Details)[key].(string)
+	return v
 }
 
 // agentResult is an agent a command changed.

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
@@ -30,6 +31,7 @@ func TestMain(m *testing.M) {
 type fixture struct {
 	db        *sql.DB
 	aca       *acatest.ACA
+	bare      *acatest.Bare // known too, and what new agents run in newBareFixture's
 	terminals *terminal.Supervisor
 	agents    *Manager
 	backups   *Backups
@@ -40,6 +42,17 @@ type fixture struct {
 
 // newFixture returns agents that run script, on real holders.
 func newFixture(t *testing.T, script string) fixture {
+	t.Helper()
+	return newFixtureOf(t, script, false)
+}
+
+// newBareFixture is newFixture whose new agents run an ACA with only stubs.
+func newBareFixture(t *testing.T) fixture {
+	t.Helper()
+	return newFixtureOf(t, "", true)
+}
+
+func newFixtureOf(t *testing.T, script string, bare bool) fixture {
 	t.Helper()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "test.db")
@@ -59,14 +72,19 @@ func newFixture(t *testing.T, script string) fixture {
 		t.Fatal(err)
 	}
 	test := &acatest.ACA{Launches: filepath.Join(t.TempDir(), "launches"), Notes: filepath.Join(t.TempDir(), "notes"), Kept: filepath.Join(t.TempDir(), "kept"), Script: script}
+	stubs := &acatest.Bare{Name: "bare"}
+	known := []aca.AiCodingAgent{test, stubs}
+	if bare {
+		known = []aca.AiCodingAgent{stubs, test} // new agents run the first
+	}
 	store := NewStore(d)
-	backups := NewBackups(ctx, store, home, []aca.AiCodingAgent{test}, 0)
+	backups := NewBackups(ctx, store, home, NewACAs(known, acatest.LookProgram, time.Nanosecond), 0)
 	terminals := terminal.NewSupervisor(ctx, terminal.NewStore(d), terminal.Options{
 		Executable: exe, Home: home, Env: []string{"PATH=/usr/bin:/bin"}, Shell: runtest.LoginShell(t),
 		StopReport: holdertest.Patience(t), Limits: holdertest.Limits(t),
 		AgentLaunch: Launches(backups),
 	})
-	agents := NewManager(store, terminals, backups, test)
+	agents := NewManager(store, terminals, backups)
 	t.Cleanup(func() {
 		list, _ := store.List(ctx, "")
 		for _, a := range list {
@@ -75,7 +93,7 @@ func newFixture(t *testing.T, script string) fixture {
 		terminals.Close()
 		backups.Close()
 	})
-	return fixture{db: d, aca: test, terminals: terminals, agents: agents, backups: backups, project: "proj-app", dir: t.TempDir(), home: home}
+	return fixture{db: d, aca: test, bare: stubs, terminals: terminals, agents: agents, backups: backups, project: "proj-app", dir: t.TempDir(), home: home}
 }
 
 func (f fixture) create(t *testing.T, name string) Agent {

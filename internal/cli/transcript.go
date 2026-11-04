@@ -39,7 +39,7 @@ func newAgentTranscriptCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			outputNote: "The lines, oldest first, as Markdown, or the file's path with --path, or the brief.\n" + `With --json: {"transcript": {"path": ..., "from": ..., "next": ..., "lines": [...]}}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeAcaUnsupported, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ref2, project, dir, err := ref.resolve(cmd)
