@@ -59,6 +59,6 @@ Suggestions shown in grey as you type come from the shell: fish has them built i
   ```
 
   On macOS the system ssh-agent's socket usually reaches launchd agents; a third-party agent may need the same treatment in the plist's EnvironmentVariables.
-- **Terminals' environment.** A terminal's shell gets `PATH`, the locale, `SSH_AUTH_SOCK` and the desktop session's variables from the daemon, not from the command that created it (docs/TERMINALS.md). Under the service they are the service's, so set them as above for `SSH_AUTH_SOCK`; `wdx daemon restart` picks up new values, and shells already running keep the old ones. `wdx daemon restart` and `wdx update` leave running shells alone.
+- **Terminals' environment.** A terminal's shell gets `PATH`, the locale, `SSH_AUTH_SOCK` and the desktop session's variables from the daemon, not from the command that created it (docs/TERMINALS.md). Under the service they are the service's, so set them as above for `SSH_AUTH_SOCK`; `wdx daemon restart` picks up new values, and shells already running keep the old ones. `wdx daemon restart` and `wdx update` leave running shells alone, on the version that started them; docs/RELEASING.md says how to move one to the new version.
 - **Settings** are read when the daemon starts: run `wdx daemon restart` after changing `~/.wdx/config.yaml`.
 - **Logs.** The CLI and the daemon log to the same daily files in `~/.wdx/logs`; the `debug_id` an error prints finds the lines of both.
