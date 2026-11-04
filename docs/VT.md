@@ -3,6 +3,7 @@
 wdx keeps terminals' screens in `github.com/charmbracelet/x/vt` (MIT), wrapped by `internal/screen`: the holder's copy of each terminal (docs/ATTACH.md), and each attached pane's in `internal/termview` (docs/ATTACH_VIEW.md). No other package uses the vt (a depguard rule). The vt parses with `github.com/charmbracelet/x/ansi`, in the same repository, which the fork also holds for #16; every package that uses `ansi`, Bubble Tea among them, builds with the fork's. This lists what is wrong with it, or missing, as found by the attach spike and by building `screen`. Each item is fixed in our fork, whose branch we merge into ourselves; once the changes are stable, they go upstream as one or a few pull requests.
 
 - Fork: `github.com/srjn45/x`, branch `wdx`, cloned at `~/dev/x`; `upstream` is `charmbracelet/x`.
+- Every change on the fork, with the problem that made it: docs/VT_FORK.md.
 - wdx uses the fork: `go.mod` has `replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt <version>` and the same for `ansi`, both the branch's last pushed commit, with `make notices` run after each move. It forks upstream at `v0.1.1-0.20261028143050-ac49f62f807e`. Each `replace` goes when upstream has its module's fixes.
 - When a fix lands, remove its workaround in `screen` (the last column) and its test's comment, keeping the test.
 
