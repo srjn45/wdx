@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), being built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -738,6 +738,15 @@ What the agent is told, by the task's `failure`, never logged:
 - `Next`: table tests for a cancelled run's order, a skipped task's slot with work and without, no landing while one is going or the project is closed, finishing while paused.
 - In a daemon with the test ACA: a check that fails, then a retry whose agent fixes it and lands; a conflict landed by `task land` after the test resolves it in the slot; an agent that ends, retried and resumed, then `--fresh` with `-2`; a skip letting what waits go on; pause holding a start until resume; a project closed showing its running plan `paused (project closed)` and opened running it again, and one paused by the person staying paused across a close and open; cancel stopping agents and keeping the slot with work.
 - The CLI: an integration test per outcome of each new command.
+
+### Found while building step 3
+
+- `worktree.LandOnto` became `RebaseOnto`, the rebase alone: the runner moves the branch itself after the check, again from the rebase if the branch moved during it.
+- A task whose agent was removed is retried with a new agent even without `--fresh`: a removed agent is a tombstone, which cannot be resumed. The runner tells it from one that ended (`AgentRemoved`).
+- getPlan takes the plan's state and counts from the run it returns (`Plan.AsOf`): read apart, a task that moved between the two reads showed in one and not the other.
+- `task done` on a draft is `plan_not_running`, as every request on a task of a plan with no run, rather than `not_found`.
+- `plan cancel` and `plan pause` say what happens rather than counting the agents stopped, the worktrees kept or the tasks going on: the runner does that after the request has answered.
+- tide's box has `t`, which shows the failed check's terminal in the terminal pane.
 
 ### Steps of step 3
 
