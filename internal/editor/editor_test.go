@@ -63,8 +63,11 @@ func run(t *testing.T, e Editor, dir, name, readMessage string) *running {
 	cmd.Dir = dir
 	// No comma in the test's name, which is in its directories: Neovim escapes one
 	// in the path of its log, cannot open it and writes .nvimlog beside the file.
-	// Neovim keeps its server's socket under TMPDIR.
-	cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "TMPDIR="+t.TempDir(), "TERM=xterm-256color")
+	// Neovim keeps its server's socket under TMPDIR. Emacs, with no cache of its
+	// compiled packages in an empty HOME, would compile them in processes of its own
+	// that outlive it, which the run's end finds left.
+	cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "TMPDIR="+t.TempDir(), "TERM=xterm-256color",
+		"EMACS_INHIBIT_AUTOMATIC_NATIVE_COMPILATION=1")
 	master, err := pty.Start(cmd, 80, 24)
 	if err != nil {
 		t.Fatal(err)
