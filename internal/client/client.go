@@ -18,7 +18,8 @@ import (
 
 // Client calls the daemon.
 type Client struct {
-	api *api.ClientWithResponses
+	api  *api.ClientWithResponses
+	doer *doer
 }
 
 // Options configure a client.
@@ -63,18 +64,27 @@ func New(opts Options) *Client {
 	if err != nil {
 		panic(fmt.Sprintf("client: %v", err))
 	}
-	return &Client{api: c}
+	return &Client{api: c, doer: d}
 }
+
+// Wait waits for the requests in flight to be answered or to fail, each logging
+// how: a command ending with requests in flight, as tide does with the ones it
+// sends in the background, cancels them and waits, so that the log says what
+// became of every one.
+func (c *Client) Wait() { c.doer.inflight.Wait() }
 
 // doer sends requests with the debug id and version, logs them, and turns a
 // failure to reach the daemon into an *UnavailableError.
 type doer struct {
-	opts    Options
-	http    *http.Client
-	checked sync.Once
+	opts     Options
+	http     *http.Client
+	checked  sync.Once
+	inflight sync.WaitGroup
 }
 
 func (d *doer) Do(req *http.Request) (*http.Response, error) {
+	d.inflight.Add(1)
+	defer d.inflight.Done()
 	start := time.Now()
 	req.Header.Set(api.DebugIDHeader, d.opts.DebugID)
 	req.Header.Set(api.VersionHeader, identity.Version)

@@ -137,11 +137,17 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	opts := tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
 		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
 		SectionOrder: env.Config.TideSectionOrder}
-	model := tide.New(ctx, opts)
+	// Tide's requests end with it: those it left in flight are cancelled once it
+	// quits, and waited for, so that each is logged as answered or given up.
+	requests, cancelRequests := context.WithCancel(ctx)
+	defer cancelRequests()
+	model := tide.New(requests, opts)
 	p := tea.NewProgram(model, tea.WithInput(tty), tea.WithOutput(tty), tea.WithContext(ctx),
 		tea.WithEnvironment(env.CallerTerm), tea.WithoutSignalHandler())
 	log.Info("tide started")
 	_, err = p.Run()
+	cancelRequests()
+	c.Wait()
 	killed := errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil // the command is ending
 	if v := model.DaemonVersion(); style.VersionsDiffer(v) {
 		warnTideVersion(cmd, v)

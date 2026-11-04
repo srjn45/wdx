@@ -1,18 +1,23 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
 )
 
@@ -96,5 +101,44 @@ func TestUnavailable(t *testing.T) {
 	}
 	if want := "the daemon is not answering on " + socket + ": connect: no such file or directory"; err.Error() != want {
 		t.Fatalf("got %q, want %q", err, want)
+	}
+}
+
+// lockedBuffer is a log written by requests' goroutines and read by the test.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestWaitForRequestsInFlight: a request in flight when its context is cancelled
+// has logged that it gave up by the time Wait returns.
+func TestWaitForRequestsInFlight(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	socket := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+	})
+	var log lockedBuffer
+	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), logging.New(&log, slog.LevelInfo)))
+	c := New(Options{Socket: socket, DebugID: "dbg-0123456789ab"})
+	go func() { _, _ = c.Version(ctx) }()
+	<-entered
+	cancel()
+	c.Wait()
+	if !strings.Contains(log.String(), `"msg":"daemon unreachable"`) {
+		t.Fatalf("the request given up on was not logged by the time Wait returned: %s", log.String())
 	}
 }
