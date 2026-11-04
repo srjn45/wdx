@@ -893,7 +893,11 @@ dropped.
     ` + st.Command(w+" plan status --name sso") + `       every task's state
     ` + st.Command(w+" plan task get --plan sso --task <id>") + `   one task's prompt and summary
   Once every task is done, one worktree is left on plan/sso, to land as any.
-  A plan runs once, and cannot be changed once it has.
+  A plan runs once, and cannot be changed once it has. To run it again, or
+  start from it, copy it to a draft; one that is over can be archived, out
+  of plan list until --all:
+    ` + st.Command(w+" plan copy --name sso --new-name sso-2") + `   then plan run --name sso-2
+    ` + st.Command(w+" plan archive --name sso") + `                plan unarchive brings it back
 
 ` + st.Heading("When a task cannot go on") + `
   A task is failed when its agent ended before saying it was done, did not

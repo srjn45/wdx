@@ -124,7 +124,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
-| List a project's plans | `plan list`, a run's `2/4` in `TASKS`, `2/4, 1 failed` when tasks wait for the person | the Plans section, a plan of plans with its plans under it, folded with `←` `→`, a run's state and `2/4`, and `needs you` when a task failed or did not land, or an agent of it waits for input | Same | tide's stays up to date (docs/PLANS.md); the CLI's list is flat, with `3 plans` for a plan of plans. An agent waiting is tide's, which follows agents' activity; the CLI says it in `agent list` |
+| List a project's plans | `plan list`, a run's `2/4` in `TASKS`, `2/4, 1 failed` when tasks wait for the person; the archived only with `--all` | the Plans section, a plan of plans with its plans under it, folded with `←` `→`, a run's state and `2/4`, and `needs you` when a task failed or did not land, or an agent of it waits for input; the archived only found with `/` | Same | tide's stays up to date (docs/PLANS.md); the CLI's list is flat, with `3 plans` for a plan of plans. An agent waiting is tide's, which follows agents' activity; the CLI says it in `agent list` |
 | Read what a plan defines: its goal, constraints and tasks or plans in DAG order | `plan status` | `Enter` or a click: a read-only tab | Same | |
 | Read a task's prompt | `plan status --json`, `plan get`, `plan task get` | `Enter` on the task in the plan's tab | Same | |
 | Run a draft plan | `plan run`, `--parallel` | `r` in its tab, after a y/n question | Same | tide asks first, as it starts agents; it runs with `plan.parallel`, as a run's own number is for a script that knows the machine |
@@ -138,6 +138,8 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Answer a task that failed or did not land: retry it, with a new agent, land it again, skip it | `plan task retry`, `--fresh`, `plan task land`, `plan task skip` | `Enter` on the task in its plan's tab: a box with `r`, `f`, `l`, `s` | Same | |
 | Read a failed check's output | `plan task get` names its terminal, then `terminal attach` | `t` in the task's box | Same | |
 | Go from a plan of plans to one of its plans | `plan status --name <child>` | `Enter` on the plan in the tab | Same | |
+| Copy a plan, to run it again or start from it | `plan copy --new-name`, `--folder` | `y` in its tab: a popup with the first name free, then the copy's tab | Same | tide's copy keeps the plan's folder, which `m` changes; a plan of plans is copied on neither until step 6 of docs/PLANS.md |
+| Archive a plan that is over, or bring it back | `plan archive`, `plan unarchive` | `a` in its tab, both ways | Same | Nothing is asked on either side, as nothing is lost |
 | Read the YAML, an older revision, history | `plan get`, `--revision`, `plan history` | none | By design | AIs write plans, and tide shows what they define |
 | Create, update, rename, remove | `plan create`, `update`, `rename`, `remove` | none | By design | As above |
 | The format's reference | `wdx help plans` | none | By design | Help topics are the CLI's; an AI writing a plan reads it there |
