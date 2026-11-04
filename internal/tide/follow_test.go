@@ -41,7 +41,7 @@ func (h testHome) followTicking(t *testing.T, tick func(time.Duration, func(time
 func (h testHome) followResumed(t *testing.T, tick func(time.Duration, func(time.Time) tea.Msg) tea.Cmd, r *Resume) *program {
 	t.Helper()
 	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), Home: h.home, Resume: r,
-		ViewFlush: waittest.Limit(t)}) // a busy machine slows quitting rather than loses what it sends
+		ViewFlush: waittest.Limit(t), ACA: "claude_code"}) // a busy machine slows quitting rather than loses what it sends
 	t.Cleanup(func() {
 		m.unfollow()
 		m.detachAll()

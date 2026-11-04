@@ -468,72 +468,11 @@ type agentCreated struct {
 	err       error
 }
 
-// createAgent creates an agent in the project shown and focuses the agent
-// pane; it becomes active once the answer comes.
-func (m *Model) createAgent() tea.Cmd {
-	dir, _ := m.checkoutDir()
-	return m.sendCreateAgent(api.CreateAgent{Dir: dir})
-}
-
 // childParent returns the agent C-q c would create a child of: the one in
 // focus, as for C-q x. A tombstone cannot have new children.
 func (m *Model) childParent() (api.Agent, bool) {
 	a, ok := m.focusedAgent()
 	return a, ok && a.State != api.AgentStateRemoved
-}
-
-// childBox asks C-q c for the worktree of a new child: empty, it is the
-// parent's.
-type childBox struct {
-	parent   api.Agent
-	worktree string
-}
-
-// childKey takes a key while the box is open.
-func (m *Model) childKey(msg tea.KeyPressMsg) tea.Cmd {
-	c := m.child
-	switch name := msg.String(); {
-	case name == "esc":
-		m.child = nil
-	case name == "enter":
-		m.child = nil
-		return m.createChild(c.parent, strings.TrimSpace(c.worktree))
-	case name == "backspace" && c.worktree != "":
-		r := []rune(c.worktree)
-		c.worktree = string(r[:len(r)-1])
-	case typed(msg):
-		c.worktree += msg.Text
-	}
-	return nil
-}
-
-// childPopup is what the box shows.
-func (m *Model) childPopup() popup {
-	c, st := m.child, m.st
-	in := "its worktree"
-	if c.parent.Worktree != nil {
-		in = *c.parent.Worktree
-	}
-	return popup{
-		title: "New child of " + c.parent.Name,
-		body: []string{
-			"Worktree, created if it is new:", "",
-			"> " + c.worktree + "_", "",
-			st.Muted("Empty: the parent's, " + in),
-		},
-		footer: st.Command("Enter") + " create  " + st.Command("Esc") + " cancel",
-	}
-}
-
-// createChild creates a child of parent in worktree, or in parent's dir when
-// it is "", as createAgent does an agent.
-func (m *Model) createChild(parent api.Agent, worktree string) tea.Cmd {
-	ref := "id:" + parent.Id
-	body := api.CreateAgent{Parent: &ref, Dir: parent.Dir}
-	if worktree != "" {
-		body.Worktree = &worktree
-	}
-	return m.sendCreateAgent(body)
 }
 
 func (m *Model) sendCreateAgent(body api.CreateAgent) tea.Cmd {
@@ -543,7 +482,8 @@ func (m *Model) sendCreateAgent(body api.CreateAgent) tea.Cmd {
 		m.layout.zoomed = agent
 	}
 	m.changed("agent pane")
-	m.log.Info("agent requested", "project", p.Name, "dir", body.Dir, "parent", body.Parent, "worktree", body.Worktree)
+	m.log.Info("agent requested", "project", p.Name, "dir", body.Dir, "parent", body.Parent, "worktree", body.Worktree, "name", body.Name,
+		"model", body.Model, "permissions", body.Permissions, "prompt", body.Prompt != nil)
 	ref, id := "id:"+p.Id, p.Id
 	body.Project = &ref
 	return func() tea.Msg {
@@ -553,6 +493,15 @@ func (m *Model) sendCreateAgent(body api.CreateAgent) tea.Cmd {
 }
 
 func (m *Model) agentCreated(msg agentCreated) {
+	formWaited := m.agentForm != nil && m.agentForm.busy
+	if msg.err != nil && formWaited {
+		m.log.Info("agent not created", "err", msg.err)
+		m.agentFormFailed(msg.err)
+		return
+	}
+	if formWaited {
+		m.agentForm = nil
+	}
 	if msg.err != nil {
 		m.log.Info("agent not created", "err", msg.err)
 		m.statusNotice = msg.err.Error()

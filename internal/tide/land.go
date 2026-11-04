@@ -362,7 +362,7 @@ func (m *Model) landingsChanged() {
 			m.statusNotice += ", pushed"
 		}
 		m.log.Info("landed", "worktree", w.Name)
-		if m.confirm == nil && m.commit == nil && m.comment == nil && m.child == nil && m.land == nil && !m.menu && !m.popupOpen() {
+		if m.confirm == nil && m.commit == nil && m.comment == nil && m.agentForm == nil && m.land == nil && !m.menu && !m.popupOpen() {
 			r := m.worktreeRemovalOf(w)
 			m.confirm = &confirmBox{r: r}
 		}

@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/identity"
@@ -135,7 +136,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
 	opts := tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
-		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
+		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, ACA: aca.Default().ID(), StripLinger: env.Timeouts.ProjectStrip,
 		SectionOrder: env.Config.TideSectionOrder}
 	// Tide's requests end with it: those it left in flight are cancelled once it
 	// quits, and waited for, so that each is logged as answered or given up.

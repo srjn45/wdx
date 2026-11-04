@@ -97,7 +97,7 @@ wdx agent create --worktree <name> ...
 - A new worktree always gets a new branch named like it, so there is one name to keep track of. It starts from the HEAD of the checkout the agent would otherwise run in, so a child builds on its parent's commits. A branch of that name that already exists is `branch_exists`, 409; `main` is never created.
 - Removing an agent never removes its worktree: it may hold work not landed.
 - Two agents may share a worktree, as they share a checkout today.
-- `C-q c` opens a popup asking for an optional worktree name; left empty, the child runs in its parent's worktree.
+- `C-q c` opens a popup asking for an optional worktree name; left empty, the child runs in its parent's worktree. Since the wdx doc AGENT_CREATE, step 3, that popup is the new agent's form, which `C-q a` opens too: name, model, worktree, permissions and prompt.
 
 ## Later
 

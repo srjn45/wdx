@@ -73,7 +73,7 @@ type Model struct {
 	tabSwitching   bool                                                                 // an agent tab was switched to with the keys, and they have not rested yet
 	tabResting     bool                                                                 // another was switched to soon after: no agent attaches
 	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
-	child          *childBox                                                            // the worktree C-q c asks for, while it does
+	agentForm      *agentForm                                                           // what C-q a and C-q c ask a new agent is created with, while they do
 	editorClose    *editorCloseBox                                                      // what closing an editor's tab asks, while it does
 	editorKeys     map[string]string                                                    // what to type into an editor once its tab attaches, by terminal id
 	land           *landBox                                                             // what L asks, while it is open
@@ -95,6 +95,7 @@ type Model struct {
 	daemonVersion string                                    // what the daemon last answered, "" when it did not
 	resume        *Resume                                   // what to show first, until the projects are listed
 	stripLinger   time.Duration                             // from Options
+	aca           string                                    // from Options
 	sections      []section                                 // the left pane's, in the order set
 
 	values      valuePane     // the agent info or the settings shown, if any
@@ -138,6 +139,9 @@ type Options struct {
 	// ViewFlush is how long quitting or reloading waits for the tabs and the view
 	// to be sent; zero is a second.
 	ViewFlush time.Duration
+	// ACA is the id of the AI coding agent new agents run, whose models the new
+	// agent's box lists; "" lists none.
+	ACA string
 }
 
 // click is where and when a click on a frame's title happened.
@@ -172,6 +176,7 @@ func New(ctx context.Context, opts Options) *Model {
 		versionOf:   opts.DaemonVersion,
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
+		aca:         opts.ACA,
 		sections:    sectionOrder(opts.SectionOrder),
 		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
 	}
@@ -210,6 +215,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sel = nil // the panes move
 	case projectsListed:
 		return m, m.listed(msg)
+	case modelsListed:
+		m.modelsWereListed(msg)
+		return m, nil
 	case tabsSaved:
 		m.tabsWereSaved(msg)
 	case tideViewRead:
@@ -365,8 +373,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		return m, m.wheel(msg)
 	case tea.PasteMsg:
-		if m.child != nil && !m.menu {
-			m.child.worktree += strings.Join(strings.Fields(msg.Content), "")
+		if m.agentForm != nil && !m.menu {
+			m.pasteIntoAgentForm(msg.Content)
 			return m, nil
 		}
 		if m.commit != nil && !m.menu {
@@ -539,8 +547,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	m.terminalNotice, m.statusNotice = "", ""
-	if m.child != nil {
-		return m.childKey(msg)
+	if m.agentForm != nil {
+		return m.agentFormKey(msg)
 	}
 	if m.commit != nil {
 		return m.commitKey(msg)
@@ -649,7 +657,7 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() || m.child != nil || m.commit != nil || m.comment != nil || m.land != nil || m.editorClose != nil {
+	if m.menu || m.popupOpen() || m.agentForm != nil || m.commit != nil || m.comment != nil || m.land != nil || m.editorClose != nil {
 		return nil
 	}
 	if m.confirm == nil {

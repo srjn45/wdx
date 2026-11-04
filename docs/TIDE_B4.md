@@ -47,7 +47,7 @@ Design A, chosen by the human in a preview, with its default colors:
 
 ## Creating an agent
 
-`C-q a`, asked for by the human, creates an agent in the same checkout as `C-q t`, as `wdx agent create` would, with a generated name. As `C-q t` does for a terminal, it focuses the agent pane, since an agent is created to talk to; once the answer comes the agent is active with the cursor on it. This is the one way an agent becomes active that moves the focus. A failure shows on the status line until the next key.
+`C-q a`, asked for by the human, creates an agent in the same checkout as `C-q t`, as `wdx agent create` would, with a generated name. As `C-q t` does for a terminal, it focuses the agent pane, since an agent is created to talk to; once the answer comes the agent is active with the cursor on it. This is the one way an agent becomes active that moves the focus. A failure shows on the status line until the next key. Since the wdx doc AGENT_CREATE, step 3, `C-q a` first opens the new agent's form, every field of which may be left empty, and a failure stays in it.
 
 ## How it is built
 

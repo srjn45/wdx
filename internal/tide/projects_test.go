@@ -155,7 +155,7 @@ func (h testHome) newProject(t *testing.T, name string, state api.ProjectState) 
 // listed.
 func (h testHome) start(t *testing.T) *Model {
 	t.Helper()
-	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), ViewFlush: waittest.Limit(t)})
+	m := New(logging.NewContext(holder.WithLimits(context.Background(), holdertest.Limits(t)), h.logger(t, "tide")), Options{Client: h.client(), Style: style.New(false), ViewFlush: waittest.Limit(t), ACA: "claude_code"})
 	m.tick = noTick
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.

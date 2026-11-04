@@ -365,6 +365,8 @@ func TestNewAgent(t *testing.T) {
 	p.keys("C-q")
 	wantText(t, p.m, "a  new agent", "a agent")
 	p.keys("a")
+	wantText(t, p.m, "New agent in api", "empty: a generated one")
+	p.keys("enter")
 	if p.m.layout.focus != agent {
 		t.Fatalf("focus %s", p.m.layout.focus)
 	}
@@ -376,7 +378,7 @@ func TestNewAgent(t *testing.T) {
 	p.until(t, "it attached", agentAttached(first.Name))
 
 	// A second one takes the pane and the cursor once it comes.
-	p.keys("C-q", "a")
+	p.keys("C-q", "a", "enter")
 	p.until(t, "the new agent active", func(m *Model) bool {
 		a, ok := m.activeAgent()
 		return ok && a.Name != first.Name
@@ -405,8 +407,8 @@ func TestProjectPaneLetters(t *testing.T) {
 	press("c")
 	wantText(t, m, "New child of a-parent")
 	press("a")
-	if m.child == nil || m.child.worktree != "a" {
-		t.Fatalf("a in the worktree box: %+v", m.child)
+	if m.agentForm == nil || m.agentForm.name != "a" {
+		t.Fatalf("a in the new agent's box: %+v", m.agentForm)
 	}
 	keys(m, "esc")
 
@@ -452,7 +454,7 @@ func TestProjectPaneNewAgentAndTerminal(t *testing.T) {
 	p := h.openShown(t)
 	p.until(t, "no agents", func(m *Model) bool { return strings.Contains(text(m), "no agents: C-q a") })
 
-	p.keys("a")
+	p.keys("a", "enter") // the letter opens the new agent's box
 	if p.m.layout.focus != agent {
 		t.Fatalf("focus %s", p.m.layout.focus)
 	}
@@ -473,7 +475,7 @@ func TestProjectPaneNewAgentAndTerminal(t *testing.T) {
 	p.until(t, "it attached", attachedTo(tabs(p.m)[0]))
 	p.typed("echo acto''pqx\n")
 	p.until(t, "the letters in the terminal", screenHas("actopqx"))
-	if len(p.m.agents()) != 1 || len(tabs(p.m)) != 1 || p.m.confirm != nil || p.m.child != nil || p.m.popupOpen() {
+	if len(p.m.agents()) != 1 || len(tabs(p.m)) != 1 || p.m.confirm != nil || p.m.agentForm != nil || p.m.popupOpen() {
 		t.Fatalf("a letter acted in a pane:\n%s", text(p.m))
 	}
 }
@@ -712,11 +714,11 @@ func TestNewChildAgent(t *testing.T) {
 	p.keys("C-q")
 	wantText(t, p.m, "parent (agent)", "c  new child", "c child")
 	p.keys("c")
-	wantText(t, p.m, "New child of parent", "Empty: the parent's, main")
+	wantText(t, p.m, "New child of parent", "empty: the parent's, main; a new name creates it")
 	// Esc asks again next time, and creates nothing.
 	p.keys("esc")
-	if p.m.child != nil || len(p.m.agents()) != 1 {
-		t.Fatalf("Esc: box %v, agents %v", p.m.child, p.m.agents())
+	if p.m.agentForm != nil || len(p.m.agents()) != 1 {
+		t.Fatalf("Esc: box %v, agents %v", p.m.agentForm, p.m.agents())
 	}
 	p.keys("C-q", "c", "enter")
 	if p.m.layout.focus != agent {
@@ -748,8 +750,8 @@ func TestNewChildAgent(t *testing.T) {
 	p.until(t, "both gone", func(m *Model) bool { return m.confirm == nil && len(m.agents()) == 0 })
 }
 
-// TestNewChildAgentWorktree: the popup's worktree is created, and the child
-// starts there.
+// TestNewChildAgentWorktree: the box's worktree is created, and the child starts
+// there; one that cannot be keeps the box, its cursor on the worktree.
 func TestNewChildAgentWorktree(t *testing.T) {
 	t.Parallel()
 	h := newTestHome(t)
@@ -764,7 +766,7 @@ func TestNewChildAgentWorktree(t *testing.T) {
 	p := h.openShown(t)
 	p.until(t, "parent attached", agentAttached("parent"))
 
-	p.keys("C-q", "c", "f", "i", "x", "x", "backspace", "enter")
+	p.keys("C-q", "c", "\t", "\t", "f", "i", "x", "x", "backspace", "enter")
 	p.until(t, "the child active", func(m *Model) bool {
 		a, ok := m.activeAgent()
 		return ok && a.ParentAgentId != nil
@@ -775,10 +777,15 @@ func TestNewChildAgentWorktree(t *testing.T) {
 		t.Fatalf("child: %s in %v", child.Dir, child.Worktree)
 	}
 
-	// A failure shows on the status line, and creates nothing.
 	gittest.Git(t, repo, "branch", "taken")
-	p.keys("alt+left", "C-q", "c", "t", "a", "k", "e", "n", "enter")
-	p.until(t, "the failure", func(m *Model) bool { return strings.Contains(m.statusNotice, "taken") })
+	p.keys("alt+left", "C-q", "c", "\t", "\t", "t", "a", "k", "e", "n", "enter")
+	p.until(t, "the failure in the box", func(m *Model) bool {
+		f := m.agentForm
+		return f != nil && !f.busy && strings.Contains(f.err, "taken") && f.field == formWorktree
+	})
+	if len(p.m.agents()) != 2 {
+		t.Fatalf("agents %v", p.m.agents())
+	}
 }
 
 // TestAgentRowActivity: a row says what a running agent is doing when a human

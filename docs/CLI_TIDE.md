@@ -55,14 +55,14 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
-| Create an agent | `agent create` | `C-q a` | Same | |
-| Create a child | `agent create --parent-*` | `C-q c` | Same | |
-| Start it on a task | `--prompt` | type it into the agent | Later (tide) | Comes with the agent form, with the name and the rest |
-| Choose the name when creating | `--name` | a generated name, editable in the info tab | Later (tide) | Comes with an agent form, once there are more fields (ACA, model, role, name) |
-| Choose a worktree for an agent with no parent | `--worktree` | only for a child | Later (tide) | Comes with the agent form or the worktrees work |
-| Choose its model and permissions when creating | `--model`, `--permissions` | the defaults: the ACA's model, `full` | Later (tide) | Comes with the agent form (the wdx doc AGENT_CREATE, step 3) |
+| Create an agent | `agent create` | `C-q a`, a form | Same | tide asks every field in one box; the CLI takes flags and asks nothing, as each has a default |
+| Create a child | `agent create --parent-*` | `C-q c`, the same form with the parent filled in | Same | |
+| Start it on a task | `--prompt` | the form's Prompt, one line | Same | |
+| Choose the name when creating | `--name` | the form's Name | Same | |
+| Choose a worktree for an agent with no parent | `--worktree` | the form's Worktree | Same | |
+| Choose its model and permissions when creating | `--model`, `--permissions` | the form's Model and Permissions | Same | |
 | See its model and permissions | `agent get` | the info tab | Same | |
-| List the models to choose from | `agent models`, `--model`'s completion | the agent form's list | Later (tide) | Comes with the agent form (the wdx doc AGENT_CREATE, step 3) |
+| List the models to choose from | `agent models`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
 | List agents | `agent list` | the left pane | Same | |
 | Show an agent | `agent get` | the info tab | Same | The fields differ and change as needed: `agent get` also has session, pid and times |
 | Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |

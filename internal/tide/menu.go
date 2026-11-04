@@ -122,10 +122,7 @@ func (m *Model) selectionPart() menuPart {
 	}
 	if a, ok := m.childParent(); ok {
 		add(newChildKey, "new child", "child", func() tea.Cmd {
-			m.switcher, m.opening = nil, nil
-			m.child = &childBox{parent: a}
-			m.log.Info("child asked", "parent", a.Name)
-			return nil
+			return m.openAgentForm(&a)
 		})
 	}
 	if a, ok := m.infoTarget(); ok {
@@ -303,8 +300,7 @@ func (m *Model) globalPart() menuPart {
 	if _, ok := m.checkoutDir(); ok {
 		items = append(items,
 			menuItem{newAgentKey, "new agent", "agent", func() tea.Cmd {
-				m.switcher, m.opening = nil, nil
-				return m.createAgent()
+				return m.openAgentForm(nil)
 			}},
 			menuItem{newTerminalKey, "new terminal", "terminal", func() tea.Cmd {
 				m.switcher, m.opening = nil, nil

@@ -436,7 +436,7 @@ func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.
 // focus and shows the live screen, with nothing over it.
 func (m *Model) paneCursor() *tea.Cursor {
 	a := m.attachedIn(m.layout.focus)
-	if a == nil || a.pane == nil || !a.live || m.menu || m.confirm != nil || m.taskBox != nil || m.commit != nil || m.land != nil || m.comment != nil || m.child != nil || m.editorClose != nil || m.popupOpen() {
+	if a == nil || a.pane == nil || !a.live || m.menu || m.confirm != nil || m.taskBox != nil || m.commit != nil || m.land != nil || m.comment != nil || m.agentForm != nil || m.editorClose != nil || m.popupOpen() {
 		return nil
 	}
 	frames, ok := m.frames()
