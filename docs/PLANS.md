@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, is to be designed next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), being built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -624,6 +624,130 @@ Each builds and passes `make test` on its own.
 3. The runner and its wiring in the daemon, `plan run`, `task done`, `plan_started` on edits, the setting, the API.
 4. The CLI: `run`, `task done`, `task get`, `status` and `list`, the help and launch note.
 5. tide: states in the section and tab, `Enter` to an agent, `r`.
+6. docs/CLI_TIDE.md and the README.
+
+## Step 3 in detail (approved 2026-11-04)
+
+What the person does when a task cannot go on, and with a run as a whole: the landing check, `task retry`, `land`, `skip` and a person's `task done` on a failed task, `pause`, `resume`, `cancel` and `set --parallel`, in the API, the CLI and the plan's tab. No migration: 0022's CHECKs already hold every state and column.
+
+### What changes from the architecture above
+
+Found against step 2's code, each simpler than what it replaces:
+
+- **A retry goes through the runner's start**, not a path of its own: `task retry` moves the task back to `pending`, keeping its slot, and `Next` starts it as a start a crash cut short, first. So a retry waits for room under `parallel`, and a paused run starts it only on `resume`, as any start.
+- **A `land_failed` task is retried too**: `retry` resumes its agent with what went wrong (the conflicts, or the check), and its own `task done` lands it again, as any task's. `task land` is for a person who dealt with it themselves. The architecture had the agent resumed and the person landing after it, which is two steps for one answer.
+- **Closing the project pauses the plan, and opening it resumes it**, as the human expects (2026-11-04), shown rather than stored: while the project is closed, every view shows the run `paused` with `paused_reason: project_closed`, whatever its stored state. Underneath it is step 2's: nothing starts while the project is closed, the agents it stopped are waited for, and `StartProject` starts them again in their sessions when it opens. So opening gives back the state the person left: a plan they paused stays paused, one running runs again, with nothing written on close or open and no column to say who paused it.
+- **A plan's branch moved during the check lands again** (rebase, check, move), rather than failing with a new failure: only a person moves it, and once.
+- **A skipped task's slot leaves the plan at once**, rather than at the end: its work, if it has any, becomes an ordinary worktree on its branch, and a slot with none is freed for the next task.
+
+### The landing check
+
+- Landing runs the project's landing check (`wdx project landing --check`), read at each landing, between the rebase and the move: none set, none run. It runs in the terminal `land-<plan>-<n>`, as `runLandCheck` does for a worktree, and a failed one keeps its terminal: the task is `land_failed` with `check`, and its view names the terminal (`check_terminal`).
+- A landing runs in a goroutine of its own, one per plan at a time, as a check can take many minutes; `Facts` gains `Landing`, and `Next` lands nothing while one is going but goes on starting tasks. The rebase and the move hold the daemon's `changes` lock; the check does not.
+- A landing needs the project open, for the check's terminal. One cut short (the project closed, the daemon stopped, the run cancelled) leaves the task `landing`, landed again when it can be. A check terminal of the plan's still running from a landing cut short is stopped and removed first: slots are the plan's, and so are their checks.
+
+### `Next`, as step 3 changes it
+
+In this order, for a run with no `finished_at`:
+
+1. `Fail`, as step 2.
+2. A `cancelled` run: `Stop` each live agent of its tasks, then `Release` each slot, then `Close` (writes `finished_at`). Tasks keep the states they had. Nothing else.
+3. `Release` the slot of a `skipped` task holding one: its agent stopped if live; with work (commits on its branch the plan's branch does not hold, or changes in the slot) the slot's row goes and the worktree stays, an ordinary one on `task/<plan>/<task>`; with none, detached and its branch deleted, free again.
+4. `Land` the first `landing` task, if the project is open and no landing is going.
+5. `Start`, as step 2, while `running`.
+6. `Finish` when every task is `done` or `skipped` and no landing is going, `running` or `paused` alike: a paused run has nothing left to hold back.
+
+### Starting a task that started before
+
+A task with a `started_at` was started before: its branch holds its earlier work, which wdx never resets.
+
+- Its branch is used as it is: `git switch task/<plan>/<task>` in its slot, or `git worktree add <path> task/<plan>/<task>` in a new one; never `switch -C`, and the ancestor check of step 2 is skipped.
+- Its `agent_id` still set: the agent is resumed (`Manager.Start`, same session), then the message below and `running` written in one transaction. One already live, after a crash, only gets them.
+- No `agent_id` (removed, `--fresh`, or `slot_missing`): a new agent, with the first message and a line that a previous attempt left its commits on this branch. Its name is `<plan>-<task>-<n>`, the lowest `n` from 2 no agent has, as the old one keeps its name; the old one is left `exited`, belonging to no task, for the person to read or remove.
+
+What the agent is told, by the task's `failure`, never logged:
+
+| `failure` | Resumed agent told |
+|---|---|
+| `agent_ended` | it ended before `task done`: go on with the task, then commit and run it |
+| `rebase` | rebase `task/<plan>/<task>` onto `plan/<name>`, resolve the conflicts in `<files>`, commit, and run `task done` again |
+| `check` | after rebasing onto `plan/<name>`, the check `<command>` failed, its output in terminal `<name>`: run it, fix it, commit, and run `task done` again |
+
+`start_failed` has no agent, so it is started as new; its branch, made by the failed start, holds nothing.
+
+### The person's answers
+
+| Answer | From | To | Refused |
+|---|---|---|---|
+| `task retry [--fresh]` | `failed`, `land_failed` | `pending`, keeping its slot; `--fresh` and `slot_missing` clear `agent_id`, `slot_missing` the slot | `task_state` |
+| `task land` | `land_failed` | `landing` | `task_state`; `not_committed`, `wrong_branch` as `task done`; `agent_working` while a live agent is in the slot |
+| `task done --plan --task --summary` | `running`, and now `failed` | `landing` | as step 2, and `agent_working` for a failed one |
+| `task skip` | `pending`, `failed`, `land_failed` | `skipped`, with `finished_at` | `task_state` |
+| `pause` | `running` | `paused`: nothing new starts; agents at work go on and land | `plan_not_running`; `unchanged` when paused; on a closed project it is stored, so the plan stays paused when the project opens |
+| `resume` | `paused` | `running` | `plan_not_running`; `unchanged` when running; `project_closed` while the project is closed, as nothing could run |
+| `cancel` | `running`, `paused` | `cancelled` | `plan_not_running` |
+| `set --parallel <n>` | `running`, `paused` | its `parallel`, 1 to 20 | `plan_not_running`; `unchanged` when the same |
+
+- Every answer needs a run `running` or `paused` (`plan_not_running`, new, 409, otherwise, also for a draft), wakes the runner, and is one `UPDATE … WHERE state IN (<from>)`.
+- A retry's slot, `failure` and `conflicts` stay until it is `running` again, so that its start knows what to say; views show `failure` only for `failed` and `land_failed`.
+- A run's `parallel` cannot go back to following the setting: nothing needs it yet.
+- Cancelling keeps every slot holding work as an ordinary worktree, removes the rest, and keeps `plan/<name>`: wdx never deletes work. A landing going is cut short (its check's terminal stopped), and its task stays `landing` in the cancelled run.
+
+### The API
+
+| Request | Returns |
+|---|---|
+| `POST /v1/plans/{plan}/pause`, `/resume`, `/cancel` | `paused`, `resumed`, `cancelled` or `unchanged`, `plan` |
+| `PATCH /v1/plans/{plan}` gains `parallel` | `updated` or `unchanged`, `plan` |
+| `POST /v1/plans/{plan}/tasks/{task}/retry` (`fresh`), `/land`, `/skip` | `retried`, `landing`, `skipped`, `task` |
+
+- `PlanRun` gains `paused_reason`: `person` when its stored state is `paused`, `project_closed` while its project is closed (which shows a running run as `paused`), else null. `Plan.state` follows the same rule, so that a list shows it.
+- `PlanTask` gains `check_terminal`, the name of the check's terminal when `land_failed` with `check`, else null; `failure` gains `check` in the enum.
+- `Plan` gains `tasks_failed`: its tasks `failed` or `land_failed`, null for a draft, so that a list shows a plan needing the person without reading each one.
+- New code `plan_not_running` (409). Reused: `task_state`, `not_committed`, `wrong_branch`, `agent_working`, `invalid_argument`, `project_closed`.
+
+### The CLI
+
+| Command | Text output |
+|---|---|
+| `plan pause (--id \| --name)` | `plan sso-login paused: nothing new starts, 2 tasks go on` |
+| `plan resume (--id \| --name)` | `plan sso-login running again` |
+
+`plan status` says `sso-login: paused (project closed), 2/4 tasks done, on plan/sso-login` while the project is closed.
+| `plan cancel (--id \| --name) [--yes]` | `plan sso-login cancelled: 2 agents stopped, 1 worktree kept` |
+| `plan set (--id \| --name) --parallel <n>` | `plan sso-login runs up to 4 tasks at once` |
+| `plan task retry --plan <name> --task <id> [--fresh]` | `task api of sso-login retried: its agent resumes` (or `a new agent starts`) |
+| `plan task land --plan <name> --task <id>` | `task api of sso-login landing on plan/sso-login` |
+| `plan task skip --plan <name> --task <id>` | `task api of sso-login skipped: what waits for it goes on without it` |
+
+- `cancel` asks `cancel sso-login? its running agents stop and it cannot run again [y/N]`; `--yes` answers it, and `--json` needs it. The others ask nothing: each is asked for by name, and none loses work.
+- `plan list`'s `TASKS` becomes `2/4, 1 failed`; `plan status` and `task get` show `failed: check (terminal land-sso-login-1)`, and `task get` the conflicts.
+- `wdx help plans` gains what to do when a task fails or does not land.
+
+### tide
+
+- The Plans section: `needs you` after `2/4` when `tasks_failed` is above 0, or an agent of its tasks is `waiting`, which tide already knows from the agents it has.
+- A plan of a closed project shows `paused (project closed)`, in the section and the tab.
+- The plan's tab: `p` pauses a running plan and resumes a paused one; `c` cancels it after a confirmation, as `r` runs one.
+- `Enter` on a `failed` or `land_failed` task opens a box of its answers: `r` retry, `f` fresh, `l` land (`land_failed` only), `s` skip, `t` its check's terminal (`check` only), `esc`. Each but `t` asks the daemon at once; a refusal shows as other actions' do.
+- Not in tide, said in docs/CLI_TIDE.md: `set --parallel` (tuning, rare; the setting is in the Settings tab), and a person's `task done` (a summary is written, best in a shell or by an agent).
+
+### Logging and tests
+
+- Each answer is logged with `plan_id`, `task_id` and why, as step 2's changes; the resumed agent's message by its size.
+- `Next`: table tests for a cancelled run's order, a skipped task's slot with work and without, no landing while one is going or the project is closed, finishing while paused.
+- In a daemon with the test ACA: a check that fails, then a retry whose agent fixes it and lands; a conflict landed by `task land` after the test resolves it in the slot; an agent that ends, retried and resumed, then `--fresh` with `-2`; a skip letting what waits go on; pause holding a start until resume; a project closed showing its running plan `paused (project closed)` and opened running it again, and one paused by the person staying paused across a close and open; cancel stopping agents and keeping the slot with work.
+- The CLI: an integration test per outcome of each new command.
+
+### Steps of step 3
+
+Each builds and passes `make test` on its own.
+
+1. The store's answers and `Next`'s new actions (`Stop`, `Release`, `Close`, finishing while paused, landing only when open and alone), table tests.
+2. The runner: landing in a goroutine with the check, `Release` and cancelling, a task that started before (its branch, a resumed or `-<n>` agent, the messages).
+3. The API and the daemon: pause, resume, cancel, `parallel`, retry, land, skip, a person's `task done` on a failed task, `plan_not_running`, `tasks_failed`, `check_terminal`.
+4. The CLI: the new commands, `list`, `status`, `task get`, help.
+5. tide: `needs you`, `p`, `c`, the answers' box.
 6. docs/CLI_TIDE.md and the README.
 
 ## Open
