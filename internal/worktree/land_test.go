@@ -418,54 +418,55 @@ func moveOn(t *testing.T, dir, name, content string) string {
 	return tip
 }
 
-func TestLandOnto(t *testing.T) {
+func TestRebaseOnto(t *testing.T) {
 	t.Parallel()
 	dir, slot := planSlot(t, "task")
 	commit(t, slot, "more", "a\n")
 	want := head(t, slot, "HEAD")
-	got, err := LandOnto(t.Context(), slot, "plan/x")
+	tip := head(t, dir, "plan/x")
+	got, err := RebaseOnto(t.Context(), slot, "plan/x")
 	if err != nil || got != want {
-		t.Fatalf("landed %s, %v; want %s", got, err, want)
+		t.Fatalf("rebased to %s, %v; want %s", got, err, want)
 	}
-	if head(t, dir, "plan/x") != want || head(t, dir, "main") == want {
-		t.Error("plan/x not moved, or main moved")
+	if head(t, dir, "plan/x") != tip {
+		t.Error("plan/x moved")
 	}
 }
 
-func TestLandOntoRebasesFirst(t *testing.T) {
+func TestRebaseOntoABaseMovedOn(t *testing.T) {
 	t.Parallel()
 	dir, slot := planSlot(t, "task")
 	commit(t, slot, "more", "a\n")
 	before := head(t, slot, "HEAD")
 	tip := moveOn(t, dir, "earlier", "b\n")
-	got, err := LandOnto(t.Context(), slot, "plan/x")
+	got, err := RebaseOnto(t.Context(), slot, "plan/x")
 	if err != nil || got == before || got != head(t, slot, "HEAD") {
-		t.Fatalf("landed %s, %v", got, err)
+		t.Fatalf("rebased to %s, %v", got, err)
 	}
-	if head(t, dir, "plan/x") != got || head(t, slot, "HEAD^") != tip {
-		t.Error("plan/x does not hold the earlier commit and then this one")
+	if head(t, slot, "HEAD^") != tip || head(t, dir, "plan/x") != tip {
+		t.Error("the slot does not hold the earlier commit and then this one, or plan/x moved")
 	}
 }
 
-func TestLandOntoNothingCommitted(t *testing.T) {
+func TestRebaseOntoNothingCommitted(t *testing.T) {
 	t.Parallel()
 	dir, slot := planSlot(t, "task")
 	tip := head(t, dir, "plan/x")
-	if got, err := LandOnto(t.Context(), slot, "plan/x"); err != nil || got != tip || head(t, dir, "plan/x") != tip {
-		t.Fatalf("landed %s, %v", got, err)
+	if got, err := RebaseOnto(t.Context(), slot, "plan/x"); err != nil || got != tip {
+		t.Fatalf("rebased to %s, %v", got, err)
 	}
 }
 
-func TestLandOntoUndoesARebaseThatStops(t *testing.T) {
+func TestRebaseOntoUndoesARebaseThatStops(t *testing.T) {
 	t.Parallel()
 	dir, slot := planSlot(t, "task")
 	commit(t, slot, "file", "theirs\n")
 	before := head(t, slot, "HEAD")
 	tip := moveOn(t, dir, "file", "ours\n")
-	_, err := LandOnto(t.Context(), slot, "plan/x")
+	_, err := RebaseOnto(t.Context(), slot, "plan/x")
 	e, ok := errors.AsType[*git.RebaseError](err)
 	if !ok || !slices.Equal(e.Conflicts, []string{"file"}) {
-		t.Fatalf("landed: %v", err)
+		t.Fatalf("rebased: %v", err)
 	}
 	if head(t, slot, "HEAD") != before || head(t, dir, "plan/x") != tip {
 		t.Error("something moved")

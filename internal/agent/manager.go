@@ -267,6 +267,40 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, []string, error)
 	return a.OnRow(t), stopped, nil
 }
 
+// ResumeLinked goes on with the agent in its session: it tells it text, and has
+// linked write what points at it, in one transaction, then starts it if it is not
+// running, as Start does. So a task's agent resumed is never running for its task
+// without being told why. A tombstone fails with a *RemovedError.
+func (m *Manager) ResumeLinked(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
+	}
+	tx, err := m.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Agent{}, err
+	}
+	defer tx.Rollback()
+	if err := m.terminals.Store().AddFirstMessage(ctx, tx, a.Terminal.ID, a.SessionID, text); err != nil {
+		return Agent{}, err
+	}
+	if err := linked(ctx, tx, id); err != nil {
+		return Agent{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Agent{}, err
+	}
+	logging.FromContext(ctx).Info("agent resumed", "agent_id", id, "message_bytes", len(text), "live", a.Terminal.State.Live())
+	if a.Terminal.State.Live() {
+		return a, nil
+	}
+	a, _, err = m.Start(ctx, id)
+	return a, err
+}
+
 // Stop ends the agent's AI coding agent, if it runs, and waits until it is gone. Its
 // session stays, to go on with; its project opening does not start it again, as it
 // does an agent stopped with the project.

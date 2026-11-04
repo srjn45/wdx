@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func (f fixture) agent(t *testing.T, id string) {
@@ -408,6 +409,31 @@ func TestFirstMessage(t *testing.T) {
 	}
 	if got := firstMessage(Run{Definition: Definition{Goal: "g", Tasks: []Task{{ID: "a", Prompt: "p"}}}}, "x", "a"); strings.Contains(got, "Constraints") || strings.Contains(got, "Done before you") {
 		t.Errorf("a first task with no constraints: %s", got)
+	}
+}
+
+func TestRetryNote(t *testing.T) {
+	t.Parallel()
+	run := Run{Branch: "plan/auth"}
+	started := time.UnixMilli(1)
+	for _, tc := range []struct {
+		task TaskRun
+		want string
+	}{
+		{TaskRun{ID: "a"}, ""},
+		{TaskRun{ID: "a", StartedAt: started, Failure: FailureAgentEnded}, "You ended before saying task a of the plan auth was done. Go on with it where you left it.\n"},
+		{TaskRun{ID: "a", StartedAt: started, Failure: FailureStartFailed}, "You ended before saying task a of the plan auth was done. Go on with it where you left it.\n"},
+		{TaskRun{ID: "a", StartedAt: started, Failure: FailureRebase, Conflicts: []string{"x.go", "y.go"}},
+			"Landing task a of the plan auth on plan/auth stopped on conflicts in x.go, y.go, and was undone. Rebase task/auth/a onto plan/auth, resolve them, and go on.\n"},
+		{TaskRun{ID: "a", StartedAt: started, Failure: FailureCheck},
+			"After rebasing task a of the plan auth onto plan/auth, the check `make check` failed; its output is in the terminal land-auth-1. Run it, fix what fails, and go on.\n"},
+	} {
+		if got := retryNote(run, tc.task, "make check", "/r/.worktrees/auth-1"); got != tc.want {
+			t.Errorf("%s %s: got %q, want %q", tc.task.ID, tc.task.Failure, got, tc.want)
+		}
+	}
+	if got := previousAttempt(run, "task/auth/a", "why\n"); got != "A previous attempt at this task left its commits on this branch, task/auth/a: read them with `git log plan/auth..HEAD` before going on.\nwhy\n" {
+		t.Errorf("previous attempt: %q", got)
 	}
 }
 

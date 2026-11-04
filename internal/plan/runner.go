@@ -41,9 +41,20 @@ type RunnerOptions struct {
 	// CreateAgent starts an agent told first, and has linked write what points at it
 	// in the transaction that adds it. It returns the agent's id.
 	CreateAgent func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (string, error)
+	// ResumeAgent goes on with an agent in its session, told text, with linked
+	// written in the transaction that tells it, and starts it if it is not running.
+	ResumeAgent func(ctx context.Context, agentID, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error
+	// AgentNameTaken reports whether an agent of the project has name.
+	AgentNameTaken func(ctx context.Context, projectID, name string) (bool, error)
 	// StopAgent ends an agent so that its project opening does not start it again.
 	StopAgent   func(ctx context.Context, agentID string) error
 	AgentStates func(ctx context.Context, ids []string) (map[string]AgentState, error)
+	// CheckCommand is the project's landing check, "" for none.
+	CheckCommand func(ctx context.Context, projectID string) (string, error)
+	// Check runs command in the slot at dir, in the terminal CheckTerminal names,
+	// until it ends; one that fails keeps its terminal. A check cut short by ctx is
+	// stopped.
+	Check func(ctx context.Context, projectID, dir, command string) error
 	// Changed is told of every step, for the project's stream.
 	Changed func(projectID string)
 }
@@ -56,21 +67,26 @@ type Runner struct {
 	store *Store
 	opts  RunnerOptions
 
-	mu    sync.Mutex
-	woken []string // plan ids, in the order they were woken
-	wake  chan struct{}
-	done  chan struct{}
+	mu       sync.Mutex
+	woken    []string                      // plan ids, in the order they were woken
+	landings map[string]context.CancelFunc // the plans with a landing going, which each cuts short
+	landers  sync.WaitGroup
+	wake     chan struct{}
+	done     chan struct{}
 }
 
 // NewRunner returns a Runner of the plans in store, which ends with ctx.
 func NewRunner(ctx context.Context, store *Store, opts RunnerOptions) *Runner {
-	r := &Runner{ctx: ctx, store: store, opts: opts, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	r := &Runner{ctx: ctx, store: store, opts: opts, landings: map[string]context.CancelFunc{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	go r.loop()
 	return r
 }
 
-// Wait waits for the runner to end, once its context is done.
-func (r *Runner) Wait() { <-r.done }
+// Wait waits for the runner and its landings to end, once its context is done.
+func (r *Runner) Wait() {
+	<-r.done
+	r.landers.Wait()
+}
 
 // Wake has the runner look at the plan with id; it never blocks.
 func (r *Runner) Wake(id string) {
@@ -136,7 +152,7 @@ func (r *Runner) runPlan(id string) {
 	ctx := logging.NewContext(r.ctx, logging.FromContext(r.ctx).With("debug_id", logging.NewDebugID(), "plan_id", id))
 	logging.FromContext(ctx).Info("plan woken")
 	for r.ctx.Err() == nil {
-		if !r.lock() {
+		if !r.lock(r.ctx) {
 			return
 		}
 		// A step runs to its end: git cut short could leave a rebase half done.
@@ -152,8 +168,8 @@ func (r *Runner) runPlan(id string) {
 	}
 }
 
-// lock takes the changes' lock, unless the runner ends first.
-func (r *Runner) lock() bool {
+// lock takes the changes' lock, unless ctx ends first.
+func (r *Runner) lock(ctx context.Context) bool {
 	got := make(chan struct{})
 	go func() {
 		r.opts.Changes.Lock()
@@ -162,13 +178,21 @@ func (r *Runner) lock() bool {
 	select {
 	case <-got:
 		return true
-	case <-r.ctx.Done():
+	case <-ctx.Done():
 		go func() {
 			<-got
 			r.opts.Changes.Unlock()
 		}()
 		return false
 	}
+}
+
+// landing returns how to cut short the plan's landing going, if one is.
+func (r *Runner) landing(planID string) (context.CancelFunc, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cancel, ok := r.landings[planID]
+	return cancel, ok
 }
 
 // step does the first thing Next says, and reports whether there was one.
@@ -181,7 +205,12 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	f := Facts{Run: run, Parallel: run.Parallel, ProjectOpen: project.Open, SlotsGone: map[int]bool{}}
+	cancelLanding, landing := r.landing(id)
+	if landing && run.State == StateCancelled {
+		logging.FromContext(ctx).Info("landing cut short, as the plan is cancelled")
+		cancelLanding()
+	}
+	f := Facts{Run: run, Parallel: run.Parallel, ProjectOpen: project.Open, Landing: landing, SlotsGone: map[int]bool{}}
 	if f.Parallel == 0 {
 		f.Parallel = r.opts.Parallel()
 	}
@@ -211,6 +240,13 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 		return true, r.dropSlot(ctx, run, a.Slot)
 	case ActionFail:
 		return true, r.store.FailTask(ctx, id, a.Task, TaskRunning, a.Failure)
+	case ActionStop:
+		task, _ := run.Task(a.Task)
+		return true, r.opts.StopAgent(ctx, task.AgentID)
+	case ActionRelease:
+		return true, r.release(ctx, run, f, a.Task, a.Slot)
+	case ActionClose:
+		return true, r.store.Close(ctx, id)
 	case ActionLand:
 		return true, r.land(ctx, run, a.Task)
 	case ActionStart:
@@ -276,14 +312,19 @@ func (r *Runner) start(ctx context.Context, run Run, project ProjectInfo, taskID
 	return r.store.FailTask(ctx, run.PlanID, taskID, from, FailureStartFailed)
 }
 
+// startIn puts the slot on the task's branch and starts its agent. A task that
+// started before keeps its branch as it is, with its earlier work, and resumes its
+// agent if it still has one, or starts a new one named after the attempt.
 func (r *Runner) startIn(ctx context.Context, run Run, project ProjectInfo, taskID string, slot int) error {
 	name := planName(run)
 	branch := TaskBranch(name, taskID)
+	task, _ := run.Task(taskID)
 	exists, err := git.BranchExists(ctx, project.Clone, branch)
 	if err != nil {
 		return err
 	}
-	if exists {
+	again := exists && !task.StartedAt.IsZero()
+	if exists && !again {
 		// A start a crash cut short made it; one holding commits not on the plan's
 		// branch is someone's work.
 		held, err := git.IsAncestor(ctx, project.Clone, branch, run.Branch)
@@ -298,27 +339,69 @@ func (r *Runner) startIn(ctx context.Context, run Run, project ProjectInfo, task
 	if sl, ok := slotOf(run, slot); ok {
 		path = sl.Path
 	}
-	if _, err := os.Stat(path); err == nil {
-		if err := git.SwitchReset(ctx, path, branch, run.Branch); err != nil {
-			return err
-		}
-	} else {
-		if err := git.ResetBranch(ctx, project.Clone, branch, run.Branch); err != nil {
-			return err
-		}
-		if err := r.opts.AddWorktree(ctx, run.ProjectID, path, branch); err != nil {
-			return err
-		}
+	if err := r.putOnBranch(ctx, run, project, path, branch, again); err != nil {
+		return err
 	}
 	if _, ok := slotOf(run, slot); !ok {
 		if err := r.store.AddSlot(ctx, run.PlanID, slot, path); err != nil {
 			return err
 		}
 	}
-	_, err = r.opts.CreateAgent(ctx, run.ProjectID, name+"-"+taskID, path, firstMessage(run, name, taskID), func(ctx context.Context, tx db.Execer, agentID string) error {
+	linked := func(ctx context.Context, tx db.Execer, agentID string) error {
 		return r.store.StartTask(ctx, tx, run.PlanID, taskID, agentID)
-	})
+	}
+	check, err := r.opts.CheckCommand(ctx, run.ProjectID)
+	if err != nil {
+		return err
+	}
+	why := retryNote(run, task, check, path)
+	if task.AgentID != "" {
+		logging.FromContext(ctx).Info("task's agent resumed", "task_id", taskID, "agent_id", task.AgentID, "failure", task.Failure)
+		return r.opts.ResumeAgent(ctx, task.AgentID, why+doneLine(), linked)
+	}
+	agentName := name + "-" + taskID
+	first := firstMessage(run, name, taskID)
+	if !task.StartedAt.IsZero() {
+		if agentName, err = r.attemptName(ctx, run.ProjectID, agentName); err != nil {
+			return err
+		}
+		first = previousAttempt(run, branch, why) + first
+	}
+	_, err = r.opts.CreateAgent(ctx, run.ProjectID, agentName, path, first, linked)
 	return err
+}
+
+// putOnBranch puts the slot at path on the task's branch: from the plan's branch,
+// or as it is for a task that started before.
+func (r *Runner) putOnBranch(ctx context.Context, run Run, project ProjectInfo, path, branch string, again bool) error {
+	_, err := os.Stat(path)
+	switch {
+	case err == nil && again:
+		on, err := git.CurrentBranch(ctx, path)
+		if err != nil || on == branch {
+			return err
+		}
+		return git.Switch(ctx, path, branch)
+	case err == nil:
+		return git.SwitchReset(ctx, path, branch, run.Branch)
+	case !again:
+		if err := git.ResetBranch(ctx, project.Clone, branch, run.Branch); err != nil {
+			return err
+		}
+	}
+	return r.opts.AddWorktree(ctx, run.ProjectID, path, branch)
+}
+
+// attemptName is name-<n> for the lowest n from 2 no agent of the project has: a
+// task's earlier agent keeps its name.
+func (r *Runner) attemptName(ctx context.Context, projectID, name string) (string, error) {
+	for n := 2; ; n++ {
+		try := name + "-" + strconv.Itoa(n)
+		taken, err := r.opts.AgentNameTaken(ctx, projectID, try)
+		if err != nil || !taken {
+			return try, err
+		}
+	}
 }
 
 // newSlotNumber is the lowest number neither a slot of the run, nor held by a task,
@@ -363,13 +446,47 @@ func firstMessage(run Run, plan, taskID string) string {
 		}
 	}
 	fmt.Fprintf(&b, "Your task:\n%s\n", task.Prompt)
-	fmt.Fprintf(&b, "When it is done, commit your work on this branch, then run:\n    %s plan task done --agent-id $%s --summary \"<what you did, in a few lines>\"\n",
-		identity.Name, identity.Env("AGENT_ID"))
+	b.WriteString(doneLine())
 	return b.String()
 }
 
+// doneLine is how a task's agent says it is done.
+func doneLine() string {
+	return fmt.Sprintf("When it is done, commit your work on this branch, then run:\n    %s plan task done --agent-id $%s --summary \"<what you did, in a few lines>\"\n",
+		identity.Name, identity.Env("AGENT_ID"))
+}
+
+// CheckTerminal names the terminal that runs the landing check of the slot at path,
+// as a worktree's landing names its own.
+func CheckTerminal(path string) string { return "land-" + filepath.Base(path) }
+
+// retryNote says why the task runs again, by why it failed; "" for a task that
+// never started. Never logged, as it names the plan's files.
+func retryNote(run Run, task TaskRun, check, slotPath string) string {
+	plan := planName(run)
+	switch {
+	case task.StartedAt.IsZero():
+		return ""
+	case task.Failure == FailureRebase:
+		return fmt.Sprintf("Landing task %s of the plan %s on %s stopped on conflicts in %s, and was undone. Rebase %s onto %s, resolve them, and go on.\n",
+			task.ID, plan, run.Branch, strings.Join(task.Conflicts, ", "), TaskBranch(plan, task.ID), run.Branch)
+	case task.Failure == FailureCheck:
+		return fmt.Sprintf("After rebasing task %s of the plan %s onto %s, the check `%s` failed; its output is in the terminal %s. Run it, fix what fails, and go on.\n",
+			task.ID, plan, run.Branch, check, CheckTerminal(slotPath))
+	default:
+		return fmt.Sprintf("You ended before saying task %s of the plan %s was done. Go on with it where you left it.\n", task.ID, plan)
+	}
+}
+
+// previousAttempt is what a new agent of a task that started before is told first.
+func previousAttempt(run Run, branch, why string) string {
+	return fmt.Sprintf("A previous attempt at this task left its commits on this branch, %s: read them with `git log %s..HEAD` before going on.\n%s",
+		branch, run.Branch, why)
+}
+
 // land stops the task's agent, so that nothing writes in its slot, and lands the
-// slot on the plan's branch. A rebase that stops leaves the task land_failed.
+// slot on the plan's branch in a goroutine of its own, as a check can take many
+// minutes; the plan is woken when it ends.
 func (r *Runner) land(ctx context.Context, run Run, taskID string) error {
 	log := logging.FromContext(ctx).With("task_id", taskID)
 	task, _ := run.Task(taskID)
@@ -383,23 +500,194 @@ func (r *Runner) land(ctx context.Context, run Run, taskID string) error {
 		log.Info("landing task holds no slot", "slot", task.Slot)
 		return r.store.LandFailed(ctx, run.PlanID, taskID, FailureRebase, nil)
 	}
-	commit, err := worktree.LandOnto(ctx, sl.Path, run.Branch)
+	check, err := r.opts.CheckCommand(ctx, run.ProjectID)
 	if err != nil {
-		var conflicts []string
-		if e, ok := errors.AsType[*git.RebaseError](err); ok {
-			conflicts = e.Conflicts
-		}
-		log.Info("task not landed", "slot", sl.Number, "err", err)
-		return r.store.LandFailed(ctx, run.PlanID, taskID, FailureRebase, conflicts)
+		return err
 	}
+	lctx, cancel := context.WithCancel(logging.NewContext(r.ctx, log))
+	r.mu.Lock()
+	r.landings[run.PlanID] = cancel
+	r.mu.Unlock()
+	log.Info("landing started", "slot", sl.Number, "check", check != "")
+	r.landers.Go(func() {
+		wake := r.landTask(lctx, run, taskID, sl, check)
+		r.mu.Lock()
+		delete(r.landings, run.PlanID)
+		r.mu.Unlock()
+		cancel()
+		if wake {
+			r.Wake(run.PlanID)
+		}
+	})
+	return nil
+}
+
+// landTask rebases the slot onto the plan's branch, runs the check, and moves the
+// branch to the slot's commit, again from the rebase if the branch moved during the
+// check. Git runs to its end, holding the changes' lock; the check holds nothing,
+// and one cut short, or ended by its project closing, leaves the task landing, to
+// land again when it can. It reports whether to wake the plan: not after a step
+// that failed, which, as any step's failure, waits for the plan's next wake rather
+// than going round again at once.
+func (r *Runner) landTask(ctx context.Context, run Run, taskID string, sl Slot, check string) (wake bool) {
+	log := logging.FromContext(ctx)
+	gitCtx := context.WithoutCancel(ctx)
+	wake = true
+	locked := func(do func() error) bool {
+		if !r.lock(ctx) {
+			log.Info("landing cut short")
+			return false
+		}
+		defer r.opts.Changes.Unlock()
+		defer r.opts.Changed(run.ProjectID)
+		if err := do(); err != nil {
+			log.Error("landing step failed", "err", err)
+			wake = false
+			return false
+		}
+		return true
+	}
+	failed := func(failure string, conflicts []string) {
+		locked(func() error { return r.store.LandFailed(gitCtx, run.PlanID, taskID, failure, conflicts) })
+	}
+	for {
+		var commit string
+		var rebaseErr error
+		if !locked(func() error {
+			commit, rebaseErr = worktree.RebaseOnto(gitCtx, sl.Path, run.Branch)
+			return nil
+		}) {
+			return wake
+		}
+		if rebaseErr != nil {
+			var conflicts []string
+			if e, ok := errors.AsType[*git.RebaseError](rebaseErr); ok {
+				conflicts = e.Conflicts
+			}
+			log.Info("task not landed", "slot", sl.Number, "err", rebaseErr)
+			failed(FailureRebase, conflicts)
+			return wake
+		}
+		if check != "" {
+			err := r.opts.Check(ctx, run.ProjectID, sl.Path, check)
+			if ctx.Err() != nil {
+				log.Info("landing cut short during the check")
+				return wake
+			}
+			if err != nil {
+				if p, perr := r.opts.Project(gitCtx, run.ProjectID); perr == nil && !p.Open {
+					log.Info("landing waits for the project to open", "err", err)
+					return wake
+				}
+				log.Info("task's check failed", "slot", sl.Number, "err", err)
+				failed(FailureCheck, nil)
+				return wake
+			}
+		}
+		again := false
+		if !locked(func() error {
+			now, err := worktree.RebaseOnto(gitCtx, sl.Path, run.Branch)
+			if err != nil || now != commit {
+				log.Info("plan's branch moved during the check: landing again", "err", err)
+				again = true
+				return nil
+			}
+			return r.landed(gitCtx, run, taskID, sl, commit)
+		}) || !again {
+			return wake
+		}
+	}
+}
+
+// landed moves the plan's branch to commit, and frees the slot: detached at it, the
+// task's branch deleted, as the plan's holds it.
+func (r *Runner) landed(ctx context.Context, run Run, taskID string, sl Slot, commit string) error {
+	if err := git.MoveBranch(ctx, sl.Path, run.Branch, commit); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("landed", "slot", sl.Number, "branch", run.Branch, "commit", commit)
 	if err := git.Detach(ctx, sl.Path, commit); err != nil {
 		return err
 	}
 	branch := TaskBranch(planName(run), taskID)
 	if deleted, err := git.DeleteBranch(ctx, sl.Path, branch); err != nil || !deleted {
-		log.Info("task branch kept", "branch", branch, "err", err)
+		logging.FromContext(ctx).Info("task branch kept", "branch", branch, "err", err)
 	}
 	return r.store.Landed(ctx, run.PlanID, taskID)
+}
+
+// release takes back the slot a skipped task holds, whose agent has ended, or, in a
+// cancelled run whose agents are stopped, any slot. One holding work (changes, or commits on its task's branch the plan's
+// branch does not hold) leaves the plan as an ordinary worktree, as wdx never
+// deletes work. One holding none is freed: detached at the plan's branch, its
+// task's branch deleted; and removed if the run is cancelled.
+func (r *Runner) release(ctx context.Context, run Run, f Facts, taskID string, slot int) error {
+	log := logging.FromContext(ctx).With("task_id", taskID, "slot", slot)
+	leave := func() error {
+		if taskID == "" {
+			return nil
+		}
+		return r.store.LeaveSlot(ctx, run.PlanID, taskID)
+	}
+	sl, ok := slotOf(run, slot)
+	if !ok || f.SlotsGone[slot] {
+		return leave() // Next drops a slot gone that nothing holds
+	}
+	branch := TaskBranch(planName(run), taskID)
+	work, err := holdsWork(ctx, sl.Path, branch, run.Branch, taskID != "")
+	if err != nil {
+		return err
+	}
+	if work {
+		log.Info("slot kept as a worktree, as it holds work", "path", sl.Path)
+		if err := r.store.DropSlot(ctx, run.PlanID, slot); err != nil {
+			return err
+		}
+		return leave()
+	}
+	if taskID != "" {
+		tip, err := git.Resolve(ctx, sl.Path, run.Branch)
+		if err != nil {
+			return err
+		}
+		if err := git.Detach(ctx, sl.Path, tip); err != nil {
+			return err
+		}
+		if exists, err := git.BranchExists(ctx, sl.Path, branch); err == nil && exists {
+			if deleted, err := git.DeleteBranch(ctx, sl.Path, branch); err != nil || !deleted {
+				log.Info("task branch kept", "branch", branch, "err", err)
+			}
+		}
+		if err := leave(); err != nil {
+			return err
+		}
+	}
+	if run.State != StateCancelled {
+		log.Info("slot freed", "path", sl.Path)
+		return nil
+	}
+	if err := r.opts.RemoveWorktree(ctx, run.ProjectID, sl.Path); err != nil {
+		log.Info("slot kept, as git would not remove it", "path", sl.Path, "err", err)
+	}
+	return r.store.DropSlot(ctx, run.PlanID, slot)
+}
+
+// holdsWork reports whether the slot at path has changes, or, when it was a task's,
+// commits on branch that base does not hold.
+func holdsWork(ctx context.Context, path, branch, base string, tasks bool) (bool, error) {
+	changes, err := git.Changes(ctx, path)
+	if err != nil || len(changes) > 0 {
+		return len(changes) > 0, err
+	}
+	if !tasks {
+		return false, nil
+	}
+	exists, err := git.BranchExists(ctx, path, branch)
+	if err != nil || !exists {
+		return false, err
+	}
+	held, err := git.IsAncestor(ctx, path, branch, base)
+	return !held, err
 }
 
 // finish leaves the run's branch in one of its free slots, an ordinary worktree now

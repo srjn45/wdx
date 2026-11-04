@@ -54,11 +54,27 @@ func (d *Daemon) startRunner() {
 			a, err := d.agents.CreateLinked(ctx, projectID, name, dir, first, linked)
 			return a.ID, err
 		},
+		ResumeAgent: func(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error {
+			_, err := d.agents.ResumeLinked(ctx, id, text, linked)
+			return err
+		},
+		AgentNameTaken: func(ctx context.Context, projectID, name string) (bool, error) {
+			_, err := d.agents.Store().GetByName(ctx, projectID, name)
+			if errors.Is(err, agent.ErrNotFound) {
+				return false, nil
+			}
+			return err == nil, err
+		},
 		StopAgent: func(ctx context.Context, id string) error {
 			_, err := d.agents.Stop(ctx, id)
 			return err
 		},
 		AgentStates: d.agentStates,
+		CheckCommand: func(ctx context.Context, projectID string) (string, error) {
+			v, _, err := d.projects.LandSettings(ctx, projectID)
+			return v.Check, err
+		},
+		Check: d.runPlanCheck,
 		Changed: func(projectID string) {
 			d.tracker.Refresh(projectID, "")
 			d.notices.notify()
@@ -109,4 +125,28 @@ func (d *Daemon) agentEnded(terminalID string) {
 		logging.FromContext(ctx).Info("task's agent ended", "agent_id", a.ID, "plan_id", planID, "task_id", taskID)
 		d.runner.Wake(planID)
 	}
+}
+
+// runPlanCheck runs the project's landing check in a slot, as a worktree's landing
+// does, in the terminal plan.CheckTerminal names. A check of the slot's still
+// running is a landing's that was cut short, as slots are the plan's: it is stopped
+// first. One cut short now is stopped too.
+func (d *Daemon) runPlanCheck(ctx context.Context, projectID, dir, command string) error {
+	stop := func(ctx context.Context) {
+		t, err := d.terminals.Store().GetByName(ctx, projectID, plan.CheckTerminal(dir))
+		if err != nil || !t.State.Live() {
+			return
+		}
+		if _, err := d.terminals.Remove(ctx, t.ID, true); err != nil {
+			logging.FromContext(ctx).Error("plan check not stopped", "terminal_id", t.ID, "err", err)
+			return
+		}
+		logging.FromContext(ctx).Info("plan check stopped", "terminal_id", t.ID)
+	}
+	stop(ctx)
+	err := d.runLandCheck(ctx, projectID, filepath.Base(dir), dir, command, func(string) {})
+	if ctx.Err() != nil {
+		stop(context.WithoutCancel(ctx))
+	}
+	return err
 }
