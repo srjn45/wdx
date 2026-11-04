@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built, and step 5 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1 is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -830,6 +830,58 @@ The rest of the lifecycle: `copy`, to run a plan again or start from one, and `a
 1. Copy, archive and unarchive in the store, the API and the CLI.
 2. tide: archived plans hidden and found, `a` and `y` in the tab.
 3. docs/CLI_TIDE.md, `wdx help plans` and the README.
+
+## Step 5 in detail (approved 2026-11-04)
+
+tide groups what a plan runs: its agents under a row for the plan in the Agents section, and its slots under one in the Worktrees section, so that a run of five tasks is one row to fold rather than ten scattered. And a slot is kept from being landed or removed while its plan runs, on both sides, as either breaks the run.
+
+### What changes from the architecture above
+
+- **`Enter` on a plan's row opens the plan's tab**, as in the Plans section, rather than folding it: `←` `→` and a click on the mark fold, as for a parent agent and a worktree. One key meaning one thing in every section.
+- **A slot's diff stays against the default branch**, not the plan's, for now: the tracker would need a base of its own for some paths, which no one has asked for yet, and `plan task get` and the task's summary already say what a task did. Suggested for later.
+- **The guard on a slot is in the daemon**, not only tide: `worktree land` or `worktree remove` on a slot breaks the run from the CLI as much as from tide.
+
+### Where the slots come from
+
+- `Plan` gains `slots`: `[{"slot": 1, "path": "/r/.worktrees/sso-1", "task": "schema"}]`, `task` null for a free one, `[]` for a plan with none (a draft, and a run once finished or cancelled, whose slots are then ordinary worktrees or gone). From `plan_slots` and the tasks holding them.
+- The project's stream sends a plan again when its row changes; adding and dropping a slot touch it already, and taking or freeing one comes with a task's change of state, which does too. So tide learns of every slot from the plans it already has, and the worktree tracker learns nothing of plans.
+
+### The Agents section
+
+- **A plan's agents** (those whose `task` names a plan) are under a row for the plan, at the place its first agent would have: `− plan sso running 2/4`, its state and progress as in the Plans section. Their own children stay under them.
+- **Folded** with `←`, unfolded with `→` or a click on the mark; it starts unfolded. Folded, it says how many agents are under it and `needs you` as the Plans section does, so a stuck task is not hidden. The fold is kept in the project's view with the agents' (`folded`, as `plan:<plan id>`).
+- **`Enter` on it** opens the plan's tab.
+- **The filter** matches agents by name, as now, and shows a match under its plan's row; a plan's name matching shows all its agents, as a parent agent's does.
+- A plan's row is no agent: `i`, `r`, `x` and the rest of an agent's lines are not on it.
+
+### The Worktrees section
+
+- **A plan's slots** are under a row for the plan, at the place of its first slot: `− plan sso plan/sso`. Each slot is its worktree's row as now, with its files under it, and after its name the task in it and that task's agent, `schema · bold-heron`, or `free`, muted.
+- **Folded** as above, on its own: folding a plan in one section leaves it as it is in the other. Kept in the view as `slots_folded`, the ids of the plans whose slots are folded.
+- **`L` and `x` on a slot** are not offered: the menu leaves `x` out, and `L` in its tab says `sso-1 is a slot of plan sso, which lands it on plan/sso`. `Enter` opens its tab as any worktree's.
+
+### The guard
+
+- **A new code, `worktree_in_plan`** (409): `worktree land` and `worktree remove` (`POST /v1/worktrees/{worktree}/land`, `DELETE /v1/projects/{project}/worktrees/{worktree}`) on a path in `plan_slots`, with the plan under `details.plan`. The hint: `it is a slot of plan sso, which lands its tasks on plan/sso: wdx plan status --name sso`.
+- Once the plan is done or cancelled its slots are no longer slots (Finishing, and `cancel`), and are landed and removed as any.
+
+### docs/CLI_TIDE.md
+
+- Rows: a plan's agents and slots grouped (tide; the CLI's `plan status` has `AGENT` and `SLOT`, and `agent list --json` the task), and landing or removing a slot refused (both).
+
+### Logging and tests
+
+- plan store: `slots` on a run with a slot held and one free, and none once finished.
+- daemon: `worktree land` and `worktree remove` on a slot, `worktree_in_plan` with the plan; and on the plan's last worktree once done, landed as any.
+- cli: one test per outcome for the new code on both commands, with the hint.
+- tide: a plan's agents under its row, at its first agent's place, folded with its count and `needs you`, the fold kept in the view, `Enter` opening the plan's tab, the filter; a plan's slots under its row, `free` muted, a slot's task and agent, no `x` and `L` refused on a slot.
+
+### Steps of step 5
+
+1. `slots` on a plan, and the guard: the store, the API and the CLI.
+2. tide: the Agents section's plan rows.
+3. tide: the Worktrees section's plan rows, and `L` and `x` on a slot.
+4. docs/CLI_TIDE.md and the README.
 
 ## Open
 
