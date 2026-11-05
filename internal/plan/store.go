@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -77,9 +78,9 @@ func (s *Store) Create(ctx context.Context, projectID, name, folder string, cont
 }
 
 // Copy creates a draft named name from the latest revision of the plan with id, in
-// any state, checked as Create checks a new plan: a plan of plans' copy is refused,
-// as the plans it lists have a parent. It goes in folder, or the plan's when folder
-// is nil, and has none of the plan's history or run.
+// any state, checked as Create checks a new plan; a plan of plans is copied with
+// the plans it lists that are not done, as copyParent says. It goes in folder, or the plan's when
+// folder is nil, and has none of the plan's history or run.
 func (s *Store) Copy(ctx context.Context, id, name string, folder *string) (Saved, error) {
 	from, err := s.Get(ctx, id)
 	if err != nil {
@@ -93,12 +94,125 @@ func (s *Store) Copy(ctx context.Context, id, name string, folder *string) (Save
 	if folder != nil {
 		to = *folder
 	}
+	if from.Plans != nil {
+		return s.copyParent(ctx, from, name, to, content)
+	}
 	saved, err := s.Create(ctx, from.ProjectID, name, to, content)
 	if err != nil {
 		return Saved{}, err
 	}
 	logging.FromContext(ctx).Info("plan copied", "plan_id", saved.Plan.ID, "name", saved.Plan.Name, "from_id", from.ID, "from_name", from.Name, "revision", from.Revision)
 	return saved, nil
+}
+
+// copyParent copies the plan of plans from, of content, as name, with each plan it
+// lists that is not done, as drafts in folder, to run again what is left: each
+// takes its name and the first -<n> free for every one of them, and the copy lists
+// only those, its afters on the plans done gone. A copy that fails halfway removes
+// what it made.
+func (s *Store) copyParent(ctx context.Context, from Plan, name, folder string, content []byte) (Saved, error) {
+	log := logging.FromContext(ctx).With("from_id", from.ID, "from_name", from.Name)
+	left, err := s.notDone(ctx, from)
+	if err != nil {
+		return Saved{}, err
+	}
+	if len(left) == 0 {
+		return Saved{}, ErrAllDone
+	}
+	done := len(from.Plans) - len(left)
+	from.Plans = left
+	if taken, err := s.GetByName(ctx, from.ProjectID, name); err == nil {
+		return Saved{}, &NameTakenError{Name: name, Plan: taken}
+	} else if !errors.Is(err, ErrNotFound) {
+		return Saved{}, err
+	}
+	names, err := s.freeCopyNames(ctx, from, name)
+	if err != nil {
+		return Saved{}, err
+	}
+	var made []string
+	undo := func() {
+		for _, id := range made {
+			if _, err := s.Remove(ctx, id); err != nil {
+				log.Error("half a copy left", "plan_id", id, "err", err)
+			}
+		}
+	}
+	for _, child := range from.Plans {
+		id, err := s.copyChild(ctx, from.ProjectID, child, names[strings.ToLower(child)], folder)
+		if err != nil {
+			undo()
+			return Saved{}, err
+		}
+		made = append(made, id)
+	}
+	text, err := renamed(content, names)
+	if err == nil {
+		var saved Saved
+		if saved, err = s.Create(ctx, from.ProjectID, name, folder, text); err == nil {
+			log.Info("plan of plans copied", "plan_id", saved.Plan.ID, "name", name, "plans", len(made), "done_left_out", done)
+			return saved, nil
+		}
+	}
+	undo()
+	return Saved{}, err
+}
+
+// ErrAllDone is returned for copying a plan of plans whose plans are all done:
+// there is nothing left to run again.
+var ErrAllDone = errors.New("every plan it lists is done: nothing is left to run again")
+
+// notDone returns the names of the plans p lists that are not done, in its order.
+func (s *Store) notDone(ctx context.Context, p Plan) ([]string, error) {
+	children, err := s.children(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	var left []string
+	for _, c := range children {
+		if c.State != StateDone {
+			left = append(left, c.Name)
+		}
+	}
+	return left, nil
+}
+
+// copyChild copies the plan called name as a draft called to in folder, and
+// returns the copy's id.
+func (s *Store) copyChild(ctx context.Context, projectID, name, to, folder string) (string, error) {
+	c, err := s.GetByName(ctx, projectID, name)
+	if err != nil {
+		return "", err
+	}
+	text, _, _, err := s.Content(ctx, c.ID, 0)
+	if err != nil {
+		return "", err
+	}
+	saved, err := s.Create(ctx, projectID, to, folder, text)
+	return saved.Plan.ID, err
+}
+
+// freeCopyNames returns the names of the copies of the plans from lists, by their
+// names lowercased: each its name and -<n>, n the first from 2 free for every one,
+// and none the copy's own name.
+func (s *Store) freeCopyNames(ctx context.Context, from Plan, name string) (map[string]string, error) {
+	for n := 2; ; n++ {
+		names, free := map[string]string{}, true
+		for _, child := range from.Plans {
+			to := child + "-" + strconv.Itoa(n)
+			_, err := s.GetByName(ctx, from.ProjectID, to)
+			switch {
+			case err == nil, strings.EqualFold(to, name):
+				free = false
+			case !errors.Is(err, ErrNotFound):
+				return nil, err
+			}
+			names[strings.ToLower(child)] = to
+		}
+		if free {
+			return names, nil
+		}
+	}
 }
 
 // leaving returns the names of the plans with ids not in folder, which a plan of

@@ -24,16 +24,21 @@ func newPlanCopyCmd() *cobra.Command {
 		Long: "A plan runs once: running it again is a copy, then plan run. The plan can be\n" +
 			"in any state, archived too. The copy is checked as plan create checks a new\n" +
 			"plan, in the same project, and has none of the plan's history, run, branch or\n" +
-			"worktrees. A plan of plans cannot be copied, as the plans it lists already\n" +
-			"have a parent. It goes in --folder, or the plan's folder.",
+			"worktrees. It goes in --folder, or the plan's folder.\n\n" +
+			"A plan of plans is copied to run again what is left: with each plan it lists\n" +
+			"that is not done, as drafts in the same folder, each named with -<n>, the\n" +
+			"first n from 2 free for all of them (auth-b-2, auth-c-2). The copy lists\n" +
+			"those, without its afters on the plans done, whose work is in the default\n" +
+			"branch once landed. With every plan done, nothing is copied.",
 		Example: examples(
 			"Run a plan of the project you are in again", identity.Name+" plan copy --name sso --new-name sso-2",
 			"In another folder, as JSON", identity.Name+" plan copy --name sso --new-name sso-2 --folder /later --json",
+			"A plan of plans, with its plans", identity.Name+" plan copy --name auth --new-name auth-2",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not copied",
-			outputNote:    "The copy, at revision 1.\n" + `With --json: {"result": "created", "plan": {...}, "dropped": [], "moved": []}`,
+			outputNote:    "The copy, at revision 1; a plan of plans' copy, with the copies of its plans not done.\n" + `With --json: {"result": "created", "plan": {...}, "dropped": [], "moved": []}`,
 			resultList:    string(api.ResultCreated),
 			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPlan, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
@@ -79,6 +84,9 @@ func (r planCopied) text(w io.Writer, st style.Style) {
 		from = " from " + st.Name(r.from)
 	}
 	fmt.Fprintf(w, "plan %s %s%s, with %s\n", st.Name(r.Plan.Name), st.Success("created"), from, planSize(r.Plan))
+	if r.Plan.Plans != nil {
+		fieldPrinter(w, st, 8)("plans", nameList(st, *r.Plan.Plans))
+	}
 	planFields(w, st, r.Plan)
 }
 

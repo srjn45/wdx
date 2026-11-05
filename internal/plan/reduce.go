@@ -2,7 +2,9 @@ package plan
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -36,16 +38,52 @@ func Reduce(content []byte) (Reduced, []Problem) {
 		return Reduced{Content: content, Definition: p.def, Dropped: []Dropped{}}, nil
 	}
 	p.fill()
+	written, err := p.write()
+	if err != nil {
+		return Reduced{}, []Problem{{Line: 1, Message: "not written again once reduced: " + err.Error()}}
+	}
+	return Reduced{Content: written, Definition: p.def, Dropped: dropped}, nil
+}
+
+// write is the YAML of p's nodes, as they now are, comments kept.
+func (p *parsed) write() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(&p.doc); err != nil {
-		return Reduced{}, []Problem{{Line: 1, Message: "not written again once reduced: " + err.Error()}}
+		return nil, err
 	}
 	if err := enc.Close(); err != nil {
-		return Reduced{}, []Problem{{Line: 1, Message: "not written again once reduced: " + err.Error()}}
+		return nil, err
 	}
-	return Reduced{Content: buf.Bytes(), Definition: p.def, Dropped: dropped}, nil
+	return buf.Bytes(), nil
+}
+
+// renamed returns content, a valid plan, with each entry and each after named in
+// names, by its name lowercased, given its new name, and those it does not name
+// left out, with the afters naming them; its comments kept.
+func renamed(content []byte, names map[string]string) ([]byte, error) {
+	p := parse(content)
+	if len(p.problems) > 0 {
+		return nil, fmt.Errorf("the plan is not valid: %v", p.problems)
+	}
+	p.listed.Content = slices.DeleteFunc(p.listed.Content, func(item *yaml.Node) bool {
+		i := slices.IndexFunc(p.entries, func(e *entry) bool { return e.item == item })
+		_, kept := names[strings.ToLower(p.entries[i].id)]
+		return !kept
+	})
+	for _, e := range p.entries {
+		e.value.Value = names[strings.ToLower(e.id)]
+		if e.seq == nil {
+			continue
+		}
+		e.seq.Content = slices.DeleteFunc(e.seq.Content, func(a *yaml.Node) bool {
+			to, kept := names[strings.ToLower(a.Value)]
+			a.Value = to
+			return !kept
+		})
+	}
+	return p.write()
 }
 
 // reduce takes the redundant afters out of the entries and their nodes. An after

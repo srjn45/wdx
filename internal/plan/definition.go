@@ -63,6 +63,8 @@ type entry struct {
 	prompt string
 	line   int
 	key    *yaml.Node // the entry's id key, for its line
+	value  *yaml.Node // the id itself, which a copy renames
+	item   *yaml.Node // the entry's mapping, which a copy may leave out
 	afters []*yaml.Node
 	seq    *yaml.Node // its after's sequence, which reduction edits
 }
@@ -71,9 +73,10 @@ type entry struct {
 type parsed struct {
 	doc      yaml.Node
 	def      Definition
-	tasks    bool     // a plan of tasks, not of plans
-	entries  []*entry // as in the file
-	ordered  []*entry // in DAG order, once checked
+	tasks    bool       // a plan of tasks, not of plans
+	entries  []*entry   // as in the file
+	listed   *yaml.Node // the sequence of tasks or plans
+	ordered  []*entry   // in DAG order, once checked
 	problems []Problem
 }
 
@@ -127,10 +130,10 @@ func (p *parsed) top(root *yaml.Node) {
 		case "constraints":
 			p.def.Constraints = p.texts(kv.value, "constraints")
 		case "tasks":
-			tasks = kv.key
+			tasks, p.listed = kv.key, kv.value
 			p.entries = p.list(kv.value, "tasks", "task", maxTaskID, true)
 		case "plans":
-			plans = kv.key
+			plans, p.listed = kv.key, kv.value
 			p.entries = p.list(kv.value, "plans", "plan", maxChildID, false)
 		}
 	}
@@ -228,12 +231,12 @@ func (p *parsed) list(n *yaml.Node, what, one string, maxID int, prompted bool) 
 			p.problem(item.Line, "a %s is not a mapping of %s", one, strings.Join(known, ", "))
 			continue
 		}
-		e := &entry{line: item.Line}
+		e := &entry{line: item.Line, item: item}
 		var prompt *yaml.Node
 		for _, kv := range p.pairs(item, known...) {
 			switch kv.key.Value {
 			case "id":
-				e.key = kv.key
+				e.key, e.value = kv.key, kv.value
 				e.id, _ = p.text(kv.value, "the id")
 			case "after":
 				e.seq = p.afterList(kv.value)

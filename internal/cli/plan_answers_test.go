@@ -180,6 +180,11 @@ func testPlanLifecycle(t *testing.T, home, repo string) {
 	if v, exit := run("copy", "--name", "sso", "--new-name", "sso-4", "--folder", "Later"); exit != api.ExitOK || v.Plan.Folder != "/later" {
 		t.Errorf("copy in a folder: exit %d, %+v", exit, v)
 	}
+	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso-4\n")
+	if out := wdxWith(t, home, in(repo), "plan", "copy", "--name", "big", "--new-name", "big-2"); out.exit != api.ExitOK ||
+		!strings.HasPrefix(out.stdout, "plan big-2 created from big, with 1 plan\n") || !strings.Contains(out.stdout, "sso-4-2") {
+		t.Errorf("a plan of plans' copy: %+v", out)
+	}
 	v, exit = run("copy", "--name", "sso", "--new-name", "SSO-2")
 	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
 	wantHint(t, v, "choose another --new-name")

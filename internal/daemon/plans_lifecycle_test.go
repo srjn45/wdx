@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -88,7 +89,6 @@ func TestPlanLifecycle(t *testing.T) {
 	}{
 		{"a name taken", "auth", "AUTH-2", http.StatusConflict, api.ErrorCodeNameTaken},
 		{"a name it cannot have", "auth", "auth_3", http.StatusUnprocessableEntity, api.ErrorCodeInvalidName},
-		{"a plan of plans", "big", "big-2", http.StatusUnprocessableEntity, api.ErrorCodeInvalidPlan},
 		{"no plan", "nowhere", "x", http.StatusNotFound, api.ErrorCodeNotFound},
 	} {
 		r, err := td.client.CopyPlanWithResponse(ctx, c.ref, &api.CopyPlanParams{Project: optional("app")}, api.CopyPlan{Name: c.name})
@@ -98,6 +98,10 @@ func TestPlanLifecycle(t *testing.T) {
 		if p := r.ApplicationproblemJSONDefault; p == nil || p.Code != c.code || p.Status != c.status {
 			t.Errorf("%s: want %d %s, got %s", c.what, c.status, c.code, r.Body)
 		}
+	}
+	parent, err := td.client.CopyPlanWithResponse(ctx, "big", &api.CopyPlanParams{Project: optional("app")}, api.CopyPlan{Name: "big-2"})
+	if err != nil || parent.JSON201 == nil || parent.JSON201.Plan.Plans == nil || !slices.Equal(*parent.JSON201.Plan.Plans, []string{"auth-2-2"}) {
+		t.Errorf("a plan of plans' copy: %v, %s", err, parent.Body)
 	}
 	wantRequestsLogged(t, td.home)
 }

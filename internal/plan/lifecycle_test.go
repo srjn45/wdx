@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -66,13 +67,10 @@ func TestCopy(t *testing.T) {
 	}
 
 	child := f.create(t, "child", tasks("a"))
-	parent := f.create(t, "parent", "goal: g\nplans:\n  - id: child\n")
+	f.create(t, "parent", "goal: g\nplans:\n  - id: child\n")
 	s, err = f.store.Copy(ctx, child.ID, "child-2", nil)
 	if err != nil || s.Plan.Parent != "" {
 		t.Errorf("a child's copy has a parent: %+v, %v", s.Plan, err)
-	}
-	if got := problems(t, func() error { _, err := f.store.Copy(ctx, parent.ID, "parent-2", nil); return err }()); len(got) != 1 {
-		t.Errorf("a plan of plans' copy: %+v", got)
 	}
 	var taken *NameTakenError
 	if _, err := f.store.Copy(ctx, draft.ID, "DONE", nil); !errors.As(err, &taken) {
@@ -205,5 +203,77 @@ func TestSlotUses(t *testing.T) {
 	}
 	if _, ok, err := f.store.SlotAt(ctx, "/r/.worktrees/sso-2"); err != nil || ok {
 		t.Errorf("a slot dropped: %v, %v", ok, err)
+	}
+}
+
+// TestCopyParent: a plan of plans is copied with its plans not done, to run again
+// what is left, each named with the first -<n> free for all of them, the copy
+// listing them without its afters on the plans done, comments kept; a name taken,
+// a copy failing halfway, or every plan done, leaves nothing made.
+func TestCopyParent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	a := f.create(t, "a", tasks("a"))
+	f.create(t, "b", tasks("a"))
+	f.create(t, "c", tasks("a"))
+	auth := f.create(t, "auth", "goal: g\n# the order\nplans:\n  - id: a\n  - id: b\n  - id: c\n    after: [a, b]\n")
+	if _, _, _, err := f.store.Move(ctx, auth.ID, "/hub"); err != nil {
+		t.Fatal(err)
+	}
+	f.finishRun(t, a)
+	f.create(t, "c-2", tasks("z"))
+	count := func() int {
+		t.Helper()
+		list, err := f.store.List(ctx, auth.ProjectID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(list)
+	}
+
+	s, err := f.store.Copy(ctx, auth.ID, "auth-2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := s.Plan; p.Name != "auth-2" || p.State != StateDraft || p.Folder != "/hub" || !slices.Equal(p.Plans, []string{"b-3", "c-3"}) {
+		t.Errorf("the copy: %+v", p)
+	}
+	content, _, def, err := f.store.Content(ctx, s.Plan.ID, 0)
+	if err != nil || !slices.Equal(def.Plans[1].After, []string{"b-3"}) || !strings.Contains(string(content), "# the order") {
+		t.Errorf("the copy's content: %q, %+v, %v", content, def.Plans, err)
+	}
+	for _, name := range []string{"b-3", "c-3"} {
+		if c := f.get(t, name); c.Parent != "auth-2" || c.Folder != "/hub" || c.State != StateDraft || c.Tasks != 1 {
+			t.Errorf("%s: %+v", name, c)
+		}
+	}
+	if _, err := f.store.GetByName(ctx, auth.ProjectID, "a-3"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the plan done was copied: %v", err)
+	}
+	if p := f.get(t, "auth"); !slices.Equal(p.Plans, []string{"a", "b", "c"}) {
+		t.Errorf("the plan copied changed: %+v", p)
+	}
+
+	if s, err := f.store.Copy(ctx, auth.ID, "b-4", nil); err != nil || !slices.Equal(s.Plan.Plans, []string{"b-5", "c-5"}) {
+		t.Errorf("a copy named as one of its plans' copies would be: %+v, %v", s.Plan, err)
+	}
+	before := count()
+	var taken *NameTakenError
+	if _, err := f.store.Copy(ctx, auth.ID, "B", nil); !errors.As(err, &taken) || taken.Name != "B" {
+		t.Errorf("a copy given a name taken: %v", err)
+	}
+	if _, err := f.store.Copy(ctx, auth.ID, "bad_name", nil); err == nil {
+		t.Error("a copy with a name it cannot have")
+	}
+	if got := count(); got != before {
+		t.Errorf("refused copies left %d plans, want %d", got, before)
+	}
+
+	f.create(t, "d", tasks("a"))
+	small := f.create(t, "small", "goal: g\nplans:\n  - id: d\n")
+	f.finishRun(t, f.get(t, "d"))
+	if _, err := f.store.Copy(ctx, small.ID, "small-2", nil); !errors.Is(err, ErrAllDone) {
+		t.Errorf("every plan done: %v", err)
 	}
 }
