@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built; step 6, running plans of plans, designed in detail and approved on 2026-11-05 (Step 6 in detail); its step 1, the parent's run, is next. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -377,7 +377,8 @@ Each is designed again in detail before it is built.
 3. The person's part: `land_failed` and `failed`, the check, `land`, `retry`, `skip`, `pause`, `resume`, `cancel`, `set --parallel`, in the CLI and the tab.
 4. The rest of the lifecycle: `copy`, `archive`, `unarchive`.
 5. tide's grouping of a plan's agents and slots.
-6. Running plans of plans: a parent starting its children, waiting for the person at each PR, stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged.
+6. Running plans of plans: a parent starting its children, each from the default branch once the plans before it have landed, waiting for the person at each PR; copying a plan of plans.
+7. Stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged: split from step 6 by the human on 2026-11-05, to design once running parents has been used.
 
 ## Step 1 in detail (proposed)
 
@@ -885,8 +886,70 @@ tide groups what a plan runs: its agents under a row for the plan in the Agents 
 3. tide: the Worktrees section's plan rows, and `L` and `x` on a slot.
 4. docs/CLI_TIDE.md and the README.
 
+## Step 6 in detail (approved 2026-11-05)
+
+A plan of plans runs: it starts each of its plans once the plans before it are done and their work is in the default branch, and waits for the person where it cannot tell. Stacking is step 7. Decided by the human on 2026-11-05: step 6 without stacking; a child goes on by itself when git shows the work before it landed, and otherwise waits for the person's answer; a plan a parent lists still runs only through its parent, and a parent still lists only drafts; copying a parent copies its plans.
+
+### What changes from the architecture above
+
+- **A child starts only once the plans before it have landed**, not merely finished: without stacking, a child's branch starts from the default branch, which must already hold the work it waits for. The Agreed "waits for the person, who has the PR reviewed and merged" is that wait.
+- **wdx fetches nothing and moves no branch of the person's** for it: a child always starts from the local default branch. A PR merged on GitHub is known only once the person pulls it.
+
+### The parent's run
+
+- `plan run` on a plan of plans, a draft whose plans are all drafts: checked as a plan's run is (`project_closed`, `plan_started`), and every child's `plan/<child>` must be free (`branch_exists`, naming it), so that a run does not stop halfway on a branch in the way. It writes the parent's `plan_runs` row, with `base` the default branch its plans start from and `branch` empty, as it has none, and no `plan_tasks` rows: a child's state is its own run's. Then it wakes the parent.
+- **`NextParent`**, pure as `Next`, from the parent's state, each child's state and whether each child's work has landed: for a parent `running`, each child that is a draft whose `after` are all `done` and landed is started (`Runner.Start`, from the default branch); a child whose `after` are all `done` but not all landed waits for the person; when every child is `done`, the parent is `done`.
+- **Landed** is read with git alone: `plan/<child>`'s tip is an ancestor of the local default branch (`git merge-base --is-ancestor`), as after a landing by rebase through wdx, or a PR merged with a merge commit and pulled. A squash-merged PR is not seen this way: the person's answer finds it.
+- **What wakes a parent**: its run and resume, a child's run ending (Finishing, and `cancel`), a landing through wdx ending in its project, the person's answer, and the daemon starting. Never a timer, and never GitHub.
+- **Pause and resume** a parent: no new child starts; pausing also pauses its children that run, and resuming resumes its children that are paused.
+- **Cancel** a parent: its children that run or are paused are cancelled, as each is by `plan cancel`; those never started stay drafts, under it. A cancelled or done parent is archived as any plan, its plans that are over with it; `plan list` leaves out a draft whose parent is archived, unless `--all`.
+- A child started by its parent fails to start (a branch made in the meantime, the project closing): logged, and the child waits for the person, whose answer says why.
+- The runner's step for a parent holds the daemon's changes lock as a plan's does; a child's `Start` runs in it.
+
+### The person's answer
+
+- **`plan run` on a child whose parent runs** is the answer: it starts the child when its `after` are `done` and landed. Landed is read as above, then, for each that is not, by asking gh about `plan/<child>`'s PR: merged, and its merge commit in the local default branch. gh runs here because the person asked.
+- Refused, with the plans in `details.plans`:
+  - `plan_not_landed` (new, 409): one before it is done but not landed. Hint: `land auth-a first (wdx worktree land --name auth-a), or pull main once its PR is merged`; with its PR merged but its merge commit not in the default branch, `pull main: auth-a's PR is merged on GitHub`.
+  - `plan_not_finished` (reused): one before it is not done.
+  - `plan_in_use` (as now): its parent does not run.
+- `gh.PullRequest` gains `MergeCommit`, read with `pr view --json mergeCommit`.
+
+### The API and the CLI
+
+- A plan of plans in a response: `state` from its run, `plans_done` (new, null for a plan of tasks and a draft) next to the `plans` it lists. `plan list`'s `TASKS` says `1/3 plans`.
+- `plan status` on a parent: `PLAN`, `STATE`, `AFTER`, `TASKS`, in DAG order, a child waiting for the person `waiting for you` and one waiting for others `waiting for auth-a`; `--json` as a plan's, its plans under `plans`.
+- `pause`, `resume`, `cancel`, `archive` and `unarchive` take a parent; `plan set --parallel` refuses one (`invalid_argument`: each child has its own).
+- **`plan copy` on a parent** copies it and each plan it lists, as drafts in the same folder (or `--folder`): the parent `--new-name`, each child its name with the first `-<n>` free for every one of them (`auth-a-2`, `auth-b-2`), the new parent's YAML naming the new children. `name_taken` names the first name taken.
+- `ErrPlansDoNotRun` goes.
+
+### tide
+
+- A parent's tab: each plan in DAG order with its state and `2/4`, a child waiting for the person `waiting for you`; `r` runs a draft parent after a y/n question, `p` pauses or resumes it, `c` cancels it after a y/n question, `y` copies it with its plans, `a` archives it.
+- On a child's row waiting for the person, `r` gives the answer: it starts it, or says why not in the bar, as the CLI's refusal does.
+- The Plans section: a parent's state and `1/3`, and `needs you` when a child waits for the person or one of its plans needs them.
+
+### docs/CLI_TIDE.md, help and README
+
+- Rows: running a plan of plans, a child going on (by itself, or the person's answer), copying a plan of plans; the copy row's step 6 note goes.
+- `wdx help plans`: how a plan of plans runs, and how its plans go on.
+
+### Logging and tests
+
+- Logged at info with `plan_id` and `child`: each child started and why, each found landed or not and how (git, or gh with the PR's number), each wait for the person.
+- `NextParent`: table tests. Runner: a parent of A and B after A, with the test ACA and real git: A runs and finishes; B waits; A's worktree landed through wdx starts B by itself; another where B waits, `plan run --name B` refused with `plan_not_landed`, then with gh (ghtest) saying merged and its merge commit in main, started. Pause, resume and cancel of a parent reaching its children. Copy of a parent.
+- cli: one test per outcome of the new code, and of running a parent; tide: the parent's tab and its keys, `r` on a waiting child.
+
+### Steps of step 6
+
+1. The parent's run: `NextParent`, landed by git, waking, pause, resume, cancel, archive; the API and CLI (`run`, `status`, `list`).
+2. The person's answer: `plan run` on a child, gh's merge commit, `plan_not_landed`.
+3. Copying a plan of plans.
+4. tide: the parent's tab and keys, the Plans section.
+5. docs/CLI_TIDE.md, help and README.
+
 ## Open
 
 For the steps that need them, not step 1:
 
-- Step 6: can a plan a parent lists be run on its own, and can a plan that has run be listed as a child?
+- Step 6, answered by the human on 2026-11-05: a plan a parent lists runs only through its parent, and a plan that has run cannot be listed as a child, as before.
