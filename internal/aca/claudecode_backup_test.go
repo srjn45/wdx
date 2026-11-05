@@ -112,7 +112,7 @@ func TestClaudeCodeBackUpWritesTheConversation(t *testing.T) {
 	}
 
 	text := b.text(t)
-	wantInOrder(t, text, "# Session s-1", "## User · 2026-11-01T13:09:49Z", "fix the login bug",
+	wantInOrder(t, text, "# Session s-1 · claude_code\n", "## User · 2026-11-01T13:09:49Z", "fix the login bug",
 		"## Assistant · 2026-11-01T13:09:51Z", "Looking now.", "### Tool: Read", `{"file_path":"login.go"}`,
 		"### Result (error)", "````\na ``` fence\n````")
 	if strings.Count(text, "## Assistant") != 1 {
@@ -177,7 +177,7 @@ func TestClaudeCodeBackUpGoesOnAcrossCompactAndClear(t *testing.T) {
 	if got := b.backUp(t); got != "s-2" {
 		t.Errorf("session = %q, want the latest", got)
 	}
-	wantInOrder(t, b.text(t), "# Session s-1", "before compact", "## Compacted", "the summary", "# Session s-2", "after clear")
+	wantInOrder(t, b.text(t), "# Session s-1 · claude_code\n", "before compact", "## Compacted", "the summary", "# Session s-2 · claude_code\n", "after clear")
 
 	// A hook's half-written line says nothing yet.
 	appendFile(t, sessions, `{"session_id":"s-`)

@@ -19,7 +19,6 @@ import (
 // and a fence counts only straight after a tool's or a result's heading.
 var (
 	claudeCodeMessageHeading = regexp.MustCompile(`^## (User|Assistant|Compacted) · (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$`)
-	claudeCodeSessionHeading = regexp.MustCompile(`^# Session (\S+)$`)
 	claudeCodeToolHeading    = regexp.MustCompile(`^### Tool: (\S+)$`)
 	claudeCodeResultHeading  = regexp.MustCompile(`^### Result( \(error\))?$`)
 	claudeCodeFence          = regexp.MustCompile("^`{3,}$")
@@ -187,7 +186,7 @@ func (r *claudeCodeBriefReader) read() error {
 			r.text(line)
 			continue
 		}
-		if m := claudeCodeSessionHeading.FindStringSubmatch(line); m != nil {
+		if m := transcriptSessionHeading.FindStringSubmatch(line); m != nil {
 			r.session(m[1])
 			r.text(line)
 			continue

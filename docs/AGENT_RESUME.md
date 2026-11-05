@@ -35,7 +35,7 @@ Parked on 2026-11-01 until an agent's history is built.
 
 Decided by the human on 2026-11-01; built. `agent start` goes on with the same conversation, whatever its size. `wdx agent restart` keeps the agent and begins a new session, in which the agent reads only what it needs of its history. This replaces the earlier decision to have no restart command. Rotating, handing off and switching ACA are still not being built.
 
-- **The steps.** The ACA is stopped, the backup is brought up to date, a new session starts under the same agent id, and its first message tells the agent to read `wdx agent transcript --brief`, and older lines if it needs them. `transcript.md` goes on growing, with a heading for the new session.
+- **The steps.** The ACA is stopped, the backup is brought up to date, a new session starts under the same agent id, and its first message tells the agent to read `wdx agent transcript --brief`, and older lines if it needs them. `transcript.md` goes on growing, with a heading for the new session, `# Session <id> · <ACA id>` (sessions rendered before the ACA was named have `# Session <id>`).
 - **Who asks.** A person or a script: `wdx agent restart (--id | --name) [project flags] [--force]`, and a key in tide with a confirmation. Nothing restarts an agent by itself, though auto-resume could later fall back on it when a resume keeps failing.
 - **While the agent is working** it is refused with a conflict, unless `--force` is given, as a stop in the middle of a turn can leave work half done.
 - **Where.** In the worktree the agent was last in if it still exists, or else its own directory, which the first message then says.

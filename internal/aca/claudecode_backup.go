@@ -730,7 +730,7 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 		return 0
 	}
 	if r.Session != session {
-		fmt.Fprintf(w, "# Session %s\n\n", session)
+		writeSessionHeading(w, session, ClaudeCodeID)
 		r.Session, r.Message = session, ""
 	}
 	heading := func(name string) {

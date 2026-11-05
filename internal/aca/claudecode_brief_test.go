@@ -92,9 +92,23 @@ func TestBriefStartsAtTheLatestCompaction(t *testing.T) {
 }
 
 // A restart does not stop the brief, which would lose the original request; a /clear
-// does, and the restarts since it go on from there.
+// does, and the restarts since it go on from there. Sessions rendered before the heading
+// named the ACA have only their id, and are read the same.
 func TestBriefLooksBackThroughRestartsToAClear(t *testing.T) {
 	t.Parallel()
+	for name, heading := range map[string]string{
+		"named":       "# Session %s · claude_code\n\n",
+		"from_before": "# Session %s\n\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			briefLooksBackThroughRestartsToAClear(t, func(session string) string { return fmt.Sprintf(heading, session) })
+		})
+	}
+}
+
+func briefLooksBackThroughRestartsToAClear(t *testing.T, session func(string) string) {
+	t.Helper()
 	ctx := context.Background()
 	b := newClaudeBackup(t)
 	restart := func(session string) {
@@ -104,11 +118,11 @@ func TestBriefLooksBackThroughRestartsToAClear(t *testing.T) {
 		}
 		b.launch.SessionID = session
 	}
-	before := "# Session s-1\n\n" + message("User", 1, "the original request")
+	before := session("s-1") + message("User", 1, "the original request")
 	restart("s-2")
-	first := before + "# Session s-2\n\n" + message("User", 2, "you were restarted")
+	first := before + session("s-2") + message("User", 2, "you were restarted")
 	restart("s-3")
-	second := first + "# Session s-3\n\n" + message("User", 3, "you were restarted again")
+	second := first + session("s-3") + message("User", 3, "you were restarted again")
 	_, text := b.brief(t, 64<<10, second)
 	wantInOrder(t, text, "the original request", "you were restarted", "you were restarted again")
 
@@ -119,7 +133,7 @@ func TestBriefLooksBackThroughRestartsToAClear(t *testing.T) {
 	if len(got.Start) != 0 {
 		t.Errorf("nothing since the /clear, but: %s", text)
 	}
-	got, text = b.brief(t, 64<<10, second+"# Session s-5\n\n"+message("User", 5, "since the clear")+message("Assistant", 6, "yes"))
+	got, text = b.brief(t, 64<<10, second+session("s-5")+message("User", 5, "since the clear")+message("Assistant", 6, "yes"))
 	wantInOrder(t, text, "since the clear", "yes")
 	wantNot(t, text, "the original request", "you were restarted")
 	if got.From == 0 {
