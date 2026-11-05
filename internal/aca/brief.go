@@ -2,12 +2,14 @@ package aca
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -201,7 +203,7 @@ func (r *transcriptBriefReader) read() error {
 		r.prevBlank = true
 		r.thinking = false
 		if name != "" {
-			tool := &briefLine{text: fmt.Sprint(at), tool: name + claudeCodeShortInput(body)}
+			tool := &briefLine{text: fmt.Sprint(at), tool: name + transcriptShortInput(body)}
 			r.unanswered = append(r.unanswered, tool)
 			if r.current != nil {
 				r.current.add(tool)
@@ -300,7 +302,7 @@ func (r *transcriptBriefReader) fencedBody(keep bool) (string, bool, error) {
 			return body, true, nil
 		}
 		if first && keep {
-			body = line[:min(len(line), claudeCodeInputKept)]
+			body = line[:min(len(line), transcriptInputKept)]
 		}
 	}
 }
@@ -353,4 +355,75 @@ func (r *transcriptBriefReader) brief() Brief {
 		b.OmittedFrom, b.OmittedCount = r.omitted, r.rest[0].line-r.omitted
 	}
 	return b
+}
+
+const (
+	// transcriptInputKept is as much of a tool's input as its short form looks at: a
+	// Write's holds a whole file.
+	transcriptInputKept = 16 << 10
+	transcriptInputShow = 100
+)
+
+// transcriptInputKeys are what a tool's input is best told by, in order.
+var transcriptInputKeys = []string{"command", "file_path", "path", "notebook_path", "pattern", "query", "url", "skill", "description", "prompt"}
+
+// transcriptShortInput is a tool's input in a few words, with a space before them. An
+// input that is not a JSON object, as Codex's apply_patch writes, is told by its first
+// line.
+func transcriptShortInput(input string) string {
+	if !strings.HasPrefix(strings.TrimSpace(input), "{") {
+		first, _, _ := strings.Cut(strings.TrimSpace(input), "\n")
+		return transcriptShown(first)
+	}
+	values := map[string]string{}
+	var first string
+	d := json.NewDecoder(strings.NewReader(input))
+	if _, err := d.Token(); err != nil {
+		return ""
+	}
+	// By its tokens, as an input past transcriptInputKept is cut off: what comes first
+	// is still read.
+	for d.More() {
+		key, err := d.Token()
+		if err != nil {
+			break
+		}
+		var value any
+		if err := d.Decode(&value); err != nil {
+			break
+		}
+		text, ok := value.(string)
+		// Codex's exec gives its command as the shell's arguments, the command line
+		// last.
+		if words, isList := value.([]any); isList && key == "command" && len(words) > 0 {
+			text, ok = words[len(words)-1].(string)
+		}
+		if ok {
+			if first == "" {
+				first = text
+			}
+			values[fmt.Sprint(key)] = text
+		}
+	}
+	short := first
+	for _, key := range transcriptInputKeys {
+		if v, ok := values[key]; ok {
+			short = v
+			break
+		}
+	}
+	return transcriptShown(short)
+}
+
+// transcriptShown is a short input on one line and cut to transcriptInputShow, with a
+// space before it, or nothing when it is empty.
+func transcriptShown(short string) string {
+	short = strings.Join(strings.Fields(short), " ")
+	if short == "" {
+		return ""
+	}
+	if runes := []rune(short); len(runes) > transcriptInputShow {
+		short = string(runes[:transcriptInputShow]) + "…"
+	}
+	return " " + short
 }
