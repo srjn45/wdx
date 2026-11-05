@@ -23,6 +23,9 @@ type Store struct {
 
 	mu        sync.Mutex
 	summaries map[string]summary // by plan id
+	// waiting are the plans waiting for the person, by the id of the plan of plans
+	// listing them, as its runner last saw them.
+	waiting map[string][]string
 }
 
 // summary is what a plan's row shows of its latest revision's definition, kept so
@@ -38,7 +41,7 @@ type summary struct {
 // NewStore returns a Store backed by database, keeping a copy of each plan's latest
 // revision in dir.
 func NewStore(database *sql.DB, dir string) *Store {
-	return &Store{db: database, docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}}
+	return &Store{db: database, docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}, waiting: map[string][]string{}}
 }
 
 // Saved is what Create and Update did: the plan, the afters reduction dropped,
@@ -401,6 +404,7 @@ func (s *Store) List(ctx context.Context, projectID string) ([]Plan, error) {
 		}
 		p := view(d, sum, names[d.ParentID], runs[d.ID])
 		p.Slots = slots[d.ID]
+		p.PlansWaiting = s.waitingIn(d.ID)
 		plans = append(plans, p)
 	}
 	return plans, nil
@@ -539,7 +543,32 @@ func (s *Store) plan(ctx context.Context, d doc.Doc) (Plan, error) {
 	}
 	p := view(d, sum, parent, runs[d.ID])
 	p.Slots = slots[d.ID]
+	p.PlansWaiting = s.waitingIn(d.ID)
 	return p, nil
+}
+
+// waitingIn returns the plans the plan of plans with id lists that wait for the
+// person, as its runner last saw them.
+func (s *Store) waitingIn(id string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.waiting[id])
+}
+
+// setWaiting keeps the names of the plans the plan of plans with id lists that
+// wait for the person, and reports whether they changed.
+func (s *Store) setWaiting(id string, names []string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slices.Equal(s.waiting[id], names) {
+		return false
+	}
+	if len(names) == 0 {
+		delete(s.waiting, id)
+	} else {
+		s.waiting[id] = names
+	}
+	return true
 }
 
 func view(d doc.Doc, sum summary, parent string, run runState) Plan {

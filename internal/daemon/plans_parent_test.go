@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,6 +70,10 @@ func TestPlanOfPlansRuns(t *testing.T) {
 	wantProblem(t, set.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidArgument)
 	td.finishTask(t, repo, "sso", "s")
 	c = td.waitPlan(t, "big", "ui waiting for the person", childrenAre("sso:done ui:waiting"))
+	if c.Plan.PlansWaiting == nil || !slices.Equal(*c.Plan.PlansWaiting, []string{"ui"}) {
+		t.Errorf("waiting, as read: %v", c.Plan.PlansWaiting)
+	}
+	td.waitProject(t, "app", "the stream saying ui waits", func(e event) bool { return slices.Equal(planWaiting(e, "big"), []string{"ui"}) })
 	if *c.Plan.PlansDone != 1 || c.Plan.State != api.PlanStateRunning {
 		t.Errorf("sso done: %+v", c.Plan)
 	}
@@ -81,6 +86,7 @@ func TestPlanOfPlansRuns(t *testing.T) {
 		t.Fatalf("land sso: %v, %s", err, land.Body)
 	}
 	td.waitPlan(t, "big", "ui running", childrenAre("sso:done ui:running"))
+	td.waitProject(t, "app", "the stream saying none waits", func(e event) bool { w := planWaiting(e, "big"); return w != nil && len(w) == 0 })
 	if got := gitOut(t, repo, "show", "main:s.txt"); got != "s" {
 		t.Errorf("s.txt on main: %q", got)
 	}
@@ -325,4 +331,18 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 		t.Errorf("gh was asked %q", calls)
 	}
 	wantRequestsLogged(t, td.home)
+}
+
+// planWaiting returns what the event says of the plans the plan called name lists
+// that wait for the person; nil when it says nothing of it.
+func planWaiting(e event, name string) []string {
+	if e.project.Plans == nil {
+		return nil
+	}
+	for _, p := range *e.project.Plans {
+		if p.Name == name && p.PlansWaiting != nil {
+			return *p.PlansWaiting
+		}
+	}
+	return nil
 }

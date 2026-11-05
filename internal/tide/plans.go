@@ -163,13 +163,26 @@ func (m *Model) shownPlans() int {
 }
 
 // planNeedsYou reports whether the plan waits for the person: a task of it failed
-// or did not land, or the agent of one waits for input.
+// or did not land, or the agent of one waits for input; a plan its parent lists
+// waits for their answer, as the parent's plans_waiting says; a plan of plans has
+// one of those.
 func (m *Model) planNeedsYou(p api.Plan) bool {
 	if isArchived(p) {
 		return false // it is over
 	}
 	if p.TasksFailed != nil && *p.TasksFailed > 0 {
 		return true
+	}
+	if p.Parent != nil {
+		if parent, ok := m.planNamed(*p.Parent); ok && parent.PlansWaiting != nil && slices.ContainsFunc(*parent.PlansWaiting, func(n string) bool { return strings.EqualFold(n, p.Name) }) {
+			return true
+		}
+	}
+	if isParent(p) {
+		return slices.ContainsFunc(*p.Plans, func(name string) bool {
+			c, ok := m.planNamed(name)
+			return ok && !isParent(c) && m.planNeedsYou(c)
+		})
 	}
 	return slices.ContainsFunc(m.agents(), func(a api.Agent) bool {
 		return a.Task != nil && strings.EqualFold(a.Task.Plan, p.Name) && agentWaiting(a)
@@ -379,6 +392,9 @@ func planSize(p api.Plan) string {
 
 // planProgress is how far a plan's run is, as 2/4, or its size until it runs.
 func planProgress(p api.Plan) string {
+	if p.PlansDone != nil && p.Plans != nil {
+		return fmt.Sprintf("%d/%s", *p.PlansDone, plural(len(*p.Plans), "plan"))
+	}
 	if p.TasksDone != nil && p.Tasks != nil {
 		return fmt.Sprintf("%d/%d", *p.TasksDone, *p.Tasks)
 	}
@@ -608,11 +624,44 @@ func (m *Model) planTabRows() []valueRow {
 	}
 	if d.Plans != nil {
 		for _, child := range *d.Plans {
-			rows = append(rows, valueRow{key: child.Id, values: after(child.After), gap: first, verb: "open the plan", open: m.openChild(child.Id)})
+			r := valueRow{key: child.Id, values: after(child.After), gap: first, verb: "open the plan", open: m.openChild(child.Id)}
+			if c.Run != nil {
+				r.values = []string{childLine(child, *d.Plans)}
+			}
+			if child.Waiting {
+				r.note = "r starts it, once the plans before it are in the default branch"
+			}
+			rows = append(rows, r)
 			first = false
 		}
 	}
 	return rows
+}
+
+// childLine is the row of a plan its parent's run lists: its state and how far it
+// is, or what a draft waits for: the person, or the plans before it not done.
+func childLine(c api.PlanChild, all []api.PlanChild) string {
+	tasks := plural(int(c.Tasks), "task")
+	if c.TasksDone != nil {
+		tasks = fmt.Sprintf("%d/%d", *c.TasksDone, c.Tasks)
+	}
+	if c.Waiting {
+		return "waiting for you · " + tasks
+	}
+	if c.State != api.PlanStateDraft {
+		return string(c.State) + " · " + tasks
+	}
+	var before []string
+	for _, a := range c.After {
+		i := slices.IndexFunc(all, func(o api.PlanChild) bool { return o.Id == a })
+		if i < 0 || all[i].State != api.PlanStateDone {
+			before = append(before, a)
+		}
+	}
+	if len(before) == 0 {
+		return "draft · " + tasks
+	}
+	return "waiting for " + strings.Join(before, ", ") + " · " + tasks
 }
 
 // togglePrompt is what shows the prompt of the task with id in v, or hides it.
@@ -642,7 +691,9 @@ func (m *Model) openChild(name string) func() tea.Cmd {
 func planTabState(c *api.PlanContent) string {
 	p := c.Plan
 	switch {
-	case p.State == api.PlanStateDraft && p.Tasks != nil:
+	case p.State == api.PlanStateDraft && p.Parent != nil:
+		return "draft: it runs with " + *p.Parent + ", y copies it"
+	case p.State == api.PlanStateDraft:
 		return "draft: r runs it, y copies it"
 	case c.Run == nil:
 		return string(p.State)
@@ -652,7 +703,11 @@ func planTabState(c *api.PlanContent) string {
 	if closed {
 		s += " (project closed)"
 	}
-	s += fmt.Sprintf(" on %s, %s tasks done", c.Run.Branch, planProgress(p))
+	if isParent(p) {
+		s += fmt.Sprintf(", %s done", planProgress(p))
+	} else {
+		s += fmt.Sprintf(" on %s, %s tasks done", c.Run.Branch, planProgress(p))
+	}
 	if p.TasksFailed != nil && *p.TasksFailed > 0 {
 		s += fmt.Sprintf(", %d failed", *p.TasksFailed)
 	}
@@ -729,7 +784,10 @@ func (m *Model) planKey(msg tea.Msg) (tea.Cmd, bool) {
 	p, run := v.content.Plan, v.content.Run
 	switch k.String() {
 	case "r":
-		if p.State != api.PlanStateDraft || p.Tasks == nil {
+		if child, ok := m.waitingChildRow(v.content); ok {
+			return m.answerChild(child), true
+		}
+		if p.State != api.PlanStateDraft || p.Parent != nil {
 			return nil, false
 		}
 		m.confirm = &confirmBox{r: removal{kind: runPlanKind, id: p.Id, name: p.Name}}
@@ -768,10 +826,12 @@ func goingOn(state api.PlanState) bool {
 	return state == api.PlanStateRunning || state == api.PlanStatePaused
 }
 
-// planRan is the answer to running a plan.
+// planRan is the answer to running a plan; answer says it was the person's answer
+// to a plan its parent lists.
 type planRan struct {
-	r   removal
-	err error
+	r      removal
+	err    error
+	answer bool
 }
 
 // runPlan asks the daemon to run the plan r names. Its state comes with the stream.
@@ -791,6 +851,43 @@ func (m *Model) planRanMsg(msg planRan) {
 		return
 	}
 	m.log.Info("plan running", "plan_id", msg.r.id, "name", msg.r.name)
+	if msg.answer {
+		m.statusNotice = "plan " + msg.r.name + " started"
+	}
+}
+
+// waitingChildRow returns the plan under the cursor of the tab of the plan of plans
+// c, when it waits for the person's answer.
+func (m *Model) waitingChildRow(c *api.PlanContent) (api.PlanChild, bool) {
+	if c.Definition.Plans == nil || m.layout.focus != agent {
+		return api.PlanChild{}, false
+	}
+	rows := m.planTabRows()
+	i := m.values.cursorRow(rows)
+	if i < 0 {
+		return api.PlanChild{}, false
+	}
+	for _, child := range *c.Definition.Plans {
+		if child.Id == rows[i].key && child.Waiting {
+			return child, true
+		}
+	}
+	return api.PlanChild{}, false
+}
+
+// answerChild asks the daemon to start the plan child, which waits for the person:
+// it starts it, or says why not, as plan run does.
+func (m *Model) answerChild(child api.PlanChild) tea.Cmd {
+	p, ok := m.planNamed(child.Id)
+	if !ok {
+		return nil
+	}
+	r := removal{kind: runPlanKind, id: p.Id, name: p.Name}
+	m.log.Info("plan answer asked", "plan_id", p.Id, "name", p.Name)
+	return func() tea.Msg {
+		_, err := m.client.RunPlan(m.ctx, "id:"+r.id, "", "", 0)
+		return planRan{r: r, err: err, answer: true}
+	}
 }
 
 // runPlanPopup is the confirmation of running a plan.
@@ -801,6 +898,14 @@ func (m *Model) runPlanPopup() popup {
 		"Its tasks' agents start, each in a worktree of the plan's, up to",
 		"plan.parallel at once, and land on the branch plan/" + c.r.name + ".",
 		"A plan runs once, and cannot be changed after.",
+	}
+	if p, ok := m.planOf(c.r.id); ok && isParent(p) {
+		body = []string{
+			"Run " + st.Name(c.r.name) + "?",
+			"Each plan it lists runs from the default branch once the plans",
+			"before it have landed there; one it cannot see landed waits for you.",
+			"A plan runs once, and cannot be changed after.",
+		}
 	}
 	if c.busy {
 		body = append(body, "", st.Muted("starting…"))

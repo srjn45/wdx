@@ -27,6 +27,9 @@ type Plan struct {
 	TasksDone    int // how many of them its run has done
 	TasksFailed  int // how many of them are failed or land_failed, waiting for the person
 	PlansDone    int // for a plan of plans, how many of the plans it lists are done
+	// PlansWaiting are the plans a plan of plans lists that wait for the person,
+	// in its order, as its runner last saw them.
+	PlansWaiting []string
 	// projectClosed is whether its project was closed when it was read, which
 	// shows a running plan paused.
 	projectClosed bool

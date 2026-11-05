@@ -3400,7 +3400,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, plans_done, parent, archived_at, slots, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, plans_done, plans_waiting, parent, archived_at, slots, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3417,6 +3417,11 @@ components:
           nullable: true
           description: The plans it lists, in DAG order; null for a plan of tasks.
         plans_done: { type: integer, format: int64, nullable: true, description: How many of the plans it lists are done; null for a draft and a plan of tasks. }
+        plans_waiting:
+          type: array
+          items: { type: string }
+          nullable: true
+          description: The plans it lists that wait for the person, as PlanChild.waiting says, in DAG order; empty when none, null for a plan of tasks.
         parent: { type: string, nullable: true, description: The plan of plans listing it; null for none. }
         archived_at: { type: string, format: date-time, nullable: true, description: When it was archived, which leaves it out of listPlans; null when it is not. }
         slots:

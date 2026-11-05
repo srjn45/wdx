@@ -213,20 +213,24 @@ type planCopied struct {
 // askCopyPlan opens the popup that copies p, with the first name free to edit. A
 // plan of plans' copy would be refused, so it says so instead.
 func (m *Model) askCopyPlan(p api.Plan) {
-	if isParent(p) {
-		m.statusNotice = "a plan of plans is copied with the CLI once step 6 of plans says how"
-		return
-	}
 	m.switcher = nil
 	m.push(&fieldScreen{
 		heading: "Copy plan",
-		prompt:  "Name of the copy of " + p.Name + ", a draft to run:",
+		prompt:  copyPrompt(p),
 		value:   m.freeCopyName(p.Name),
 		empty:   "type a name",
 		working: "copying…",
 		submit:  func(name string) tea.Msg { return copyAsked{id: p.Id, from: p.Name, name: name} },
 	})
 	m.log.Info("plan copy opened", "plan_id", p.Id)
+}
+
+// copyPrompt is what the popup copying p asks.
+func copyPrompt(p api.Plan) string {
+	if isParent(p) {
+		return "Name of the copy of " + p.Name + ", a draft to run with its plans not done:"
+	}
+	return "Name of the copy of " + p.Name + ", a draft to run:"
 }
 
 // freeCopyName is the first name of name-2, name-3, … no plan of the project has,

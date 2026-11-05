@@ -152,7 +152,8 @@ func TestPlanTabArchives(t *testing.T) {
 }
 
 // TestPlanTabCopies: y opens a popup with the first name free, a refusal stays there
-// to correct, and the copy's tab opens; on a plan of plans it says why it cannot.
+// to correct, and the copy's tab opens; on a plan of plans it says its plans not
+// done go with it.
 func TestPlanTabCopies(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
@@ -194,7 +195,7 @@ func TestPlanTabCopies(t *testing.T) {
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: auth, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Plans: &[]api.PlanChild{}}})
 	m.layout.setFocus(agent)
 	keys(m, "y")
-	if m.openTop() != nil || !strings.Contains(m.statusNotice, "a plan of plans is copied with the CLI") {
-		t.Errorf("y on a plan of plans: popup %+v, said %q", m.openTop(), m.statusNotice)
+	if f, ok := m.openTop().(*fieldScreen); !ok || f.value != "auth-2" || !strings.Contains(f.prompt, "with its plans not done") {
+		t.Errorf("y on a plan of plans: popup %+v", m.openTop())
 	}
 }

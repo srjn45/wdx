@@ -129,10 +129,13 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 		}
 		// Counted from the same read as its plans, so that the two agree when one
 		// finished between the reads.
-		p.PlansDone = 0
+		p.PlansDone, p.PlansWaiting = 0, nil
 		for _, c := range children {
 			if c.State == api.PlanStateDone {
 				p.PlansDone++
+			}
+			if c.Waiting {
+				p.PlansWaiting = append(p.PlansWaiting, c.Id)
 			}
 		}
 	}
@@ -489,6 +492,8 @@ func planView(p plan.Plan) api.Plan {
 			done := int64(p.PlansDone)
 			v.PlansDone = &done
 		}
+		waiting := append([]string{}, p.PlansWaiting...)
+		v.PlansWaiting = &waiting
 	} else {
 		tasks := int64(p.Tasks)
 		v.Tasks = &tasks

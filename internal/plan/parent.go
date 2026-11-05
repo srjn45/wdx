@@ -181,13 +181,18 @@ func (r *Runner) stepParent(ctx context.Context, run Run, project ProjectInfo) (
 	if err != nil {
 		return false, err
 	}
+	var waiting []string
+	for _, c := range children {
+		if c.Waiting(run, children) {
+			waiting = append(waiting, c.Plan.Name)
+		}
+	}
+	if r.store.setWaiting(run.PlanID, waiting) {
+		log.Info("plans waiting for the person", "children", waiting)
+		r.opts.Changed(run.ProjectID) // the project's stream sends it again
+	}
 	actions := NextParent(ParentFacts{Run: run, ProjectOpen: project.Open, Children: children})
 	if len(actions) == 0 {
-		for _, c := range children {
-			if c.Waiting(run, children) {
-				log.Info("plan waits for the person", "child", c.Plan.Name, "start_failed", c.StartFailed)
-			}
-		}
 		return false, nil
 	}
 	a := actions[0]
