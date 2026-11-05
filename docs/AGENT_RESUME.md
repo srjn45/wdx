@@ -56,7 +56,7 @@ Tool calls and results are 73% and 90% of the two transcripts measured, so the l
 
 - **It starts at** the latest compaction summary, or the first request when there is none.
 - **It goes on with** every message since, without thinking, and each tool call as one line: its name, a short form of its input, whether it failed, and its line in `transcript.md`, which `--from` reads in full.
-- **`/clear` is respected:** the brief looks no further back than the session a `/clear` began.
+- **`/clear` is respected:** the brief looks no further back than the session a `/clear` began, or for Codex a `/new`.
 - **A restart is not a starting point.** It looks back through sessions a restart began, which therefore have to be marked, or a second restart would start from the first one's message and lose the original request, since the brief the agent read was a tool result.
 - **It has a size limit,** 64 KB to begin with. Over it, the starting point stays, the oldest messages after it go, and a line says which lines of `transcript.md` hold them.
 
@@ -118,6 +118,11 @@ Checked on Codex 0.163.0 with a binary built from the change:
 - After a turn it shows the session's heading, the message, the command with its output and exit code, and the answer. A turn Codex failed (`Selected model is at capacity`) shows only its `## User`, as Codex completed no item for it.
 - After `/quit` and `wdx agent start` it goes on under the same heading, with nothing repeated, and the model answers about the first turn.
 - After `/new` a new `# Session <id> · codex` heading follows, and `session_id` moves to it.
+
+`wdx agent restart` of a real Codex 0.163.0 agent, checked on 2026-11-05 with a binary built from the change, on a home and daemon of its own:
+- After a turn, the restart writes `{"session": <new id>, "threads": 2}` to `codex-restarts.jsonl` (the conversation's thread and the one Codex names it in), and the new conversation's first message has it run `wdx agent transcript --brief`. The brief starts at the first request; asked, without running anything, what it had written before, it named the file and its content. The new thread's turn gave it a heading of its own and moved `session_id` to it.
+- Then `/new`, typed at Codex's prompt (in a git repository it first asks where the new conversation runs; 1 keeps the current worktree), a turn, and a restart: the brief starts at the `/new` conversation's first request, with nothing from before it. The first message's "it says how to read more" led the agent to read the whole of `transcript.md` with `--from` as well, so it knew both conversations: the bound is the brief's, not what the agent may choose to read.
+- `/new` sent with `wdx agent send` is not a command to Codex: it reaches the model as text, as a turn of its own, and starts no new conversation.
 
 Putting back a session file Codex deleted, checked on Codex 0.163.0 under tmux before it was built:
 - With the file deleted, `codex resume <id>` fails at once with `no rollout found for thread id …` (exit 1), though `state_5.sqlite` and `session_index.jsonl` still list the session.
