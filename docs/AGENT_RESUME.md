@@ -1,6 +1,6 @@
 # Keeping an agent's ACA running
 
-Status: an agent's history and restarting an agent in a new session are built for Claude Code. Resuming an ACA that ended is decided and not built.
+Status: an agent's history and restarting an agent in a new session are built for Claude Code. Codex's restart is built too: `Codex.BeginSession` records each restart in `codex-restarts.jsonl`, and `BackUp` keeps the agent in the restart's session until the new conversation's first turn (the wdx doc CODEX_BRIEF). Resuming an ACA that ended is decided and not built.
 
 ## Resuming an ACA that ended
 

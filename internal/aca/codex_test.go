@@ -24,8 +24,8 @@ func TestByIDFindsCodex(t *testing.T) {
 	if !ok || a.ID() != "codex" || a.Program() != "codex" {
 		t.Fatalf("ByID(codex) = %v, %v", a, ok)
 	}
-	if aca.CanBeginSession(a) {
-		t.Error("Codex can begin a session")
+	if !aca.CanBeginSession(a) {
+		t.Error("Codex cannot begin a session")
 	}
 	if _, ok := a.ScreenParser().(aca.CodexScreenParser); !ok {
 		t.Errorf("Codex's parser is %T", a.ScreenParser())

@@ -11,9 +11,8 @@ import (
 )
 
 // Codex is OpenAI's Codex CLI: the wdx docs ACA_CODEX, ACA_READY, CODEX_ACTIVITY,
-// CODEX_STEER and CODEX_RESUME. Its backup keeps only the session so far.
+// CODEX_STEER, CODEX_RESUME, CODEX_BACKUP and CODEX_BRIEF.
 type Codex struct {
-	NoBeginSession
 	NoBrief
 	NoDetached
 }

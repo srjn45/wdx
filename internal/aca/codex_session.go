@@ -61,15 +61,27 @@ func codexSessionFile(home, id string) (string, error) {
 // user's conversation, not the thread Codex names it in nor a subagent's, and the
 // directory Codex last worked in, where a resume asks nothing. A thread whose file
 // Codex deleted is read from the backup's copy, which Command puts back, when the
-// backup knows where it was.
+// backup knows where it was. After a restart only a thread that came after it counts:
+// until one does, the agent is in the restart's session, which a start begins.
 func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	first, last, err := codexThreads(filepath.Join(l.BackupDir, codexTurnsFile))
 	if err != nil {
 		return Backup{}, err
 	}
+	restarts, err := codexReadRestarts(l.BackupDir)
+	if err != nil {
+		return Backup{}, err
+	}
 	replaced, copied := codexCopySessions(ctx, l, first)
 	failed := errors.Join(copied, codexRenderSessions(ctx, l.BackupDir, first, replaced))
+	since := 0
+	if len(restarts) > 0 {
+		since = restarts[len(restarts)-1].Threads
+	}
 	for _, id := range slices.Backward(last) {
+		if slices.Index(first, id) < since {
+			continue
+		}
 		file, err := codexSessionFile(l.UserHome, id)
 		if err != nil {
 			return Backup{}, errors.Join(failed, err)
@@ -90,6 +102,9 @@ func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
 		if user {
 			return Backup{Session: id, Dir: dir}, failed
 		}
+	}
+	if len(restarts) > 0 {
+		return Backup{Session: restarts[len(restarts)-1].Session}, failed
 	}
 	return Backup{}, failed
 }
