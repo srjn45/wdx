@@ -1,5 +1,5 @@
 // Package aca holds what differs between the AI coding agents wdx runs: Claude
-// Code, Antigravity, Cursor and others. See docs/AGENT.md and docs/ACA.md.
+// Code, Antigravity, Cursor, Codex and others. See docs/AGENT.md and docs/ACA.md.
 package aca
 
 import (
@@ -91,7 +91,7 @@ const TranscriptFile = "transcript.md"
 
 // known is every AI coding agent wdx can run, in the order they are offered, and
 // the one place one is made: adding one is adding it here. docs/ACA.md.
-var known = []AiCodingAgent{ClaudeCode{}, Antigravity{}, Cursor{}}
+var known = []AiCodingAgent{ClaudeCode{}, Antigravity{}, Cursor{}, Codex{}}
 
 // All is every AI coding agent wdx can run, in the order they are offered.
 func All() []AiCodingAgent {

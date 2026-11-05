@@ -88,7 +88,7 @@ Claude Code needs the separate Enter because one sent while a paste settles can 
 | `unknown` | holds | holds |
 | no input box, whatever the activity | holds | holds |
 
-- `working` delivers rather than holds because a background dev server keeps an agent `working` indefinitely. Claude Code queues input during a turn (see Checked on the real thing).
+- `working` delivers rather than holds because a background dev server keeps an agent `working` indefinitely. Claude Code queues input during a turn (see Checked on the real thing). So does Codex 0.163.0 when the message is submitted with Tab, which its `Deliver` presses; Enter would steer it into the running turn (the wdx doc ACA_CODEX).
 - With no input box a message has nowhere to go. The motion fallback can read such a screen `working`, as during startup, so the box is checked as well as the activity.
 - `--instant` holds on `waiting` because Esc would cancel the prompt, and the parser cannot yet tell which prompt it is; on some, cancelling may exit the CLI. Once the later step that reads the prompt lands, permission prompts could be cancelled.
 - `InTurn` tells a turn from background work, for the `inboxReader` only. The public `activity` stays as it is.
