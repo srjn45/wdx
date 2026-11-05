@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
@@ -89,6 +90,19 @@ func (d *Daemon) startRunner() {
 			return v.Check, err
 		},
 		Check: d.runPlanCheck,
+		PullRequest: func(ctx context.Context, dir, branch string) (plan.PullRequest, bool, error) {
+			pr, err := gh.CLI{Program: d.opts.GH}.View(ctx, dir, branch)
+			switch {
+			case errors.Is(err, gh.ErrMissing):
+				logging.FromContext(ctx).Info("no gh to read the PR of a plan", "branch", branch)
+				return plan.PullRequest{}, false, nil
+			case errors.Is(err, gh.ErrNoPullRequest):
+				return plan.PullRequest{}, false, nil
+			case err != nil:
+				return plan.PullRequest{}, false, err
+			}
+			return plan.PullRequest{Number: pr.Number, MergeCommit: pr.MergeCommit}, true, nil
+		},
 		Changed: func(projectID string) {
 			d.tracker.Refresh(projectID, "")
 			d.notices.notify()

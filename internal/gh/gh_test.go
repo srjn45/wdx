@@ -46,8 +46,12 @@ func TestViewAndCreate(t *testing.T) {
 	}
 	fake.Set(t, "MERGED", "def")
 	v, err := c.View(t.Context(), dir, "work")
-	if err != nil || v.State != gh.Merged || v.Head != "def" || v.Number != 12 {
+	if err != nil || v.State != gh.Merged || v.Head != "def" || v.Number != 12 || v.MergeCommit != "" {
 		t.Errorf("viewed: %+v, %v", v, err)
+	}
+	fake.SetMerged(t, "def", "f00")
+	if v, err := c.View(t.Context(), dir, "work"); err != nil || v.State != gh.Merged || v.MergeCommit != "f00" {
+		t.Errorf("viewed with its merge commit: %+v, %v", v, err)
 	}
 
 	// What gh says of a failure is the error, not its exit code.

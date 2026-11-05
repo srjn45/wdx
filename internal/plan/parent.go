@@ -3,7 +3,9 @@ package plan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
@@ -328,4 +330,127 @@ func (s *Store) goingParents(ctx context.Context, projectID string) ([]string, e
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// PullRequest is what the runner reads of a plan's PR, through gh.
+type PullRequest struct {
+	Number      int
+	MergeCommit string // the commit its merge made, "" until it is merged
+}
+
+// WaitsError is returned for running a plan its parent lists before the plans it
+// waits for are done, or before their work is in the default branch, Base.
+type WaitsError struct {
+	Plan      Plan
+	Base      string
+	NotDone   []Plan
+	NotLanded []Plan // done, their work not in Base, nor merged as GitHub says
+	NotPulled []Plan // merged on GitHub, their merge not in the local Base
+}
+
+func (e *WaitsError) Error() string {
+	if len(e.NotDone) > 0 {
+		return fmt.Sprintf("plan %s waits for %s, not done", e.Plan.Name, planNames(e.NotDone))
+	}
+	if len(e.NotLanded) > 0 {
+		return fmt.Sprintf("plan %s waits for the work of %s, not in %s", e.Plan.Name, planNames(e.NotLanded), e.Base)
+	}
+	return fmt.Sprintf("plan %s waits for the work of %s, merged on GitHub, not yet in the local %s", e.Plan.Name, planNames(e.NotPulled), e.Base)
+}
+
+// planNames is the plans' names, for a sentence.
+func planNames(list []Plan) string {
+	names := make([]string, len(list))
+	for i, p := range list {
+		names[i] = p.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+// answer starts child, a plan the running plan of plans parent lists, as the
+// person asked: once the plans it waits for are done, and their work in the
+// default branch, as git shows it or, for the rest, GitHub says their PR was merged
+// with its merge commit in the local default branch.
+func (r *Runner) answer(ctx context.Context, child, parent Plan, parallel int) (Plan, error) {
+	log := logging.FromContext(ctx).With("child", child.Name)
+	children, run, err := r.Children(ctx, parent.ID)
+	if err != nil {
+		return Plan{}, err
+	}
+	project, err := r.opts.Project(ctx, run.ProjectID)
+	if err != nil {
+		return Plan{}, err
+	}
+	i := slices.IndexFunc(children, func(c ChildRun) bool { return c.Plan.ID == child.ID })
+	if i < 0 {
+		return Plan{}, fmt.Errorf("plan %s does not list %s in its run", parent.Name, child.Name)
+	}
+	waits := &WaitsError{Plan: child, Base: run.Base}
+	for _, a := range children[i].After {
+		j := slices.IndexFunc(children, func(c ChildRun) bool { return c.Plan.Name == a })
+		if j < 0 {
+			return Plan{}, fmt.Errorf("plan %s lists no %s", parent.Name, a)
+		}
+		before := children[j]
+		switch {
+		case before.Plan.State != StateDone:
+			waits.NotDone = append(waits.NotDone, before.Plan)
+		case before.Landed:
+		default:
+			merged, err := r.mergedIn(ctx, project.Clone, before.Plan.Name, run.Base)
+			if err != nil {
+				return Plan{}, err
+			}
+			switch merged {
+			case mergedNot:
+				waits.NotLanded = append(waits.NotLanded, before.Plan)
+			case mergedNotPulled:
+				waits.NotPulled = append(waits.NotPulled, before.Plan)
+			}
+		}
+	}
+	if len(waits.NotDone)+len(waits.NotLanded)+len(waits.NotPulled) > 0 {
+		log.Info("plan not started: it waits", "err", waits)
+		return Plan{}, waits
+	}
+	log.Info("plan started as the person asked")
+	p, err := r.startPlan(ctx, child, parallel)
+	if err == nil {
+		r.Wake(parent.ID)
+	}
+	return p, err
+}
+
+// How a plan's PR left its work.
+const (
+	mergedNot       = iota // not merged, or no PR
+	mergedNotPulled        // merged on GitHub, its merge commit not in the local base
+	mergedIn               // merged, and its merge commit in the local base
+)
+
+// mergedIn says what GitHub says of the PR of the plan called name, and whether its
+// merge is in the local base.
+func (r *Runner) mergedIn(ctx context.Context, clone, name, base string) (int, error) {
+	log := logging.FromContext(ctx).With("child", name)
+	if r.opts.PullRequest == nil {
+		return mergedNot, nil
+	}
+	pr, found, err := r.opts.PullRequest(ctx, clone, BranchPrefix+name)
+	if err != nil {
+		return mergedNot, err
+	}
+	if !found || pr.MergeCommit == "" {
+		log.Info("plan's PR read", "found", found, "number", pr.Number, "merged", false)
+		return mergedNot, nil
+	}
+	// A merge commit the clone has not fetched is not in base either.
+	in, err := git.IsAncestor(ctx, clone, pr.MergeCommit, "refs/heads/"+base)
+	if err != nil {
+		return mergedNot, err
+	}
+	log.Info("plan's PR read", "number", pr.Number, "merged", true, "commit", pr.MergeCommit, "pulled", in)
+	if in {
+		return mergedIn, nil
+	}
+	return mergedNotPulled, nil
 }

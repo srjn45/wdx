@@ -18,6 +18,32 @@ import (
 	"github.com/srjn45/wdx/internal/style"
 )
 
+// waitsHint says what a plan a plan of plans lists waits for, before it can run.
+func waitsHint(err error) error {
+	e, ok := errors.AsType[*client.ProblemError](err)
+	var child api.Plan
+	var plans []api.Plan
+	var base string
+	var merged []string
+	if !ok || !decodeDetail(e.Problem, "plan", &child) || !decodeDetail(e.Problem, "plans", &plans) || !decodeDetail(e.Problem, "base", &base) || !decodeDetail(e.Problem, "merged", &merged) {
+		return err
+	}
+	names := make([]string, len(plans))
+	for i, p := range plans {
+		names[i] = p.Name
+	}
+	list := strings.Join(names, ", ")
+	switch {
+	case e.Problem.Code == api.ErrorCodePlanNotFinished && child.Parent != nil:
+		return &hinted{err, fmt.Sprintf("run it once %s is done: %s plan status --name %s", list, identity.Name, *child.Parent)}
+	case e.Problem.Code == api.ErrorCodePlanNotFinished:
+		return &hinted{err, fmt.Sprintf("run it once %s is done", list)}
+	case len(merged) == len(names):
+		return &hinted{err, fmt.Sprintf("pull %s: the PR of %s is merged on GitHub", base, list)}
+	}
+	return &hinted{err, fmt.Sprintf("land the worktree on %s first (%s worktree land), or pull %s once its PR is merged", planBranch(names[0]), identity.Name, base)}
+}
+
 // planBranch is where a plan's tasks land.
 func planBranch(name string) string { return "plan/" + name }
 
@@ -37,11 +63,15 @@ func newPlanRunCmd() *cobra.Command {
 			"A plan of plans starts each plan it lists from the default branch once the\n" +
 			"plans before it are done and their work is in the default branch: landed\n" +
 			"through " + identity.Name + ", or a PR pulled. Every plan it lists must be a draft whose\n" +
-			"branch can be made; --parallel is each plan's own, so it takes none.",
+			"branch can be made; --parallel is each plan's own, so it takes none. A plan\n" +
+			"it lists whose plans before it are done, but whose work it cannot see in the\n" +
+			"default branch, waits for you: running that plan is the answer, which also\n" +
+			"asks gh whether their PR is merged, its merge pulled into the default branch.",
 		Example: examples(
 			"A plan of the project you are in", identity.Name+" plan run --name sso",
 			"Two tasks at most at once, as JSON", identity.Name+" plan run --name sso --parallel 2 --json",
 			"A plan of plans", identity.Name+" plan run --name auth",
+			"A plan it lists that waits for you, once the PR before it is merged and pulled", identity.Name+" plan run --name auth-b",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -49,7 +79,7 @@ func newPlanRunCmd() *cobra.Command {
 			outputNote:    "The plan, running, and its branch; a plan of plans, and its plans.\n" + `With --json: {"result": "started", "plan": {...}}`,
 			resultList:    string(api.ResultStarted),
 			errorList: codeList(api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanInUse,
-				api.ErrorCodePlanStarted, api.ErrorCodeProjectClosed, api.ErrorCodeDaemonUnavailable),
+				api.ErrorCodePlanNotFinished, api.ErrorCodePlanNotLanded, api.ErrorCodePlanStarted, api.ErrorCodeProjectClosed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("parallel") && (parallel < 1 || parallel > 20) {
@@ -65,6 +95,8 @@ func newPlanRunCmd() *cobra.Command {
 				return &hinted{err, "a plan runs once: copy it to run it again"}
 			case api.ErrorCodePlanInUse:
 				return &hinted{err, "a plan a plan of plans lists runs with it: run the plan of plans"}
+			case api.ErrorCodePlanNotFinished, api.ErrorCodePlanNotLanded:
+				return waitsHint(err)
 			case api.ErrorCodeBranchExists:
 				return &hinted{err, "remove or rename the branch, or rename the plan"}
 			case api.ErrorCodeProjectClosed:

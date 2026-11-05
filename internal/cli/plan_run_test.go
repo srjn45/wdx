@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -265,6 +267,9 @@ func TestPlanOfPlansRun(t *testing.T) {
 	if !strings.Contains(out.stdout, "0/2 plans") {
 		t.Errorf("list: %+v", out)
 	}
+	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
+	wantError(t, v, exit, api.ErrorCodePlanNotFinished, api.ExitRejected)
+	wantHint(t, v, "run it once sso is done: wdx plan status --name big")
 	waitCommitted(t, repo, "a")
 	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "s"); exit != api.ExitOK {
 		t.Fatalf("task done: exit %d, %+v", exit, v)
@@ -275,6 +280,9 @@ func TestPlanOfPlansRun(t *testing.T) {
 	}) {
 		t.Errorf("ui waiting for the person:\n%s", out.stdout)
 	}
+	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
+	wantError(t, v, exit, api.ErrorCodePlanNotLanded, api.ExitRejected)
+	wantHint(t, v, "land the worktree on plan/sso first (wdx worktree land), or pull main once its PR is merged")
 }
 
 func TestPlanOfPlansRunText(t *testing.T) {
@@ -314,6 +322,35 @@ func TestChildState(t *testing.T) {
 	} {
 		if got := childState(st, tt.c, tt.all, tt.parentRan); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestWaitsHint: a plan whose plans before it are merged on GitHub but not pulled is
+// told to pull, and one with any not merged to land it.
+func TestWaitsHint(t *testing.T) {
+	t.Parallel()
+	parent := "big"
+	problem := func(merged ...string) error {
+		p := api.NewProblem(api.ErrorCodePlanNotLanded, "plan ui waits")
+		p.Details = &map[string]any{
+			"plan":   api.Plan{Name: "ui", Parent: &parent},
+			"plans":  []api.Plan{{Name: "sso"}, {Name: "auth"}},
+			"base":   "main",
+			"merged": merged,
+		}
+		return &client.ProblemError{Problem: p}
+	}
+	for _, tt := range []struct {
+		merged []string
+		want   string
+	}{
+		{[]string{"sso", "auth"}, "pull main: the PR of sso, auth is merged on GitHub"},
+		{[]string{"auth"}, "land the worktree on plan/sso first (wdx worktree land), or pull main once its PR is merged"},
+	} {
+		var h *hinted
+		if err := waitsHint(problem(tt.merged...)); !errors.As(err, &h) || h.hint != tt.want {
+			t.Errorf("merged %v: %v", tt.merged, err)
 		}
 	}
 }

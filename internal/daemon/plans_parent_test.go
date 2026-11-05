@@ -3,11 +3,14 @@ package daemon
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/telemetry"
 )
 
 const ssoPlan = "goal: g\ntasks:\n  - id: s\n    prompt: p\n"
@@ -203,7 +206,7 @@ func TestArchivedPlanOfPlansListed(t *testing.T) {
 
 // TestPlanOfPlansChildNotStarted: a plan its parent fails to start, as a branch was
 // made in its way since the run began, waits for the person rather than being
-// tried again at every step.
+// tried again at every step, and starts on their answer.
 func TestPlanOfPlansChildNotStarted(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -234,6 +237,11 @@ func TestPlanOfPlansChildNotStarted(t *testing.T) {
 	if c.Plan.State != api.PlanStateRunning {
 		t.Errorf("the parent: %+v", c.Plan)
 	}
+	gittest.Git(t, repo, "branch", "-q", "-D", "plan/ui")
+	if r, err := td.client.RunPlanWithResponse(ctx, "ui", &api.RunPlanParams{Project: optional("app")}, api.RunPlan{}); err != nil || r.JSON200 == nil {
+		t.Fatalf("the answer, the branch gone: %v, %s", err, r.Body)
+	}
+	td.waitPlan(t, "big", "ui running", childrenAre("sso:done ui:running"))
 	leave()
 	wantRequestsLogged(t, td.home)
 }
@@ -247,4 +255,74 @@ func (td *testDaemon) logged(t *testing.T, msg string) bool {
 		}
 	}
 	return false
+}
+
+// TestPlanOfPlansAnswered: running a plan its parent lists is the person's answer,
+// refused while the plan before it is not done, then while its work is neither in
+// main nor merged on GitHub, then while merged but not pulled; once the squash
+// merge is in main, it starts. A paused parent takes no answer, and only an
+// answer that needs it asks gh.
+func TestPlanOfPlansAnswered(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := ghtest.New(t, t.TempDir())
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) { o.GH = fake.Program })
+	repo := td.planProject(t, "")
+	td.createPlan(t, "app", "sso", ssoPlan)
+	td.createPlan(t, "app", "ui", uiPlan)
+	td.createPlan(t, "app", "big", bigPlan)
+	runUI := func() api.RunPlanResponse {
+		t.Helper()
+		r, err := td.client.RunPlanWithResponse(ctx, "ui", &api.RunPlanParams{Project: optional("app")}, api.RunPlan{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *r
+	}
+	refused := func(code api.ErrorCode, merged []any) {
+		t.Helper()
+		r := runUI()
+		wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, code)
+		if r.ApplicationproblemJSONDefault == nil {
+			return
+		}
+		d := *r.ApplicationproblemJSONDefault.Details
+		plans, _ := d["plans"].([]any)
+		if len(plans) != 1 || plans[0].(map[string]any)["name"] != "sso" || d["base"] != "main" || !reflect.DeepEqual(d["merged"], merged) {
+			t.Errorf("details: %v", d)
+		}
+	}
+
+	td.runPlan(t, "big", 0)
+	td.waitPlan(t, "big", "sso running", childrenAre("sso:running ui:draft"))
+	refused(api.ErrorCodePlanNotFinished, []any{})
+	td.finishTask(t, repo, "sso", "s")
+	td.waitPlan(t, "big", "ui waiting", childrenAre("sso:done ui:waiting"))
+	refused(api.ErrorCodePlanNotLanded, []any{})
+
+	head := gitOut(t, repo, "rev-parse", "plan/sso")
+	fake.Set(t, "OPEN", head)
+	refused(api.ErrorCodePlanNotLanded, []any{})
+	fake.SetMerged(t, head, "0123456789abcdef0123456789abcdef01234567")
+	refused(api.ErrorCodePlanNotLanded, []any{"sso"})
+
+	gittest.Git(t, repo, "merge", "-q", "--squash", "plan/sso")
+	gittest.Git(t, repo, "commit", "-qm", "sso (#12)")
+	fake.SetMerged(t, head, gitOut(t, repo, "rev-parse", "HEAD"))
+	pause, err := td.client.PausePlanWithResponse(ctx, "big", &api.PausePlanParams{Project: optional("app")})
+	if err != nil || pause.JSON200 == nil {
+		t.Fatalf("pause: %v, %s", err, pause.Body)
+	}
+	wantProblem(t, runUI().ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodePlanInUse)
+	if r, err := td.client.ResumePlanWithResponse(ctx, "big", &api.ResumePlanParams{Project: optional("app")}); err != nil || r.JSON200 == nil {
+		t.Fatalf("resume: %v, %s", err, r.Body)
+	}
+	if r := runUI(); r.JSON200 == nil || r.JSON200.Result != api.ResultStarted || r.JSON200.Plan.State != api.PlanStateRunning {
+		t.Fatalf("the answer: %s", r.Body)
+	}
+	td.waitPlan(t, "big", "ui running", childrenAre("sso:done ui:running"))
+	if calls := fake.Calls(t); len(calls) != 4 || !strings.HasPrefix(calls[0], "pr view plan/sso") {
+		t.Errorf("gh was asked %q", calls)
+	}
+	wantRequestsLogged(t, td.home)
 }

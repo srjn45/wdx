@@ -39,6 +39,8 @@ type PullRequest struct {
 	URL    string
 	State  string
 	Head   string // the commit it is at
+	// MergeCommit is the commit its merge made on its base, "" until it is merged.
+	MergeCommit string
 }
 
 // CLI runs gh as Program; with none, as on a machine without it, nothing runs.
@@ -84,7 +86,7 @@ func (c CLI) run(ctx context.Context, dir string, args ...string) ([]byte, error
 // View returns the latest pull request of branch, in the repository holding dir, or
 // ErrNoPullRequest.
 func (c CLI) View(ctx context.Context, dir, branch string) (PullRequest, error) {
-	out, err := c.run(ctx, dir, "pr", "view", branch, "--json", "number,url,state,headRefOid")
+	out, err := c.run(ctx, dir, "pr", "view", branch, "--json", "number,url,state,headRefOid,mergeCommit")
 	if err != nil {
 		// gh has no exit code of its own for this, only these words.
 		if strings.HasPrefix(err.Error(), "no pull requests found") {
@@ -93,15 +95,22 @@ func (c CLI) View(ctx context.Context, dir, branch string) (PullRequest, error) 
 		return PullRequest{}, err
 	}
 	var v struct {
-		Number     int    `json:"number"`
-		URL        string `json:"url"`
-		State      string `json:"state"`
-		HeadRefOid string `json:"headRefOid"`
+		Number      int    `json:"number"`
+		URL         string `json:"url"`
+		State       string `json:"state"`
+		HeadRefOid  string `json:"headRefOid"`
+		MergeCommit *struct {
+			Oid string `json:"oid"`
+		} `json:"mergeCommit"`
 	}
 	if err := json.Unmarshal(out, &v); err != nil {
 		return PullRequest{}, fmt.Errorf("read what gh said: %w", err)
 	}
-	return PullRequest{Number: v.Number, URL: v.URL, State: strings.ToLower(v.State), Head: v.HeadRefOid}, nil
+	pr := PullRequest{Number: v.Number, URL: v.URL, State: strings.ToLower(v.State), Head: v.HeadRefOid}
+	if v.MergeCommit != nil {
+		pr.MergeCommit = v.MergeCommit.Oid
+	}
+	return pr, nil
 }
 
 var pullURL = regexp.MustCompile(`https?://\S+/pull/(\d+)`)

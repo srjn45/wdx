@@ -147,6 +147,17 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*plan.NotRunningError](err); ok {
 		return api.ErrorCodePlanNotRunning, map[string]any{"plan": planView(e.Plan)}
 	}
+	if e, ok := errors.AsType[*plan.WaitsError](err); ok {
+		code, plans := api.ErrorCodePlanNotLanded, append(e.NotLanded, e.NotPulled...)
+		if len(e.NotDone) > 0 {
+			code, plans = api.ErrorCodePlanNotFinished, e.NotDone
+		}
+		pulled := []string{}
+		for _, p := range e.NotPulled {
+			pulled = append(pulled, p.Name)
+		}
+		return code, map[string]any{"plan": planView(e.Plan), "plans": planViews(plans), "base": e.Base, "merged": pulled}
+	}
 	if e, ok := errors.AsType[*plan.NotFinishedError](err); ok {
 		return api.ErrorCodePlanNotFinished, map[string]any{"plan": planView(e.Plan)}
 	}

@@ -55,6 +55,15 @@ func (f *Fake) Set(t *testing.T, state, head string) {
 	}
 }
 
+// SetMerged makes the pull request merged, at commit head, its merge commit merge.
+func (f *Fake) SetMerged(t *testing.T, head, merge string) {
+	t.Helper()
+	body := fmt.Sprintf(`{"number":12,"url":"https://github.test/o/r/pull/12","state":"MERGED","headRefOid":%q,"mergeCommit":{"oid":%q}}`, head, merge)
+	if err := os.WriteFile(filepath.Join(f.dir, "gh-pr"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Refuse makes every later call fail, saying said.
 func (f *Fake) Refuse(t *testing.T, said string) {
 	t.Helper()

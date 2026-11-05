@@ -127,6 +127,14 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 		if children, err = s.childViews(ctx, p.ID); err != nil {
 			return nil, err
 		}
+		// Counted from the same read as its plans, so that the two agree when one
+		// finished between the reads.
+		p.PlansDone = 0
+		for _, c := range children {
+			if c.State == api.PlanStateDone {
+				p.PlansDone++
+			}
+		}
 	}
 	logging.FromContext(ctx).Info("plan read", "plan_id", p.ID, "name", p.Name, "revision", r.Number, "size", r.Size, "state", p.State)
 	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names, children), Run: runView(runRef, p)}, nil

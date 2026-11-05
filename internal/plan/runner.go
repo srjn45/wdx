@@ -60,6 +60,10 @@ type RunnerOptions struct {
 	Check func(ctx context.Context, projectID, dir, command string) error
 	// Changed is told of every step, for the project's stream.
 	Changed func(projectID string)
+	// PullRequest returns the latest PR of branch, in the repository holding dir,
+	// and false for none, or with no gh to ask. It asks GitHub, so only the
+	// person's answer calls it.
+	PullRequest func(ctx context.Context, dir, branch string) (PullRequest, bool, error)
 }
 
 // Runner runs the plans: it wakes on what it is told of, and takes each plan it
@@ -760,9 +764,10 @@ func (e *WrongBranchError) Error() string {
 	return fmt.Sprintf("the task's worktree is on %s, not %s: switch back, with its commits", on, e.Want)
 }
 
-// Start runs the plan with id, a draft no plan of plans lists, in its project,
-// which is open: a plan of tasks as startPlan says, a plan of plans as startParent
-// does. parallel is the run's, 0 for the setting's.
+// Start runs the plan with id, a draft, in its project, which is open: a plan of
+// tasks as startPlan says, a plan of plans as startParent does, and one a running
+// plan of plans lists as the person's answer, which answer says. parallel is the
+// run's, 0 for the setting's.
 func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, error) {
 	p, err := r.store.draft(ctx, id)
 	if err != nil {
@@ -772,6 +777,9 @@ func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, erro
 		parent, err := r.store.GetByName(ctx, p.ProjectID, p.Parent)
 		if err != nil {
 			return Plan{}, err
+		}
+		if parent.State == StateRunning {
+			return r.answer(ctx, p, parent, parallel)
 		}
 		return Plan{}, &InUseError{Plan: p, Parent: parent}
 	}
