@@ -38,6 +38,9 @@ func newHolderCmd() *cobra.Command {
 					o.ParseScreen = known.ScreenParser().Parse
 					o.Deliver = known.Deliver
 					o.Interrupt = known.Interrupt()
+					if aca.CanSteer(known) {
+						o.Steer = known.Steer
+					}
 				} else {
 					logging.FromContext(ctx).Warn("screen not read: this holder does not know the aca", "aca", acaID)
 				}

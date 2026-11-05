@@ -23,6 +23,7 @@ const defaultScript = "if [ -f run ]; then . ./run; fi; exec sleep 1000"
 // ACA runs Script in /bin/sh, after appending the session it was given to
 // the file Launches, one line per start.
 type ACA struct {
+	aca.NoSteer
 	// Launches, when set, records each start's session.
 	Launches string
 	// Notes, when set, records each start's note, one line each.
@@ -187,6 +188,7 @@ type Bare struct {
 	aca.NoBeginSession
 	aca.NoBrief
 	aca.NoDetached
+	aca.NoSteer
 	// Name is its id, and ProgramName what Program says, "sh" when "".
 	Name, ProgramName string
 }

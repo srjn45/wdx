@@ -27,6 +27,11 @@ type AiCodingAgent interface {
 	Deliver(w io.Writer, message string) error
 	// Interrupt is the input that stops its turn.
 	Interrupt() []byte
+	// Steer gives one message to the turn running, on w, without stopping it, or
+	// submits it when none runs: how an instant message reaches an ACA that can,
+	// in place of Interrupt then Deliver. One that cannot embeds NoSteer.
+	// docs/SEND.md.
+	Steer(w io.Writer, message string) error
 	// BackUp brings the backup in l.BackupDir up to date with what it keeps of
 	// the conversation, TranscriptFile among it, and says what it learned. What it
 	// keeps and how it says so differ per AI coding agent. docs/AGENT_RESUME.md.

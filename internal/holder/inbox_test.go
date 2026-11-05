@@ -3,6 +3,7 @@ package holder
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -155,6 +156,7 @@ func TestNextAction(t *testing.T) {
 	for _, c := range []struct {
 		state   screen.ScreenState
 		instant bool
+		steers  bool
 		want    action
 		reason  string
 	}{
@@ -176,9 +178,19 @@ func TestNextAction(t *testing.T) {
 		{state: screen.ScreenState{Activity: idle, InputBox: true, Draft: true}, want: actionHold, reason: "draft"},
 		{state: screen.ScreenState{Activity: idle, InputBox: true, Draft: true}, instant: true, want: actionHold, reason: "draft"},
 		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true, Draft: true}, instant: true, want: actionHold, reason: "draft"},
+		// An ACA that steers takes an instant message into its turn, or at rest, and
+		// is never interrupted; it holds as the others do.
+		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true}, instant: true, steers: true, want: actionSteer},
+		{state: screen.ScreenState{Activity: working, InputBox: true}, instant: true, steers: true, want: actionSteer},
+		{state: screen.ScreenState{Activity: idle, InputBox: true}, instant: true, steers: true, want: actionSteer},
+		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true}, steers: true, want: actionDeliver},
+		{state: screen.ScreenState{Activity: waiting}, instant: true, steers: true, want: actionHold, reason: "waiting"},
+		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true, Draft: true}, instant: true, steers: true, want: actionHold, reason: "draft"},
+		{state: screen.ScreenState{Activity: unknown, InputBox: true}, instant: true, steers: true, want: actionHold, reason: "unknown"},
+		{state: screen.ScreenState{Activity: working}, instant: true, steers: true, want: actionHold, reason: "no input box"},
 	} {
-		if got, reason := nextAction(c.state, c.instant); got != c.want || reason != c.reason {
-			t.Errorf("%+v instant %v: got %v %q, want %v %q", c.state, c.instant, got, reason, c.want, c.reason)
+		if got, reason := nextAction(c.state, c.instant, c.steers); got != c.want || reason != c.reason {
+			t.Errorf("%+v instant %v steers %v: got %v %q, want %v %q", c.state, c.instant, c.steers, got, reason, c.want, c.reason)
 		}
 	}
 }
@@ -219,6 +231,17 @@ func TestInboxOrder(t *testing.T) {
 
 // paste is what a message is on Claude Code's input.
 func paste(message string) string { return "\x1b[200~" + message + "\x1b[201~\r" }
+
+// steerVar, set on a test holder, gives it testSteer, as an ACA that can steer.
+const steerVar = "TEST_STEER"
+
+// testSteer writes what a test tells from Deliver's paste and the interrupt key.
+func testSteer(w io.Writer, message string) error {
+	_, err := io.WriteString(w, steered(message))
+	return err
+}
+
+func steered(message string) string { return "steer:" + message + "\r" }
 
 // acaProgram runs a program that draws first, then what follows each named step,
 // and records all its input in the file got of the directory watched returns.
@@ -334,6 +357,25 @@ func TestSendAgentInstantInterrupts(t *testing.T) {
 	waitParsed(t, dir, "two")
 	step(t, dir, "stopped")
 	waitGot(t, dir, "\x1b"+paste("instant")+paste("general"))
+}
+
+// TestSendAgentInstantSteers gives an instant message to the running turn of an ACA
+// that can steer, never pressing its interrupt, and a general one after it the
+// usual way.
+func TestSendAgentInstantSteers(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	const id = "term-00000335"
+	dir, _ := f.watched(t, id, acaProgram("working one"), steerVar+"=1")
+	conn := f.dial(t, id)
+	f.waitStates(t, "working")
+	if err := conn.SendAgent("instant", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SendAgent("general", false); err != nil {
+		t.Fatal(err)
+	}
+	waitGot(t, dir, steered("instant")+paste("general"))
 }
 
 // TestSendAgentInstantGoesFirst queues both while a prompt is open.

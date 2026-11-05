@@ -57,6 +57,9 @@ func RunIfHolder() {
 		o.ParseScreen = known.ScreenParser().Parse
 		o.Deliver = known.Deliver
 		o.Interrupt = known.Interrupt()
+		if aca.CanSteer(known) {
+			o.Steer = known.Steer
+		}
 	}
 	err := holder.Run(logging.NewContext(context.Background(), log), o)
 	logs.Close() // os.Exit runs no deferred call

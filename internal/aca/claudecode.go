@@ -12,7 +12,9 @@ import (
 )
 
 // ClaudeCode is Anthropic's Claude Code CLI.
-type ClaudeCode struct{}
+type ClaudeCode struct {
+	NoSteer
+}
 
 // ClaudeCodeID is ClaudeCode's ID.
 const ClaudeCodeID = "claude_code"

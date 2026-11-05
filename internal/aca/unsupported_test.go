@@ -3,6 +3,7 @@ package aca_test
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -25,6 +26,22 @@ func TestStubsSayNotSupported(t *testing.T) {
 	}
 	if got, err := bare.Detached(ctx, aca.Launch{}); err != nil || len(got) != 0 {
 		t.Errorf("Detached = %v, %v; want nothing", got, err)
+	}
+	if err := bare.Steer(io.Discard, "hello"); !errors.Is(err, aca.ErrNotSupported) {
+		t.Errorf("Steer: %v", err)
+	}
+}
+
+// Only Codex steers; the others stop a turn for an instant message.
+func TestCanSteer(t *testing.T) {
+	t.Parallel()
+	for _, a := range aca.All() {
+		if got, want := aca.CanSteer(a), a.ID() == aca.CodexID; got != want {
+			t.Errorf("CanSteer(%s) = %v, want %v", a.ID(), got, want)
+		}
+	}
+	if aca.CanSteer(&acatest.ACA{}) || aca.CanSteer(&acatest.Bare{Name: "bare"}) {
+		t.Error("a test ACA steers")
 	}
 }
 

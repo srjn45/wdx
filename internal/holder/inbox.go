@@ -186,11 +186,12 @@ const (
 	actionHold action = iota
 	actionDeliver
 	actionInterrupt
+	actionSteer
 )
 
 // nextAction is docs/SEND.md's table for a screen that is read. reason says why
-// a message is held.
-func nextAction(state screen.ScreenState, instant bool) (next action, reason string) {
+// a message is held. steers says the ACA can take an instant message into its turn.
+func nextAction(state screen.ScreenState, instant, steers bool) (next action, reason string) {
 	switch {
 	case state.Draft:
 		return actionHold, "draft"
@@ -202,6 +203,8 @@ func nextAction(state screen.ScreenState, instant bool) (next action, reason str
 		return actionHold, "no input box"
 	case state.Activity == screen.ActivityUnknown:
 		return actionHold, "unknown"
+	case instant && steers:
+		return actionSteer, ""
 	case instant && state.InTurn:
 		return actionInterrupt, ""
 	}
@@ -227,16 +230,16 @@ func (h *holder) inboxReader() {
 		}
 		next, reason := actionDeliver, ""
 		if h.watch != nil {
-			next, reason = nextAction(h.watch.state(), m.instant)
+			next, reason = nextAction(h.watch.state(), m.instant, h.steerTo != nil)
 		}
 		if next == actionInterrupt && interrupted {
 			next, reason = actionHold, "interrupted"
 		}
 		switch next {
-		case actionDeliver:
+		case actionDeliver, actionSteer:
 			h.inbox.remove(m)
 			h.queueChanged()
-			h.deliver(m)
+			h.deliver(m, next == actionSteer)
 			interrupted, held = false, ""
 		case actionInterrupt:
 			h.interruptTurn()
@@ -269,16 +272,21 @@ func (h *holder) waitForInbox() bool {
 	}
 }
 
-// deliver puts one message into the shell or the ACA.
-func (h *holder) deliver(m message) {
-	if err := h.deliverTo(ptyInput{h}, m.text); err != nil {
-		h.log.Info("message not delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant, "err", err)
+// deliver puts one message into the shell or the ACA, or steers it into the ACA's
+// running turn.
+func (h *holder) deliver(m message, steer bool) {
+	put, done := h.deliverTo, "message delivered"
+	if steer {
+		put, done = h.steerTo, "message steered"
+	}
+	if err := put(ptyInput{h}, m.text); err != nil {
+		h.log.Info("message not delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant, "steered", steer, "err", err)
 		if m.id != "" {
 			h.inbox.notTyped(m.id)
 		}
 		return
 	}
-	h.log.Info("message delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
+	h.log.Info(done, "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
 	if m.id != "" {
 		h.inbox.typed(m.id)
 		h.reportDelivered(m.id)

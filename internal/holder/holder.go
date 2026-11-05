@@ -57,6 +57,9 @@ type Options struct {
 	// as ParseScreen does.
 	Deliver   func(w io.Writer, message string) error
 	Interrupt []byte
+	// Steer, when given, gives an instant message to the running turn without
+	// stopping it, so Interrupt is never pressed for one.
+	Steer func(w io.Writer, message string) error
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
 	// reaches the daemon that owns it.
 	Home   string
@@ -165,6 +168,7 @@ type holder struct {
 	inbox      *inbox
 	deliverTo  func(w io.Writer, message string) error
 	interrupt  []byte
+	steerTo    func(w io.Writer, message string) error
 	readerDone chan struct{} // closed once the inboxReader returns
 }
 
@@ -223,6 +227,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		inbox:        newInbox(),
 		deliverTo:    o.Deliver,
 		interrupt:    o.Interrupt,
+		steerTo:      o.Steer,
 		readerDone:   make(chan struct{}),
 		vtDelay:      o.vtDelay,
 		screenHold:   o.screenHold,

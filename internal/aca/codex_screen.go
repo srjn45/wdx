@@ -41,7 +41,9 @@ var (
 	codexBackground  = regexp.MustCompile(`^\s+\d+ background terminals? running`)
 	codexTurnEnded   = regexp.MustCompile(`^\s+Worked for \d`)
 	codexInterrupted = "■ Conversation interrupted"
-	codexQueued      = "• Queued follow-up inputs"
+	// Messages waiting below the Working line: queued for after the turn, or
+	// steered into it and not yet taken in.
+	codexWaitingMessages = []string{"• Queued follow-up inputs", "• Messages to be submitted after next tool call"}
 	// An approval replaces the box.
 	codexPrompt = "Press enter to confirm or esc to cancel"
 )
@@ -107,12 +109,12 @@ func codexWaiting(lines []string) bool {
 	return strings.Contains(strings.Join(last, " "), codexPrompt)
 }
 
-// codexActivity reads the block of lines just above the box, past a block of queued
-// messages, which sits between it and the box.
+// codexActivity reads the block of lines just above the box, past the blocks of
+// messages waiting, which sit between it and the box.
 func codexActivity(above []string) (screen.Activity, bool) {
 	block, start := codexBlockAbove(above)
-	if len(block) > 0 && block[0] == codexQueued {
-		block, _ = codexBlockAbove(above[:start])
+	for len(block) > 0 && codexMessagesWaiting(block[0]) {
+		block, start = codexBlockAbove(above[:start])
 	}
 	if len(block) == 0 {
 		return screen.ActivityUnknown, false
@@ -136,6 +138,15 @@ func codexActivity(above []string) (screen.Activity, bool) {
 		}
 	}
 	return screen.ActivityUnknown, false
+}
+
+func codexMessagesWaiting(line string) bool {
+	for _, heading := range codexWaitingMessages {
+		if strings.HasPrefix(line, heading) {
+			return true
+		}
+	}
+	return false
 }
 
 // codexBlockAbove is the last run of lines that are not blank in above, and where

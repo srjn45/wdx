@@ -25,6 +25,7 @@ type Cursor struct {
 	NoBeginSession
 	NoBrief
 	NoDetached
+	NoSteer
 }
 
 // CursorID is Cursor's ID.

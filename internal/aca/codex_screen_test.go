@@ -12,7 +12,7 @@ import (
 
 // codexRecordings were made by testdata/codex/record/ready.py, which records the
 // box, and turns.py, which records turns and approvals.
-var codexRecordings = []string{"ready-120x40", "ready-40x24", "turns-120x40", "turns-40x24", "approval-120x40"}
+var codexRecordings = []string{"ready-120x40", "ready-40x24", "turns-120x40", "turns-40x24", "approval-120x40", "steer-120x40"}
 
 // codexStep is what one step of those scripts left on Codex's screen: whether a
 // message can go in, whether the box holds what a human put there, and what Codex
@@ -57,6 +57,11 @@ var codexAtStep = map[string]codexStep{
 	"interrupted_background": {inputBox: true, activity: screen.ActivityWorking},
 	// The narrow screen showed no background terminal once interrupted.
 	"interrupted": codexIdle,
+
+	// A message steered into the turn shows below the Working line until Codex
+	// takes it in.
+	"steer_pending": codexInTurn,
+	"steer_done":    codexIdle,
 
 	"approval": {activity: screen.ActivityWaiting},
 	"denied":   codexIdle,
@@ -175,7 +180,7 @@ var codexTurns = [][2]string{
 // waiting for you while it works.
 func TestCodexNeverIdleInATurn(t *testing.T) {
 	t.Parallel()
-	for _, dir := range []string{"turns-120x40", "turns-40x24"} {
+	for dir, turns := range map[string][][2]string{"turns-120x40": codexTurns, "turns-40x24": codexTurns, "steer-120x40": {{"working", "steer_done"}}} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 			rep := replayed(t, codexRecordingDir(dir))
@@ -183,7 +188,7 @@ func TestCodexNeverIdleInATurn(t *testing.T) {
 			for _, step := range rep.steps {
 				at[step.name] = step.at
 			}
-			for _, turn := range codexTurns {
+			for _, turn := range turns {
 				from, to := at[turn[0]], at[turn[1]]-time.Second
 				if from == 0 || to <= from {
 					t.Fatalf("no turn from %s to %s", turn[0], turn[1])

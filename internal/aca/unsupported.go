@@ -3,6 +3,7 @@ package aca
 import (
 	"context"
 	"errors"
+	"io"
 )
 
 // ErrNotSupported is what an AI coding agent answers for what it cannot do yet.
@@ -50,6 +51,22 @@ func (NoDetached) Detached(context.Context, Launch) ([]DetachedSession, error) {
 // StopDetached implements AiCodingAgent; Detached finds nothing to stop.
 func (NoDetached) StopDetached(context.Context, Launch, DetachedSession) error {
 	return ErrNotSupported
+}
+
+// NoSteer is Steer for an AI coding agent that cannot take a message into a running
+// turn: an instant message stops the turn with Interrupt, then goes in with Deliver.
+type NoSteer struct{}
+
+// Steer implements AiCodingAgent.
+func (NoSteer) Steer(io.Writer, string) error { return ErrNotSupported }
+
+func (NoSteer) steersNot() {}
+
+// CanSteer says whether a can take a message into a running turn, which the holder
+// must know before it presses the interrupt: false while it embeds NoSteer.
+func CanSteer(a AiCodingAgent) bool {
+	_, stub := a.(interface{ steersNot() })
+	return !stub
 }
 
 // CanBeginSession says whether a can begin a new session, which a restart must

@@ -102,6 +102,25 @@ func TestCodexDeliver(t *testing.T) {
 	}
 }
 
+// Steer types as Deliver does, with Enter, which gives the message to the running
+// turn, in place of Tab, which would queue it.
+func TestCodexSteer(t *testing.T) {
+	t.Parallel()
+	for message, want := range map[string]string{
+		"hello":         "\x1b[200~hello\x1b[201~\r",
+		"a\x1b[201~b":   "\x1b[200~ab\x1b[201~\r",
+		"/tmp is a dir": "\x1b[200~ /tmp is a dir\x1b[201~\r",
+	} {
+		var got bytes.Buffer
+		if err := (aca.Codex{}).Steer(&got, message); err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != want {
+			t.Errorf("Steer(%q) wrote %q, want %q", message, got.String(), want)
+		}
+	}
+}
+
 func TestCodexDeliverFails(t *testing.T) {
 	t.Parallel()
 	for writes := range 2 {

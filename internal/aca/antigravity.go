@@ -23,6 +23,7 @@ type Antigravity struct {
 	NoBeginSession
 	NoBrief
 	NoDetached
+	NoSteer
 }
 
 // AntigravityID is Antigravity's ID.
