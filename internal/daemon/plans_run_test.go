@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -214,6 +216,68 @@ func TestPlanRunsToDone(t *testing.T) {
 	}
 	if worktrees := strings.Count(gitOut(t, repo, "worktree", "list"), "\n") + 1; worktrees != 2 || len(onPlan) != 1 {
 		t.Errorf("worktrees: %d, %d on plan/auth", worktrees, len(onPlan))
+	}
+}
+
+// TestPlanDoneRemovesItsAgents: a plan done removes its tasks' agents, the tasks
+// keeping their state and summary with no agent.
+func TestPlanDoneRemovesItsAgents(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.runPlan(t, "auth", 2)
+	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
+	ids := []string{taskIn(c, "a").Agent.Id, taskIn(c, "b").Agent.Id}
+	td.finishTask(t, repo, "auth", "a")
+	td.finishTask(t, repo, "auth", "b")
+	c = td.waitPlan(t, "auth", "done, its agents removed", func(c api.PlanContent) bool {
+		return c.Plan.State == api.PlanStateDone && taskIn(c, "a").Agent == nil && taskIn(c, "b").Agent == nil
+	})
+	for _, id := range ids {
+		if _, err := td.daemon.agents.Store().Get(ctx, id); !errors.Is(err, agent.ErrNotFound) {
+			t.Errorf("agent %s not removed: %v", id, err)
+		}
+	}
+	for _, task := range []string{"a", "b"} {
+		if got := taskIn(c, task); got.State != api.PlanTaskStateDone || got.Summary == nil || *got.Summary != "did "+task || got.Agent != nil {
+			t.Errorf("%s: %+v", task, got)
+		}
+	}
+}
+
+// TestPlanAgentWithAChildStays: a task's agent with a child of its own stays as a
+// tombstone once its plan is done.
+func TestPlanAgentWithAChildStays(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "a exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.runPlan(t, "auth", 0)
+	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
+	a := taskIn(c, "a").Agent
+	// The child runs the task's script in a's slot, and ends at once, as a has.
+	touch(t, filepath.Join(repo, ".git", "end-a"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed"))
+	child, err := td.client.CreateAgentWithResponse(ctx, api.CreateAgent{Dir: repo, Parent: optional("id:" + a.Id)})
+	if err != nil || child.JSON201 == nil {
+		t.Fatalf("child: %v %s", err, child.Body)
+	}
+	td.waitAgentState(t, child.JSON201.Agent.Id, api.AgentStateExited)
+	if r, err := td.client.FinishPlanTaskWithResponse(ctx, "auth", "a", &api.FinishPlanTaskParams{Project: optional("app")}, api.FinishPlanTask{Summary: "by hand"}); err != nil || r.JSON200 == nil {
+		t.Fatalf("done: %v %s", err, r.Body)
+	}
+	td.waitPlan(t, "auth", "done, a's agent a tombstone", func(c api.PlanContent) bool {
+		if c.Plan.State != api.PlanStateDone {
+			return false
+		}
+		got, err := td.daemon.agents.Store().Get(ctx, a.Id)
+		return err == nil && got.Tombstone()
+	})
+	if _, err := td.daemon.agents.Store().Get(ctx, child.JSON201.Agent.Id); err != nil {
+		t.Errorf("the child: %v", err)
 	}
 }
 

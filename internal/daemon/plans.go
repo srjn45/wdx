@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/logging"
@@ -317,7 +318,9 @@ func changedResult(changed bool, result api.Result) api.Result {
 	return api.ResultUnchanged
 }
 
-// agentNames returns the names of the agents of run's tasks, by id.
+// agentNames returns the names of the agents of run's tasks, by id. One removed
+// since run was read, as a plan that is over removes its agents, is left out, as
+// the task has none now.
 func (s *server) agentNames(ctx context.Context, run *plan.Run) (map[string]string, error) {
 	names := map[string]string{}
 	if run == nil {
@@ -328,6 +331,9 @@ func (s *server) agentNames(ctx context.Context, run *plan.Run) (map[string]stri
 			continue
 		}
 		a, err := s.agents.Store().Get(ctx, t.AgentID)
+		if errors.Is(err, agent.ErrNotFound) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -587,8 +593,8 @@ func taskView(t plan.Task, states map[string]plan.TaskRun, slots map[int]string,
 		f := api.PlanTaskFailure(r.Failure)
 		v.Failure = &f
 	}
-	if r.AgentID != "" {
-		v.Agent = &api.PlanTaskAgent{Id: r.AgentID, Name: names[r.AgentID]}
+	if name, ok := names[r.AgentID]; ok {
+		v.Agent = &api.PlanTaskAgent{Id: r.AgentID, Name: name}
 	}
 	if r.Summary != "" {
 		v.Summary = &r.Summary

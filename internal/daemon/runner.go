@@ -84,6 +84,10 @@ func (d *Daemon) startRunner() {
 			_, err := d.agents.Stop(ctx, id)
 			return err
 		},
+		RemoveAgent: func(ctx context.Context, id string) error {
+			_, _, err := d.agents.Remove(ctx, id, false)
+			return err
+		},
 		AgentStates: d.agentStates,
 		CheckCommand: func(ctx context.Context, projectID string) (string, error) {
 			v, _, err := d.projects.LandSettings(ctx, projectID)

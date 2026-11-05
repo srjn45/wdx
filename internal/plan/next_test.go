@@ -101,10 +101,12 @@ func TestNext(t *testing.T) {
 		{name: "paused finishes", run: paused(allDone), parallel: 3, want: []Action{finish}},
 		{name: "no finish while a landing is going", run: allDone, parallel: 3, landing: true},
 		{name: "a run done", run: state(aDone, StateDone), parallel: 3},
+		{name: "a run done fails no task, its agents removed", run: state(allDone, StateDone), parallel: 3},
 		{name: "a run cancelled: stop live agents, release every slot, close", run: cancelled, parallel: 3,
 			agents: map[string]AgentState{"ag": AgentLive, "ag2": AgentEnded}, want: []Action{stop("b"), release("b", 1), release("c", 2), release("", 3), closing}},
 		{name: "a run cancelled waits for its landing", run: cancelled, parallel: 3, landing: true, agents: map[string]AgentState{"ag": AgentLive}},
 		{name: "a run cancelled and closed", run: closed(cancelled), parallel: 3, agents: map[string]AgentState{"ag": AgentLive}},
+		{name: "a run cancelled and closed fails no task, its agents removed", run: closed(with(cancelled, "b", TaskRunning, 1, "")), parallel: 3},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

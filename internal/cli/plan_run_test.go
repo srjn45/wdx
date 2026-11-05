@@ -76,7 +76,8 @@ func waitCommitted(t *testing.T, repo, task string) {
 }
 
 // TestPlanRunsThroughItsAgents: each task's agent says it is done through wdx,
-// with --agent-id, and the plan runs to done.
+// with --agent-id, and the plan runs to done, which removes its agents: its tasks
+// keep their summaries, with a null agent.
 func TestPlanRunsThroughItsAgents(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
@@ -89,19 +90,22 @@ func TestPlanRunsThroughItsAgents(t *testing.T) {
 	v = waitTasks(t, home, repo, "sso", "a:done b:done")
 	if !eventually(t, func() bool {
 		v, _ = wdxJSONWith(t, home, in(repo), "plan", "status", "--name", "sso")
-		return v.Plan.State == api.PlanStateDone
+		return v.Plan.State == api.PlanStateDone && (*v.Definition.Tasks)[0].Agent == nil && (*v.Definition.Tasks)[1].Agent == nil
 	}) {
-		t.Fatalf("the plan: %+v", v.Plan)
+		t.Fatalf("the plan: %+v, %+v", v.Plan, *v.Definition.Tasks)
 	}
 	if v.Run == nil || v.Run.Branch != "plan/sso" || *v.Plan.TasksDone != 2 {
 		t.Errorf("status: %+v, %+v", v.Run, v.Plan)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "b")
-	if exit != api.ExitOK || v.Task == nil || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Plan.Name != "sso" {
+	if exit != api.ExitOK || v.Task == nil || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Task.Agent != nil || v.Plan.Name != "sso" {
 		t.Errorf("task get: exit %d, %+v", exit, v.Task)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "nowhere")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "list"); exit != api.ExitOK || len(v.Agents) != 0 {
+		t.Errorf("agents left: exit %d, %+v", exit, v.Agents)
+	}
 }
 
 func TestPlanRun(t *testing.T) {

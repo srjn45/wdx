@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/plan"
@@ -330,27 +332,64 @@ func TestPlanSkippedTaskKeepsItsWork(t *testing.T) {
 }
 
 // TestPlanCancelled: cancelling stops the agents, removes the slots holding no work,
-// keeps those that do, and closes the run, its tasks as they were.
+// keeps those that do, and closes the run, its tasks as they were; then removes the
+// agents, of the task running and of the one done.
 func TestPlanCancelled(t *testing.T) {
 	t.Parallel()
 	td := start(t)
-	td.planProject(t, "a exit\nb exit\n")
+	repo := td.planProject(t, "b exit\n")
 	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
 	td.runPlan(t, "auth", 2)
 	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
 	a, b := taskIn(c, "a"), taskIn(c, "b")
+	td.finishTask(t, repo, "auth", "a")
+	td.waitPlan(t, "auth", "a done", stateIs("a:done b:running"))
 	touch(t, filepath.Join(*b.SlotPath, "loose.txt"))
 	td.cancel(t)
-	c = td.waitPlan(t, "auth", "closed", func(c api.PlanContent) bool { return c.Run.FinishedAt != nil })
-	if states(c) != "a:running b:running" || c.Plan.State != api.PlanStateCancelled {
-		t.Errorf("cancelled: %s, %s", states(c), c.Plan.State)
+	c = td.waitPlan(t, "auth", "closed, its agents removed", func(c api.PlanContent) bool {
+		return c.Run.FinishedAt != nil && taskIn(c, "a").Agent == nil && taskIn(c, "b").Agent == nil
+	})
+	if states(c) != "a:done b:running" || c.Plan.State != api.PlanStateCancelled || taskIn(c, "a").Summary == nil {
+		t.Errorf("cancelled: %s, %s, a %+v", states(c), c.Plan.State, taskIn(c, "a"))
 	}
-	if td.agentLive(t, a.Agent.Id) || td.agentLive(t, b.Agent.Id) {
-		t.Error("an agent still runs")
+	for _, id := range []string{a.Agent.Id, b.Agent.Id} {
+		if _, err := td.daemon.agents.Store().Get(context.Background(), id); !errors.Is(err, agent.ErrNotFound) {
+			t.Errorf("agent %s not removed: %v", id, err)
+		}
 	}
 	if exists(*a.SlotPath) || !exists(filepath.Join(*b.SlotPath, "loose.txt")) {
 		t.Errorf("a's slot kept, or b's work lost")
 	}
+}
+
+// TestPlanAgentNotRemoved: a task's agent live when its plan is done, as the person
+// restarted it, is not removed, and the plan is done all the same.
+func TestPlanAgentNotRemoved(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "a exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.runPlan(t, "auth", 0)
+	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
+	a := taskIn(c, "a").Agent
+	end := filepath.Join(repo, ".git", "end-a")
+	touch(t, end)
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed"))
+	if err := os.Remove(end); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{Force: optional(true)}); err != nil || r.JSON200 == nil {
+		t.Fatalf("restart: %v %s", err, r.Body)
+	}
+	td.skip(t, "a")
+	c = td.waitPlan(t, "auth", "done, its agent not removed", func(c api.PlanContent) bool {
+		return c.Plan.State == api.PlanStateDone && td.logged(t, "plan agent not removed")
+	})
+	if got := taskIn(c, "a"); got.State != api.PlanTaskStateSkipped || got.Agent == nil || got.Agent.Id != a.Id || !td.agentLive(t, a.Id) {
+		t.Errorf("a: %+v", got)
+	}
+	touch(t, end)
 }
 
 // TestPlanCancelledDuringACheck: a landing going is cut short, its check stopped,

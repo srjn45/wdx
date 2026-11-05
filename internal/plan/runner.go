@@ -50,7 +50,10 @@ type RunnerOptions struct {
 	// AgentNameTaken reports whether an agent of the project has name.
 	AgentNameTaken func(ctx context.Context, projectID, name string) (bool, error)
 	// StopAgent ends an agent so that its project opening does not start it again.
-	StopAgent   func(ctx context.Context, agentID string) error
+	StopAgent func(ctx context.Context, agentID string) error
+	// RemoveAgent removes an agent that has ended, as agent remove does: one with
+	// children stays as a tombstone.
+	RemoveAgent func(ctx context.Context, agentID string) error
 	AgentStates func(ctx context.Context, ids []string) (map[string]AgentState, error)
 	// CheckCommand is the project's landing check, "" for none.
 	CheckCommand func(ctx context.Context, projectID string) (string, error)
@@ -259,7 +262,11 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	case ActionRelease:
 		return true, r.release(ctx, run, f, a.Task, a.Slot)
 	case ActionClose:
-		return true, r.store.Close(ctx, id)
+		if err := r.store.Close(ctx, id); err != nil {
+			return false, err
+		}
+		r.removeAgents(ctx, run, f.Agents)
+		return true, nil
 	case ActionLand:
 		return true, r.land(ctx, run, a.Task)
 	case ActionStart:
@@ -268,6 +275,7 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 		if err := r.finish(ctx, run); err != nil {
 			return false, err
 		}
+		r.removeAgents(ctx, run, f.Agents)
 		r.wakeParent(ctx, id)
 		return true, nil
 	}
@@ -734,6 +742,24 @@ func (r *Runner) finish(ctx context.Context, run Run) error {
 		}
 	}
 	return r.store.Finish(ctx, run.PlanID)
+}
+
+// removeAgents removes the agents of the tasks of a run that is over, done or
+// closed, whose agents have all ended. Each task keeps its state and summary, its
+// agent becoming null. One that cannot be removed stays for the person to remove,
+// as the run is over either way.
+func (r *Runner) removeAgents(ctx context.Context, run Run, agents map[string]AgentState) {
+	log := logging.FromContext(ctx)
+	for _, t := range run.Tasks {
+		if state, ok := agents[t.AgentID]; t.AgentID == "" || !ok || state == AgentRemoved {
+			continue
+		}
+		if err := r.opts.RemoveAgent(ctx, t.AgentID); err != nil {
+			log.Error("plan agent not removed", "task_id", t.ID, "agent_id", t.AgentID, "err", err)
+			continue
+		}
+		log.Info("plan agent removed", "plan_id", run.PlanID, "task_id", t.ID, "agent_id", t.AgentID)
+	}
 }
 
 // BranchExistsError is returned when a run's branch cannot be made, as it, or a

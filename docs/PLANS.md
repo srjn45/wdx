@@ -1093,6 +1093,7 @@ A plan that is over leaves nothing behind but its branch, its worktrees with wor
 - Logged at info: `plan agent removed`, with `plan_id`, `task_id`, `agent_id`.
 - **Breaking**: `plan status --json` and `plan task get --json` gave a finished task's agent, and now give `null`. A script can notice, so the commit is `feat!:` with a `BREAKING CHANGE:` footer.
 - The CLI and tide are the same here, as the daemon does it.
+- As built: the runner removes the agents in the step that makes the run done or closes it, after writing it, with the lock held. A removal does not stop an agent: one still live, as one the person restarted, is refused as `agent remove` without `--stop-running` refuses it, logged at error as `plan agent not removed`, and kept. Only each task's agent now is removed: one of an earlier attempt, before a fresh `plan task retry`, is no longer the task's and stays for `agent remove`; and a daemon that dies between the write and the removals leaves the agents, as nothing removes them again. A plan's response reads its tasks' agents after the run, so one removed in between is `null`, as the task has none now, rather than a `not_found` error; the API's description of a task's `agent` says it is null once the plan is over.
 
 ### The Plans section's selector
 
