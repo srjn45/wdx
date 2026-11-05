@@ -892,7 +892,9 @@ dropped.
   starts. Landing runs the project's landing check first, if it has one.
     ` + st.Command(w+" plan status --name sso") + `       every task's state
     ` + st.Command(w+" plan task get --plan sso --task <id>") + `   one task's prompt and summary
-  Once every task is done, one worktree is left on plan/sso, to land as any.
+  Once every task is done, one worktree is left on plan/sso, to land as any,
+  and the tasks' agents are removed, as they are when a plan is cancelled:
+  each task keeps its state and summary, with no agent.
   A plan runs once, and cannot be changed once it has. To run it again, or
   start from it, copy it to a draft; one that is over can be archived, out
   of plan list until --all:
