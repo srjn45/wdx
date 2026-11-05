@@ -130,6 +130,16 @@ func (s Style) ActiveRow(text string) string {
 	return tint + strings.ReplaceAll(text, reset, reset+tint) + reset
 }
 
+// Selected marks the row under a list's cursor, styled already, in reverse
+// video; also when off, as Section does, so that it still stands out.
+func (s Style) Selected(text string) string {
+	if text == "" {
+		return text
+	}
+	const reverse, reset = "\x1b[7m", "\x1b[0m"
+	return reverse + strings.ReplaceAll(text, reset, reset+reverse) + reset
+}
+
 // StatusBar is the state a status line shows, which picks its colors.
 type StatusBar int
 

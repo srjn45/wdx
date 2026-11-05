@@ -1020,6 +1020,9 @@ Five parts, top to bottom (wide, then narrow):
 
 The glyphs, each in the style of its state, so that with color off the tab reads the same: `✓` done, `●` running, `◐` landing, `✗` failed, `⚠` land failed, `○` pending (Normal when ready, Muted while waiting), `⊘` skipped.
 
+- As built (step 2), chosen by the human on 2026-11-05: a plan of plans, and a plan not read yet, keep the key/value tab until step 3; `Enter` on a task neither running, landing nor waiting for the person does nothing until step 3 shows the whole prompt; `needs you` is at the row's end, where the marks are, a mark winning on the same row.
+- As built (step 2): the goal folds with the constraints in a pane under 20 lines. The progress bar takes what its line leaves, 10 to 40 cells, and the counts drop `tasks` and the branch before the bar goes. A draft's rows have no agent or time columns, as it has neither. The keys line says `→ constraints`, and `← constraints` once unfolded; `→ goal` where only the goal folds, the plan having no constraints. The tasks out of sight above say so too (`▴ 2 more`). The accent style of the selection's edges and marks is the cursor's, Focused; the reverse video is a new style, Selected, kept with color off as Section is. The minute timer also runs while a task lands, as its time counts too.
+
 ### The rail
 
 The DAG, drawn as `git log --graph` draws commits, one row per task in DAG order:

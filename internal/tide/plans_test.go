@@ -194,26 +194,18 @@ func TestPlanTab(t *testing.T) {
 	}
 	loadPlan(m, "doc-sso", api.PlanContent{Plan: aPlan("doc-sso", "sso", 2, 2), Revision: 2,
 		Definition: api.PlanDefinition{Goal: "Keep sessions.", Constraints: []string{"No new API."}, Tasks: &tasks}})
-	wantText(t, m, "goal:", "Keep sessions.", "No new API.", "schema:", "waits for nothing", "api:", "after schema")
+	wantText(t, m, "sso", "○ draft", "rev 2", "2 tasks, not run yet", "goal and 1 constraint", "schema", "api", "r run  y copy  ↑↓ select")
 	if strings.Contains(text(m), "Add the table") {
-		t.Errorf("a prompt shows before it is asked for:\n%s", text(m))
+		t.Errorf("a prompt shows:\n%s", text(m))
 	}
 
-	keys(m, "alt+right") // to the tab
-	wantText(t, m, "Enter show the prompt")
-	keys(m, "enter")
-	wantText(t, m, "Add the table.", "With an index.", "Enter hide the prompt")
-	keys(m, "enter")
-	if strings.Contains(text(m), "Add the table") {
-		t.Errorf("the prompt still shows:\n%s", text(m))
+	// Enter on a task of a draft does nothing, until the panel's step.
+	keys(m, "alt+right", "down", "enter")
+	if l.active != planTab("doc-sso") || m.taskBox != nil || strings.Contains(text(m), "Add the table") {
+		t.Errorf("Enter on a draft's task: tab %q, box %+v:\n%s", l.active, m.taskBox, text(m))
 	}
-	keys(m, "down", "enter")
-	wantText(t, m, "Use it.")
-
-	// A click on a task does as Enter: lines are goal, constraints, state,
-	// revision, a gap, then schema.
-	m.values.click(m.planTabRows(), 6, 5, 80, 40, m.st)
-	wantText(t, m, "Add the table.")
+	keys(m, "right")
+	wantText(t, m, "Keep sessions.", "No new API.", "← constraints")
 
 	// The pane starts again on another plan's tab.
 	m.layout.setFocus(project)
@@ -231,7 +223,7 @@ func TestPlanTabParentAndError(t *testing.T) {
 	keys(m, "enter")
 	a := m.plans()[1]
 	loadPlan(m, "doc-a", api.PlanContent{Plan: a, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &[]api.PlanTask{}}})
-	wantText(t, m, "parent:", "auth")
+	wantText(t, m, "runs with auth  y copy")
 	m.moveToPlan(3) // sso
 	keys(m, "enter")
 	m.Update(planLoaded{projectID: "proj-demo", tab: planTab("doc-sso"), err: errors.New("daemon gone")})
@@ -353,12 +345,12 @@ func TestPlanLive(t *testing.T) {
 	m.layout.setFocus(project)
 	m.moveToPlan(0)
 	p.keys("enter")
-	p.until(t, "the plan's goal", func(m *Model) bool { return strings.Contains(text(m), "One.") })
+	p.until(t, "the plan's tasks", func(m *Model) bool { return strings.Contains(text(m), "1 task, not run yet") })
 
-	if _, err := c.UpdatePlanContent(ctx, "sso", app, "", 1, "goal: Two.\ntasks:\n  - id: a\n    prompt: p\n"); err != nil {
+	if _, err := c.UpdatePlanContent(ctx, "sso", app, "", 1, "goal: Two.\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n"); err != nil {
 		t.Fatal(err)
 	}
-	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "Two.") })
+	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "2 tasks, not run yet") })
 }
 
 // TestPlanRunShown: a running plan's row says its state and progress, and its tab
@@ -385,8 +377,10 @@ func TestPlanRunShown(t *testing.T) {
 	}
 	loadPlan(m, "doc-sso", api.PlanContent{Plan: sso, Revision: 2, Run: &api.PlanRun{State: api.PlanStateRunning, Branch: "plan/sso"},
 		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &tasks}})
-	wantText(t, m, "running on plan/sso, 1/4 tasks done", "done · sso-schema", "running · sso-api",
-		"land failed: rebase", "conflicts in x.go", "waiting for api, cli")
+	wantText(t, m, "● running", "1/4 tasks · 1 failed · on plan/sso", "done", "running", "land failed: rebase", "waiting", "→ goal")
+	if strings.Contains(text(m), "2562047h") {
+		t.Errorf("a run with no start says how long it ran:\n%s", text(m))
+	}
 
 	keys(m, "alt+right", "r")
 	if m.confirm != nil {
@@ -396,9 +390,10 @@ func TestPlanRunShown(t *testing.T) {
 	if m.statusNotice != "plan sso has run" {
 		t.Errorf("a refusal: notice %q", m.statusNotice)
 	}
-	wantText(t, m, "Enter show the prompt and summary")
 	keys(m, "enter")
-	wantText(t, m, "Add the table.", "summary:", "Added it.")
+	if l := m.list(); l.active != planTab("doc-sso") || strings.Contains(text(m), "Added it.") {
+		t.Errorf("Enter on a done task: tab %q:\n%s", l.active, text(m))
+	}
 	keys(m, "down")
 	wantText(t, m, "Enter go to its agent")
 	keys(m, "enter")
@@ -459,8 +454,8 @@ func TestPlanTabAnswers(t *testing.T) {
 	content := api.PlanContent{Plan: sso, Revision: 2, Run: &api.PlanRun{State: api.PlanStateRunning, Branch: "plan/sso"},
 		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &tasks}}
 	loadPlan(m, "doc-sso", content)
-	wantText(t, m, "running on plan/sso, 0/2 tasks done, 2 failed: p pauses it, c cancels it",
-		"failed: agent ended", "land failed: check (terminal land-sso-1)")
+	wantText(t, m, "● running", "0/2 tasks · 2 failed · on plan/sso", "p pause  c cancel  y copy",
+		"failed: agent ended", "land failed: check", "needs you")
 
 	keys(m, "alt+right")
 	wantText(t, m, "Enter answer it")
@@ -511,7 +506,7 @@ func TestPlanTabAnswers(t *testing.T) {
 	closedReason := api.PlanRunPausedReasonProjectClosed
 	content.Plan, content.Run = paused, &api.PlanRun{State: api.PlanStatePaused, Branch: "plan/sso", PausedReason: &closedReason}
 	loadPlan(m, "doc-sso", content)
-	wantText(t, m, "paused (project closed) on plan/sso, 0/2 tasks done, 2 failed: c cancels it")
+	wantText(t, m, "⏸ paused (project closed)", " c cancel  ↑↓ select")
 	m.layout.setFocus(agent)
 	if _, took := m.planKey(tea.KeyPressMsg{Code: 'p', Text: "p"}); took {
 		t.Error("p takes a plan its closed project pauses")

@@ -133,7 +133,7 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 	b := m.plans()[2]
 	loadPlan(m, "doc-b", api.PlanContent{Plan: b, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &[]api.PlanTask{}}})
 	m.layout.setFocus(agent)
-	wantText(t, m, "draft: it runs with auth, y copies it")
+	wantText(t, m, "runs with auth  y copy")
 	if _, took := m.planKey(keyMsgs("r")[0]); took {
 		t.Error("r runs a plan a plan of plans lists from its own tab")
 	}

@@ -166,7 +166,7 @@ func TestRunPlan(t *testing.T) {
 	p.until(t, "the plan listed", func(m *Model) bool { _, ok := m.planOf(created.Plan.Id); return ok })
 	p.m.openPlan(created.Plan, true)
 	p.m.layout.setFocus(agent)
-	p.until(t, "the tab read", func(m *Model) bool { return strings.Contains(text(m), "draft: r runs it") })
+	p.until(t, "the tab read", func(m *Model) bool { return strings.Contains(text(m), "r run  y copy") })
 	p.keys("r")
 	wantText(t, p.m, "Run plan", "Run auth?", "y run")
 	p.keys("n")
@@ -174,7 +174,7 @@ func TestRunPlan(t *testing.T) {
 		t.Fatal("still asking")
 	}
 	p.keys("r", "y")
-	p.until(t, "a running, its agent shown", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a") })
+	p.until(t, "a running, its agent shown", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a ") })
 	p.keys("enter")
 	p.until(t, "its agent's tab", func(m *Model) bool {
 		a, ok := m.activeAgent()
@@ -207,7 +207,7 @@ func TestAnswerPlan(t *testing.T) {
 	p.until(t, "the plan listed", func(m *Model) bool { _, ok := m.planOf(created.Plan.Id); return ok })
 	p.m.openPlan(created.Plan, true)
 	p.m.layout.setFocus(agent)
-	p.until(t, "a running", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a") })
+	p.until(t, "a running", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a ") })
 	if _, err := c.DeleteAgent(ctx, "auth-a", "api", "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -216,19 +216,19 @@ func TestAnswerPlan(t *testing.T) {
 	p.keys("enter")
 	wantText(t, p.m, "Task a", "r retry")
 	p.keys("r")
-	p.until(t, "a running with a new agent", func(m *Model) bool { return strings.Contains(text(m), "running · auth-a-2") })
+	p.until(t, "a running with a new agent", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a-2") })
 	if p.m.taskBox != nil {
 		t.Error("the box stayed once answered")
 	}
 
 	p.keys("p")
-	p.until(t, "paused", func(m *Model) bool { return strings.Contains(text(m), "p resumes it, c cancels it") })
+	p.until(t, "paused", func(m *Model) bool { return strings.Contains(text(m), "p resume  c cancel") })
 	p.keys("p")
-	p.until(t, "running again", func(m *Model) bool { return strings.Contains(text(m), "p pauses it, c cancels it") })
+	p.until(t, "running again", func(m *Model) bool { return strings.Contains(text(m), "p pause  c cancel") })
 	p.keys("c")
 	wantText(t, p.m, "Cancel auth?")
 	p.keys("y")
-	p.until(t, "cancelled", func(m *Model) bool { return strings.Contains(text(m), "cancelled on plan/auth") })
+	p.until(t, "cancelled", func(m *Model) bool { return strings.Contains(text(m), "✗ cancelled") })
 	if p.m.confirm != nil {
 		t.Error("the confirmation stayed once answered")
 	}

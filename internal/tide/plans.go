@@ -467,15 +467,26 @@ func planLine(st style.Style, r planRow, folded, cursor, active bool, width int)
 	return row
 }
 
-// planView is what a plan's tab holds: the revision last read, and the tasks whose
-// prompt it shows.
+// planView is what a plan's tab holds: the revision last read, and how its list
+// is shown.
 type planView struct {
 	content *api.PlanContent
 	err     string
 	asked   bool      // it was asked for
 	loading bool      // an answer is on its way
 	seen    time.Time // the plan's updated_at it was asked at
-	prompts map[string]bool
+
+	cursor   string // the task under the cursor, by id
+	offset   int    // the list's rows scrolled past
+	reveal   bool   // the next draw scrolls the cursor into view
+	unfolded bool   // the constraints are shown, and the goal when it folds with them
+	timing   bool   // a planMinute is on its way
+
+	// rail is the rail laid out for railRevision; railDrawn is false when it has
+	// too many lanes, and is a row per task.
+	rail         []railRow
+	railDrawn    bool
+	railRevision int64
 }
 
 // planLoaded is the answer to reading a plan's tab.
@@ -506,6 +517,12 @@ func (m *Model) planTitle(tab string) string {
 // brought a change to it: a revision, or a step of its run, which moves its
 // updated_at on. A tab not shown is read when it comes to show.
 func (m *Model) planSync() tea.Cmd {
+	read := m.planRead()
+	return tea.Batch(read, m.planTimer())
+}
+
+// planRead reads the plan of the tab shown when planSync says so.
+func (m *Model) planRead() tea.Cmd {
 	l := m.list()
 	if l == nil || !isPlanTab(l.active) {
 		return nil
@@ -515,7 +532,7 @@ func (m *Model) planSync() tea.Cmd {
 	}
 	v, ok := l.planViews[l.active]
 	if !ok {
-		v = &planView{prompts: map[string]bool{}}
+		v = &planView{reveal: true}
 		l.planViews[l.active] = v
 	}
 	p, ok := m.planOf(strings.TrimPrefix(l.active, planTabPrefix))
@@ -554,9 +571,10 @@ func (m *Model) planLoadedMsg(msg planLoaded) {
 	v.err, v.content = "", &msg.content
 }
 
-// planTabRows are the rows of the plan's tab shown: its goal, constraints and
-// parent, then a row per task or plan in DAG order. Enter on a task shows its
-// prompt and hides it again; on a plan it opens the plan's tab.
+// planTabRows are the rows of the plan's tab shown while it is not read, and of a
+// plan of plans: its goal, constraints, state and parent, then a row per plan in
+// DAG order, where Enter opens the plan's tab. A plan's tasks are drawn by
+// layoutPlanTab.
 func (m *Model) planTabRows() []valueRow {
 	l := m.list()
 	v := l.planViews[l.active]
@@ -577,54 +595,12 @@ func (m *Model) planTabRows() []valueRow {
 	if c.Plan.Parent != nil {
 		rows = append(rows, valueRow{key: "parent", values: []string{*c.Plan.Parent}})
 	}
-	after := func(list []string) []string {
-		if len(list) == 0 {
-			return []string{"waits for nothing"}
-		}
-		return []string{"after " + strings.Join(list, ", ")}
-	}
-	first := true
-	if d.Tasks != nil {
-		for _, t := range *d.Tasks {
-			r := valueRow{key: t.Id, values: []string{taskLine(t)}, gap: first}
-			if c.Run == nil {
-				r.values = after(t.After)
-			}
-			if t.Conflicts != nil {
-				r.values = append(r.values, "conflicts in "+strings.Join(*t.Conflicts, ", "))
-			}
-			if (t.State == api.PlanTaskStateRunning || t.State == api.PlanTaskStateLanding) && t.Agent != nil {
-				r.verb, r.open = "go to its agent", m.goToTaskAgent(t.Agent.Id)
-				rows = append(rows, r)
-				first = false
-				continue
-			}
-			if goingOn(c.Plan.State) && (t.State == api.PlanTaskStateFailed || t.State == api.PlanTaskStateLandFailed) {
-				r.verb, r.open = "answer it", m.askTask(c.Plan, t)
-				rows = append(rows, r)
-				first = false
-				continue
-			}
-			what := "the prompt"
-			if t.Summary != nil {
-				what = "the prompt and summary"
-			}
-			r.verb = "show " + what
-			if v.prompts[t.Id] {
-				r.values = append(append(r.values, ""), strings.Split(strings.TrimRight(t.Prompt, "\n"), "\n")...)
-				if t.Summary != nil {
-					r.values = append(append(r.values, "", "summary:"), strings.Split(strings.TrimRight(*t.Summary, "\n"), "\n")...)
-				}
-				r.verb = "hide " + what
-			}
-			r.open = m.togglePrompt(v, t.Id)
-			rows = append(rows, r)
-			first = false
-		}
-	}
 	if d.Plans != nil {
-		for _, child := range *d.Plans {
-			r := valueRow{key: child.Id, values: after(child.After), gap: first, verb: "open the plan", open: m.openChild(child.Id)}
+		for i, child := range *d.Plans {
+			r := valueRow{key: child.Id, values: []string{"waits for nothing"}, gap: i == 0, verb: "open the plan", open: m.openChild(child.Id)}
+			if len(child.After) > 0 {
+				r.values = []string{"after " + strings.Join(child.After, ", ")}
+			}
 			if c.Run != nil {
 				r.values = []string{childLine(child, *d.Plans)}
 			}
@@ -632,7 +608,6 @@ func (m *Model) planTabRows() []valueRow {
 				r.note = "r starts it, once the plans before it are in the default branch"
 			}
 			rows = append(rows, r)
-			first = false
 		}
 	}
 	return rows
@@ -662,15 +637,6 @@ func childLine(c api.PlanChild, all []api.PlanChild) string {
 		return "draft · " + tasks
 	}
 	return "waiting for " + strings.Join(before, ", ") + " · " + tasks
-}
-
-// togglePrompt is what shows the prompt of the task with id in v, or hides it.
-func (m *Model) togglePrompt(v *planView, id string) func() tea.Cmd {
-	return func() tea.Cmd {
-		v.prompts[id] = !v.prompts[id]
-		m.log.Info("plan task prompt toggled", "task_id", id, "shown", v.prompts[id])
-		return nil
-	}
 }
 
 // openChild is what opens the tab of the plan named name, which a plan of plans

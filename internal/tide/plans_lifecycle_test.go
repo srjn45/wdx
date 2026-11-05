@@ -130,7 +130,7 @@ func TestPlanTabArchives(t *testing.T) {
 	none := int64(0)
 	content.Plan.State, content.Plan.TasksDone, content.Run.State = api.PlanStateCancelled, &none, api.PlanStateCancelled
 	loadPlan(m, "doc-sso", content)
-	wantText(t, m, "cancelled on plan/sso, 0/2 tasks done: a archives it, y copies it")
+	wantText(t, m, "✗ cancelled", "a archive  y copy")
 	keys(m, "a")
 	if got := <-asked; got.path != "/v1/plans/id:doc-sso/archive" {
 		t.Errorf("asked %+v", got)
@@ -141,7 +141,7 @@ func TestPlanTabArchives(t *testing.T) {
 
 	content.Plan = archived(content.Plan, api.PlanStateCancelled)
 	loadPlan(m, "doc-sso", content)
-	wantText(t, m, "cancelled on plan/sso, 0/2 tasks done, archived: a unarchives it, y copies it")
+	wantText(t, m, "✗ cancelled archived", "a unarchive  y copy")
 	keys(m, "a")
 	if got := <-asked; got.path != "/v1/plans/id:doc-sso/unarchive" {
 		t.Errorf("asked %+v", got)
@@ -163,7 +163,7 @@ func TestPlanTabCopies(t *testing.T) {
 	keys(m, "enter")
 	loadPlan(m, "doc-sso", api.PlanContent{Plan: aPlan("doc-sso", "sso", 2, 4), Revision: 2,
 		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &[]api.PlanTask{}}})
-	wantText(t, m, "draft: r runs it, y copies it")
+	wantText(t, m, "r run  y copy")
 	m.layout.setFocus(agent)
 	keys(m, "y")
 	f, ok := m.openTop().(*fieldScreen)

@@ -27,6 +27,17 @@ func TestSection(t *testing.T) {
 	}
 }
 
+func TestSelectedKeepsItsReverse(t *testing.T) {
+	t.Parallel()
+	s := New(true)
+	if got, want := s.Selected("a"+s.Muted("b")+"c"), "\x1b[7ma\x1b[2mb\x1b[0m\x1b[7mc\x1b[0m"; got != want {
+		t.Errorf("on: got %q, want %q", got, want)
+	}
+	if got, want := New(false).Selected("row"), "\x1b[7mrow\x1b[0m"; got != want {
+		t.Errorf("off: got %q, want %q", got, want)
+	}
+}
+
 func TestStyles(t *testing.T) {
 	t.Parallel()
 	for _, on := range []bool{false, true} {

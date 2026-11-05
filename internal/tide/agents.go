@@ -1448,6 +1448,10 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		m.drawDiff(buf, area, st)
 		return
 	case m.planShown():
+		if v, ok := m.planTasksView(); ok {
+			m.drawPlanTab(buf, area, v, st)
+			return
+		}
 		m.values.draw(buf, area, m.planTabRows(), m.layout.focus == agent, st)
 		return
 	case ok && m.infoShown():
