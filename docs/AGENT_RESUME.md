@@ -114,18 +114,32 @@ Checked on Codex 0.163.0 with a binary built from the change:
 - `wdx agent start` after quitting Codex runs `codex resume <id>`, and the agent remembers what it said.
 - After `/new`, which in a git repository first asks where the new conversation runs, the next start resumes the new thread.
 
+`wdx agent transcript` of a real Codex 0.163.0 agent, checked on 2026-11-05 with a binary built from the change, on a home and daemon of its own:
+- After a turn it shows the session's heading, the message, the command with its output and exit code, and the answer. A turn Codex failed (`Selected model is at capacity`) shows only its `## User`, as Codex completed no item for it.
+- After `/quit` and `wdx agent start` it goes on under the same heading, with nothing repeated, and the model answers about the first turn.
+- After `/new` a new `# Session <id> · codex` heading follows, and `session_id` moves to it.
+
+Putting back a session file Codex deleted, checked on Codex 0.163.0 under tmux before it was built:
+- With the file deleted, `codex resume <id>` fails at once with `no rollout found for thread id …` (exit 1), though `state_5.sqlite` and `session_index.jsonl` still list the session.
+- With a copy put back at the same path it resumes: the old turns on screen, the model answering about the first turn, and the next turn appended to the file.
+- It resumes as well with the file under another day's directory, so Codex finds the file by its name, not by sqlite's `rollout_path`.
+- Codex draws the screen's history from its own sqlite but the model's context from the file: with an older copy put back, the screen showed a turn the file lacked. wdx's copy is complete, so the two agree.
+
 ## Keeping an agent's history
 
-Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific, and only Claude Code's is built. `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.
+Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific; Claude Code's and Codex's are built (Codex's under Codex's sessions above). `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.
 
 ```
 ~/.wdx/agents/<agent id>/
   agent.json                         whose it is, kept current, as the row goes before it does
   sessions.jsonl                     every session of the agent, told by Claude's hook
   claude-settings.json               that hook, given with --settings
-  rendered.json                      how far transcript.md has got
-  transcripts/<session id>.jsonl     Claude's own bytes
-  transcripts/<session id>/          its subagents/ and tool-results/
+  rendered.json                      how far transcript.md has got in Claude's sessions
+  codex-turns.jsonl                  every turn of Codex's, told by its notify
+  codex-sessions.json                where Codex kept each of its sessions' files
+  codex-rendered.json                how far transcript.md has got in Codex's sessions
+  transcripts/<session id>.jsonl     the ACA's own bytes
+  transcripts/<session id>/          its subagents/, and Claude's tool-results/
   transcript.md                      all of it as text, oldest first: what wdx reads and grep finds
 
 ~/.wdx/trash/agents/<agent id>/      the same, with removed.json, for 7 days
@@ -136,7 +150,7 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
 - **When.** The daemon brings the backup up to date, copying only new bytes, when an agent goes `idle` or `waiting`, when it exits, before a start, when its transcript is read, once its row is gone, and at startup. One at a time, across agents, and never in the way of the holder's connection.
 - **The latest conversation.** `BackUp` returns the session of the last `SessionStart`, a start goes on with it, and `agents.session_id` follows it.
 - **A file that shrank or was replaced** is kept and copied again beside it, as Claude documents setting transcripts aside.
-- **`transcript.md`.** Appended to, with a heading per session and per message: messages, thinking, tool calls and their results, in full, with escape codes stripped. Text after thinking in the same message has a `### Text` heading, as the brief needs to know where the thinking ends. Request records, other metadata and what subagents said are left out, and stay in the raw files. A line or content block it cannot read is skipped, counted and logged. A replaced transcript is rendered again from its start, so its text appears twice rather than go missing. `<home>/agents/` is 0700 and its files 0600, as transcripts hold whatever tools read.
+- **`transcript.md`.** Appended to, with a heading per session, `# Session <id> · <ACA id>`, so that a transcript holding sessions of two ACAs says which wrote what, and per message: messages, thinking, tool calls and their results, in full, with escape codes stripped. Text after thinking in the same message has a `### Text` heading, as the brief needs to know where the thinking ends. Request records, other metadata and what subagents said are left out, and stay in the raw files. A line or content block it cannot read is skipped, counted and logged. A replaced transcript is rendered again from its start, so its text appears twice rather than go missing. `<home>/agents/` is 0700 and its files 0600, as transcripts hold whatever tools read.
 - **Reading.** `wdx agent transcript (--id | --name) [project flags] [--tail <n> | [--from <n>] [--count <n>] | --path]` and `GET /v1/agents/{agent}/transcript?tail=` or `?from=&count=`, lines as with a terminal's history, whose name is taken, plus the file's `path`. `--brief`, `?brief=true`, gives the brief instead. The text stays out of the logs. An agent's scrollback was being logged, unlike a terminal's, and no longer is.
 - **Staying resumable.** With Claude's file gone and a copy kept, `Command` puts it back at the recorded path and resumes, in place of silently starting an empty session.
 - **Removal.** When the agent's row goes (`agent remove`, a tombstone's last child, `project remove`), its directory is brought up to date and moved to the trash with `removed.json`: id, name, project, dir, ACA, sessions, removal time. The row is gone, so that is all that says what it was. Claude's own files stay. No command reads the trash yet.
