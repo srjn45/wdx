@@ -380,6 +380,7 @@ Each is designed again in detail before it is built.
 6. Running plans of plans: a parent starting its children, each from the default branch once the plans before it have landed, waiting for the person at each PR; copying a plan of plans.
 7. Stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged: split from step 6 by the human on 2026-11-05, to design once running parents has been used.
 8. The plan's tab redesigned: a header with a progress bar, the tasks with their DAG drawn as `git log --graph` draws commits, a panel for the task under the cursor, and the keys the plan's state takes.
+9. A plan over cleaned up: its agents removed once it is done or cancelled, and the Plans section's selector of All, Draft & in progress, and Completed.
 
 ## Step 1 in detail (proposed)
 
@@ -1070,6 +1071,51 @@ The tab is read again on every `updated_at`, as now. The times of tasks running 
 2. The tab: the header and progress bar, the list with the rail and the cursor, the keys, the widths.
 3. The detail panel, the whole prompt on `Enter`, a plan of plans.
 4. docs/CLI_TIDE.md and the README.
+
+## Step 9 in detail (approved 2026-11-05)
+
+A plan that is over leaves nothing behind but its branch, its worktrees with work and its summaries, and the Plans section shows what is going on apart from what is over. Asked by the human on 2026-11-05, as `codex-backup`, done, still listed its six agents in tide's Agents section: a plan's agents are removed once it is over, as keeping them is resources to clean up later, and the Plans section gets a selector, `< All / Draft & in progress / Completed >`, as Code has one for its worktree. Decided by the human: a cancelled plan's agents are removed too, as nothing runs them again (a plan runs again as a copy, with new agents); Completed is `done` and `cancelled`; archiving stays as it is; `codex-backup`'s six agents removed by hand, which was done on 2026-11-05, rather than a sweep of the plans already over.
+
+### Removing a plan's agents
+
+- **When**: at the end of Finishing, once the run is `done`, and at the end of `plan cancel`, once its agents are stopped. By then every task's agent has ended: wdx stops one when its task lands, and cancel stops the others.
+- **How**: each task's agent is removed as `agent remove` removes one: its row deleted, its directory brought up to date and moved to the trash with `removed.json` (docs/AGENT_RESUME.md), the ACA's own files left on disk, its tabs closed by the cascade. One with children of its own stays as a tombstone until the last of them is removed, as now.
+- **What stays**: every task keeps its state and summary; its agent becomes null, as `plan_tasks.agent_id` is `ON DELETE SET NULL`, and the tab's AGENT says `—`. A task over is never failed by its agent's removal, which fails only a task still running; a test says so.
+- A removal that fails is logged at error and does not fail the plan's finishing or cancel: the run is over either way, and the agent stays for `agent remove`.
+- A parent has no agents of its own: each of its plans removes its agents as it finishes, or as the parent's cancel reaches it.
+- Logged at info: `plan agent removed`, with `plan_id`, `task_id`, `agent_id`.
+- **Breaking**: `plan status --json` and `plan task get --json` gave a finished task's agent, and now give `null`. A script can notice, so the commit is `feat!:` with a `BREAKING CHANGE:` footer.
+- The CLI and tide are the same here, as the daemon does it.
+
+### The Plans section's selector
+
+```
+ Plans 2
+ < Draft & in progress >
+ ▸ auth            running  2/4  needs you
+   sso-login       draft    5 tasks
+```
+
+- The section's first row, as Code's worktree selector (docs/TIDE_CODE.md): `←` `→` and `h` `l` on it go through `All`, `Draft & in progress` and `Completed`, going round; `<` and `>` can be clicked. The cursor on it takes no `Enter`.
+- **Draft & in progress** is `draft`, `running` and `paused`; **Completed** is `done` and `cancelled`; **All** both. A plan of plans goes by its own state, and its plans stay under it whatever theirs.
+- An archived plan stays out of every view, found with `/` and muted, as now.
+- A folder with nothing in the view is not shown; `needs you` on a folder and the heading's count are of the plans the view shows.
+- It starts on Draft & in progress. Each project keeps its choice in tide's view in the daemon (docs/TIDE_STATE.md), as `plans_view` in `projectView`, a missing key meaning Draft & in progress.
+- `/` finds plans in every view, as it finds archived ones.
+- The cursor on a plan that leaves the view, as one finishing, goes to the nearest row, as when a plan is removed.
+- **The CLI**: nothing changes. `plan list` says each plan's state, and a script picks what it wants from the JSON. docs/CLI_TIDE.md gets the row.
+
+### Tests
+
+- Runner: a plan of two tasks done removes both agents, the tasks keep `done` and their summaries with a null agent; a plan cancelled with a task running and one done removes both agents once stopped; a removal that fails leaves the plan `done`; an agent with a child stays a tombstone.
+- cli: `plan status --json` after a plan is done, its tasks' agents null.
+- tide: the selector's three views and going round, clicks on `<` `>`, a folder empty in the view hidden, the count, `/` across views, the choice kept in the view and read back, the cursor on a plan that finishes.
+
+### Steps of step 9
+
+1. The daemon: removing a plan's agents at Finishing and on cancel.
+2. tide: the Plans section's selector.
+3. docs/CLI_TIDE.md, `wdx help plans` (a plan's agents removed once it is over) and the README.
 
 ## Open
 
