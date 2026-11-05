@@ -75,9 +75,10 @@ func TestFileSettings(t *testing.T) {
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
 		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", PlanParallel: 5, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
-		ACAEnabled: map[string]bool{"claude_code": false},
+		ACAEnabled: map[string]bool{"claude_code": false, "antigravity": true},
 		From: map[string]string{
 			"aca.claude_code.enabled": path + ":23",
+			"aca.antigravity.enabled": "default",
 			"tide.section_order":      path + ":16",
 			"docs.git_path":           path + ":18",
 			"plan.parallel":           path + ":20",
@@ -306,7 +307,7 @@ func TestChoicesAreAccepted(t *testing.T) {
 	want := map[string][]string{
 		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
 		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi", "vim", "nvim", "nano", "hx", "emacs"},
-		"aca.claude_code.enabled": {"true", "false"},
+		"aca.claude_code.enabled": {"true", "false"}, "aca.antigravity.enabled": {"true", "false"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)

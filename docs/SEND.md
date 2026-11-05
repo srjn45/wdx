@@ -66,7 +66,7 @@ The words, decided by the human on 2026-10-31:
 
 ### Delivering
 
-The holder stays free of ACA code. How an ACA is delivered to is handed in as the activity parser is: the daemon passes `--aca`, and the hidden `wdx holder` command calls `aca.ByID` and gives the holder its `Deliver` and `Interrupt` (docs/AGENT_STATE.md). A holder that does not know the ACA, an older binary than the daemon that named it, treats it as a shell. Only `claude_code` exists so far, so this cannot happen yet; the next ACA needs to settle it.
+The holder stays free of ACA code. How an ACA is delivered to is handed in as the activity parser is: the daemon passes `--aca`, and the hidden `wdx holder` command calls `aca.ByID` and gives the holder its `Deliver` and `Interrupt` (docs/AGENT_STATE.md). A holder that does not know the ACA treats it as a shell, which cannot happen: the daemon starts a holder from its own binary, naming its agent's ACA then, so a holder is never older than its ACA. One that outlives an update was started with an ACA its binary knew.
 
 | | Message | Interrupt |
 |---|---|---|

@@ -91,7 +91,7 @@ const TranscriptFile = "transcript.md"
 
 // known is every AI coding agent wdx can run, in the order they are offered, and
 // the one place one is made: adding one is adding it here. docs/ACA.md.
-var known = []AiCodingAgent{ClaudeCode{}}
+var known = []AiCodingAgent{ClaudeCode{}, Antigravity{}}
 
 // All is every AI coding agent wdx can run, in the order they are offered.
 func All() []AiCodingAgent {

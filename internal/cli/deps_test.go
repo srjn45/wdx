@@ -67,6 +67,7 @@ func TestDepsList(t *testing.T) {
 		{"hx", "missing", ""},
 		{"emacs", "missing", ""},
 		{"claude", "missing", ""},
+		{"agy", "missing", ""},
 	}
 	if len(v.Dependencies) != len(want) {
 		t.Fatalf("dependencies %+v", v.Dependencies)
@@ -81,8 +82,11 @@ func TestDepsList(t *testing.T) {
 			t.Errorf("%s: got %+v", w.name, d)
 		}
 	}
-	if d := v.Dependencies[len(want)-1]; d.Detail == nil || *d.Detail != "claude is not found through the login shell" || d.Features[0] != "agents: claude_code" {
-		t.Errorf("claude: %+v", d)
+	for i, aca := range []struct{ program, id string }{{"claude", "claude_code"}, {"agy", "antigravity"}} {
+		d := v.Dependencies[len(want)-2+i]
+		if d.Detail == nil || *d.Detail != aca.program+" is not found through the login shell" || d.Features[0] != "agents: "+aca.id {
+			t.Errorf("%s: %+v", aca.program, d)
+		}
 	}
 	if d := v.Dependencies[1]; d.Detail == nil || *d.Detail != "wl-copy is not installed" {
 		t.Errorf("clipboard detail %v", d.Detail)
