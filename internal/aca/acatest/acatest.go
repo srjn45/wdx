@@ -44,6 +44,8 @@ type ACA struct {
 	// ProgramName is what Program says, "sh" when "": a name never installed makes
 	// it an ACA that is not.
 	ProgramName string
+	// BriefOf, when set, is the ACA whose Brief it gives, Claude Code's when nil.
+	BriefOf aca.AiCodingAgent
 }
 
 // ID implements aca.AiCodingAgent.
@@ -91,9 +93,12 @@ func (a *ACA) BeginSession(_ context.Context, _ aca.Launch, session string) erro
 	return os.WriteFile(a.Session, []byte(session+"\n"), 0o600)
 }
 
-// Brief implements aca.AiCodingAgent: Claude Code's, so that a test can give it what
-// Claude Code's backup writes.
+// Brief implements aca.AiCodingAgent: BriefOf's, or Claude Code's, so that a test can
+// give it what that ACA's backup writes.
 func (a *ACA) Brief(ctx context.Context, l aca.Launch, limit int) (aca.Brief, error) {
+	if a.BriefOf != nil {
+		return a.BriefOf.Brief(ctx, l, limit)
+	}
 	return aca.ClaudeCode{}.Brief(ctx, l, limit)
 }
 

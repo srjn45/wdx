@@ -260,3 +260,45 @@ func TestTheTrashExpiresOnItsOwn(t *testing.T) {
 		return os.IsNotExist(err)
 	})
 }
+
+// A Codex-like agent's brief is its ACA's: from the request after the latest /new,
+// with the compaction since read as a message, and the line it starts at.
+func TestTheBriefOfACodexLikeAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	f.aca.BriefOf = aca.Codex{}
+	f.aca.Conversation = filepath.Join(t.TempDir(), "conversation")
+	transcript := "# Session thread-old · codex\n\n## User · 2026-11-05T14:00:00Z\n\nthe old request\n\n" +
+		"# Session thread-new · codex\n\n## User · 2026-11-05T14:01:00Z\n\nthe new request\n\n" +
+		"## Compacted · 2026-11-05T14:02:00Z\n\n(Codex keeps its summary encrypted)\n\n## User · 2026-11-05T14:03:00Z\n\nand on\n"
+	if err := os.WriteFile(f.aca.Conversation, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := f.create(t, "helper")
+	// What Codex's backup keeps: its turns, and a copy of each of the user's threads.
+	dir := identity.AgentDir(f.home, a.ID)
+	if err := os.MkdirAll(filepath.Join(dir, "transcripts"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	turns := `{"thread-id":"thread-old"}` + "\n" + `{"thread-id":"thread-new"}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "codex-turns.jsonl"), []byte(turns), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"thread-old", "thread-new"} {
+		if err := os.WriteFile(filepath.Join(dir, "transcripts", id+".jsonl"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := f.agents.Brief(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.From != 8 || len(got.Lines) < 3 || got.Lines[2] != "## User · 2026-11-05T14:01:00Z" {
+		t.Fatalf("brief from %d: %q", got.From, got.Lines)
+	}
+	text := strings.Join(got.Lines, "\n")
+	if strings.Contains(text, "the old request") || !strings.Contains(text, "the new request") || !strings.Contains(text, "(Codex keeps its summary encrypted)") || !strings.Contains(text, "and on") {
+		t.Errorf("brief:\n%s", text)
+	}
+}

@@ -13,7 +13,6 @@ import (
 // Codex is OpenAI's Codex CLI: the wdx docs ACA_CODEX, ACA_READY, CODEX_ACTIVITY,
 // CODEX_STEER, CODEX_RESUME, CODEX_BACKUP and CODEX_BRIEF.
 type Codex struct {
-	NoBrief
 	NoDetached
 }
 
