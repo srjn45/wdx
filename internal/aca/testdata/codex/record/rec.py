@@ -24,15 +24,31 @@ class Rec:
         s.work = tempfile.mkdtemp(prefix='w', dir=WORK)
         subprocess.run(['git', 'init', '-q', s.work], check=True)
         s.n = 0
+        s.cols, s.rows = cols, rows
+        s.start(args)
+
+    def start(s, args, raw='raw'):
+        """Starts codex in the work directory, recording to <raw>.out and <raw>.timing."""
         # As wdx starts it: no update offer, the directory trusted for this session only.
         trust = 'projects={"%s"={trust_level="trusted"}}' % s.work
         codex = f"codex -c check_for_update_on_startup=false -c '{trust}' {args}"
-        cmd = (f"cd {s.work} && exec script -q -f --log-timing {s.out}/raw.timing "
-               f"--log-out {s.out}/raw.out -c \"{codex.replace(chr(34), chr(92) + chr(34))}\"")
+        cmd = (f"cd {s.work} && exec script -q -f --log-timing {s.out}/{raw}.timing "
+               f"--log-out {s.out}/{raw}.out -c \"{codex.replace(chr(34), chr(92) + chr(34))}\"")
         subprocess.run(['tmux', '-L', s.sock, 'new-session', '-d', '-s', 'r',
-                        '-x', str(cols), '-y', str(rows), cmd], check=True)
+                        '-x', str(s.cols), '-y', str(s.rows), cmd], check=True)
         # script's clock starts about now; marks a little early read a screen before its step.
         s.t0 = time.time()
+
+    def quit(s, limit=30):
+        """Quits codex as end does, keeping the work directory for another start."""
+        s.keys('C-c')
+        time.sleep(0.5)
+        s.keys('C-c')
+        end = time.time() + limit
+        while time.time() < end and subprocess.run(
+                ['tmux', '-L', s.sock, 'has-session', '-t', 'r'], capture_output=True).returncode == 0:
+            time.sleep(0.1)
+        s.tmux('kill-server')
 
     def tmux(s, *a):
         return subprocess.run(['tmux', '-L', s.sock, *a], capture_output=True, text=True).stdout
