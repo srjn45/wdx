@@ -1030,6 +1030,7 @@ The DAG, drawn as `git log --graph` draws commits, one row per task in DAG order
 - **The task under the cursor**: its row in reverse video with `▌` at its edge; its edges, in from what it needs and out to what it unblocks, in the accent style, the others Muted; the tasks it needs say `▲ needs` and those waiting for it `▼ unblocks` at the row's end. Nothing is dimmed, so that the rest of the plan reads as well.
 - **Wide plans**: the rail grows by 2 columns a lane, with how many tasks the DAG has side by side, not with its depth; most stay within `plan.parallel` (3). Past 6 lanes the rail is left out and the rows are a plain list, the `▲` `▼` marks and the panel saying the dependencies.
 - The layout is worked out from the definition only, again on a new revision; a change of state repaints the glyphs.
+- As built: the lanes a split opens are the leftmost free ones to the right of its task, and the first task it unblocks keeps the task's lane; a task's node is in the leftmost lane arriving at it, the others joining it from the right (`├─╯`, `├─┴─╯`); a lane that ends leaves a gap and nothing shifts. A connector's line drawn across a lane that passes crosses it with `┼`: the example above, drawn by the code, reads `├─╮` after schema and `├─┼─╮` after oidc-client, docs in the second lane. Chosen by the human on 2026-11-05, over looking ahead to avoid crossings, for being simpler.
 
 ### Widths
 
