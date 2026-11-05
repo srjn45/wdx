@@ -257,7 +257,7 @@ func (r *codexRendered) renderItem(w io.Writer, session string, line codexLine, 
 	case "AgentMessage":
 		assistant()
 		if r.thinking {
-			fmt.Fprintf(w, "%s\n\n", claudeCodeTextHeading)
+			fmt.Fprintf(w, "%s\n\n", transcriptTextHeading)
 			r.thinking = false
 		}
 		for _, c := range item.Content {
@@ -266,7 +266,7 @@ func (r *codexRendered) renderItem(w io.Writer, session string, line codexLine, 
 	case "Reasoning":
 		if summary := strings.Join(item.SummaryText, "\n\n"); summary != "" {
 			assistant()
-			fmt.Fprintf(w, "%s\n\n%s\n\n", claudeCodeThinkingHeading, ansi.Strip(summary))
+			fmt.Fprintf(w, "%s\n\n%s\n\n", transcriptThinkingHeading, ansi.Strip(summary))
 			r.thinking = true
 		}
 	case "CommandExecution":

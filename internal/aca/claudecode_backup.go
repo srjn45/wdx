@@ -765,14 +765,14 @@ func (r *claudeCodeRendered) renderLine(w io.Writer, session string, raw []byte)
 		case "text":
 			heading(name)
 			if r.Thinking {
-				fmt.Fprintf(w, "%s\n\n", claudeCodeTextHeading)
+				fmt.Fprintf(w, "%s\n\n", transcriptTextHeading)
 				r.Thinking = false
 			}
 			fmt.Fprintf(w, "%s\n\n", ansi.Strip(b.Text))
 		case "thinking":
 			if b.Thinking != "" {
 				heading(name)
-				fmt.Fprintf(w, "%s\n\n%s\n\n", claudeCodeThinkingHeading, ansi.Strip(b.Thinking))
+				fmt.Fprintf(w, "%s\n\n%s\n\n", transcriptThinkingHeading, ansi.Strip(b.Thinking))
 				r.Thinking = true
 			}
 		case "tool_use":
