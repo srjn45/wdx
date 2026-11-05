@@ -913,5 +913,18 @@ dropped.
     ` + st.Command(w+" plan pause --name sso") + `  nothing new starts; ` + st.Command("resume") + ` goes on
     ` + st.Command(w+" plan set --name sso --parallel <n>") + `   more or fewer tasks at once
     ` + st.Command(w+" plan cancel --name sso") + `  stops it for good, keeping every worktree with work
-  Closing the project pauses its plans, and opening it resumes them.`
+  Closing the project pauses its plans, and opening it resumes them.
+
+` + st.Heading("Running a plan of plans") + `
+    ` + st.Command(w+" plan run --name auth") + `
+  starts each plan it lists from the default branch once the plans before it
+  are done and their work is in the default branch, so each lands as a PR of
+  its own. ` + w + ` sees work landed through it (` + st.Command(w+" worktree land") + `), or a PR merged
+  and pulled. A plan whose work it cannot see waits for you; running it is
+  your answer, which also asks gh whether the PR before it is merged:
+    ` + st.Command(w+" plan status --name auth") + `      waiting for you, or for the plans not done
+    ` + st.Command(w+" plan run --name auth-b") + `       once the PR of auth-a is merged and pulled
+  ` + w + ` fetches nothing: pull the default branch first. Pausing, resuming,
+  cancelling and archiving a plan of plans reach its plans; copying it copies
+  those not done, to run again what is left.`
 }
