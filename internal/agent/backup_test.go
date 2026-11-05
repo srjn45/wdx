@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -87,6 +88,35 @@ func TestAStartGoesOnWithTheLatestSession(t *testing.T) {
 	got, err := f.agents.Store().Get(ctx, a.ID)
 	if err != nil || got.SessionID != "after-clear" {
 		t.Errorf("the agent's session = %q, %v", got.SessionID, err)
+	}
+}
+
+// An AI coding agent that keeps no transcript yet, as Codex, still says which session
+// it is in, and the next start goes on with that one; its transcript stays one it
+// cannot give.
+func TestAStartGoesOnWithTheSessionOfABackupWithNoTranscript(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "exit 0")
+	f.aca.Session = filepath.Join(t.TempDir(), "session")
+	f.aca.NoTranscript = true
+	a := f.create(t, "helper")
+	waitExited(t, f, a.ID)
+	if err := os.WriteFile(f.aca.Session, []byte("its-own\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := f.aca.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{a.SessionID, "its-own"}; !slices.Equal(sessions, want) {
+		t.Errorf("sessions = %q, want %q", sessions, want)
+	}
+	if _, err := f.agents.Transcript(ctx, a.ID, nil, 10); !errors.Is(err, aca.ErrNotSupported) {
+		t.Errorf("transcript: %v, want ErrNotSupported", err)
 	}
 }
 

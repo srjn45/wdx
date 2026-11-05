@@ -101,7 +101,18 @@ Checked on Claude Code 2.1.316, on a real job and through a login shell: `Detach
 
 ## An ACA without these yet
 
-An ACA that has not written `BackUp`, `BeginSession` or `Brief` embeds `aca.NoBackUp`, `aca.NoBeginSession` and `aca.NoBrief`, which answer `aca.ErrNotSupported`, and `aca.NoDetached`, which finds nothing. Its agents start and are removed as any other, with no backup kept, logged at debug. `agent transcript` and `--brief` fail with `aca_unsupported` rather than return nothing, and `agent restart` with it before anything stops, as `aca.CanBeginSession` says (the wdx doc ACA_SELECT).
+An ACA that has not written `BackUp`, `BeginSession` or `Brief` embeds `aca.NoBackUp`, `aca.NoBeginSession` and `aca.NoBrief`, which answer `aca.ErrNotSupported` (a `BackUp` may answer it with the session it found, as Codex's does), and `aca.NoDetached`, which finds nothing. Its agents start and are removed as any other, with no backup kept, logged at debug. `agent transcript` and `--brief` fail with `aca_unsupported` rather than return nothing, and `agent restart` with it before anything stops, as `aca.CanBeginSession` says (the wdx doc ACA_SELECT).
+
+### Codex's sessions
+
+Codex names its own sessions, so wdx can't give it one (the wdx doc CODEX_RESUME). An agent starts with wdx's UUID, and `Command` begins a new conversation while that id names no session file of Codex's. `Command` gives Codex a `notify` for the run, which appends each turn's JSON to `codex-turns.jsonl` in the agent's backup. `Codex.BackUp` takes the last thread in it whose session file is the user's (`thread_source` `user`), passing over the thread Codex names the conversation in, which has no file, and subagents'. That becomes the agent's `session_id`, through the same path as Claude's `/clear`. So from the first turn on, a start runs `codex resume <id>` where the session last worked, and Codex asks nothing.
+
+It keeps only the session so far: `BackUp` answers `ErrNotSupported` with it, so `agent transcript` and `--brief` still fail with `aca_unsupported`, and `agent restart`, whose first message points at the brief, waits for `Brief`.
+
+Checked on Codex 0.163.0 with a binary built from the change:
+- The first turn writes the file, and `session_id` becomes Codex's thread.
+- `wdx agent start` after quitting Codex runs `codex resume <id>`, and the agent remembers what it said.
+- After `/new`, which in a git repository first asks where the new conversation runs, the next start resumes the new thread.
 
 ## Keeping an agent's history
 

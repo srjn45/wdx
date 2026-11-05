@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-// Codex is OpenAI's Codex CLI. It has only the methods of the wdx doc ACA_CODEX:
-// it keeps no backup and cannot resume yet.
+// Codex is OpenAI's Codex CLI: the wdx docs ACA_CODEX, ACA_READY, CODEX_ACTIVITY,
+// CODEX_STEER and CODEX_RESUME. Its backup keeps only the session so far.
 type Codex struct {
-	NoBackUp
 	NoBeginSession
 	NoBrief
 	NoDetached
@@ -28,16 +27,30 @@ func (Codex) ID() string { return CodexID }
 // Program implements AiCodingAgent.
 func (Codex) Program() string { return "codex" }
 
-// Command implements AiCodingAgent. Codex names its own sessions, so l.SessionID is
-// not passed and every start begins a new conversation. The overrides last for this
-// run only: Codex writes none of them to the user's config. It is told not to offer
-// an update and that l.Dir is trusted, so that it asks nothing before it starts.
+// Command implements AiCodingAgent. Codex names its own sessions: l.SessionID is
+// resumed once it names one Codex keeps, which BackUp makes it after the first turn,
+// and before that a start begins a new conversation. The overrides last for this run
+// only: Codex writes none of them to the user's config. It is told not to offer an
+// update and that l.Dir is trusted, so that it asks nothing before it starts, and to
+// report each turn to the backup.
 func (Codex) Command(l Launch) ([]string, error) {
-	command := []string{"codex",
+	command := []string{"codex"}
+	session, err := codexSessionFile(l.UserHome, l.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("look for Codex's session %s: %w", l.SessionID, err)
+	}
+	if session != "" {
+		command = append(command, "resume", l.SessionID)
+	}
+	command = append(command,
 		"-c", "check_for_update_on_startup=false",
 		// A table, as Codex splits a dotted key at every ".", which paths have. It
 		// replaces the user's projects for this run, which hold only their trust.
-		"-c", "projects={" + tomlString(l.Dir) + "={trust_level=\"trusted\"}}",
+		"-c", "projects={"+tomlString(l.Dir)+"={trust_level=\"trusted\"}}",
+	)
+	if l.BackupDir != "" {
+		// It replaces the user's own notify for this run (the wdx doc CODEX_RESUME).
+		command = append(command, "-c", codexNotify(l.BackupDir))
 	}
 	if l.Model != "" {
 		command = append(command, "-m", l.Model)
