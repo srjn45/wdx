@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built; step 6, running plans of plans, designed in detail and approved on 2026-11-05 (Step 6 in detail); its step 1, the parent's run, built on 2026-11-05; its step 2, the person's answer, built on 2026-11-05; its step 3, copying a plan of plans, built on 2026-11-05; its step 4, tide, built on 2026-11-05; its step 5, the docs, done on 2026-11-05: step 6 is built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built; step 6, running plans of plans, designed in detail and approved on 2026-11-05 (Step 6 in detail); its step 1, the parent's run, built on 2026-11-05; its step 2, the person's answer, built on 2026-11-05; its step 3, copying a plan of plans, built on 2026-11-05; its step 4, tide, built on 2026-11-05; its step 5, the docs, done on 2026-11-05: step 6 is built. Step 8, the plan's tab redesigned, designed in detail and approved on 2026-11-05 (Step 8 in detail). "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -379,6 +379,7 @@ Each is designed again in detail before it is built.
 5. tide's grouping of a plan's agents and slots.
 6. Running plans of plans: a parent starting its children, each from the default branch once the plans before it have landed, waiting for the person at each PR; copying a plan of plans.
 7. Stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged: split from step 6 by the human on 2026-11-05, to design once running parents has been used.
+8. The plan's tab redesigned: a header with a progress bar, the tasks with their DAG drawn as `git log --graph` draws commits, a panel for the task under the cursor, and the keys the plan's state takes.
 
 ## Step 1 in detail (proposed)
 
@@ -952,6 +953,123 @@ A plan of plans runs: it starts each of its plans once the plans before it are d
 3. Copying a plan of plans.
 4. tide: the parent's tab and keys, the Plans section.
 5. docs/CLI_TIDE.md, help and README.
+
+## Step 8 in detail (approved 2026-11-05)
+
+The plan's tab, redesigned: the tab of steps 1 to 6 is the key/value list of the Settings and Info tabs, where the goal, the constraints and every task look alike, the state is one long sentence, the DAG is only `after x, y`, and `r` is said only in that sentence. Asked by the human on 2026-11-05, who chose, of the options shown, a dashboard with a task list and a detail panel, the DAG drawn as `git log --graph` draws commits: drawing it as boxes in columns needs room in both directions, which a large or tangled plan does not leave. Decided by the human: `↑` `↓` moves through the tasks, the task under the cursor is the main highlight, its dependencies are marked and nothing is dimmed, and the detail panel is kept narrow so that the list has the room. tide only: nothing changes in the daemon, the API or the CLI, as the tab shows what a plan's content already carries.
+
+### The tab
+
+Five parts, top to bottom (wide, then narrow):
+
+```
+ sso-login                                                                      ● running   rev 3
+ ━━━━━━━━━━━━━━━━━▬▬▬▬▬────────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
+ Goal  Let users sign in with the company's SSO, keeping password login.
+ ▸ 3 constraints
+┌─ Tasks ────────────────────────────────────────────────────┬─ ui-button ───────────────────────┐
+│ ✓       schema      done          claude-a1  4m            │ ✗ failed: check · 3m              │
+│ ├───╮                                                      │ codex-d4 · terminal t-91          │
+│ ✓   │   oidc-client done          claude-b2  9m ▲ needs    │                                   │
+│ ├─╮ │                                                      │ Needs                             │
+│ │ │ ✓   docs        done          claude-e5  2m            │   ✓ oidc-client                   │
+│ ● │     callback    running       claude-c3  6m            │ Unblocks                          │
+│▌│ ✗     ui-button   failed: check codex-d4   3m            │   ○ e2e, also after callback      │
+│ ├─╯                                                        │                                   │
+│ ○       e2e         waiting       —          —  ▼ unblocks │ Prompt                            │
+│                                                            │   Add a "Sign in with SSO"        │
+│                                                            │   button to the login page,       │
+│                                                            │   next to the password …+2        │
+│                                                            │                                   │
+│                                                            │ Enter answer it                   │
+└────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+ p pause  c cancel  y copy   ↑↓ select  Enter answer it  → constraints
+```
+
+```
+ sso-login                                            ● running   rev 3
+ ━━━━━━━━━━━━━━━▬▬▬▬▬──────────  3/6 · 1 failed · 23m
+ ▸ goal and 3 constraints
+┌─ Tasks ──────────────────────────────────────────────────────────────┐
+│ ✓       schema      done          4m                                 │
+│ ├───╮                                                                │
+│ ✓   │   oidc-client done          9m                      ▲ needs    │
+│ ├─╮ │                                                                │
+│ │ │ ✓   docs        done          2m                                 │
+│ ● │     callback    running       6m                                 │
+│▌│ ✗     ui-button   failed: check 3m                                 │
+│ ├─╯                                                                  │
+│ ○       e2e         waiting       —                       ▼ unblocks │
+├─ ui-button ──────────────────────────────────────────────────────────┤
+│ ✗ failed: check · codex-d4 · 3m · terminal t-91                      │
+│ Needs ✓ oidc-client · Unblocks ○ e2e (also after callback)           │
+│ Add a "Sign in with SSO" button to the login page, next …+2          │
+│ Enter answer it                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+ p pause  c cancel  y copy  ↑↓ select  Enter answer it
+```
+
+- **The header**, which never scrolls:
+  - the plan's name, its state as a badge, and its revision. The badges: `○ draft` Muted, `● running` Success, `⏸ paused` Warning (`⏸ paused (project closed)`), `✓ done` Success, `✗ cancelled` Failure; `archived` after the state, Muted.
+  - a progress bar of its tasks, done in Success, failed (failed or land failed) in Failure, the rest Muted; then `3/6 tasks · 1 failed`, the run's branch, and how long it has run, from the run's `started_at` to its `finished_at` or now. A draft has no bar, but `6 tasks, not run yet`.
+- **About**: the goal, wrapped, and the constraints folded to `▸ 3 constraints`, unfolded as a list with `→` and folded with `←`; the fold is kept per tab, in tide's memory, as a plan of plans' fold is. Where the pane is short, the goal folds with them (`▸ goal and 3 constraints`).
+- **The list** of tasks, in the definition's DAG order, with the rail (below) at its left. A task's row: its state glyph on the rail, its id, its state in words (`failed: check`, `land failed: rebase`, `waiting`, `ready`), its agent, and its time, `finished_at` less `started_at`, or since `started_at` for one running, in minutes (`6m`, `1h 4m`). A task that needs the person, failed or land failed in a plan going on, says `needs you` in Warning, as the Plans section does. The list scrolls under the header; rows out of sight say `▾ 8 more`.
+- **The detail panel**: the task under the cursor. Its glyph, state and the failure's reason, its agent, time, slot, the check's terminal and the files that conflict, those that apply; `Needs` and `Unblocks`, the tasks before and after it with their glyphs, an unblocked task with what else it waits for; the prompt, as many lines as fit and `…+N`; a done task's summary under it; and what `Enter` does. At about 36 columns at the right on a wide pane, or 4 lines under the list on a narrow one, so that the list keeps the room.
+- **The keys**: only those the plan's state takes, so that `r` is seen: a draft `r run  y copy`; running `p pause  c cancel  y copy`; paused `p resume  c cancel`, or `c cancel` while its project is closed; done or cancelled `a archive  y copy`; archived `a unarchive  y copy`. A child plan's draft says `runs with <parent>`. Then `↑↓ select`, and what `Enter` does on the task under the cursor.
+
+The glyphs, each in the style of its state, so that with color off the tab reads the same: `✓` done, `●` running, `◐` landing, `✗` failed, `⚠` land failed, `○` pending (Normal when ready, Muted while waiting), `⊘` skipped.
+
+### The rail
+
+The DAG, drawn as `git log --graph` draws commits, one row per task in DAG order:
+
+- A **lane** is an edge on its way down to the task that waits for it, two columns wide. A task's node, its glyph, is in the lane the first of its edges arrives in.
+- A task that unblocks others opens a lane for each, on a connector row after it: `├─╮`, `├───╮` for one further right. A task that waits for others joins their lanes into its own on a connector row before it: `├─╯`. A lane passes the rows of other tasks as `│`; a task nothing waits for ends its lane. A task with no `after` takes the leftmost free lane.
+- Connector rows hold no task: `↑` `↓` pass over them.
+- **The task under the cursor**: its row in reverse video with `▌` at its edge; its edges, in from what it needs and out to what it unblocks, in the accent style, the others Muted; the tasks it needs say `▲ needs` and those waiting for it `▼ unblocks` at the row's end. Nothing is dimmed, so that the rest of the plan reads as well.
+- **Wide plans**: the rail grows by 2 columns a lane, with how many tasks the DAG has side by side, not with its depth; most stay within `plan.parallel` (3). Past 6 lanes the rail is left out and the rows are a plain list, the `▲` `▼` marks and the panel saying the dependencies.
+- The layout is worked out from the definition only, again on a new revision; a change of state repaints the glyphs.
+
+### Widths
+
+- The detail panel is at the right at 90 columns and wider, under the list below.
+- The list drops its columns from the right as the pane narrows: the agent, then the time, then the failure's reason; the rail, the id, the state and the marks stay. The panel still says all of it.
+
+### Keys and mouse
+
+- `↑` `↓` moves to the previous and next task, a click on a row to it. The cursor is kept by task id when the plan comes again.
+- `Enter`: on a task running or landing, its agent's tab, as now; on one failed or land failed in a plan going on, the answers' box (`r` `f` `l` `s` `t`), as now: the answers act at once, so they stay behind the box, where a stray key on the list cannot skip a task; on the others, the task's whole prompt and summary filling the tab, `Esc` back. The toggle that showed a prompt between the rows goes.
+- `→` `←` on the list unfold and fold the constraints.
+- `r`, `p`, `c`, `a`, `y` as now.
+
+### A plan of plans
+
+The same tab, its plans the rows and their `after` the rail. A row: its state, `2/4` in place of the time, `waiting for you` with `needs you`, or `waiting`. The header counts plans (`1/3 plans`). The panel: the plan's goal, `Needs` and `Unblocks`, and why it waits, `r starts it, once sso-login is in the default branch`. `Enter` opens its tab, and `r` on one waiting for the person is the answer, as now.
+
+### Live
+
+The tab is read again on every `updated_at`, as now. The times of tasks running are drawn again once a minute, as they show minutes: a timer through tide's `tick`, which tests replace, set only while the tab shown has a task running.
+
+### Code
+
+- A new `internal/tide/plantab.go`: the tab drawn from the plan's content, its view (cursor, scroll, fold) and the width, in place of `planTabRows`, which leaves the key/value list to Settings and Info. The keys, questions and the answers' box stay as they are.
+- The rail in its own file, `internal/tide/planrail.go`: a pure function from the tasks' ids and `after` to its rows, each a task's or a connector's, with the cells of each lane and which edge each belongs to, so that the selection's edges can be styled.
+
+### docs/CLI_TIDE.md
+
+- Rows: reading a plan's DAG (tide's rail; the CLI's `plan status` `AFTER`), the keys a plan's tab shows, and reading a task's prompt (`Enter` opens it whole).
+
+### Tests
+
+- The rail: table tests of the rows drawn for a chain, a split that never joins, a diamond, an edge passing rows, two roots, and 7 lanes left out; each checked character for character.
+- The tab: rendered at fixed widths, wide and narrow, for a draft, a run with a failed task and a plan of plans; `↑` `↓` passing over connector rows; the marks of the task under the cursor; `Enter` on each kind of task; the keys line in each state; columns dropped as the width shrinks.
+
+### Steps of step 8
+
+1. The rail: its layout and tests.
+2. The tab: the header and progress bar, the list with the rail and the cursor, the keys, the widths.
+3. The detail panel, the whole prompt on `Enter`, a plan of plans.
+4. docs/CLI_TIDE.md and the README.
 
 ## Open
 
