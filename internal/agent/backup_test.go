@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -91,18 +90,21 @@ func TestAStartGoesOnWithTheLatestSession(t *testing.T) {
 	}
 }
 
-// An AI coding agent that keeps no transcript yet, as Codex, still says which session
-// it is in, and the next start goes on with that one; its transcript stays one it
-// cannot give.
-func TestAStartGoesOnWithTheSessionOfABackupWithNoTranscript(t *testing.T) {
+// An AI coding agent that names its own session, as Codex, says which one it is in,
+// the next start goes on with that one, and its transcript is the one its backup
+// writes.
+func TestAStartGoesOnWithTheSessionTheAICodingAgentNamed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t, "exit 0")
 	f.aca.Session = filepath.Join(t.TempDir(), "session")
-	f.aca.NoTranscript = true
+	f.aca.Conversation = filepath.Join(t.TempDir(), "conversation")
 	a := f.create(t, "helper")
 	waitExited(t, f, a.ID)
 	if err := os.WriteFile(f.aca.Session, []byte("its-own\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f.aca.Conversation, []byte("# Session its-own · codex\n\n## User · now\n\nhi\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
@@ -115,8 +117,9 @@ func TestAStartGoesOnWithTheSessionOfABackupWithNoTranscript(t *testing.T) {
 	if want := []string{a.SessionID, "its-own"}; !slices.Equal(sessions, want) {
 		t.Errorf("sessions = %q, want %q", sessions, want)
 	}
-	if _, err := f.agents.Transcript(ctx, a.ID, nil, 10); !errors.Is(err, aca.ErrNotSupported) {
-		t.Errorf("transcript: %v, want ErrNotSupported", err)
+	r, err := f.agents.Transcript(ctx, a.ID, nil, 10)
+	if want := []string{"# Session its-own · codex", "", "## User · now", "", "hi"}; err != nil || !slices.Equal(r.Lines, want) {
+		t.Errorf("transcript = %q, %v; want %q", r.Lines, err, want)
 	}
 }
 

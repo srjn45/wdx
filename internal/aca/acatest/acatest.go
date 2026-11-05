@@ -38,9 +38,6 @@ type ACA struct {
 	Session      string
 	// Dir, when set, is the file holding where it says it last worked.
 	Dir string
-	// NoTranscript makes BackUp say the session and dir as Codex's does, with
-	// ErrNotSupported for the transcript it keeps none of.
-	NoTranscript bool
 	// Running is what Detached finds, and Stopped what StopDetached took from it.
 	Running []aca.DetachedSession
 	Stopped []string
@@ -75,9 +72,6 @@ func (a *ACA) BackUp(_ context.Context, l aca.Launch) (aca.Backup, error) {
 	}
 	if data, err := os.ReadFile(a.Dir); err == nil {
 		backup.Dir = strings.TrimSpace(string(data))
-	}
-	if a.NoTranscript {
-		return backup, aca.ErrNotSupported
 	}
 	data, err := os.ReadFile(a.Conversation)
 	if errors.Is(err, os.ErrNotExist) || a.Conversation == "" {

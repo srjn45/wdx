@@ -55,35 +55,35 @@ func codexSessionFile(home, id string) (string, error) {
 	return files[0], nil
 }
 
-// BackUp implements AiCodingAgent, so far for the session and the raw copies: it
-// copies what is new of the user's sessions and their subagents' to the backup, and
-// returns the last thread of the turns file that is the user's conversation, not the
-// thread Codex names it in nor a subagent's, and the directory Codex last worked in,
-// where a resume asks nothing. It renders no transcript yet, so it says
-// ErrNotSupported with them.
+// BackUp implements AiCodingAgent: it copies what is new of the user's sessions and
+// their subagents' to the backup, appends what is new of the sessions to
+// TranscriptFile as text, and returns the last thread of the turns file that is the
+// user's conversation, not the thread Codex names it in nor a subagent's, and the
+// directory Codex last worked in, where a resume asks nothing.
 func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	first, last, err := codexThreads(filepath.Join(l.BackupDir, codexTurnsFile))
 	if err != nil {
 		return Backup{}, err
 	}
-	copied := codexCopySessions(ctx, l, first)
+	replaced, copied := codexCopySessions(ctx, l, first)
+	failed := errors.Join(copied, codexRenderSessions(ctx, l.BackupDir, first, replaced))
 	for _, id := range slices.Backward(last) {
 		file, err := codexSessionFile(l.UserHome, id)
 		if err != nil {
-			return Backup{}, errors.Join(copied, err)
+			return Backup{}, errors.Join(failed, err)
 		}
 		if file == "" {
 			continue
 		}
 		user, dir, err := codexReadSession(file)
 		if err != nil {
-			return Backup{}, errors.Join(copied, err)
+			return Backup{}, errors.Join(failed, err)
 		}
 		if user {
-			return Backup{Session: id, Dir: dir}, errors.Join(ErrNotSupported, copied)
+			return Backup{Session: id, Dir: dir}, failed
 		}
 	}
-	return Backup{}, errors.Join(ErrNotSupported, copied)
+	return Backup{}, failed
 }
 
 // codexThreads is the thread-ids of the turns file, each once, in the order they

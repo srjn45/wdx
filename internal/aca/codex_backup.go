@@ -24,16 +24,18 @@ const codexRawDir = "transcripts"
 var codexSubagentStarted = []byte(`"type":"SubAgentActivity"`)
 
 // codexCopySessions copies what is new of each of the user's sessions in threads, and
-// of their subagents, to the backup. A file that shrank or was replaced is kept, and
-// copied again beside it; one Codex deleted leaves its copy as it is.
-func codexCopySessions(ctx context.Context, l Launch, threads []string) error {
+// of their subagents, to the backup, and says which sessions' files were replaced. A
+// file that shrank or was replaced is kept, and copied again beside it; one Codex
+// deleted leaves its copy as it is.
+func codexCopySessions(ctx context.Context, l Launch, threads []string) (replaced map[string]bool, _ error) {
+	replaced = map[string]bool{}
 	var failed []error
 	for _, id := range threads {
 		file, err := codexSessionFile(l.UserHome, id)
 		if err == nil && file != "" {
 			var source string
 			if source, err = codexThreadSource(file); err == nil && source == "user" {
-				err = codexCopySession(ctx, l, id, file)
+				replaced[id], err = codexCopySession(ctx, l, id, file)
 			}
 		}
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -43,20 +45,20 @@ func codexCopySessions(ctx context.Context, l Launch, threads []string) error {
 	for _, err := range failed {
 		logging.FromContext(ctx).Error("agent session not copied", "err", err)
 	}
-	return errors.Join(failed...)
+	return replaced, errors.Join(failed...)
 }
 
 // codexCopySession copies session's file, then each subagent its copy says it started,
 // and theirs in turn, all under the session. A subagent with no file yet is looked for
-// again at the next backup.
-func codexCopySession(ctx context.Context, l Launch, session, file string) error {
+// again at the next backup. It says whether session's own file was replaced.
+func codexCopySession(ctx context.Context, l Launch, session, file string) (replaced bool, err error) {
 	raw := filepath.Join(l.BackupDir, codexRawDir)
 	if err := os.MkdirAll(raw, 0o700); err != nil {
-		return err
+		return false, err
 	}
 	dest := filepath.Join(raw, session+".jsonl")
-	if _, err := copyNewBytes(ctx, file, dest); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if replaced, err = copyNewBytes(ctx, file, dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
 	}
 	queue := []string{dest}
 	seen := map[string]bool{session: true}
@@ -64,7 +66,7 @@ func codexCopySession(ctx context.Context, l Launch, session, file string) error
 		started, err := codexSubagentsStarted(queue[0])
 		queue = queue[1:]
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+			return replaced, err
 		}
 		for _, id := range started {
 			if seen[id] {
@@ -73,21 +75,21 @@ func codexCopySession(ctx context.Context, l Launch, session, file string) error
 			seen[id] = true
 			file, err := codexSessionFile(l.UserHome, id)
 			if err != nil {
-				return err
+				return replaced, err
 			}
 			to := filepath.Join(raw, session, "subagents", id+".jsonl")
 			if file != "" {
 				if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
-					return err
+					return replaced, err
 				}
 				if _, err := copyNewBytes(ctx, file, to); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
+					return replaced, err
 				}
 			}
 			queue = append(queue, to)
 		}
 	}
-	return nil
+	return replaced, nil
 }
 
 // codexSubagentsStarted is the threads of the subagents the session file says it

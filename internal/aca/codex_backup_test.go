@@ -59,23 +59,9 @@ func codexStarted(t *testing.T, home, parent, id string) {
 
 func codexBackUp(t *testing.T, home, backup string) {
 	t.Helper()
-	if _, err := (aca.Codex{}).BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup}); !onlyNotSupported(err) {
+	if _, err := (aca.Codex{}).BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup}); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
-}
-
-// onlyNotSupported says err is ErrNotSupported with nothing that failed beside it.
-func onlyNotSupported(err error) bool {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok {
-		return errors.Is(err, aca.ErrNotSupported)
-	}
-	for _, e := range joined.Unwrap() {
-		if !errors.Is(e, aca.ErrNotSupported) {
-			return false
-		}
-	}
-	return true
 }
 
 func readFile(t *testing.T, path string) string {
@@ -223,7 +209,7 @@ func TestCodexBackUpCopiesAnEarlierAgentWhole(t *testing.T) {
 	backup := t.TempDir()
 	writeTurns(t, backup, codexEarlier, codexEarlier, codexSession, codexSession)
 	got, err := aca.Codex{}.BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup})
-	if !onlyNotSupported(err) || got != (aca.Backup{Session: codexSession, Dir: "/work/repo/sub"}) {
+	if err != nil || got != (aca.Backup{Session: codexSession, Dir: "/work/repo/sub"}) {
 		t.Fatalf("got %+v, %v; want %s in /work/repo/sub", got, err, codexSession)
 	}
 	for _, id := range []string{codexEarlier, codexSession} {

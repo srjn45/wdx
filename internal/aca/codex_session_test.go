@@ -2,7 +2,6 @@ package aca_test
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,8 +76,8 @@ func TestCodexBackUpFindsTheSession(t *testing.T) {
 	// after it but are not the conversation.
 	writeTurns(t, backup, codexEarlier, codexSession, codexNamer, codexSubagent)
 	got, err := aca.Codex{}.BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup})
-	if !errors.Is(err, aca.ErrNotSupported) {
-		t.Fatalf("err %v: it keeps no transcript yet, so it says it is not supported", err)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if want := (aca.Backup{Session: codexSession, Dir: "/work/repo/sub"}); got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
@@ -92,7 +91,7 @@ func TestCodexBackUpPassesOverAGoneSession(t *testing.T) {
 	backup := t.TempDir()
 	writeTurns(t, backup, codexEarlier, codexSession)
 	got, err := aca.Codex{}.BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup})
-	if !errors.Is(err, aca.ErrNotSupported) || got.Session != codexEarlier || got.Dir != "/work/repo" {
+	if err != nil || got.Session != codexEarlier || got.Dir != "/work/repo" {
 		t.Fatalf("got %+v, %v; want %s in /work/repo", got, err, codexEarlier)
 	}
 }
@@ -101,7 +100,7 @@ func TestCodexBackUpPassesOverAGoneSession(t *testing.T) {
 func TestCodexBackUpBeforeTheFirstTurn(t *testing.T) {
 	t.Parallel()
 	got, err := aca.Codex{}.BackUp(t.Context(), aca.Launch{UserHome: t.TempDir(), BackupDir: t.TempDir()})
-	if !errors.Is(err, aca.ErrNotSupported) || got != (aca.Backup{}) {
+	if err != nil || got != (aca.Backup{}) {
 		t.Fatalf("got %+v, %v; want nothing", got, err)
 	}
 }
