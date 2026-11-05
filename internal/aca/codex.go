@@ -88,7 +88,7 @@ func (Codex) Deliver(w io.Writer, message string) error {
 }
 
 // ScreenParser implements AiCodingAgent: none of its own yet.
-func (Codex) ScreenParser() ScreenParser { return NoScreenParser{} }
+func (Codex) ScreenParser() ScreenParser { return CodexScreenParser{} }
 
 // Interrupt implements AiCodingAgent.
 func (Codex) Interrupt() []byte { return []byte("\x1b") }

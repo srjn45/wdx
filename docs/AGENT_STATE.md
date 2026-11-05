@@ -164,6 +164,8 @@ Another way to read an ACA: ignore the screen while output keeps coming, and ide
 
 An ACA with no parser of its own yet returns `aca.NoScreenParser`, which reads only an input box: `unknown` with `InputBox` on every screen, so a moving screen reads `working`, a still one `idle`, and the inbox delivers on `idle`. Draft, turn and model are never seen. It delivers to any still screen, a login prompt among them, so each ACA checks its startup on recordings before it drops the stub (the wdx doc ACA_SELECT).
 
+Codex has `aca.CodexScreenParser` (the wdx doc ACA_READY), which reads what the inbox needs and leaves the activity to motion. Codex draws its box while it still loads, and a Tab typed then is lost, so the box reads as an input box only once the status line (`GPT-6-Sol medium · <dir>`) shows under it. It reads a draft from the box's text that is not dim, and the model from the status line. Its recordings are in `internal/aca/testdata/codex/0.163.0/`, made by `testdata/codex/record/ready.py`.
+
 Claude Code uses it only as the fallback for unreadable footers (see The motion fallback): as the main rule it would misread the Bash prompt, whose `●` blinks every 0.6 s for as long as it is open. An ACA that uses it needs the same check first: a recording of whether anything keeps moving at its prompts and at idle.
 
 ### Syncing to the daemon
