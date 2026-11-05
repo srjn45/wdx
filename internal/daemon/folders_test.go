@@ -97,7 +97,7 @@ func TestPlanFolder(t *testing.T) {
 		{"a name and a folder", api.UpdatePlan{Name: optional("x"), Folder: optional("/b")}, http.StatusBadRequest, api.ErrorCodeUsage},
 		{"nothing", api.UpdatePlan{}, http.StatusBadRequest, api.ErrorCodeUsage},
 		{"a folder with a dot", api.UpdatePlan{Folder: optional("a.b")}, http.StatusUnprocessableEntity, api.ErrorCodeInvalidArgument},
-		{"a folder and parallel on a draft", api.UpdatePlan{Folder: optional("/b"), Parallel: optional(2)}, http.StatusConflict, api.ErrorCodePlanNotRunning},
+		{"a folder and parallel on a plan of plans", api.UpdatePlan{Folder: optional("/b"), Parallel: optional(2)}, http.StatusUnprocessableEntity, api.ErrorCodeInvalidArgument},
 	} {
 		r, err := td.client.UpdatePlanWithResponse(ctx, "auth", in, c.body)
 		if err != nil {

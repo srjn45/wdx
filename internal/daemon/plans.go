@@ -24,9 +24,23 @@ func (s *server) ListPlans(ctx context.Context, req api.ListPlansRequestObject) 
 		return nil, err
 	}
 	if !deref(req.Params.Archived) {
-		list = slices.DeleteFunc(list, func(p plan.Plan) bool { return !p.ArchivedAt.IsZero() })
+		list = withoutArchived(list)
 	}
 	return api.ListPlans200JSONResponse{Plans: planViews(list)}, nil
+}
+
+// withoutArchived is list less the archived plans, and the drafts an archived
+// plan of plans lists, which went with it.
+func withoutArchived(list []plan.Plan) []plan.Plan {
+	gone := map[string]bool{}
+	for _, p := range list {
+		if !p.ArchivedAt.IsZero() && p.Plans != nil {
+			gone[strings.ToLower(p.Name)] = true
+		}
+	}
+	return slices.DeleteFunc(list, func(p plan.Plan) bool {
+		return !p.ArchivedAt.IsZero() || (p.State == plan.StateDraft && gone[strings.ToLower(p.Parent)])
+	})
 }
 
 func (s *server) CopyPlan(ctx context.Context, req api.CopyPlanRequestObject) (api.CopyPlanResponseObject, error) {
@@ -108,8 +122,33 @@ func (s *server) GetPlan(ctx context.Context, req api.GetPlanRequestObject) (api
 	if err != nil {
 		return nil, err
 	}
+	var children []api.PlanChild
+	if def.Plans != nil {
+		if children, err = s.childViews(ctx, p.ID); err != nil {
+			return nil, err
+		}
+	}
 	logging.FromContext(ctx).Info("plan read", "plan_id", p.ID, "name", p.Name, "revision", r.Number, "size", r.Size, "state", p.State)
-	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names), Run: runView(runRef, p)}, nil
+	return api.GetPlan200JSONResponse{Plan: planView(p), Revision: int64(r.Number), Content: string(content), Definition: definitionView(def, runRef, names, children), Run: runView(runRef, p)}, nil
+}
+
+// childViews returns the plans the plan of plans with id lists, as its run sees
+// them, by name.
+func (s *server) childViews(ctx context.Context, id string) ([]api.PlanChild, error) {
+	children, run, err := s.runner.Children(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]api.PlanChild, 0, len(children))
+	for _, c := range children {
+		v := api.PlanChild{Id: c.Plan.Name, After: c.After, State: api.PlanState(c.Plan.State), Tasks: int64(c.Plan.Tasks), Waiting: c.Waiting(run, children)}
+		if c.Plan.State != plan.StateDraft {
+			done := int64(c.Plan.TasksDone)
+			v.TasksDone = &done
+		}
+		views = append(views, v)
+	}
+	return views, nil
 }
 
 func (s *server) RunPlan(ctx context.Context, req api.RunPlanRequestObject) (api.RunPlanResponseObject, error) {
@@ -158,7 +197,7 @@ func (s *server) taskResult(ctx context.Context, planID, taskID string) (api.Pla
 	if err != nil {
 		return api.PlanTask{}, err
 	}
-	tasks := *definitionView(run.Definition, &run, names).Tasks
+	tasks := *definitionView(run.Definition, &run, names, nil).Tasks
 	i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == taskID })
 	return tasks[i], nil
 }
@@ -438,6 +477,10 @@ func planView(p plan.Plan) api.Plan {
 	}
 	if p.Plans != nil {
 		v.Plans = &p.Plans
+		if p.State != plan.StateDraft {
+			done := int64(p.PlansDone)
+			v.PlansDone = &done
+		}
 	} else {
 		tasks := int64(p.Tasks)
 		v.Tasks = &tasks
@@ -453,7 +496,7 @@ func planView(p plan.Plan) api.Plan {
 		at := p.ArchivedAt.UTC()
 		v.ArchivedAt = &at
 	}
-	if p.State != plan.StateDraft {
+	if p.State != plan.StateDraft && p.Plans == nil {
 		done, failed := int64(p.TasksDone), int64(p.TasksFailed)
 		v.TasksDone, v.TasksFailed = &done, &failed
 	}
@@ -477,17 +520,14 @@ func runView(r *plan.Run, p plan.Plan) *api.PlanRun {
 }
 
 // definitionView is d with each task as run has it, or pending when run is nil;
-// names are the run's agents' names, by id.
-func definitionView(d plan.Definition, run *plan.Run, names map[string]string) api.PlanDefinition {
+// names are the run's agents' names, by id. A plan of plans' are its children's
+// views, by name.
+func definitionView(d plan.Definition, run *plan.Run, names map[string]string, children []api.PlanChild) api.PlanDefinition {
 	v := api.PlanDefinition{Goal: d.Goal, Constraints: d.Constraints}
 	if v.Constraints == nil {
 		v.Constraints = []string{}
 	}
 	if d.Plans != nil {
-		children := make([]api.PlanChild, len(d.Plans))
-		for i, c := range d.Plans {
-			children[i] = api.PlanChild{Id: c.ID, After: c.After}
-		}
 		v.Plans = &children
 	} else {
 		states, slots := map[string]plan.TaskRun{}, map[int]string{}

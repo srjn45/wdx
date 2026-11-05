@@ -255,7 +255,7 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		return api.ErrorCodeWorktreeIsClone, nil
 	case errors.Is(err, project.ErrNotGitRepo):
 		return api.ErrorCodeNotGitRepo, nil
-	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, plan.ErrPlansDoNotRun), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
+	case errors.Is(err, project.ErrEmptyURL), errors.Is(err, project.ErrNoOrigin), errors.Is(err, plan.ErrParentParallel), errors.Is(err, worktree.ErrEmptyComment), errors.Is(err, worktree.ErrNoComments):
 		return api.ErrorCodeInvalidArgument, nil
 	case errors.Is(err, aca.ErrNotSupported):
 		return api.ErrorCodeAcaUnsupported, nil

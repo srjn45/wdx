@@ -73,14 +73,17 @@ type Runner struct {
 	mu       sync.Mutex
 	woken    []string                      // plan ids, in the order they were woken
 	landings map[string]context.CancelFunc // the plans with a landing going, which each cuts short
-	landers  sync.WaitGroup
-	wake     chan struct{}
-	done     chan struct{}
+	// failedChildren are the plans a parent failed to start, by id, which wait for
+	// the person rather than being tried at each step.
+	failedChildren map[string]bool
+	landers        sync.WaitGroup
+	wake           chan struct{}
+	done           chan struct{}
 }
 
 // NewRunner returns a Runner of the plans in store, which ends with ctx.
 func NewRunner(ctx context.Context, store *Store, opts RunnerOptions) *Runner {
-	r := &Runner{ctx: ctx, store: store, opts: opts, landings: map[string]context.CancelFunc{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	r := &Runner{ctx: ctx, store: store, opts: opts, landings: map[string]context.CancelFunc{}, failedChildren: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	go r.loop()
 	return r
 }
@@ -208,6 +211,9 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if run.Definition.Plans != nil {
+		return r.stepParent(ctx, run, project)
+	}
 	cancelLanding, landing := r.landing(id)
 	if landing && run.State == StateCancelled {
 		logging.FromContext(ctx).Info("landing cut short, as the plan is cancelled")
@@ -255,7 +261,11 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	case ActionStart:
 		return true, r.start(ctx, run, project, a.Task, a.Slot)
 	case ActionFinish:
-		return true, r.finish(ctx, run)
+		if err := r.finish(ctx, run); err != nil {
+			return false, err
+		}
+		r.wakeParent(ctx, id)
+		return true, nil
 	}
 	return false, fmt.Errorf("no step does %q", a.Kind)
 }
@@ -722,10 +732,6 @@ func (r *Runner) finish(ctx context.Context, run Run) error {
 	return r.store.Finish(ctx, run.PlanID)
 }
 
-// ErrPlansDoNotRun is returned for running a plan of plans, which runs in a later
-// version.
-var ErrPlansDoNotRun = errors.New("a plan of plans does not run yet: run each of its plans")
-
 // BranchExistsError is returned when a run's branch cannot be made, as it, or a
 // branch in its way, is there.
 type BranchExistsError struct {
@@ -754,16 +760,13 @@ func (e *WrongBranchError) Error() string {
 	return fmt.Sprintf("the task's worktree is on %s, not %s: switch back, with its commits", on, e.Want)
 }
 
-// Start runs the plan with id, a draft of tasks no plan of plans lists, in its
-// project, which is open: it makes the branch plan/<name> at the default branch's
-// tip, writes the run and wakes it. parallel is the run's, 0 for the setting's.
+// Start runs the plan with id, a draft no plan of plans lists, in its project,
+// which is open: a plan of tasks as startPlan says, a plan of plans as startParent
+// does. parallel is the run's, 0 for the setting's.
 func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, error) {
 	p, err := r.store.draft(ctx, id)
 	if err != nil {
 		return Plan{}, err
-	}
-	if p.Plans != nil {
-		return Plan{}, ErrPlansDoNotRun
 	}
 	if p.Parent != "" {
 		parent, err := r.store.GetByName(ctx, p.ProjectID, p.Parent)
@@ -772,6 +775,19 @@ func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, erro
 		}
 		return Plan{}, &InUseError{Plan: p, Parent: parent}
 	}
+	if p.Plans != nil {
+		if parallel != 0 {
+			return Plan{}, ErrParentParallel
+		}
+		return r.startParent(ctx, p)
+	}
+	return r.startPlan(ctx, p, parallel)
+}
+
+// startPlan runs the draft plan of tasks p: it makes the branch plan/<name> at the
+// default branch's tip, writes the run and wakes it.
+func (r *Runner) startPlan(ctx context.Context, p Plan, parallel int) (Plan, error) {
+	id := p.ID
 	project, err := r.opts.Project(ctx, p.ProjectID)
 	if err != nil {
 		return Plan{}, err
@@ -907,18 +923,58 @@ func (r *Runner) SkipTask(ctx context.Context, planID, taskID string) (TaskRun, 
 	return t, err
 }
 
-// Pause pauses the plan's run, and reports false when it already was.
+// Pause pauses the plan's run, and reports false when it already was; a plan of
+// plans pauses its plans that run too.
 func (r *Runner) Pause(ctx context.Context, planID string) (bool, error) {
-	return r.store.Pause(ctx, planID)
+	changed, err := r.store.Pause(ctx, planID)
+	if !changed || err != nil {
+		return changed, err
+	}
+	running := func(c Plan) bool { return c.State == StateRunning || c.PausedReason == PausedProjectClosed }
+	return true, r.eachChild(ctx, planID, running, func(id string) error {
+		_, err := r.store.Pause(ctx, id)
+		return err
+	})
 }
 
-// Resume resumes the plan's run, and wakes it, reporting false when it was running.
+// Resume resumes the plan's run, and wakes it, reporting false when it was running;
+// a plan of plans resumes its plans that are paused too.
 func (r *Runner) Resume(ctx context.Context, planID string) (bool, error) {
 	changed, err := r.store.Resume(ctx, planID)
-	if changed {
-		r.Wake(planID)
+	if !changed || err != nil {
+		return changed, err
 	}
-	return changed, err
+	r.Wake(planID)
+	paused := func(c Plan) bool { return c.PausedReason == PausedByPerson }
+	return true, r.eachChild(ctx, planID, paused, func(id string) error {
+		if _, err := r.store.Resume(ctx, id); err != nil {
+			return err
+		}
+		r.Wake(id)
+		return nil
+	})
+}
+
+// eachChild calls do with the id of each plan the plan of plans with id lists that
+// is; nothing for a plan of tasks. A run going on in a closed project shows paused,
+// for the project's reason, and is running.
+func (r *Runner) eachChild(ctx context.Context, id string, is func(Plan) bool, do func(id string) error) error {
+	p, err := r.store.Get(ctx, id)
+	if err != nil || p.Plans == nil {
+		return err
+	}
+	children, err := r.store.children(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, c := range children {
+		if is(c) {
+			if err := do(c.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Cancel cancels the plan's run, and wakes it to stop its agents and landing and
@@ -934,6 +990,12 @@ func (r *Runner) Cancel(ctx context.Context, planID string) error {
 // SetParallel sets the most tasks the plan's run runs at once, and wakes it, as
 // more may start, reporting false when it already was n.
 func (r *Runner) SetParallel(ctx context.Context, planID string, n int) (bool, error) {
+	if p, err := r.store.Get(ctx, planID); err != nil || p.Plans != nil {
+		if err == nil {
+			err = ErrParentParallel
+		}
+		return false, err
+	}
 	changed, err := r.store.SetParallel(ctx, planID, n)
 	if changed {
 		r.Wake(planID)

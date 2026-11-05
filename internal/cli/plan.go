@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -727,9 +728,12 @@ type planStatus struct {
 
 func (r planStatus) text(w io.Writer, st style.Style) {
 	p, d := r.Plan, r.Definition
-	if r.Run == nil {
+	switch {
+	case r.Run == nil:
 		fmt.Fprintf(w, "%s: %s%s, %s\n", st.Name(p.Name), planStateText(st, p.State), archivedText(st, p), planSize(p))
-	} else {
+	case d.Plans != nil:
+		fmt.Fprintf(w, "%s: %s%s, %s done\n", st.Name(p.Name), runStateText(st, p, r.Run), archivedText(st, p), planProgress(p))
+	default:
 		fmt.Fprintf(w, "%s: %s, %s tasks done%s, on %s\n", st.Name(p.Name), runStateText(st, p, r.Run), planProgress(p), planFailed(st, p), st.Name(r.Run.Branch))
 	}
 	field := fieldPrinter(w, st, 11)
@@ -742,9 +746,9 @@ func (r planStatus) text(w io.Writer, st style.Style) {
 	}
 	var table style.Table
 	if d.Plans != nil {
-		table.Row(st.Heading("PLAN"), st.Heading("AFTER"), st.Heading("STATE"))
+		table.Row(st.Heading("PLAN"), st.Heading("STATE"), st.Heading("AFTER"), st.Heading("TASKS"))
 		for _, c := range *d.Plans {
-			table.Row(st.Name(c.Id), strings.Join(c.After, ", "), "")
+			table.Row(st.Name(c.Id), childState(st, c, *d.Plans, r.Run != nil), strings.Join(c.After, ", "), childTasks(c))
 		}
 	} else if d.Tasks != nil && r.Run == nil {
 		table.Row(st.Heading("TASK"), st.Heading("AFTER"), st.Heading("STATE"))
@@ -765,6 +769,36 @@ func (r planStatus) text(w io.Writer, st style.Style) {
 		}
 	}
 	table.Write(w)
+}
+
+// childState is the state of a plan a plan of plans lists, or what a draft waits
+// for while its parent runs: the person, or the plans before it not done.
+func childState(st style.Style, c api.PlanChild, all []api.PlanChild, parentRan bool) string {
+	if c.Waiting {
+		return st.Warning("waiting for you")
+	}
+	if c.State != api.PlanStateDraft || !parentRan {
+		return planStateText(st, c.State)
+	}
+	var before []string
+	for _, a := range c.After {
+		i := slices.IndexFunc(all, func(o api.PlanChild) bool { return o.Id == a })
+		if i < 0 || all[i].State != api.PlanStateDone {
+			before = append(before, a)
+		}
+	}
+	if len(before) == 0 {
+		return planStateText(st, c.State)
+	}
+	return st.Muted("waiting for ") + nameList(st, before)
+}
+
+// childTasks is how far a plan a plan of plans lists is, as 2/4, or its size.
+func childTasks(c api.PlanChild) string {
+	if c.TasksDone != nil {
+		return strconv.FormatInt(*c.TasksDone, 10) + "/" + strconv.FormatInt(c.Tasks, 10)
+	}
+	return plural(int(c.Tasks), "task")
 }
 
 // LogValue measures the goal, constraints and prompts: they are what agents are

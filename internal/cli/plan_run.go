@@ -33,15 +33,20 @@ func newPlanRunCmd() *cobra.Command {
 			"out). A task's agent says when it is done, with plan task done; its work is\n" +
 			"then rebased onto the plan's branch, and what waited for it starts. Once\n" +
 			"every task is done, one worktree is left on the plan's branch, to land as\n" +
-			"any worktree. A plan runs once, and cannot be changed after.",
+			"any worktree. A plan runs once, and cannot be changed after.\n\n" +
+			"A plan of plans starts each plan it lists from the default branch once the\n" +
+			"plans before it are done and their work is in the default branch: landed\n" +
+			"through " + identity.Name + ", or a PR pulled. Every plan it lists must be a draft whose\n" +
+			"branch can be made; --parallel is each plan's own, so it takes none.",
 		Example: examples(
 			"A plan of the project you are in", identity.Name+" plan run --name sso",
 			"Two tasks at most at once, as JSON", identity.Name+" plan run --name sso --parallel 2 --json",
+			"A plan of plans", identity.Name+" plan run --name auth",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			failurePrefix: "not started",
-			outputNote:    "The plan, running, and its branch.\n" + `With --json: {"result": "started", "plan": {...}}`,
+			outputNote:    "The plan, running, and its branch; a plan of plans, and its plans.\n" + `With --json: {"result": "started", "plan": {...}}`,
 			resultList:    string(api.ResultStarted),
 			errorList: codeList(api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanInUse,
 				api.ErrorCodePlanStarted, api.ErrorCodeProjectClosed, api.ErrorCodeDaemonUnavailable),
@@ -59,7 +64,7 @@ func newPlanRunCmd() *cobra.Command {
 			case api.ErrorCodePlanStarted:
 				return &hinted{err, "a plan runs once: copy it to run it again"}
 			case api.ErrorCodePlanInUse:
-				return &hinted{err, "a plan a plan of plans lists runs with it, in a later version"}
+				return &hinted{err, "a plan a plan of plans lists runs with it: run the plan of plans"}
 			case api.ErrorCodeBranchExists:
 				return &hinted{err, "remove or rename the branch, or rename the plan"}
 			case api.ErrorCodeProjectClosed:
@@ -85,6 +90,14 @@ type planStarted struct {
 
 func (r planStarted) text(w io.Writer, st style.Style) {
 	p := r.Plan
+	if p.Plans != nil {
+		fmt.Fprintf(w, "plan %s %s, each of its plans once those before it have landed\n", st.Name(p.Name), st.Success("running"))
+		field := fieldPrinter(w, st, 8)
+		field("project", p.ProjectName)
+		field("plans", nameList(st, *p.Plans))
+		field("id", st.Muted(p.Id))
+		return
+	}
 	fmt.Fprintf(w, "plan %s %s on %s", st.Name(p.Name), st.Success("running"), st.Name(planBranch(p.Name)))
 	if r.parallel != 0 {
 		fmt.Fprintf(w, ", up to %s at once", plural(r.parallel, "task"))
@@ -329,6 +342,9 @@ func taskState(st style.Style, t api.PlanTask) string {
 
 // planProgress is how far a plan's run is: 2/4 once it runs, its size before.
 func planProgress(p api.Plan) string {
+	if p.PlansDone != nil && p.Plans != nil {
+		return strconv.FormatInt(*p.PlansDone, 10) + "/" + plural(len(*p.Plans), "plan")
+	}
 	if p.TasksDone != nil && p.Tasks != nil {
 		return strconv.FormatInt(*p.TasksDone, 10) + "/" + strconv.FormatInt(*p.Tasks, 10)
 	}

@@ -300,7 +300,8 @@ func TestPlanRefusals(t *testing.T) {
 
 	td.createPlan(t, "app", "child", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	td.createPlan(t, "app", "parent", "goal: g\nplans:\n  - id: child\n")
-	r, err := td.client.RunPlanWithResponse(ctx, "parent", params(), api.RunPlan{})
+	two := 2
+	r, err := td.client.RunPlanWithResponse(ctx, "parent", params(), api.RunPlan{Parallel: &two})
 	if err != nil {
 		t.Fatal(err)
 	}

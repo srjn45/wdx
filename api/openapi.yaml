@@ -3400,7 +3400,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, parent, archived_at, slots, revision, size, created_at, updated_at]
+      required: [id, name, project_id, project_name, folder, state, tasks, tasks_done, tasks_failed, plans, plans_done, parent, archived_at, slots, revision, size, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3409,13 +3409,14 @@ components:
         folder: { type: string, description: "The folder tide shows it in, as /hub/initial; / for the top. A plan of plans and the plans it lists always have the same one (wdx help plans)." }
         state: { $ref: "#/components/schemas/PlanState" }
         tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
-        tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft. }
-        tasks_failed: { type: integer, format: int64, nullable: true, description: How many of them are failed or land_failed, waiting for the person; null for a draft. }
+        tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft and a plan of plans. }
+        tasks_failed: { type: integer, format: int64, nullable: true, description: How many of them are failed or land_failed, waiting for the person; null for a draft and a plan of plans. }
         plans:
           type: array
           items: { type: string }
           nullable: true
           description: The plans it lists, in DAG order; null for a plan of tasks.
+        plans_done: { type: integer, format: int64, nullable: true, description: How many of the plans it lists are done; null for a draft and a plan of tasks. }
         parent: { type: string, nullable: true, description: The plan of plans listing it; null for none. }
         archived_at: { type: string, format: date-time, nullable: true, description: When it was archived, which leaves it out of listPlans; null when it is not. }
         slots:
@@ -3536,13 +3537,22 @@ components:
 
     PlanChild:
       type: object
-      required: [id, after]
+      required: [id, after, state, tasks, tasks_done, waiting]
       properties:
         id: { type: string, description: The plan's name. }
         after:
           type: array
           items: { type: string }
           description: The plans it waits for.
+        state: { $ref: "#/components/schemas/PlanState" }
+        tasks: { type: integer, format: int64, description: How many tasks it has. }
+        tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft. }
+        waiting:
+          type: boolean
+          description: >-
+            It waits for the person: a draft whose plans before it are done but not all
+            in the default branch, or that its parent failed to start, while its parent
+            runs.
 
     PlanDropped:
       type: object

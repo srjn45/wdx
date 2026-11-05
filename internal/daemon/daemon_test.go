@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 func TestMain(m *testing.M) {
@@ -136,26 +137,52 @@ func shortDir(t *testing.T) string {
 // returned under one debug id.
 func wantRequestsLogged(t *testing.T, home string) {
 	t.Helper()
-	received := map[string]int{}
+	var unpaired []string
+	// A stream's end is logged once the daemon sees its client gone, which can be
+	// after the test's last request: it is waited for, any other is not.
+	waittest.Until(t, func() bool {
+		var streams bool
+		unpaired, streams = unpairedRequests(t, home, false)
+		return len(unpaired) == 0 || !streams
+	})
+	unpaired, _ = unpairedRequests(t, home, true)
+	for _, id := range unpaired {
+		t.Errorf("%s: received and returned do not pair up", id)
+	}
+}
+
+// unpairedRequests returns the debug ids of the requests the daemon logged as
+// received and not returned, or the other way round, and whether every one of
+// them is a project's stream; with check, it fails a returned line that is not
+// whole.
+func unpairedRequests(t *testing.T, home string, check bool) (ids []string, streams bool) {
+	t.Helper()
+	received, stream := map[string]int{}, map[string]bool{}
 	for _, line := range logLines(t, home) {
 		switch line["msg"] {
 		case "request received":
-			received[line["debug_id"].(string)]++
-		case "request returned":
-			if line["response"] == nil || line["status"] == nil {
-				t.Errorf("incomplete line %v", line)
+			id := line["debug_id"].(string)
+			received[id]++
+			if path, _ := line["path"].(string); strings.HasSuffix(path, "/events") {
+				stream[id] = true
 			}
-			if failed := line["status"].(float64) >= 400; failed != (line["code"] != nil) {
+		case "request returned":
+			if check && (line["response"] == nil || line["status"] == nil) {
+				t.Errorf("incomplete line %v", line)
+			} else if failed, _ := line["status"].(float64); check && (failed >= 400) != (line["code"] != nil) {
 				t.Errorf("want a code exactly when the request failed: %v", line)
 			}
 			received[line["debug_id"].(string)]--
 		}
 	}
+	streams = true
 	for id, n := range received {
 		if n != 0 {
-			t.Errorf("%s: received and returned do not pair up", id)
+			ids = append(ids, id)
+			streams = streams && stream[id] && n > 0
 		}
 	}
+	return ids, streams
 }
 
 func logLines(t *testing.T, home string) []map[string]any {

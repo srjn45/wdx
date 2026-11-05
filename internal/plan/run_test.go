@@ -74,20 +74,6 @@ func TestStart(t *testing.T) {
 	}
 }
 
-func TestStartRefusesAParent(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	f := newFixture(t)
-	f.create(t, "child", tasks("x"))
-	parent := f.create(t, "big", "goal: g\nplans:\n  - id: child\n")
-	if _, err := f.store.Start(ctx, parent.ID, "main", "plan/big", 0); err == nil {
-		t.Error("a plan of plans ran")
-	}
-	if _, ok, err := f.store.Run(ctx, parent.ID); ok || err != nil {
-		t.Errorf("a run was left: %v, %v", ok, err)
-	}
-}
-
 func TestATaskThroughItsRun(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

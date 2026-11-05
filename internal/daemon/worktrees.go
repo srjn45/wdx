@@ -59,6 +59,11 @@ func (d *Daemon) startTracker() {
 		Changed: func(projectID string) {
 			d.tracker.Refresh(projectID, "") // it moved branches, which a watch may not see at once
 			d.notices.notify()
+			if d.runner != nil {
+				// A landing may have put a plan's work in the default branch, which the
+				// plan after it waits for.
+				d.runner.WakeParents(logging.NewContext(context.Background(), d.log), projectID)
+			}
 		},
 		PullRequests: d.pullRequests,
 	})

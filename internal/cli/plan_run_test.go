@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // planTaskScript is what a task's agent runs, from the repository: it commits a
@@ -111,10 +112,11 @@ func TestPlanRun(t *testing.T) {
 
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "0")
 	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
-	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "parent")
+	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "parent", "--parallel", "2")
 	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "child")
 	wantError(t, v, exit, api.ErrorCodePlanInUse, api.ExitRejected)
+	wantHint(t, v, "a plan a plan of plans lists runs with it: run the plan of plans")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "nowhere")
 	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
 	gittest.Git(t, repo, "branch", "plan/taken")
@@ -236,5 +238,82 @@ func TestPlanRunText(t *testing.T) {
 	out = wdxWith(t, home, in(repo), "plan", "list")
 	if !strings.Contains(out.stdout, "running") || !strings.Contains(out.stdout, "1/2") {
 		t.Errorf("list: %+v", out)
+	}
+}
+
+// TestPlanOfPlansRun: a plan of plans starts the plan that waits for nothing, and
+// says, as its plans do, how far it is.
+func TestPlanOfPlansRun(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	repo := planRepo(t, home, "a manual\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: b\n    prompt: p\n")
+	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n")
+	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big")
+	if exit != api.ExitOK || v.Result != "started" || v.Plan.PlansDone == nil || *v.Plan.PlansDone != 0 || v.Plan.TasksDone != nil {
+		t.Fatalf("run: exit %d, %+v", exit, v)
+	}
+	waitTasks(t, home, repo, "sso", "a:running")
+	out := wdxWith(t, home, in(repo), "plan", "status", "--name", "big")
+	for _, want := range []string{"big: running, 0/2 plans done\n", "PLAN", "TASKS", "0/1", "waiting for sso", "1 task"} {
+		if !strings.Contains(out.stdout, want) {
+			t.Errorf("status: want %q in\n%s", want, out.stdout)
+		}
+	}
+	out = wdxWith(t, home, in(repo), "plan", "list")
+	if !strings.Contains(out.stdout, "0/2 plans") {
+		t.Errorf("list: %+v", out)
+	}
+	waitCommitted(t, repo, "a")
+	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "s"); exit != api.ExitOK {
+		t.Fatalf("task done: exit %d, %+v", exit, v)
+	}
+	if !eventually(t, func() bool {
+		out = wdxWith(t, home, in(repo), "plan", "status", "--name", "big")
+		return strings.Contains(out.stdout, "1/2 plans done") && strings.Contains(out.stdout, "waiting for you")
+	}) {
+		t.Errorf("ui waiting for the person:\n%s", out.stdout)
+	}
+}
+
+func TestPlanOfPlansRunText(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	repo := planRepo(t, home, "a manual\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n")
+	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "big")
+	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.stdout, "sso") {
+		t.Errorf("run: %+v", out)
+	}
+	waitTasks(t, home, repo, "sso", "a:running")
+}
+
+// TestChildState: a draft a plan of plans lists says what it waits for while its
+// parent runs: the person, or the plans before it not done.
+func TestChildState(t *testing.T) {
+	t.Parallel()
+	var st style.Style
+	done := api.PlanChild{Id: "a", State: api.PlanStateDone}
+	running := api.PlanChild{Id: "b", State: api.PlanStateRunning}
+	draft := api.PlanChild{Id: "c", State: api.PlanStateDraft, After: []string{"a", "b"}}
+	all := []api.PlanChild{done, running, draft}
+	for _, tt := range []struct {
+		name      string
+		c         api.PlanChild
+		all       []api.PlanChild
+		parentRan bool
+		want      string
+	}{
+		{"one before it not done", draft, all, true, "waiting for b"},
+		{"every one before it done", draft, []api.PlanChild{done, {Id: "b", State: api.PlanStateDone}, draft}, true, "draft"},
+		{"waiting for the person", api.PlanChild{Id: "c", State: api.PlanStateDraft, Waiting: true}, all, true, "waiting for you"},
+		{"its parent a draft", draft, all, false, "draft"},
+		{"started", running, all, true, "running"},
+	} {
+		if got := childState(st, tt.c, tt.all, tt.parentRan); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
 	}
 }

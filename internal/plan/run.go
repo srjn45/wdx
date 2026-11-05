@@ -223,7 +223,32 @@ func (s *Store) archive(ctx context.Context, planID string, archive bool) (bool,
 		msg = "plan archived"
 	}
 	logging.FromContext(ctx).Info(msg, "plan_id", planID)
-	return true, nil
+	return true, s.archiveChildren(ctx, planID, archive)
+}
+
+// archiveChildren archives, or unarchives, the plans that are over of the plan of
+// plans with id, with it; nothing for a plan of tasks.
+func (s *Store) archiveChildren(ctx context.Context, id string, archive bool) error {
+	p, err := s.Get(ctx, id)
+	if err != nil || p.Plans == nil {
+		return err
+	}
+	children, err := s.children(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, c := range children {
+		if finished, err := s.finished(ctx, c.ID); err != nil || !finished {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := s.archive(ctx, c.ID, archive); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // finished reports whether the plan with id has a run done or cancelled, its cancel
@@ -246,8 +271,9 @@ func (s *Store) notRunning(ctx context.Context, id string) error {
 }
 
 // Start runs the plan with id: it writes its run, of the latest revision, with a
-// pending row for each of its tasks. A plan that has run returns a *StartedError.
-// Making the branch and starting the tasks are the caller's.
+// pending row for each of its tasks; a plan of plans has none, and no branch. A
+// plan that has run returns a *StartedError. Making the branch and starting the
+// tasks are the caller's.
 func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int) (Run, error) {
 	p, err := s.Get(ctx, id)
 	if err != nil {
@@ -259,9 +285,6 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 	_, r, def, err := s.Content(ctx, id, 0)
 	if err != nil {
 		return Run{}, err
-	}
-	if def.Plans != nil {
-		return Run{}, fmt.Errorf("plan %s lists plans, which do not run yet", p.Name)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -705,6 +728,7 @@ func (s *Store) taskRun(ctx context.Context, planID, taskID string) (TaskRun, er
 type runState struct {
 	state         string
 	done, failed  int
+	plansDone     int // of a plan of plans
 	projectClosed bool
 	archivedAt    sql.NullInt64
 }
@@ -728,7 +752,8 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT r.plan_id, r.state, p.state = 'closed', r.archived_at,
 			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state = 'done'),
-			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state IN ('failed', 'land_failed'))
+			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state IN ('failed', 'land_failed')),
+			(SELECT count(*) FROM docs c JOIN plan_runs cr ON cr.plan_id = c.id WHERE c.parent_id = r.plan_id AND cr.state = 'done')
 		FROM plan_runs r JOIN docs d ON d.id = r.plan_id JOIN projects p ON p.id = d.project_id WHERE `+where, args...)
 	if err != nil {
 		return nil, err
@@ -738,7 +763,7 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 	for rows.Next() {
 		var id string
 		var rs runState
-		if err := rows.Scan(&id, &rs.state, &rs.projectClosed, &rs.archivedAt, &rs.done, &rs.failed); err != nil {
+		if err := rows.Scan(&id, &rs.state, &rs.projectClosed, &rs.archivedAt, &rs.done, &rs.failed, &rs.plansDone); err != nil {
 			return nil, err
 		}
 		states[id] = rs
@@ -746,11 +771,13 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 	return states, rows.Err()
 }
 
-// touch moves the plan's updated_at on, as anything about it changed: its run is
-// part of it, and the projects' streams send a plan again only when its row
-// changes. Always forward, even within a millisecond.
+// touch moves the plan's updated_at on, and its parent's, as anything about it
+// changed: its run is part of it, and of what its parent shows, and the projects'
+// streams send a plan again only when its row changes. Always forward, even within
+// a millisecond.
 func touch(ctx context.Context, e db.Execer, planID string) error {
-	_, err := db.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?) WHERE id = ?`, time.Now().UnixMilli(), planID)
+	_, err := db.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?)
+		WHERE id = ? OR id = (SELECT parent_id FROM docs WHERE id = ?)`, time.Now().UnixMilli(), planID, planID)
 	return err
 }
 

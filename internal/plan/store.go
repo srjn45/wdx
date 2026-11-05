@@ -443,6 +443,7 @@ func view(d doc.Doc, sum summary, parent string, run runState) Plan {
 		PausedReason:  reason,
 		TasksDone:     run.done,
 		TasksFailed:   run.failed,
+		PlansDone:     run.plansDone,
 		projectClosed: run.projectClosed,
 		ArchivedAt:    archivedAt(run),
 		Tasks:         sum.tasks,

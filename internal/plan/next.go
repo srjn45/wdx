@@ -48,6 +48,7 @@ const (
 type Action struct {
 	Kind    ActionKind
 	Task    string // for a release, the task holding Slot, if any
+	Plan    string // a plan of plans' child, by name
 	Slot    int
 	Failure string
 }
