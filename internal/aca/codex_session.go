@@ -55,46 +55,49 @@ func codexSessionFile(home, id string) (string, error) {
 	return files[0], nil
 }
 
-// BackUp implements AiCodingAgent, so far only for the session: the last thread of
-// the turns file that is the user's conversation, not the thread Codex names it in nor
-// a subagent's, and the directory Codex last worked in, where a resume asks nothing.
-// It keeps no transcript yet, so it says ErrNotSupported with them.
-func (Codex) BackUp(_ context.Context, l Launch) (Backup, error) {
-	threads, err := codexThreads(filepath.Join(l.BackupDir, codexTurnsFile))
+// BackUp implements AiCodingAgent, so far for the session and the raw copies: it
+// copies what is new of the user's sessions and their subagents' to the backup, and
+// returns the last thread of the turns file that is the user's conversation, not the
+// thread Codex names it in nor a subagent's, and the directory Codex last worked in,
+// where a resume asks nothing. It renders no transcript yet, so it says
+// ErrNotSupported with them.
+func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
+	first, last, err := codexThreads(filepath.Join(l.BackupDir, codexTurnsFile))
 	if err != nil {
 		return Backup{}, err
 	}
-	for _, id := range slices.Backward(threads) {
+	copied := codexCopySessions(ctx, l, first)
+	for _, id := range slices.Backward(last) {
 		file, err := codexSessionFile(l.UserHome, id)
 		if err != nil {
-			return Backup{}, err
+			return Backup{}, errors.Join(copied, err)
 		}
 		if file == "" {
 			continue
 		}
 		user, dir, err := codexReadSession(file)
 		if err != nil {
-			return Backup{}, err
+			return Backup{}, errors.Join(copied, err)
 		}
 		if user {
-			return Backup{Session: id, Dir: dir}, ErrNotSupported
+			return Backup{Session: id, Dir: dir}, errors.Join(ErrNotSupported, copied)
 		}
 	}
-	return Backup{}, ErrNotSupported
+	return Backup{}, errors.Join(ErrNotSupported, copied)
 }
 
 // codexThreads is the thread-ids of the turns file, each once, in the order they
-// last came. A line a killed notify cut short is left out.
-func codexThreads(path string) ([]string, error) {
+// first came and in the order they last came. A line a killed notify cut short is
+// left out.
+func codexThreads(path string) (first, last []string, err error) {
 	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
-	var threads []string
 	r := bufio.NewReader(f)
 	for {
 		line, err := r.ReadBytes('\n')
@@ -102,14 +105,17 @@ func codexThreads(path string) ([]string, error) {
 			ThreadID string `json:"thread-id"`
 		}
 		if json.Unmarshal(line, &turn) == nil && turn.ThreadID != "" {
-			threads = slices.DeleteFunc(threads, func(id string) bool { return id == turn.ThreadID })
-			threads = append(threads, turn.ThreadID)
+			if !slices.Contains(first, turn.ThreadID) {
+				first = append(first, turn.ThreadID)
+			}
+			last = slices.DeleteFunc(last, func(id string) bool { return id == turn.ThreadID })
+			last = append(last, turn.ThreadID)
 		}
 		if errors.Is(err, io.EOF) {
-			return threads, nil
+			return first, last, nil
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 }
