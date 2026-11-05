@@ -29,17 +29,24 @@ func (Codex) Program() string { return "codex" }
 
 // Command implements AiCodingAgent. Codex names its own sessions: l.SessionID is
 // resumed once it names one Codex keeps, which BackUp makes it after the first turn,
-// and before that a start begins a new conversation. The overrides last for this run
-// only: Codex writes none of them to the user's config. It is told not to offer an
-// update and that l.Dir is trusted, so that it asks nothing before it starts, and to
-// report each turn to the backup.
+// and before that a start begins a new conversation. One Codex deleted is put back
+// from the backup's copy, where Codex kept it, and resumed. The overrides last for
+// this run only: Codex writes none of them to the user's config. It is told not to
+// offer an update and that l.Dir is trusted, so that it asks nothing before it
+// starts, and to report each turn to the backup.
 func (Codex) Command(l Launch) ([]string, error) {
 	command := []string{"codex"}
 	session, err := codexSessionFile(l.UserHome, l.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("look for Codex's session %s: %w", l.SessionID, err)
 	}
-	if session != "" {
+	resume := session != ""
+	if !resume {
+		if resume, err = codexRestore(l); err != nil {
+			return nil, fmt.Errorf("put back Codex's session %s from its backup: %w", l.SessionID, err)
+		}
+	}
+	if resume {
 		command = append(command, "resume", l.SessionID)
 	}
 	command = append(command,

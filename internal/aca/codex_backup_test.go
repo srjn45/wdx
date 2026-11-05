@@ -1,7 +1,9 @@
 package aca_test
 
 import (
+	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -216,5 +218,84 @@ func TestCodexBackUpCopiesAnEarlierAgentWhole(t *testing.T) {
 		if readFile(t, filepath.Join(backup, "transcripts", id+".jsonl")) != readFile(t, codexFile(home, id)) {
 			t.Errorf("session %s not copied whole", id)
 		}
+	}
+}
+
+func TestCodexBackUpRecordsWhereEachSessionIs(t *testing.T) {
+	t.Parallel()
+	home := codexHome(t, map[string]struct{ source, cwd string }{codexSession: {"user", ""}})
+	writeCodexSubagent(t, home, codexSubagent, codexSession)
+	backup := t.TempDir()
+	writeTurns(t, backup, codexSession, codexSubagent)
+	codexBackUp(t, home, backup)
+	var paths map[string]string
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(backup, "codex-sessions.json"))), &paths); err != nil {
+		t.Fatal(err)
+	}
+	// Only the user's: a subagent's is never resumed.
+	if want := map[string]string{codexSession: codexFile(home, codexSession)}; !maps.Equal(paths, want) {
+		t.Fatalf("paths %v, want %v", paths, want)
+	}
+}
+
+// goneWithACopy is a home and backup where Codex deleted codexSession's file after a
+// backup copied it, codexEarlier's still there.
+func goneWithACopy(t *testing.T) (home, backup string) {
+	t.Helper()
+	home = codexHome(t, map[string]struct{ source, cwd string }{
+		codexEarlier: {"user", ""},
+		codexSession: {"user", "/work/repo/sub"},
+	})
+	backup = t.TempDir()
+	writeTurns(t, backup, codexEarlier, codexSession)
+	codexBackUp(t, home, backup)
+	if err := os.Remove(codexFile(home, codexSession)); err != nil {
+		t.Fatal(err)
+	}
+	return home, backup
+}
+
+// A session Codex deleted is still the agent's, read from its copy, not passed over
+// for the one before it.
+func TestCodexBackUpReadsAGoneSessionFromItsCopy(t *testing.T) {
+	t.Parallel()
+	home, backup := goneWithACopy(t)
+	got, err := aca.Codex{}.BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (aca.Backup{Session: codexSession, Dir: "/work/repo/sub"}); got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestCodexResumesAGoneSessionFromItsCopy(t *testing.T) {
+	t.Parallel()
+	home, backup := goneWithACopy(t)
+	copied := readFile(t, filepath.Join(backup, "transcripts", codexSession+".jsonl"))
+	l := aca.Launch{Dir: "/work/repo", SessionID: codexSession, UserHome: home, BackupDir: backup}
+	got, err := aca.Codex{}.Command(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got[:3], []string{"codex", "resume", codexSession}) {
+		t.Fatalf("%q: want it resumed", got)
+	}
+	if put := readFile(t, codexFile(home, codexSession)); put != copied {
+		t.Fatalf("put back %d bytes, want the copy's %d", len(put), len(copied))
+	}
+
+	// A copy the backup does not know the path of stays where it is.
+	if err := os.Remove(codexFile(home, codexSession)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(backup, "codex-sessions.json")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := (aca.Codex{}).Command(l); err != nil || got[1] == "resume" {
+		t.Fatalf("%q, %v: want a new conversation", got, err)
+	}
+	if _, err := os.Stat(codexFile(home, codexSession)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("put back with no path known: %v", err)
 	}
 }

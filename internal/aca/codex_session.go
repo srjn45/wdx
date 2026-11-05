@@ -59,7 +59,9 @@ func codexSessionFile(home, id string) (string, error) {
 // their subagents' to the backup, appends what is new of the sessions to
 // TranscriptFile as text, and returns the last thread of the turns file that is the
 // user's conversation, not the thread Codex names it in nor a subagent's, and the
-// directory Codex last worked in, where a resume asks nothing.
+// directory Codex last worked in, where a resume asks nothing. A thread whose file
+// Codex deleted is read from the backup's copy, which Command puts back, when the
+// backup knows where it was.
 func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	first, last, err := codexThreads(filepath.Join(l.BackupDir, codexTurnsFile))
 	if err != nil {
@@ -71,6 +73,12 @@ func (Codex) BackUp(ctx context.Context, l Launch) (Backup, error) {
 		file, err := codexSessionFile(l.UserHome, id)
 		if err != nil {
 			return Backup{}, errors.Join(failed, err)
+		}
+		if file == "" {
+			// Gone from Codex, its copy is the session, as Command puts it back.
+			if file, _, err = codexKept(l.BackupDir, id); err != nil {
+				return Backup{}, errors.Join(failed, err)
+			}
 		}
 		if file == "" {
 			continue

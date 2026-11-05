@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/srjn45/wdx/internal/atomicfile"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -23,6 +24,12 @@ const codexRawDir = "transcripts"
 // a subagent, so only such lines are parsed.
 var codexSubagentStarted = []byte(`"type":"SubAgentActivity"`)
 
+// codexPathsFile records where Codex kept each of the user's sessions copied, so that
+// Command can put a copy back there once Codex deletes its file: checked by hand on
+// 0.163.0, `codex resume` fails with the file gone and resumes once it is back, though
+// Codex's sqlite still lists it either way. The wdx doc CODEX_BACKUP.
+const codexPathsFile = "codex-sessions.json"
+
 // codexCopySessions copies what is new of each of the user's sessions in threads, and
 // of their subagents, to the backup, and says which sessions' files were replaced. A
 // file that shrank or was replaced is kept, and copied again beside it; one Codex
@@ -30,17 +37,22 @@ var codexSubagentStarted = []byte(`"type":"SubAgentActivity"`)
 func codexCopySessions(ctx context.Context, l Launch, threads []string) (replaced map[string]bool, _ error) {
 	replaced = map[string]bool{}
 	var failed []error
+	found := map[string]string{}
 	for _, id := range threads {
 		file, err := codexSessionFile(l.UserHome, id)
 		if err == nil && file != "" {
 			var source string
 			if source, err = codexThreadSource(file); err == nil && source == "user" {
+				found[id] = file
 				replaced[id], err = codexCopySession(ctx, l, id, file)
 			}
 		}
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			failed = append(failed, fmt.Errorf("session %s: %w", id, err))
 		}
+	}
+	if err := codexKeepPaths(ctx, l.BackupDir, found); err != nil {
+		failed = append(failed, fmt.Errorf("record where the sessions are: %w", err))
 	}
 	for _, err := range failed {
 		logging.FromContext(ctx).Error("agent session not copied", "err", err)
@@ -154,4 +166,84 @@ func codexThreadSource(path string) (string, error) {
 		return "", nil
 	}
 	return entry.Payload.ThreadSource, nil
+}
+
+// codexKeepPaths adds the paths found to the paths file, writing it only when one is
+// new or moved.
+func codexKeepPaths(ctx context.Context, backupDir string, found map[string]string) error {
+	paths, err := codexReadPaths(backupDir)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for id, path := range found {
+		if paths[id] != path {
+			paths[id], changed = path, true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	data, err := json.MarshalIndent(paths, "", "  ")
+	if err != nil {
+		return err
+	}
+	file := filepath.Join(backupDir, codexPathsFile)
+	if err := atomicfile.Write(file, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("agent session paths recorded", "path", file, "sessions", len(paths))
+	return nil
+}
+
+// codexReadPaths is the paths file's sessions, each with where Codex kept it; none
+// before the first backup.
+func codexReadPaths(backupDir string) (map[string]string, error) {
+	data, err := os.ReadFile(filepath.Join(backupDir, codexPathsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]string{}
+	if err := json.Unmarshal(data, &paths); err != nil {
+		return nil, fmt.Errorf("read %s: %w", codexPathsFile, err)
+	}
+	return paths, nil
+}
+
+// codexKept is the backup's copy of session id and the path Codex kept it at, or ""
+// for both when the backup lacks either, and so cannot put it back.
+func codexKept(backupDir, id string) (copied, at string, err error) {
+	if backupDir == "" || !codexSessionID.MatchString(id) {
+		return "", "", nil
+	}
+	paths, err := codexReadPaths(backupDir)
+	if err != nil || paths[id] == "" {
+		return "", "", err
+	}
+	copied = filepath.Join(backupDir, codexRawDir, id+".jsonl")
+	if _, err := os.Stat(copied); errors.Is(err, os.ErrNotExist) {
+		return "", "", nil
+	} else if err != nil {
+		return "", "", err
+	}
+	return copied, paths[id], nil
+}
+
+// codexRestore puts the backup's copy of l.SessionID back where Codex kept it, and
+// says whether it did: Codex resumes from it there.
+func codexRestore(l Launch) (bool, error) {
+	copied, at, err := codexKept(l.BackupDir, l.SessionID)
+	if err != nil || copied == "" {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+		return false, err
+	}
+	if err := atomicfile.Copy(at, copied, 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
 }
