@@ -200,7 +200,7 @@ func (m *Model) valueRows() ([]valueRow, bool) {
 	if a, ok := m.activeAgent(); ok && m.infoShown() {
 		return m.infoRows(a), true
 	}
-	if _, ok := m.planTasksView(); m.planShown() && !ok {
+	if _, ok := m.planTabView(); m.planShown() && !ok {
 		return m.planTabRows(), true
 	}
 	return nil, false
@@ -208,8 +208,8 @@ func (m *Model) valueRows() ([]valueRow, bool) {
 
 // valueClick takes a click at the column and row of the pane's area.
 func (m *Model) valueClick(col, row int, area uv.Rectangle) tea.Cmd {
-	if v, ok := m.planTasksView(); ok {
-		m.planTasksClick(v, row, area)
+	if v, ok := m.planTabView(); ok {
+		m.planTabClick(v, row, area)
 		return nil
 	}
 	rows, ok := m.valueRows()

@@ -194,16 +194,20 @@ func TestPlanTab(t *testing.T) {
 	}
 	loadPlan(m, "doc-sso", api.PlanContent{Plan: aPlan("doc-sso", "sso", 2, 2), Revision: 2,
 		Definition: api.PlanDefinition{Goal: "Keep sessions.", Constraints: []string{"No new API."}, Tasks: &tasks}})
-	wantText(t, m, "sso", "○ draft", "rev 2", "2 tasks, not run yet", "goal and 1 constraint", "schema", "api", "r run  y copy  ↑↓ select")
-	if strings.Contains(text(m), "Add the table") {
-		t.Errorf("a prompt shows:\n%s", text(m))
-	}
+	wantText(t, m, "sso", "○ draft", "rev 2", "2 tasks, not run yet", "goal and 1 constraint", "schema", "api", "r run  y copy  ↑↓ select",
+		"─ schema ", "Add the table.")
 
-	// Enter on a task of a draft does nothing, until the panel's step.
+	// Enter on a task of a draft shows its whole prompt, Esc goes back.
 	keys(m, "alt+right", "down", "enter")
-	if l.active != planTab("doc-sso") || m.taskBox != nil || strings.Contains(text(m), "Add the table") {
-		t.Errorf("Enter on a draft's task: tab %q, box %+v:\n%s", l.active, m.taskBox, text(m))
+	if l.active != planTab("doc-sso") || m.taskBox != nil {
+		t.Errorf("Enter on a draft's task: tab %q, box %+v", l.active, m.taskBox)
 	}
+	wantText(t, m, "Prompt", "Use it.", "Esc back")
+	if strings.Contains(text(m), "r run") {
+		t.Errorf("the list shows under the prompt:\n%s", text(m))
+	}
+	keys(m, "esc")
+	wantText(t, m, "r run  y copy  ↑↓ select  Enter read it")
 	keys(m, "right")
 	wantText(t, m, "Keep sessions.", "No new API.", "← constraints")
 
@@ -240,11 +244,11 @@ func TestPlanOfPlansTab(t *testing.T) {
 	if l.active != planTab("doc-auth") {
 		t.Fatalf("tab %q", l.active)
 	}
-	children := []api.PlanChild{{Id: "auth-b", After: []string{}}, {Id: "auth-a", After: []string{"auth-b"}}}
+	children := []api.PlanChild{{Id: "auth-b", After: []string{}, State: api.PlanStateDraft, Tasks: 1}, {Id: "auth-a", After: []string{"auth-b"}, State: api.PlanStateDraft, Tasks: 2}}
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: m.plans()[0], Revision: 1, Definition: api.PlanDefinition{Goal: "Rewrite auth.", Constraints: []string{}, Plans: &children}})
-	wantText(t, m, "auth-b:", "auth-a:", "after auth-b")
+	wantText(t, m, "2 plans, not run yet", "─ Plans ", "auth-b ready   1 task", "auth-a waiting 2 tasks", "Unblocks", "○ auth-a")
 	keys(m, "alt+right")
-	wantText(t, m, "Enter open the plan")
+	wantText(t, m, "Enter open it")
 	keys(m, "down", "enter")
 	if l.active != planTab("doc-a") {
 		t.Errorf("Enter on auth-a opened %q", l.active)
@@ -355,7 +359,7 @@ func TestPlanLive(t *testing.T) {
 
 // TestPlanRunShown: a running plan's row says its state and progress, and its tab
 // each task's state and agent; Enter on a running task goes to its agent, on a
-// done one shows its prompt and summary.
+// done one shows its whole prompt and summary.
 func TestPlanRunShown(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
@@ -391,10 +395,11 @@ func TestPlanRunShown(t *testing.T) {
 		t.Errorf("a refusal: notice %q", m.statusNotice)
 	}
 	keys(m, "enter")
-	if l := m.list(); l.active != planTab("doc-sso") || strings.Contains(text(m), "Added it.") {
-		t.Errorf("Enter on a done task: tab %q:\n%s", l.active, text(m))
+	if l := m.list(); l.active != planTab("doc-sso") {
+		t.Errorf("Enter on a done task: tab %q", l.active)
 	}
-	keys(m, "down")
+	wantText(t, m, "schema  ✓ done · sso-schema", "Prompt", "Add the table.", "Summary", "Added it.")
+	keys(m, "esc", "down")
 	wantText(t, m, "Enter go to its agent")
 	keys(m, "enter")
 	if l := m.list(); l.active != "agent-a" {

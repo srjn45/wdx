@@ -51,9 +51,13 @@ func TestPlanOfPlansShown(t *testing.T) {
 	if got := strings.TrimRight(planLine(m.st, rows[0], false, false, false, 60), " "); got != "  − auth running 1/2 plans needs you" {
 		t.Errorf("the parent's row: %q", got)
 	}
-	wantText(t, m, "running, 1/2 plans done: p pauses it, c cancels it", "waiting for you · 1 task", "done · 2/2")
-	m.values.cursor = slices.IndexFunc(m.planTabRows(), func(r valueRow) bool { return r.key == "auth-b" })
-	wantText(t, m, "r starts it, once the plans before it are in the default branch")
+	wantText(t, m, "● running", "1/2 plans", "p pause  c cancel", "auth-b waiting for you 1 task", "needs you", "auth-a done            2/2")
+	cursorOn(t, m, "auth-b")
+	wantText(t, m, "r starts it, once auth-a is in", "the default branch")
+	cursorOn(t, m, "auth-a")
+	if strings.Contains(text(m), "r starts it") {
+		t.Errorf("a plan not waiting says r starts it:\n%s", text(m))
+	}
 
 	waiting := m.plans()[0]
 	waiting.PlansWaiting = &[]string{}
@@ -61,6 +65,16 @@ func TestPlanOfPlansShown(t *testing.T) {
 	if rows := m.planRows(); rows[0].needsYou || rows[1].needsYou {
 		t.Errorf("none waiting: auth %v, auth-b %v", rows[0].needsYou, rows[1].needsYou)
 	}
+}
+
+// cursorOn puts the cursor of the plan's tab shown on the row id.
+func cursorOn(t *testing.T, m *Model, id string) {
+	t.Helper()
+	v, ok := m.planTabView()
+	if !ok || !slices.ContainsFunc(planItems(v.content), func(it planItem) bool { return it.id == id }) {
+		t.Fatalf("no row %s in the tab shown", id)
+	}
+	v.cursor = id
 }
 
 // runAsked is what the stub daemon of runTo was asked to run.
@@ -104,12 +118,11 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 	t.Parallel()
 	m := runningParent(t)
 	asked := runTo(t, m, "nowhere")
-	rows := m.planTabRows()
-	m.values.cursor = slices.IndexFunc(rows, func(r valueRow) bool { return r.key == "auth-a" })
+	cursorOn(t, m, "auth-a")
 	if _, took := m.planKey(keyMsgs("r")[0]); took {
 		t.Error("r takes a plan that does not wait")
 	}
-	m.values.cursor = slices.IndexFunc(rows, func(r valueRow) bool { return r.key == "auth-b" })
+	cursorOn(t, m, "auth-b")
 	keys(m, "r")
 	if got := <-asked; got.path != "/v1/plans/id:doc-b/run" {
 		t.Errorf("asked %+v", got)
@@ -120,7 +133,7 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 
 	m = runningParent(t)
 	asked = runTo(t, m, "doc-b")
-	m.values.cursor = slices.IndexFunc(m.planTabRows(), func(r valueRow) bool { return r.key == "auth-b" })
+	cursorOn(t, m, "auth-b")
 	keys(m, "r")
 	<-asked
 	if !strings.Contains(m.statusNotice, "waits for the work of auth-a") {
@@ -148,7 +161,7 @@ func TestPlanOfPlansRunAsked(t *testing.T) {
 	keys(m, "enter")
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: m.plans()[0], Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Plans: &[]api.PlanChild{}}})
 	m.layout.setFocus(agent)
-	wantText(t, m, "draft: r runs it, y copies it")
+	wantText(t, m, "○ draft", "r run  y copy")
 	keys(m, "r")
 	if m.confirm == nil || m.confirm.r.kind != runPlanKind {
 		t.Fatalf("r on a draft plan of plans: %+v", m.confirm)

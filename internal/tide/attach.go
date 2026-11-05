@@ -327,8 +327,8 @@ func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
 		if cmd, ok := m.planKey(msg); ok {
 			return cmd
 		}
-		if v, ok := m.planTasksView(); ok {
-			return m.planTasksKey(v, msg)
+		if v, ok := m.planTabView(); ok {
+			return m.planTabKey(v, msg)
 		}
 	}
 	if rows, ok := m.valueRows(); p == agent && ok {
@@ -423,8 +423,8 @@ func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.
 		m.diffWheel(msg)
 		return nil
 	}
-	if v, ok := m.planTasksView(); p == agent && ok {
-		planTasksWheel(v, msg)
+	if v, ok := m.planTabView(); p == agent && ok {
+		planTabWheel(v, msg)
 		return nil
 	}
 	if _, ok := m.valueRows(); p == agent && ok {

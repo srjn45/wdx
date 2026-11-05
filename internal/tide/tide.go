@@ -326,6 +326,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.planLoadedMsg(msg)
 	case planMinute:
 		m.planMinuteMsg(msg)
+	case planGoalLoaded:
+		m.planGoalLoadedMsg(msg)
 	case diffLoaded:
 		return m, m.diffLoaded(msg)
 	case fileHighlighted:

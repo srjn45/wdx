@@ -14,7 +14,7 @@ import (
 )
 
 // The Plans section of the left pane, a plan of plans with its plans under it, and
-// a plan's tab, which shows what it defines in a value pane. tide never changes a
+// a plan's tab, which plantab.go draws. tide never changes a
 // plan: the CLI does (docs/PLANS.md).
 
 const (
@@ -482,6 +482,11 @@ type planView struct {
 	unfolded bool   // the constraints are shown, and the goal when it folds with them
 	timing   bool   // a planMinute is on its way
 
+	reading    string // the task whose whole prompt is shown, by id; "" for the list
+	readOffset int    // its lines scrolled past
+
+	goals map[string]*childGoal // a plan of plans' plans' goals, by name
+
 	// rail is the rail laid out for railRevision; railDrawn is false when it has
 	// too many lanes, and is a row per task.
 	rail         []railRow
@@ -518,7 +523,7 @@ func (m *Model) planTitle(tab string) string {
 // updated_at on. A tab not shown is read when it comes to show.
 func (m *Model) planSync() tea.Cmd {
 	read := m.planRead()
-	return tea.Batch(read, m.planTimer())
+	return tea.Batch(read, m.planGoalRead(), m.planTimer())
 }
 
 // planRead reads the plan of the tab shown when planSync says so.
@@ -571,72 +576,15 @@ func (m *Model) planLoadedMsg(msg planLoaded) {
 	v.err, v.content = "", &msg.content
 }
 
-// planTabRows are the rows of the plan's tab shown while it is not read, and of a
-// plan of plans: its goal, constraints, state and parent, then a row per plan in
-// DAG order, where Enter opens the plan's tab. A plan's tasks are drawn by
+// planTabRows are the rows of the plan's tab shown while it is not read: that
+// it is loading, or why it could not be read. A read plan is drawn by
 // layoutPlanTab.
 func (m *Model) planTabRows() []valueRow {
 	l := m.list()
-	v := l.planViews[l.active]
-	switch {
-	case v == nil || (v.content == nil && v.err == ""):
-		return []valueRow{{key: "plan", values: []string{"loading…"}}}
-	case v.content == nil:
+	if v := l.planViews[l.active]; v != nil && v.content == nil && v.err != "" {
 		return []valueRow{{key: "error", values: []string{v.err}}}
 	}
-	c := v.content
-	d := c.Definition
-	rows := []valueRow{
-		{key: "goal", values: strings.Split(strings.TrimSpace(d.Goal), "\n")},
-		{key: "constraints", values: d.Constraints},
-		{key: "state", values: []string{planTabState(c)}},
-		{key: "revision", values: []string{fmt.Sprint(c.Revision)}},
-	}
-	if c.Plan.Parent != nil {
-		rows = append(rows, valueRow{key: "parent", values: []string{*c.Plan.Parent}})
-	}
-	if d.Plans != nil {
-		for i, child := range *d.Plans {
-			r := valueRow{key: child.Id, values: []string{"waits for nothing"}, gap: i == 0, verb: "open the plan", open: m.openChild(child.Id)}
-			if len(child.After) > 0 {
-				r.values = []string{"after " + strings.Join(child.After, ", ")}
-			}
-			if c.Run != nil {
-				r.values = []string{childLine(child, *d.Plans)}
-			}
-			if child.Waiting {
-				r.note = "r starts it, once the plans before it are in the default branch"
-			}
-			rows = append(rows, r)
-		}
-	}
-	return rows
-}
-
-// childLine is the row of a plan its parent's run lists: its state and how far it
-// is, or what a draft waits for: the person, or the plans before it not done.
-func childLine(c api.PlanChild, all []api.PlanChild) string {
-	tasks := plural(int(c.Tasks), "task")
-	if c.TasksDone != nil {
-		tasks = fmt.Sprintf("%d/%d", *c.TasksDone, c.Tasks)
-	}
-	if c.Waiting {
-		return "waiting for you · " + tasks
-	}
-	if c.State != api.PlanStateDraft {
-		return string(c.State) + " · " + tasks
-	}
-	var before []string
-	for _, a := range c.After {
-		i := slices.IndexFunc(all, func(o api.PlanChild) bool { return o.Id == a })
-		if i < 0 || all[i].State != api.PlanStateDone {
-			before = append(before, a)
-		}
-	}
-	if len(before) == 0 {
-		return "draft · " + tasks
-	}
-	return "waiting for " + strings.Join(before, ", ") + " · " + tasks
+	return []valueRow{{key: "plan", values: []string{"loading…"}}}
 }
 
 // openChild is what opens the tab of the plan named name, which a plan of plans
@@ -650,46 +598,6 @@ func (m *Model) openChild(name string) func() tea.Cmd {
 		}
 		return nil
 	}
-}
-
-// planTabState is the plan's state as its tab says it: a draft says how to run it,
-// a run where its tasks land, how many wait for the person, and its keys.
-func planTabState(c *api.PlanContent) string {
-	p := c.Plan
-	switch {
-	case p.State == api.PlanStateDraft && p.Parent != nil:
-		return "draft: it runs with " + *p.Parent + ", y copies it"
-	case p.State == api.PlanStateDraft:
-		return "draft: r runs it, y copies it"
-	case c.Run == nil:
-		return string(p.State)
-	}
-	s := string(p.State)
-	closed := c.Run.PausedReason != nil && *c.Run.PausedReason == api.PlanRunPausedReasonProjectClosed
-	if closed {
-		s += " (project closed)"
-	}
-	if isParent(p) {
-		s += fmt.Sprintf(", %s done", planProgress(p))
-	} else {
-		s += fmt.Sprintf(" on %s, %s tasks done", c.Run.Branch, planProgress(p))
-	}
-	if p.TasksFailed != nil && *p.TasksFailed > 0 {
-		s += fmt.Sprintf(", %d failed", *p.TasksFailed)
-	}
-	switch {
-	case p.State == api.PlanStateRunning:
-		s += ": p pauses it, c cancels it"
-	case p.State == api.PlanStatePaused && !closed:
-		s += ": p resumes it, c cancels it"
-	case p.State == api.PlanStatePaused:
-		s += ": c cancels it"
-	case isArchived(p):
-		s += ", archived: a unarchives it, y copies it"
-	default:
-		s += ": a archives it, y copies it"
-	}
-	return s
 }
 
 // taskLine is a task's state as its row says it, with its agent: a pending task
@@ -825,18 +733,12 @@ func (m *Model) planRanMsg(msg planRan) {
 // waitingChildRow returns the plan under the cursor of the tab of the plan of plans
 // c, when it waits for the person's answer.
 func (m *Model) waitingChildRow(c *api.PlanContent) (api.PlanChild, bool) {
-	if c.Definition.Plans == nil || m.layout.focus != agent {
+	v, ok := m.planTabView()
+	if !ok || v.content != c || c.Definition.Plans == nil || m.layout.focus != agent {
 		return api.PlanChild{}, false
 	}
-	rows := m.planTabRows()
-	i := m.values.cursorRow(rows)
-	if i < 0 {
-		return api.PlanChild{}, false
-	}
-	for _, child := range *c.Definition.Plans {
-		if child.Id == rows[i].key && child.Waiting {
-			return child, true
-		}
+	if it, ok := v.cursorItem(); ok && it.child != nil && it.child.Waiting {
+		return *it.child, true
 	}
 	return api.PlanChild{}, false
 }

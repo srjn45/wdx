@@ -15,10 +15,10 @@ import (
 )
 
 // A plan's tab, drawn from its content: a header with its state and progress,
-// what it is about, its tasks with the rail of its DAG at their left, room for
-// the task under the cursor, and the keys its state takes (docs/PLANS.md, Step
-// 8). A plan of plans, or a plan not read yet, is still the value pane of
-// planTabRows.
+// what it is about, its tasks with the rail of its DAG at their left, the panel
+// of the task under the cursor, and the keys its state takes (docs/PLANS.md,
+// Step 8). A plan of plans is drawn the same, its plans the rows. A plan not
+// read yet is the value pane of planTabRows.
 
 const (
 	// planPanelFrom is the pane's width from which the task's panel is at the
@@ -46,15 +46,14 @@ const (
 	planMarkNeedsYou = "needs you"
 )
 
-// planTasksView returns the view of the plan's tab shown, when it draws a plan's
-// tasks: read, and not a plan of plans.
-func (m *Model) planTasksView() (*planView, bool) {
+// planTabView returns the view of the plan's tab shown, once it is read.
+func (m *Model) planTabView() (*planView, bool) {
 	l := m.list()
 	if l == nil || !isPlanTab(l.active) {
 		return nil, false
 	}
 	v := l.planViews[l.active]
-	if v == nil || v.content == nil || v.content.Definition.Plans != nil {
+	if v == nil || v.content == nil {
 		return nil, false
 	}
 	return v, true
@@ -68,20 +67,57 @@ func planTasks(c *api.PlanContent) []api.PlanTask {
 	return *c.Definition.Tasks
 }
 
+// planItem is a row of a plan's list: one of its tasks, or one of the plans a
+// plan of plans lists.
+type planItem struct {
+	id    string
+	after []string
+	task  *api.PlanTask  // nil for a plan
+	child *api.PlanChild // nil for a task
+	// before are the plans before a plan that are not done yet.
+	before []string
+}
+
+// planItems returns the rows of c's list, in DAG order: its tasks, or the plans
+// it lists.
+func planItems(c *api.PlanContent) []planItem {
+	if ps := c.Definition.Plans; ps != nil {
+		items := make([]planItem, len(*ps))
+		for i := range *ps {
+			child := &(*ps)[i]
+			var before []string
+			for _, a := range child.After {
+				j := slices.IndexFunc(*ps, func(o api.PlanChild) bool { return o.Id == a })
+				if j < 0 || (*ps)[j].State != api.PlanStateDone {
+					before = append(before, a)
+				}
+			}
+			items[i] = planItem{id: child.Id, after: child.After, child: child, before: before}
+		}
+		return items
+	}
+	tasks := planTasks(c)
+	items := make([]planItem, len(tasks))
+	for i := range tasks {
+		items[i] = planItem{id: tasks[i].Id, after: tasks[i].After, task: &tasks[i]}
+	}
+	return items
+}
+
 // railOf returns the rail of v's plan, laid out again only on a new revision;
 // false when it has too many lanes to draw.
 func (v *planView) railOf() ([]railRow, bool) {
 	if v.rail == nil || v.railRevision != v.content.Revision {
-		tasks := planTasks(v.content)
-		in := make([]railTask, len(tasks))
-		for i, t := range tasks {
-			in[i] = railTask{id: t.Id, after: t.After}
+		items := planItems(v.content)
+		in := make([]railTask, len(items))
+		for i, it := range items {
+			in[i] = railTask{id: it.id, after: it.after}
 		}
 		rows, ok := layoutRail(in)
 		if !ok {
-			rows = make([]railRow, len(tasks))
-			for i, t := range tasks {
-				rows[i] = railRow{task: t.Id}
+			rows = make([]railRow, len(items))
+			for i, it := range items {
+				rows[i] = railRow{task: it.id}
 			}
 		}
 		v.rail, v.railDrawn, v.railRevision = rows, ok, v.content.Revision
@@ -89,25 +125,25 @@ func (v *planView) railOf() ([]railRow, bool) {
 	return v.rail, v.railDrawn
 }
 
-// cursorTask returns the task under v's cursor: the one it names, or the first
+// cursorItem returns the row under v's cursor: the one it names, or the first
 // when that one is gone.
-func (v *planView) cursorTask() (api.PlanTask, bool) {
-	tasks := planTasks(v.content)
-	if len(tasks) == 0 {
-		return api.PlanTask{}, false
+func (v *planView) cursorItem() (planItem, bool) {
+	items := planItems(v.content)
+	if len(items) == 0 {
+		return planItem{}, false
 	}
-	if i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == v.cursor }); i >= 0 {
-		return tasks[i], true
+	if i := slices.IndexFunc(items, func(it planItem) bool { return it.id == v.cursor }); i >= 0 {
+		return items[i], true
 	}
-	v.cursor = tasks[0].Id
-	return tasks[0], true
+	v.cursor = items[0].id
+	return items[0], true
 }
 
-// planDrawn is a plan's tab laid out: its lines, and the task each line of the
-// list shows.
+// planDrawn is a plan's tab laid out: its lines, and the row of the list each
+// line shows, by id.
 type planDrawn struct {
 	lines []string
-	tasks map[int]string
+	items map[int]string
 }
 
 // drawPlanTab draws the plan's tab of v in area.
@@ -120,7 +156,10 @@ func (m *Model) drawPlanTab(buf uv.Screen, area uv.Rectangle, v *planView, st st
 // about, the box of the list and the panel, and the keys on the last line.
 func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style) planDrawn {
 	c := v.content
-	cursor, _ := v.cursorTask()
+	if d, ok := v.layoutReading(width, height, now, st); ok {
+		return d
+	}
+	cursor, _ := v.cursorItem()
 	top := planHeader(c, width, now, st)
 	top = append(top, planAbout(c.Definition, v.unfolded, height < planGoalFrom, width, st)...)
 
@@ -132,7 +171,11 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 		listLines -= 1 + planPanelLines
 	}
 	listColumns, listLines = max(listColumns, 1), max(listLines, 1)
-	rows, tasks := v.listLines(cursor, listColumns, listLines, now, st)
+	rows, shown := v.listLines(cursor, listColumns, listLines, now, st)
+	listTitle := "Tasks"
+	if c.Definition.Plans != nil {
+		listTitle = "Plans"
+	}
 
 	border := st.Muted
 	title := func(name string, columns int) string {
@@ -146,28 +189,38 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 		s = ansi.Truncate(s, columns, "")
 		return s + strings.Repeat(" ", max(columns-ansi.StringWidth(s), 0))
 	}
-	d := planDrawn{tasks: map[int]string{}}
+	d := planDrawn{items: map[int]string{}}
 	lines := top
 	if wide {
-		lines = append(lines, border("┌")+title("Tasks", listColumns)+border("┬")+title(cursor.Id, planPanelColumns)+border("┐"))
+		panel := v.panel(cursor, true, planPanelColumns-2, len(rows), now, st)
+		lines = append(lines, border("┌")+title(listTitle, listColumns)+border("┬")+title(cursor.id, planPanelColumns)+border("┐"))
 		for i, r := range rows {
-			if id, ok := tasks[i]; ok {
-				d.tasks[len(lines)] = id
+			if id, ok := shown[i]; ok {
+				d.items[len(lines)] = id
 			}
-			lines = append(lines, border("│")+pad(r, listColumns)+border("│")+strings.Repeat(" ", planPanelColumns)+border("│"))
+			side := ""
+			if i < len(panel) {
+				side = " " + panel[i]
+			}
+			lines = append(lines, border("│")+pad(r, listColumns)+border("│")+pad(side, planPanelColumns)+border("│"))
 		}
 		lines = append(lines, border("└"+strings.Repeat("─", listColumns)+"┴"+strings.Repeat("─", planPanelColumns)+"┘"))
 	} else {
-		lines = append(lines, border("┌")+title("Tasks", listColumns)+border("┐"))
+		panel := v.panel(cursor, false, listColumns-2, planPanelLines, now, st)
+		lines = append(lines, border("┌")+title(listTitle, listColumns)+border("┐"))
 		for i, r := range rows {
-			if id, ok := tasks[i]; ok {
-				d.tasks[len(lines)] = id
+			if id, ok := shown[i]; ok {
+				d.items[len(lines)] = id
 			}
 			lines = append(lines, border("│")+pad(r, listColumns)+border("│"))
 		}
-		lines = append(lines, border("├")+title(cursor.Id, listColumns)+border("┤"))
-		for range planPanelLines {
-			lines = append(lines, border("│")+strings.Repeat(" ", listColumns)+border("│"))
+		lines = append(lines, border("├")+title(cursor.id, listColumns)+border("┤"))
+		for i := range planPanelLines {
+			side := ""
+			if i < len(panel) {
+				side = " " + panel[i]
+			}
+			lines = append(lines, border("│")+pad(side, listColumns)+border("│"))
 		}
 		lines = append(lines, border("└"+strings.Repeat("─", listColumns)+"┘"))
 	}
@@ -182,9 +235,9 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 	if height > 0 {
 		lines = append(lines, ansi.Truncate(planKeys(c, cursor, v.folds(height), v.unfolded, st), width, ""))
 	}
-	for i := range d.tasks {
+	for i := range d.items {
 		if i >= len(lines)-1 {
-			delete(d.tasks, i)
+			delete(d.items, i)
 		}
 	}
 	d.lines = lines
@@ -200,16 +253,22 @@ func planHeader(c *api.PlanContent, width int, now time.Time, st style.Style) []
 	gap := strings.Repeat(" ", max(width-1-ansi.StringWidth(name)-ansi.StringWidth(right)-1, 1))
 	first := " " + st.Name(name) + gap + right
 
-	tasks := planTasks(c)
+	items, noun := planItems(c), "task"
+	if c.Definition.Plans != nil {
+		noun = "plan"
+	}
 	if c.Run == nil {
-		return []string{first, " " + plural(len(tasks), "task") + ", not run yet"}
+		return []string{first, " " + plural(len(items), noun) + ", not run yet"}
 	}
 	done, failed := 0, 0
-	for _, t := range tasks {
-		switch t.State {
-		case api.PlanTaskStateDone:
+	for _, it := range items {
+		switch {
+		case it.child != nil && it.child.State == api.PlanStateDone:
 			done++
-		case api.PlanTaskStateFailed, api.PlanTaskStateLandFailed:
+		case it.task == nil:
+		case it.task.State == api.PlanTaskStateDone:
+			done++
+		case it.task.State == api.PlanTaskStateFailed, it.task.State == api.PlanTaskStateLandFailed:
 			failed++
 		}
 	}
@@ -225,8 +284,12 @@ func planHeader(c *api.PlanContent, width int, now time.Time, st style.Style) []
 	if failed > 0 {
 		failures = fmt.Sprintf(" · %d failed", failed)
 	}
-	long := fmt.Sprintf("%d/%d tasks%s · on %s%s", done, len(tasks), failures, c.Run.Branch, ran)
-	short := fmt.Sprintf("%d/%d%s%s", done, len(tasks), failures, ran)
+	branch := ""
+	if c.Run.Branch != "" { // a plan of plans' plans each have their own
+		branch = " · on " + c.Run.Branch
+	}
+	long := fmt.Sprintf("%d/%d %ss%s%s%s", done, len(items), noun, failures, branch, ran)
+	short := fmt.Sprintf("%d/%d%s%s", done, len(items), failures, ran)
 	text := long
 	room := width - 1 - 2 - ansi.StringWidth(long) - 1
 	if room < planBarLeast {
@@ -236,7 +299,7 @@ func planHeader(c *api.PlanContent, width int, now time.Time, st style.Style) []
 	if room < planBarLeast {
 		return []string{first, " " + text}
 	}
-	return []string{first, " " + progressBar(done, failed, len(tasks), min(room, planBarMost), st) + "  " + text}
+	return []string{first, " " + progressBar(done, failed, len(items), min(room, planBarMost), st) + "  " + text}
 }
 
 // planBadge is the plan's state as the header shows it.
@@ -353,7 +416,7 @@ func (v *planView) folds(height int) string {
 
 // planKeys is the tab's last line: the keys the plan's state takes, then the
 // list's and what Enter does on the task under the cursor.
-func planKeys(c *api.PlanContent, cursor api.PlanTask, folds string, unfolded bool, st style.Style) string {
+func planKeys(c *api.PlanContent, cursor planItem, folds string, unfolded bool, st style.Style) string {
 	p := c.Plan
 	k := func(key, what string) string { return st.Command(key) + " " + what }
 	var keys []string
@@ -373,11 +436,8 @@ func planKeys(c *api.PlanContent, cursor api.PlanTask, folds string, unfolded bo
 	default:
 		keys = []string{k(archiveKey, "archive"), k(copyKey, "copy")}
 	}
-	if len(planTasks(c)) > 0 {
-		keys = append(keys, k("↑↓", "select"))
-	}
-	if verb := taskEnterVerb(p, cursor); verb != "" {
-		keys = append(keys, k("Enter", verb))
+	if len(planItems(c)) > 0 {
+		keys = append(keys, k("↑↓", "select"), k("Enter", cursor.enterVerb(p)))
 	}
 	switch {
 	case folds != "" && unfolded:
@@ -388,16 +448,36 @@ func planKeys(c *api.PlanContent, cursor api.PlanTask, folds string, unfolded bo
 	return " " + strings.Join(keys, "  ")
 }
 
-// taskEnterVerb is what Enter does on t: go to the agent of one running or
-// landing, answer one that failed in a plan going on; "" on the others.
-func taskEnterVerb(p api.Plan, t api.PlanTask) string {
+const (
+	enterAgent  = "go to its agent"
+	enterAnswer = "answer it"
+	enterPrompt = "read it"
+	enterOpen   = "open it"
+)
+
+// enterVerb is what Enter does on it in plan p: open a plan's tab; go to the
+// agent of a task running or landing, answer one that failed in a plan going
+// on, and show the whole prompt of the others.
+func (it planItem) enterVerb(p api.Plan) string {
+	t := it.task
 	switch {
+	case t == nil:
+		return enterOpen
 	case (t.State == api.PlanTaskStateRunning || t.State == api.PlanTaskStateLanding) && t.Agent != nil:
-		return "go to its agent"
-	case taskNeedsYou(p, t):
-		return "answer it"
+		return enterAgent
+	case taskNeedsYou(p, *t):
+		return enterAnswer
 	}
-	return ""
+	return enterPrompt
+}
+
+// needsYou reports whether it waits for the person in plan p: a task failed in
+// a plan going on, or a plan waiting for their answer.
+func (it planItem) needsYou(p api.Plan) bool {
+	if it.child != nil {
+		return it.child.Waiting
+	}
+	return taskNeedsYou(p, *it.task)
 }
 
 // taskNeedsYou reports whether t waits for the person: it failed or did not
@@ -406,7 +486,37 @@ func taskNeedsYou(p api.Plan, t api.PlanTask) bool {
 	return goingOn(p.State) && (t.State == api.PlanTaskStateFailed || t.State == api.PlanTaskStateLandFailed)
 }
 
-// taskGlyph is t's glyph on the rail, and the style of its state.
+// glyph is it's glyph on the rail, and the style of its state.
+func (it planItem) glyph(st style.Style) (string, func(string) string) {
+	if it.child != nil {
+		return childGlyph(it, st)
+	}
+	return taskGlyph(*it.task, st)
+}
+
+// childGlyph is a plan's glyph in its parent's list, its state's as its badge
+// has it: a draft Normal when ready or waiting for the person, Muted while the
+// plans before it are not done.
+func childGlyph(it planItem, st style.Style) (string, func(string) string) {
+	plain := func(s string) string { return s }
+	switch it.child.State {
+	case api.PlanStateRunning:
+		return "●", st.Success
+	case api.PlanStatePaused:
+		return "⏸", st.Warning
+	case api.PlanStateDone:
+		return "✓", st.Success
+	case api.PlanStateCancelled:
+		return "✗", st.Failure
+	case api.PlanStateDraft:
+		if len(it.before) > 0 && !it.child.Waiting {
+			return "○", st.Muted
+		}
+		return "○", plain
+	}
+	return "?", plain
+}
+
 func taskGlyph(t api.PlanTask, st style.Style) (string, func(string) string) {
 	plain := func(s string) string { return s }
 	switch t.State {
@@ -431,7 +541,23 @@ func taskGlyph(t api.PlanTask, st style.Style) (string, func(string) string) {
 	return "?", plain
 }
 
-// taskWords is t's state in words, with why it failed when reason says so.
+// words is it's state in words, a task's with why it failed when reason says
+// so: a plan waits for the person, or for the plans before it.
+func (it planItem) words(reason bool) string {
+	if c := it.child; c != nil {
+		switch {
+		case c.Waiting:
+			return "waiting for you"
+		case c.State == api.PlanStateDraft && len(it.before) > 0:
+			return "waiting"
+		case c.State == api.PlanStateDraft:
+			return "ready"
+		}
+		return string(c.State)
+	}
+	return taskWords(*it.task, reason)
+}
+
 func taskWords(t api.PlanTask, reason bool) string {
 	var s string
 	switch t.State {
@@ -463,26 +589,49 @@ func taskTime(t api.PlanTask, now time.Time) string {
 	return minutes(end.Sub(*t.StartedAt))
 }
 
+// time is a task's time, or how far a plan is in place of it: 2/4, or how
+// many tasks it has before it runs.
+func (it planItem) time(now time.Time) string {
+	if c := it.child; c != nil {
+		if c.TasksDone != nil {
+			return fmt.Sprintf("%d/%d", *c.TasksDone, c.Tasks)
+		}
+		return plural(int(c.Tasks), "task")
+	}
+	return taskTime(*it.task, now)
+}
+
+// agent is a task's agent's name; a plan has none.
+func (it planItem) agent() string {
+	if it.task == nil {
+		return ""
+	}
+	return taskAgent(*it.task)
+}
+
 // taskColumns are the columns of the list a width keeps, dropped from the
 // right as it narrows: the agent, then the time, then the failure's reason. A
-// plan not run has neither agents nor times.
+// plan not run has neither agents nor times; a plan of plans has no agents,
+// and its plans' progress in place of the time.
 type taskColumns struct {
 	id, words, agent, time int // their widths; 0 for one dropped
 	reason                 bool
 }
 
-func fitColumns(tasks []api.PlanTask, ran bool, room int, now time.Time) taskColumns {
+func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns {
 	var c taskColumns
 	short := 0
-	for _, t := range tasks {
-		c.id = max(c.id, ansi.StringWidth(t.Id))
-		c.words = max(c.words, ansi.StringWidth(taskWords(t, true)))
-		short = max(short, ansi.StringWidth(taskWords(t, false)))
-		c.agent = max(c.agent, ansi.StringWidth(taskAgent(t)))
-		c.time = max(c.time, ansi.StringWidth(taskTime(t, now)))
+	plans := false
+	for _, it := range items {
+		c.id = max(c.id, ansi.StringWidth(it.id))
+		c.words = max(c.words, ansi.StringWidth(it.words(true)))
+		short = max(short, ansi.StringWidth(it.words(false)))
+		c.agent = max(c.agent, ansi.StringWidth(it.agent()))
+		c.time = max(c.time, ansi.StringWidth(it.time(now)))
+		plans = plans || it.child != nil
 	}
 	c.reason = true
-	if !ran {
+	if !ran && !plans {
 		c.agent, c.time = 0, 0
 	}
 	need := func() int {
@@ -514,18 +663,18 @@ func taskAgent(t api.PlanTask) string {
 	return t.Agent.Name
 }
 
-// taskMark is what the row of t says at its end while cursor is under the
+// itemMark is what the row of it says at its end while cursor is under the
 // cursor: that cursor needs it or it waits for cursor, or else that it needs
 // the person.
-func taskMark(p api.Plan, t, cursor api.PlanTask, st style.Style) string {
+func itemMark(p api.Plan, it, cursor planItem, st style.Style) string {
 	switch {
-	case t.Id == cursor.Id:
-	case slices.Contains(cursor.After, t.Id):
+	case it.id == cursor.id:
+	case slices.Contains(cursor.after, it.id):
 		return st.Focused(planMarkNeeds)
-	case slices.Contains(t.After, cursor.Id):
+	case slices.Contains(it.after, cursor.id):
 		return st.Focused(planMarkUnblocks)
 	}
-	if taskNeedsYou(p, t) {
+	if it.needsYou(p) {
 		return st.Warning(planMarkNeedsYou)
 	}
 	return ""
@@ -534,25 +683,29 @@ func taskMark(p api.Plan, t, cursor api.PlanTask, st style.Style) string {
 // listLines are the lines of the list, columns × at most lines: the rows of the
 // rail scrolled to keep the cursor in view when asked, with what is out of
 // sight said above and below; and the task on each line.
-func (v *planView) listLines(cursor api.PlanTask, columns, lines int, now time.Time, st style.Style) ([]string, map[int]string) {
+func (v *planView) listLines(cursor planItem, columns, lines int, now time.Time, st style.Style) ([]string, map[int]string) {
 	c := v.content
-	tasks := planTasks(c)
-	if len(tasks) == 0 {
-		return []string{" " + st.Muted("no tasks")}, nil
+	items := planItems(c)
+	if len(items) == 0 {
+		none := "no tasks"
+		if c.Definition.Plans != nil {
+			none = "no plans"
+		}
+		return []string{" " + st.Muted(none)}, nil
 	}
 	rail, drawn := v.railOf()
-	byID := map[string]api.PlanTask{}
-	for _, t := range tasks {
-		byID[t.Id] = t
+	byID := map[string]planItem{}
+	for _, it := range items {
+		byID[it.id] = it
 	}
 	railColumns := 2 // a plain list's glyph and a space
 	if drawn {
 		railColumns = len(rail[0].cells)
 	}
 	room := columns - 1 - railColumns - planRailGap - 1 - planMarkColumns - 1 // the edge, the rail, the mark and a cell after it
-	cols := fitColumns(tasks, c.Run != nil, room, now)
+	cols := fitColumns(items, c.Run != nil, room, now)
 
-	at := slices.IndexFunc(rail, func(r railRow) bool { return r.task == cursor.Id })
+	at := slices.IndexFunc(rail, func(r railRow) bool { return r.task == cursor.id })
 	above, below, body := v.scroll(rail, at, lines)
 
 	var out []string
@@ -562,34 +715,34 @@ func (v *planView) listLines(cursor api.PlanTask, columns, lines int, now time.T
 	}
 	for _, r := range rail[v.offset : v.offset+body] {
 		if r.task == "" {
-			out = append(out, " "+railCells(r, cursor.Id, "", st))
+			out = append(out, " "+railCells(r, cursor.id, "", st))
 			continue
 		}
-		t := byID[r.task]
-		glyph, paint := taskGlyph(t, st)
+		it := byID[r.task]
+		glyph, paint := it.glyph(st)
 		row := paint(glyph) + " "
 		if drawn {
-			row = railCells(r, cursor.Id, paint(glyph), st)
+			row = railCells(r, cursor.id, paint(glyph), st)
 		}
 		row += strings.Repeat(" ", planRailGap)
-		cells := []string{padTo(t.Id, cols.id), paint(padTo(taskWords(t, cols.reason), cols.words))}
+		cells := []string{padTo(it.id, cols.id), paint(padTo(it.words(cols.reason), cols.words))}
 		if cols.agent > 0 {
-			cells = append(cells, padTo(taskAgent(t), cols.agent))
+			cells = append(cells, padTo(it.agent(), cols.agent))
 		}
 		if cols.time > 0 {
-			cells = append(cells, padTo(taskTime(t, now), cols.time))
+			cells = append(cells, padTo(it.time(now), cols.time))
 		}
 		text := ansi.Truncate(strings.Join(cells, " "), max(room, 0), "…")
 		row += text + strings.Repeat(" ", max(room-ansi.StringWidth(text), 0)) + " "
-		mark := taskMark(c.Plan, t, cursor, st)
+		mark := itemMark(c.Plan, it, cursor, st)
 		row += strings.Repeat(" ", max(planMarkColumns-ansi.StringWidth(mark), 0)) + mark
 		row = ansi.Truncate(row+" ", columns-1, "")
 		edge := " "
-		if t.Id == cursor.Id {
+		if it.id == cursor.id {
 			edge = st.Focused("▌")
 			row = st.Selected(row + strings.Repeat(" ", max(columns-1-ansi.StringWidth(row), 0)))
 		}
-		shown[len(out)] = t.Id
+		shown[len(out)] = it.id
 		out = append(out, edge+row)
 	}
 	if below > 0 {
@@ -661,12 +814,17 @@ func padTo(s string, width int) string {
 	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
 }
 
-// planTasksKey takes a key of the tab of v: ↑ ↓ move to the task before or
+// planTabKey takes a key of the tab of v: ↑ ↓ move to the row before or
 // after, → ← unfold and fold the constraints, Enter goes to a running task's
-// agent or answers a failed one.
-func (m *Model) planTasksKey(v *planView, msg tea.Msg) tea.Cmd {
+// agent, answers a failed one, shows the whole prompt of the others, or opens
+// a plan's tab. While a prompt is shown whole, its keys are the reading's.
+func (m *Model) planTabKey(v *planView, msg tea.Msg) tea.Cmd {
 	k, ok := msg.(tea.KeyPressMsg)
 	if !ok {
+		return nil
+	}
+	if v.reading != "" {
+		m.readingKey(v, k.String())
 		return nil
 	}
 	switch name := k.String(); {
@@ -680,45 +838,59 @@ func (m *Model) planTasksKey(v *planView, msg tea.Msg) tea.Cmd {
 			m.log.Info("plan constraints folded", "tab", m.list().active, "folded", !unfold)
 		}
 	case name == "enter":
-		t, ok := v.cursorTask()
+		it, ok := v.cursorItem()
 		if !ok {
 			return nil
 		}
-		switch taskEnterVerb(v.content.Plan, t) {
-		case "go to its agent":
-			return m.goToTaskAgent(t.Agent.Id)()
-		case "answer it":
-			return m.askTask(v.content.Plan, t)()
+		switch it.enterVerb(v.content.Plan) {
+		case enterOpen:
+			return m.openChild(it.id)()
+		case enterAgent:
+			return m.goToTaskAgent(it.task.Agent.Id)()
+		case enterAnswer:
+			return m.askTask(v.content.Plan, *it.task)()
+		case enterPrompt:
+			v.reading, v.readOffset = it.id, 0
+			m.log.Info("plan task prompt shown", "tab", m.list().active, "task", it.id)
 		}
 	}
 	return nil
 }
 
-// step moves the cursor to the task by rows on, past the rail's connectors.
+// step moves the cursor to the row by rows on, past the rail's connectors.
 func (v *planView) step(by int) {
-	tasks := planTasks(v.content)
-	cur, ok := v.cursorTask()
+	items := planItems(v.content)
+	cur, ok := v.cursorItem()
 	if !ok {
 		return
 	}
-	i := slices.IndexFunc(tasks, func(t api.PlanTask) bool { return t.Id == cur.Id }) + by
-	if i >= 0 && i < len(tasks) {
-		v.cursor, v.reveal = tasks[i].Id, true
+	i := slices.IndexFunc(items, func(it planItem) bool { return it.id == cur.id }) + by
+	if i >= 0 && i < len(items) {
+		v.cursor, v.reveal = items[i].id, true
 	}
 }
 
-// planTasksClick takes a click on the row of the tab's area: on a task's row
-// the cursor goes to it, doing nothing more.
-func (m *Model) planTasksClick(v *planView, row int, area uv.Rectangle) {
+// planTabClick takes a click on the row of the tab's area: on a row of the
+// list the cursor goes to it, doing nothing more.
+func (m *Model) planTabClick(v *planView, row int, area uv.Rectangle) {
 	d := layoutPlanTab(v, area.Dx(), area.Dy(), m.now(), m.st)
-	if id, ok := d.tasks[row]; ok {
+	if id, ok := d.items[row]; ok {
 		v.cursor = id
 	}
 }
 
-// planTasksWheel scrolls the list by a turn of the wheel; the next draw keeps
-// it in range.
-func planTasksWheel(v *planView, msg tea.MouseWheelMsg) {
+// planTabWheel scrolls the list, or the prompt shown whole, by a turn of the
+// wheel; the next draw keeps it in range.
+func planTabWheel(v *planView, msg tea.MouseWheelMsg) {
+	if v.reading != "" {
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			v.readOffset = max(v.readOffset-valueWheelStep, 0)
+		case tea.MouseWheelDown:
+			v.readOffset += valueWheelStep
+		}
+		return
+	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
 		v.offset = max(v.offset-valueWheelStep, 0)
@@ -733,7 +905,7 @@ type planMinute struct{ projectID, tab string }
 // planTimer asks for a planMinute while the tab shown has a task running or
 // landing, one at a time.
 func (m *Model) planTimer() tea.Cmd {
-	v, ok := m.planTasksView()
+	v, ok := m.planTabView()
 	if !ok || v.timing || !slices.ContainsFunc(planTasks(v.content), func(t api.PlanTask) bool {
 		return t.State == api.PlanTaskStateRunning || t.State == api.PlanTaskStateLanding
 	}) {
