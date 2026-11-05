@@ -50,7 +50,7 @@ func plansModel(t *testing.T) *Model {
 	a, b := aPlan("doc-a", "auth-a", 1, 2), aPlan("doc-b", "auth-b", 1, 1)
 	auth := aParent("doc-auth", "auth", &b, &a) // in its DAG order: b first
 	setPlans(m, auth, a, b, aPlan("doc-sso", "sso", 2, 4))
-	m.moveToPlan(0)
+	m.moveToPlan(1) // the first row is the selector
 	if l := m.list(); l.section != sectionPlans || l.planCursor != "doc-auth" {
 		t.Fatalf("on %v %q", l.section, l.planCursor)
 	}
@@ -74,13 +74,13 @@ func TestPlansListed(t *testing.T) {
 	if !strings.Contains(statusRow(m), "←→ fold") {
 		t.Errorf("hint on a plan of plans %q", statusRow(m))
 	}
-	if got := m.planRows(); len(got) != 4 || got[1].plan.Name != "auth-b" || !got[1].child || got[3].child {
+	if got := m.planRows(); len(got) != 5 || got[2].plan.Name != "auth-b" || !got[2].child || got[4].child {
 		t.Fatalf("rows %+v", got)
 	}
 
 	keys(m, "left")
 	wantText(t, m, "+ auth draft 2 plans")
-	if strings.Contains(text(m), "auth-a") || len(m.planRows()) != 2 {
+	if strings.Contains(text(m), "auth-a") || len(m.planRows()) != 3 {
 		t.Errorf("folded, its plans still show:\n%s", text(m))
 	}
 	keys(m, "down")
@@ -88,11 +88,11 @@ func TestPlansListed(t *testing.T) {
 		t.Errorf("down from the folded parent: %q, hint %q", l.planCursor, statusRow(m))
 	}
 	keys(m, "up", "right")
-	if len(m.planRows()) != 4 {
+	if len(m.planRows()) != 5 {
 		t.Errorf("unfolded: %+v", m.planRows())
 	}
 	keys(m, "down", "left") // on auth-b, its parent folds
-	if l := m.list(); len(m.planRows()) != 2 || l.planCursor != "doc-auth" {
+	if l := m.list(); len(m.planRows()) != 3 || l.planCursor != "doc-auth" {
 		t.Errorf("← on a child: %+v, cursor %q", m.planRows(), l.planCursor)
 	}
 	keys(m, "right")
@@ -115,12 +115,12 @@ func TestPlanRowFits(t *testing.T) {
 		16: "  sso 4 tasks",
 		10: "  sso",
 	} {
-		if got := strings.TrimRight(planLine(st, r, false, false, false, width), " "); got != want {
+		if got := strings.TrimRight(planLine(st, r, plansGoingOn, false, false, false, width), " "); got != want {
 			t.Errorf("%d: %q, want %q", width, got, want)
 		}
 	}
 	child := planRow{plan: aPlan("doc-a", "auth-a", 1, 2), child: true, place: treePlace{depth: 1, guide: "  "}}
-	if got := strings.TrimRight(planLine(st, child, false, false, false, 30), " "); got != "    auth-a draft 2 tasks" {
+	if got := strings.TrimRight(planLine(st, child, plansGoingOn, false, false, false, 30), " "); got != "    auth-a draft 2 tasks" {
 		t.Errorf("a plan under its plan of plans: %q", got)
 	}
 }
@@ -132,14 +132,14 @@ func TestPlanFilter(t *testing.T) {
 	m := plansModel(t)
 	keys(m, "left") // folded
 	l := m.list()
-	m.moveToPlan(1) // sso
+	m.moveToPlan(2) // sso
 	l.filter.text = "auth-a"
 	m.keepCursors()
 	if l.planCursor != "doc-a" { // the row that took sso's
 		t.Errorf("the cursor stayed on a plan not shown: %q", l.planCursor)
 	}
 	rows := m.planRows()
-	if len(rows) != 2 || rows[0].plan.Name != "auth" || rows[0].match || rows[1].plan.Name != "auth-a" || !rows[1].match {
+	if len(rows) != 3 || rows[1].plan.Name != "auth" || rows[1].match || rows[2].plan.Name != "auth-a" || !rows[2].match {
 		t.Fatalf("a child matching: %+v", rows)
 	}
 	if m.filterMatches() != 1 {
@@ -148,14 +148,14 @@ func TestPlanFilter(t *testing.T) {
 	a, b := aPlan("doc-a", "auth-a", 1, 2), aPlan("doc-b", "auth-b", 1, 1)
 	setPlans(m, aParent("doc-auth", "login", &b, &a), a, b, aPlan("doc-sso", "sso", 2, 4))
 	l.filter.text = "login"
-	if rows := m.planRows(); len(rows) != 3 || !rows[0].match || rows[1].match {
+	if rows := m.planRows(); len(rows) != 4 || !rows[1].match || rows[2].match {
 		t.Errorf("only the parent matching shows its plans: %+v", rows)
 	}
 	// On a plan of plans shown only for its plan that matches, the cursor goes to
 	// that plan.
 	l.filter.text = ""
 	m.keepCursors()
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	l.filter.text = "auth-a"
 	m.filterChanged()
 	if l.planCursor != "doc-a" {
@@ -167,7 +167,7 @@ func TestPlanFilter(t *testing.T) {
 	if l.section != sectionPlans || l.planCursor != "doc-sso" {
 		t.Errorf("not put on the match: %v %q", l.section, l.planCursor)
 	}
-	if rows := m.planRows(); len(rows) != 1 || rows[0].plan.Name != "sso" || !m.cursorOnMatch() {
+	if rows := m.planRows(); len(rows) != 2 || rows[1].plan.Name != "sso" || !m.cursorOnMatch() {
 		t.Errorf("a plan alone: %+v", rows)
 	}
 }
@@ -213,7 +213,7 @@ func TestPlanTab(t *testing.T) {
 
 	// The pane starts again on another plan's tab.
 	m.layout.setFocus(project)
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	keys(m, "enter")
 	if m.values.owner != planTab("doc-auth") {
 		t.Errorf("the pane's owner is %q", m.values.owner)
@@ -223,12 +223,12 @@ func TestPlanTab(t *testing.T) {
 func TestPlanTabParentAndError(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
-	m.moveToPlan(2) // auth-a
+	m.moveToPlan(3) // auth-a
 	keys(m, "enter")
 	a := m.plans()[1]
 	loadPlan(m, "doc-a", api.PlanContent{Plan: a, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &[]api.PlanTask{}}})
 	wantText(t, m, "runs with auth  y copy")
-	m.moveToPlan(3) // sso
+	m.moveToPlan(4) // sso
 	keys(m, "enter")
 	m.Update(planLoaded{projectID: "proj-demo", tab: planTab("doc-sso"), err: errors.New("daemon gone")})
 	wantText(t, m, "error:", "daemon gone")
@@ -260,15 +260,15 @@ func TestPlanOfPlansTab(t *testing.T) {
 		shown, _ := m.visibleItems(100)
 		return slices.IndexFunc(shown, func(it paneItem) bool { return it.section == sectionPlans && it.row == i }) + 1
 	}
-	s.click(6, rowOf(3), 31, 100)
+	s.click(6, rowOf(4), 31, 100)
 	if l.active != planTab("doc-sso") {
 		t.Errorf("after a click: tab %q", l.active)
 	}
-	s.click(2, rowOf(0), 31, 100)
+	s.click(2, rowOf(1), 31, 100)
 	if !l.plansFolded["doc-auth"] || l.active != planTab("doc-sso") {
 		t.Errorf("a click on the fold mark: folded %v, tab %q", l.plansFolded, l.active)
 	}
-	s.click(6, rowOf(0), 31, 100)
+	s.click(6, rowOf(1), 31, 100)
 	if l.active != planTab("doc-auth") {
 		t.Errorf("a click on a plan of plans: tab %q", l.active)
 	}
@@ -344,10 +344,10 @@ func TestPlanLive(t *testing.T) {
 	p := h.follow(t)
 	p.until(t, "the projects listed", func(m *Model) bool { return m.projects.loaded })
 	p.keys("enter")
-	p.until(t, "the plan listed", func(m *Model) bool { return len(m.planRows()) == 1 })
+	p.until(t, "the plan listed", func(m *Model) bool { return len(m.planRows()) == 2 })
 	m := p.m
 	m.layout.setFocus(project)
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	p.keys("enter")
 	p.until(t, "the plan's tasks", func(m *Model) bool { return strings.Contains(text(m), "1 task, not run yet") })
 
@@ -370,7 +370,7 @@ func TestPlanRunShown(t *testing.T) {
 	setPlans(m, plans...)
 	wantText(t, m, "sso running 1/4")
 
-	m.moveToPlan(3)
+	m.moveToPlan(4)
 	keys(m, "enter")
 	summary, failure := "Added it.", api.PlanTaskFailureRebase
 	tasks := []api.PlanTask{
@@ -448,7 +448,7 @@ func TestPlanTabAnswers(t *testing.T) {
 	plans := slices.Clone(m.plans())
 	plans[3] = sso
 	setPlans(m, plans...)
-	m.moveToPlan(3)
+	m.moveToPlan(4)
 	keys(m, "enter")
 	ended, check := api.PlanTaskFailureAgentEnded, api.PlanTaskFailureCheck
 	checkName := "land-sso-1"

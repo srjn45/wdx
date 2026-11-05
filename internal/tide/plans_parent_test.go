@@ -26,7 +26,7 @@ func runningParent(t *testing.T) *Model {
 	auth := m.plans()[0]
 	auth.State, auth.PlansDone, auth.PlansWaiting = api.PlanStateRunning, &done, &[]string{"auth-b"}
 	setPlans(m, auth, a, b, m.plans()[3])
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	keys(m, "enter")
 	tasks := int64(2)
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: auth, Revision: 1, Run: &api.PlanRun{State: api.PlanStateRunning},
@@ -45,10 +45,10 @@ func TestPlanOfPlansShown(t *testing.T) {
 	t.Parallel()
 	m := runningParent(t)
 	rows := m.planRows()
-	if !rows[0].needsYou || !rows[1].needsYou || rows[2].needsYou {
-		t.Errorf("needs you: auth %v, auth-b %v, auth-a %v", rows[0].needsYou, rows[1].needsYou, rows[2].needsYou)
+	if !rows[1].needsYou || !rows[2].needsYou || rows[3].needsYou {
+		t.Errorf("needs you: auth %v, auth-b %v, auth-a %v", rows[1].needsYou, rows[2].needsYou, rows[3].needsYou)
 	}
-	if got := strings.TrimRight(planLine(m.st, rows[0], false, false, false, 60), " "); got != "  − auth running 1/2 plans needs you" {
+	if got := strings.TrimRight(planLine(m.st, rows[1], plansGoingOn, false, false, false, 60), " "); got != "  − auth running 1/2 plans needs you" {
 		t.Errorf("the parent's row: %q", got)
 	}
 	wantText(t, m, "● running", "1/2 plans", "p pause  c cancel", "auth-b waiting for you 1 task", "needs you", "auth-a done            2/2")
@@ -62,8 +62,8 @@ func TestPlanOfPlansShown(t *testing.T) {
 	waiting := m.plans()[0]
 	waiting.PlansWaiting = &[]string{}
 	setPlans(m, waiting, m.plans()[1], m.plans()[2], m.plans()[3])
-	if rows := m.planRows(); rows[0].needsYou || rows[1].needsYou {
-		t.Errorf("none waiting: auth %v, auth-b %v", rows[0].needsYou, rows[1].needsYou)
+	if rows := m.planRows(); rows[1].needsYou || rows[2].needsYou {
+		t.Errorf("none waiting: auth %v, auth-b %v", rows[1].needsYou, rows[2].needsYou)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 	}
 
 	m.layout.setFocus(project)
-	m.moveToPlan(1) // auth-b
+	m.moveToPlan(2) // auth-b
 	keys(m, "enter")
 	b := m.plans()[2]
 	loadPlan(m, "doc-b", api.PlanContent{Plan: b, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Tasks: &[]api.PlanTask{}}})
@@ -157,7 +157,7 @@ func TestPlanOfPlansAnswered(t *testing.T) {
 func TestPlanOfPlansRunAsked(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	keys(m, "enter")
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: m.plans()[0], Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Plans: &[]api.PlanChild{}}})
 	m.layout.setFocus(agent)

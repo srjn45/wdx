@@ -465,7 +465,7 @@ func TestPlanTabMinute(t *testing.T) {
 	}
 	v, now := ssoRun()
 	m.now = func() time.Time { return now }
-	m.moveToPlan(3) // sso
+	m.moveToPlan(4) // sso
 	keys(m, "enter")
 	loadPlan(m, "doc-sso", *v.content)
 	wantText(t, m, "callback    running       6m")

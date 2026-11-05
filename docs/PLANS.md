@@ -1112,6 +1112,7 @@ A plan that is over leaves nothing behind but its branch, its worktrees with wor
 - `/` finds plans in every view, as it finds archived ones.
 - The cursor on a plan that leaves the view, as one finishing, goes to the nearest row, as when a plan is removed.
 - **The CLI**: nothing changes. `plan list` says each plan's state, and a script picks what it wants from the JSON. docs/CLI_TIDE.md gets the row.
+- As built (step 2): `plans_view` is `all` or `completed`, the key left out for Draft & in progress, as tide leaves out every value it starts on; a value tide does not know is Draft & in progress too. The selector is there whenever the project has a plan, archived ones too, and a view with no plan says `no plans in this view` under it; a project with none still says `no plans: see wdx help plans`, with no selector. A plan a plan of plans lists counts in the heading when its parent is in the view, as it shows under it, and not when its parent is archived. The selector's hint is `←→ view`. A click on the selector puts the cursor on it; `<` and `>` are the only places that change the view. Code's `codeSelectorName` became `selectorName`, the two selectors sharing it.
 
 ### Tests
 

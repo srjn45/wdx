@@ -35,9 +35,9 @@ func TestArchivedPlansHidden(t *testing.T) {
 	failed := int64(1)
 	old.TasksFailed = &failed
 	setPlans(m, auth, a, b, old, aPlan("doc-sso", "sso", 1, 4))
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	var names []string
-	for _, r := range m.planRows() {
+	for _, r := range m.planRows()[1:] { // after the selector
 		names = append(names, r.plan.Name+r.place.folder)
 	}
 	if !slices.Equal(names, []string{"auth", "auth-a", "sso"}) {
@@ -50,19 +50,19 @@ func TestArchivedPlansHidden(t *testing.T) {
 
 	m.list().filter.text = "o"
 	names = nil
-	for _, r := range m.planRows() {
+	for _, r := range m.planRows()[1:] {
 		names = append(names, r.plan.Name+r.place.folder)
 	}
 	if !slices.Equal(names, []string{"/gone", "old", "sso"}) {
 		t.Errorf("filtered rows %q", names)
 	}
 	m.list().filter.text = "auth-b"
-	if rows := m.planRows(); len(rows) != 2 || rows[1].plan.Name != "auth-b" {
+	if rows := m.planRows(); len(rows) != 3 || rows[2].plan.Name != "auth-b" {
 		t.Errorf("the filter does not find an archived plan of a plan of plans: %+v", rows)
 	}
 	m.list().filter.text = "old"
 	rows := m.planRows()
-	if got := strings.TrimRight(planLine(m.st, rows[1], false, false, false, 40), " "); got != "    └ old cancelled, archived 1 task" {
+	if got := strings.TrimRight(planLine(m.st, rows[2], plansGoingOn, false, false, false, 40), " "); got != "    └ old cancelled, archived 1 task" {
 		t.Errorf("an archived plan's row: %q", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestPlanTabArchives(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
 	asked := lifecycleTo(t, m)
-	m.moveToPlan(3) // sso
+	m.moveToPlan(4) // sso
 	keys(m, "enter")
 	running := aPlan("doc-sso", "sso", 2, 2)
 	running.State = api.PlanStateRunning
@@ -189,7 +189,7 @@ func TestPlanTabCopies(t *testing.T) {
 		t.Errorf("the name for a copy of a copy: %q", got)
 	}
 	m.layout.setFocus(project)
-	m.moveToPlan(0) // auth, a plan of plans
+	m.moveToPlan(1) // auth, a plan of plans
 	keys(m, "enter")
 	auth := m.plans()[0]
 	loadPlan(m, "doc-auth", api.PlanContent{Plan: auth, Revision: 1, Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Plans: &[]api.PlanChild{}}})

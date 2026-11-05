@@ -23,7 +23,55 @@ const (
 	planHint      = "↑↓ select  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 	parentHint    = "↑↓ select  ←→ fold  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 	planGroupHint = "↑↓ select  ←→ fold  Enter open  / filter  Alt+arrows move  C-q menu" // a plan's row among agents or worktrees
+	plansViewHint = "↑↓ select  ←→ view  / filter  Alt+arrows move  C-q menu"
+	// planSelectorKey names the selector's row, the section's first, as an id names a plan's.
+	planSelectorKey = "selector"
 )
+
+// plansView is which plans the section shows, by their state, as its selector
+// chooses. The zero value is Draft & in progress, which a project starts on.
+type plansView string
+
+const (
+	plansGoingOn   plansView = "" // a project view without plans_view means it
+	plansAll       plansView = "all"
+	plansCompleted plansView = "completed"
+)
+
+// plansViews are the views in the order the selector goes through them.
+var plansViews = []plansView{plansAll, plansGoingOn, plansCompleted}
+
+// plansViewOf is the view the project's view kept; one tide does not know is
+// Draft & in progress.
+func plansViewOf(key string) plansView {
+	if v := plansView(key); slices.Contains(plansViews, v) {
+		return v
+	}
+	return plansGoingOn
+}
+
+// title is what the selector shows of the view.
+func (v plansView) title() string {
+	switch v {
+	case plansAll:
+		return "All"
+	case plansCompleted:
+		return "Completed"
+	}
+	return "Draft & in progress"
+}
+
+// shows reports whether the view shows a plan in state.
+func (v plansView) shows(state api.PlanState) bool {
+	over := state == api.PlanStateDone || state == api.PlanStateCancelled
+	switch v {
+	case plansAll:
+		return true
+	case plansCompleted:
+		return over
+	}
+	return !over
+}
 
 // planTab is the tab of the plan with id, which a rename keeps.
 func planTab(id string) string { return planTabPrefix + id }
@@ -62,6 +110,7 @@ func isParent(p api.Plan) bool { return p.Plans != nil }
 
 // planRow is a row of the Plans section: a plan, or a folder when place says so.
 type planRow struct {
+	selector bool // it is the selector of the plans shown, the section's first row
 	plan     api.Plan
 	place    treePlace
 	child    bool // it is listed under its plan of plans
@@ -71,6 +120,9 @@ type planRow struct {
 
 // key names the row across events: its plan's id, or its folder.
 func (r planRow) key() string {
+	if r.selector {
+		return planSelectorKey
+	}
 	if r.place.folder != "" {
 		return r.place.key()
 	}
@@ -83,14 +135,15 @@ type planGroup struct {
 	children []planRow
 }
 
-// planRows are the rows of the Plans section, in their folders: each plan no other
-// lists, and under a plan of plans not folded the plans it lists, in its DAG order,
-// which share its folder. With a filter, the plans whose name holds its words, and a
-// plan of plans with one of its plans that does, folded or not, under their folders
-// unfolded.
+// planRows are the rows of the Plans section: the selector, with any plan, then
+// the plans in their folders: each plan no other lists that is in the view
+// chosen, and under a plan of plans not folded the plans it lists, whatever their
+// state, in its DAG order, which share its folder. With a filter, the plans of
+// every view whose name holds its words, and a plan of plans with one of its plans
+// that does, folded or not, under their folders unfolded.
 func (m *Model) planRows() []planRow {
 	l := m.list()
-	if l == nil {
+	if l == nil || len(m.plans()) == 0 {
 		return nil
 	}
 	words := l.filter.words()
@@ -98,7 +151,7 @@ func (m *Model) planRows() []planRow {
 	hidden := func(p api.Plan) bool { return words == nil && isArchived(p) }
 	var groups []planGroup
 	for _, p := range m.plans() {
-		if p.Parent != nil || hidden(p) {
+		if p.Parent != nil || hidden(p) || words == nil && !l.plansView.shows(p.State) {
 			continue
 		}
 		var children []planRow
@@ -124,7 +177,7 @@ func (m *Model) planRows() []planRow {
 	if words != nil {
 		folded = nil
 	}
-	var rows []planRow
+	rows := []planRow{{selector: true}}
 	folderTree(groups, func(g planGroup) string { return g.plan.plan.Folder }, folded, func(p treePlace, g *planGroup) {
 		if g == nil {
 			rows = append(rows, planRow{place: p, needsYou: p.fold == foldClosed && m.folderNeedsYou(p.folder)})
@@ -140,26 +193,48 @@ func (m *Model) planRows() []planRow {
 	return rows
 }
 
-// folderNeedsYou reports whether a plan in the folder at path, or under it, waits
-// for the person.
+// folderNeedsYou reports whether a plan the view shows in the folder at path, or
+// under it, waits for the person.
 func (m *Model) folderNeedsYou(path string) bool {
 	return slices.ContainsFunc(m.plans(), func(p api.Plan) bool {
-		return inFolder(p.Folder, path) && m.planNeedsYou(p)
+		return inFolder(p.Folder, path) && m.inPlansView(p) && m.planNeedsYou(p)
 	})
 }
 
 // isArchived reports whether p is archived, which leaves it out of the section.
 func isArchived(p api.Plan) bool { return p.ArchivedAt != nil }
 
-// shownPlans counts the plans the section's heading counts: not the archived.
+// inPlansView reports whether the view chosen shows p, the filter aside: not
+// archived, and in the view by its own state, or a plan of plans' that lists it.
+func (m *Model) inPlansView(p api.Plan) bool {
+	top := p
+	if p.Parent != nil {
+		if parent, ok := m.planNamed(*p.Parent); ok {
+			top = parent
+		}
+	}
+	return !isArchived(p) && !isArchived(top) && m.list().plansView.shows(top.State)
+}
+
+// shownPlans counts the plans the section's heading counts: those the view shows.
 func (m *Model) shownPlans() int {
 	n := 0
 	for _, p := range m.plans() {
-		if !isArchived(p) {
+		if m.inPlansView(p) {
 			n++
 		}
 	}
 	return n
+}
+
+// choosePlansView goes by places through the views, going round at the ends, and
+// puts the cursor on the selector.
+func (m *Model) choosePlansView(by int) {
+	l := m.list()
+	i := slices.Index(plansViews, l.plansView)
+	l.plansView = plansViews[(i+by+len(plansViews))%len(plansViews)]
+	m.moveToPlan(0)
+	m.log.Info("plans view chosen", "view", l.plansView.title())
 }
 
 // planNeedsYou reports whether the plan waits for the person: a task of it failed
@@ -256,10 +331,10 @@ func (m *Model) cursorPlanRow() (planRow, bool) {
 	return rows[l.planRow], true
 }
 
-// cursorPlan returns the plan under the cursor, none on a folder.
+// cursorPlan returns the plan under the cursor, none on a folder or the selector.
 func (m *Model) cursorPlan() (api.Plan, bool) {
 	r, ok := m.cursorPlanRow()
-	if !ok || r.place.folder != "" {
+	if !ok || r.selector || r.place.folder != "" {
 		return api.Plan{}, false
 	}
 	return r.plan, true
@@ -291,8 +366,17 @@ func (m *Model) foldPlanFolder(path string, fold bool) {
 // planFold folds the plans of the plan of plans under the cursor, or unfolds them,
 // as ← and → do in the Agents section. ← on one of its plans folds it, the cursor
 // going to it. On a folder it folds or unfolds the folder, and ← on a plan in a
-// folder, not a plan of plans unfolded, folds that folder.
+// folder, not a plan of plans unfolded, folds that folder. On the selector ← goes
+// to the view before and → to the one after.
 func (m *Model) planFold(fold bool) {
+	if r, ok := m.cursorPlanRow(); ok && r.selector {
+		if fold {
+			m.choosePlansView(-1)
+		} else {
+			m.choosePlansView(1)
+		}
+		return
+	}
 	if r, ok := m.cursorPlanRow(); ok && r.place.folder != "" {
 		m.foldPlanFolder(r.place.folder, fold)
 		return
@@ -328,12 +412,23 @@ func (m *Model) setPlanFolded(p api.Plan, fold bool) {
 	m.log.Info("plan folded", "plan_id", p.Id, "folded", fold)
 }
 
-// clickPlan takes a click on the row i of the Plans section: on a plan of plans'
-// fold mark it folds or unfolds, elsewhere it opens the row's plan.
-func (m *Model) clickPlan(i, col int) {
+// clickPlan takes a click on the row i of the Plans section, in a pane width wide:
+// on the selector's ends it goes through the views, on a plan of plans' fold mark it
+// folds or unfolds, elsewhere it opens the row's plan.
+func (m *Model) clickPlan(i, col, width int) {
 	rows := m.planRows()
 	m.moveToPlan(i)
 	r := rows[i]
+	if r.selector {
+		pointer := ansi.StringWidth("▸ ")
+		switch col {
+		case pointer:
+			m.choosePlansView(-1)
+		case pointer + ansi.StringWidth("< "+selectorName(m.list().plansView.title(), width)+" "):
+			m.choosePlansView(1)
+		}
+		return
+	}
 	if r.place.folder != "" {
 		m.foldPlanFolder(r.place.folder, r.place.fold == foldOpen)
 		return
@@ -356,7 +451,11 @@ func (m *Model) openPlan(p api.Plan, goToTab bool) {
 
 // planHintFor is the bar's hint in the section: a plan of plans and a folder fold.
 func (m *Model) planHintFor() string {
-	if r, ok := m.cursorPlanRow(); ok && r.place.folder != "" {
+	r, ok := m.cursorPlanRow()
+	if ok && r.selector {
+		return plansViewHint
+	}
+	if ok && r.place.folder != "" {
 		return folderHint
 	}
 	if p, ok := m.cursorPlan(); ok && isParent(p) {
@@ -408,13 +507,17 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// planLine is the row r of the section, width wide: the tree's lines, then a
-// folder's fold mark and name, or a plan of plans' fold mark, a plan's indent under
-// it, the name, its state and its size, the state giving way first.
-func planLine(st style.Style, r planRow, folded, cursor, active bool, width int) string {
+// planLine is the row r of the section, width wide: the selector with the view
+// chosen, or the tree's lines, then a folder's fold mark and name, or a plan of
+// plans' fold mark, a plan's indent under it, the name, its state and its size, the
+// state giving way first.
+func planLine(st style.Style, r planRow, view plansView, folded, cursor, active bool, width int) string {
 	pointer := "  "
 	if cursor {
 		pointer = st.Focused("▸ ")
+	}
+	if r.selector {
+		return pointer + st.Muted("<") + " " + st.Name(selectorName(view.title(), width)) + " " + st.Muted(">")
 	}
 	end := " "
 	if active {

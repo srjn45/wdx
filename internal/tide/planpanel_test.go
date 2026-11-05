@@ -153,7 +153,7 @@ func TestPlanTabReading(t *testing.T) {
 	tasks[1].State = api.PlanTaskStateSkipped
 	long := strings.Repeat("A line of the prompt.\n", 30) + "The last line."
 	tasks[0].Prompt = long
-	m.moveToPlan(3) // sso
+	m.moveToPlan(4) // sso
 	keys(m, "enter")
 	loadPlan(m, "doc-sso", *v.content)
 	keys(m, "alt+right")

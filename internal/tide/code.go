@@ -498,8 +498,8 @@ func (m *Model) codeLoaded(msg codeLoaded) {
 	}
 }
 
-// codeSelectorName is the name the selector shows, in a pane width wide.
-func codeSelectorName(name string, width int) string {
+// selectorName is the name a section's selector shows, in a pane width wide.
+func selectorName(name string, width int) string {
 	return ansi.Truncate(name, max(width-ansi.StringWidth("▸ <  > "), 1), "…")
 }
 
@@ -512,7 +512,7 @@ func (s *projectScreen) clickCode(i, col, width int) {
 	pointer := ansi.StringWidth("▸ ")
 	if r.node == nil {
 		m.moveToCode(0)
-		name := codeSelectorName(m.list().code.worktree, width)
+		name := selectorName(m.list().code.worktree, width)
 		switch col {
 		case pointer:
 			m.chooseCodeWorktree(-1)
@@ -651,7 +651,7 @@ func (m *Model) codeLine(r codeRow, marks treeMarks, cursor bool, width int) str
 		pointer = st.Focused("▸ ")
 	}
 	if r.node == nil {
-		name := st.Name(codeSelectorName(m.list().code.worktree, width))
+		name := st.Name(selectorName(m.list().code.worktree, width))
 		return pointer + st.Muted("<") + " " + name + " " + st.Muted(">")
 	}
 	active := m.codeRowActive(r)

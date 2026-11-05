@@ -86,6 +86,7 @@ type agentList struct {
 	planCursor  string               // the id of its plan, which the cursor stays on as plans come and go
 	planNames   map[string]string    // the plans' names by id at the last event, to say which went
 	plansFolded map[string]bool      // the ids of the plans of plans folded
+	plansView   plansView            // the plans the section shows, as its selector chose
 	planFolders map[string]bool      // the folders of the Plans section folded, by path
 	planViews   map[string]*planView // what the plans' tabs hold, by tab
 	lastActive  string               // the tab current when last looked, to tell one coming to show
@@ -884,7 +885,7 @@ func (m *Model) sectionRows(s section) (n int, empty bool) {
 		return n, n == 0
 	case sectionPlans:
 		n = len(m.planRows())
-		return n, n == 0
+		return n, n <= 1 // the selector alone shows no plan
 	}
 	return 0, true
 }
@@ -1101,7 +1102,7 @@ func (s *projectScreen) click(col, row, width, height int) tea.Cmd {
 		s.m.openDoc(false)
 		return nil
 	case it.section == sectionPlans:
-		s.m.clickPlan(it.row, col)
+		s.m.clickPlan(it.row, col, width)
 		return nil
 	}
 	rows := s.m.listRows()
@@ -1179,6 +1180,8 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, st.Muted(" no agents: ")+st.Command("C-q a")+st.Muted(" creates one"))
 		case it.empty && it.section == sectionDocs:
 			lines = append(lines, st.Muted(" no docs: see ")+st.Command("wdx doc create"))
+		case it.empty && it.section == sectionPlans && len(plans) > 0:
+			lines = append(lines, st.Muted(" no plans in this view"))
 		case it.empty && it.section == sectionPlans:
 			lines = append(lines, st.Muted(" no plans: see ")+st.Command("wdx help plans"))
 		case it.empty && m.worktreeStatuses() == nil:
@@ -1200,7 +1203,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			lines = append(lines, docLine(st, docs[it.row], cursor, m.docRowActive(docs[it.row]), width))
 		case it.section == sectionPlans:
 			r := plans[it.row]
-			lines = append(lines, planLine(st, r, l.plansFolded[r.plan.Id], cursor, m.planRowActive(r), width))
+			lines = append(lines, planLine(st, r, l.plansView, l.plansFolded[r.plan.Id], cursor, m.planRowActive(r), width))
 		}
 	}
 	if l.filter.on() {

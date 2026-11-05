@@ -183,10 +183,10 @@ func TestPlansInFolders(t *testing.T) {
 	sso := planIn(aPlan("doc-sso", "sso", 1, 4), "/later")
 	sso.TasksFailed = &failed
 	setPlans(m, auth, a, b, sso, aPlan("doc-top", "top", 1, 1))
-	m.moveToPlan(0)
+	m.moveToPlan(1)
 	m.list().viewRead = true
 	var got []string
-	for _, r := range m.planRows() {
+	for _, r := range m.planRows()[1:] { // after the selector
 		got = append(got, treeLead(r.place)+r.place.name()+r.plan.Name)
 	}
 	if want := []string{"− hub", "  └ auth", "      auth-a", "      auth-b", "− later", "  └ sso", "  top"}; !slices.Equal(got, want) {
@@ -194,7 +194,7 @@ func TestPlansInFolders(t *testing.T) {
 	}
 	wantText(t, m, "  └ − auth", "      auth-a")
 
-	m.moveToPlan(4)
+	m.moveToPlan(5)
 	keys(m, "left")
 	wantText(t, m, "+ later needs you")
 	if m.list().planCursor != "folder:/later" {
@@ -212,7 +212,7 @@ func TestPlansInFolders(t *testing.T) {
 	if !m.list().planFolders["/hub"] || m.list().planCursor != "folder:/hub" {
 		t.Errorf("← on a folded plan of plans: folders folded %v, cursor %q", m.list().planFolders, m.list().planCursor)
 	}
-	m.clickPlan(0, 2)
+	m.clickPlan(1, 2, 40)
 	if m.list().planFolders["/hub"] {
 		t.Error("a click on a folded folder left it folded")
 	}
@@ -221,7 +221,7 @@ func TestPlansInFolders(t *testing.T) {
 		t.Errorf("the view kept %v", v.PlansFolded)
 	}
 	m.list().filter.text = "sso"
-	if rows := m.planRows(); len(rows) != 2 || rows[1].plan.Name != "sso" {
+	if rows := m.planRows(); len(rows) != 3 || rows[2].plan.Name != "sso" {
 		t.Errorf("the filter does not show a match in a folded folder: %+v", rows)
 	}
 }
@@ -315,13 +315,13 @@ func TestMovePlan(t *testing.T) {
 		t.Fatalf("the popup on a plan of plans: %+v", m.openTop())
 	}
 	keys(m, "esc")
-	m.moveToPlan(1)
+	m.moveToPlan(2)
 	keys(m, "m")
 	if f, ok := m.openTop().(*fieldScreen); !ok || f.prompt != "Folder of auth-b, which moves auth and its plans with it:" {
 		t.Fatalf("the popup on a plan it lists: %+v", m.openTop())
 	}
 	keys(m, "esc")
-	m.moveToPlan(3)
+	m.moveToPlan(4)
 	keys(m, "m")
 	if f, ok := m.openTop().(*fieldScreen); !ok || f.prompt != "Folder of sso:" {
 		t.Fatalf("the popup on a plan: %+v", m.openTop())
