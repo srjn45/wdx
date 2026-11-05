@@ -68,6 +68,7 @@ func TestDepsList(t *testing.T) {
 		{"emacs", "missing", ""},
 		{"claude", "missing", ""},
 		{"agy", "missing", ""},
+		{"cursor-agent", "missing", ""},
 	}
 	if len(v.Dependencies) != len(want) {
 		t.Fatalf("dependencies %+v", v.Dependencies)
@@ -82,8 +83,8 @@ func TestDepsList(t *testing.T) {
 			t.Errorf("%s: got %+v", w.name, d)
 		}
 	}
-	for i, aca := range []struct{ program, id string }{{"claude", "claude_code"}, {"agy", "antigravity"}} {
-		d := v.Dependencies[len(want)-2+i]
+	for i, aca := range []struct{ program, id string }{{"claude", "claude_code"}, {"agy", "antigravity"}, {"cursor-agent", "cursor"}} {
+		d := v.Dependencies[len(want)-3+i]
 		if d.Detail == nil || *d.Detail != aca.program+" is not found through the login shell" || d.Features[0] != "agents: "+aca.id {
 			t.Errorf("%s: %+v", aca.program, d)
 		}
@@ -100,8 +101,9 @@ func TestDepsListText(t *testing.T) {
 	t.Parallel()
 	out := wdxWith(t, newHome(t), ubuntu, "deps", "list")
 	for _, want := range []string{
-		"git        mandatory  ready      git 2.43.0     projects, terminals",
-		"clipboard  optional   missing    -              tide copy",
+		"git           mandatory  ready      git 2.43.0     projects, terminals",
+		"clipboard     optional   missing    -              tide copy",
+		"cursor-agent  optional   missing    -              agents: cursor",
 		"clipboard: wl-copy is not installed",
 		"container: permission denied",
 		"install it: wdx deps install --name docker or --name podman",

@@ -72,6 +72,7 @@ The holder stays free of ACA code. How an ACA is delivered to is handed in as th
 |---|---|---|
 | Shell | the text, then Enter | none |
 | Claude Code | bracketed paste, about 150 ms, then Enter as a separate key | Esc |
+| Cursor | bracketed paste, about 150 ms, then Enter as a separate key | Ctrl+C, never pressed yet: with no parser of its own no turn is seen (the wdx doc ACA_CURSOR) |
 
 Claude Code needs the separate Enter because one sent while a paste settles can be dropped, and needs the paste so that newlines stay content (both learned in the old warden). A paste-end marker in a prompt is stripped, so a prompt cannot break out of the paste.
 

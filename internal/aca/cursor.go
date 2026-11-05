@@ -1,0 +1,188 @@
+package aca
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/srjn45/wdx/internal/atomicfile"
+)
+
+// Cursor is Anysphere's Cursor CLI, cursor-agent. It has no screen parser, backup,
+// sessions or brief yet: the wdx doc ACA_CURSOR.
+type Cursor struct {
+	NoBackUp
+	NoBeginSession
+	NoBrief
+	NoDetached
+}
+
+// CursorID is Cursor's ID.
+const CursorID = "cursor"
+
+// ID implements AiCodingAgent.
+func (Cursor) ID() string { return CursorID }
+
+// Program implements AiCodingAgent. Its installer puts the same binary on the PATH as
+// agent too, a name too common to say Cursor is installed.
+func (Cursor) Program() string { return "cursor-agent" }
+
+// ScreenParser implements AiCodingAgent: none of its own yet.
+func (Cursor) ScreenParser() ScreenParser { return NoScreenParser{} }
+
+// cursorPluginDir is the plugin Command writes into an agent's backup to give the
+// launch note, as Cursor has no flag that adds to its system prompt.
+const cursorPluginDir = "cursor-plugin"
+
+// Command implements AiCodingAgent. It ignores l.SessionID: every start begins a new
+// conversation, as resuming one is not written yet. --trust skips the prompt a
+// directory Cursor has not been told to trust starts with, which a message delivered
+// into makes it quit; Cursor saves that trust for the directory. --model also
+// becomes the user's default in ~/.cursor/cli-config.json, so it is passed only when
+// a model was asked for (docs/ACA.md).
+func (Cursor) Command(l Launch) ([]string, error) {
+	command := []string{"cursor-agent", "--trust"}
+	if l.Model != "" {
+		command = append(command, "--model", l.Model)
+	}
+	if l.Permissions == PermissionsFull {
+		command = append(command, "--force", "--sandbox", "disabled", "--approve-mcps")
+	}
+	if l.Note == "" || l.BackupDir == "" {
+		return command, nil
+	}
+	dir, err := cursorWritePlugin(filepath.Join(l.BackupDir, cursorPluginDir), l.Note)
+	if err != nil {
+		return nil, fmt.Errorf("write the plugin that gives the launch note: %w", err)
+	}
+	return append(command, "--plugin-dir", dir), nil
+}
+
+// cursorWritePlugin writes, in dir, a plugin whose sessionStart hook gives note to
+// every conversation that starts: the hook's additional_context, which Cursor adds to
+// what the model reads. The hook only prints a file, so no script is needed.
+func cursorWritePlugin(dir, note string) (string, error) {
+	notePath := filepath.Join(dir, "note.json")
+	quoted := "'" + strings.ReplaceAll(notePath, "'", `'\''`) + "'"
+	files := []struct {
+		path    string
+		content any
+	}{
+		{notePath, map[string]any{"additional_context": note}},
+		{filepath.Join(dir, "hooks.json"), map[string]any{"version": 1, "hooks": map[string]any{
+			"sessionStart": []any{map[string]any{"command": "cat " + quoted}},
+		}}},
+		{filepath.Join(dir, ".cursor-plugin", "plugin.json"), map[string]any{"name": "wdx", "hooks": "hooks.json"}},
+	}
+	for _, f := range files {
+		data, err := json.Marshal(f.content)
+		if err != nil {
+			return "", err
+		}
+		if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
+			return "", err
+		}
+		if err := atomicfile.Write(f.path, data, 0o600); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
+// Bracketed paste keeps a message's newlines content, not Enter.
+const (
+	cursorPasteStart = "\x1b[200~"
+	cursorPasteEnd   = "\x1b[201~"
+	// cursorPasteSettle is the wait before Enter, which is lost when it comes in
+	// the same write as the paste.
+	cursorPasteSettle = 150 * time.Millisecond
+)
+
+// Deliver implements AiCodingAgent. A paste-end marker in the message is taken
+// out, or the rest would be typed as keys.
+func (Cursor) Deliver(w io.Writer, message string) error {
+	for strings.Contains(message, cursorPasteEnd) {
+		message = strings.ReplaceAll(message, cursorPasteEnd, "")
+	}
+	if _, err := io.WriteString(w, cursorPasteStart+message+cursorPasteEnd); err != nil {
+		return err
+	}
+	time.Sleep(cursorPasteSettle)
+	_, err := io.WriteString(w, "\r")
+	return err
+}
+
+// Interrupt implements AiCodingAgent: Ctrl+C, as Esc does not stop a turn that is
+// writing text. Ctrl+C puts the message that began the turn back in the input box,
+// and pressed again with nothing to stop, it quits.
+func (Cursor) Interrupt() []byte { return []byte{0x03} }
+
+const cursorCommandTime = 30 * time.Second
+
+// Models implements AiCodingAgent: what `cursor-agent models` lists for the user's
+// account, which it asks Cursor's servers for.
+func (Cursor) Models(ctx context.Context, l Launch) ([]Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, cursorCommandTime)
+	defer cancel()
+	const command = "cursor-agent models"
+	cmd := exec.CommandContext(ctx, l.Shell, "-lc", command)
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && len(bytes.TrimSpace(exit.Stderr)) > 0 {
+			return nil, fmt.Errorf("%s: %w: %s", command, err, bytes.TrimSpace(exit.Stderr))
+		}
+		return nil, fmt.Errorf("%s: %w", command, err)
+	}
+	models := parseCursorModels(out)
+	if len(models) == 0 {
+		return nil, fmt.Errorf("%s listed no models: %q", command, firstLine(out))
+	}
+	return models, nil
+}
+
+// cursorModelLine is a line of `cursor-agent models`, "<id> - <name>". An id may hold
+// a parameterized model's brackets.
+var cursorModelLine = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9._:\[\]=,-]*) - (.+)$`)
+
+const cursorDefaultMark = " (default)"
+
+// parseCursorModels reads the models out of what `cursor-agent models` prints, skipping
+// its heading, its tip and what a login shell's startup files print. Some names end in
+// zero-width spaces, and some have two spaces inside.
+func parseCursorModels(out []byte) []Model {
+	var models []Model
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+	for scanner.Scan() {
+		m := cursorModelLine.FindStringSubmatch(strings.TrimSpace(scanner.Text()))
+		if m == nil {
+			continue
+		}
+		name := strings.Join(strings.Fields(strings.ReplaceAll(m[2], "\u200b", "")), " ")
+		model := Model{ID: m[1], Name: name}
+		if n, ok := strings.CutSuffix(name, cursorDefaultMark); ok {
+			model.Name, model.Default = n, true
+		}
+		if model.Name != "" {
+			models = append(models, model)
+		}
+	}
+	return models
+}
+
+// firstLine is the first line of out, for an error that says what came instead.
+func firstLine(out []byte) string {
+	line, _, _ := bytes.Cut(bytes.TrimSpace(out), []byte("\n"))
+	return string(line)
+}
