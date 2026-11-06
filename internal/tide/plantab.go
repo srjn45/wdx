@@ -2,6 +2,7 @@ package tide
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -24,8 +25,8 @@ const (
 	// planPanelFrom is the pane's width from which the task's panel is at the
 	// right of the list, not under it.
 	planPanelFrom = 90
-	// planPanelColumns is the panel's inside at the right; planPanelLines its
-	// inside under the list.
+	// planPanelColumns is the panel's narrowest inside at the right, which has
+	// the room the list leaves; planPanelLines its inside under the list.
 	planPanelColumns = 35
 	planPanelLines   = 4
 	// planGoalFrom is the pane's height from which the goal is shown; below it,
@@ -173,8 +174,10 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 
 	wide := width >= planPanelFrom
 	listColumns, listLines := width-2, height-len(top)-1-2 // the keys, the box's top and bottom
+	panelColumns := planPanelColumns
 	if wide {
-		listColumns = width - 3 - planPanelColumns
+		listColumns = min(v.listWidth(now), width-3-planPanelColumns)
+		panelColumns = width - 3 - listColumns
 	} else {
 		listLines -= 1 + planPanelLines
 	}
@@ -200,8 +203,8 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 	d := planDrawn{items: map[int]string{}}
 	lines := top
 	if wide {
-		panel := v.panel(cursor, true, planPanelColumns-2, len(rows), now, st)
-		lines = append(lines, border("┌")+title(listTitle, listColumns)+border("┬")+title(cursor.id, planPanelColumns)+border("┐"))
+		panel := v.panel(cursor, true, panelColumns-2, len(rows), now, st)
+		lines = append(lines, border("┌")+title(listTitle, listColumns)+border("┬")+title(cursor.id, panelColumns)+border("┐"))
 		for i, r := range rows {
 			if id, ok := shown[i]; ok {
 				d.items[len(lines)] = id
@@ -210,9 +213,9 @@ func layoutPlanTab(v *planView, width, height int, now time.Time, st style.Style
 			if i < len(panel) {
 				side = " " + panel[i]
 			}
-			lines = append(lines, border("│")+pad(r, listColumns)+border("│")+pad(side, planPanelColumns)+border("│"))
+			lines = append(lines, border("│")+pad(r, listColumns)+border("│")+pad(side, panelColumns)+border("│"))
 		}
-		lines = append(lines, border("└"+strings.Repeat("─", listColumns)+"┴"+strings.Repeat("─", planPanelColumns)+"┘"))
+		lines = append(lines, border("└"+strings.Repeat("─", listColumns)+"┴"+strings.Repeat("─", panelColumns)+"┘"))
 	} else {
 		panel := v.panel(cursor, false, listColumns-2, planPanelLines, now, st)
 		lines = append(lines, border("┌")+title(listTitle, listColumns)+border("┐"))
@@ -649,26 +652,28 @@ func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns
 	if !ran && !plans {
 		c.agent, c.time = 0, 0
 	}
-	need := func() int {
-		n := c.id + 1 + c.words
-		if c.agent > 0 {
-			n += 1 + c.agent
-		}
-		if c.time > 0 {
-			n += 1 + c.time
-		}
-		return n
-	}
-	if need() > room {
+	if c.need() > room {
 		c.agent = 0
 	}
-	if need() > room {
+	if c.need() > room {
 		c.time = 0
 	}
-	if need() > room {
+	if c.need() > room {
 		c.words, c.reason = short, false
 	}
 	return c
+}
+
+// need is the room the columns take, a space between each.
+func (c taskColumns) need() int {
+	n := c.id + 1 + c.words
+	if c.agent > 0 {
+		n += 1 + c.agent
+	}
+	if c.time > 0 {
+		n += 1 + c.time
+	}
+	return n
 }
 
 func taskAgent(t api.PlanTask) string {
@@ -713,11 +718,7 @@ func (v *planView) listLines(cursor planItem, columns, lines int, now time.Time,
 	for _, it := range items {
 		byID[it.id] = it
 	}
-	railColumns := 2 // a plain list's glyph and a space
-	if drawn {
-		railColumns = len(rail[0].cells)
-	}
-	room := columns - 1 - railColumns - planRailGap - 1 - planMarkColumns - 1 // the edge, the rail, the mark and a cell after it
+	room := columns - v.rowFrame()
 	cols := fitColumns(items, c.Run != nil, room, now)
 
 	at := slices.IndexFunc(rail, func(r railRow) bool { return r.task == cursor.id })
@@ -767,6 +768,27 @@ func (v *planView) listLines(cursor planItem, columns, lines int, now time.Time,
 		out = append(out, "")
 	}
 	return out, shown
+}
+
+// rowFrame is how much of a row of v's list is not its cells: the edge, the
+// rail and its gap, the mark and a cell after the cells and the mark.
+func (v *planView) rowFrame() int {
+	railColumns := 2 // a plain list's glyph and a space
+	if rail, drawn := v.railOf(); drawn {
+		railColumns = len(rail[0].cells)
+	}
+	return 1 + railColumns + planRailGap + 1 + planMarkColumns + 1
+}
+
+// listWidth is the inside of the box v's list needs to show its widest row
+// with every column, on a wide pane where the panel takes what it leaves.
+func (v *planView) listWidth(now time.Time) int {
+	c := v.content
+	items := planItemsMoved(c, v.movedOn)
+	if len(items) == 0 {
+		return 1 + len("no plans")
+	}
+	return fitColumns(items, c.Run != nil, math.MaxInt, now).need() + v.rowFrame()
 }
 
 // scroll keeps v's offset in range for the rail in lines, and the cursor's row

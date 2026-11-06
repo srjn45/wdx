@@ -89,21 +89,21 @@ func TestPlanTabDrawn(t *testing.T) {
 	const authWide = ` auth                                                                             ● running   rev 2
  ━━━━━━━━━━──────────────────────────────  1/4 plans · 23m
  ▸ goal
-┌─ Plans ──────────────────────────────────────────────────────┬─ mfa ─────────────────────────────┐
-│ ✓     sso-login done            6/6                  ▲ needs │ ○ waiting for you · 3 tasks       │
-│▌○     mfa       waiting for you 3 tasks            needs you │                                   │
-│ │ ●   audit     running         2/5                          │ Needs                             │
-│ ├─╯                                                          │   ✓ sso-login                     │
-│ ○     cleanup   waiting         2 tasks           ▼ unblocks │ Unblocks                          │
-│                                                              │   ○ cleanup, also after audit     │
-│                                                              │                                   │
-│                                                              │ Goal                              │
-│                                                              │   Ask for a second factor …+2     │
-│                                                              │                                   │
-│                                                              │ r starts it, once sso-login is in │
-│                                                              │ the default branch                │
-│                                                              │ Enter open it                     │
-└──────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+┌─ Plans ────────────────────────────────────────────┬─ mfa ───────────────────────────────────────┐
+│ ✓     sso-login done            6/6        ▲ needs │ ○ waiting for you · 3 tasks                 │
+│▌○     mfa       waiting for you 3 tasks  needs you │                                             │
+│ │ ●   audit     running         2/5                │ Needs                                       │
+│ ├─╯                                                │   ✓ sso-login                               │
+│ ○     cleanup   waiting         2 tasks ▼ unblocks │ Unblocks                                    │
+│                                                    │   ○ cleanup, also after audit               │
+│                                                    │                                             │
+│                                                    │ Goal                                        │
+│                                                    │   Ask for a second factor when a user …+1   │
+│                                                    │                                             │
+│                                                    │ r starts it, once sso-login is in the       │
+│                                                    │ default branch                              │
+│                                                    │ Enter open it                               │
+└────────────────────────────────────────────────────┴─────────────────────────────────────────────┘
  p pause  c cancel  y copy  ↑↓ select  Enter open it  → goal`
 	const authNarrow = ` auth                                                 ● running   rev 2
  ━━━━━━━━━━──────────────────────────────  1/4 plans · 23m
@@ -124,21 +124,21 @@ func TestPlanTabDrawn(t *testing.T) {
 	const ssoRunWide = ` sso-login                                                                         ● running   rev 3
  ━━━━━━━━━━━━━━━━━━━━▬▬▬▬▬▬──────────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
  ▸ goal and 3 constraints
-┌─ Tasks ───────────────────────────────────────────────────────┬─ ui-button ───────────────────────┐
-│ ✓       schema      done          claude-a1 4m                │ ✗ failed: check · 3m              │
-│ ├─╮                                                           │ codex-d4 · terminal t-91          │
-│ ✓ │     oidc-client done          claude-b2 9m        ▲ needs │                                   │
-│ ├─┼─╮                                                         │ Needs                             │
-│ │ ✓ │   docs        done          claude-e5 2m                │   ✓ oidc-client                   │
-│ ●   │   callback    running       claude-c3 6m                │ Unblocks                          │
-│▌│   ✗   ui-button   failed: check codex-d4  3m      needs you │   ○ e2e, also after callback      │
-│ ├───╯                                                         │                                   │
-│ ○       e2e         waiting       —         —      ▼ unblocks │ Prompt                            │
-│                                                               │   Add a "Sign in with SSO" button │
-│                                                               │   to the login page, next to …+3  │
-│                                                               │                                   │
-│                                                               │ Enter answer it                   │
-└───────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+┌─ Tasks ───────────────────────────────────────────────────┬─ ui-button ───────────────────────────┐
+│ ✓       schema      done          claude-a1 4m            │ ✗ failed: check · 3m                  │
+│ ├─╮                                                       │ codex-d4 · terminal t-91              │
+│ ✓ │     oidc-client done          claude-b2 9m    ▲ needs │                                       │
+│ ├─┼─╮                                                     │ Needs                                 │
+│ │ ✓ │   docs        done          claude-e5 2m            │   ✓ oidc-client                       │
+│ ●   │   callback    running       claude-c3 6m            │ Unblocks                              │
+│▌│   ✗   ui-button   failed: check codex-d4  3m  needs you │   ○ e2e, also after callback          │
+│ ├───╯                                                     │                                       │
+│ ○       e2e         waiting       —         —  ▼ unblocks │ Prompt                                │
+│                                                           │   Add a "Sign in with SSO" button to  │
+│                                                           │   the login page, next to the …+3     │
+│                                                           │                                       │
+│                                                           │ Enter answer it                       │
+└───────────────────────────────────────────────────────────┴───────────────────────────────────────┘
  p pause  c cancel  y copy  ↑↓ select  Enter answer it  → constraints`
 	const ssoRunNarrow = ` sso-login                                            ● running   rev 3
  ━━━━━━━━━━━▬▬▬────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
@@ -162,16 +162,16 @@ func TestPlanTabDrawn(t *testing.T) {
 	const ssoDraftWide = ` sso-login                                                                          ○ draft   rev 3
  6 tasks, not run yet
  ▸ goal and 3 constraints
-┌─ Tasks ──────────────────────────────────────────────────────┬─ schema ──────────────────────────┐
-│▌○       schema      ready                                    │ ○ ready                           │
-│ ├─╮                                                          │                                   │
-│ ○ │     oidc-client waiting                       ▼ unblocks │ Unblocks                          │
-│ ├─┼─╮                                                        │   ○ oidc-client                   │
-│ │ ○ │   docs        waiting                       ▼ unblocks │   ○ docs                          │
-│ ○   │   callback    waiting                                  │                                   │
-│ │   ○   ui-button   waiting                                  │ Enter read it                     │
-│ ▾ 1 more                                                     │                                   │
-└──────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+┌─ Tasks ────────────────────────────────┬─ schema ────────────────────────────────────────────────┐
+│▌○       schema      ready              │ ○ ready                                                 │
+│ ├─╮                                    │                                                         │
+│ ○ │     oidc-client waiting ▼ unblocks │ Unblocks                                                │
+│ ├─┼─╮                                  │   ○ oidc-client                                         │
+│ │ ○ │   docs        waiting ▼ unblocks │   ○ docs                                                │
+│ ○   │   callback    waiting            │                                                         │
+│ │   ○   ui-button   waiting            │ Enter read it                                           │
+│ ▾ 1 more                               │                                                         │
+└────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
  r run  y copy  ↑↓ select  Enter read it  → constraints`
 	const ssoDraftNarrow = ` sso-login                                  ○ draft   rev 3
  6 tasks, not run yet
@@ -387,6 +387,59 @@ func TestPlanTabColumnsDropped(t *testing.T) {
 				t.Errorf("%d wide: %q shown %v, want %v: %q", c.width, what, !want, want, row)
 			}
 		}
+	}
+}
+
+// boxColumns is the insides of the list and the panel at the right in a wide
+// tab: the columns before and after the box's ┬.
+func boxColumns(t *testing.T, tab string) (list, panel int) {
+	t.Helper()
+	for l := range strings.SplitSeq(tab, "\n") {
+		if before, after, ok := strings.Cut(l, "┬"); ok && strings.HasPrefix(l, "┌") {
+			return ansi.StringWidth(before) - 1, ansi.StringWidth(after) - 1
+		}
+	}
+	t.Fatalf("no panel at the right:\n%s", tab)
+	return 0, 0
+}
+
+// TestPlanTabPanelTakesTheRest: on a wide pane the list takes the width of its
+// widest row and the panel all the rest, for a plan and a plan of plans.
+func TestPlanTabPanelTakesTheRest(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		v    func() (*planView, time.Time)
+		list int
+	}{
+		{"a plan", ssoRun, 59},
+		{"a plan of plans", authRun, 52},
+	} {
+		for _, width := range []int{120, 160} {
+			v, now := c.v()
+			tab := planTabText(v, width, 19, now)
+			list, panel := boxColumns(t, tab)
+			if list != c.list || panel != width-3-c.list {
+				t.Errorf("%s, %d wide: list %d and panel %d, want %d and %d:\n%s", c.name, width, list, panel, c.list, width-3-c.list, tab)
+			}
+			if !strings.Contains(tab, "needs you │") {
+				t.Errorf("%s, %d wide: the widest row does not reach the list's end:\n%s", c.name, width, tab)
+			}
+		}
+	}
+}
+
+// TestPlanTabPanelLeast: a list wider than the pane leaves room for keeps the
+// panel at its narrowest, and drops columns from the right.
+func TestPlanTabPanelLeast(t *testing.T) {
+	t.Parallel()
+	v, now := ssoRun()
+	tab := planTabText(v, planPanelFrom, 19, now)
+	if list, panel := boxColumns(t, tab); panel != planPanelColumns || list != planPanelFrom-3-planPanelColumns {
+		t.Errorf("list %d and panel %d, want %d and %d:\n%s", list, panel, planPanelFrom-3-planPanelColumns, planPanelColumns, tab)
+	}
+	if strings.Contains(tab, "codex-d4  3m") {
+		t.Errorf("the list kept its agents:\n%s", tab)
 	}
 }
 

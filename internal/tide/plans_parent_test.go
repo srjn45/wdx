@@ -53,7 +53,7 @@ func TestPlanOfPlansShown(t *testing.T) {
 	}
 	wantText(t, m, "● running", "1/2 plans", "p pause  c cancel", "auth-b waiting for you 1 task", "needs you", "auth-a done            2/2")
 	cursorOn(t, m, "auth-b")
-	wantText(t, m, "r starts it, once auth-a is in", "the default branch")
+	wantText(t, m, "r starts it, once auth-a is in the default", "│ branch")
 	cursorOn(t, m, "auth-a")
 	if strings.Contains(text(m), "r starts it") {
 		t.Errorf("a plan not waiting says r starts it:\n%s", text(m))
