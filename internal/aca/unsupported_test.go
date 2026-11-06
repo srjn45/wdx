@@ -32,11 +32,11 @@ func TestStubsSayNotSupported(t *testing.T) {
 	}
 }
 
-// Only Codex steers; the others stop a turn for an instant message.
+// Codex and Claude Code steer; the others stop a turn for an instant message.
 func TestCanSteer(t *testing.T) {
 	t.Parallel()
 	for _, a := range aca.All() {
-		if got, want := aca.CanSteer(a), a.ID() == aca.CodexID; got != want {
+		if got, want := aca.CanSteer(a), a.ID() == aca.CodexID || a.ID() == aca.ClaudeCodeID; got != want {
 			t.Errorf("CanSteer(%s) = %v, want %v", a.ID(), got, want)
 		}
 	}

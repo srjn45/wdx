@@ -759,9 +759,10 @@ func TestAgentSend(t *testing.T) {
 	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "queued agent helper in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
-	// Its parser and its way of delivering, not typing. The second is instant, so
-	// may go first if it came while the first was still queued.
-	first, second := "\x1b[200~"+secret+"\x1b[201~\r", "\x1b[200~line one\nline two\x1b[201~\r"
+	// Its parser and its way of delivering, not typing. The second is instant, so is
+	// steered, with Ctrl+X Ctrl+S, and may go first if it came while the first was
+	// still queued.
+	first, second := "\x1b[200~"+secret+"\x1b[201~\r", "\x1b[200~line one\nline two\x1b[201~\r\x18\x13"
 	got := filepath.Join(app, "got")
 	var read []byte
 	if !eventually(t, func() bool {

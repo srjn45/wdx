@@ -12,9 +12,7 @@ import (
 )
 
 // ClaudeCode is Anthropic's Claude Code CLI.
-type ClaudeCode struct {
-	NoSteer
-}
+type ClaudeCode struct{}
 
 // ClaudeCodeID is ClaudeCode's ID.
 const ClaudeCodeID = "claude_code"
@@ -71,13 +69,34 @@ const (
 	claudeCodePasteStart = "\x1b[200~"
 	claudeCodePasteEnd   = "\x1b[201~"
 	// claudeCodePasteSettle is the wait before Enter, which can be dropped while
-	// a paste settles.
+	// a paste settles, and before Ctrl+X Ctrl+S, lost in the same write as Enter.
 	claudeCodePasteSettle = 150 * time.Millisecond
+	// claudeCodeSendNow is Ctrl+X Ctrl+S, which sends what is queued now.
+	claudeCodeSendNow = "\x18\x13"
 )
 
 // Deliver implements AiCodingAgent. A paste-end marker in the message is taken
-// out, or the rest would be typed as keys.
+// out, or the rest would be typed as keys. Enter queues the message during a turn,
+// which Claude takes in at the next tool result, and submits it at rest.
 func (ClaudeCode) Deliver(w io.Writer, message string) error {
+	return claudeCodeType(w, message)
+}
+
+// Steer implements AiCodingAgent: as Deliver, then Ctrl+X Ctrl+S, which sends the
+// queued messages to the running turn at once. It moves a foreground command to the
+// background, cuts an answer being streamed and drops thinking; with nothing queued,
+// at rest or in a turn, it does nothing. Checked on 2.1.319 (the wdx doc CLAUDE_STEER).
+func (ClaudeCode) Steer(w io.Writer, message string) error {
+	if err := claudeCodeType(w, message); err != nil {
+		return err
+	}
+	time.Sleep(claudeCodePasteSettle)
+	_, err := io.WriteString(w, claudeCodeSendNow)
+	return err
+}
+
+// claudeCodeType pastes message, then presses Enter once the paste has settled.
+func claudeCodeType(w io.Writer, message string) error {
 	for strings.Contains(message, claudeCodePasteEnd) {
 		message = strings.ReplaceAll(message, claudeCodePasteEnd, "")
 	}

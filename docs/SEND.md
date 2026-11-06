@@ -1,6 +1,6 @@
 # Sending to terminals and agents
 
-Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing). The queue length is on `agent get`, through the state channel to the daemon (docs/AGENT_STATE.md, Syncing to the daemon).
+Status: built. `wdx terminal send`, `wdx agent send` and `--instant` work, checked on real Claude Code 2.1.316 (see Checked on the real thing); an instant message to Claude Code is now steered, checked by hand on 2.1.319 (the wdx doc CLAUDE_STEER). The queue length is on `agent get`, through the state channel to the daemon (docs/AGENT_STATE.md, Syncing to the daemon).
 
 Lets scripts and ACAs give a running terminal or agent a message without attaching.
 
@@ -71,7 +71,7 @@ The holder stays free of ACA code. How an ACA is delivered to is handed in as th
 | | Message | Interrupt |
 |---|---|---|
 | Shell | the text, then Enter | none |
-| Claude Code | bracketed paste, about 150 ms, then Enter as a separate key | Esc |
+| Claude Code | bracketed paste, about 150 ms, then Enter as a separate key; an instant one is steered: then about 150 ms more and Ctrl+X Ctrl+S | Esc, now never pressed by the inbox |
 | Cursor | bracketed paste, about 150 ms, then Enter as a separate key | Ctrl+C, never pressed yet: with no parser of its own no turn is seen (the wdx doc ACA_CURSOR) |
 
 Claude Code needs the separate Enter because one sent while a paste settles can be dropped, and needs the paste so that newlines stay content (both learned in the old warden). A paste-end marker in a prompt is stripped, so a prompt cannot break out of the paste.
@@ -88,13 +88,15 @@ Claude Code needs the separate Enter because one sent while a paste settles can 
 | `unknown` | holds | holds |
 | no input box, whatever the activity | holds | holds |
 
-- `working` delivers rather than holds because a background dev server keeps an agent `working` indefinitely. Claude Code queues input during a turn (see Checked on the real thing). So does Codex 0.163.0 when the message is submitted with Tab, which its `Deliver` presses; Enter would steer it into the running turn (the wdx doc ACA_CODEX).
+- `working` delivers rather than holds because a background dev server keeps an agent `working` indefinitely. Claude Code queues input during a turn: 2.1.316 kept it until after the turn (see Checked on the real thing), and 2.1.319 takes it in at the next tool result in the same turn, or at the turn's end if no tool call is left (the wdx doc CLAUDE_STEER). So does Codex 0.163.0 when the message is submitted with Tab, which its `Deliver` presses; Enter would steer it into the running turn (the wdx doc ACA_CODEX).
 - With no input box a message has nowhere to go. The motion fallback can read such a screen `working`, as during startup, so the box is checked as well as the activity.
 - `--instant` holds on `waiting` because Esc would cancel the prompt, and the parser cannot yet tell which prompt it is; on some, cancelling may exit the CLI. Once the later step that reads the prompt lands, permission prompts could be cancelled.
 - `InTurn` tells a turn from background work, for the `inboxReader` only. The public `activity` stays as it is.
 - The interrupt key is pressed once per message: pressed again once the turn has stopped, Esc does something else. A turn that does not stop holds the message until it ends by itself.
 - A second `--instant` interrupts the turn the first started. General messages wait behind instant ones.
-- **Steering** (the wdx doc CODEX_STEER): an ACA that can take a message into its running turn, `aca.CanSteer`, gives the holder a `Steer`, and an instant message goes in with it, never with the interrupt: on `working` or `idle` it steers, and it holds where any message holds (a draft, `waiting`, no input box, `unknown`). Only Codex can: Steer pastes as Deliver does, then presses Enter, which Codex takes into the turn while it thinks, runs a tool or streams, ahead of messages it queued, and submits when idle (checked on 0.163.0). General messages still go in with Tab, queued for after the turn. The holder logs `message steered`; the daemon hears of it as of any message delivered.
+- **Steering** (the wdx docs CODEX_STEER and CLAUDE_STEER): an ACA that can take a message into its running turn, `aca.CanSteer`, gives the holder a `Steer`, and an instant message goes in with it, never with the interrupt: on `working` or `idle` it steers, and it holds where any message holds (a draft, `waiting`, no input box, `unknown`). So the table's "presses the interrupt key" is only for the ACAs that cannot. The holder logs `message steered`; the daemon hears of it as of any message delivered.
+  - **Codex:** Steer pastes as Deliver does, then presses Enter, which Codex takes into the turn while it thinks, runs a tool or streams, ahead of messages it queued, and submits when idle (checked on 0.163.0). General messages still go in with Tab, queued for after the turn.
+  - **Claude Code:** Steer types as Deliver does (paste, about 150 ms, Enter, which queues the message during a turn and submits it at rest), then about 150 ms more and Ctrl+X Ctrl+S, Claude's "send now" for what is queued (checked on 2.1.319). Sent in the same write as Enter, Ctrl+X Ctrl+S is lost. While Claude runs a foreground command, the command is moved to the background, not stopped, and the message reaches the model at once; the turn may then end with `1 shell still running` and go on in a new one when the command finishes. While it streams an answer, the answer is cut, its text kept. While it thinks, the thinking is dropped and the request sent again with the message. One press sends every queued message, in order, so an instant message moves forward the general ones queued earlier in the turn, ahead of it. With nothing queued (at rest, or in a turn after Claude has taken the message itself) the press does nothing. General messages are typed as before.
 - **`draft` comes before the table.** While there is text in the input box, the `inboxReader` holds, whatever the activity and with `--instant` too, so a message is never submitted along with what a human is typing. `watchScreen` reads `draft` true or false along with the activity and tells the `inboxReader`, and `activity` stays `idle` with a draft in the box (docs/AGENT_STATE.md).
 - A draft left in the box holds messages for as long as it stays, and they queue up behind it, with no timeout (decided by the human). The queue length on `agent get` shows it.
 - Text nobody typed is not a draft: Claude Code fills the box with dim placeholders and suggestions, which read the same in plain text. Reading this correctly is the parser's; read wrong, every message holds. A message pasted over a suggestion replaces it.
@@ -138,7 +140,9 @@ On 2026-10-31, on real Claude Code 2.1.316 under a real `wdx holder` at 120x40, 
 | With a draft in the box | held; delivered once the draft was cleared |
 | Instant, at a permission prompt | held; delivered once the prompt was cancelled |
 
-So "`instantQueue` is always emptied first" holds in the inbox only: what is already queued inside Claude Code runs before an instant message.
+So "`instantQueue` is always emptied first" holds in the inbox only: what is already queued inside Claude Code runs before an instant message. That is still so now that an instant message steers Claude, as Ctrl+X Ctrl+S sends the queue in order; but it no longer waits for the turn to end.
+
+The instant rows are out of date since Claude Code is steered: they were checked before Steer existed. What steering does on 2.1.319 was checked by hand in tmux, in the wdx doc CLAUDE_STEER.
 
 ## Later
 

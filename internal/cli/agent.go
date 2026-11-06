@@ -533,8 +533,8 @@ func newAgentSendCmd() *cobra.Command {
 			"--instant goes before the other messages, and interrupts the agent's turn\n" +
 			"first. It waits as they do, and in a pane too narrow to show that a turn is\n" +
 			"running it does not interrupt. An AI coding agent that can take a message\n" +
-			"into its running turn, as Codex, is given it there instead, without being\n" +
-			"interrupted.",
+			"into its running turn, as Claude Code and Codex, is given it there instead,\n" +
+			"without being interrupted.",
 		Example: examples(
 			"Give an agent of the project you are in a task", identity.Name+" agent send --name reviewer --prompt summarize",
 			"Stop what it is doing and give it this instead", identity.Name+" agent send --name reviewer --prompt stop --instant",

@@ -3,6 +3,7 @@ package aca_test
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -44,6 +45,54 @@ func TestClaudeCodeDeliverFails(t *testing.T) {
 	t.Parallel()
 	for writes := range 2 {
 		if err := (aca.ClaudeCode{}).Deliver(&failingWriter{writes: writes}, "hello"); err == nil {
+			t.Fatalf("no error after %d writes", writes)
+		}
+	}
+}
+
+// Steer types as Deliver does, then Ctrl+X Ctrl+S, which sends the queued message
+// to the running turn now.
+func TestClaudeCodeSteer(t *testing.T) {
+	t.Parallel()
+	for message, want := range map[string]string{
+		"hello":       "\x1b[200~hello\x1b[201~\r\x18\x13",
+		"one\ntwo":    "\x1b[200~one\ntwo\x1b[201~\r\x18\x13",
+		"a\x1b[201~b": "\x1b[200~ab\x1b[201~\r\x18\x13",
+	} {
+		var got bytes.Buffer
+		if err := (aca.ClaudeCode{}).Steer(&got, message); err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != want {
+			t.Errorf("Steer(%q) wrote %q, want %q", message, got.String(), want)
+		}
+	}
+}
+
+// Ctrl+X Ctrl+S in the same write as Enter is lost, so they are written apart.
+func TestClaudeCodeSteerWritesSendNowApart(t *testing.T) {
+	t.Parallel()
+	var w recordingWriter
+	if err := (aca.ClaudeCode{}).Steer(&w, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"\x1b[200~hello\x1b[201~", "\r", "\x18\x13"}; !slices.Equal(w.writes, want) {
+		t.Fatalf("wrote %q, want %q", w.writes, want)
+	}
+}
+
+// recordingWriter keeps each write apart.
+type recordingWriter struct{ writes []string }
+
+func (w *recordingWriter) Write(p []byte) (int, error) {
+	w.writes = append(w.writes, string(p))
+	return len(p), nil
+}
+
+func TestClaudeCodeSteerFails(t *testing.T) {
+	t.Parallel()
+	for writes := range 3 {
+		if err := (aca.ClaudeCode{}).Steer(&failingWriter{writes: writes}, "hello"); err == nil {
 			t.Fatalf("no error after %d writes", writes)
 		}
 	}
