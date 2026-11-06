@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/proc"
 )
 
 // DefaultStopGrace is how long a shell has to end after it is hung up on,
@@ -104,6 +105,10 @@ type Options struct {
 	AgentStatus func(ctx context.Context, id string, status holder.Status)
 	// AgentEnded is told a row of KindAgent's process ended, when not nil.
 	AgentEnded func(id string)
+	// AgentOf returns the id of the agent on a row of KindAgent, whose leftover
+	// processes carry it as WDX_AGENT_ID once the row's process ended, to stop them.
+	// Nothing is stopped when nil.
+	AgentOf func(ctx context.Context, id string) (string, error)
 	// Editor is the editor files are edited with; editor.Default when "".
 	Editor string
 	// EditorCommand is what runs the editor named program on path; its Command
@@ -399,6 +404,7 @@ func (s *Supervisor) launch(ctx context.Context, t Terminal) (Terminal, error) {
 // launchRunning is launch with command to run in place of the shell, if any.
 func (s *Supervisor) launchRunning(ctx context.Context, t Terminal, command []string) (Terminal, error) {
 	log := logging.FromContext(ctx)
+	s.waitLastWatch(ctx, t.ID)
 	var agent AgentLaunch
 	var started holder.Started
 	var err error
@@ -963,6 +969,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			s.stopLeftovers(ctx, t)
 			continue
 		}
 		hello := conn.Hello()
@@ -1023,10 +1030,11 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 					log.Error("deliveries not recorded", "err", err)
 				}
 				s.recordExit(ctx, id, exit)
-				s.agentEnded(t)
 				if err := c.Release(); err != nil {
 					log.Info("release not sent", "err", err)
 				}
+				s.stopLeftovers(ctx, t)
+				s.agentEnded(t)
 				return
 			case <-c.StatusChanged():
 				s.recordStatus(ctx, t.Kind, id, c)
@@ -1046,6 +1054,7 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 				if err != nil {
 					log.Info("holder gone", "err", err)
 					s.recordGone(ctx, id)
+					s.stopLeftovers(ctx, t)
 					s.agentEnded(t)
 					return
 				}
@@ -1076,6 +1085,51 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 func (s *Supervisor) recordStatus(ctx context.Context, kind Kind, id string, conn *holder.Conn) {
 	if kind == KindAgent && s.opts.AgentStatus != nil {
 		s.opts.AgentStatus(ctx, id, conn.Status())
+	}
+}
+
+// stopLeftovers stops what the agent on t, whose process ended, left running: every
+// process that carries its WDX_AGENT_ID, but the daemon and the holders. It runs
+// before the watch is done, so that a stop waits for it.
+func (s *Supervisor) stopLeftovers(ctx context.Context, t Terminal) {
+	if t.Kind != KindAgent || s.opts.AgentOf == nil {
+		return
+	}
+	log := logging.FromContext(ctx)
+	agentID, err := s.opts.AgentOf(ctx, t.ID)
+	if err != nil {
+		log.Error("agent of ended terminal not found, leftovers not stopped", "terminal_id", t.ID, "err", err)
+		return
+	}
+	holders, err := s.store.query(ctx, "t.holder_pid IS NOT NULL")
+	if err != nil {
+		log.Error("holders not listed, leftovers not stopped", "terminal_id", t.ID, "err", err)
+		return
+	}
+	spare := []int{os.Getpid()}
+	for _, h := range holders {
+		spare = append(spare, h.HolderPID)
+	}
+	ctx = logging.NewContext(ctx, log.With("agent_id", agentID, "terminal_id", t.ID))
+	if _, err := proc.Stop(ctx, identity.Env("AGENT_ID")+"="+agentID, s.opts.StopGrace, spare); err != nil {
+		log.Error("leftovers not stopped", "agent_id", agentID, "terminal_id", t.ID, "err", err)
+	}
+}
+
+// waitLastWatch waits until the last watch of the terminal id is done, which may
+// still be stopping the leftovers of its agent: what starts now carries the same
+// WDX_AGENT_ID. It waits no longer than a stop and its leftovers can take.
+func (s *Supervisor) waitLastWatch(ctx context.Context, id string) {
+	s.mu.Lock()
+	w := s.watches[id]
+	s.mu.Unlock()
+	if w == nil {
+		return
+	}
+	select {
+	case <-w.done:
+	case <-time.After(s.StopWait() + s.opts.StopGrace):
+		logging.FromContext(ctx).Error("last watch not done, starting anyway", "terminal_id", id)
 	}
 }
 

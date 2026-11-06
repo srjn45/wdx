@@ -310,6 +310,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			d.backups.Request(id)
 			d.agentEnded(id)
 		},
+		AgentOf: func(ctx context.Context, id string) (string, error) {
+			a, err := agents.GetByTerminal(ctx, id)
+			return a.ID, err
+		},
 		AgentSession: func(ctx context.Context, id string) (string, error) {
 			a, err := agents.GetByTerminal(ctx, id)
 			return a.SessionID, err
