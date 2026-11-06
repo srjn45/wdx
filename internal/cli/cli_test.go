@@ -316,7 +316,9 @@ func logLines(t *testing.T, home string, args []string) []logLine {
 	return lines
 }
 
-// readMore parses what was added to the log file at path since the last read.
+// readMore parses the lines added whole to the log file at path since the
+// last read. A line still being written is left for the next read: a read can
+// see part of a write, as when the line crosses a page.
 func (f *logFile) readMore(t *testing.T, path string, args []string) {
 	t.Helper()
 	file, err := os.Open(path)
@@ -331,6 +333,7 @@ func (f *logFile) readMore(t *testing.T, path string, args []string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	b = b[:bytes.LastIndexByte(b, '\n')+1]
 	f.read += int64(len(b))
 	for raw := range strings.Lines(string(b)) {
 		var l logLine
@@ -1038,5 +1041,34 @@ func TestConfigError(t *testing.T) {
 		path + `:3: log.retention_days: "0" is not a whole number of at least 1  [usage]` + "\n  hint: fix or remove them\n"
 	if stderr.String() != want || stdout.Len() != 0 {
 		t.Fatalf("got %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestLogLinesLeaveALineBeingWritten(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "wdx.log")
+	line := `{"time":"2026-11-06T11:06:24Z","level":"INFO","msg":"m","debug_id":"dbg-1","process":"daemon"}` + "\n"
+	half := len(line) / 2
+	if err := os.WriteFile(path, []byte(line+line[:half]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var f logFile
+	f.readMore(t, path, nil)
+	if len(f.lines) != 1 {
+		t.Fatalf("read %d lines with the second half written, want 1", len(f.lines))
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(line[half:]); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.readMore(t, path, nil)
+	if len(f.lines) != 2 {
+		t.Fatalf("read %d lines once the second was whole, want 2", len(f.lines))
 	}
 }
