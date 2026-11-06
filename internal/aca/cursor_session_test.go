@@ -2,7 +2,6 @@ package aca_test
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -67,7 +66,7 @@ const (
 
 // The chat updated last that has a conversation is the session, and its directory
 // where it is resumed; one with no message yet, as /clear leaves, and one whose
-// meta.json cannot be read are passed over. With no transcript yet, it says so.
+// meta.json cannot be read are passed over.
 func TestCursorBackUpFindsTheChat(t *testing.T) {
 	t.Parallel()
 	backup := cursorBackup(t,
@@ -83,8 +82,8 @@ func TestCursorBackUpFindsTheChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := aca.Cursor{}.BackUp(t.Context(), aca.Launch{BackupDir: backup, SessionID: "wdx-own"})
-	if !errors.Is(err, aca.ErrNotSupported) {
-		t.Fatalf("err = %v, want ErrNotSupported", err)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if want := (aca.Backup{Session: cursorChatB, Dir: "/work/other"}); got != want {
 		t.Fatalf("backup = %+v, want %+v", got, want)
@@ -102,8 +101,8 @@ func TestCursorBackUpBeforeTheFirstMessage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got, err := aca.Cursor{}.BackUp(t.Context(), aca.Launch{BackupDir: backup, SessionID: "wdx-own"})
-			if !errors.Is(err, aca.ErrNotSupported) {
-				t.Fatalf("err = %v, want ErrNotSupported", err)
+			if err != nil {
+				t.Fatal(err)
 			}
 			if got != (aca.Backup{}) {
 				t.Fatalf("backup = %+v, want none", got)

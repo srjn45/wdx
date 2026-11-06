@@ -1,6 +1,10 @@
 """Copies one chat's files, as Cursor kept them, to ../<version>/session/, with what is private left out.
 
-usage: [VERSION=2026.11.05] copysession.py <cursor config dir> <cursor data dir> <chat id> [hook input file]
+usage: [VERSION=2026.11.05] [SAMPLE=session] [STORE=<store.db>] copysession.py <cursor config dir> <cursor data dir> <chat id> [hook input file]
+
+SAMPLE names the folder written, ../<version>/<sample>/. STORE reads the messages from
+another store.db than the chat's, such as a snapshot taken before a /summarize, into
+store-messages-<its file name without .db>.jsonl; the other files are then not written.
 
 It writes:
 - transcript.jsonl and subagents/<id>.jsonl: the agent transcript Cursor keeps under
@@ -23,8 +27,8 @@ LEFT_OUT = '(left out)'
 def main():
     config, data, chat = sys.argv[1:4]
     hook = sys.argv[4] if len(sys.argv) > 4 else None
-    dest = os.path.join(HERE, '..', os.environ.get('VERSION', '2026.11.05'), 'session')
-    os.makedirs(os.path.join(dest, 'subagents'), exist_ok=True)
+    dest = os.path.join(HERE, '..', os.environ.get('VERSION', '2026.11.05'), os.environ.get('SAMPLE', 'session'))
+    store = os.environ.get('STORE')
     chat_dir = glob.glob(f'{config}/chats/*/{chat}')[0]
     meta = json.load(open(f'{chat_dir}/meta.json'))
     work, home = meta['cwd'], os.path.dirname(data.rstrip('/'))
@@ -35,27 +39,18 @@ def main():
             s = s.replace(w, '/work/repo').replace(slug(w), 'work-repo')
         s = s.replace(home, '/home/x').replace(slug(home), 'home-x')
         return s.replace(getpass.getuser(), 'x')
+    if store:
+        name = os.path.splitext(os.path.basename(store))[0]
+        write_messages(sqlite3.connect(f'file:{store}?mode=ro', uri=True), scrub, f'{dest}/store-messages-{name}.jsonl')
+        return
+    os.makedirs(os.path.join(dest, 'subagents'), exist_ok=True)
     meta['cwd'] = scrub(meta['cwd'])
     json.dump(meta, open(f'{dest}/meta.json', 'w'))
     tdir = glob.glob(f'{data}/projects/*/agent-transcripts/{chat}')[0]
     open(f'{dest}/transcript.jsonl', 'w').write(scrub(open(f'{tdir}/{chat}.jsonl').read()))
     for f in glob.glob(f'{tdir}/subagents/*.jsonl'):
         open(f'{dest}/subagents/{os.path.basename(f)}', 'w').write(scrub(open(f).read()))
-    db = sqlite3.connect(f'file:{chat_dir}/store.db?mode=ro', uri=True)
-    blobs = dict(db.execute('select id, data from blobs'))
-    store_meta = json.loads(bytes.fromhex(db.execute("select value from meta where key='0'").fetchone()[0]))
-    store_meta['blobEncryptionKey'] = LEFT_OUT
-    root = blobs[store_meta['latestRootBlobId']]
-    with open(f'{dest}/store-messages.jsonl', 'w') as out:
-        out.write(json.dumps({'store_meta': store_meta}) + '\n')
-        for field, value in fields(root):
-            if field == 1:
-                m = json.loads(blobs[value.hex()])
-                text = json.dumps(m.get('content'))
-                if m.get('role') == 'system' or '<user_info>' in text:
-                    m['content'] = LEFT_OUT
-                m = json.loads(re.sub(r'"signature": "[^"]*"', '"signature": "(left out)"', scrub(json.dumps(m))))
-                out.write(json.dumps({'id': value.hex(), 'message': m}) + '\n')
+    root = write_messages(sqlite3.connect(f'file:{chat_dir}/store.db?mode=ro', uri=True), scrub, f'{dest}/store-messages.jsonl')
     with open(f'{dest}/store-root.txt', 'w') as out:
         for field, value in fields(root):
             shown = value.hex() if isinstance(value, bytes) and len(value) == 32 else (
@@ -65,6 +60,25 @@ def main():
         h = hook_input
         h.pop('user_email', None)
         json.dump(json.loads(scrub(json.dumps(h))), open(f'{dest}/hook-session-start.json', 'w'))
+
+
+def write_messages(db, scrub, path):
+    """Writes the messages the store's latest root names, in order, and returns the root."""
+    blobs = dict(db.execute('select id, data from blobs'))
+    store_meta = json.loads(bytes.fromhex(db.execute("select value from meta where key='0'").fetchone()[0]))
+    store_meta['blobEncryptionKey'] = LEFT_OUT
+    root = blobs[store_meta['latestRootBlobId']]
+    with open(path, 'w') as out:
+        out.write(json.dumps({'store_meta': store_meta}) + '\n')
+        for field, value in fields(root):
+            if field == 1:
+                m = json.loads(blobs[value.hex()])
+                text = json.dumps(m.get('content'))
+                if m.get('role') == 'system' or '<user_info>' in text:
+                    m['content'] = LEFT_OUT
+                m = json.loads(re.sub(r'"signature": "[^"]*"', '"signature": "(left out)"', scrub(json.dumps(m))))
+                out.write(json.dumps({'id': value.hex(), 'message': m}) + '\n')
+    return root
 
 
 def slug(path):

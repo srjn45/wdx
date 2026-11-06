@@ -1,12 +1,15 @@
 package aca
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"time"
 )
 
 // Cursor keeps each chat in chats/<md5 of its directory>/<id>/ of its config folder,
@@ -24,30 +27,30 @@ type cursorChatMeta struct {
 
 // cursorChat is a chat of an agent's config folder.
 type cursorChat struct {
-	ID string
+	ID   string
+	Path string // its folder
 	cursorChatMeta
 }
 
-// BackUp implements AiCodingAgent, for the session only: the chat of the agent's
-// config folder that has a conversation and was updated last, and its directory,
-// where it must be resumed. Before the first message there is none, and the agent
-// keeps wdx's id, which Command starts as a new chat. It keeps no transcript yet, so
-// it answers ErrNotSupported with what it found.
-func (Cursor) BackUp(_ context.Context, l Launch) (Backup, error) {
+// BackUp implements AiCodingAgent: it appends to TranscriptFile what is new in each
+// of the agent's chats and snapshots each store that changed (cursor_render.go), and
+// says the session is the chat that has a conversation and was updated last, and its
+// directory, where it must be resumed. Before the first message there is none, and the
+// agent keeps wdx's id, which Command starts as a new chat.
+func (Cursor) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	chats, err := cursorChats(filepath.Join(l.BackupDir, cursorConfigDir))
 	if err != nil {
 		return Backup{}, err
 	}
-	var latest *cursorChat
-	for i, c := range chats {
-		if c.HasConversation && (latest == nil || c.UpdatedAtMs > latest.UpdatedAtMs) {
-			latest = &chats[i]
-		}
+	slices.SortStableFunc(chats, func(a, b cursorChat) int { return cmp.Compare(a.UpdatedAtMs, b.UpdatedAtMs) })
+	// A chat with no message yet, as /clear leaves it, has nothing to keep.
+	chats = slices.DeleteFunc(chats, func(c cursorChat) bool { return !c.HasConversation })
+	failed := cursorBackUpChats(ctx, l.BackupDir, chats, time.Now())
+	if len(chats) == 0 {
+		return Backup{}, failed
 	}
-	if latest == nil {
-		return Backup{}, ErrNotSupported
-	}
-	return Backup{Session: latest.ID, Dir: latest.Cwd}, ErrNotSupported
+	latest := chats[len(chats)-1]
+	return Backup{Session: latest.ID, Dir: latest.Cwd}, failed
 }
 
 // cursorChats is every chat in config whose meta.json can be read. One that cannot,
@@ -74,11 +77,12 @@ func cursorChats(config string) ([]cursorChat, error) {
 			if !id.IsDir() {
 				continue
 			}
-			meta, err := cursorReadChatMeta(filepath.Join(root, d.Name(), id.Name()))
+			path := filepath.Join(root, d.Name(), id.Name())
+			meta, err := cursorReadChatMeta(path)
 			if err != nil {
 				continue
 			}
-			chats = append(chats, cursorChat{ID: id.Name(), cursorChatMeta: meta})
+			chats = append(chats, cursorChat{ID: id.Name(), Path: path, cursorChatMeta: meta})
 		}
 	}
 	return chats, nil

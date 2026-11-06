@@ -20,7 +20,7 @@ import (
 )
 
 // Cursor is Anysphere's Cursor CLI, cursor-agent: the wdx docs ACA_CURSOR and
-// CURSOR_PARITY. Its backup keeps only the session so far.
+// CURSOR_PARITY.
 type Cursor struct {
 	NoBeginSession
 	NoBrief
@@ -57,7 +57,8 @@ const cursorSettingsFile = "cli-config.json"
 // resumed once it names a chat of the agent's config folder made in l.Dir, which
 // BackUp makes it after the first message, and before that a start begins a new
 // chat, which the launch note reaches only then, as --resume runs no sessionStart
-// hook. --trust skips the prompt a directory Cursor has not been told to trust starts
+// hook. A chat whose store Cursor lost is put back from the backup's snapshot of it,
+// and resumed. --trust skips the prompt a directory Cursor has not been told to trust starts
 // with, which a message delivered into makes it quit; Cursor saves that trust for the
 // directory. With a backup, Cursor runs with a config folder of the agent's own, so
 // --model changes only the agent's settings; without one, --model also becomes the
@@ -68,11 +69,15 @@ func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 	var config string
 	if l.BackupDir != "" {
 		config = filepath.Join(l.BackupDir, cursorConfigDir)
+		restored, err := cursorRestore(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("put back Cursor's chat %s from its backup: %w", l.SessionID, err)
+		}
 		resume, err := cursorResumes(config, l.SessionID, l.Dir)
 		if err != nil {
 			return nil, fmt.Errorf("look for Cursor's chat %s: %w", l.SessionID, err)
 		}
-		if resume {
+		if restored || resume {
 			command = append(command, "--resume", l.SessionID)
 		}
 	}
