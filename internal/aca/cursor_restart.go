@@ -66,7 +66,8 @@ func cursorAfterRestart(made []cursorChat, restarts []cursorRestart) ([]cursorCh
 }
 
 // cursorSinceClear is the chats from the latest /clear on, nil when there was none:
-// every chat after the agent's first that is not a restart's came from /clear.
+// every chat after the agent's first that is not a restart's came from /clear. Every
+// chat in the agent's config folder is the user's, as nobody else's are there.
 func cursorSinceClear(backupDir string) (map[string]bool, error) {
 	made, err := cursorConversations(filepath.Join(backupDir, cursorConfigDir))
 	if err != nil {
@@ -76,26 +77,16 @@ func cursorSinceClear(backupDir string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	restarted := map[string]bool{}
+	first := make([]string, len(made))
+	for i, c := range made {
+		first[i] = c.ID
+	}
+	var at []int
 	for _, r := range restarts {
-		if r.Chats < len(made) {
-			restarted[made[r.Chats].ID] = true
-		}
+		at = append(at, r.Chats)
 	}
-	latest := -1
-	for i := 1; i < len(made); i++ {
-		if !restarted[made[i].ID] {
-			latest = i
-		}
-	}
-	if latest < 0 {
-		return nil, nil
-	}
-	since := map[string]bool{}
-	for _, c := range made[latest:] {
-		since[c.ID] = true
-	}
-	return since, nil
+	everyChat := func(string) bool { return true }
+	return sinceTheLatest(first, sessionsTheUserBegan(first, at, everyChat)), nil
 }
 
 // Brief implements AiCodingAgent, reading no further back than the latest /clear, and
