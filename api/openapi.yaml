@@ -3155,7 +3155,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, requested_model, permissions, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, requested_model, permissions, context, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3186,6 +3186,10 @@ components:
         model: { type: string, nullable: true, description: "The AI model's name as its ACA last showed it, such as Haiku 5.5, for display, while running; otherwise null, as before it has shown one. A change it does not show, such as an automatic fallback, is not seen." }
         requested_model: { type: string, nullable: true, description: "The model it is started with every time, as it was asked for; null for its AI coding agent's default." }
         permissions: { $ref: "#/components/schemas/AgentPermissions" }
+        context:
+          allOf: [{ $ref: "#/components/schemas/AgentContext" }]
+          nullable: true
+          description: How full its context is, as its AI coding agent last told; null until it has, and again once a restart begins a new session. It stays once its terminal ends.
         pid: { type: integer, nullable: true, description: "The AI coding agent's, while it has one." }
         exit_code:
           type: integer
@@ -3197,6 +3201,13 @@ components:
         started_at: { type: string, format: date-time, nullable: true }
         ended_at: { type: string, format: date-time, nullable: true }
         removed_at: { type: string, format: date-time, nullable: true, description: When it was removed, if it is a tombstone. }
+
+    AgentContext:
+      type: object
+      required: [tokens, window]
+      properties:
+        tokens: { type: integer, format: int64, description: "The tokens in its context now." }
+        window: { type: integer, format: int64, nullable: true, description: "Its model's context window, in tokens; null when its AI coding agent does not tell." }
 
     AgentList:
       type: object

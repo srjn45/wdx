@@ -45,6 +45,17 @@ type Launch struct {
 - wdx generates the session id, a UUID, when it creates the agent. A `/clear` starts another session, and the agent's `session_id` follows it: a start goes on with the latest conversation (docs/AGENT_RESUME.md).
 - A `--settings` file adds a hook that tells wdx each session, and a transcript Claude Code has deleted comes back from wdx's backup.
 
+### Context size
+
+How full each agent's context is (the wdx doc CONTEXT_SIZE), read through `ContextSize(Launch)`, which returns the tokens in the context and the model's window, 0 when the ACA does not tell, or `ErrNoContextSize` before it has told anything.
+
+- **Claude Code** tells it through its status line. The `--settings` file also sets a `statusLine` whose command writes the JSON Claude Code gives it to `claude-status.json` in the backup, whole, through a file of its own renamed into place. `ContextSize` reads `context_window.total_input_tokens` and `context_window_size` from it. Before the first message and after `/clear` the tokens are 0; no file is `ErrNoContextSize`, and one that does not parse an error, logged.
+- **The user's own status line:** one given with `--settings` replaces theirs (checked on 2.1.319), so at each start wdx reads `statusLine.command` from their `~/.claude/settings.json` and runs it after its own, in braces, on the same input: what it prints still shows in the agent's terminal. A project's own `.claude/settings*.json` status line is replaced.
+- **The others** embed `NoContextSize` until each is checked.
+- **When it is read:** the daemon watches each running agent's backup folder with fsnotify (`agent.ContextSizes`, told by the terminal supervisor's `AgentFollowed` when a holder is followed and when it no longer is), and reads it once when the watch starts, then after each change in the folder, at most once a second (`DefaultContextInterval`). An ACA that answers `ErrNotSupported` is not watched.
+- **Stored** in `agents.context_tokens` and `agents.context_window` (`0026_agent_context.sql`), written only when they change, and sent to the project stream as any change of the agent. They stay once the terminal ends, and a restart into a new session clears them, while `BeginSession` removes `claude-status.json`, or the old session's size would be read back.
+- **Logged** at debug only, as it changes often: `context size read` with `agent_id`, `tokens` and `window`.
+
 ### Kept for every start
 
 An agent is created with a model and permissions (the wdx doc AGENT_CREATE), in the `requested_model` and `permissions` columns (`0023_agent_launch.sql`), and `agent.Launches`, the one place every start goes through (create, `agent start`, `agent restart`, a relaunch with its project or after the daemon restarts), passes both in `Launch.Model` and `Launch.Permissions`. Neither changes after creation for now.
@@ -132,11 +143,13 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 ```json
 {"id": "agent-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "wdx",
  "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx", "worktree": "main",
- "state": "running", "activity": "idle", "draft": false, "queued": 0, "model": "Haiku 5.5", "pid": 4242, "exit_code": null, "error": null,
+ "state": "running", "activity": "idle", "draft": false, "queued": 0, "model": "Haiku 5.5", "context": {"tokens": 70086, "window": 200000}, "pid": 4242, "exit_code": null, "error": null,
  "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null, "removed_at": null}
 ```
 
 `terminal_id` is there because attaching dials that terminal's holder. Text output never shows it.
+
+`context` is null until the agent's ACA has told it, and again once a restart begins a new session; its `window` is null when the ACA does not tell. `agent get` shows it as `context  70k of 200k (35%)`, or `70k` with no window, and `agent list` in a `CONTEXT` column, the size alone, empty when it is null. One function writes a size, `api.TokenCount`: the number under 1,000 (`850`), thousands rounded down with `k` (`150k`), millions with one decimal rounded down with `M` (`1.5M`, `2M`).
 
 Projects:
 
@@ -182,9 +195,9 @@ created agent swift-falcon in wdx
   id     agent-1a2b3c4d
 
 $ wdx agent list
-NAME          STATE       ACTIVITY  ACA          DIR                ID
-calm-otter    exited (0)            claude_code  /home/me/dev/wdx   agent-5e6f7a8b
-swift-falcon  running     waiting   claude_code  /home/me/dev/wdx   agent-1a2b3c4d
+NAME          STATE       ACTIVITY  MODEL      CONTEXT  ACA          DIR                ID
+calm-otter    exited (0)                       150k     claude_code  /home/me/dev/wdx   agent-5e6f7a8b
+swift-falcon  running     waiting   Haiku 5.5  70k      claude_code  /home/me/dev/wdx   agent-1a2b3c4d
 ```
 
 ## Tests

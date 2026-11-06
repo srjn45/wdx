@@ -805,14 +805,14 @@ func (l agentList) text(w io.Writer, st style.Style) {
 		return
 	}
 	var table style.Table
-	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACTIVITY"), st.Heading("MODEL"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
+	heading := []string{st.Heading("NAME"), st.Heading("STATE"), st.Heading("ACTIVITY"), st.Heading("MODEL"), st.Heading("CONTEXT"), st.Heading("ACA"), st.Heading("DIR"), st.Heading("ID")}
 	if l.all {
 		heading = append([]string{st.Heading("PROJECT")}, heading...)
 	}
 	table.Row(heading...)
 	for _, r := range agentTreeRows(l.Agents) {
 		a := r.agent
-		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), agentModelText(a), a.Aca, a.Dir, st.Muted(a.Id)}
+		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), agentModelText(a), agentContextSize(a), a.Aca, a.Dir, st.Muted(a.Id)}
 		if l.all {
 			row = append([]string{st.Name(a.ProjectName)}, row...)
 		}
@@ -891,6 +891,9 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	if model := agentModelDetail(st, a); model != "" {
 		field("model", model)
 	}
+	if a.Context != nil {
+		field("context", agentContextDetail(*a.Context))
+	}
 	field("permissions", string(a.Permissions))
 	field("session", a.SessionId)
 	if a.Pid != nil {
@@ -926,6 +929,24 @@ func agentModelText(a api.Agent) string {
 		return ""
 	}
 	return *a.Model
+}
+
+// agentContextSize is how many tokens are in a's context; nothing before its AI
+// coding agent has told.
+func agentContextSize(a api.Agent) string {
+	if a.Context == nil {
+		return ""
+	}
+	return api.TokenCount(a.Context.Tokens)
+}
+
+// agentContextDetail is how full a context is, out of its window when that is
+// known: 70k of 200k (35%).
+func agentContextDetail(c api.AgentContext) string {
+	if c.Window == nil || *c.Window <= 0 {
+		return api.TokenCount(c.Tokens)
+	}
+	return fmt.Sprintf("%s of %s (%d%%)", api.TokenCount(c.Tokens), api.TokenCount(*c.Window), c.Tokens*100 / *c.Window)
 }
 
 // agentActivityText is what a is doing, which a human may have to answer when it

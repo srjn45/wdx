@@ -238,8 +238,9 @@ func TestAgentStatusText(t *testing.T) {
 		t.Errorf("exited: %s", out.String())
 	}
 	out.Reset()
-	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Model: &model, Aca: "claude_code"}}}}.text(&out, style.New(false))
-	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+MODEL\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+Haiku 5\.5\s+claude_code`).MatchString(out.String()) {
+	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Model: &model, Aca: "claude_code",
+		Context: &api.AgentContext{Tokens: 1_500_000}}}}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+MODEL\s+CONTEXT\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+Haiku 5\.5\s+1\.5M\s+claude_code`).MatchString(out.String()) {
 		t.Errorf("list: %s", out.String())
 	}
 }
@@ -995,5 +996,32 @@ func TestAgentTranscriptBrief(t *testing.T) {
 	out := wdxWith(t, home, in(app), "agent", "transcript", "--id", a.Id, "--brief")
 	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "This is the conversation so far in brief") || !strings.Contains(out.stdout, "the request\n") {
 		t.Fatalf("text: %+v", out)
+	}
+}
+
+// TestAgentContextText: agent get shows how full the context is out of its window,
+// the tokens alone with no window, and nothing before the agent's ACA has told.
+func TestAgentContextText(t *testing.T) {
+	t.Parallel()
+	window := int64(200_000)
+	for _, tc := range []struct {
+		context *api.AgentContext
+		want    string
+	}{
+		{&api.AgentContext{Tokens: 70_086, Window: &window}, "context 70k of 200k (35%)"},
+		{&api.AgentContext{Tokens: 70_086}, "context 70k"},
+		{nil, ""},
+	} {
+		var out bytes.Buffer
+		agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateExited, Context: tc.context}}.text(&out, style.New(false))
+		var got string
+		for line := range strings.Lines(out.String()) {
+			if strings.HasPrefix(strings.TrimSpace(line), "context") {
+				got = strings.Join(strings.Fields(line), " ")
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%s: %q in %s", tc.want, got, out.String())
+		}
 	}
 }

@@ -54,6 +54,17 @@ type AiCodingAgent interface {
 	// Models is what it offers this user now, as it says, in its order; l gives only
 	// Shell and UserHome, for one that runs its CLI to ask.
 	Models(ctx context.Context, l Launch) ([]Model, error)
+	// ContextSize returns how full the agent's context is, as its ACA last told,
+	// read from what its launch keeps in l.BackupDir; ErrNoContextSize when it has
+	// told nothing yet. The daemon reads it each time the backup changes, at most once
+	// a second. docs/AGENT.md.
+	ContextSize(l Launch) (ContextSize, error)
+}
+
+// ContextSize is how full an agent's context is.
+type ContextSize struct {
+	Tokens int64 // in the context now
+	Window int64 // the model's window; 0 when the ACA does not tell
 }
 
 // Model is one model an AI coding agent offers.

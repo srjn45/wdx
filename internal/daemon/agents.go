@@ -392,6 +392,12 @@ func agentView(a agent.Agent) api.Agent {
 		v.RequestedModel = &a.RequestedModel
 	}
 	v.Permissions = api.AgentPermissions(a.Permissions)
+	if a.Context != nil {
+		v.Context = &api.AgentContext{Tokens: a.Context.Tokens}
+		if a.Context.Window != 0 {
+			v.Context.Window = &a.Context.Window
+		}
+	}
 	if a.Activity != "" {
 		activity := api.AgentActivity(a.Activity)
 		v.Activity, v.Draft, v.Queued = &activity, &a.Draft, &a.Queued

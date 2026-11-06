@@ -105,6 +105,10 @@ type Options struct {
 	AgentStatus func(ctx context.Context, id string, status holder.Status)
 	// AgentEnded is told a row of KindAgent's process ended, when not nil.
 	AgentEnded func(id string)
+	// AgentFollowed is told the holder of a row of KindAgent is followed, its process
+	// running, when not nil; what it returns is called once it is no longer, as when
+	// the process ended or the daemon stops.
+	AgentFollowed func(id string) (unfollowed func())
 	// AgentOf returns the id of the agent on a row of KindAgent, whose leftover
 	// processes carry it as WDX_AGENT_ID once the row's process ended, to stop them.
 	// Nothing is stopped when nil.
@@ -1019,6 +1023,9 @@ func (s *Supervisor) follow(t Terminal, conn *holder.Conn) *watch {
 			}
 			s.mu.Unlock()
 		}()
+		if t.Kind == KindAgent && s.opts.AgentFollowed != nil {
+			defer s.opts.AgentFollowed(id)()
+		}
 		ctx := s.ctx
 		log := logging.FromContext(ctx).With("terminal_id", id)
 		for {

@@ -20,6 +20,7 @@ import (
 // Detached, as nothing of its conversations runs outside its terminal. The wdx
 // docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
+	NoContextSize
 	NoDetached
 }
 

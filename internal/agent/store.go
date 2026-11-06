@@ -41,9 +41,12 @@ type Agent struct {
 	// for; "" is its ACA's default.
 	RequestedModel string
 	Permissions    aca.Permissions // what it may do without asking, on every start
-	Plan           string          // the name of the plan whose task it does; "" for none
-	Task           string          // the id of that task
-	Terminal       terminal.Terminal
+	// Context is how full its context is, as its ACA last told; nil until it has,
+	// and again once a restart begins a new session. It stays once its terminal ends.
+	Context  *aca.ContextSize
+	Plan     string // the name of the plan whose task it does; "" for none
+	Task     string // the id of that task
+	Terminal terminal.Terminal
 }
 
 // Tombstone reports whether a was removed and stays only for its children.
@@ -131,6 +134,15 @@ func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draf
 	return rows > 0, nil
 }
 
+// setContext records how full the context of the agent with id is, and reports
+// whether that changed anything. A window of 0, which its ACA does not tell, is
+// kept as null.
+func (s *Store) setContext(ctx context.Context, id string, size aca.ContextSize) (bool, error) {
+	n, err := db.Exec(ctx, s.db, "UPDATE agents SET context_tokens = ?1, context_window = NULLIF(?2, 0) WHERE id = ?3 AND (context_tokens IS NOT ?1 OR context_window IS NOT NULLIF(?2, 0))",
+		size.Tokens, size.Window, id)
+	return n > 0, err
+}
+
 // worktreeOfDir finds the deepest worktree of an agent's project holding its
 // dir, since the project's .worktrees is inside its clone: "main" for a clone,
 // else its path. An agent has no column for it: its dir already tells.
@@ -176,7 +188,8 @@ func (s *Store) beginSession(ctx context.Context, id, session string, linked fun
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := db.Exec(ctx, tx, "UPDATE agents SET session_id = ? WHERE id = ?", session, id); err != nil {
+	// What the old session filled says nothing of the new one.
+	if _, err := db.Exec(ctx, tx, "UPDATE agents SET session_id = ?, context_tokens = NULL, context_window = NULL WHERE id = ?", session, id); err != nil {
 		return err
 	}
 	if err := linked(ctx, tx); err != nil {
@@ -194,7 +207,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			CASE WHEN t.state = 'running' THEN a.model END,
-			a.current_dir, a.requested_model, a.permissions,
+			a.current_dir, a.requested_model, a.permissions, a.context_tokens, a.context_window,
 			(SELECT COUNT(*) FROM messages m WHERE m.terminal_id = a.terminal_id AND m.state = 'held'),
 			(`+taskOfAgent+`),
 			`+terminal.Columns+`
@@ -214,14 +227,18 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var removed sql.NullInt64
 		var worktree, activity, model, currentDir, requestedModel, task sql.NullString
 		var draft sql.NullBool
-		var queued sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &requestedModel, &a.Permissions, &a.Held, &task); err != nil {
+		var queued, contextTokens, contextWindow sql.NullInt64
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &requestedModel, &a.Permissions,
+			&contextTokens, &contextWindow, &a.Held, &task); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued, a.Model = activity.String, draft.Bool, int(queued.Int64), model.String
 		a.CurrentDir, a.RequestedModel = currentDir.String, requestedModel.String
 		a.Plan, a.Task, _ = strings.Cut(task.String, "\x00")
+		if contextTokens.Valid {
+			a.Context = &aca.ContextSize{Tokens: contextTokens.Int64, Window: contextWindow.Int64}
+		}
 		if worktree.Valid {
 			a.Worktree = filepath.Base(worktree.String)
 		}

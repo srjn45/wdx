@@ -9,6 +9,10 @@ import (
 // ErrNotSupported is what an AI coding agent answers for what it cannot do yet.
 var ErrNotSupported = errors.New("this AI coding agent cannot do that yet")
 
+// ErrNoContextSize is what ContextSize answers before an AI coding agent has told
+// how full its context is.
+var ErrNoContextSize = errors.New("no context size told yet")
+
 // The types below stand in for the methods an AI coding agent has not written:
 // it embeds each it needs and drops it once it writes the method. docs/ACA.md.
 
@@ -51,6 +55,15 @@ func (NoDetached) Detached(context.Context, Launch) ([]DetachedSession, error) {
 // StopDetached implements AiCodingAgent; Detached finds nothing to stop.
 func (NoDetached) StopDetached(context.Context, Launch, DetachedSession) error {
 	return ErrNotSupported
+}
+
+// NoContextSize is ContextSize for an AI coding agent whose context size wdx does
+// not read yet.
+type NoContextSize struct{}
+
+// ContextSize implements AiCodingAgent.
+func (NoContextSize) ContextSize(Launch) (ContextSize, error) {
+	return ContextSize{}, ErrNotSupported
 }
 
 // NoSteer is Steer for an AI coding agent that cannot take a message into a running

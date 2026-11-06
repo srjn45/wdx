@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
@@ -1289,4 +1291,78 @@ func TestAgentBrief(t *testing.T) {
 			t.Errorf("the conversation is in %s", name)
 		}
 	}
+}
+
+func contextOf(e event, name string) string {
+	for _, a := range agentsIn(e) {
+		if a.Name == name {
+			return contextText(a.Context)
+		}
+	}
+	return "no agent"
+}
+
+func contextText(c *api.AgentContext) string {
+	switch {
+	case c == nil:
+		return "null"
+	case c.Window == nil:
+		return fmt.Sprintf("%d of null", c.Tokens)
+	}
+	return fmt.Sprintf("%d of %d", c.Tokens, *c.Window)
+}
+
+// TestAgentContextFollowsItsACA: each size the agent's ACA tells reaches the project's
+// stream, the last stays once its terminal ended, and a restart into a new session
+// clears it. That the old session's size does not come back is the ACA's to see to.
+func TestAgentContextFollowsItsACA(t *testing.T) {
+	t.Parallel()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{}}
+		o.ContextInterval = time.Millisecond
+	})
+	ctx := context.Background()
+	app := td.create(t, "app").Worktrees[0].Path
+	if err := os.WriteFile(filepath.Join(app, "run"), []byte(`if [ -f again ]; then exec sleep 1000; fi; until [ -f end ]; do sleep 0.01; done; exit 0`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := td.createAgent(t, "", app, "helper")
+	if a.Context != nil {
+		t.Errorf("a new agent's context: %s", contextText(a.Context))
+	}
+	backup := identity.AgentDir(td.home, a.Id)
+	tell := func(size aca.ContextSize) {
+		t.Helper()
+		if err := acatest.WriteContextSize(backup, size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitContext := func(want string) {
+		t.Helper()
+		td.waitProject(t, "app", "context "+want, func(e event) bool { return contextOf(e, "helper") == want })
+	}
+	tell(aca.ContextSize{Tokens: 70_086, Window: 200_000})
+	waitContext("70086 of 200000")
+	tell(aca.ContextSize{Tokens: 90_000})
+	waitContext("90000 of null")
+
+	if err := os.WriteFile(filepath.Join(app, "end"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := td.waitAgentState(t, a.Id, api.AgentStateExited); contextText(got.Context) != "90000 of null" {
+		t.Errorf("once its terminal ended: %s", contextText(got.Context))
+	}
+
+	if err := os.WriteFile(filepath.Join(app, "again"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := td.client.RestartAgentWithResponse(ctx, "id:"+a.Id, nil, api.RestartAgent{Force: optional(true)})
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("restart: %v, %s", err, r.Body)
+	}
+	if r.JSON200.Agent.Context != nil {
+		t.Errorf("restarted into a new session: %s", contextText(r.JSON200.Agent.Context))
+	}
+	tell(aca.ContextSize{Tokens: 5, Window: 200_000})
+	waitContext("5 of 200000")
 }

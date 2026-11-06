@@ -175,7 +175,8 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
 ~/.wdx/agents/<agent id>/
   agent.json                         whose it is, kept current, as the row goes before it does
   sessions.jsonl                     every session of the agent, told by Claude's hook
-  claude-settings.json               that hook, given with --settings
+  claude-settings.json               that hook and the status line, given with --settings
+  claude-status.json                 what Claude last gave its status line: the context size (docs/AGENT.md)
   rendered.json                      how far transcript.md has got in Claude's sessions
   codex-turns.jsonl                  every turn of Codex's, told by its notify
   codex-sessions.json                where Codex kept each of its sessions' files

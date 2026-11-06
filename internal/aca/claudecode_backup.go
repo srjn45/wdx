@@ -43,16 +43,20 @@ const (
 )
 
 // claudeCodeWriteSettings writes the settings that have Claude Code append each
-// session it starts to the backup, /clear's among them, and returns their path.
-// Given with --settings, they add to the user's own hooks. With PermissionsFull they
-// also turn off the sandbox and the warning bypassing approvals starts with.
-func claudeCodeWriteSettings(backup string, permissions Permissions) (string, error) {
-	log := "'" + strings.ReplaceAll(filepath.Join(backup, claudeCodeSessionsFile), "'", `'\''`) + "'"
-	settings := map[string]any{"hooks": map[string]any{"SessionStart": []any{map[string]any{
-		"matcher": "",
-		"hooks":   []any{map[string]any{"type": "command", "command": "cat >> " + log + "; echo >> " + log}},
-	}}}}
-	if permissions == PermissionsFull {
+// session it starts to the backup, /clear's among them, and keep what it gives its
+// status line there, and returns their path. Given with --settings, they add to the
+// user's own hooks. With PermissionsFull they also turn off the sandbox and the
+// warning bypassing approvals starts with.
+func claudeCodeWriteSettings(ctx context.Context, l Launch) (string, error) {
+	log := shellQuote(filepath.Join(l.BackupDir, claudeCodeSessionsFile))
+	settings := map[string]any{
+		"hooks": map[string]any{"SessionStart": []any{map[string]any{
+			"matcher": "",
+			"hooks":   []any{map[string]any{"type": "command", "command": "cat >> " + log + "; echo >> " + log}},
+		}}},
+		"statusLine": map[string]any{"type": "command", "command": claudeCodeStatusLine(ctx, l)},
+	}
+	if l.Permissions == PermissionsFull {
 		// The warning Claude Code shows the first time would stop the agent until a
 		// human answers it, and settings given with --settings come before the user's.
 		settings["skipDangerousModePermissionPrompt"] = true
@@ -62,11 +66,54 @@ func claudeCodeWriteSettings(backup string, permissions Permissions) (string, er
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(backup, claudeCodeSettingsFile)
-	if err := os.MkdirAll(backup, 0o700); err != nil {
+	path := filepath.Join(l.BackupDir, claudeCodeSettingsFile)
+	if err := os.MkdirAll(l.BackupDir, 0o700); err != nil {
 		return "", err
 	}
 	return path, atomicfile.Write(path, data, 0o600)
+}
+
+// claudeCodeStatusLine is the status line's command: it writes what Claude Code gives
+// it to claudeCodeStatusFile whole, through a file of its own renamed into place, so
+// that a read never sees half of one and two runs at once do not mix. The status line
+// given with --settings replaces the user's own, so theirs then runs on the same
+// input, in braces, which take any command a shell does (checked on 2.1.319).
+func claudeCodeStatusLine(ctx context.Context, l Launch) string {
+	command := "f=" + shellQuote(filepath.Join(l.BackupDir, claudeCodeStatusFile)) + `; cat > "$f.$$" && mv "$f.$$" "$f"`
+	if theirs := claudeCodeUserStatusLine(ctx, l.UserHome); theirs != "" {
+		command += "; {\n" + theirs + "\n} < \"$f\""
+	}
+	return command
+}
+
+// claudeCodeUserStatusLine is the command of the user's own status line, in their
+// ~/.claude/settings.json; "" when they have none. A project's own is not followed.
+func claudeCodeUserStatusLine(ctx context.Context, home string) string {
+	if home == "" {
+		return ""
+	}
+	path := filepath.Join(home, ".claude", "settings.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	var settings struct {
+		StatusLine struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"statusLine"`
+	}
+	if err == nil {
+		err = json.Unmarshal(data, &settings)
+	}
+	if err != nil {
+		logging.FromContext(ctx).Error("user's claude code status line not read", "path", path, "err", err)
+		return ""
+	}
+	if settings.StatusLine.Type != "command" {
+		return ""
+	}
+	return strings.TrimSpace(settings.StatusLine.Command)
 }
 
 // claudeCodeSession is one session of an agent, and where Claude Code keeps it.
@@ -226,7 +273,12 @@ func (ClaudeCode) StopDetached(ctx context.Context, l Launch, d DetachedSession)
 // says the agent is in, and what tells the brief a restart began it, not a /clear. It
 // comes on a line of its own after whatever a killed hook left. An agent from before
 // the hook has no line for the session it leaves, which would then go unfollowed.
+// What the old session last gave its status line goes, or its context size would
+// come back as the new session's.
 func (ClaudeCode) BeginSession(_ context.Context, l Launch, session string) error {
+	if err := os.Remove(filepath.Join(l.BackupDir, claudeCodeStatusFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	starts, err := readClaudeCodeStarts(l.BackupDir)
 	if err != nil {
 		return err

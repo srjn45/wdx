@@ -42,7 +42,7 @@ var claudeCodeEnv = []string{"env", "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1", "C
 // transcript: Claude Code writes none until something is typed, and resuming
 // such a session fails with "No conversation found". One Claude Code has
 // deleted comes back from the backup.
-func (ClaudeCode) Command(_ context.Context, l Launch) ([]string, error) {
+func (ClaudeCode) Command(ctx context.Context, l Launch) ([]string, error) {
 	command := append(slices.Clone(claudeCodeEnv), "claude", "--session-id", l.SessionID)
 	resume, err := claudeCodeTranscriptAt(l)
 	if err != nil {
@@ -65,7 +65,7 @@ func (ClaudeCode) Command(_ context.Context, l Launch) ([]string, error) {
 	if l.BackupDir == "" {
 		return command, nil
 	}
-	settings, err := claudeCodeWriteSettings(l.BackupDir, l.Permissions)
+	settings, err := claudeCodeWriteSettings(ctx, l)
 	if err != nil {
 		return nil, fmt.Errorf("write the settings of its backup: %w", err)
 	}

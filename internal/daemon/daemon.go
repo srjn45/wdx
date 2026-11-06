@@ -93,6 +93,9 @@ type Options struct {
 	// is asked to stop, before the changes among them are cancelled;
 	// DefaultShutdownTimeout when 0.
 	ShutdownTimeout time.Duration
+	// ContextInterval is the least time between two reads of an agent's context size;
+	// agent.DefaultContextInterval when 0.
+	ContextInterval time.Duration
 	// TrashRetention is how long what is kept of a removed agent stays;
 	// agent.DefaultTrashRetention when 0.
 	TrashRetention time.Duration
@@ -294,6 +297,8 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	agents := agent.NewStore(d.db)
 	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
+	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, opts.ContextInterval)
+	contextSizes.OnChange = d.notices.notify
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:    opts.Executable,
 		Home:          opts.Home,
@@ -310,6 +315,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			d.backups.Request(id)
 			d.agentEnded(id)
 		},
+		AgentFollowed: contextSizes.Watch,
 		AgentOf: func(ctx context.Context, id string) (string, error) {
 			a, err := agents.GetByTerminal(ctx, id)
 			return a.ID, err

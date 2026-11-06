@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/atomicfile"
 )
 
 // defaultScript runs the file run in the agent's dir, if there is one, else
@@ -85,8 +86,12 @@ func (a *ACA) BackUp(_ context.Context, l aca.Launch) (aca.Backup, error) {
 	return backup, os.WriteFile(filepath.Join(l.BackupDir, aca.TranscriptFile), data, 0o600)
 }
 
-// BeginSession implements aca.AiCodingAgent: what a says it is in, if it says.
-func (a *ACA) BeginSession(_ context.Context, _ aca.Launch, session string) error {
+// BeginSession implements aca.AiCodingAgent: what a says it is in, if it says. The
+// old session's ContextFile goes, as Claude Code's status file does.
+func (a *ACA) BeginSession(_ context.Context, l aca.Launch, session string) error {
+	if err := os.Remove(filepath.Join(l.BackupDir, ContextFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if a.Session == "" {
 		return nil
 	}
@@ -114,13 +119,45 @@ func (a *ACA) StopDetached(_ context.Context, _ aca.Launch, d aca.DetachedSessio
 	return nil
 }
 
+// ContextFile is the file in an agent's backup ACA's ContextSize reads: the tokens
+// and the window, as two numbers.
+const ContextFile = "context-size"
+
+// ContextSize implements aca.AiCodingAgent: what ContextFile says.
+func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, error) {
+	data, err := os.ReadFile(filepath.Join(l.BackupDir, ContextFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return aca.ContextSize{}, aca.ErrNoContextSize
+	}
+	if err != nil {
+		return aca.ContextSize{}, err
+	}
+	var size aca.ContextSize
+	if _, err := fmt.Sscan(string(data), &size.Tokens, &size.Window); err != nil {
+		return aca.ContextSize{}, fmt.Errorf("read %s: %w", ContextFile, err)
+	}
+	return size, nil
+}
+
+// WriteContextSize writes size as ContextSize reads it into backup, whole, as Claude
+// Code's status line does.
+func WriteContextSize(backup string, size aca.ContextSize) error {
+	return atomicfile.Write(filepath.Join(backup, ContextFile), fmt.Appendf(nil, "%d %d\n", size.Tokens, size.Window), 0o600)
+}
+
 // Models implements aca.AiCodingAgent: Claude Code's, as its id is.
 func (a *ACA) Models(ctx context.Context, l aca.Launch) ([]aca.Model, error) {
 	return aca.ClaudeCode{}.Models(ctx, l)
 }
 
-// Command implements aca.AiCodingAgent.
+// Command implements aca.AiCodingAgent. It makes the backup, as Claude Code's
+// writes its settings there.
 func (a *ACA) Command(_ context.Context, l aca.Launch) ([]string, error) {
+	if l.BackupDir != "" {
+		if err := os.MkdirAll(l.BackupDir, 0o700); err != nil {
+			return nil, err
+		}
+	}
 	if a.Launches != "" {
 		f, err := os.OpenFile(a.Launches, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
@@ -192,6 +229,7 @@ type Bare struct {
 	aca.NoBackUp
 	aca.NoBeginSession
 	aca.NoBrief
+	aca.NoContextSize
 	aca.NoDetached
 	aca.NoSteer
 	// Name is its id, and ProgramName what Program says, "sh" when "".
