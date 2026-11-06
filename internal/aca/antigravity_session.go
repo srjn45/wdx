@@ -60,7 +60,9 @@ func antigravityKeeps(home, id string) (bool, error) {
 // appends what is new of the conversations to TranscriptFile as text, and returns the
 // latest conversation of the hooks file that none of its others names as a subagent,
 // and the workspace folder it started in that is not the agent's own. Before the
-// first message there is none, and the agent keeps wdx's id.
+// first message there is none, and the agent keeps wdx's id. After a restart only a
+// conversation that came after it counts: until one does, the agent is in the
+// restart's session, which a start begins.
 func (Antigravity) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	starts, err := antigravityStarts(filepath.Join(l.BackupDir, antigravityHooksFile))
 	if err != nil {
@@ -78,12 +80,24 @@ func (Antigravity) BackUp(ctx context.Context, l Launch) (Backup, error) {
 			conversations = append(conversations, id)
 		}
 	}
+	restarts, err := antigravityReadRestarts(l.BackupDir)
+	if err != nil {
+		return Backup{}, err
+	}
 	replaced, copied := antigravityBackUpConversations(ctx, l, conversations)
 	failed := errors.Join(copied, antigravityRenderConversations(ctx, l.BackupDir, conversations, replaced))
+	since := 0
+	if len(restarts) > 0 {
+		since = restarts[len(restarts)-1].Conversations
+	}
+	first := antigravityFirstCame(starts)
 	for _, s := range slices.Backward(starts) {
-		if !subagent[s.ConversationID] {
+		if !subagent[s.ConversationID] && slices.Index(first, s.ConversationID) >= since {
 			return Backup{Session: s.ConversationID, Dir: antigravityWorkDir(l.BackupDir, s.WorkspacePaths)}, failed
 		}
+	}
+	if len(restarts) > 0 {
+		return Backup{Session: restarts[len(restarts)-1].Session}, failed
 	}
 	return Backup{}, failed
 }

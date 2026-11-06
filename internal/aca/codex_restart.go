@@ -1,13 +1,7 @@
 package aca
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
-	"io"
-	"os"
 	"path/filepath"
 )
 
@@ -31,50 +25,13 @@ func (Codex) BeginSession(_ context.Context, l Launch, session string) error {
 	if err != nil {
 		return err
 	}
-	line, err := json.Marshal(codexRestart{Session: session, Threads: len(first)})
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(l.BackupDir, 0o700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(l.BackupDir, codexRestartsFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
+	return appendJSONLine(l.BackupDir, codexRestartsFile, codexRestart{Session: session, Threads: len(first)})
 }
 
 // codexReadRestarts is the restarts file's lines, oldest first; none for an agent never
-// restarted, or from before the file. A line it cannot read is left out.
+// restarted, or from before the file.
 func codexReadRestarts(backupDir string) ([]codexRestart, error) {
-	f, err := os.Open(filepath.Join(backupDir, codexRestartsFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var restarts []codexRestart
-	r := bufio.NewReader(f)
-	for {
-		line, err := r.ReadBytes('\n')
-		var restart codexRestart
-		if len(bytes.TrimSpace(line)) > 0 && json.Unmarshal(line, &restart) == nil && restart.Session != "" {
-			restarts = append(restarts, restart)
-		}
-		if errors.Is(err, io.EOF) {
-			return restarts, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
+	return readJSONLines(filepath.Join(backupDir, codexRestartsFile), func(r codexRestart) bool { return r.Session != "" })
 }
 
 // codexNewThreads is the user threads, of the turns file's, that /new began: every one
@@ -90,25 +47,9 @@ func codexNewThreads(backupDir string, user func(thread string) bool) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	restarted := map[string]bool{}
+	var at []int
 	for _, r := range restarts {
-		for _, id := range first[min(r.Threads, len(first)):] {
-			if user(id) {
-				restarted[id] = true
-				break
-			}
-		}
+		at = append(at, r.Threads)
 	}
-	fromNew := map[string]bool{}
-	seenFirst := false
-	for _, id := range first {
-		if !user(id) {
-			continue
-		}
-		if seenFirst && !restarted[id] {
-			fromNew[id] = true
-		}
-		seenFirst = true
-	}
-	return fromNew, nil
+	return sessionsTheUserBegan(first, at, user), nil
 }

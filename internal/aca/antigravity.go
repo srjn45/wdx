@@ -16,12 +16,10 @@ import (
 	"github.com/srjn45/wdx/internal/atomicfile"
 )
 
-// Antigravity is Google's Antigravity CLI. It has written its command, its
-// backup, its delivering and steering, its screen parser and its models; the
-// rest are stand-ins. The wdx docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
+// Antigravity is Google's Antigravity CLI. It has written every method but
+// Detached, as nothing of its conversations runs outside its terminal. The wdx
+// docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
-	NoBeginSession
-	NoBrief
 	NoDetached
 }
 

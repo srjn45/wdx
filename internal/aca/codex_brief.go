@@ -34,13 +34,5 @@ func codexSinceNew(backupDir string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	latest := len(first) - 1
-	for !fromNew[first[latest]] {
-		latest--
-	}
-	since := map[string]bool{}
-	for _, id := range first[latest:] {
-		since[id] = true
-	}
-	return since, nil
+	return sinceTheLatest(first, fromNew), nil
 }

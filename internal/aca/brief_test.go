@@ -42,3 +42,20 @@ func TestBriefTellsCodexToolsInAFewWords(t *testing.T) {
 		"- github.search_issues brief bug (line ", "- notes.read plan (line ")
 	wantNot(t, text, "/usr/bin/zsh", "@@", "srjn45/wdx")
 }
+
+// Antigravity's tools name their input with a capital: a command by its command line,
+// and a file by its path, whatever comes first.
+func TestBriefTellsAntigravityToolsInAFewWords(t *testing.T) {
+	t.Parallel()
+	transcript := "# Session s-1 · antigravity\n\n" +
+		message("User", 1, "do it") +
+		"## Assistant · 2026-11-01T13:02:00.000Z\n\n" +
+		toolCall("run_command", `{"Cwd":"/work","CommandLine":"echo hello"}`, "hello", false) +
+		toolCall("view_file", `{"StartLine":1,"AbsolutePath":"/work/a.go"}`, "a", false) +
+		toolCall("write_file", `{"Content":"alpha","Path":"/work/b.txt"}`, "Created file.", false) +
+		toolCall("write_to_file", `{"CodeContent":"beta","TargetFile":"/work/c.txt"}`, "Created file.", false)
+	_, text := newClaudeBackup(t).brief(t, 64<<10, transcript)
+	wantInOrder(t, text, "- run_command echo hello (line ", "- view_file /work/a.go (line ",
+		"- write_file /work/b.txt (line ", "- write_to_file /work/c.txt (line ")
+	wantNot(t, text, "/work\n", "alpha", "beta")
+}

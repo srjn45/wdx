@@ -17,7 +17,7 @@ import (
 // text and thinking are not fenced, so these match strictly and only after a blank line,
 // and a fence counts only straight after a tool's or a result's heading.
 var (
-	transcriptMessageHeading = regexp.MustCompile(`^## (User|Assistant|Compacted) · (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$`)
+	transcriptMessageHeading = regexp.MustCompile(`^## (User|Assistant|Compacted|System) · (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$`)
 	transcriptToolHeading    = regexp.MustCompile(`^### Tool: (\S+)$`)
 	transcriptResultHeading  = regexp.MustCompile(`^### Result( \(error\))?$`)
 	transcriptFence          = regexp.MustCompile("^`{3,}$")
@@ -34,7 +34,7 @@ const (
 // compactionsSummarize are the ACAs whose compactions keep a summary the brief can
 // read, so that one is a starting point. Codex keeps its summary encrypted: starting at
 // its compaction would leave out everything before it.
-var compactionsSummarize = map[string]bool{ClaudeCodeID: true}
+var compactionsSummarize = map[string]bool{ClaudeCodeID: true, AntigravityID: true}
 
 // readTranscriptBrief reads TranscriptFile once, keeping no more than limit: a new
 // starting point drops all before it, and the oldest messages after it go once they do
@@ -365,7 +365,8 @@ const (
 )
 
 // transcriptInputKeys are what a tool's input is best told by, in order.
-var transcriptInputKeys = []string{"command", "file_path", "path", "notebook_path", "pattern", "query", "url", "skill", "description", "prompt"}
+// Antigravity's tools name theirs with a capital.
+var transcriptInputKeys = []string{"command", "CommandLine", "file_path", "path", "AbsolutePath", "Path", "TargetFile", "notebook_path", "pattern", "query", "url", "skill", "description", "prompt"}
 
 // transcriptShortInput is a tool's input in a few words, with a space before them. An
 // input that is not a JSON object, as Codex's apply_patch writes, is told by its first

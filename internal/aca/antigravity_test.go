@@ -21,8 +21,8 @@ func TestAntigravityIsKnown(t *testing.T) {
 	if aca.Default().ID() != aca.ClaudeCodeID {
 		t.Errorf("the default is %s, want Claude Code still first", aca.Default().ID())
 	}
-	if aca.CanBeginSession(got) {
-		t.Error("it can begin a session, with no BeginSession of its own")
+	if !aca.CanBeginSession(got) {
+		t.Error("it cannot begin a session")
 	}
 	if _, ok := got.ScreenParser().(aca.AntigravityScreenParser); !ok {
 		t.Errorf("Antigravity's parser is %T", got.ScreenParser())
