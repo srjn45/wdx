@@ -1,7 +1,11 @@
 package aca
 
 import (
+	"regexp"
+	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/srjn45/wdx/internal/screen"
 )
@@ -20,14 +24,36 @@ import (
 //
 // The box is drawn 0.4 s after start, the model on the footer's right a second
 // later, and the box counts as ready only then, as a margin on a loaded machine.
-// The footer's right part is dim; its left, what agy is doing, is not.
+// The footer's right part is dim; its left, what agy is doing, is not, and a narrow
+// screen never cuts it:
 //
-// What it is doing is left to the motion fallback for now.
+//	? for shortcuts                   at rest
+//	esc to cancel                     in a turn, an approval or a menu
+//	  Press up to edit queued messages  in a turn, a message waiting to go in
+//	(empty)                           a draft in the box, whatever agy does
+//
+// A turn also shows a spinner just above the box, "⣷  Generating...", which a draft
+// does not hide. Work that outlives a turn, a background task or a subagent, shows
+// as a row of a panel between the box and the footer, "● [09:54:17] sleep 25
+// running", and is counted on the footer's right, "· 1 task(s) · /tasks", which a
+// narrow screen cuts. An approval, the trust prompt and the model picker replace
+// the box and end with "↑/↓ Navigate · …"; the "/" menu shows it below the box.
 type AntigravityScreenParser struct{}
 
 const (
 	antigravityBox  = "> "
 	antigravityRule = '─'
+
+	antigravityAtRest   = "? for shortcuts"
+	antigravityMenuHint = "↑/↓ Navigate"
+	antigravityPanelRow = "● "
+)
+
+var (
+	// What the footer's left says in a turn.
+	antigravityInTurn = []string{"esc to cancel", "Press up to edit queued messages"}
+	// The footer's right part counts background work.
+	antigravityBackground = regexp.MustCompile(`· \d+ (task|subagent)\(s\)`)
 )
 
 // Parse implements ScreenParser.
@@ -40,15 +66,24 @@ func (AntigravityScreenParser) Parse(lines, undimmed []string) screen.ScreenStat
 	if footer < 0 || footer >= len(undimmed) {
 		return unknown
 	}
+	top, end := antigravityFindBox(lines[:footer])
+	menu := antigravityMenu(lines[:footer+1])
+	if top < 0 {
+		if menu {
+			return screen.ScreenState{Activity: screen.ActivityWaiting}
+		}
+		return unknown
+	}
+	state := unknown
+	// The "/" menu's footer says esc to cancel at rest too.
+	if !menu {
+		state.Activity, state.InTurn = antigravityActivity(lines[:top], lines[end+1:footer], lines[footer], undimmed[footer])
+	}
 	model := antigravityModel(lines[footer], undimmed[footer])
 	if model == "" {
-		return unknown
+		return state
 	}
-	top, end := antigravityFindBox(lines[:footer])
-	if top < 0 {
-		return unknown
-	}
-	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Model: model}
+	state.InputBox, state.Model = true, model
 	for i := top; i < end && i < len(undimmed); i++ {
 		text := undimmed[i]
 		if i == top {
@@ -60,6 +95,56 @@ func (AntigravityScreenParser) Parse(lines, undimmed []string) screen.ScreenStat
 		}
 	}
 	return state
+}
+
+// antigravityMenu is true when the last lines end a menu or a prompt to choose
+// from, which a narrow screen cuts.
+func antigravityMenu(lines []string) bool {
+	seen := 0
+	for i := len(lines) - 1; i >= 0 && seen < 3; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		seen++
+		if strings.Contains(lines[i], antigravityMenuHint) {
+			return true
+		}
+	}
+	return false
+}
+
+// antigravityActivity reads what agy is doing from the footer, the lines above the
+// box and its upper rule, and those between the box's lower rule and the footer.
+func antigravityActivity(above, below []string, footer, undimmed string) (screen.Activity, bool) {
+	left := strings.TrimSpace(undimmed)
+	if slices.Contains(antigravityInTurn, left) || antigravitySpinner(above) {
+		return screen.ActivityWorking, true
+	}
+	if antigravityBackground.MatchString(footer) {
+		return screen.ActivityWorking, false
+	}
+	for _, line := range below {
+		if strings.HasPrefix(strings.TrimSpace(line), antigravityPanelRow) {
+			return screen.ActivityWorking, false
+		}
+	}
+	if left == antigravityAtRest {
+		return screen.ActivityIdle, false
+	}
+	return screen.ActivityUnknown, false
+}
+
+// antigravitySpinner is true when the block of lines just above the box, its upper
+// rule and what agy shows over it, holds the spinner: a braille character starting
+// a line, which only tips and messages waiting to go in follow. An answer's lines
+// are indented.
+func antigravitySpinner(above []string) bool {
+	for i := len(above) - 1; i >= 0 && strings.TrimSpace(above[i]) != ""; i-- {
+		if r, _ := utf8.DecodeRuneInString(above[i]); unicode.In(r, unicode.Braille) {
+			return true
+		}
+	}
+	return false
 }
 
 // antigravityFindBox is where the box's lines start and end in above: the last line
