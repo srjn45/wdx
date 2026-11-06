@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,7 +247,7 @@ func TestBeginSessionSticks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command[1] != "--session-id" || command[2] != "s-2" {
+	if want := claudeCode("--session-id", "s-2"); !slices.Equal(command[:len(want)], want) {
 		t.Errorf("a session with no transcript starts: %q", command)
 	}
 }

@@ -210,7 +210,7 @@ func TestClaudeCodeBackUpKeepsWhatClaudeDeletes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got[:3], []string{"claude", "--resume", "s-1"}) {
+	if want := claudeCode("--resume", "s-1"); !slices.Equal(got[:len(want)], want) {
 		t.Errorf("command = %q", got)
 	}
 	data, err := os.ReadFile(b.transcript("s-1"))
@@ -250,10 +250,10 @@ func TestClaudeCodeSettingsRecordEachSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1", "--settings", filepath.Join(b.launch.BackupDir, "claude-settings.json")}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1", "--settings", filepath.Join(b.launch.BackupDir, "claude-settings.json")); !slices.Equal(got, want) {
 		t.Fatalf("command = %q, want %q", got, want)
 	}
-	data, err := os.ReadFile(got[4])
+	data, err := os.ReadFile(got[len(got)-1])
 	if err != nil {
 		t.Fatal(err)
 	}

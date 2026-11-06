@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,18 +31,25 @@ func (ClaudeCode) Models(context.Context, Launch) ([]Model, error) {
 	return []Model{{ID: "fable", Name: "Fable"}, {ID: "opus", Name: "Opus"}, {ID: "sonnet", Name: "Sonnet"}, {ID: "haiku", Name: "Haiku"}}, nil
 }
 
+// claudeCodeEnv runs Claude Code on its classic screen, without the mouse. On
+// its alternate screen it asks for the mouse, so tide gives it every drag and
+// tide's own selection never starts, and its own copy does not reach the
+// clipboard of a terminal that ignores OSC 52. On its classic screen the wheel
+// scrolls the terminal's history in tide, as for any program.
+var claudeCodeEnv = []string{"env", "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1", "CLAUDE_CODE_DISABLE_MOUSE=1"}
+
 // Command implements AiCodingAgent. A session is resumed only once it has a
 // transcript: Claude Code writes none until something is typed, and resuming
 // such a session fails with "No conversation found". One Claude Code has
 // deleted comes back from the backup.
 func (ClaudeCode) Command(_ context.Context, l Launch) ([]string, error) {
-	command := []string{"claude", "--session-id", l.SessionID}
+	command := append(slices.Clone(claudeCodeEnv), "claude", "--session-id", l.SessionID)
 	resume, err := claudeCodeTranscriptAt(l)
 	if err != nil {
 		return nil, fmt.Errorf("look for the transcript of session %s: %w", l.SessionID, err)
 	}
 	if resume {
-		command = []string{"claude", "--resume", l.SessionID}
+		command = append(slices.Clone(claudeCodeEnv), "claude", "--resume", l.SessionID)
 	}
 	if l.Model != "" {
 		command = append(command, "--model", l.Model)

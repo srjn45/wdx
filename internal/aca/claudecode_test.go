@@ -24,13 +24,19 @@ func TestByID(t *testing.T) {
 	}
 }
 
+// claudeCode is the command that runs Claude Code with args: on its classic
+// screen, without the mouse, so that tide's selection and wheel work on it.
+func claudeCode(args ...string) []string {
+	return append([]string{"env", "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1", "CLAUDE_CODE_DISABLE_MOUSE=1", "claude"}, args...)
+}
+
 func TestClaudeCodeStartsASessionWithoutATranscript(t *testing.T) {
 	t.Parallel()
 	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1"}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1"); !slices.Equal(got, want) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
@@ -49,7 +55,7 @@ func TestClaudeCodeResumesASessionWithATranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--resume", "s-1"}; !slices.Equal(got, want) {
+	if want := claudeCode("--resume", "s-1"); !slices.Equal(got, want) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
@@ -63,7 +69,7 @@ func TestClaudeCodeGivesTheNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1", "--append-system-prompt", "use wdx"}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1", "--append-system-prompt", "use wdx"); !slices.Equal(got, want) {
 		t.Errorf("new session: command = %q, want %q", got, want)
 	}
 	dir := filepath.Join(home, ".claude", "projects", "-work")
@@ -77,7 +83,7 @@ func TestClaudeCodeGivesTheNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--resume", "s-1", "--append-system-prompt", "use wdx"}; !slices.Equal(got, want) {
+	if want := claudeCode("--resume", "s-1", "--append-system-prompt", "use wdx"); !slices.Equal(got, want) {
 		t.Errorf("resumed: command = %q, want %q", got, want)
 	}
 }
@@ -96,7 +102,7 @@ func TestClaudeCodeIgnoresAnotherSessionsTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1"}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1"); !slices.Equal(got, want) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
@@ -111,7 +117,7 @@ func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"); !slices.Equal(got, want) {
 		t.Errorf("new session: command = %q, want %q", got, want)
 	}
 	dir := filepath.Join(home, ".claude", "projects", "-work")
@@ -125,7 +131,7 @@ func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--resume", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"}; !slices.Equal(got, want) {
+	if want := claudeCode("--resume", "s-1", "--model", "sonnet", "--permission-mode", "bypassPermissions"); !slices.Equal(got, want) {
 		t.Errorf("resumed: command = %q, want %q", got, want)
 	}
 }
@@ -136,7 +142,7 @@ func TestClaudeCodeAskPassesNoPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "--session-id", "s-1"}; !slices.Equal(got, want) {
+	if want := claudeCode("--session-id", "s-1"); !slices.Equal(got, want) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
