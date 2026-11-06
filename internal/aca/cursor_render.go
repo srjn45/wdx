@@ -38,15 +38,19 @@ type cursorRendered struct {
 type cursorRenderedChat struct {
 	// Dir is where the chat was made, where it must be resumed.
 	Dir string `json:"dir"`
-	// Rendered is the ids of its messages in the text. A message is rendered once,
-	// and stays in the text when it leaves the context, by a rewind or a compaction.
-	Rendered []string `json:"rendered"`
+	// Listed is how many times each message's id appeared in the root the last
+	// backup read. Messages with the same bytes share an id, as short replies with
+	// no reasoning signature do, so an id's next appearance in the root is a new
+	// message to render. A message stays in the text when it leaves the context, by
+	// a rewind or a compaction, and its count drops with it, so the same reply after
+	// is rendered; one that came between the same two backups as a compaction that
+	// dropped its earlier copy is not.
+	Listed map[string]int `json:"listed"`
 	// At is the time its messages are rendered with, the latest a request of it
 	// carried, as Cursor keeps no time for a message.
 	At string `json:"at,omitempty"`
 	// Snapshot is the root its snapshot was taken at.
 	Snapshot string `json:"snapshot,omitempty"`
-	rendered map[string]bool
 }
 
 func readCursorRendered(backup string) (*cursorRendered, error) {
@@ -65,9 +69,8 @@ func readCursorRendered(backup string) (*cursorRendered, error) {
 		state.Chats = map[string]*cursorRenderedChat{}
 	}
 	for _, chat := range state.Chats {
-		chat.rendered = map[string]bool{}
-		for _, id := range chat.Rendered {
-			chat.rendered[id] = true
+		if chat.Listed == nil {
+			chat.Listed = map[string]int{}
 		}
 	}
 	return state, nil
@@ -85,7 +88,7 @@ func (r *cursorRendered) write(backup string) error {
 func (r *cursorRendered) chat(id, dir string) *cursorRenderedChat {
 	chat := r.Chats[id]
 	if chat == nil {
-		chat = &cursorRenderedChat{Rendered: []string{}, rendered: map[string]bool{}}
+		chat = &cursorRenderedChat{Listed: map[string]int{}}
 		r.Chats[id] = chat
 	}
 	chat.Dir = dir
@@ -129,7 +132,7 @@ func (r *cursorRendered) backUpChat(ctx context.Context, w io.Writer, backup str
 	}
 	defer store.Close()
 	chat := r.chat(c.ID, c.Cwd)
-	root, messages, err := store.messages(ctx, chat.rendered)
+	root, messages, listed, err := store.messages(ctx, chat.Listed)
 	if err != nil {
 		return err
 	}
@@ -138,9 +141,8 @@ func (r *cursorRendered) backUpChat(ctx context.Context, w io.Writer, backup str
 		if !r.renderMessage(w, c.ID, chat, m.Data, now) {
 			skipped++
 		}
-		chat.rendered[m.ID] = true
-		chat.Rendered = append(chat.Rendered, m.ID)
 	}
+	chat.Listed = listed
 	if skipped > 0 {
 		logging.FromContext(ctx).Info("transcript messages not rendered", "session_id", c.ID, "skipped", skipped)
 	}

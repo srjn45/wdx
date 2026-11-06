@@ -88,18 +88,19 @@ func (s *cursorStore) root(ctx context.Context, q interface {
 	return meta.LatestRootBlobID, nil
 }
 
-// messages is the root it reads and the messages it lists, in order, but those
-// skip names, which are not read. They are read in one transaction, so they are the
-// root's even while Cursor writes.
-func (s *cursorStore) messages(ctx context.Context, skip map[string]bool) (string, []cursorStoreMessage, error) {
+// messages is the root it reads, the messages it lists, in order, but for the
+// first listed[id] appearances of each id, which are not read, and how many times
+// it lists each id. They are read in one transaction, so they are the root's even
+// while Cursor writes.
+func (s *cursorStore) messages(ctx context.Context, listed map[string]int) (string, []cursorStoreMessage, map[string]int, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	defer tx.Rollback()
 	root, err := s.root(ctx, tx)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	blob := func(id string) ([]byte, error) {
 		var data []byte
@@ -110,24 +111,26 @@ func (s *cursorStore) messages(ctx context.Context, skip map[string]bool) (strin
 	}
 	data, err := blob(root)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	ids, err := cursorRootMessageIDs(data)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	var messages []cursorStoreMessage
+	counts := map[string]int{}
 	for _, id := range ids {
-		if skip[id] {
+		counts[id]++
+		if counts[id] <= listed[id] {
 			continue
 		}
 		data, err := blob(id)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 		messages = append(messages, cursorStoreMessage{ID: id, Data: data})
 	}
-	return root, messages, nil
+	return root, messages, counts, nil
 }
 
 // snapshot writes a consistent copy of the store to dest, through a file beside it,

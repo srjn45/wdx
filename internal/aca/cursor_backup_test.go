@@ -211,6 +211,53 @@ func TestCursorTranscriptRendersAMessageOnce(t *testing.T) {
 	}
 }
 
+// cursorRepeatedReply is a chat whose replies, short and with no reasoning
+// signature, have the same bytes, so a store keeps one blob for both, which its root
+// lists twice; and a compaction's summary.
+func cursorRepeatedReply(t *testing.T) (first, reply, second, summary cursorSampleMessage) {
+	t.Helper()
+	m := cursorMessages(t,
+		`{"role":"user","content":[{"type":"text","text":"<user_query>\nFirst.\n</user_query>"}]}`,
+		`{"role":"assistant","content":[{"type":"text","text":"Done."}]}`,
+		`{"role":"user","content":[{"type":"text","text":"<user_query>\nSecond.\n</user_query>"}]}`,
+		`{"role":"user","content":[{"type":"text","text":"[Previous conversation summary]: It said done."}]}`,
+	)
+	return m[0], m[1], m[2], m[3]
+}
+
+// A reply with the same bytes as one before it is in the text again.
+func TestCursorTranscriptOfARepeatedReply(t *testing.T) {
+	t.Parallel()
+	first, reply, second, _ := cursorRepeatedReply(t)
+	backup := t.TempDir()
+	store := newCursorStore(t, backup, "/work/repo", cursorChatA, 100)
+	store.setRoot([]cursorSampleMessage{first, reply})
+	cursorBackUp(t, backup, cursorChatA, "/work/repo")
+	store.setRoot([]cursorSampleMessage{first, reply, second, reply})
+	got := cursorBackUp(t, backup, cursorChatA, "/work/repo")
+	if n := strings.Count(got, "\nDone.\n"); n != 2 {
+		t.Fatalf("the reply is in the text %d times, want 2:\n%s", n, got)
+	}
+}
+
+// A reply with the same bytes as one a compaction took out of the context is in the
+// text again, as the root no longer lists the first.
+func TestCursorTranscriptOfAReplyRepeatedAfterACompaction(t *testing.T) {
+	t.Parallel()
+	first, reply, second, summary := cursorRepeatedReply(t)
+	backup := t.TempDir()
+	store := newCursorStore(t, backup, "/work/repo", cursorChatA, 100)
+	store.setRoot([]cursorSampleMessage{first, reply})
+	cursorBackUp(t, backup, cursorChatA, "/work/repo")
+	store.setRoot([]cursorSampleMessage{summary})
+	cursorBackUp(t, backup, cursorChatA, "/work/repo")
+	store.setRoot([]cursorSampleMessage{summary, second, reply})
+	got := cursorBackUp(t, backup, cursorChatA, "/work/repo")
+	if n := strings.Count(got, "\nDone.\n"); n != 2 {
+		t.Fatalf("the reply is in the text %d times, want 2:\n%s", n, got)
+	}
+}
+
 // Each chat is under its own heading, in the order they were last updated, and the
 // session is the one updated last.
 func TestCursorTranscriptOfTwoChats(t *testing.T) {
