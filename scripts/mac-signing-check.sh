@@ -27,8 +27,10 @@ REPO=srjn45/wdx
 BASE="https://github.com/$REPO/releases/download"
 LABEL="com.github.srjn45.$NAME"
 IDENTITY="$NAME-codesign"
-# A keychain of its own, as the doc's revision 3 has it: wdx unlocks it with
-# its password file, so codesign shows no dialog.
+# A keychain of its own, as the doc has it: wdx unlocks it with its password
+# file, so codesign shows no dialog. codesign finds an identity only in a
+# keychain on the user's search list, whatever --keychain says, so the
+# keychain is added to the end of that list and stays there.
 SIGN_DIR="$HOME/.wdx/codesign"
 KEYCHAIN="$SIGN_DIR/wdx.keychain-db"
 PASSWORD_FILE="$SIGN_DIR/password"
@@ -60,7 +62,7 @@ uid="$(id -u)"
 show_binary() {
 	info "path: $1"
 	info "version: $("$1" version --json 2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -n 1)"
-	codesign -dv "$1" 2>&1 | grep -E '^(Identifier|Signature|Authority|TeamIdentifier|CDHash)' | sed 's/^/    /' || true
+	codesign -dv "$1" 2>&1 | grep -E '^(Identifier|Signature|Authority|TeamIdentifier|CDHash)|not signed' | sed 's/^/    /' || true
 	info "designated requirement: $(codesign -d -r- "$1" 2>&1 | sed -n 's/^designated => //p')"
 }
 
@@ -70,9 +72,29 @@ show_launchd() {
 		info "launchctl print found no $LABEL"
 }
 
+# search_list prints the user's keychain search list, one path a line.
+search_list() {
+	security list-keychains -d user | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//'
+}
+
+# in_search_list adds the keychain to the end of the user's search list
+# when it is not on it, keeping every keychain the list has.
+in_search_list() {
+	if search_list | grep -qxF "$KEYCHAIN"; then
+		info "$KEYCHAIN is on the keychain search list"
+		return
+	fi
+	# Word-split on purpose: the list's paths, one argument each.
+	# shellcheck disable=SC2046
+	security list-keychains -d user -s $(search_list) "$KEYCHAIN" || fail "could not add $KEYCHAIN to the search list"
+	info "added $KEYCHAIN to the end of the keychain search list:"
+	search_list | sed 's/^/      /'
+}
+
 # sign copies $1 to $2, signs and verifies the copy.
 sign() {
 	cp "$1" "$2"
+	in_search_list
 	security unlock-keychain -p "$(cat "$PASSWORD_FILE")" "$KEYCHAIN" || fail "could not unlock $KEYCHAIN"
 	codesign --force --keychain "$KEYCHAIN" --sign "$IDENTITY" --identifier "$LABEL" "$2" ||
 		fail "codesign failed"
