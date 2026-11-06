@@ -761,7 +761,11 @@ func agentsTopic(st style.Style) string {
 		w+" worktree list", "every worktree and what is uncommitted",
 		w+" worktree diff --name <worktree>", "what it has committed",
 	) + `  Landing and removing a worktree are the person's to do, unless you are asked.
-
+  When asked to land or rebase, say it is you, or you count as working there:
+` + commands(
+		w+" worktree land --name <worktree> --agent-id $"+identity.Env("AGENT_ID"), "",
+		w+" worktree rebase --name <worktree> --agent-id $"+identity.Env("AGENT_ID"), "",
+	) + `
 ` + heading("Docs") + `  A project's docs live in ` + w + `, not in the repository: read and change them
   only through ` + st.Command(w+" doc") + `, never through a copy in the repository. A doc's
   status says what is agreed: approved is, wip and review are not, rejected

@@ -168,9 +168,9 @@ func newWorktreeCommentsCmd() *cobra.Command {
 
 func newWorktreeLandCmd() *cobra.Command {
 	var scope projectScope
-	var name, method string
+	var name, method, agentID string
 	cmd := &cobra.Command{
-		Use:   "land --name <worktree> [--method <method>] [--project-id <id> | --project-name <name>]",
+		Use:   "land --name <worktree> [--method <method>] [--agent-id <id>] [--project-id <id> | --project-name <name>]",
 		Short: "Land a worktree's commits on its base, with no merge commit or through a PR",
 		Long: "Rebases it if the base has moved on, undoing that on a conflict; runs the\n" +
 			"project's check in a terminal named land-<worktree>, which stays if it fails;\n" +
@@ -182,6 +182,7 @@ func newWorktreeLandCmd() *cobra.Command {
 		Example: examples(
 			"Land a worktree", identity.Name+" worktree land --name auth-fix",
 			"Open a PR this once", identity.Name+" worktree land --name auth-fix --method pr",
+			"From the agent working in it", identity.Name+" worktree land --name auth-fix --agent-id agent-1a2b3c4d",
 			"As JSON", identity.Name+" worktree land --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
@@ -202,7 +203,7 @@ func newWorktreeLandCmd() *cobra.Command {
 				return err
 			}
 			c := clientOf(cmd)
-			started, err := c.LandWorktree(cmd.Context(), name, ref, dir, method)
+			started, err := c.LandWorktree(cmd.Context(), name, ref, dir, method, agentID)
 			if err != nil {
 				if problemCode(err) == api.ErrorCodeLandNotConfigured {
 					return &hinted{err, "say how with " + identity.Name + " project landing --check <command> or --no-check"}
@@ -231,6 +232,7 @@ func newWorktreeLandCmd() *cobra.Command {
 	cmd.MarkFlagRequired("name")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	completeFlag(cmd, "method", landingMethods)
+	addAskingAgentFlag(cmd, &agentID)
 	return cmd
 }
 
@@ -346,9 +348,9 @@ func (r worktreeLanded) text(w io.Writer, st style.Style) {
 
 func newWorktreeRebaseCmd() *cobra.Command {
 	var scope projectScope
-	var name string
+	var name, agentID string
 	cmd := &cobra.Command{
-		Use:   "rebase --name <worktree> [--project-id <id> | --project-name <name>]",
+		Use:   "rebase --name <worktree> [--agent-id <id>] [--project-id <id> | --project-name <name>]",
 		Short: "Rebase a worktree onto its base, the default branch or a stacked plan's plan below",
 		Long: "Landing's rebase on its own: no check, and the base does not move. A\n" +
 			"conflict undoes it, leaving everything as it was, and lists the files; files\n" +
@@ -361,6 +363,7 @@ func newWorktreeRebaseCmd() *cobra.Command {
 			"below's branch as it is now.",
 		Example: examples(
 			"Rebase a worktree", identity.Name+" worktree rebase --name auth-fix",
+			"From the agent working in it", identity.Name+" worktree rebase --name auth-fix --agent-id agent-1a2b3c4d",
 			"As JSON", identity.Name+" worktree rebase --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
@@ -376,7 +379,7 @@ func newWorktreeRebaseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r, err := clientOf(cmd).RebaseWorktree(cmd.Context(), name, ref, dir)
+			r, err := clientOf(cmd).RebaseWorktree(cmd.Context(), name, ref, dir, agentID)
 			if err != nil {
 				return outsideHint(inPlanHint(rebaseHint(err)), scope, "")
 			}
@@ -387,7 +390,15 @@ func newWorktreeRebaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.MarkFlagRequired("name")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	addAskingAgentFlag(cmd, &agentID)
 	return cmd
+}
+
+// addAskingAgentFlag adds --agent-id, the agent asking to land or rebase: running
+// the command, it is mid-turn, and would otherwise count as working in its worktree.
+func addAskingAgentFlag(cmd *cobra.Command, agentID *string) {
+	cmd.Flags().StringVar(agentID, "agent-id", "", "`id` of the agent asking, which an agent finds in $"+identity.Env("AGENT_ID")+"; it is not counted as working in the worktree")
+	completeFlag(cmd, "agent-id", completeAgents("id"))
 }
 
 // rebaseHint says what to do about a rebase refused or undone: an agent's work, which

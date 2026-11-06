@@ -396,9 +396,10 @@ func (c *Client) ListWorktrees(ctx context.Context, ref, dir string) (api.Worktr
 }
 
 // LandWorktree starts landing the worktree name: its status says how it ends.
-// A method of "" is what the project says.
-func (c *Client) LandWorktree(ctx context.Context, name, ref, dir, method string) (api.WorktreeLandResult, error) {
-	params := &api.LandWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)}
+// A method of "" is what the project says; agentID, when not "", is the agent
+// asking, not counted as working in it.
+func (c *Client) LandWorktree(ctx context.Context, name, ref, dir, method, agentID string) (api.WorktreeLandResult, error) {
+	params := &api.LandWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir), AgentId: nonEmpty(agentID)}
 	if method != "" {
 		m := api.LandWorktreeParamsMethod(method)
 		params.Method = &m
@@ -437,9 +438,10 @@ func (c *Client) RemoveWorktree(ctx context.Context, name, ref, dir string) (api
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-// RebaseWorktree rebases the worktree name onto its base.
-func (c *Client) RebaseWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeRebased, error) {
-	r, err := c.api.RebaseWorktreeWithResponse(ctx, name, &api.RebaseWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+// RebaseWorktree rebases the worktree name onto its base; agentID, when not "",
+// is the agent asking, not counted as working in it.
+func (c *Client) RebaseWorktree(ctx context.Context, name, ref, dir, agentID string) (api.WorktreeRebased, error) {
+	r, err := c.api.RebaseWorktreeWithResponse(ctx, name, &api.RebaseWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir), AgentId: nonEmpty(agentID)})
 	if err != nil {
 		return api.WorktreeRebased{}, err
 	}

@@ -514,6 +514,7 @@ paths:
           in: query
           description: How to land this once; what the project says when not given.
           schema: { type: string, enum: [rebase, pr] }
+        - $ref: "#/components/parameters/AskingAgent"
       responses:
         "202":
           description: It started, with result started.
@@ -553,6 +554,8 @@ paths:
         invalid_path, no_local_base, not_committed, not_found, project_closed,
         push_failed, rebase_failed, usage, worktree_busy, worktree_in_plan,
         worktree_is_clone.
+      parameters:
+        - $ref: "#/components/parameters/AskingAgent"
       responses:
         "200":
           description: It rebased, or was up to date.
@@ -2175,6 +2178,14 @@ components:
       name: project
       in: query
       description: The project's name, or "id:" and its id; excludes dir.
+      schema: { type: string, minLength: 1 }
+    AskingAgent:
+      name: agent_id
+      in: query
+      description: |
+        The agent asking, which is not counted as working in the worktree: an agent
+        running the command is always mid-turn. One that is no agent of the project
+        is not_found.
       schema: { type: string, minLength: 1 }
     WorktreeDir:
       name: dir

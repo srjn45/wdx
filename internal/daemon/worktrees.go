@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"strings"
@@ -135,6 +136,23 @@ func (d *Daemon) runLandCheck(ctx context.Context, projectID, worktreeName, dir,
 			return fmt.Errorf("the daemon stopped during the check: %w", ctx.Err())
 		}
 	}
+}
+
+// agentsBut lists the project's agents but the one asking, when one asks: an agent
+// running a command is always mid-turn, so it would count as working in its own
+// worktree. One that is no agent of the project is not found.
+func (s *server) agentsBut(ctx context.Context, projectID string, asking *string) ([]agent.Agent, error) {
+	list, err := s.agents.Store().List(ctx, projectID)
+	if err != nil || asking == nil {
+		return list, err
+	}
+	for i, a := range list {
+		if a.ID == *asking {
+			logging.FromContext(ctx).Info("asking agent not counted", "agent_id", a.ID)
+			return slices.Delete(list, i, i+1), nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %q is not in the project", agent.ErrNotFound, *asking)
 }
 
 func workingAgents(list []agent.Agent) []worktree.Agent {
@@ -285,7 +303,7 @@ func (s *server) LandWorktree(ctx context.Context, req api.LandWorktreeRequestOb
 	if !ok {
 		return nil, errLandNotConfigured
 	}
-	agents, err := s.agents.Store().List(ctx, p.ID)
+	agents, err := s.agentsBut(ctx, p.ID, req.Params.AgentId)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +333,7 @@ func (s *server) RebaseWorktree(ctx context.Context, req api.RebaseWorktreeReque
 			return nil, err
 		}
 	}
-	agents, err := s.agents.Store().List(ctx, p.ID)
+	agents, err := s.agentsBut(ctx, p.ID, req.Params.AgentId)
 	if err != nil {
 		return nil, err
 	}

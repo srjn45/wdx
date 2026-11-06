@@ -12,6 +12,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // worktreeOutput is what the commands of wdx worktree print with --json.
@@ -398,9 +399,9 @@ type worktreeRebaseOutput struct {
 	api.Problem
 }
 
-func wdxRebase(t *testing.T, home, dir, name string) (worktreeRebaseOutput, int) {
+func wdxRebase(t *testing.T, home, dir, name string, args ...string) (worktreeRebaseOutput, int) {
 	t.Helper()
-	out := wdxWith(t, home, in(dir), "worktree", "rebase", "--name", name, "--json")
+	out := wdxWith(t, home, in(dir), append([]string{"worktree", "rebase", "--name", name, "--json"}, args...)...)
 	var v worktreeRebaseOutput
 	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil {
 		t.Fatalf("rebase %s: %v in %q", name, err, out.stdout)
@@ -532,5 +533,72 @@ func TestWorktreeRebaseText(t *testing.T) {
 	out = wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
 	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "rebased worktree work onto main") {
 		t.Errorf("rebased: %+v", out)
+	}
+}
+
+// claudeWorking is a run file for the test ACA: a program drawing Claude Code's
+// screen mid-turn, which the holder reads as working.
+const claudeWorking = `stty raw -echo
+printf '────────────\r\n❯ typed\r\n────────────\r\n  ⏸ manual mode on · esc to interrupt'
+`
+
+func waitWorking(t *testing.T, home, id string) {
+	t.Helper()
+	waittest.For(t, "agent "+id+" working", func() bool {
+		v, exit := wdxJSON(t, home, "agent", "get", "--id", id)
+		return exit == api.ExitOK && v.Agent.Activity != nil && *v.Agent.Activity == api.AgentActivityWorking
+	})
+}
+
+// TestWorktreeAskingAgent: the agent asking to land or rebase its worktree, always
+// mid-turn as it runs the command, is not counted as working there; another is.
+func TestWorktreeAskingAgent(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	if err := os.WriteFile(filepath.Join(app, ".git", "info", "exclude"), []byte("run\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "run"), []byte(claudeWorking), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+		t.Fatalf("set: %+v", out)
+	}
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", work); exit != api.ExitOK {
+		t.Fatalf("open the worktree: exit %d, %+v", exit, v)
+	}
+	self := newAgent(t, home, work, "self")
+	other := newAgent(t, home, work, "other")
+	waitWorking(t, home, self.Id)
+	waitWorking(t, home, other.Id)
+
+	for _, command := range []string{"rebase", "land"} {
+		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", self.Id)
+		if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
+			t.Errorf("%s with another working: exit %d, %+v", command, exit, v)
+		}
+		v, exit = wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", "agent-nope")
+		if exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+			t.Errorf("%s by an unknown agent: exit %d, %+v", command, exit, v)
+		}
+	}
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--id", other.Id, "--stop-running"); exit != api.ExitOK {
+		t.Fatalf("remove other: exit %d, %+v", exit, v)
+	}
+
+	v, exit := wdxWorktree(t, home, app, "rebase", "--name", "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
+		t.Errorf("rebase not saying who asks: exit %d, %+v", exit, v)
+	}
+	r, exit := wdxRebase(t, home, app, "work", "--agent-id", self.Id)
+	if exit != api.ExitOK || r.Result != api.ResultUpToDate {
+		t.Errorf("rebase by the agent working there: exit %d, %+v", exit, r)
+	}
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--agent-id", self.Id, "--json")
+	var landed worktreeLanded
+	if err := json.Unmarshal([]byte(out.stdout), &landed); err != nil || out.exit != api.ExitOK || landed.Result != api.ResultLanded {
+		t.Errorf("land by the agent working there: %+v, %v", out, err)
 	}
 }

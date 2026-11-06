@@ -85,7 +85,7 @@ func (m *Model) askRebaseWorktree(name string) tea.Cmd {
 	m.statusNotice = "rebasing " + name + "…"
 	m.log.Info("rebase started", "worktree", name)
 	return func() tea.Msg {
-		r, err := m.client.RebaseWorktree(m.ctx, name, ref, "")
+		r, err := m.client.RebaseWorktree(m.ctx, name, ref, "", "")
 		return worktreeRebased{worktree: name, result: r, err: err}
 	}
 }

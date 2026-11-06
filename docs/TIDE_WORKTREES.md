@@ -266,6 +266,8 @@ Landing, rebasing and removing are the one place wdx writes to a repository. The
 
 `L` is refused while an agent in the worktree is working, as a rebase would change files under it. An idle or waiting agent does not stop it. Which agent is in a worktree is the best guess described above.
 
+An agent asked to land or rebase its own worktree is always mid-turn as it runs the command, so `wdx worktree land` and `wdx worktree rebase` take `--agent-id`, the agent asking, which is then not counted as working there; another working agent still refuses it with `agent_working`, and an id that is no agent of the project is `not_found`. tide has no such flag: its person is no agent.
+
 If the base has moved on, wdx first tries the rebase itself, as part of landing (agreed). A conflict aborts it, leaves everything as it was, lists the files and offers to send the rebase to an agent: a box like `C`'s, with `Rebase <branch> onto <base> in <path>`, the agent chosen as for `C`. Once it is done and the agent has stopped, `L` starts again; nothing lands by itself.
 
 Proposed:

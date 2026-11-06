@@ -269,7 +269,7 @@ func (m *Model) landBoxKey(msg tea.KeyPressMsg) tea.Cmd {
 		worktree := b.worktree
 		m.log.Info("landing confirmed", "worktree", worktree)
 		return func() tea.Msg {
-			r, err := m.client.LandWorktree(m.ctx, worktree, ref, "", "")
+			r, err := m.client.LandWorktree(m.ctx, worktree, ref, "", "", "")
 			return landStarted{worktree: worktree, id: r.Landing.Id, err: err}
 		}
 	case "m":
