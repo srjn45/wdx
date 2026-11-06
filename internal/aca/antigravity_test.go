@@ -2,6 +2,7 @@ package aca_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -58,30 +59,26 @@ func TestAntigravityCommand(t *testing.T) {
 	}
 }
 
-// TestAntigravityGivesTheNote: in a folder holding only the note, as --add-dir makes
-// it part of the workspace, written anew at every start, ending with where to work,
-// as Antigravity creates new files in the first folder by path, which is the note's.
+// TestAntigravityGivesTheNote: in the agent's folder, as --add-dir makes it part of
+// the workspace, written anew at every start, ending with where to work, as
+// Antigravity creates new files in the first folder by path, which is the agent's.
 func TestAntigravityGivesTheNote(t *testing.T) {
 	t.Parallel()
 	backup := t.TempDir()
 	if err := os.WriteFile(filepath.Join(backup, "transcript.md"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	dir := filepath.Join(backup, "antigravity")
 	for _, note := range []string{"use wdx", "use wdx, again"} {
 		got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", BackupDir: backup, Note: note})
 		if err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(backup, "antigravity-note")
 		if want := []string{"agy", "--add-dir", dir, "--settings", `{"queuedMessages":"queue","trustedWorkspaces":["/work"]}`}; !slices.Equal(got, want) {
 			t.Fatalf("command = %q, want %q", got, want)
 		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(entries) != 1 || entries[0].Name() != "AGENTS.md" {
-			t.Fatalf("the note's folder holds %v", entries)
+		if got, want := folderHolds(t, dir), []string{".agents", "AGENTS.md"}; !slices.Equal(got, want) {
+			t.Fatalf("the agent's folder holds %q, want %q", got, want)
 		}
 		data, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
 		if err != nil {
@@ -93,6 +90,65 @@ func TestAntigravityGivesTheNote(t *testing.T) {
 			t.Errorf("note = %q, want %q", data, want)
 		}
 	}
+	// With no note, the folder is still given, for its hooks, and an old note goes.
+	got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", BackupDir: backup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got, dir) {
+		t.Fatalf("command = %q, without the folder", got)
+	}
+	if got, want := folderHolds(t, dir), []string{".agents"}; !slices.Equal(got, want) {
+		t.Fatalf("with no note the folder holds %q, want %q", got, want)
+	}
+}
+
+// An agent started before the folder held its hooks has it as antigravity-note,
+// moved at its next start; one a failed start left beside the new is removed.
+func TestAntigravityMovesTheOldFolder(t *testing.T) {
+	t.Parallel()
+	for _, both := range []bool{false, true} {
+		backup := t.TempDir()
+		old := filepath.Join(backup, "antigravity-note")
+		if err := os.MkdirAll(old, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(old, "kept"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if both {
+			if err := os.Mkdir(filepath.Join(backup, "antigravity"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := (aca.Antigravity{}).Command(aca.Launch{Dir: "/work", BackupDir: backup, Note: "use wdx"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(old); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("both %v: the old folder is still there: %v", both, err)
+		}
+		want := []string{".agents", "AGENTS.md", "kept"}
+		if both {
+			want = []string{".agents", "AGENTS.md"}
+		}
+		if got := folderHolds(t, filepath.Join(backup, "antigravity")); !slices.Equal(got, want) {
+			t.Errorf("both %v: the folder holds %q, want %q", both, got, want)
+		}
+	}
+}
+
+// folderHolds is the names in dir, in order.
+func folderHolds(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }
 
 func TestAntigravityDeliver(t *testing.T) {

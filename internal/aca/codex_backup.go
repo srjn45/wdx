@@ -130,7 +130,7 @@ func codexSubagentsStarted(path string) ([]string, error) {
 			}
 			item := &entry.Payload.Item
 			if json.Unmarshal(line, &entry) == nil && entry.Type == "event_msg" && entry.Payload.Type == "item_completed" &&
-				item.Type == "SubAgentActivity" && item.Kind == "started" && codexSessionID.MatchString(item.Thread) &&
+				item.Type == "SubAgentActivity" && item.Kind == "started" && sessionUUID.MatchString(item.Thread) &&
 				!slices.Contains(started, item.Thread) {
 				started = append(started, item.Thread)
 			}
@@ -216,7 +216,7 @@ func codexReadPaths(backupDir string) (map[string]string, error) {
 // codexKept is the backup's copy of session id and the path Codex kept it at, or ""
 // for both when the backup lacks either, and so cannot put it back.
 func codexKept(backupDir, id string) (copied, at string, err error) {
-	if backupDir == "" || !codexSessionID.MatchString(id) {
+	if backupDir == "" || !sessionUUID.MatchString(id) {
 		return "", "", nil
 	}
 	paths, err := codexReadPaths(backupDir)

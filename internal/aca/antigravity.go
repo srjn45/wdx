@@ -16,11 +16,10 @@ import (
 	"github.com/srjn45/wdx/internal/atomicfile"
 )
 
-// Antigravity is Google's Antigravity CLI. It has written only its command, its
-// delivering, its screen parser and its models; the rest are stand-ins. The wdx
-// docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
+// Antigravity is Google's Antigravity CLI. It has written its command, its
+// session, its delivering, its screen parser and its models; the rest are
+// stand-ins. The wdx docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
-	NoBackUp
 	NoBeginSession
 	NoBrief
 	NoDetached
@@ -36,27 +35,33 @@ func (Antigravity) ID() string { return AntigravityID }
 // Program implements AiCodingAgent.
 func (Antigravity) Program() string { return "agy" }
 
-// antigravityNoteDir is the folder of an agent's dir that holds only its launch note,
-// as --add-dir makes a folder part of the workspace.
-const antigravityNoteDir = "antigravity-note"
-
-// Command implements AiCodingAgent. Antigravity names its own conversations and
-// cannot be given one, so l.SessionID is not used: every start begins a new
-// conversation. It has no flag for the system prompt, so the note is the rules
-// file of a folder added to the workspace for this session. What --settings
-// holds is for this session only, never saved, over the user's own settings.
+// Command implements AiCodingAgent. Antigravity names its own conversations:
+// l.SessionID is resumed once it names one Antigravity keeps, which BackUp makes it
+// after the first message, and before that a start begins a new conversation, as
+// one whose db is gone would, silently. It has no flag for the system prompt, so
+// the note is the rules file of a folder of the backup added to the workspace for
+// this session, whose hooks report each conversation to the backup. What
+// --settings holds is for this session only, never saved, over the user's own
+// settings.
 func (Antigravity) Command(l Launch) ([]string, error) {
 	command := []string{"agy"}
+	resume, err := antigravityKeeps(l.UserHome, l.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("look for Antigravity's conversation %s: %w", l.SessionID, err)
+	}
+	if resume {
+		command = append(command, "--conversation="+l.SessionID)
+	}
 	if l.Model != "" {
 		command = append(command, "--model", l.Model)
 	}
 	if l.Permissions == PermissionsFull {
 		command = append(command, "--dangerously-skip-permissions")
 	}
-	if l.Note != "" && l.BackupDir != "" {
-		dir, err := antigravityWriteNote(l.BackupDir, l.Dir, l.Note)
+	if l.BackupDir != "" {
+		dir, err := antigravityWriteFolder(l.BackupDir, l.Dir, l.Note)
 		if err != nil {
-			return nil, fmt.Errorf("write the launch note: %w", err)
+			return nil, fmt.Errorf("write Antigravity's folder in the backup: %w", err)
 		}
 		command = append(command, "--add-dir", dir)
 	}
@@ -78,16 +83,53 @@ func (Antigravity) Command(l Launch) ([]string, error) {
 	return append(command, "--settings", string(data)), nil
 }
 
-// antigravityWriteNote writes note as the rules file of its folder in backup, and
-// says the folder. Antigravity creates new files in the first of its workspace
-// folders by path, which the note's folder nearly always is, so the note ends
-// by naming the project as where to work.
-func antigravityWriteNote(backup, project, note string) (string, error) {
-	dir := filepath.Join(backup, antigravityNoteDir)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+// antigravityWriteFolder writes the agent's folder in backup, which --add-dir makes
+// part of the workspace, and says where it is: the note as its rules file, and the
+// hooks that report each conversation. Antigravity creates new files in the first
+// of its workspace folders by path, which this one nearly always is, so the note
+// ends by naming the project as where to work.
+func antigravityWriteFolder(backup, project, note string) (string, error) {
+	dir := filepath.Join(backup, antigravityDir)
+	if err := antigravityMoveOldFolder(backup, dir); err != nil {
 		return "", err
 	}
-	return dir, atomicfile.Write(filepath.Join(dir, "AGENTS.md"), []byte(antigravityNote(dir, project, note)), 0o600)
+	if err := os.MkdirAll(filepath.Join(dir, ".agents"), 0o700); err != nil {
+		return "", err
+	}
+	rules := filepath.Join(dir, "AGENTS.md")
+	if note == "" {
+		if err := os.Remove(rules); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	} else if err := atomicfile.Write(rules, []byte(antigravityNote(dir, project, note)), 0o600); err != nil {
+		return "", err
+	}
+	hooks, err := antigravityHooks(backup)
+	if err != nil {
+		return "", err
+	}
+	return dir, atomicfile.Write(filepath.Join(dir, ".agents", "hooks.json"), hooks, 0o600)
+}
+
+// antigravityOldDir is what the agent's folder was called while it held only the
+// note: an agent started before then has one, moved at its next start.
+const antigravityOldDir = "antigravity-note"
+
+// antigravityMoveOldFolder moves the old folder in backup to dir, or removes it when
+// dir is there too, which a start that failed between the two could leave.
+func antigravityMoveOldFolder(backup, dir string) error {
+	old := filepath.Join(backup, antigravityOldDir)
+	if _, err := os.Lstat(old); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+		return os.Rename(old, dir)
+	} else if err != nil {
+		return err
+	}
+	return os.RemoveAll(old)
 }
 
 // antigravityNote is the rules file's text: note, then where to work.

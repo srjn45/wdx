@@ -22,9 +22,9 @@ import (
 // stop each new agent at Codex's prompt to trust it. The wdx doc CODEX_RESUME.
 const codexTurnsFile = "codex-turns.jsonl"
 
-// codexSessionID is the form of Codex's session ids, which wdx's own also have; it
-// keeps one from being a pattern when looked for.
-var codexSessionID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+// sessionUUID is the form of the ids Codex and Antigravity give their sessions,
+// which wdx's own also have; it keeps one from being a pattern when looked for.
+var sessionUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // codexNotify is the -c that has Codex append each turn's JSON, its last argument, to
 // the turns file in backupDir.
@@ -45,7 +45,7 @@ func shellQuote(s string) string {
 // codexSessionFile is the file Codex keeps the session id in under home, or "" when it
 // keeps none: id is wdx's own until Codex's first turn, or Codex deleted it.
 func codexSessionFile(home, id string) (string, error) {
-	if !codexSessionID.MatchString(id) {
+	if !sessionUUID.MatchString(id) {
 		return "", nil
 	}
 	files, err := filepath.Glob(filepath.Join(home, ".codex", "sessions", "*", "*", "*", "rollout-*-"+id+".jsonl"))
