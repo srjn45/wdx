@@ -25,7 +25,6 @@ type Cursor struct {
 	NoBeginSession
 	NoBrief
 	NoDetached
-	NoSteer
 }
 
 // CursorID is Cursor's ID.
@@ -174,28 +173,50 @@ func cursorWritePlugin(dir, note string) (string, error) {
 const (
 	cursorPasteStart = "\x1b[200~"
 	cursorPasteEnd   = "\x1b[201~"
-	// cursorPasteSettle is the wait before Enter, which is lost when it comes in
-	// the same write as the paste.
+	// cursorPasteSettle is the wait before each Enter, which is lost when it comes
+	// in the same write as the paste.
 	cursorPasteSettle = 150 * time.Millisecond
 )
 
-// Deliver implements AiCodingAgent. A paste-end marker in the message is taken
-// out, or the rest would be typed as keys.
-func (Cursor) Deliver(w io.Writer, message string) error {
+// Deliver implements AiCodingAgent: as Steer, so a message sent while Cursor works
+// is read at its next step rather than after the turn.
+func (Cursor) Deliver(w io.Writer, message string) error { return cursorType(w, message) }
+
+// Steer implements AiCodingAgent: the paste, Enter, which queues it as the newest
+// follow-up in a turn, then Enter, which steers the oldest follow-up, with the
+// steering setting Command pins: during a tool the model gets it at once, while it
+// streams at the next tool call or the stream's end. At rest the first Enter
+// submits and the second does nothing. Checked on 2026.11.05 (the wdx doc
+// CURSOR_PARITY).
+func (Cursor) Steer(w io.Writer, message string) error { return cursorType(w, message) }
+
+// cursorType pastes message, then presses Enter twice, each once the keys before it
+// have settled. A paste-end marker in the message is taken out, or the rest would be
+// typed as keys, and a final backslash gets a space, as Cursor reads backslash then
+// Enter as a new line and leaves the message in the box.
+func cursorType(w io.Writer, message string) error {
 	for strings.Contains(message, cursorPasteEnd) {
 		message = strings.ReplaceAll(message, cursorPasteEnd, "")
+	}
+	if strings.HasSuffix(message, `\`) {
+		message += " "
 	}
 	if _, err := io.WriteString(w, cursorPasteStart+message+cursorPasteEnd); err != nil {
 		return err
 	}
-	time.Sleep(cursorPasteSettle)
-	_, err := io.WriteString(w, "\r")
-	return err
+	for range 2 {
+		time.Sleep(cursorPasteSettle)
+		if _, err := io.WriteString(w, "\r"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Interrupt implements AiCodingAgent: Ctrl+C, as Esc does not stop a turn that is
 // writing text. Ctrl+C puts the message that began the turn back in the input box,
-// and pressed again with nothing to stop, it quits.
+// and pressed again with nothing to stop, it quits. The holder never presses it, as
+// Cursor steers.
 func (Cursor) Interrupt() []byte { return []byte{0x03} }
 
 const cursorCommandTime = 30 * time.Second

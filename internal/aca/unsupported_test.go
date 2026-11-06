@@ -32,12 +32,12 @@ func TestStubsSayNotSupported(t *testing.T) {
 	}
 }
 
-// Codex, Claude Code and Antigravity steer; the others stop a turn for an instant
-// message.
+// Codex, Claude Code, Antigravity and Cursor steer; any other ACA stops a turn
+// for an instant message.
 func TestCanSteer(t *testing.T) {
 	t.Parallel()
 	for _, a := range aca.All() {
-		if got, want := aca.CanSteer(a), a.ID() == aca.CodexID || a.ID() == aca.ClaudeCodeID || a.ID() == aca.AntigravityID; got != want {
+		if got, want := aca.CanSteer(a), a.ID() == aca.CodexID || a.ID() == aca.ClaudeCodeID || a.ID() == aca.AntigravityID || a.ID() == aca.CursorID; got != want {
 			t.Errorf("CanSteer(%s) = %v, want %v", a.ID(), got, want)
 		}
 	}

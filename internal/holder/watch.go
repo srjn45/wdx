@@ -229,7 +229,7 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 			if !failed {
 				if state != parsed {
 					parsed = state
-					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "model", state.Model)
+					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model)
 				}
 				if state.Model != "" {
 					model = state.Model
@@ -282,7 +282,7 @@ func (w *screenWatch) publish(state screen.ScreenState) {
 	if statusOf(state) != statusOf(last) {
 		wake(w.statusChanged)
 	}
-	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "model", state.Model)
+	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model)
 }
 
 // isInput reports whether a frame of a client's input is what the fallback

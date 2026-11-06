@@ -195,6 +195,8 @@ func nextAction(state screen.ScreenState, instant, steers bool) (next action, re
 	switch {
 	case state.Draft:
 		return actionHold, "draft"
+	case state.SteerPending:
+		return actionHold, "steer pending"
 	case state.Activity == screen.ActivityWaiting:
 		return actionHold, "waiting"
 	case !state.InputBox:

@@ -27,6 +27,10 @@ type ScreenState struct {
 	// not only running something in the background. A footer cut off before it
 	// says so reads false, so a turn is never interrupted on a guess.
 	InTurn bool
+	// SteerPending is true when a message the ACA was told to take into its turn
+	// has not been taken yet, and a key that sends another would cut the turn
+	// short, as Cursor's Enter on a follow-up marked steering does.
+	SteerPending bool
 	// Model is the name of the AI model the ACA says it runs, when this screen
 	// says so, as "Haiku 5.5"; "" when it does not, which is most screens, so
 	// whoever reads the screen over time keeps the last.

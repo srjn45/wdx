@@ -28,8 +28,9 @@ const (
 )
 
 // testParser is Claude Code's parser with a test's hold on it: it notes the first
-// line of every screen, panics on one with BOOM and waits on one with HOLD until
-// the file release exists, having created held.
+// line of every screen, panics on one with BOOM, waits on one with HOLD until the
+// file release exists, having created held, and reads a steer pending on one with
+// STEERING, which no Claude Code screen shows.
 func testParser(dir string) ParseScreen {
 	return func(lines, undimmed []string) screen.ScreenState {
 		first := ""
@@ -52,7 +53,9 @@ func testParser(dir string) ParseScreen {
 				<-time.After(10 * time.Millisecond)
 			}
 		}
-		return aca.ClaudeCodeScreenParser{}.Parse(lines, undimmed)
+		state := aca.ClaudeCodeScreenParser{}.Parse(lines, undimmed)
+		state.SteerPending = first == "STEERING"
+		return state
 	}
 }
 

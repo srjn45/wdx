@@ -188,6 +188,10 @@ func TestNextAction(t *testing.T) {
 		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true, Draft: true}, instant: true, steers: true, want: actionHold, reason: "draft"},
 		{state: screen.ScreenState{Activity: unknown, InputBox: true}, instant: true, steers: true, want: actionHold, reason: "unknown"},
 		{state: screen.ScreenState{Activity: working}, instant: true, steers: true, want: actionHold, reason: "no input box"},
+		// A key that sends another message would cut the turn short.
+		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true, SteerPending: true}, want: actionHold, reason: "steer pending"},
+		{state: screen.ScreenState{Activity: working, InputBox: true, InTurn: true, SteerPending: true}, instant: true, steers: true, want: actionHold, reason: "steer pending"},
+		{state: screen.ScreenState{Activity: idle, InputBox: true, SteerPending: true}, steers: true, want: actionHold, reason: "steer pending"},
 	} {
 		if got, reason := nextAction(c.state, c.instant, c.steers); got != c.want || reason != c.reason {
 			t.Errorf("%+v instant %v steers %v: got %v %q, want %v %q", c.state, c.instant, c.steers, got, reason, c.want, c.reason)
@@ -287,6 +291,8 @@ func TestSendAgentHolds(t *testing.T) {
 		{reason: "draft", screen: "drafted one"},
 		{reason: "draft", screen: "drafted one", instant: true},
 		{reason: "no input box", screen: "printf one"},
+		{reason: "steer pending", screen: "working STEERING"},
+		{reason: "steer pending", screen: "working STEERING", instant: true},
 	} {
 		t.Run(fmt.Sprintf("%s instant %v", c.reason, c.instant), func(t *testing.T) {
 			t.Parallel()
@@ -294,7 +300,8 @@ func TestSendAgentHolds(t *testing.T) {
 			id := fmt.Sprintf("term-0000031%d", i)
 			dir, _ := f.watched(t, id, acaProgram(c.screen, "go", "idle two"))
 			conn := f.dial(t, id)
-			waitParsed(t, dir, "one")
+			// The screen's first line, which the shell function draws from its word.
+			waitParsed(t, dir, strings.Fields(c.screen)[1])
 			if err := conn.SendAgent("hello", c.instant); err != nil {
 				t.Fatal(err)
 			}

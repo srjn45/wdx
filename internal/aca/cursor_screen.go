@@ -33,7 +33,8 @@ import (
 //
 // What it is doing: "ctrl+c to stop" at the end of the box's line, or a spinner
 // line just above the box, is a turn; a line of tasks under it is a command the
-// turn left running; none of them is idle. Unlike Codex's, this parser reads idle
+// turn left running; none of them is idle. A follow-up the panel above marks
+// "· steering" is a steer pending, which another Enter would cut the turn for. Unlike Codex's, this parser reads idle
 // from what is missing, so a Cursor that changes how a turn shows would read idle
 // in one.
 type CursorScreenParser struct{}
@@ -45,6 +46,10 @@ var cursorBoxMarks = []string{"→", "!", "&"}
 var (
 	cursorInTurn = regexp.MustCompile(`\sctrl\+c to stop$`)
 	cursorTasks  = regexp.MustCompile(`^\d+ tasks?$`)
+	// cursorFollowUps begins the panel of queued follow-ups, cursorSteering ends
+	// the one being steered.
+	cursorFollowUps = "┌─ follow-ups"
+	cursorSteering  = "· steering"
 	// cursorCloudHint shows under the box in cloud mode.
 	cursorCloudHint = "^ "
 	// An approval replaces the box and the footer; Esc on it gives a box of its own
@@ -85,6 +90,7 @@ func (CursorScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 		state.Model = cursorModel(footer[0])
 	}
 	state.Activity, state.InTurn = cursorActivity(box[0], lines[:top], tasks)
+	state.SteerPending = cursorSteerPending(lines[:top])
 	// The mark and the placeholder are dim, but for the cursor's cell; what a human
 	// typed, and the mark with it, is not.
 	if top < len(undimmed) && cursorBoxLine(undimmed[top]) {
@@ -124,6 +130,28 @@ func cursorActivity(boxLine string, above []string, tasks bool) (screen.Activity
 		return screen.ActivityWorking, false
 	}
 	return screen.ActivityIdle, false
+}
+
+// cursorSteerPending is true when the panel of follow-ups marks one steering: Cursor
+// takes it at the next tool call or the end of the text it streams, and Enter on it
+// meanwhile stops the stream and sends it. The panel is the block just above the
+// box, or above the spinner's block in a turn; a narrow screen wraps the mark onto
+// a line of its own. A follow-up stuck steering after a human's Ctrl+C stays marked
+// until the next turn.
+func cursorSteerPending(above []string) bool {
+	block, start := codexBlockAbove(above)
+	if len(block) > 0 && cursorSpinner(block[0]) {
+		block, _ = codexBlockAbove(above[:start])
+	}
+	if len(block) == 0 || !strings.HasPrefix(strings.TrimSpace(block[0]), cursorFollowUps) {
+		return false
+	}
+	for _, line := range block[1:] {
+		if strings.HasSuffix(strings.TrimSpace(strings.Trim(strings.TrimSpace(line), "│")), cursorSteering) {
+			return true
+		}
+	}
+	return false
 }
 
 // cursorSpinner is the line that shows a turn: two braille cells, then what Cursor

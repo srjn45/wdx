@@ -15,12 +15,13 @@ import (
 var cursorRecordings = []string{"ready-120x40", "ready-40x24", "turns-120x40", "turns-40x24", "approval-120x40"}
 
 // cursorStep is what one step of those scripts left on Cursor's screen: whether a
-// message can go in, whether the box holds what a human put there, and what Cursor
-// was doing, as its screen says.
+// message can go in, whether the box holds what a human put there, what Cursor was
+// doing, as its screen says, and whether a follow-up shows steering.
 type cursorStep struct {
 	inputBox, draft bool
 	activity        screen.Activity
 	inTurn          bool
+	steerPending    bool
 }
 
 var (
@@ -64,13 +65,16 @@ var cursorAtStep = map[string]cursorStep{
 	"task_finished_wakes": cursorInTurn,
 	"after_wake":          cursorIdle,
 	"streaming":           cursorInTurn,
-	"steer_pending":       cursorInTurn,
+	// The follow-up shows steering until the stream ends.
+	"steer_pending": {inputBox: true, activity: screen.ActivityWorking, inTurn: true, steerPending: true},
 	// Press Ctrl+C again to exit takes the footer's place, and then the turn's
 	// message is back in the box.
 	"interrupted":       cursorNoBox,
-	"interrupted_later": cursorDraft,
-	"subagent":          cursorInTurn,
-	"after_subagent":    cursorIdle,
+	"interrupted_later": {inputBox: true, draft: true, activity: screen.ActivityIdle, steerPending: true},
+	// The follow-up left steering by Ctrl+C stays so through the next turn, which
+	// takes it at its end.
+	"subagent":       {inputBox: true, activity: screen.ActivityWorking, inTurn: true, steerPending: true},
+	"after_subagent": cursorIdle,
 
 	"approval":     cursorWaitingOn,
 	"denied_tell":  cursorWaitingOn,
@@ -109,9 +113,10 @@ func TestCursorOnRecordedScreens(t *testing.T) {
 					t.Fatalf("step %s is not in the table", step.name)
 				}
 				got := aca.CursorScreenParser{}.Parse(step.lines, step.undimmed)
-				if got.InputBox != want.inputBox || got.Draft != want.draft || got.Activity != want.activity || got.InTurn != want.inTurn {
-					t.Errorf("%s: input box %v, draft %v, %s, in turn %v; want %v, %v, %s, %v\n%s", step.name,
-						got.InputBox, got.Draft, got.Activity, got.InTurn, want.inputBox, want.draft, want.activity, want.inTurn, bottom(step.lines))
+				if got.InputBox != want.inputBox || got.Draft != want.draft || got.Activity != want.activity || got.InTurn != want.inTurn || got.SteerPending != want.steerPending {
+					t.Errorf("%s: input box %v, draft %v, %s, in turn %v, steer pending %v; want %v, %v, %s, %v, %v\n%s", step.name,
+						got.InputBox, got.Draft, got.Activity, got.InTurn, got.SteerPending,
+						want.inputBox, want.draft, want.activity, want.inTurn, want.steerPending, bottom(step.lines))
 				}
 				// At 40 columns the status line wraps, and the model is not read.
 				wantModel := ""
