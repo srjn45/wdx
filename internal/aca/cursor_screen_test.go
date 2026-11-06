@@ -178,6 +178,33 @@ func TestCursorModel(t *testing.T) {
 	}
 }
 
+// A directory too long for the screen wraps onto lines that do not start with a
+// path, as on cursor-agent 2026.11.05 run from a long scratch folder: the box is
+// still ready, and the status line above it, whole, names the model. A status line
+// that wrapped too names none.
+func TestCursorWrappedDirectory(t *testing.T) {
+	t.Parallel()
+	status := "  Gemini 3.8 Flash Low · 0.9%                                Run Everything"
+	wrappedStatus := []string{"  Gemini 3.8     · 0.8  Run Everything", "  Flash Low        %"}
+	for _, c := range []struct {
+		name   string
+		footer []string
+		model  string
+	}{
+		{"wrapped once", []string{status, "  /tmp/claude-1000/scratchpad/e2e/", "  proj · master"}, "Gemini 3.8 Flash Low"},
+		{"wrapped twice", []string{status, "  ~/dev/wdx/.worktrees/a-long-name/", "  internal/aca/testdata/cursor/", "  proj · master"}, "Gemini 3.8 Flash Low"},
+		{"status wrapped too", append(wrappedStatus, "  ~/dev/wdx/.worktrees/a-long-name/", "  proj · master"), ""},
+	} {
+		lines := append([]string{"  DONE1", "", "", "  → Add a follow-up", "", ""}, c.footer...)
+		undimmed := make([]string, len(lines))
+		undimmed[3] = "    A"
+		got := aca.CursorScreenParser{}.Parse(lines, undimmed)
+		if !got.InputBox || got.Draft || got.Activity != screen.ActivityIdle || got.Model != c.model {
+			t.Errorf("%s: input box %v, draft %v, %s, model %q; want true, false, idle, %q", c.name, got.InputBox, got.Draft, got.Activity, got.Model, c.model)
+		}
+	}
+}
+
 // TestCursorInTurnOnTheBoxLine: "ctrl+c to stop" on the box's line says a turn
 // without the spinner, which the recordings always show with it.
 func TestCursorInTurnOnTheBoxLine(t *testing.T) {

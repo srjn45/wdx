@@ -74,11 +74,8 @@ func (CursorScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 		}
 		footer = footer[1:]
 	}
-	// The status line, which a narrow screen wraps once, and the directory.
-	if len(footer) < 2 || len(footer) > 3 {
-		return unknown
-	}
-	if slices.ContainsFunc(footer, cursorBoxLine) {
+	statusLines, ok := cursorStatusLines(footer)
+	if !ok || slices.ContainsFunc(footer, cursorBoxLine) {
 		return unknown
 	}
 	box, top := codexBlockAbove(lines[:footerStart])
@@ -86,7 +83,7 @@ func (CursorScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 		return unknown
 	}
 	state := screen.ScreenState{InputBox: true}
-	if len(footer) == 2 {
+	if statusLines == 1 {
 		state.Model = cursorModel(footer[0])
 	}
 	state.Activity, state.InTurn = cursorActivity(box[0], lines[:top], tasks)
@@ -97,6 +94,23 @@ func (CursorScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 		state.Draft = true
 	}
 	return state
+}
+
+// cursorStatusLines is how many lines of footer, the status line and the directory,
+// the status line takes: a narrow screen wraps it once. The directory is the first
+// line after it that starts with a path, as "~/w/repo · main", and a long one wraps
+// onto as many lines as it needs, the rest of it not starting so. A footer with no
+// such line is read as the status line, wrapped or not, and one line of directory.
+func cursorStatusLines(footer []string) (int, bool) {
+	for i := 1; i < len(footer) && i <= 2; i++ {
+		if line := strings.TrimSpace(footer[i]); strings.HasPrefix(line, "~") || strings.HasPrefix(line, "/") {
+			return i, true
+		}
+	}
+	if len(footer) == 2 || len(footer) == 3 {
+		return len(footer) - 1, true
+	}
+	return 0, false
 }
 
 // cursorWaiting is true when the last block of the screen is an approval, or the
