@@ -1,6 +1,6 @@
 # Keeping an agent's ACA running
 
-Status: an agent's history and restarting an agent in a new session are built for Claude Code. Codex's restart and brief are built too: `Codex.BeginSession` records each restart in `codex-restarts.jsonl`, and `BackUp` keeps the agent in the restart's session until the new conversation's first turn; `Codex.Brief` reads no further back than the latest `/new`, which that file tells from a restart (the wdx doc CODEX_BRIEF). Resuming an ACA that ended is decided and not built.
+Status: an agent's history and restarting an agent in a new session are built for Claude Code. Codex's restart and brief are built too: `Codex.BeginSession` records each restart in `codex-restarts.jsonl`, and `BackUp` keeps the agent in the restart's session until the new conversation's first turn; `Codex.Brief` reads no further back than the latest `/new`, which that file tells from a restart (the wdx doc CODEX_BRIEF). Antigravity has all of them as Codex does, its restart logic shared with Codex's in `internal/aca/restarts.go` (Antigravity's sessions, below; the wdx doc ANTIGRAVITY_PARITY). Resuming an ACA that ended is decided and not built.
 
 ## Resuming an ACA that ended
 
@@ -56,7 +56,7 @@ Tool calls and results are 73% and 90% of the two transcripts measured, so the l
 
 - **It starts at** the latest compaction summary, or the first request when there is none.
 - **It goes on with** every message since, without thinking, and each tool call as one line: its name, a short form of its input, whether it failed, and its line in `transcript.md`, which `--from` reads in full.
-- **`/clear` is respected:** the brief looks no further back than the session a `/clear` began, or for Codex a `/new`.
+- **`/clear` is respected:** the brief looks no further back than the session a `/clear` began, or for Codex a `/new`. Antigravity's `/clear` counts too, typed by a person or pasted by `wdx agent send`, as Antigravity runs a pasted `/clear` as the command.
 - **A restart is not a starting point.** It looks back through sessions a restart began, which therefore have to be marked, or a second restart would start from the first one's message and lose the original request, since the brief the agent read was a tool result.
 - **It has a size limit,** 64 KB to begin with. Over it, the starting point stays, the oldest messages after it go, and a line says which lines of `transcript.md` hold them.
 
@@ -101,6 +101,8 @@ Checked on Claude Code 2.1.316, on a real job and through a login shell: `Detach
 
 Codex: nothing of its conversation runs outside its terminal, so it keeps `NoDetached` (the wdx doc CODEX_DETACHED). Checked on Codex 0.163.0, hung up as wdx's stop hangs up: mid-turn, the session file stopped growing and the turn never finished, though a shared `codex app-server --managed-daemon` runs on the machine; a command in a turn, a background terminal, and a normal quit left nothing running. A compound command in a turn (`sleep 55; echo late`) left its `sleep` running, reparented to the user's systemd: Codex kills the shell it started, not the shell's group. Such leftovers are processes, not the conversation, so they are not `Detached`'s (docs/TERMINALS.md).
 
+Antigravity: nothing either, so it keeps `NoDetached` (the wdx doc ANTIGRAVITY_PARITY). Checked on agy 1.5.2: it is one process, each command it runs in a process group of its own, and subagents run inside it. Hung up mid-turn with `sleep 41; echo late > late.txt` running, with that command moved to a background task, and at rest with a background task running, everything ended, and `late.txt` was never written. On resume Antigravity tells the model its subagents and background tasks were stopped. `agy remote-control` is a separate daemon wdx never starts.
+
 ## An ACA without these yet
 
 An ACA that has not written `BackUp`, `BeginSession` or `Brief` embeds `aca.NoBackUp`, `aca.NoBeginSession` and `aca.NoBrief`, which answer `aca.ErrNotSupported` (a `BackUp` may answer it with the session it found), and `aca.NoDetached`, which finds nothing. Its agents start and are removed as any other, with no backup kept, logged at debug. `agent transcript` and `--brief` fail with `aca_unsupported` rather than return nothing, and `agent restart` with it before anything stops, as `aca.CanBeginSession` says (the wdx doc ACA_SELECT).
@@ -132,9 +134,21 @@ Putting back a session file Codex deleted, checked on Codex 0.163.0 under tmux b
 - It resumes as well with the file under another day's directory, so Codex finds the file by its name, not by sqlite's `rollout_path`.
 - Codex draws the screen's history from its own sqlite but the model's context from the file: with an older copy put back, the screen showed a turn the file lacked. wdx's copy is complete, so the two agree.
 
+### Antigravity's sessions
+
+Antigravity names its own conversations too, a UUID each, kept in `~/.gemini/antigravity-cli/conversations/<id>.db` (SQLite) with its steps in `brain/<id>/` (the wdx doc ANTIGRAVITY_PARITY). It has no flag for the system prompt, so `Command` adds a folder of the agent's own, `<agent dir>/antigravity` (once `antigravity-note`, moved at the first start), with `--add-dir`: the launch note as its `AGENTS.md`, and `.agents/hooks.json` with a `SessionStart` hook, under the key `wdx`, that appends the event's JSON as a line to `antigravity-hooks.jsonl` in the backup. It runs beside the user's own hooks, never in place of them, and with no trust prompt. On 1.5.2 it fires at the first message of each new conversation, a `/clear`'s included, and not for a resumed one, which does no harm as only the latest is resumed. `Antigravity.BackUp` takes the latest conversation of that file that no other names as a subagent (in `brain/<parent>/.system_generated/subagents/<id>.json`), and its `workspacePaths` without the agent's folder as where it last worked. `Command` passes `--conversation=<id>` only when Antigravity keeps that db: given an id it lacks, Antigravity warns and starts a new conversation, exit 0. So before the first message, and after a restart, a start begins a new conversation.
+
+The backup copies, with Claude Code's `copyNewBytes`, each user conversation's `brain/<id>/.system_generated/logs/transcript_full.jsonl`, a JSON line per step, to `transcripts/<id>.jsonl`, and the subagents its brain names, theirs in turn, to `transcripts/<id>/subagents/<sub>.jsonl`. To stay resumable once Antigravity deletes a conversation, it snapshots its db with `VACUUM INTO`, read-only and safe while Antigravity writes, to `antigravity-conversations/<id>.db`, only when the db or its non-empty `-wal` changed since the last snapshot, whose time is set to that change; `Command` puts the snapshot back, removing a `-wal` or `-shm` left without its db first, and resumes. The brain is not needed to resume. It renders `transcript.md` in Claude Code's format, each conversation under `# Session <id> · antigravity` (`internal/aca/antigravity_render.go`): `## User` for the words in `<USER_REQUEST>`, one `## Assistant` per turn with `### Thinking`, the answer, `### Tool: <name>` with its arguments and `### Result` or `### Result (error)` without Antigravity's `Created At` lines (a result with no call is `Tool: unknown`), `## Compacted` with the requests and summary a compaction keeps, and `## System` for a background task or subagent reporting back; API errors are skipped. How far it has got is in `antigravity-rendered.json`, so a transcript Antigravity starts again goes on with no repeats.
+
+`agent transcript`, `--brief` and `agent restart` work. `BeginSession` appends `{"session": <wdx's new id>, "conversations": <how many the hooks file names>}` to `antigravity-restarts.jsonl`; until a user conversation first comes at or after that position, `BackUp` says the agent is in the restart's session, which a start begins as a new conversation. The brief reads no further back than the latest `/clear`, a user conversation after the first that is no restart's, and starts at the latest compaction since, as Antigravity's summary is readable, else the first request.
+
+Checked by hand on agy 1.5.2, each with a binary built from the change in a home and daemon of its own, on `gemini-3.8-flash-low`: the first turn wrote the hooks file and the agent's `session_id` became the conversation; closing and opening the project ran `agy --conversation=<id>` and it remembered a code word; with its db deleted it was put back and resumed; after a restart the agent read its brief and named what it had done with no tool; after `/clear` and a turn the brief started after the `/clear`, and still did after a second restart.
+
+From create to restart, checked on 2026-11-06 with a binary built from the finished plan, on `gemini-3.8-flash-low`: the agent started ready and its `--prompt` was taken, the file it wrote landing in the project; `session_id` and `current_dir` became the conversation and the project; during a turn running `sleep 12` a plain and an instant message (the instant one steered) were both taken into the turn, which Antigravity had moved the command to a background task in after 10 s, and answered in one reply; it read `working` through the turn and `idle` after; `transcript.md` held the turn, both messages and the task's `## System` report; `agent restart` wrote `{"session": <id>, "conversations": 1}`, and the new conversation ran the brief and, asked with no tool, named both files and every reply.
+
 ## Keeping an agent's history
 
-Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific; Claude Code's and Codex's are built (Codex's under Codex's sessions above). `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.
+Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversation, readable and greppable at any time, until the agent is removed, and for 7 days after. Each ACA keeps its history in its own way, so the backup is ACA-specific; Claude Code's, Codex's and Antigravity's are built (theirs under their sessions above). `transcript.md` only ever grows, across compactions and clears, so that a later restart can have an agent read its last lines, and older ones if it needs them. Decided by the human: an agent started again goes on with its latest conversation. docs/TRANSCRIPT_USES.md lists what the history could be used for.
 
 ```
 ~/.wdx/agents/<agent id>/
@@ -145,6 +159,12 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
   codex-turns.jsonl                  every turn of Codex's, told by its notify
   codex-sessions.json                where Codex kept each of its sessions' files
   codex-rendered.json                how far transcript.md has got in Codex's sessions
+  codex-restarts.jsonl               each restart of a Codex agent
+  antigravity/                       Antigravity's note and hooks, given with --add-dir
+  antigravity-hooks.jsonl            every conversation Antigravity began, told by its hook
+  antigravity-conversations/<id>.db  a snapshot of each conversation's db, to resume from
+  antigravity-rendered.json          how far transcript.md has got in Antigravity's conversations
+  antigravity-restarts.jsonl         each restart of an Antigravity agent
   transcripts/<session id>.jsonl     the ACA's own bytes
   transcripts/<session id>/          its subagents/, and Claude's tool-results/
   transcript.md                      all of it as text, oldest first: what wdx reads and grep finds
