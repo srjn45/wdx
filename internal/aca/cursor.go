@@ -22,8 +22,6 @@ import (
 // Cursor is Anysphere's Cursor CLI, cursor-agent: the wdx docs ACA_CURSOR and
 // CURSOR_PARITY.
 type Cursor struct {
-	NoBeginSession
-	NoBrief
 	NoDetached
 }
 

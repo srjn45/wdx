@@ -21,6 +21,7 @@ const cursorChatsDir = "chats"
 // cursorChatMeta is what wdx reads of a chat's meta.json.
 type cursorChatMeta struct {
 	Cwd             string `json:"cwd"`
+	CreatedAtMs     int64  `json:"createdAtMs"`
 	HasConversation bool   `json:"hasConversation"`
 	UpdatedAtMs     int64  `json:"updatedAtMs"`
 }
@@ -36,7 +37,8 @@ type cursorChat struct {
 // of the agent's chats and snapshots each store that changed (cursor_render.go), and
 // says the session is the chat that has a conversation and was updated last, and its
 // directory, where it must be resumed. Before the first message there is none, and the
-// agent keeps wdx's id, which Command starts as a new chat.
+// agent keeps wdx's id, which Command starts as a new chat; after a restart, the same
+// until the restart's chat has a message.
 func (Cursor) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	chats, err := cursorChats(filepath.Join(l.BackupDir, cursorConfigDir))
 	if err != nil {
@@ -46,7 +48,22 @@ func (Cursor) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	// A chat with no message yet, as /clear leaves it, has nothing to keep.
 	chats = slices.DeleteFunc(chats, func(c cursorChat) bool { return !c.HasConversation })
 	failed := cursorBackUpChats(ctx, l.BackupDir, chats, time.Now())
+	restarts, err := cursorReadRestarts(l.BackupDir)
+	if err != nil {
+		return Backup{}, errors.Join(failed, err)
+	}
+	// After a restart, only a chat made since counts: until one has a message, the
+	// agent is in the restart's session.
+	made := slices.Clone(chats)
+	cursorSortByMade(made)
+	after, restart := cursorAfterRestart(made, restarts)
+	chats = slices.DeleteFunc(chats, func(c cursorChat) bool {
+		return !slices.ContainsFunc(after, func(a cursorChat) bool { return a.ID == c.ID })
+	})
 	if len(chats) == 0 {
+		if restart != nil {
+			return Backup{Session: restart.Session}, failed
+		}
 		return Backup{}, failed
 	}
 	latest := chats[len(chats)-1]

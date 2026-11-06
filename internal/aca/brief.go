@@ -34,7 +34,7 @@ const (
 // compactionsSummarize are the ACAs whose compactions keep a summary the brief can
 // read, so that one is a starting point. Codex keeps its summary encrypted: starting at
 // its compaction would leave out everything before it.
-var compactionsSummarize = map[string]bool{ClaudeCodeID: true, AntigravityID: true}
+var compactionsSummarize = map[string]bool{ClaudeCodeID: true, AntigravityID: true, CursorID: true}
 
 // readTranscriptBrief reads TranscriptFile once, keeping no more than limit: a new
 // starting point drops all before it, and the oldest messages after it go once they do
@@ -365,8 +365,9 @@ const (
 )
 
 // transcriptInputKeys are what a tool's input is best told by, in order.
-// Antigravity's tools name theirs with a capital.
-var transcriptInputKeys = []string{"command", "CommandLine", "file_path", "path", "AbsolutePath", "Path", "TargetFile", "notebook_path", "pattern", "query", "url", "skill", "description", "prompt"}
+// Antigravity's tools name theirs with a capital. Cursor's CallDynamicTool is told by
+// the tool it calls, its toolName, as its first string is the tool's namespace.
+var transcriptInputKeys = []string{"command", "CommandLine", "file_path", "path", "AbsolutePath", "Path", "TargetFile", "notebook_path", "pattern", "glob_pattern", "query", "search_term", "url", "skill", "description", "prompt", "toolName"}
 
 // transcriptShortInput is a tool's input in a few words, with a space before them. An
 // input that is not a JSON object, as Codex's apply_patch writes, is told by its first

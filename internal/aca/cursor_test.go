@@ -29,9 +29,6 @@ func TestCursorIsKnown(t *testing.T) {
 	if aca.Default().ID() != aca.ClaudeCodeID {
 		t.Fatalf("the default is %q, want Claude Code first", aca.Default().ID())
 	}
-	if aca.CanBeginSession(aca.Cursor{}) {
-		t.Fatal("Cursor can begin a session, though it has no sessions yet")
-	}
 }
 
 func TestCursorCommand(t *testing.T) {

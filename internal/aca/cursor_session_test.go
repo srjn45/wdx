@@ -21,22 +21,37 @@ type cursorChat struct {
 // cursorBackup is a backup whose config folder holds the chats, as Cursor keeps them.
 func cursorBackup(t *testing.T, chats ...cursorChat) string {
 	t.Helper()
+	backup := t.TempDir()
+	addCursorChats(t, backup, chats...)
+	return backup
+}
+
+// addCursorChats writes the chats' meta.json in the backup's config folder, each made
+// when it was last updated, unless it was made before.
+func addCursorChats(t *testing.T, backup string, chats ...cursorChat) {
+	t.Helper()
 	sample, err := os.ReadFile(filepath.Join("testdata", "cursor", "2026.11.05", "session", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	backup := t.TempDir()
 	for _, c := range chats {
+		dir := filepath.Join(backup, "cursor-config", "chats", c.hash, c.id)
+		data := sample
+		if was, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
+			data = was
+		}
 		var meta map[string]any
-		if err := json.Unmarshal(sample, &meta); err != nil {
+		if err := json.Unmarshal(data, &meta); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			meta["createdAtMs"] = c.updatedAtMs
+		}
 		meta["cwd"], meta["hasConversation"], meta["updatedAtMs"] = c.cwd, c.hasConversation, c.updatedAtMs
-		data, err := json.Marshal(meta)
+		data, err = json.Marshal(meta)
 		if err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(backup, "cursor-config", "chats", c.hash, c.id)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +59,6 @@ func cursorBackup(t *testing.T, chats ...cursorChat) string {
 			t.Fatal(err)
 		}
 	}
-	return backup
 }
 
 // cursorConfigOnly is a backup whose config folder holds no chats yet, as a start

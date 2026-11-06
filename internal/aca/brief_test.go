@@ -18,6 +18,12 @@ func TestBriefStartsAtACompactionOnlyWhereItHasASummary(t *testing.T) {
 		wantInOrder(t, text, "## Compacted", "the summary", "and on")
 		wantNot(t, text, "the first request")
 	})
+	t.Run("cursor", func(t *testing.T) {
+		t.Parallel()
+		_, text := newClaudeBackup(t).brief(t, 64<<10, "# Session s-1 · cursor\n\n"+conversation)
+		wantInOrder(t, text, "## Compacted", "the summary", "and on")
+		wantNot(t, text, "the first request")
+	})
 	t.Run("codex", func(t *testing.T) {
 		t.Parallel()
 		_, text := newClaudeBackup(t).brief(t, 64<<10, "# Session s-1 · codex\n\n"+conversation)
@@ -58,4 +64,20 @@ func TestBriefTellsAntigravityToolsInAFewWords(t *testing.T) {
 	wantInOrder(t, text, "- run_command echo hello (line ", "- view_file /work/a.go (line ",
 		"- write_file /work/b.txt (line ", "- write_to_file /work/c.txt (line ")
 	wantNot(t, text, "/work\n", "alpha", "beta")
+}
+
+// Cursor's tool calls are told by the keys its tools have: Glob by its glob_pattern, a
+// search by its search_term, and CallDynamicTool by the tool it calls, not the
+// namespace that comes first.
+func TestBriefTellsCursorToolsInAFewWords(t *testing.T) {
+	t.Parallel()
+	transcript := "# Session s-1 · cursor\n\n" +
+		message("User", 1, "do it") +
+		"## Assistant · 2026-11-01T13:02:00.000Z\n\n" +
+		toolCall("Glob", `{"target_directory":"/work/repo","glob_pattern":"**/*.go"}`, "a.go", false) +
+		toolCall("SemanticSearch", `{"target_directories":[],"search_term":"where the brief starts"}`, "brief.go", false) +
+		toolCall("CallDynamicTool", `{"arguments":{"description":"run it"},"namespace":"cursor","toolName":"Task"}`, "done", false)
+	_, text := newClaudeBackup(t).brief(t, 64<<10, transcript)
+	wantInOrder(t, text, "- Glob **/*.go (line ", "- SemanticSearch where the brief starts (line ", "- CallDynamicTool Task (line ")
+	wantNot(t, text, "/work/repo", "cursor (line")
 }
