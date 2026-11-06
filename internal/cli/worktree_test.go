@@ -550,11 +550,11 @@ func waitWorking(t *testing.T, home, id string) {
 	})
 }
 
-// TestWorktreeAskingAgent: the agent asking to land or rebase its worktree, always
-// mid-turn as it runs the command, is not counted as working there; another is.
-func TestWorktreeAskingAgent(t *testing.T) {
-	t.Parallel()
-	home := newHome(t)
+// askingAgentHome is a home whose worktree "work" of project app holds one
+// commit to land, with an agent working in it for each of names, by their ids.
+func askingAgentHome(t *testing.T, names ...string) (home, app string, ids []string) {
+	t.Helper()
+	home = newHome(t)
 	app, work := worktreeProject(t, home)
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 	if err := os.WriteFile(filepath.Join(app, ".git", "info", "exclude"), []byte("run\n"), 0o644); err != nil {
@@ -569,34 +569,55 @@ func TestWorktreeAskingAgent(t *testing.T) {
 	if v, exit := wdxJSON(t, home, "project", "open", "--local", work); exit != api.ExitOK {
 		t.Fatalf("open the worktree: exit %d, %+v", exit, v)
 	}
-	self := newAgent(t, home, work, "self")
-	other := newAgent(t, home, work, "other")
-	waitWorking(t, home, self.Id)
-	waitWorking(t, home, other.Id)
+	for _, name := range names {
+		ids = append(ids, newAgent(t, home, work, name).Id)
+	}
+	for _, id := range ids {
+		waitWorking(t, home, id)
+	}
+	return home, app, ids
+}
 
+// TestWorktreeAskingAgentAnotherWorking: the agent asking is not counted as
+// working in its worktree, but another agent working there still is.
+func TestWorktreeAskingAgentAnotherWorking(t *testing.T) {
+	t.Parallel()
+	home, app, ids := askingAgentHome(t, "self", "other")
 	for _, command := range []string{"rebase", "land"} {
-		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", self.Id)
+		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", ids[0])
 		if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
 			t.Errorf("%s with another working: exit %d, %+v", command, exit, v)
 		}
-		v, exit = wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", "agent-nope")
+	}
+}
+
+// TestWorktreeAskingAgentUnknown: an --agent-id that is no agent of the project
+// is not_found, so that a mistyped id never skips the check.
+func TestWorktreeAskingAgentUnknown(t *testing.T) {
+	t.Parallel()
+	home, app, _ := askingAgentHome(t)
+	for _, command := range []string{"rebase", "land"} {
+		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", "agent-nope")
 		if exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
 			t.Errorf("%s by an unknown agent: exit %d, %+v", command, exit, v)
 		}
 	}
-	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--id", other.Id, "--stop-running"); exit != api.ExitOK {
-		t.Fatalf("remove other: exit %d, %+v", exit, v)
-	}
+}
 
+// TestWorktreeAskingAgentItself: the agent working in a worktree, always
+// mid-turn as it runs the command, rebases and lands it when it says who it is.
+func TestWorktreeAskingAgentItself(t *testing.T) {
+	t.Parallel()
+	home, app, ids := askingAgentHome(t, "self")
 	v, exit := wdxWorktree(t, home, app, "rebase", "--name", "work")
 	if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
 		t.Errorf("rebase not saying who asks: exit %d, %+v", exit, v)
 	}
-	r, exit := wdxRebase(t, home, app, "work", "--agent-id", self.Id)
+	r, exit := wdxRebase(t, home, app, "work", "--agent-id", ids[0])
 	if exit != api.ExitOK || r.Result != api.ResultUpToDate {
 		t.Errorf("rebase by the agent working there: exit %d, %+v", exit, r)
 	}
-	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--agent-id", self.Id, "--json")
+	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--agent-id", ids[0], "--json")
 	var landed worktreeLanded
 	if err := json.Unmarshal([]byte(out.stdout), &landed); err != nil || out.exit != api.ExitOK || landed.Result != api.ResultLanded {
 		t.Errorf("land by the agent working there: %+v, %v", out, err)
