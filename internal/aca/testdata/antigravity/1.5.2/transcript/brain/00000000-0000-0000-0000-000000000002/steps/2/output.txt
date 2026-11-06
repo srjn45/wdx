@@ -1,0 +1,5 @@
+Command exited with code 0.
+
+Command output:
+one
+AGENTS.md
