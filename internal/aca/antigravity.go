@@ -17,13 +17,12 @@ import (
 )
 
 // Antigravity is Google's Antigravity CLI. It has written its command, its
-// session, its delivering, its screen parser and its models; the rest are
-// stand-ins. The wdx docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
+// session, its delivering and steering, its screen parser and its models; the
+// rest are stand-ins. The wdx docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
 	NoBeginSession
 	NoBrief
 	NoDetached
-	NoSteer
 }
 
 // AntigravityID is Antigravity's ID.
@@ -65,8 +64,8 @@ func (Antigravity) Command(l Launch) ([]string, error) {
 		}
 		command = append(command, "--add-dir", dir)
 	}
-	// Queued, as the inbox types messages during a turn and a user's
-	// send-immediately would have them interrupt it.
+	// Queued, so that alt+m, which does the opposite of this setting, sends a
+	// message to the running turn rather than queueing it for after the turn.
 	settings := map[string]any{"queuedMessages": "queue"}
 	if l.Dir != "" {
 		// Its question whether to trust a new folder would stop the agent until a
@@ -141,11 +140,25 @@ func antigravityNote(dir, project, note string) string {
 	return text + "\n"
 }
 
-// Deliver implements AiCodingAgent, as Claude Code's: a bracketed paste keeps a
-// message's newlines content, and Enter is a key of its own. Antigravity needed no
-// wait before Enter on 1.5.0; Claude Code's is kept as a margin. A paste-end
-// marker in the message is taken out, or the rest would be typed as keys.
+// Deliver implements AiCodingAgent: the message is read at the turn's next step, as
+// Claude Code reads one, and submitted at rest, where alt+m does as Enter. Checked
+// on 1.5.2 (the wdx doc ANTIGRAVITY_PARITY).
 func (Antigravity) Deliver(w io.Writer, message string) error {
+	return antigravityType(w, message)
+}
+
+// Steer implements AiCodingAgent: the same keys as Deliver, as alt+m already gives
+// the message to the running turn. It waits for the next step: the running tool's
+// end, which it does not stop, or the end of the model's answer when no tool runs.
+func (Antigravity) Steer(w io.Writer, message string) error {
+	return antigravityType(w, message)
+}
+
+// antigravityType pastes message, then presses alt+m once the paste has settled. A
+// bracketed paste keeps a message's newlines content, and a paste-end marker in the
+// message is taken out, or the rest would be typed as keys. alt+m is one write, or
+// Antigravity could read its Esc alone, which interrupts the turn.
+func antigravityType(w io.Writer, message string) error {
 	for strings.Contains(message, antigravityPasteEnd) {
 		message = strings.ReplaceAll(message, antigravityPasteEnd, "")
 	}
@@ -153,7 +166,7 @@ func (Antigravity) Deliver(w io.Writer, message string) error {
 		return err
 	}
 	time.Sleep(antigravityPasteSettle)
-	_, err := io.WriteString(w, "\r")
+	_, err := io.WriteString(w, antigravitySendNow)
 	return err
 }
 
@@ -161,6 +174,9 @@ const (
 	antigravityPasteStart  = "\x1b[200~"
 	antigravityPasteEnd    = "\x1b[201~"
 	antigravityPasteSettle = 150 * time.Millisecond
+	// antigravitySendNow is alt+m, which sends a message to the running turn with
+	// queuedMessages set to queue, and submits it at rest.
+	antigravitySendNow = "\x1bm"
 )
 
 // Interrupt implements AiCodingAgent. Ctrl+C would end it.
