@@ -38,8 +38,8 @@ func (Cursor) ID() string { return CursorID }
 // agent too, a name too common to say Cursor is installed.
 func (Cursor) Program() string { return "cursor-agent" }
 
-// ScreenParser implements AiCodingAgent: none of its own yet.
-func (Cursor) ScreenParser() ScreenParser { return NoScreenParser{} }
+// ScreenParser implements AiCodingAgent.
+func (Cursor) ScreenParser() ScreenParser { return CursorScreenParser{} }
 
 // cursorPluginDir is the plugin Command writes into an agent's backup to give the
 // launch note, as Cursor has no flag that adds to its system prompt.
