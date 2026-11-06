@@ -20,12 +20,12 @@ func newWorktreeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worktree",
 		Short: "Read a project's worktrees, what is uncommitted and what a PR would show, land them and remove them",
-		Long: "All but land and remove only read, so they can run beside any git command: they take\n" +
+		Long: "All but land, rebase and remove only read, so they can run beside any git command: they take\n" +
 			"no lock on the repository. wdx agent create --worktree creates a worktree.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeLandCmd(), newWorktreeListCmd(), newWorktreeRemoveCmd())
+	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeLandCmd(), newWorktreeListCmd(), newWorktreeRebaseCmd(), newWorktreeRemoveCmd())
 	return cmd
 }
 
@@ -341,6 +341,75 @@ func (r worktreeLanded) text(w io.Writer, st style.Style) {
 	}
 	if r.PushError != nil {
 		fmt.Fprintln(w, st.Warning("not pushed: ")+*r.PushError)
+	}
+}
+
+func newWorktreeRebaseCmd() *cobra.Command {
+	var scope projectScope
+	var name string
+	cmd := &cobra.Command{
+		Use:   "rebase --name <worktree> [--project-id <id> | --project-name <name>]",
+		Short: "Rebase a worktree onto its base, the default branch",
+		Long: "Landing's rebase on its own: no check, and the base does not move. A\n" +
+			"conflict undoes it, leaving everything as it was, and lists the files; files\n" +
+			"not committed refuse it, as nothing is stashed. Either is for an agent to\n" +
+			"deal with: this sends nothing to one. A branch on origin is pushed again once\n" +
+			"rebased, over its commit there before the rebase only, never over another's.",
+		Example: examples(
+			"Rebase a worktree", identity.Name+" worktree rebase --name auth-fix",
+			"As JSON", identity.Name+" worktree rebase --name auth-fix --project-name app --json",
+		),
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			outputNote: "What it was rebased onto, or that it was up to date.\n" + `With --json: {"result": "rebased", "worktree": "...", ...}`,
+			resultList: "rebased, up_to_date",
+			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeDetachedHead, api.ErrorCodeInvalidPath, api.ErrorCodeNoLocalBase,
+				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed, api.ErrorCodeRebaseFailed,
+				api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ref, dir, err := worktreeScopeOf(cmd, scope)
+			if err != nil {
+				return err
+			}
+			r, err := clientOf(cmd).RebaseWorktree(cmd.Context(), name, ref, dir)
+			if err != nil {
+				return outsideHint(inPlanHint(rebaseHint(err)), scope, "")
+			}
+			return printResult(cmd, worktreeRebased(r))
+		},
+	}
+	scope.addFlags(cmd)
+	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
+	cmd.MarkFlagRequired("name")
+	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	return cmd
+}
+
+// rebaseHint says what to do about a rebase refused or undone: an agent's work, which
+// the CLI never asks for itself.
+func rebaseHint(err error) error {
+	switch problemCode(err) {
+	case api.ErrorCodeRebaseFailed:
+		return &hinted{err, "nothing changed; ask an agent to rebase, resolving the conflicts, with " + identity.Name + " agent send"}
+	case api.ErrorCodeNotCommitted:
+		return &hinted{err, "nothing is stashed; ask an agent to commit with " + identity.Name + " agent send, then rebase again"}
+	case api.ErrorCodePushFailed:
+		return &hinted{err, "the rebase is kept, and nothing on origin was overwritten: see what was pushed there since"}
+	}
+	return err
+}
+
+type worktreeRebased api.WorktreeRebased
+
+func (r worktreeRebased) text(w io.Writer, st style.Style) {
+	if r.Result == api.ResultUpToDate {
+		fmt.Fprintln(w, st.Success("up to date:")+" worktree "+st.Name(r.Worktree)+" already sits on "+st.Name(r.Base))
+		return
+	}
+	fmt.Fprintln(w, st.Success("rebased")+" worktree "+st.Name(r.Worktree)+" onto "+st.Name(r.Base))
+	if r.Pushed {
+		fmt.Fprintln(w, "pushed to origin")
 	}
 }
 

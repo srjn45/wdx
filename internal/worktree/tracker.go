@@ -365,7 +365,7 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 			continue
 		}
 		was, seen := known[s.Path]
-		s.Files, s.Base, s.Ahead, s.Added, s.Removed, s.Committed, s.Comments = was.Files, was.Base, was.Ahead, was.Added, was.Removed, was.Committed, was.Comments
+		s.Files, s.Base, s.Ahead, s.Behind, s.Added, s.Removed, s.Committed, s.Comments = was.Files, was.Base, was.Ahead, was.Behind, was.Added, was.Removed, was.Committed, was.Comments
 		s.Unread = !seen || was.Unread
 	}
 

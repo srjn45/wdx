@@ -48,6 +48,8 @@ type Status struct {
 	Base   string // what its commits are measured against; "" when nothing fits
 	// Ahead is how many commits it has that Base has not; nil when not known.
 	Ahead *int
+	// Behind is how many commits Base has that it has not; nil when not known.
+	Behind *int
 	// Added and Removed are the lines of those commits; nil when not known.
 	Added, Removed *int
 	Files          []File
@@ -224,7 +226,7 @@ func readFiles(ctx context.Context, s *Status) error {
 
 // readCommits reads how the commits of s differ from its base.
 func readCommits(ctx context.Context, s *Status) error {
-	s.Base, s.Ahead, s.Added, s.Removed, s.Committed = "", nil, nil, nil, nil
+	s.Base, s.Ahead, s.Behind, s.Added, s.Removed, s.Committed = "", nil, nil, nil, nil, nil
 	if s.Missing || s.Head == "" {
 		return nil
 	}
@@ -244,7 +246,7 @@ func readCommits(ctx context.Context, s *Status) error {
 		}
 		return err
 	}
-	s.Ahead = &sum.Ahead
+	s.Ahead, s.Behind = &sum.Ahead, &sum.Behind
 	if sum.Lines {
 		s.Added, s.Removed = &sum.Added, &sum.Removed
 	}

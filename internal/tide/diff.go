@@ -796,6 +796,9 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 	if key, ok := m.landBarKey(worktree); ok {
 		keys = append(keys, key)
 	}
+	if key, ok := m.rebaseBarKey(worktree); ok {
+		keys = append(keys, key)
+	}
 	return keys
 }
 
@@ -1203,6 +1206,9 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		m.askCommit(l.active, v)
 	case name == landKey:
 		return m.askLand(l.active, v)
+	case name == rebaseKey && file == "":
+		worktree, _ := diffTabOf(l.active)
+		return m.askRebaseWorktree(worktree)
 	case name == commentKey:
 		m.askComment(l.active, v)
 	case name == editKey:

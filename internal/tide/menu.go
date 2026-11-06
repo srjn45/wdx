@@ -120,6 +120,9 @@ func (m *Model) selectionPart() menuPart {
 			return nil
 		})
 	}
+	if name, ok := m.rebaseRow(); ok {
+		add(rebaseKey, "rebase", "rebase", func() tea.Cmd { return m.askRebaseWorktree(name) })
+	}
 	if a, ok := m.childParent(); ok {
 		add(newChildKey, "new child", "child", func() tea.Cmd {
 			return m.openAgentForm(&a)

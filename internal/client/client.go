@@ -437,6 +437,15 @@ func (c *Client) RemoveWorktree(ctx context.Context, name, ref, dir string) (api
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// RebaseWorktree rebases the worktree name onto its base.
+func (c *Client) RebaseWorktree(ctx context.Context, name, ref, dir string) (api.WorktreeRebased, error) {
+	r, err := c.api.RebaseWorktreeWithResponse(ctx, name, &api.RebaseWorktreeParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})
+	if err != nil {
+		return api.WorktreeRebased{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // WorktreeDiff returns what the worktree name has committed since it left its base.
 func (c *Client) WorktreeDiff(ctx context.Context, name, ref, dir string) (api.WorktreeDiff, error) {
 	r, err := c.api.GetWorktreeDiffWithResponse(ctx, name, &api.GetWorktreeDiffParams{Project: nonEmpty(ref), Dir: nonEmpty(dir)})

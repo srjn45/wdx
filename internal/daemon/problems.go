@@ -224,6 +224,19 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*worktree.NotLandedError](err); ok {
 		return api.ErrorCodeWorktreeNotLanded, nil
 	}
+	if e, ok := errors.AsType[*git.RebaseError](err); ok {
+		conflicts := e.Conflicts
+		if conflicts == nil {
+			conflicts = []string{}
+		}
+		return api.ErrorCodeRebaseFailed, map[string]any{"conflicts": conflicts}
+	}
+	if e, ok := errors.AsType[*worktree.NotCommittedError](err); ok {
+		return api.ErrorCodeNotCommitted, map[string]any{"files": e.Files}
+	}
+	if _, ok := errors.AsType[*worktree.PushError](err); ok {
+		return api.ErrorCodePushFailed, nil
+	}
 	if _, ok := errors.AsType[*git.WorktreeRemoveError](err); ok {
 		return api.ErrorCodeWorktreeNotRemoved, nil
 	}

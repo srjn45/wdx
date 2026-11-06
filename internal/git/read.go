@@ -367,6 +367,8 @@ func BaseOf(ctx context.Context, dir, branch string) (string, error) {
 // Summary is how the commits of a checkout differ from its base.
 type Summary struct {
 	Ahead int
+	// Behind is how many commits base has that the checkout has not: base moved on.
+	Behind int
 	// Lines says whether Added and Removed are known: in a partial clone they may
 	// take files not downloaded, and a read that runs by itself downloads nothing.
 	Lines          bool
@@ -376,15 +378,17 @@ type Summary struct {
 // Summarize returns the summary of the checkout at dir against base, from their
 // merge base. It fails when the two have no history in common.
 func Summarize(ctx context.Context, dir, base string) (Summary, error) {
-	out, err := readText(ctx, dir, "rev-list", "--count", base+"..HEAD")
+	out, err := readText(ctx, dir, "rev-list", "--count", "--left-right", base+"...HEAD")
 	if err != nil {
 		return Summary{}, err
 	}
-	ahead, err := strconv.Atoi(out)
-	if err != nil {
+	left, right, _ := strings.Cut(out, "\t")
+	behind, errBehind := strconv.Atoi(left)
+	ahead, errAhead := strconv.Atoi(right)
+	if errBehind != nil || errAhead != nil {
 		return Summary{}, fmt.Errorf("git rev-list: unexpected output %q", out)
 	}
-	s := Summary{Ahead: ahead}
+	s := Summary{Ahead: ahead, Behind: behind}
 	stat, _, err := read(ctx, dir, noDownload, "diff", "--numstat", "--no-renames", "--no-ext-diff", base+"...HEAD")
 	if err != nil {
 		if isAnswer(err) {

@@ -391,3 +391,146 @@ func TestWorktreeLandJSON(t *testing.T) {
 		t.Errorf("answer: %+v", r)
 	}
 }
+
+// worktreeRebaseOutput is what wdx worktree rebase prints with --json.
+type worktreeRebaseOutput struct {
+	api.WorktreeRebased
+	api.Problem
+}
+
+func wdxRebase(t *testing.T, home, dir, name string) (worktreeRebaseOutput, int) {
+	t.Helper()
+	out := wdxWith(t, home, in(dir), "worktree", "rebase", "--name", name, "--json")
+	var v worktreeRebaseOutput
+	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil {
+		t.Fatalf("rebase %s: %v in %q", name, err, out.stdout)
+	}
+	return v, out.exit
+}
+
+func revParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", ref).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func detailFiles(t *testing.T, p api.Problem, key string) []string {
+	t.Helper()
+	if p.Details == nil {
+		t.Fatalf("no details: %+v", p)
+	}
+	var files []string
+	for _, f := range (*p.Details)[key].([]any) {
+		files = append(files, f.(string))
+	}
+	return files
+}
+
+func TestWorktreeRebase(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	commitIn := func(dir, file, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gittest.Git(t, dir, "add", ".")
+		gittest.Git(t, dir, "commit", "-qm", file)
+	}
+
+	// Nothing is stashed: an agent is to commit first.
+	v, exit := wdxRebase(t, home, app, "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotCommitted || v.Hint == nil || !strings.Contains(*v.Hint, "agent send") {
+		t.Fatalf("not committed: exit %d, %+v", exit, v)
+	}
+	if files := detailFiles(t, v.Problem, "files"); !slices.Equal(files, []string{"file"}) {
+		t.Errorf("not committed: files %v", files)
+	}
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+
+	v, exit = wdxRebase(t, home, app, "work")
+	if exit != api.ExitOK || v.Result != api.ResultUpToDate || v.Base != "main" || v.HeadBefore != v.HeadAfter || v.Pushed {
+		t.Fatalf("up to date: exit %d, %+v", exit, v)
+	}
+
+	// On origin, it goes up again once rebased.
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	gittest.Git(t, app, "init", "-q", "--bare", origin)
+	gittest.Git(t, app, "remote", "add", "origin", origin)
+	gittest.Git(t, app, "push", "-q", "origin", "main")
+	gittest.Git(t, work, "push", "-q", "origin", "work")
+	commitIn(app, "later", "on main\n")
+	v, exit = wdxRebase(t, home, app, "work")
+	if exit != api.ExitOK || v.Result != api.ResultRebased || v.HeadBefore == v.HeadAfter || !v.Pushed {
+		t.Fatalf("rebased: exit %d, %+v", exit, v)
+	}
+	if got := revParse(t, origin, "work"); got != v.HeadAfter {
+		t.Errorf("origin has %s, want %s", got, v.HeadAfter)
+	}
+
+	// Pushed to by another since: the rebase stays, origin's commit too.
+	other := filepath.Join(t.TempDir(), "other")
+	gittest.Git(t, filepath.Dir(other), "clone", "-q", "-b", "work", origin, other)
+	commitIn(other, "theirs", "pushed elsewhere\n")
+	gittest.Git(t, other, "push", "-q", "origin", "work")
+	commitIn(app, "again", "on main\n")
+	v, exit = wdxRebase(t, home, app, "work")
+	if exit != api.ExitRejected || v.Code != api.ErrorCodePushFailed || v.Hint == nil || !strings.Contains(*v.Hint, "rebase is kept") {
+		t.Fatalf("push refused: exit %d, %+v", exit, v)
+	}
+
+	// A conflict is undone, its files listed.
+	commitIn(work, "file", "theirs\n")
+	commitIn(app, "file", "ours\n")
+	before := revParse(t, work, "HEAD")
+	out := wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
+	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "rebase_failed") || !strings.Contains(out.stderr, "agent send") {
+		t.Fatalf("conflict: %+v", out)
+	}
+	v, _ = wdxRebase(t, home, app, "work")
+	if v.Code != api.ErrorCodeRebaseFailed || !slices.Equal(detailFiles(t, v.Problem, "conflicts"), []string{"file"}) {
+		t.Errorf("conflict: %+v", v)
+	}
+	if got := revParse(t, work, "HEAD"); got != before {
+		t.Error("the conflict was not undone")
+	}
+
+	// One stopped by hand is the person's to finish.
+	if err := exec.Command("git", "-C", work, "rebase", "main").Run(); err == nil {
+		t.Fatal("want the rebase to stop")
+	}
+	if v, exit = wdxRebase(t, home, app, "work"); exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeBusy {
+		t.Errorf("busy: exit %d, %+v", exit, v)
+	}
+	gittest.Git(t, work, "rebase", "--abort")
+	gittest.Git(t, work, "switch", "-q", "--detach")
+	if v, exit = wdxRebase(t, home, app, "work"); exit != api.ExitRejected || v.Code != api.ErrorCodeDetachedHead {
+		t.Errorf("detached: exit %d, %+v", exit, v)
+	}
+	if v, exit = wdxRebase(t, home, app, "main"); exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
+		t.Errorf("the clone: exit %d, %+v", exit, v)
+	}
+	if v, exit = wdxRebase(t, home, app, "nope"); exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+		t.Errorf("unknown: exit %d, %+v", exit, v)
+	}
+}
+
+func TestWorktreeRebaseText(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app, work := worktreeProject(t, home)
+	gittest.Git(t, work, "checkout", "-q", "--", "file")
+	out := wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "up to date: worktree work already sits on main") {
+		t.Errorf("up to date: %+v", out)
+	}
+	gittest.Git(t, app, "commit", "-q", "--allow-empty", "-m", "later")
+	out = wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
+	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "rebased worktree work onto main") {
+		t.Errorf("rebased: %+v", out)
+	}
+}

@@ -346,6 +346,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.landSettingsSaved(msg)
 	case landStarted:
 		m.landStarted(msg)
+	case worktreeRebased:
+		m.worktreeRebased(msg)
 	case verifyAnswered:
 		m.verifyAnsweredMsg(msg)
 	case commentAnswered:

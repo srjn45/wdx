@@ -302,7 +302,7 @@ func TestSummarize(t *testing.T) {
 	gittest.Git(t, dir, "add", ".")
 	gittest.Git(t, dir, "commit", "-qm", "later")
 	gittest.Git(t, dir, "switch", "-q", "work")
-	if s, err = Summarize(t.Context(), dir, "main"); err != nil || s != (Summary{Ahead: 1, Lines: true, Added: 2}) {
+	if s, err = Summarize(t.Context(), dir, "main"); err != nil || s != (Summary{Ahead: 1, Behind: 1, Lines: true, Added: 2}) {
 		t.Errorf("after the base moved: %+v, %v", s, err)
 	}
 	p, err := RangeDiff(t.Context(), dir, "main")

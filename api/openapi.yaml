@@ -522,6 +522,36 @@ paths:
               schema: { $ref: "#/components/schemas/WorktreeLandResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/worktrees/{worktree}/rebase:
+    parameters:
+      - $ref: "#/components/parameters/WorktreeRef"
+      - $ref: "#/components/parameters/WorktreeProject"
+      - $ref: "#/components/parameters/WorktreeDir"
+    post:
+      operationId: rebaseWorktree
+      summary: Rebase a worktree onto its base
+      description: |
+        The rebase step of landing on its own: no check, and the base does not move.
+        It returns rebased, or up_to_date when the branch already sits on its base. A
+        rebase that stops on a conflict is undone, leaving everything as it was:
+        rebase_failed, with the files under details.conflicts. Files not committed
+        refuse it, as nothing is stashed: not_committed, with them under
+        details.files. A branch on origin is pushed again once rebased, over its
+        commit there before the rebase only: push_failed when origin refuses, the
+        rebase kept. A slot of a plan going on is refused: worktree_in_plan, with
+        the plan under details.plan.
+
+        Errors: agent_working, detached_head, invalid_path, no_local_base,
+        not_committed, not_found, project_closed, push_failed, rebase_failed, usage,
+        worktree_busy, worktree_in_plan, worktree_is_clone.
+      responses:
+        "200":
+          description: It rebased, or was up to date.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorktreeRebased" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/worktrees/{worktree}/diff:
     parameters:
       - $ref: "#/components/parameters/WorktreeRef"
@@ -2287,7 +2317,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date]
 
     Worktree:
       type: object
@@ -2343,7 +2373,7 @@ components:
 
     WorktreeStatus:
       type: object
-      required: [name, path, branch, head, missing, unread, base, ahead, added, removed, files, committed_files, comments]
+      required: [name, path, branch, head, missing, unread, base, ahead, behind, added, removed, files, committed_files, comments]
       properties:
         name: { type: string, description: "main for the clone, else the last part of its path, with a number if that is taken." }
         path: { type: string }
@@ -2360,6 +2390,7 @@ components:
           allOf: [{ $ref: "#/components/schemas/WorktreeLanding" }]
         base: { type: string, nullable: true, description: "What its commits are measured against: the default branch, or the same on origin when it is on that branch; null when there is neither." }
         ahead: { type: integer, nullable: true, description: "Commits it has that base has not; null when not known." }
+        behind: { type: integer, nullable: true, description: "Commits base has that it has not, as when base has moved on; null when not known." }
         added: { type: integer, nullable: true, description: "Lines those commits add; null when not known, as in a partial clone." }
         removed: { type: integer, nullable: true, description: "Lines those commits remove; null when not known." }
         files:
@@ -2558,6 +2589,17 @@ components:
         worktree: { type: string }
         project_id: { type: string }
         landing: { $ref: "#/components/schemas/WorktreeLanding" }
+
+    WorktreeRebased:
+      type: object
+      required: [result, worktree, base, head_before, head_after, pushed]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        worktree: { type: string }
+        base: { type: string, description: The branch it was rebased onto. }
+        head_before: { type: string, description: The commit it was on. }
+        head_after: { type: string, description: "The commit it is on: head_before when up_to_date." }
+        pushed: { type: boolean, description: Whether its branch was pushed to origin again. }
 
     WorktreeRemoved:
       type: object

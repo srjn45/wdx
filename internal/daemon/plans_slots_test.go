@@ -41,6 +41,11 @@ func TestPlanSlotsGuarded(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantProblem(t, remove.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeWorktreeInPlan)
+	rebase, err := td.client.RebaseWorktreeWithResponse(ctx, slot, &api.RebaseWorktreeParams{Project: optional("app")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, rebase.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeWorktreeInPlan)
 
 	td.cancel(t)
 	c = td.waitPlan(t, "auth", "closed", func(c api.PlanContent) bool { return c.Run.FinishedAt != nil })
@@ -50,6 +55,13 @@ func TestPlanSlotsGuarded(t *testing.T) {
 	remove, err = td.client.RemoveWorktreeWithResponse(ctx, slot, &api.RemoveWorktreeParams{Project: optional("app")})
 	if err != nil {
 		t.Fatal(err)
+	}
+	rebase, err = td.client.RebaseWorktreeWithResponse(ctx, slot, &api.RebaseWorktreeParams{Project: optional("app")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := rebase.ApplicationproblemJSONDefault; p != nil && p.Code == api.ErrorCodeWorktreeInPlan {
+		t.Errorf("a worktree of a cancelled plan refused a rebase: %s", rebase.Body)
 	}
 	if p := remove.ApplicationproblemJSONDefault; p != nil && p.Code == api.ErrorCodeWorktreeInPlan {
 		t.Errorf("a worktree of a cancelled plan refused: %s", remove.Body)

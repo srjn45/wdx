@@ -290,6 +290,36 @@ func (s *server) LandWorktree(ctx context.Context, req api.LandWorktreeRequestOb
 	return api.LandWorktree202JSONResponse{Result: api.ResultStarted, Worktree: req.Worktree, ProjectId: p.ID, Landing: landingView(l)}, nil
 }
 
+// RebaseWorktree rebases a worktree onto its base, in the request: without a check
+// it is short. A slot of a plan going on is refused, as for landing.
+func (s *server) RebaseWorktree(ctx context.Context, req api.RebaseWorktreeRequestObject) (api.RebaseWorktreeResponseObject, error) {
+	p, c, err := s.worktreeScope(ctx, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if p.State == project.StateClosed {
+		return nil, &projectClosedError{project: p}
+	}
+	if w, err := worktree.Find(ctx, c, req.Worktree); err == nil {
+		if err := s.notInPlan(ctx, w); err != nil {
+			return nil, err
+		}
+	}
+	agents, err := s.agents.Store().List(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	r, err := worktree.Rebase(ctx, c, req.Worktree, workingAgents(agents))
+	if err != nil {
+		return nil, err
+	}
+	result := api.ResultRebased
+	if r.UpToDate() {
+		result = api.ResultUpToDate
+	}
+	return api.RebaseWorktree200JSONResponse{Result: result, Worktree: r.Name, Base: r.Base, HeadBefore: r.Before, HeadAfter: r.After, Pushed: r.Pushed}, nil
+}
+
 func (s *server) GetProjectLanding(ctx context.Context, req api.GetProjectLandingRequestObject) (api.GetProjectLandingResponseObject, error) {
 	p, err := s.find(ctx, req.Project)
 	if err != nil {
@@ -740,6 +770,7 @@ func worktreeStatusViews(list []worktree.Status) []api.WorktreeStatus {
 			Unread:         w.Unread,
 			Base:           textOrNull(w.Base),
 			Ahead:          w.Ahead,
+			Behind:         w.Behind,
 			Added:          w.Added,
 			Removed:        w.Removed,
 			Comments:       commentViews(w.Comments),

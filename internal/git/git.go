@@ -278,6 +278,28 @@ func Push(ctx context.Context, dir, branch string) error {
 	return nil
 }
 
+// OriginBranch returns the commit of branch on origin as the repository of dir last
+// saw it, its remote-tracking branch; "" when it has none.
+func OriginBranch(ctx context.Context, dir, branch string) (string, error) {
+	ref := "refs/remotes/origin/" + branch
+	ok, err := refExists(ctx, dir, ref)
+	if err != nil || !ok {
+		return "", err
+	}
+	return Resolve(ctx, dir, ref)
+}
+
+// PushOver pushes a branch rewritten by a rebase to origin, over what is there, but
+// only while origin still has it at was: anything pushed there since makes git refuse.
+func PushOver(ctx context.Context, dir, branch, was string) error {
+	said, err := writeRepo(ctx, dir, []string{"GIT_TERMINAL_PROMPT=0"}, "push", "--quiet",
+		"--force-with-lease="+branch+":"+was, "origin", "refs/heads/"+branch+":refs/heads/"+branch)
+	if err != nil {
+		return fmt.Errorf("git push --force-with-lease: %s", said)
+	}
+	return nil
+}
+
 // BranchExists reports whether the repository holding dir has a local branch
 // named branch.
 func BranchExists(ctx context.Context, dir, branch string) (bool, error) {

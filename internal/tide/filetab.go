@@ -21,7 +21,7 @@ const (
 
 // diffOnlyKeys are the keys of the text view that act on changes, and mean nothing
 // on a file.
-var diffOnlyKeys = []string{"[", "]", "{", "}", "tab", commitKey, landKey, commentKey, editKey, deleteKey, reviewKey, verifyKey}
+var diffOnlyKeys = []string{"[", "]", "{", "}", "tab", commitKey, landKey, rebaseKey, commentKey, editKey, deleteKey, reviewKey, verifyKey}
 
 // sourceKeys are what ? shows on a file.
 var sourceKeys = []barKey{

@@ -87,6 +87,9 @@ func TestPlanRunAnswered(t *testing.T) {
 		v, exit = wdxJSONWith(t, home, in(repo), "worktree", "remove", "--name", slot)
 		wantError(t, v, exit, api.ErrorCodeWorktreeInPlan, api.ExitRejected)
 		wantHint(t, v, hint)
+		v, exit = wdxJSONWith(t, home, in(repo), "worktree", "rebase", "--name", slot)
+		wantError(t, v, exit, api.ErrorCodeWorktreeInPlan, api.ExitRejected)
+		wantHint(t, v, hint)
 	} else {
 		t.Errorf("no slots on a running plan: exit %d, %+v", exit, st.Plan)
 	}
