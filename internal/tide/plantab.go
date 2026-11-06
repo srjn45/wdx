@@ -76,11 +76,18 @@ type planItem struct {
 	child *api.PlanChild // nil for a task
 	// before are the plans before a plan that are not done yet.
 	before []string
+	// rebase says R would move a stacked plan onto what its plan below became.
+	rebase bool
 }
 
 // planItems returns the rows of c's list, in DAG order: its tasks, or the plans
 // it lists.
 func planItems(c *api.PlanContent) []planItem {
+	return planItemsMoved(c, nil)
+}
+
+// planItemsMoved is planItems, the stacked plans in movedOn marked for R.
+func planItemsMoved(c *api.PlanContent, movedOn map[string]bool) []planItem {
 	if ps := c.Definition.Plans; ps != nil {
 		items := make([]planItem, len(*ps))
 		for i := range *ps {
@@ -92,7 +99,7 @@ func planItems(c *api.PlanContent) []planItem {
 					before = append(before, a)
 				}
 			}
-			items[i] = planItem{id: child.Id, after: child.After, child: child, before: before}
+			items[i] = planItem{id: child.Id, after: child.After, child: child, before: before, rebase: child.StackedOn != nil && movedOn[child.Id]}
 		}
 		return items
 	}
@@ -148,6 +155,7 @@ type planDrawn struct {
 
 // drawPlanTab draws the plan's tab of v in area.
 func (m *Model) drawPlanTab(buf uv.Screen, area uv.Rectangle, v *planView, st style.Style) {
+	v.movedOn = m.stackedMovedOn(v.content)
 	d := layoutPlanTab(v, area.Dx(), area.Dy(), m.now(), st)
 	uv.NewStyledString(strings.Join(d.lines, "\n")).Draw(buf, area)
 }
@@ -553,7 +561,14 @@ func (it planItem) words(reason bool) string {
 		case c.State == api.PlanStateDraft:
 			return "ready"
 		}
-		return string(c.State)
+		s := string(c.State)
+		if reason && c.StackedOn != nil {
+			s += " · stacked on " + *c.StackedOn
+		}
+		if reason && it.rebase {
+			s += " · rebase: " + rebaseKey
+		}
+		return s
 	}
 	return taskWords(*it.task, reason)
 }
@@ -685,7 +700,7 @@ func itemMark(p api.Plan, it, cursor planItem, st style.Style) string {
 // sight said above and below; and the task on each line.
 func (v *planView) listLines(cursor planItem, columns, lines int, now time.Time, st style.Style) ([]string, map[int]string) {
 	c := v.content
-	items := planItems(c)
+	items := planItemsMoved(c, v.movedOn)
 	if len(items) == 0 {
 		none := "no tasks"
 		if c.Definition.Plans != nil {
@@ -836,6 +851,12 @@ func (m *Model) planTabKey(v *planView, msg tea.Msg) tea.Cmd {
 		if unfold := name == "right"; v.unfolded != unfold {
 			v.unfolded = unfold
 			m.log.Info("plan constraints folded", "tab", m.list().active, "folded", !unfold)
+		}
+	case name == rebaseKey:
+		if it, ok := v.cursorItem(); ok && it.child != nil && it.child.StackedOn != nil {
+			if w, ok := m.planWorktree(it.id); ok {
+				return m.askRebaseWorktree(w.Name)
+			}
 		}
 	case name == "enter":
 		it, ok := v.cursorItem()

@@ -541,9 +541,18 @@ paths:
         rebase kept. A slot of a plan going on is refused: worktree_in_plan, with
         the plan under details.plan.
 
-        Errors: agent_working, detached_head, invalid_path, no_local_base,
-        not_committed, not_found, project_closed, push_failed, rebase_failed, usage,
-        worktree_busy, worktree_in_plan, worktree_is_clone.
+        A stacked plan's worktree, whose base is the branch of the plan below, asks
+        gh whether that plan's PR has merged: merged, its merge commit in the local
+        default branch, only the plan's own commits move onto the default branch,
+        and its PR's base goes there too; merged but not pulled, it is refused,
+        base_not_pulled, with the plan below under details.below and the default
+        branch under details.base; not merged, its own commits move onto the plan
+        below's branch as it is now. No gh is dependency_missing.
+
+        Errors: agent_working, base_not_pulled, dependency_missing, detached_head,
+        invalid_path, no_local_base, not_committed, not_found, project_closed,
+        push_failed, rebase_failed, usage, worktree_busy, worktree_in_plan,
+        worktree_is_clone.
       responses:
         "200":
           description: It rebased, or was up to date.
@@ -2388,7 +2397,7 @@ components:
         landing:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/WorktreeLanding" }]
-        base: { type: string, nullable: true, description: "What its commits are measured against: the default branch, or the same on origin when it is on that branch; null when there is neither." }
+        base: { type: string, nullable: true, description: "What its commits are measured against: the default branch, or the same on origin when it is on that branch, or for a stacked plan's branch and its tasks' the branch of the plan below; null when there is neither." }
         ahead: { type: integer, nullable: true, description: "Commits it has that base has not; null when not known." }
         behind: { type: integer, nullable: true, description: "Commits base has that it has not, as when base has moved on; null when not known." }
         added: { type: integer, nullable: true, description: "Lines those commits add; null when not known, as in a partial clone." }
@@ -3584,9 +3593,14 @@ components:
 
     PlanChild:
       type: object
-      required: [id, after, state, tasks, tasks_done, waiting]
+      required: [id, after, state, tasks, tasks_done, waiting, stacked_on]
       properties:
         id: { type: string, description: The plan's name. }
+        stacked_on:
+          type: string
+          nullable: true
+          description: The plan whose branch it started on, as its stacked parent started it, while its base is that branch; null once R moved it onto the default branch, and for one not stacked.
+
         after:
           type: array
           items: { type: string }
@@ -3789,6 +3803,7 @@ components:
         - aca_unavailable
         - worktree_in_plan
         - plan_not_landed
+        - base_not_pulled
 
     Problem:
       type: object

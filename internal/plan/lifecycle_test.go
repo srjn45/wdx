@@ -14,7 +14,7 @@ func (f fixture) done(t *testing.T, name string) Plan {
 	ctx := context.Background()
 	p := f.create(t, name, tasks("a"))
 	f.agent(t, "agent-"+name)
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/"+name, 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/"+name, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []func() error{
@@ -99,7 +99,7 @@ func TestArchive(t *testing.T) {
 	notFinished(err, StateDraft)
 
 	running := f.create(t, "running", tasks("a"))
-	if _, err := f.store.Start(ctx, running.ID, "main", "plan/running", 0); err != nil {
+	if _, err := f.store.Start(ctx, running.ID, "main", "plan/running", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	_, err = f.store.Archive(ctx, running.ID)
@@ -166,7 +166,7 @@ func TestSlotUses(t *testing.T) {
 		t.Errorf("a draft's slots: %+v", got)
 	}
 	f.agent(t, "agent-a")
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/sso", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/sso", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []func() error{

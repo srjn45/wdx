@@ -44,10 +44,13 @@ const (
 
 // Run is a plan's run: the revision it runs, its branch, its tasks and its slots.
 type Run struct {
-	PlanID     string
-	ProjectID  string
-	Revision   int
-	Base       string // the branch it started from
+	PlanID    string
+	ProjectID string
+	Revision  int
+	Base      string // the branch it started from
+	// BaseCommit is the commit of Base a stacked plan's branch sits on, "" for a plan
+	// not stacked, or one whose PR went on the default branch.
+	BaseCommit string
 	Branch     string // plan/<name>, where its tasks land
 	State      string
 	Parallel   int // the most tasks at once; 0 follows the setting
@@ -272,9 +275,10 @@ func (s *Store) notRunning(ctx context.Context, id string) error {
 
 // Start runs the plan with id: it writes its run, of the latest revision, with a
 // pending row for each of its tasks; a plan of plans has none, and no branch. A
-// plan that has run returns a *StartedError. Making the branch and starting the
-// tasks are the caller's.
-func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int) (Run, error) {
+// stacked plan's base is the branch of the plan before it, at baseCommit, "" for
+// any other. A plan that has run returns a *StartedError. Making the branch and
+// starting the tasks are the caller's.
+func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int, baseCommit string) (Run, error) {
 	p, err := s.Get(ctx, id)
 	if err != nil {
 		return Run{}, err
@@ -292,8 +296,8 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 	}
 	defer tx.Rollback()
 	now := time.Now().UnixMilli()
-	if _, err := db.Exec(ctx, tx, `INSERT INTO plan_runs (plan_id, revision, base, branch, state, parallel, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, r.Number, base, branch, StateRunning, nullInt(parallel), now); err != nil {
+	if _, err := db.Exec(ctx, tx, `INSERT INTO plan_runs (plan_id, revision, base, branch, state, parallel, started_at, base_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, r.Number, base, branch, StateRunning, nullInt(parallel), now, nullString(baseCommit)); err != nil {
 		return Run{}, err
 	}
 	for _, t := range def.Tasks {
@@ -307,7 +311,7 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 	if err := tx.Commit(); err != nil {
 		return Run{}, err
 	}
-	logging.FromContext(ctx).Info("plan started", "plan_id", id, "name", p.Name, "revision", r.Number, "base", base, "branch", branch, "parallel", parallel, "tasks", len(def.Tasks))
+	logging.FromContext(ctx).Info("plan started", "plan_id", id, "name", p.Name, "revision", r.Number, "base", base, "base_commit", baseCommit, "branch", branch, "parallel", parallel, "tasks", len(def.Tasks))
 	run, _, err := s.Run(ctx, id)
 	return run, err
 }
@@ -316,11 +320,12 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 func (s *Store) Run(ctx context.Context, id string) (Run, bool, error) {
 	var r Run
 	var parallel, finished sql.NullInt64
+	var baseCommit sql.NullString
 	var started int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT r.plan_id, d.project_id, r.revision, r.base, r.branch, r.state, r.parallel, r.started_at, r.finished_at
+		SELECT r.plan_id, d.project_id, r.revision, r.base, r.base_commit, r.branch, r.state, r.parallel, r.started_at, r.finished_at
 		FROM plan_runs r JOIN docs d ON d.id = r.plan_id WHERE r.plan_id = ?`, id).
-		Scan(&r.PlanID, &r.ProjectID, &r.Revision, &r.Base, &r.Branch, &r.State, &parallel, &started, &finished)
+		Scan(&r.PlanID, &r.ProjectID, &r.Revision, &r.Base, &baseCommit, &r.Branch, &r.State, &parallel, &started, &finished)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, false, nil
 	}
@@ -328,6 +333,7 @@ func (s *Store) Run(ctx context.Context, id string) (Run, bool, error) {
 		return Run{}, false, err
 	}
 	r.Parallel, r.StartedAt, r.FinishedAt = int(parallel.Int64), time.UnixMilli(started), timeOf(finished)
+	r.BaseCommit = baseCommit.String
 	if _, _, r.Definition, err = s.Content(ctx, id, r.Revision); err != nil {
 		return Run{}, false, err
 	}
@@ -779,6 +785,13 @@ func touch(ctx context.Context, e db.Execer, planID string) error {
 	_, err := db.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?)
 		WHERE id = ? OR id = (SELECT parent_id FROM docs WHERE id = ?)`, time.Now().UnixMilli(), planID, planID)
 	return err
+}
+
+func nullString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func nullInt(n int) any {

@@ -589,6 +589,9 @@ type planView struct {
 	readOffset int    // its lines scrolled past
 
 	goals map[string]*childGoal // a plan of plans' plans' goals, by name
+	// movedOn are the stacked plans a plan of plans lists whose worktree's base has
+	// moved on, by name, as the worktrees were at the last draw.
+	movedOn map[string]bool
 
 	// rail is the rail laid out for railRevision; railDrawn is false when it has
 	// too many lanes, and is a row per task.

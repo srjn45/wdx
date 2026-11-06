@@ -49,6 +49,7 @@ type Action struct {
 	Kind    ActionKind
 	Task    string // for a release, the task holding Slot, if any
 	Plan    string // a plan of plans' child, by name
+	On      string // the plan a stacked child starts on, by name; "" for the default branch
 	Slot    int
 	Failure string
 }

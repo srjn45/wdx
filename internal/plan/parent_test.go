@@ -36,6 +36,7 @@ func TestNextParent(t *testing.T) {
 	cancel := func(name string) Action { return Action{Kind: ActionCancelPlan, Plan: name} }
 	finish, closing := Action{Kind: ActionFinish}, Action{Kind: ActionClose}
 	running := Run{State: StateRunning}
+	stacked := Run{State: StateRunning, Definition: Definition{Stacked: true}}
 	aLanded := child(family(), "a", StateDone, true)
 	allDone := child(child(aLanded, "b", StateDone, true), "c", StateDone, false)
 	failed := func(children []ChildRun, name string) []ChildRun {
@@ -70,6 +71,13 @@ func TestNextParent(t *testing.T) {
 			child(child(aLanded, "b", StateRunning, false), "c", StatePaused, false), []Action{cancel("b"), cancel("c"), closing}},
 		{"cancelled and closed does nothing", Run{State: StateCancelled, FinishedAt: time.UnixMilli(1)}, false, aLanded, nil},
 		{"done does nothing", Run{State: StateDone}, false, allDone, nil},
+		{"stacked, a done but not landed starts b on a", stacked, false, child(family(), "a", StateDone, false),
+			[]Action{{Kind: ActionStartPlan, Plan: "b", On: "a"}}},
+		{"stacked, a landed starts b from the default branch", stacked, false, aLanded, []Action{start("b")}},
+		{"stacked, c after a and b waits for both to land", stacked, false,
+			child(child(aLanded, "b", StateDone, false), "a", StateDone, false), nil},
+		{"stacked, c after a and b starts once both landed", stacked, false, child(aLanded, "b", StateDone, true), []Action{start("c")}},
+		{"stacked, a start that failed waits for the person", stacked, false, failed(child(family(), "a", StateDone, false), "b"), nil},
 	}
 	for _, tt := range tests {
 		got := NextParent(ParentFacts{Run: tt.run, ProjectOpen: !tt.closed, Children: tt.children})
@@ -108,6 +116,9 @@ func TestChildWaiting(t *testing.T) {
 		{"its parent cancelled", Run{State: StateCancelled}, aDone, "b", false},
 		{"its parent a draft", Run{State: StateDraft}, aDone, "b", false},
 		{"started", running, child(aDone, "b", StateRunning, false), "b", false},
+		{"stacked, the one before it done, not landed", Run{State: StateRunning, Definition: Definition{Stacked: true}}, aDone, "b", false},
+		{"stacked, after two, one not landed", Run{State: StateRunning, Definition: Definition{Stacked: true}},
+			child(child(family(), "a", StateDone, true), "b", StateDone, false), "c", true},
 	} {
 		if got := waiting(tt.parent, tt.children, tt.child); got != tt.want {
 			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
@@ -125,7 +136,7 @@ func (f fixture) finishRun(t *testing.T, p Plan) {
 	t.Helper()
 	ctx := context.Background()
 	f.agent(t, "agent-"+p.Name)
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/"+p.Name, 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/"+p.Name, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []func() error{
@@ -150,7 +161,7 @@ func TestAParentsRun(t *testing.T) {
 	a := f.create(t, "a", tasks("a"))
 	f.create(t, "b", tasks("a"))
 	big := f.create(t, "big", "goal: g\nplans:\n  - id: a\n  - id: b\n    after: [a]\n")
-	run, err := f.store.Start(ctx, big.ID, "main", "", 0)
+	run, err := f.store.Start(ctx, big.ID, "main", "", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +208,7 @@ func TestAParentFinishes(t *testing.T) {
 	f := newFixture(t)
 	f.create(t, "a", tasks("a"))
 	big := f.create(t, "big", "goal: g\nplans:\n  - id: a\n")
-	if _, err := f.store.Start(ctx, big.ID, "main", "", 0); err != nil {
+	if _, err := f.store.Start(ctx, big.ID, "main", "", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.store.Finish(ctx, big.ID); err != nil {

@@ -3,6 +3,7 @@ package tide
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -146,4 +147,32 @@ func problemFiles(p api.Problem, key string) []string {
 		}
 	}
 	return files
+}
+
+// planWorktree returns the worktree on the branch of the plan called name.
+func (m *Model) planWorktree(name string) (api.WorktreeStatus, bool) {
+	list := m.worktreeStatuses()
+	i := slices.IndexFunc(list, func(w api.WorktreeStatus) bool { return !w.Missing && w.Branch != nil && *w.Branch == planBranch(name) })
+	if i < 0 {
+		return api.WorktreeStatus{}, false
+	}
+	return list[i], true
+}
+
+// stackedMovedOn returns the stacked plans the plan of plans c lists whose worktree's
+// base has moved on, by name, for its tab to say R.
+func (m *Model) stackedMovedOn(c *api.PlanContent) map[string]bool {
+	if c == nil || c.Definition.Plans == nil {
+		return nil
+	}
+	moved := map[string]bool{}
+	for _, p := range *c.Definition.Plans {
+		if p.StackedOn == nil {
+			continue
+		}
+		if w, ok := m.planWorktree(p.Id); ok && baseMovedOn(w) {
+			moved[p.Id] = true
+		}
+	}
+	return moved
 }

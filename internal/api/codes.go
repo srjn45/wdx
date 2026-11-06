@@ -95,6 +95,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodePlanNotFinished:    {http.StatusConflict, ExitRejected, "the plan is not done or cancelled, or a plan it waits for is not done"},
 	ErrorCodePlanNotLanded:      {http.StatusConflict, ExitRejected, "the work of a plan it waits for is not in the default branch"},
 	ErrorCodeWorktreeInPlan:     {http.StatusConflict, ExitRejected, "the worktree is a slot of a plan going on"},
+	ErrorCodeBaseNotPulled:      {http.StatusConflict, ExitRejected, "the PR below is merged on GitHub, but not in the local default branch"},
 	ErrorCodeWrongBranch:        {http.StatusConflict, ExitRejected, "the worktree is not on the branch the request needs"},
 	ErrorCodeAcaUnsupported:     {http.StatusConflict, ExitRejected, "the agent's AI coding agent cannot do this yet"},
 	ErrorCodeAcaUnavailable:     {http.StatusConflict, ExitRejected, "the AI coding agent is not installed or is disabled, or none is installed and enabled"},

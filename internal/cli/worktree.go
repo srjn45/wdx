@@ -349,12 +349,16 @@ func newWorktreeRebaseCmd() *cobra.Command {
 	var name string
 	cmd := &cobra.Command{
 		Use:   "rebase --name <worktree> [--project-id <id> | --project-name <name>]",
-		Short: "Rebase a worktree onto its base, the default branch",
+		Short: "Rebase a worktree onto its base, the default branch or a stacked plan's plan below",
 		Long: "Landing's rebase on its own: no check, and the base does not move. A\n" +
 			"conflict undoes it, leaving everything as it was, and lists the files; files\n" +
 			"not committed refuse it, as nothing is stashed. Either is for an agent to\n" +
 			"deal with: this sends nothing to one. A branch on origin is pushed again once\n" +
-			"rebased, over its commit there before the rebase only, never over another's.",
+			"rebased, over its commit there before the rebase only, never over another's.\n\n" +
+			"A stacked plan's worktree asks gh whether the PR of the plan below has merged:\n" +
+			"if so, only the plan's own commits move onto the default branch, and its PR\n" +
+			"goes there too, once the merge is pulled; if not, they move onto the plan\n" +
+			"below's branch as it is now.",
 		Example: examples(
 			"Rebase a worktree", identity.Name+" worktree rebase --name auth-fix",
 			"As JSON", identity.Name+" worktree rebase --name auth-fix --project-name app --json",
@@ -363,7 +367,7 @@ func newWorktreeRebaseCmd() *cobra.Command {
 		Annotations: map[string]string{
 			outputNote: "What it was rebased onto, or that it was up to date.\n" + `With --json: {"result": "rebased", "worktree": "...", ...}`,
 			resultList: "rebased, up_to_date",
-			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeDetachedHead, api.ErrorCodeInvalidPath, api.ErrorCodeNoLocalBase,
+			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseNotPulled, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeInvalidPath, api.ErrorCodeNoLocalBase,
 				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed, api.ErrorCodeRebaseFailed,
 				api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
 		},
@@ -396,6 +400,12 @@ func rebaseHint(err error) error {
 		return &hinted{err, "nothing is stashed; ask an agent to commit with " + identity.Name + " agent send, then rebase again"}
 	case api.ErrorCodePushFailed:
 		return &hinted{err, "the rebase is kept, and nothing on origin was overwritten: see what was pushed there since"}
+	case api.ErrorCodeBaseNotPulled:
+		var below, base string
+		e, _ := errors.AsType[*client.ProblemError](err)
+		if decodeDetail(e.Problem, "below", &below) && decodeDetail(e.Problem, "base", &base) {
+			return &hinted{err, fmt.Sprintf("pull %s: %s's PR is merged on GitHub", base, below)}
+		}
 	}
 	return err
 }

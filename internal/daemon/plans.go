@@ -154,6 +154,9 @@ func (s *server) childViews(ctx context.Context, id string) ([]api.PlanChild, er
 	views := make([]api.PlanChild, 0, len(children))
 	for _, c := range children {
 		v := api.PlanChild{Id: c.Plan.Name, After: c.After, State: api.PlanState(c.Plan.State), Tasks: int64(c.Plan.Tasks), Waiting: c.Waiting(run, children)}
+		if c.StackedOn != "" {
+			v.StackedOn = &c.StackedOn
+		}
 		if c.Plan.State != plan.StateDraft {
 			done := int64(c.Plan.TasksDone)
 			v.TasksDone = &done

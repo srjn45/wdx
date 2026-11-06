@@ -132,3 +132,10 @@ func (c CLI) Create(ctx context.Context, dir, base, branch, head string) (PullRe
 	}
 	return PullRequest{Number: number, URL: string(m[0]), State: Open, Head: head}, nil
 }
+
+// EditBase moves the pull request of branch, in the repository holding dir, onto
+// base.
+func (c CLI) EditBase(ctx context.Context, dir, branch, base string) error {
+	_, err := c.run(ctx, dir, "pr", "edit", branch, "--base", base)
+	return err
+}

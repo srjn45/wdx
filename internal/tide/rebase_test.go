@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -136,4 +137,43 @@ func revParse(t *testing.T, dir, ref string) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// TestStackedInTheParentTab: the parent's tab says what each stacked plan is
+// stacked on, and R once its plan below has moved on, which rebases its worktree.
+func TestStackedInTheParentTab(t *testing.T) {
+	t.Parallel()
+	sso, ui := "sso", "plan/ui"
+	below, on := "plan/sso", "sso"
+	m := worktreesModel(
+		api.WorktreeStatus{Name: "main", Path: "/r", Ahead: aheadBy(0), Base: &sso},
+		api.WorktreeStatus{Name: "ui-1", Path: "/r/ui-1", Branch: &ui, Ahead: aheadBy(1), Behind: aheadBy(0), Base: &below},
+	)
+	plans := []api.PlanChild{
+		{Id: "sso", After: []string{}, State: api.PlanStateDone, Tasks: 1},
+		{Id: "ui", After: []string{"sso"}, State: api.PlanStateDone, Tasks: 1, StackedOn: &on},
+	}
+	c := &api.PlanContent{Plan: api.Plan{Id: "doc-big", Name: "big", State: api.PlanStateDone, Revision: 1}, Revision: 1,
+		Run:        &api.PlanRun{State: api.PlanStateDone},
+		Definition: api.PlanDefinition{Goal: "g", Constraints: []string{}, Plans: &plans}}
+	v := &planView{content: c, cursor: "ui", goals: map[string]*childGoal{}}
+	draw := func() string {
+		v.movedOn = m.stackedMovedOn(c)
+		return planTabText(v, 120, 20, time.Unix(0, 0))
+	}
+	if got := draw(); !strings.Contains(got, "done · stacked on sso") || strings.Contains(got, "rebase: R") {
+		t.Errorf("not moved on:\n%s", got)
+	}
+	(*m.following.project.WorktreeStatuses)[1].Behind = aheadBy(1)
+	if got := draw(); !strings.Contains(got, "done · stacked on sso · rebase: R") {
+		t.Errorf("moved on:\n%s", got)
+	}
+	if cmd := m.planTabKey(v, keyMsgs(rebaseKey)[0]); cmd == nil || m.statusNotice != "rebasing ui-1…" {
+		t.Errorf("R: %q", m.statusNotice)
+	}
+	m.statusNotice = ""
+	v.cursor = "sso"
+	if cmd := m.planTabKey(v, keyMsgs(rebaseKey)[0]); cmd != nil || m.statusNotice != "" {
+		t.Errorf("R on a plan not stacked: %q", m.statusNotice)
+	}
 }

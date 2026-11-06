@@ -200,7 +200,10 @@ func (d *Daemon) landPlanByPR(ctx context.Context, projectID, path string) error
 	if !ok {
 		return errLandNotConfigured
 	}
-	c := checkoutsOf(p)
+	c, err := checkoutsOf(ctx, d.plans, p)
+	if err != nil {
+		return err
+	}
 	list, err := worktree.List(ctx, c)
 	if err != nil {
 		return err

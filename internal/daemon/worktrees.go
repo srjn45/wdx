@@ -40,7 +40,7 @@ func (d *Daemon) startTracker() {
 			if err != nil {
 				return worktree.Checkouts{}, err
 			}
-			return checkoutsOf(p), nil
+			return checkoutsOf(ctx, d.plans, p)
 		},
 		Agents: func(ctx context.Context, projectID string) ([]worktree.Agent, error) {
 			list, err := d.agents.Store().List(ctx, projectID)
@@ -158,12 +158,21 @@ func workingDir(a agent.Agent) string {
 	return a.Terminal.Dir
 }
 
-func checkoutsOf(p project.Project) worktree.Checkouts {
+// checkoutsOf returns the checkouts of p, with the bases its stacked plans' runs
+// keep, as worktree must not read plan.
+func checkoutsOf(ctx context.Context, plans *plan.Store, p project.Project) (worktree.Checkouts, error) {
 	c := worktree.Checkouts{Clone: p.ClonePath()}
 	for _, w := range p.Worktrees {
 		c.Paths = append(c.Paths, w.Path)
 	}
-	return c
+	bases, err := plans.StackedBases(ctx, p.ID)
+	if err != nil {
+		return worktree.Checkouts{}, err
+	}
+	if len(bases) > 0 {
+		c.Bases = bases
+	}
+	return c, nil
 }
 
 // worktreeScope returns the checkouts of the project a worktree request names,
@@ -183,7 +192,8 @@ func (s *server) worktreeScope(ctx context.Context, ref, dir *string) (project.P
 	if err != nil {
 		return project.Project{}, worktree.Checkouts{}, err
 	}
-	return p, checkoutsOf(p), nil
+	c, err := checkoutsOf(ctx, s.plans, p)
+	return p, c, err
 }
 
 func (s *server) ListWorktrees(ctx context.Context, req api.ListWorktreesRequestObject) (api.ListWorktreesResponseObject, error) {
@@ -309,7 +319,7 @@ func (s *server) RebaseWorktree(ctx context.Context, req api.RebaseWorktreeReque
 	if err != nil {
 		return nil, err
 	}
-	r, err := worktree.Rebase(ctx, c, req.Worktree, workingAgents(agents))
+	r, err := s.rebase(ctx, p, c, req.Worktree, workingAgents(agents))
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +328,49 @@ func (s *server) RebaseWorktree(ctx context.Context, req api.RebaseWorktreeReque
 		result = api.ResultUpToDate
 	}
 	return api.RebaseWorktree200JSONResponse{Result: result, Worktree: r.Name, Base: r.Base, HeadBefore: r.Before, HeadAfter: r.After, Pushed: r.Pushed}, nil
+}
+
+// rebase rebases the worktree called name: onto its base, or, the worktree of a
+// stacked plan, where its run says, once gh says whether the PR below has merged.
+// A stacked branch rebased is written to its run, as far as it got, and its PR goes
+// on the default branch with it, when it went there.
+func (s *server) rebase(ctx context.Context, p project.Project, c worktree.Checkouts, name string, agents []worktree.Agent) (worktree.Rebased, error) {
+	w, err := worktree.Find(ctx, c, name)
+	if err != nil {
+		return worktree.Rebased{}, err
+	}
+	run, stacked, err := s.plans.StackedRun(ctx, p.ID, w.Branch)
+	if err != nil {
+		return worktree.Rebased{}, err
+	}
+	if !stacked {
+		return worktree.Rebase(ctx, c, name, agents, nil)
+	}
+	cli := gh.CLI{Program: s.ghProgram}
+	if !cli.Available() {
+		return worktree.Rebased{}, gh.ErrMissing
+	}
+	var onto worktree.Onto
+	r, err := worktree.Rebase(ctx, c, name, agents, func(ctx context.Context) (worktree.Onto, error) {
+		onto, err = s.runner.StackedOnto(ctx, run)
+		return onto, err
+	})
+	if _, pushFailed := errors.AsType[*worktree.PushError](err); (err != nil && !pushFailed) || r.UpToDate() {
+		return r, err
+	}
+	retarget, rerr := s.runner.Restacked(ctx, run, onto)
+	if rerr != nil {
+		return worktree.Rebased{}, rerr
+	}
+	s.tracker.Refresh(p.ID, w.Name) // its base changed, not only its head
+	if retarget {
+		if eerr := cli.EditBase(ctx, w.Path, w.Branch, onto.Base); eerr != nil {
+			logging.FromContext(ctx).Error("stacked plan's PR not moved to its new base: the person moves it", "branch", w.Branch, "base", onto.Base, "err", eerr)
+		} else {
+			logging.FromContext(ctx).Info("stacked plan's PR moved to its new base", "branch", w.Branch, "base", onto.Base)
+		}
+	}
+	return r, err
 }
 
 func (s *server) GetProjectLanding(ctx context.Context, req api.GetProjectLandingRequestObject) (api.GetProjectLandingResponseObject, error) {

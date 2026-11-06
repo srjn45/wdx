@@ -13,13 +13,17 @@ import (
 
 // A plan of plans runs by starting the plans it lists, each once the plans before
 // it are done and their work is in the default branch, as a child starts from it
-// (docs/PLANS.md, Step 6 in detail).
+// (docs/PLANS.md, Step 6 in detail). A stacked one starts a plan that waits for a
+// single plan once that one is done, on its branch (Step 7 in detail).
 
 // ChildRun is what a plan of plans' run sees of a plan it lists.
 type ChildRun struct {
 	Plan   Plan
 	After  []string
 	Landed bool // done, and its branch in the default branch, as git shows it
+	// StackedOn is the plan it started on, by name, while its PR does not go on the
+	// default branch; "" for one not stacked.
+	StackedOn string
 	// StartFailed says its parent failed to start it since the daemon started: it
 	// waits for the person, whose answer says why.
 	StartFailed bool
@@ -34,7 +38,7 @@ type ParentFacts struct {
 
 // The actions of a plan of plans' run, besides ActionClose and ActionFinish.
 const (
-	ActionStartPlan  ActionKind = "start_plan"  // a draft child, from the default branch
+	ActionStartPlan  ActionKind = "start_plan"  // a draft child, from the default branch or, stacked, from On's
 	ActionCancelPlan ActionKind = "cancel_plan" // a child going on, its parent cancelled
 )
 
@@ -43,9 +47,10 @@ const (
 var ErrParentParallel = errors.New("a plan of plans runs no tasks itself: set each of its plans")
 
 // NextParent says what to do about a plan of plans' run now, as Next does for a
-// plan of tasks: start each child whose plans before it are done and landed, and
-// finish once every child is done. A cancelled run cancels its children going on,
-// then closes.
+// plan of tasks: start each child whose plans before it are done and landed, or,
+// stacked, whose single plan before it is done, on that one's branch if it has not
+// landed; and finish once every child is done. A cancelled run cancels its children
+// going on, then closes.
 func NextParent(f ParentFacts) []Action {
 	r := f.Run
 	var actions []Action
@@ -65,8 +70,12 @@ func NextParent(f ParentFacts) []Action {
 		if c.Plan.State != StateDone {
 			done = false
 		}
-		if r.State == StateRunning && f.ProjectOpen && c.Plan.State == StateDraft && !c.StartFailed && childReady(c, f.Children) {
-			actions = append(actions, Action{Kind: ActionStartPlan, Plan: c.Plan.Name})
+		if r.State == StateRunning && f.ProjectOpen && c.Plan.State == StateDraft && !c.StartFailed {
+			if on, ok := stackedOn(r, c, f.Children); ok {
+				actions = append(actions, Action{Kind: ActionStartPlan, Plan: c.Plan.Name, On: on})
+			} else if childReady(c, f.Children) {
+				actions = append(actions, Action{Kind: ActionStartPlan, Plan: c.Plan.Name})
+			}
 		}
 	}
 	if done {
@@ -89,6 +98,20 @@ func childReady(c ChildRun, all []ChildRun) bool {
 	return true
 }
 
+// stackedOn returns the plan c starts on, and true, when the stacked run parent
+// starts it now on another's branch: it waits for that one alone, done but not
+// landed. One landed starts from the default branch, as when not stacked.
+func stackedOn(parent Run, c ChildRun, all []ChildRun) (string, bool) {
+	if !parent.Definition.Stacked || len(c.After) != 1 {
+		return "", false
+	}
+	i := slices.IndexFunc(all, func(o ChildRun) bool { return o.Plan.Name == c.After[0] })
+	if i < 0 || all[i].Plan.State != StateDone || all[i].Landed {
+		return "", false
+	}
+	return c.After[0], true
+}
+
 // Waiting reports whether c waits for the person: a draft whose plans before it
 // are done, but not all landed, or that its parent failed to start, while its
 // parent's run goes on.
@@ -98,6 +121,9 @@ func (c ChildRun) Waiting(parent Run, all []ChildRun) bool {
 	}
 	if c.StartFailed {
 		return true
+	}
+	if _, ok := stackedOn(parent, c, all); ok {
+		return false
 	}
 	for _, a := range c.After {
 		i := slices.IndexFunc(all, func(o ChildRun) bool { return o.Plan.Name == a })
@@ -143,6 +169,11 @@ func (r *Runner) Children(ctx context.Context, id string) ([]ChildRun, Run, erro
 		child := ChildRun{Plan: p, After: c.After, StartFailed: r.startFailed(p.ID)}
 		if ran && p.State == StateDone {
 			if child.Landed, err = landed(ctx, clone, p.Name, run.Base); err != nil {
+				return nil, Run{}, err
+			}
+		}
+		if p.State != StateDraft {
+			if child.StackedOn, err = r.store.stackedOnOf(ctx, p.ID); err != nil {
 				return nil, Run{}, err
 			}
 		}
@@ -200,7 +231,7 @@ func (r *Runner) stepParent(ctx context.Context, run Run, project ProjectInfo) (
 	defer r.opts.Changed(run.ProjectID)
 	switch a.Kind {
 	case ActionStartPlan:
-		r.startChild(ctx, run, a.Plan)
+		r.startChild(ctx, run, a.Plan, a.On)
 		return true, nil
 	case ActionCancelPlan:
 		child, err := r.store.GetByName(ctx, run.ProjectID, a.Plan)
@@ -216,12 +247,13 @@ func (r *Runner) stepParent(ctx context.Context, run Run, project ProjectInfo) (
 	return false, errors.New("no step of a plan of plans does " + string(a.Kind))
 }
 
-// startChild starts the parent's child called name from the default branch; one
-// that fails is left for the person, so that it is not tried again at each step.
-func (r *Runner) startChild(ctx context.Context, parent Run, name string) {
+// startChild starts the parent's child called name from the default branch, or
+// from the branch of the plan called on; one that fails is left for the person, so
+// that it is not tried again at each step.
+func (r *Runner) startChild(ctx context.Context, parent Run, name, on string) {
 	child, err := r.store.GetByName(ctx, parent.ProjectID, name)
 	if err == nil {
-		_, err = r.startPlan(ctx, child, 0)
+		_, err = r.startPlan(ctx, child, 0, on)
 	}
 	if err != nil {
 		logging.FromContext(ctx).Error("plan not started by its parent: it waits for the person", "child", name, "err", err)
@@ -270,7 +302,7 @@ func (r *Runner) startParent(ctx context.Context, p Plan) (Plan, error) {
 			return Plan{}, &BranchExistsError{Branch: branch, Err: errors.New("it is there")}
 		}
 	}
-	if _, err := r.store.Start(ctx, p.ID, base, "", 0); err != nil {
+	if _, err := r.store.Start(ctx, p.ID, base, "", 0, ""); err != nil {
 		return Plan{}, err
 	}
 	r.Wake(p.ID)
@@ -390,6 +422,15 @@ func (r *Runner) answer(ctx context.Context, child, parent Plan, parallel int) (
 	if i < 0 {
 		return Plan{}, fmt.Errorf("plan %s does not list %s in its run", parent.Name, child.Name)
 	}
+	if on, ok := stackedOn(run, children[i], children); ok {
+		// As its parent would have started it, had that start not failed.
+		log.Info("plan started stacked as the person asked", "on", on)
+		p, err := r.startPlan(ctx, child, parallel, on)
+		if err == nil {
+			r.Wake(parent.ID)
+		}
+		return p, err
+	}
 	waits := &WaitsError{Plan: child, Base: run.Base}
 	for _, a := range children[i].After {
 		j := slices.IndexFunc(children, func(c ChildRun) bool { return c.Plan.Name == a })
@@ -419,7 +460,7 @@ func (r *Runner) answer(ctx context.Context, child, parent Plan, parallel int) (
 		return Plan{}, waits
 	}
 	log.Info("plan started as the person asked")
-	p, err := r.startPlan(ctx, child, parallel)
+	p, err := r.startPlan(ctx, child, parallel, "")
 	if err == nil {
 		r.Wake(parent.ID)
 	}

@@ -865,29 +865,41 @@ func (r *Runner) Start(ctx context.Context, id string, parallel int) (Plan, erro
 		}
 		return r.startParent(ctx, p)
 	}
-	return r.startPlan(ctx, p, parallel)
+	return r.startPlan(ctx, p, parallel, "")
 }
 
 // startPlan runs the draft plan of tasks p: it makes the branch plan/<name> at the
-// default branch's tip, writes the run and wakes it.
-func (r *Runner) startPlan(ctx context.Context, p Plan, parallel int) (Plan, error) {
+// default branch's tip, or, stacked on the plan called on, at the tip of that one's
+// branch, which the run keeps as its base commit; then it writes the run and wakes
+// it.
+func (r *Runner) startPlan(ctx context.Context, p Plan, parallel int, on string) (Plan, error) {
 	id := p.ID
 	project, err := r.opts.Project(ctx, p.ProjectID)
 	if err != nil {
 		return Plan{}, err
 	}
-	base, err := git.DefaultBranch(ctx, project.Clone)
-	if err != nil {
-		return Plan{}, err
-	}
-	if base == "" {
-		return Plan{}, errors.New("the project has no default branch to start the plan from")
+	base, from, baseCommit := "", "", ""
+	if on != "" {
+		base = BranchPrefix + on
+		if baseCommit, err = git.Resolve(ctx, project.Clone, "refs/heads/"+base); err != nil {
+			return Plan{}, err
+		}
+		from = baseCommit
+		logging.FromContext(ctx).Info("plan starting stacked", "plan_id", id, "on", base, "base_commit", baseCommit)
+	} else {
+		if base, err = git.DefaultBranch(ctx, project.Clone); err != nil {
+			return Plan{}, err
+		}
+		if base == "" {
+			return Plan{}, errors.New("the project has no default branch to start the plan from")
+		}
+		from = base
 	}
 	branch := BranchPrefix + p.Name
-	if err := git.CreateBranch(ctx, project.Clone, branch, base); err != nil {
+	if err := git.CreateBranch(ctx, project.Clone, branch, from); err != nil {
 		return Plan{}, &BranchExistsError{Branch: branch, Err: err}
 	}
-	if _, err := r.store.Start(ctx, id, base, branch, parallel); err != nil {
+	if _, err := r.store.Start(ctx, id, base, branch, parallel, baseCommit); err != nil {
 		if derr := git.DeleteNewBranch(ctx, project.Clone, branch); derr != nil {
 			logging.FromContext(ctx).Error("plan's branch left", "branch", branch, "err", derr)
 		}

@@ -223,7 +223,18 @@ func writeRepo(ctx context.Context, dir string, env []string, args ...string) (s
 // leaving all as it was, and is a *RebaseError. It asks for nothing: an editor would
 // have nobody to answer it.
 func Rebase(ctx context.Context, dir, onto string) error {
-	said, err := writeRepo(ctx, dir, []string{"GIT_EDITOR=true"}, "rebase", onto)
+	return rebase(ctx, dir, onto, onto)
+}
+
+// RebaseFrom moves the commits of the checkout at dir after upstream onto onto, as
+// `git rebase --onto`: only its own, whatever became of upstream's. One that does not
+// finish is aborted, as Rebase does.
+func RebaseFrom(ctx context.Context, dir, onto, upstream string) error {
+	return rebase(ctx, dir, onto, "--onto", onto, upstream)
+}
+
+func rebase(ctx context.Context, dir, onto string, args ...string) error {
+	said, err := writeRepo(ctx, dir, []string{"GIT_EDITOR=true"}, append([]string{"rebase"}, args...)...)
 	if err == nil {
 		return nil
 	}

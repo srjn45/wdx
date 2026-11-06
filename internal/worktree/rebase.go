@@ -50,23 +50,42 @@ type Rebased struct {
 // UpToDate reports whether the branch already sat on its base, so nothing moved.
 func (r Rebased) UpToDate() bool { return r.Before == r.After }
 
+// Onto is where the rebase of a stacked checkout takes it: its commits after From,
+// the commit it was stacked on, onto Commit, the tip of the branch Base.
+type Onto struct {
+	Base, Commit, From string
+}
+
 // Rebase rebases the checkout called name onto its base, the step of landing by rebase
-// on its own (docs/PLANS.md, "Rebasing a worktree"). A rebase that stops is undone and
-// returns a *git.RebaseError with the files in conflict. A branch on origin is pushed
-// again, over its commit there before the rebase only.
-func Rebase(ctx context.Context, c Checkouts, name string, agents []Agent) (Rebased, error) {
+// on its own (docs/PLANS.md, "Rebasing a worktree"); a stacked one, for which stacked
+// is not nil, onto where stacked says, once it can be rebased. A rebase that stops is
+// undone and returns a *git.RebaseError with the files in conflict. A branch on origin
+// is pushed again, over its commit there before the rebase only.
+func Rebase(ctx context.Context, c Checkouts, name string, agents []Agent, stacked func(context.Context) (Onto, error)) (Rebased, error) {
 	log := logging.FromContext(ctx)
 	s, err := rebasable(ctx, c, name, agents)
 	if err != nil {
 		return Rebased{}, err
+	}
+	var onto Onto
+	if stacked != nil {
+		if onto, err = stacked(ctx); err != nil {
+			return Rebased{}, err
+		}
+		s.Base = onto.Base
 	}
 	r := Rebased{Name: s.Name, Base: s.Base, Before: s.Head}
 	was, err := git.OriginBranch(ctx, s.Path, s.Branch)
 	if err != nil {
 		return Rebased{}, err
 	}
-	log.Info("rebase asked", "worktree", s.Name, "base", s.Base, "head", s.Head, "on_origin", was)
-	if r.After, err = RebaseOnto(ctx, s.Path, s.Base); err != nil {
+	log.Info("rebase asked", "worktree", s.Name, "base", s.Base, "head", s.Head, "on_origin", was, "base_commit", onto.From)
+	if stacked != nil {
+		r.After, err = rebaseFrom(ctx, s.Path, onto)
+	} else {
+		r.After, err = RebaseOnto(ctx, s.Path, s.Base)
+	}
+	if err != nil {
 		if e, ok := errors.AsType[*git.RebaseError](err); ok {
 			log.Info("rebase stopped and undone", "worktree", s.Name, "conflicts", e.Conflicts)
 		}
@@ -123,4 +142,16 @@ func rebasable(ctx context.Context, c Checkouts, name string, agents []Agent) (S
 		return Status{}, fmt.Errorf("%w: %s", ErrAgentWorking, agents[i].ID)
 	}
 	return s, nil
+}
+
+// rebaseFrom moves the commits of the checkout at path after onto.From onto
+// onto.Commit, unless that is where they are, and returns the commit it is then at.
+func rebaseFrom(ctx context.Context, path string, onto Onto) (string, error) {
+	if onto.Commit != onto.From {
+		logging.FromContext(ctx).Info("rebasing from a kept commit", "path", path, "base", onto.Base, "onto", onto.Commit, "from", onto.From)
+		if err := git.RebaseFrom(ctx, path, onto.Commit, onto.From); err != nil {
+			return "", err
+		}
+	}
+	return git.Resolve(ctx, path, "HEAD")
 }

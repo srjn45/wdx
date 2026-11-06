@@ -37,6 +37,7 @@ type server struct {
 	pullRequests *worktree.PullRequests
 	runner       *plan.Runner
 	planParallel func() int
+	ghProgram    string // as Options.GH
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

@@ -58,7 +58,7 @@ func (v *planView) panel(it planItem, wide bool, columns, lines int, now time.Ti
 // parts are what the panel of it says.
 func (v *planView) parts(it planItem, now time.Time, st style.Style) panelParts {
 	c := v.content
-	items := planItems(c)
+	items := planItemsMoved(c, v.movedOn)
 	byID := map[string]planItem{}
 	for _, o := range items {
 		byID[o.id] = o

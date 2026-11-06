@@ -46,7 +46,7 @@ func TestStart(t *testing.T) {
 	if _, ok, err := f.store.Run(ctx, p.ID); ok || err != nil {
 		t.Errorf("a draft's run: %v, %v", ok, err)
 	}
-	r, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 2)
+	r, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,12 +60,12 @@ func TestStart(t *testing.T) {
 		t.Errorf("the plan: %+v", got)
 	}
 	var started *StartedError
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); !errors.As(err, &started) || started.Plan.State != StateRunning {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); !errors.As(err, &started) || started.Plan.State != StateRunning {
 		t.Errorf("run again: %v", err)
 	}
 
 	other := f.create(t, "other", tasks("x"))
-	r, err = f.store.Start(ctx, other.ID, "main", "plan/other", 0)
+	r, err = f.store.Start(ctx, other.ID, "main", "plan/other", 0, "")
 	if err != nil || r.Parallel != 0 {
 		t.Errorf("the setting's parallel: %+v, %v", r, err)
 	}
@@ -79,7 +79,7 @@ func TestATaskThroughItsRun(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	p := f.create(t, "auth", tasks("a", "b"))
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.agent(t, "agent-a")
@@ -161,7 +161,7 @@ func TestLandFailedAndFinish(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	p := f.create(t, "auth", tasks("a", "b"))
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.agent(t, "agent-a")
@@ -189,7 +189,7 @@ func TestLandFailedAndFinish(t *testing.T) {
 	}
 
 	q := f.create(t, "done", tasks("a"))
-	if _, err := f.store.Start(ctx, q.ID, "main", "plan/done", 0); err != nil {
+	if _, err := f.store.Start(ctx, q.ID, "main", "plan/done", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.store.HoldSlot(ctx, q.ID, "a", 1); err != nil {
@@ -227,7 +227,7 @@ func TestSlotsAndTheirTasks(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	p := f.create(t, "auth", tasks("a"))
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range []int{2, 1} {
@@ -278,7 +278,7 @@ func TestAPlanThatHasRunIsKept(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	p := f.create(t, "auth", tasks("a"))
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	refused := func(what string, err error) {
@@ -305,7 +305,7 @@ func TestTaskOfAgent(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	p := f.create(t, "auth", tasks("a", "b"))
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.agent(t, "agent-b")
@@ -336,7 +336,7 @@ func TestARunChangeMovesThePlanOn(t *testing.T) {
 		}
 		last = got
 	}
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	moved("started")
@@ -438,7 +438,7 @@ func TestTheAnswersToATask(t *testing.T) {
 	p := f.create(t, "auth", tasks("a", "b", "c"))
 	_, err := f.store.RetryTask(ctx, p.ID, "a", false)
 	notRunning(t, err, StateDraft)
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.agent(t, "agent-a")
@@ -560,7 +560,7 @@ func TestTheAnswersToARun(t *testing.T) {
 	p := f.create(t, "auth", tasks("a"))
 	_, err := f.store.Pause(ctx, p.ID)
 	notRunning(t, err, StateDraft)
-	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0); err != nil {
+	if _, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.agent(t, "agent-a")
@@ -623,7 +623,7 @@ func TestTheAnswersToARun(t *testing.T) {
 	}
 
 	q := f.create(t, "paused", tasks("a"))
-	if _, err := f.store.Start(ctx, q.ID, "main", "plan/paused", 0); err != nil {
+	if _, err := f.store.Start(ctx, q.ID, "main", "plan/paused", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.store.Pause(ctx, q.ID); err != nil {

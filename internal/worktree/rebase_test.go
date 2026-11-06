@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestRebaseUpToDate(t *testing.T) {
 	work := linked(t, dir, "work")
 	commit(t, work, "more", "a\n")
 	before := head(t, work, "HEAD")
-	r, err := Rebase(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}}, "work", nil)
+	r, err := Rebase(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}}, "work", nil, nil)
 	if err != nil || !r.UpToDate() || r.Before != before || r.After != before || r.Base != "main" || r.Pushed {
 		t.Fatalf("rebase: %+v, %v", r, err)
 	}
@@ -38,7 +39,7 @@ func TestRebaseOntoTheBase(t *testing.T) {
 		t.Fatalf("behind before: %v, %v", s.Behind, err)
 	}
 
-	r, err := Rebase(t.Context(), c, "work", []Agent{{ID: "a", Dir: work}, {ID: "b", Dir: dir, Working: true}})
+	r, err := Rebase(t.Context(), c, "work", []Agent{{ID: "a", Dir: work}, {ID: "b", Dir: dir, Working: true}}, nil)
 	if err != nil || r.UpToDate() || r.Before != before || r.After != head(t, work, "HEAD") || r.Pushed {
 		t.Fatalf("rebase: %+v, %v", r, err)
 	}
@@ -58,7 +59,7 @@ func TestRebaseUndoesAConflict(t *testing.T) {
 	commit(t, work, "file", "theirs\n")
 	before := head(t, work, "HEAD")
 	commit(t, dir, "file", "ours\n")
-	_, err := Rebase(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}}, "work", nil)
+	_, err := Rebase(t.Context(), Checkouts{Clone: dir, Paths: []string{dir}}, "work", nil, nil)
 	if e, ok := errors.AsType[*git.RebaseError](err); !ok || !slices.Equal(e.Conflicts, []string{"file"}) {
 		t.Fatalf("rebase: %v", err)
 	}
@@ -97,11 +98,11 @@ func TestRebaseRefuses(t *testing.T) {
 		{"detached", nil, ErrDetachedHead},
 		{"working", []Agent{{ID: "a", Dir: filepath.Join(working, "sub"), Working: true}}, ErrAgentWorking},
 	} {
-		if _, err := Rebase(t.Context(), c, tc.name, tc.agents); !errors.Is(err, tc.want) {
+		if _, err := Rebase(t.Context(), c, tc.name, tc.agents, nil); !errors.Is(err, tc.want) {
 			t.Errorf("%s: want %v, got %v", tc.name, tc.want, err)
 		}
 	}
-	_, err := Rebase(t.Context(), c, "dirty", nil)
+	_, err := Rebase(t.Context(), c, "dirty", nil, nil)
 	if e, ok := errors.AsType[*NotCommittedError](err); !ok || !slices.Equal(e.Files, []string{"fresh"}) {
 		t.Errorf("dirty: want the files, got %v", err)
 	}
@@ -113,7 +114,7 @@ func TestRebaseRefuses(t *testing.T) {
 	gittest.Git(t, dir, "push", "-q", "origin", "main")
 	gittest.Git(t, dir, "switch", "-q", "--detach")
 	gittest.Git(t, dir, "branch", "-D", "main")
-	if _, err := Rebase(t.Context(), c, "working", nil); !errors.Is(err, ErrNoLocalBase) {
+	if _, err := Rebase(t.Context(), c, "working", nil, nil); !errors.Is(err, ErrNoLocalBase) {
 		t.Errorf("no local base: %v", err)
 	}
 }
@@ -134,7 +135,7 @@ func TestRebasePushesOverItsCommitOnOrigin(t *testing.T) {
 	commit(t, alone, "other", "b\n")
 	commit(t, dir, "later", "c\n")
 
-	r, err := Rebase(t.Context(), c, "pushed", nil)
+	r, err := Rebase(t.Context(), c, "pushed", nil, nil)
 	if err != nil || !r.Pushed {
 		t.Fatalf("rebase: %+v, %v", r, err)
 	}
@@ -142,7 +143,7 @@ func TestRebasePushesOverItsCommitOnOrigin(t *testing.T) {
 		t.Errorf("origin has %s, want %s", got, r.After)
 	}
 	// One not on origin is not pushed.
-	if r, err := Rebase(t.Context(), c, "alone", nil); err != nil || r.UpToDate() || r.Pushed {
+	if r, err := Rebase(t.Context(), c, "alone", nil, nil); err != nil || r.UpToDate() || r.Pushed {
 		t.Errorf("alone: %+v, %v", r, err)
 	}
 	if ok, _ := git.BranchExists(t.Context(), origin, "alone"); ok {
@@ -156,7 +157,7 @@ func TestRebasePushesOverItsCommitOnOrigin(t *testing.T) {
 	gittest.Git(t, other, "push", "-q", "origin", "pushed")
 	theirs := head(t, other, "HEAD")
 	commit(t, dir, "again", "e\n")
-	r, err = Rebase(t.Context(), c, "pushed", nil)
+	r, err = Rebase(t.Context(), c, "pushed", nil, nil)
 	if _, ok := errors.AsType[*PushError](err); !ok {
 		t.Fatalf("want a push refused, got %+v, %v", r, err)
 	}
@@ -165,5 +166,84 @@ func TestRebasePushesOverItsCommitOnOrigin(t *testing.T) {
 	}
 	if head(t, pushed, "HEAD^") != head(t, dir, "main") {
 		t.Error("the rebase was not kept")
+	}
+}
+
+// stackedRepo returns a repository whose branch below has two commits, the second
+// changing the first's file, and a worktree on stacked, started at below's tip, with
+// a commit of its own; and the commit it was stacked on.
+func stackedRepo(t *testing.T) (dir, stacked, kept string, c Checkouts) {
+	t.Helper()
+	dir = repo(t)
+	below := linked(t, dir, "below")
+	commit(t, below, "x", "1\n")
+	commit(t, below, "x", "2\n")
+	kept = head(t, below, "HEAD")
+	stacked = filepath.Join(filepath.Dir(dir), "stacked")
+	gittest.Git(t, dir, "worktree", "add", "-q", stacked, "-b", "stacked", "below")
+	commit(t, stacked, "own", "mine\n")
+	return dir, stacked, kept, Checkouts{Clone: dir, Paths: []string{dir}, Bases: map[string]string{"stacked": "below"}}
+}
+
+func TestStackedBaseFromOutside(t *testing.T) {
+	t.Parallel()
+	_, _, _, c := stackedRepo(t)
+	s, err := Find(t.Context(), c, "stacked")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readCommits(t.Context(), &s); err != nil || s.Base != "below" || intOf(s.Ahead) != 1 {
+		t.Fatalf("base %q, ahead %v, %v", s.Base, s.Ahead, err)
+	}
+}
+
+func TestRebaseStackedOntoTheDefaultOnceSquashed(t *testing.T) {
+	t.Parallel()
+	dir, stacked, kept, c := stackedRepo(t)
+	gittest.Git(t, dir, "merge", "-q", "--squash", "below")
+	gittest.Git(t, dir, "commit", "-qm", "below, squashed")
+	tip := head(t, dir, "main")
+
+	r, err := Rebase(t.Context(), c, "stacked", nil, func(context.Context) (Onto, error) {
+		return Onto{Base: "main", Commit: tip, From: kept}, nil
+	})
+	if err != nil || r.UpToDate() || r.Base != "main" || r.After != head(t, stacked, "HEAD") {
+		t.Fatalf("rebase: %+v, %v", r, err)
+	}
+	if head(t, stacked, "HEAD^") != tip {
+		t.Error("only its own commit does not sit on main's tip")
+	}
+}
+
+func TestRebaseStackedOntoTheBranchBelow(t *testing.T) {
+	t.Parallel()
+	dir, stacked, kept, c := stackedRepo(t)
+	below := filepath.Join(filepath.Dir(dir), "below")
+	commit(t, below, "fix", "review\n")
+	tip := head(t, below, "HEAD")
+	onto := func(commit string) func(context.Context) (Onto, error) {
+		return func(context.Context) (Onto, error) { return Onto{Base: "below", Commit: commit, From: kept}, nil }
+	}
+
+	r, err := Rebase(t.Context(), c, "stacked", nil, onto(tip))
+	if err != nil || r.UpToDate() || r.Base != "below" || head(t, stacked, "HEAD^") != tip {
+		t.Fatalf("rebase: %+v, %v", r, err)
+	}
+	if r, err := Rebase(t.Context(), c, "stacked", nil, onto(kept)); err != nil || !r.UpToDate() {
+		t.Errorf("onto the commit it sits on: %+v, %v", r, err)
+	}
+}
+
+func TestRebaseStackedRefusedFirst(t *testing.T) {
+	t.Parallel()
+	_, stacked, _, c := stackedRepo(t)
+	write(t, stacked, "own", "changed\n")
+	asked := false
+	_, err := Rebase(t.Context(), c, "stacked", nil, func(context.Context) (Onto, error) {
+		asked = true
+		return Onto{}, nil
+	})
+	if !errors.Is(err, ErrNotCommitted) || asked {
+		t.Errorf("rebase: %v, asked where to go: %v", err, asked)
 	}
 }

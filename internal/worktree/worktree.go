@@ -59,6 +59,8 @@ type Status struct {
 	Comments []Comment
 	// repository is the git directory that lists it; "" when none does.
 	repository string
+	// givenBase is the base Checkouts gives its branch, "" for the default branch.
+	givenBase string
 }
 
 // CommittedFile is a file a checkout's commits changed.
@@ -86,6 +88,10 @@ type File struct {
 type Checkouts struct {
 	Clone string // the one named main
 	Paths []string
+	// Bases are the bases of the branches whose commits are measured against another
+	// than the default branch, by branch: a stacked plan's, and its tasks', against the
+	// plan's before it, as its run keeps them.
+	Bases map[string]string
 }
 
 // parallelReads is how many checkouts are read at once. Measured on llvm-project,
@@ -167,7 +173,7 @@ func List(ctx context.Context, c Checkouts) ([]Status, error) {
 			return nil, err
 		}
 		for _, o := range checkouts {
-			list = append(list, Status{Path: o.Path, Branch: o.Branch, Head: o.Head, Missing: o.Prunable || !isDir(o.Path), repository: common})
+			list = append(list, Status{Path: o.Path, Branch: o.Branch, Head: o.Head, Missing: o.Prunable || !isDir(o.Path), repository: common, givenBase: c.Bases[o.Branch]})
 		}
 	}
 	for _, path := range c.Paths {
@@ -230,9 +236,12 @@ func readCommits(ctx context.Context, s *Status) error {
 	if s.Missing || s.Head == "" {
 		return nil
 	}
-	base, err := git.BaseOf(ctx, s.Path, s.Branch)
-	if err != nil {
-		return err
+	base := s.givenBase
+	if base == "" {
+		var err error
+		if base, err = git.BaseOf(ctx, s.Path, s.Branch); err != nil {
+			return err
+		}
 	}
 	s.Base = base
 	if base == "" {
