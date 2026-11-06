@@ -846,6 +846,8 @@ line, and nothing is saved until there are none.
 
 ` + key("goal", "required: what the work is for; every task's agent is told it") +
 		key("constraints", "a list of rules every task's agent is told") +
+		key("pr", "true: "+w+" opens the plan's PR once it is done; false if left out") +
+		key("stacked", "a plan of plans only, with pr: true: true to stack its plans' PRs") +
 		key("tasks", "the tasks, each:") +
 		key("  id", "letters, numbers and -, at most 50, unique whatever the case") +
 		key("  prompt", "what the task's agent is asked to do") +
@@ -928,5 +930,26 @@ dropped.
     ` + st.Command(w+" plan run --name auth-b") + `       once the PR of auth-a is merged and pulled
   ` + w + ` fetches nothing: pull the default branch first. Pausing, resuming,
   cancelling and archiving a plan of plans reach its plans; copying it copies
-  those not done, to run again what is left.`
+  those not done, to run again what is left.
+
+` + st.Heading("Its PRs, and stacking them") + `
+  With pr: true, once a plan is done ` + w + ` lands its worktree by PR, as
+  ` + st.Command(w+" worktree land --method pr") + ` does: the check, the push, gh pr create. A
+  landing that fails leaves the plan done, its row saying why. Set on a plan
+  of plans, it is for every plan it lists, which cannot set pr themselves.
+  With stacked: true as well, a plan waiting for a single plan starts as soon
+  as that one is done, on its branch: auth-b's plan/auth-b from plan/auth-a,
+  its diff and PR against plan/auth-a, so that a review does not hold up the
+  next. A plan waiting for several, or for one landed, starts from the default
+  branch. Once the PR below has moved on or merged, rebase the worktree on
+  the plan's branch, from the bottom of the stack up:
+    ` + st.Command(w+" worktree rebase --name <worktree>") + `
+  asks gh about the PR below: not merged, it takes that plan's new commits;
+  merged and pulled, it moves onto the default branch and gh pr edit moves
+  its PR's base there; merged but not pulled, base_not_pulled says to pull.
+  Only the plan's own commits move, with git rebase --onto. A branch on origin
+  is pushed again with --force-with-lease, refused if anything else was
+  pushed there. A conflict or uncommitted changes stop it with nothing
+  changed: rebase_failed and not_committed list the files, for you or an
+  agent to deal with.`
 }

@@ -258,7 +258,7 @@ A bar of shortcuts is at the bottom of a diff's tab, and only there, since `n` a
 
 "Proposed" marks what came from the AI and the human let stand. Three commits: removing, landing by rebase with its check, and landing by PR.
 
-Landing and removing are the one place wdx writes to a repository. They run only when asked for, so they take git's locks like any command the user types, and the lock rule above still holds for everything that runs by itself. wdx never stashes and never uses `--force`.
+Landing, rebasing and removing are the one place wdx writes to a repository. They run only when asked for, so they take git's locks like any command the user types, and the lock rule above still holds for everything that runs by itself. wdx never stashes, and never forces but in the push after `R` (Rebasing, below).
 
 ### Landing
 
@@ -290,7 +290,7 @@ The `pr` method pushes the branch and runs `gh pr create`; `gh` becomes an optio
 
 Proposed, for the `pr` method:
 
-1. It does not rebase. A branch already pushed could then only go up with `--force`, which wdx never uses, and GitHub shows a conflict on the PR itself. Nor does a moved base stop it.
+1. It does not rebase. A branch already pushed could then only go up forced, and GitHub shows a conflict on the PR itself. Nor does a moved base stop it. Rebasing one is `R`'s, asked for on its own (below).
 2. It runs the check first, as for `rebase`, since that is what the setting says: a project that leaves this to CI sets none.
 3. `gh pr view` comes before anything is pushed, so that a repository `gh` cannot work with fails with nothing changed. A PR already open only gets the new commits, by a plain push; one that merged with the commit the worktree is on fails with `pr_failed`, as nothing is left to do; otherwise `gh pr create --fill --base <base> --head <branch>` opens one, its title and text from the commits.
 4. A push refused, as when the branch on origin has moved, fails with `push_failed`; `gh` refusing with `pr_failed`, with what it said. Nothing is forced and nothing is retried.
@@ -301,6 +301,16 @@ The method is the project's, and `wdx worktree land --method` overrides it once,
 What `gh` last said of a worktree's PR is kept in the table `worktree_pull_requests`, so that a row keeps saying it after a restart. `f` and opening a worktree's tab ask, in the background and one project at a time, for each worktree with commits ahead or a PR known, which also finds a PR opened some other way. Focus coming back to the left pane reads git, as before, but never asks `gh`.
 
 Removing asks `gh` itself when commits are still ahead, as the request is the user's and a script has no tab to open. A PR counts as landed only if it merged with the very commit the worktree is on and nothing is uncommitted: a branch name used again would otherwise find an old PR that merged, and a commit made since would go with the directory. A base that a PR's "Update branch" moved has a different head, so it is refused until the worktree has it.
+
+### Rebasing
+
+Added with plans' stacking (docs/PLANS.md, Step 7 in detail), for any worktree. `R` on a worktree's row, in its tab and in the row's menu, and `wdx worktree rebase --name`, run the rebase step of landing by rebase on its own: no check, no move of the base. The bar says `R rebase` once the base has moved on (`behind` in the worktree's status). The main checkout is refused (`worktree_is_clone`), and so is a slot of a plan going on (`worktree_in_plan`), as `L` refuses them, and anything landing refuses: an agent working there, a rebase in progress, no local base, a detached head. It returns `rebased` with the heads before and after, or `up_to_date`.
+
+A conflict aborts it, leaving everything as it was, `rebase_failed` with the files; tide opens landing's box to send the rebase to an agent. Uncommitted changes stop it before it starts, `not_committed`, as wdx never stashes; tide opens `C`'s box, asking an agent to commit and then rebase. The CLI sends nothing to an agent: its hint names `wdx agent send`.
+
+A stacked plan's worktree rebases onto the plan below, or onto the default branch once that plan's PR merged, with `git rebase --onto` from the commit its run keeps, and then moves its PR's base with `gh pr edit --base`.
+
+A branch that is on origin goes up again after `R` with `git push --force-with-lease=<branch>:<its commit on origin before the rebase>`, which git refuses when anything else was pushed there since the last fetch (`push_failed`, the rebase kept). This is the one place wdx forces, decided by the human on 2026-11-06: a stacked plan's PR could not follow its plan below otherwise. A branch not on origin is not pushed.
 
 ### Removing
 
@@ -325,5 +335,6 @@ Then, proposed:
 Proposed:
 
 - `wdx worktree land --name`, which waits for the end and returns `landed`, or a code. Before it starts: `land_not_configured`, `agent_working`, `not_committed`, `nothing_to_land`, `no_local_base`, `landing_running`, `worktree_busy`, `worktree_is_clone`. After: `rebase_failed`, `check_failed`, `base_moved`, `fast_forward_failed`. Leaving does not stop it. `--method pr` returns `pr_opened` with the PR, or also `dependency_missing`, `detached_head`, `push_failed`, `pr_failed`.
+- `wdx worktree rebase --name`, which returns `rebased` or `up_to_date`, or `worktree_is_clone`, `worktree_in_plan`, `agent_working`, `worktree_busy`, `no_local_base`, `detached_head`, `not_committed`, `rebase_failed`, `push_failed`, and for a stacked worktree `base_not_pulled` and `dependency_missing`. `POST /v1/worktrees/{worktree}/rebase` runs it in the request (Rebasing, above).
 - `wdx worktree remove --name`, which returns `removed` with what became of the branch and who was told, or `worktree_not_landed`, `worktree_is_clone`, `worktree_not_removed`. It asks nothing, as only what landed can go.
 - `POST /v1/worktrees/{worktree}/land` starts it and returns, so that a long check does not hold up the daemon's other changes; `DELETE /v1/worktrees/{worktree}` removes.
