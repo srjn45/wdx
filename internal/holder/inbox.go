@@ -4,7 +4,9 @@ import (
 	"io"
 	"slices"
 	"sync"
+	"time"
 
+	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
 )
 
@@ -233,6 +235,13 @@ func (h *holder) inboxReader() {
 		next, reason := actionDeliver, ""
 		if h.watch != nil {
 			next, reason = nextAction(h.watch.state(), m.instant, h.steerTo != nil)
+			if next != actionHold && h.readsLines() {
+				next, reason = actionHold, notReadingKeys
+			}
+		}
+		if held == notReadingKeys && reason != notReadingKeys {
+			h.log.Info("message no longer held", "reason", held)
+			held = ""
 		}
 		if next == actionInterrupt && interrupted {
 			next, reason = actionHold, "interrupted"
@@ -254,10 +263,47 @@ func (h *holder) inboxReader() {
 				held = reason
 				h.log.Info("message held", "reason", reason, "prompt_bytes", len(m.text), "instant", m.instant)
 			}
-			if !h.waitForInbox() {
+			wait := h.waitForInbox
+			if reason == notReadingKeys {
+				wait = h.waitForKeys
+			}
+			if !wait() {
 				return
 			}
 		}
+	}
+}
+
+// notReadingKeys holds a message while the program has not yet switched its
+// terminal from reading lines to reading keys, though its screen is ready:
+// Cursor 2026.11.05 draws its box a little before that, and a message pasted
+// then stays in the box, its Enters lost even once it reads keys.
+const notReadingKeys = "not reading keys"
+
+// keysCheckTime is how often a message held for notReadingKeys looks again, as
+// nothing tells the holder when the terminal's mode changes.
+const keysCheckTime = 50 * time.Millisecond
+
+// readsLines says whether the PTY reads input a line at a time. A PTY that
+// cannot say is taken to read keys, so the message goes and its write fails.
+func (h *holder) readsLines() bool {
+	canonical, err := pty.Canonical(h.master)
+	return err == nil && canonical
+}
+
+// waitForKeys is waitForInbox that also gives up after keysCheckTime.
+func (h *holder) waitForKeys() bool {
+	timer := time.NewTimer(keysCheckTime)
+	defer timer.Stop()
+	select {
+	case <-h.inbox.arrived:
+		return true
+	case <-h.watch.stateChanged():
+		return true
+	case <-timer.C:
+		return true
+	case <-h.ended:
+		return false
 	}
 }
 

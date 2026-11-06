@@ -43,6 +43,21 @@ func Setsize(f *os.File, cols, rows int) error {
 	})
 }
 
+// Canonical says whether the terminal f is a side of reads input a line at a
+// time (ICANON), as it does until the program on it switches to reading keys.
+func Canonical(f *os.File) (bool, error) {
+	var t *unix.Termios
+	err := control(f, func(fd int) error {
+		var err error
+		t, err = unix.IoctlGetTermios(fd, getTermios)
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return t.Lflag&unix.ICANON != 0, nil
+}
+
 // control runs fn with f's descriptor, which Fd would make blocking.
 func control(f *os.File, fn func(fd int) error) error {
 	raw, err := f.SyscallConn()

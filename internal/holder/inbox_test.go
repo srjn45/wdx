@@ -312,6 +312,40 @@ func TestSendAgentHolds(t *testing.T) {
 	}
 }
 
+// TestSendAgentHoldsUntilKeysRead: a program that draws its ready screen while its
+// terminal still reads lines, as Cursor can at its start, gets the message only
+// once it reads keys, the hold logged once as it starts and once as it ends.
+func TestSendAgentHoldsUntilKeysRead(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	const id = "term-00000340"
+	dir, _ := f.watched(t, id, `stty sane
+idle one
+wait_for go
+stty raw -echo
+idle two
+exec cat > got
+`)
+	conn := f.dial(t, id)
+	waitParsed(t, dir, "one")
+	if err := conn.SendAgent("hello", false); err != nil {
+		t.Fatal(err)
+	}
+	f.heldFor(t, dir, notReadingKeys)
+	step(t, dir, "go")
+	waitGot(t, dir, paste("hello"))
+	f.waitLoggedCount(t, "message no longer held", 1)
+	held := 0
+	for _, line := range f.logged(t) {
+		if line.msg() == "message held" && line["reason"] == notReadingKeys {
+			held++
+		}
+	}
+	if held != 1 {
+		t.Errorf("the hold was logged %d times, want once", held)
+	}
+}
+
 // TestSendAgentDeliversWithNoInterrupt: nothing but a running turn and --instant
 // presses the interrupt key, which got would show.
 func TestSendAgentDeliversWithNoInterrupt(t *testing.T) {

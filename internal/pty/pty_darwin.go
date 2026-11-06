@@ -9,6 +9,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// getTermios is the ioctl that reads a terminal's settings.
+const getTermios = unix.TIOCGETA
+
 // Open opens a new PTY: its master, and its slave, which does not become
 // the controlling terminal of this process.
 func Open() (master, slave *os.File, err error) {
