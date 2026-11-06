@@ -56,7 +56,8 @@ func TestAntigravityCommand(t *testing.T) {
 }
 
 // TestAntigravityGivesTheNote: in a folder holding only the note, as --add-dir makes
-// it part of the workspace, written anew at every start.
+// it part of the workspace, written anew at every start, ending with where to work,
+// as Antigravity creates new files in the first folder by path, which is the note's.
 func TestAntigravityGivesTheNote(t *testing.T) {
 	t.Parallel()
 	backup := t.TempDir()
@@ -83,8 +84,10 @@ func TestAntigravityGivesTheNote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(data) != note+"\n" {
-			t.Errorf("note = %q, want %q", data, note+"\n")
+		want := note + "\n\nThe workspace folder `" + dir + "` holds only these instructions from wdx: never create or change files there." +
+			" Your project is `/work`, where you were started: work and create files there.\n"
+		if string(data) != want {
+			t.Errorf("note = %q, want %q", data, want)
 		}
 	}
 }

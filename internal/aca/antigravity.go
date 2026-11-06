@@ -53,7 +53,7 @@ func (Antigravity) Command(l Launch) ([]string, error) {
 		command = append(command, "--dangerously-skip-permissions")
 	}
 	if l.Note != "" && l.BackupDir != "" {
-		dir, err := antigravityWriteNote(l.BackupDir, l.Note)
+		dir, err := antigravityWriteNote(l.BackupDir, l.Dir, l.Note)
 		if err != nil {
 			return nil, fmt.Errorf("write the launch note: %w", err)
 		}
@@ -78,13 +78,24 @@ func (Antigravity) Command(l Launch) ([]string, error) {
 }
 
 // antigravityWriteNote writes note as the rules file of its folder in backup, and
-// says the folder.
-func antigravityWriteNote(backup, note string) (string, error) {
+// says the folder. Antigravity creates new files in the first of its workspace
+// folders by path, which the note's folder nearly always is, so the note ends
+// by naming the project as where to work.
+func antigravityWriteNote(backup, project, note string) (string, error) {
 	dir := filepath.Join(backup, antigravityNoteDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	return dir, atomicfile.Write(filepath.Join(dir, "AGENTS.md"), []byte(note+"\n"), 0o600)
+	return dir, atomicfile.Write(filepath.Join(dir, "AGENTS.md"), []byte(antigravityNote(dir, project, note)), 0o600)
+}
+
+// antigravityNote is the rules file's text: note, then where to work.
+func antigravityNote(dir, project, note string) string {
+	text := note + "\n\nThe workspace folder `" + dir + "` holds only these instructions from wdx: never create or change files there."
+	if project != "" {
+		text += " Your project is `" + project + "`, where you were started: work and create files there."
+	}
+	return text + "\n"
 }
 
 // Deliver implements AiCodingAgent, as Claude Code's: a bracketed paste keeps a
