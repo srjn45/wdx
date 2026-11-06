@@ -120,7 +120,7 @@ func (a *ACA) Models(ctx context.Context, l aca.Launch) ([]aca.Model, error) {
 }
 
 // Command implements aca.AiCodingAgent.
-func (a *ACA) Command(l aca.Launch) ([]string, error) {
+func (a *ACA) Command(_ context.Context, l aca.Launch) ([]string, error) {
 	if a.Launches != "" {
 		f, err := os.OpenFile(a.Launches, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
@@ -205,7 +205,7 @@ func (b *Bare) ID() string { return b.Name }
 func (b *Bare) Program() string { return cmp.Or(b.ProgramName, "sh") }
 
 // Command implements aca.AiCodingAgent.
-func (b *Bare) Command(aca.Launch) ([]string, error) {
+func (b *Bare) Command(context.Context, aca.Launch) ([]string, error) {
 	return []string{"/bin/sh", "-c", defaultScript}, nil
 }
 

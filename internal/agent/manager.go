@@ -142,7 +142,7 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 			a.SessionID = session
 			dir, _ := runDir(a)
 			note := LaunchNote()
-			command, err := candidate.Command(aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Note: note,
+			command, err := candidate.Command(ctx, aca.Launch{Dir: dir, SessionID: a.SessionID, UserHome: account.Home, BackupDir: identity.AgentDir(b.home, a.ID), Note: note,
 				Model: a.RequestedModel, Permissions: a.Permissions})
 			if err != nil {
 				return terminal.AgentLaunch{}, err

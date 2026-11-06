@@ -274,7 +274,7 @@ func TestCodexResumesAGoneSessionFromItsCopy(t *testing.T) {
 	home, backup := goneWithACopy(t)
 	copied := readFile(t, filepath.Join(backup, "transcripts", codexSession+".jsonl"))
 	l := aca.Launch{Dir: "/work/repo", SessionID: codexSession, UserHome: home, BackupDir: backup}
-	got, err := aca.Codex{}.Command(l)
+	got, err := aca.Codex{}.Command(t.Context(), l)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestCodexResumesAGoneSessionFromItsCopy(t *testing.T) {
 	if err := os.Remove(filepath.Join(backup, "codex-sessions.json")); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := (aca.Codex{}).Command(l); err != nil || got[1] == "resume" {
+	if got, err := (aca.Codex{}).Command(t.Context(), l); err != nil || got[1] == "resume" {
 		t.Fatalf("%q, %v: want a new conversation", got, err)
 	}
 	if _, err := os.Stat(codexFile(home, codexSession)); !errors.Is(err, os.ErrNotExist) {

@@ -5,13 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
 )
 
@@ -46,7 +50,7 @@ func TestCursorCommand(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := aca.Cursor{}.Command(c.launch)
+			got, err := aca.Cursor{}.Command(t.Context(), c.launch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,12 +67,12 @@ func TestCursorGivesTheNote(t *testing.T) {
 	t.Parallel()
 	backup := filepath.Join(t.TempDir(), "it's here")
 	note := "use wdx, it's \"first\""
-	got, err := aca.Cursor{}.Command(aca.Launch{BackupDir: backup, Note: note, Model: "auto", Permissions: aca.PermissionsFull})
+	got, err := aca.Cursor{}.Command(t.Context(), aca.Launch{BackupDir: backup, Note: note, Model: "auto", Permissions: aca.PermissionsFull})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(backup, "cursor-plugin")
-	want := []string{"cursor-agent", "--trust", "--model", "auto", "--force", "--sandbox", "disabled", "--approve-mcps", "--plugin-dir", dir}
+	want := []string{"env", "CURSOR_CONFIG_DIR=" + filepath.Join(backup, "cursor-config"), "cursor-agent", "--trust", "--model", "auto", "--force", "--sandbox", "disabled", "--approve-mcps", "--plugin-dir", dir}
 	if !slices.Equal(got, want) {
 		t.Fatalf("command = %q, want %q", got, want)
 	}
@@ -99,13 +103,120 @@ func TestCursorGivesTheNote(t *testing.T) {
 	}
 
 	// A later start writes it again, with the note of that start.
-	if _, err := (aca.Cursor{}).Command(aca.Launch{BackupDir: backup, Note: "another"}); err != nil {
+	if _, err := (aca.Cursor{}).Command(t.Context(), aca.Launch{BackupDir: backup, Note: "another"}); err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := runHook(t, hooks.Hooks.SessionStart[0].Command); !bytes.Contains(out, []byte(`"another"`)) {
 		t.Fatalf("the hook printed %q after the second start", out)
 	}
 }
+
+// TestCursorConfigFolder: with a backup, Cursor runs with a config folder of the
+// agent's own, whose cli-config.json is the user's, key for key, with steering on,
+// written anew at every start; the user's file is left as it was.
+func TestCursorConfigFolder(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	user := filepath.Join(home, ".cursor", "cli-config.json")
+	if err := os.MkdirAll(filepath.Dir(user), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{"version": 1, "model": {"modelId": "gpt-5.2"}, "steering": false,
+ "permissions": {"allow": ["Shell(ls)"], "deny": []}, "approvalMode": "allowlist"}`)
+	if err := os.WriteFile(user, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backup := t.TempDir()
+	launch := aca.Launch{UserHome: home, BackupDir: backup, Model: "auto"}
+	got, err := aca.Cursor{}.Command(t.Context(), launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(backup, "cursor-config")
+	want := []string{"env", "CURSOR_CONFIG_DIR=" + config, "cursor-agent", "--trust", "--model", "auto"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+	copied := filepath.Join(config, "cli-config.json")
+	wantCopy := map[string]any{"version": 1.0, "model": map[string]any{"modelId": "gpt-5.2"}, "steering": true,
+		"permissions": map[string]any{"allow": []any{"Shell(ls)"}, "deny": []any{}}, "approvalMode": "allowlist"}
+	var agentSettings map[string]any
+	readJSON(t, copied, &agentSettings)
+	if !reflect.DeepEqual(agentSettings, wantCopy) {
+		t.Fatalf("the agent's settings = %v, want %v", agentSettings, wantCopy)
+	}
+	if info, err := os.Stat(copied); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the agent's settings: %v, %v; want mode 0600, as they hold an account cache", info, err)
+	}
+
+	// The agent changes its copy, as --model does, and the user their file: the next
+	// start copies the user's again.
+	if err := os.WriteFile(copied, []byte(`{"model": {"modelId": "the agent's"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	original = []byte(`{"model": {"modelId": "the user's"}, "editor": {"vimMode": true}}`)
+	if err := os.WriteFile(user, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (aca.Cursor{}).Command(t.Context(), launch); err != nil {
+		t.Fatal(err)
+	}
+	agentSettings = nil
+	readJSON(t, copied, &agentSettings)
+	wantCopy = map[string]any{"model": map[string]any{"modelId": "the user's"}, "editor": map[string]any{"vimMode": true}, "steering": true}
+	if !reflect.DeepEqual(agentSettings, wantCopy) {
+		t.Fatalf("the agent's settings at the next start = %v, want %v", agentSettings, wantCopy)
+	}
+	if data, err := os.ReadFile(user); err != nil || !bytes.Equal(data, original) {
+		t.Fatalf("the user's settings became %q (%v), want them as they were", data, err)
+	}
+}
+
+// TestCursorConfigWithoutTheUsersSettings: a user file that is missing, or is not a
+// JSON object, gives steering alone and does not fail the start; one that is there
+// but unusable is logged.
+func TestCursorConfigWithoutTheUsersSettings(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		user   *string
+		logged bool
+	}{
+		{"missing", nil, false},
+		{"not JSON", ptr(`{"model": `), true},
+		{"an array", ptr(`[1, 2]`), true},
+		{"null", ptr(`null`), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			if c.user != nil {
+				user := filepath.Join(home, ".cursor", "cli-config.json")
+				if err := os.MkdirAll(filepath.Dir(user), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(user, []byte(*c.user), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var logged bytes.Buffer
+			ctx := logging.NewContext(t.Context(), logging.New(&logged, slog.LevelInfo))
+			backup := t.TempDir()
+			if _, err := (aca.Cursor{}).Command(ctx, aca.Launch{UserHome: home, BackupDir: backup}); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(backup, "cursor-config", "cli-config.json"))
+			if err != nil || string(data) != `{"steering":true}` {
+				t.Fatalf("the agent's settings = %q (%v), want steering alone", data, err)
+			}
+			if got := strings.Contains(logged.String(), "user cursor settings not copied"); got != c.logged {
+				t.Fatalf("logged = %v, want %v: %s", got, c.logged, logged.String())
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
 
 func readJSON(t *testing.T, path string, v any) {
 	t.Helper()

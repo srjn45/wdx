@@ -242,7 +242,7 @@ func TestBeginSessionSticks(t *testing.T) {
 	wantInOrder(t, b.text(t), "kept", "late")
 
 	b.launch.SessionID = "s-2"
-	command, err := aca.ClaudeCode{}.Command(b.launch)
+	command, err := aca.ClaudeCode{}.Command(t.Context(), b.launch)
 	if err != nil {
 		t.Fatal(err)
 	}

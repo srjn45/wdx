@@ -26,7 +26,7 @@ func TestByID(t *testing.T) {
 
 func TestClaudeCodeStartsASessionWithoutATranscript(t *testing.T) {
 	t.Parallel()
-	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir()})
+	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestClaudeCodeResumesASessionWithATranscript(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "s-1.jsonl"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home})
+	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestClaudeCodeResumesASessionWithATranscript(t *testing.T) {
 func TestClaudeCodeGivesTheNote(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
-	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Note: "use wdx"})
+	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Note: "use wdx"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestClaudeCodeGivesTheNote(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "s-1.jsonl"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err = aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Note: "use wdx"})
+	got, err = aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Note: "use wdx"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestClaudeCodeIgnoresAnotherSessionsTranscript(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "s-2.jsonl"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home})
+	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	launch := aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: home, Model: "sonnet", Permissions: aca.PermissionsFull}
-	got, err := aca.ClaudeCode{}.Command(launch)
+	got, err := aca.ClaudeCode{}.Command(t.Context(), launch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "s-1.jsonl"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err = aca.ClaudeCode{}.Command(launch)
+	got, err = aca.ClaudeCode{}.Command(t.Context(), launch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestClaudeCodeGivesTheModelAndPermissions(t *testing.T) {
 
 func TestClaudeCodeAskPassesNoPermissions(t *testing.T) {
 	t.Parallel()
-	got, err := aca.ClaudeCode{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir(), Permissions: aca.PermissionsAsk})
+	got, err := aca.ClaudeCode{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir(), Permissions: aca.PermissionsAsk})
 	if err != nil {
 		t.Fatal(err)
 	}

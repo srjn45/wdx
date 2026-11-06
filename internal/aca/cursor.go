@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/atomicfile"
+	"github.com/srjn45/wdx/internal/logging"
 )
 
 // Cursor is Anysphere's Cursor CLI, cursor-agent. It has no screen parser, backup,
@@ -45,13 +46,23 @@ func (Cursor) ScreenParser() ScreenParser { return NoScreenParser{} }
 // launch note, as Cursor has no flag that adds to its system prompt.
 const cursorPluginDir = "cursor-plugin"
 
+// cursorConfigDir is the agent's own Cursor config folder in its backup, which
+// CURSOR_CONFIG_DIR points Cursor at: its settings and its chats. The login, hooks,
+// MCP servers and rules stay the user's, as Cursor reads them from the home.
+const cursorConfigDir = "cursor-config"
+
+// cursorSettingsFile is Cursor's settings file, in ~/.cursor or CURSOR_CONFIG_DIR.
+const cursorSettingsFile = "cli-config.json"
+
 // Command implements AiCodingAgent. It ignores l.SessionID: every start begins a new
 // conversation, as resuming one is not written yet. --trust skips the prompt a
 // directory Cursor has not been told to trust starts with, which a message delivered
-// into makes it quit; Cursor saves that trust for the directory. --model also
-// becomes the user's default in ~/.cursor/cli-config.json, so it is passed only when
-// a model was asked for (docs/ACA.md).
-func (Cursor) Command(l Launch) ([]string, error) {
+// into makes it quit; Cursor saves that trust for the directory. With a backup, Cursor
+// runs with a config folder of the agent's own, so --model changes only the agent's
+// settings; without one, --model also becomes the user's default in
+// ~/.cursor/cli-config.json, so it is passed only when a model was asked for
+// (docs/ACA.md).
+func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 	command := []string{"cursor-agent", "--trust"}
 	if l.Model != "" {
 		command = append(command, "--model", l.Model)
@@ -59,7 +70,15 @@ func (Cursor) Command(l Launch) ([]string, error) {
 	if l.Permissions == PermissionsFull {
 		command = append(command, "--force", "--sandbox", "disabled", "--approve-mcps")
 	}
-	if l.Note == "" || l.BackupDir == "" {
+	if l.BackupDir == "" {
+		return command, nil
+	}
+	config := filepath.Join(l.BackupDir, cursorConfigDir)
+	if err := cursorWriteSettings(ctx, config, l.UserHome); err != nil {
+		return nil, fmt.Errorf("write the agent's Cursor settings: %w", err)
+	}
+	command = append([]string{"env", "CURSOR_CONFIG_DIR=" + config}, command...)
+	if l.Note == "" {
 		return command, nil
 	}
 	dir, err := cursorWritePlugin(filepath.Join(l.BackupDir, cursorPluginDir), l.Note)
@@ -67,6 +86,41 @@ func (Cursor) Command(l Launch) ([]string, error) {
 		return nil, fmt.Errorf("write the plugin that gives the launch note: %w", err)
 	}
 	return append(command, "--plugin-dir", dir), nil
+}
+
+// cursorWriteSettings writes the agent's cli-config.json in config: the user's, key
+// for key, as it is at this start, with steering on, so that Enter on a queued
+// message steers it into the turn rather than stopping the running tool. What the
+// agent changed in its own copy is lost. A user file that is missing or cannot be
+// read as an object gives steering alone, as Cursor's defaults are then the user's
+// too.
+func cursorWriteSettings(ctx context.Context, config, userHome string) error {
+	settings := map[string]json.RawMessage{}
+	if userHome != "" {
+		user := filepath.Join(userHome, ".cursor", cursorSettingsFile)
+		data, err := os.ReadFile(user)
+		if err == nil {
+			err = json.Unmarshal(data, &settings)
+		}
+		if err == nil && settings == nil {
+			err = errors.New("null, not an object")
+		}
+		if err != nil {
+			settings = map[string]json.RawMessage{}
+			if !errors.Is(err, os.ErrNotExist) {
+				logging.FromContext(ctx).Warn("user cursor settings not copied", "path", user, "err", err)
+			}
+		}
+	}
+	settings["steering"] = json.RawMessage("true")
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(config, 0o700); err != nil {
+		return err
+	}
+	return atomicfile.Write(filepath.Join(config, cursorSettingsFile), data, 0o600)
 }
 
 // cursorWritePlugin writes, in dir, a plugin whose sessionStart hook gives note to

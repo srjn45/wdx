@@ -34,7 +34,7 @@ func (ClaudeCode) Models(context.Context, Launch) ([]Model, error) {
 // transcript: Claude Code writes none until something is typed, and resuming
 // such a session fails with "No conversation found". One Claude Code has
 // deleted comes back from the backup.
-func (ClaudeCode) Command(l Launch) ([]string, error) {
+func (ClaudeCode) Command(_ context.Context, l Launch) ([]string, error) {
 	command := []string{"claude", "--session-id", l.SessionID}
 	resume, err := claudeCodeTranscriptAt(l)
 	if err != nil {

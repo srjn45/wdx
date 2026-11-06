@@ -115,7 +115,7 @@ func TestCodexResumesTheSessionItKeeps(t *testing.T) {
 		// Never a pattern to look for.
 		"*": false,
 	} {
-		got, err := aca.Codex{}.Command(aca.Launch{Dir: "/work/repo", SessionID: session, UserHome: home})
+		got, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work/repo", SessionID: session, UserHome: home})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestCodexNotifyKeepsEachTurn(t *testing.T) {
 	if err := os.Mkdir(backup, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	command, err := aca.Codex{}.Command(aca.Launch{Dir: "/work/repo", UserHome: t.TempDir(), BackupDir: backup})
+	command, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work/repo", UserHome: t.TempDir(), BackupDir: backup})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestCodexNotifyKeepsEachTurn(t *testing.T) {
 // With no backup, as in a test of the command, there is nothing to report to.
 func TestCodexNotifiesOnlyWithABackup(t *testing.T) {
 	t.Parallel()
-	command, err := aca.Codex{}.Command(aca.Launch{Dir: "/work/repo", UserHome: t.TempDir()})
+	command, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work/repo", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

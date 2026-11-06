@@ -206,7 +206,7 @@ func TestClaudeCodeBackUpKeepsWhatClaudeDeletes(t *testing.T) {
 	}
 
 	// Its start puts the transcript back, where a resume finds it.
-	got, err := aca.ClaudeCode{}.Command(b.launch)
+	got, err := aca.ClaudeCode{}.Command(t.Context(), b.launch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestClaudeCodeSettingsRecordEachSession(t *testing.T) {
 	t.Parallel()
 	b := newClaudeBackup(t)
 	b.launch.BackupDir = filepath.Join(filepath.Dir(b.launch.BackupDir), "it's here")
-	got, err := aca.ClaudeCode{}.Command(b.launch)
+	got, err := aca.ClaudeCode{}.Command(t.Context(), b.launch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestClaudeCodeSettingsTurnOffTheSandboxForFull(t *testing.T) {
 	} {
 		b := newClaudeBackup(t)
 		b.launch.Permissions = tc.permissions
-		got, err := aca.ClaudeCode{}.Command(b.launch)
+		got, err := aca.ClaudeCode{}.Command(t.Context(), b.launch)
 		if err != nil {
 			t.Fatal(err)
 		}

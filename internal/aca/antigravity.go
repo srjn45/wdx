@@ -41,7 +41,7 @@ func (Antigravity) Program() string { return "agy" }
 // this session, whose hooks report each conversation to the backup. What
 // --settings holds is for this session only, never saved, over the user's own
 // settings.
-func (Antigravity) Command(l Launch) ([]string, error) {
+func (Antigravity) Command(_ context.Context, l Launch) ([]string, error) {
 	command := []string{"agy"}
 	resume, err := antigravityKeeps(l.UserHome, l.SessionID)
 	if err == nil && !resume {

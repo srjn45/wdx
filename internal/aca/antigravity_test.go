@@ -49,7 +49,7 @@ func TestAntigravityCommand(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := aca.Antigravity{}.Command(c.launch)
+			got, err := aca.Antigravity{}.Command(t.Context(), c.launch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func TestAntigravityGivesTheNote(t *testing.T) {
 	}
 	dir := filepath.Join(backup, "antigravity")
 	for _, note := range []string{"use wdx", "use wdx, again"} {
-		got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", BackupDir: backup, Note: note})
+		got, err := aca.Antigravity{}.Command(t.Context(), aca.Launch{Dir: "/work", BackupDir: backup, Note: note})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestAntigravityGivesTheNote(t *testing.T) {
 		}
 	}
 	// With no note, the folder is still given, for its hooks, and an old note goes.
-	got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", BackupDir: backup})
+	got, err := aca.Antigravity{}.Command(t.Context(), aca.Launch{Dir: "/work", BackupDir: backup})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAntigravityMovesTheOldFolder(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if _, err := (aca.Antigravity{}).Command(aca.Launch{Dir: "/work", BackupDir: backup, Note: "use wdx"}); err != nil {
+		if _, err := (aca.Antigravity{}).Command(t.Context(), aca.Launch{Dir: "/work", BackupDir: backup, Note: "use wdx"}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Lstat(old); !errors.Is(err, os.ErrNotExist) {

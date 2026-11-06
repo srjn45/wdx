@@ -12,13 +12,13 @@ import (
 type AiCodingAgent interface {
 	// ID names it in the database and the API, as "claude_code".
 	ID() string
-	// Program is the program Command runs first, as "claude": what wdx looks for
-	// to know it is installed.
+	// Program is the program Command runs, as "claude": what wdx looks for to
+	// know it is installed.
 	Program() string
-	// Command is what to run, first the program; it starts the session or
-	// resumes it. It runs through the user's login shell, which finds the
-	// program.
-	Command(Launch) ([]string, error)
+	// Command is what to run: the program, or env and the program; it starts
+	// the session or resumes it. It runs through the user's login shell, which
+	// finds the program.
+	Command(context.Context, Launch) ([]string, error)
 	// ScreenParser reads what it is doing from its screen.
 	ScreenParser() ScreenParser
 	// Deliver puts one message into its input box on w, its terminal's input,

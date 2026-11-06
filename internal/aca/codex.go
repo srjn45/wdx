@@ -32,7 +32,7 @@ func (Codex) Program() string { return "codex" }
 // this run only: Codex writes none of them to the user's config. It is told not to
 // offer an update and that l.Dir is trusted, so that it asks nothing before it
 // starts, and to report each turn to the backup.
-func (Codex) Command(l Launch) ([]string, error) {
+func (Codex) Command(_ context.Context, l Launch) ([]string, error) {
 	command := []string{"codex"}
 	session, err := codexSessionFile(l.UserHome, l.SessionID)
 	if err != nil {

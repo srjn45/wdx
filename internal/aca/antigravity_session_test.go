@@ -129,7 +129,7 @@ func TestAntigravityResumesTheConversationItKeeps(t *testing.T) {
 		// Never a pattern to look for.
 		"*": false,
 	} {
-		got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", SessionID: session, UserHome: home, BackupDir: t.TempDir()})
+		got, err := aca.Antigravity{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: session, UserHome: home, BackupDir: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestAntigravityHookKeepsEachConversation(t *testing.T) {
 	if err := os.Mkdir(backup, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (aca.Antigravity{}).Command(aca.Launch{Dir: "/work", UserHome: t.TempDir(), BackupDir: backup}); err != nil {
+	if _, err := (aca.Antigravity{}).Command(t.Context(), aca.Launch{Dir: "/work", UserHome: t.TempDir(), BackupDir: backup}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(backup, "antigravity", ".agents", "hooks.json"))

@@ -36,7 +36,7 @@ func TestByIDFindsCodex(t *testing.T) {
 // The session id is not passed: Codex names its own.
 func TestCodexStartsANewConversationAskingNothing(t *testing.T) {
 	t.Parallel()
-	got, err := aca.Codex{}.Command(aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir()})
+	got, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: "s-1", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCodexStartsANewConversationAskingNothing(t *testing.T) {
 
 func TestCodexQuotesTheTrustedDir(t *testing.T) {
 	t.Parallel()
-	got, err := aca.Codex{}.Command(aca.Launch{Dir: `/a "b"\c`})
+	got, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: `/a "b"\c`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestCodexQuotesTheTrustedDir(t *testing.T) {
 
 func TestCodexGivesTheModelPermissionsAndNote(t *testing.T) {
 	t.Parallel()
-	got, err := aca.Codex{}.Command(aca.Launch{Dir: "/work", Model: "gpt-6-luna", Permissions: aca.PermissionsFull, Note: "Run `wdx help agents`.\nSay \"done\"."})
+	got, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work", Model: "gpt-6-luna", Permissions: aca.PermissionsFull, Note: "Run `wdx help agents`.\nSay \"done\"."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestCodexGivesTheModelPermissionsAndNote(t *testing.T) {
 
 func TestCodexAskPassesNoPermissions(t *testing.T) {
 	t.Parallel()
-	got, err := aca.Codex{}.Command(aca.Launch{Dir: "/work", Permissions: aca.PermissionsAsk})
+	got, err := aca.Codex{}.Command(t.Context(), aca.Launch{Dir: "/work", Permissions: aca.PermissionsAsk})
 	if err != nil {
 		t.Fatal(err)
 	}

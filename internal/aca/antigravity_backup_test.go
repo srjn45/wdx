@@ -296,7 +296,7 @@ func TestAntigravityResumesAGoneConversationFromItsSnapshot(t *testing.T) {
 	if err := os.WriteFile(db+"-wal", []byte("left"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := aca.Antigravity{}.Command(aca.Launch{Dir: "/work", SessionID: antigravityFirst, UserHome: home, BackupDir: backup})
+	got, err := aca.Antigravity{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: antigravityFirst, UserHome: home, BackupDir: backup})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestAntigravityResumesAGoneConversationFromItsSnapshot(t *testing.T) {
 	}
 
 	// With neither, a new conversation.
-	got, err = aca.Antigravity{}.Command(aca.Launch{Dir: "/work", SessionID: antigravityCleared, UserHome: home, BackupDir: backup})
+	got, err = aca.Antigravity{}.Command(t.Context(), aca.Launch{Dir: "/work", SessionID: antigravityCleared, UserHome: home, BackupDir: backup})
 	if err != nil {
 		t.Fatal(err)
 	}
