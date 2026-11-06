@@ -1147,6 +1147,8 @@ Stacking, and the PRs it needs. Asked by the human on 2026-11-06, after using pl
 - A landing that fails or cannot start (`land_not_configured`, `dependency_missing`, `check_failed`, `push_failed`, `pr_failed`) leaves the plan `done`: its work is on its branch either way. It is logged, the worktree's row says why, as any landing's does, and `L` opens the PR once dealt with.
 - A plan of plans with `pr: true` says it for every plan it lists: each opens its PR once done. `pr` and `stacked` are set on the parent only, and a plan a parent lists that sets `pr` is a problem of the parent's (`invalid_plan`, `set pr on the plan of plans`), as a child runs only through its parent and its PR is part of the parent's chain.
 - With `pr: false`, nothing changes: the person lands the plan's worktree, as now.
+- As built: a plan of plans lists no plan that has the key `pr` at all, `pr: false` too, and a plan one lists refuses an update that gives it the key (`invalid_plan`, `<plan> is one of the plans of <parent>, so it cannot set pr`), as it does one listing plans.
+- As built: the landing is by PR whatever the project's method, with its check; a project that has not said how it lands (`land_not_configured`) or no `gh` (`dependency_missing`) cannot start one, which only the log says (`plan's PR landing not started`), as the lander keeps only landings that started. A run that ends with no worktree on its branch, as when every slot was gone, opens none and logs it.
 
 ### `stacked: true`
 

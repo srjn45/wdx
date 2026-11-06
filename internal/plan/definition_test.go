@@ -62,6 +62,12 @@ func TestParseProblems(t *testing.T) {
 			"  - id: c", "    after: [d]", "    prompt: p",
 			"  - id: d", "    after: [c]", "    prompt: p",
 		), []string{"3: a cycle: a waits for b waits for a", "9: a cycle: c waits for d waits for c"}},
+		{"pr not a flag", "goal: g\npr: yes please\ntasks:\n  - id: a\n    prompt: p\n", []string{"2: pr is not true or false"}},
+		{"pr a list", "goal: g\npr: [true]\ntasks:\n  - id: a\n    prompt: p\n", []string{"2: pr is not true or false"}},
+		{"stacked not a flag", "goal: g\npr: true\nstacked: 1\nplans:\n  - id: a\n", []string{"3: stacked is not true or false"}},
+		{"stacked on tasks", "goal: g\npr: true\nstacked: true\ntasks:\n  - id: a\n    prompt: p\n", []string{"3: stacked is for a plan of plans"}},
+		{"stacked without pr", "goal: g\nstacked: true\nplans:\n  - id: a\n", []string{"2: stacked needs pr: true"}},
+		{"stacked with pr false", "goal: g\npr: false\nstacked: true\nplans:\n  - id: a\n", []string{"2: stacked needs pr: true"}},
 		{"every problem", "goal: ''\nextra: 1\ntasks:\n  - id: a_b\n  - prompt: p\n", []string{
 			"1: the goal is blank", `2: unknown key "extra"`, `4: id "a_b"`, "4: task a_b has no prompt", "5: a task with no id",
 		}},
@@ -135,5 +141,25 @@ func TestParsePlans(t *testing.T) {
 	}
 	if !reflect.DeepEqual(def, want) {
 		t.Errorf("got %+v\nwant %+v", def, want)
+	}
+}
+
+func TestParseFlags(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		content     string
+		pr, stacked bool
+	}{
+		{"goal: g\ntasks:\n  - id: a\n    prompt: p\n", false, false},
+		{"goal: g\npr: true\ntasks:\n  - id: a\n    prompt: p\n", true, false},
+		{"goal: g\npr: True\nstacked: false\ntasks:\n  - id: a\n    prompt: p\n", true, false},
+		{"goal: g\npr: false\nplans:\n  - id: a\n", false, false},
+		{"goal: g\npr: true\nplans:\n  - id: a\n", true, false},
+		{"goal: g\nstacked: true\npr: true\nplans:\n  - id: a\n", true, true},
+	} {
+		def, problems := Parse([]byte(c.content))
+		if problems != nil || def.PR != c.pr || def.Stacked != c.stacked {
+			t.Errorf("%q: pr %v, stacked %v, %v; want pr %v, stacked %v", c.content, def.PR, def.Stacked, problems, c.pr, c.stacked)
+		}
 	}
 }

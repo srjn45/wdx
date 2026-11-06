@@ -112,6 +112,32 @@ func TestCreate(t *testing.T) {
 	}
 }
 
+// TestPRSetOnTheParent: pr is set on a plan of plans for the plans it lists, so a
+// plan listed that sets it is refused, whether it is listed or set later.
+func TestPRSetOnTheParent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	f.create(t, "auth-a", "goal: g\npr: true\ntasks:\n  - id: x\n    prompt: p\n")
+	b := f.create(t, "auth-b", tasks("y"))
+	got := problems(t, func() error {
+		_, err := f.store.Create(ctx, f.project, "auth", "", []byte("goal: g\npr: true\nplans:\n  - id: auth-b\n  - id: auth-a\n"))
+		return err
+	}())
+	if want := []string{"line 5: auth-a sets pr itself: set pr on the plan of plans"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("listing a plan that sets pr: %q", got)
+	}
+
+	f.create(t, "auth", "goal: g\npr: true\nplans:\n  - id: auth-b\n")
+	got = problems(t, func() error {
+		_, err := f.store.Update(ctx, b.ID, 1, []byte("goal: g\npr: false\ntasks:\n  - id: y\n    prompt: p\n"))
+		return err
+	}())
+	if want := []string{"line 2: auth-b is one of the plans of auth, so it cannot set pr: set pr on the plan of plans"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("a listed plan setting pr: %q", got)
+	}
+}
+
 func TestPlansOfPlans(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

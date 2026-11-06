@@ -61,6 +61,9 @@ type RunnerOptions struct {
 	// until it ends; one that fails keeps its terminal. A check cut short by ctx is
 	// stopped.
 	Check func(ctx context.Context, projectID, dir, command string) error
+	// LandByPR starts landing the project's worktree at path by PR, in the
+	// background, as wdx worktree land --method pr does, or says why it cannot.
+	LandByPR func(ctx context.Context, projectID, path string) error
 	// Changed is told of every step, for the project's stream.
 	Changed func(projectID string)
 	// PullRequest returns the latest PR of branch, in the repository holding dir,
@@ -272,10 +275,12 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 	case ActionStart:
 		return true, r.start(ctx, run, project, a.Task, a.Slot)
 	case ActionFinish:
-		if err := r.finish(ctx, run); err != nil {
+		kept, err := r.finish(ctx, run)
+		if err != nil {
 			return false, err
 		}
 		r.removeAgents(ctx, run, f.Agents)
+		r.openPR(ctx, run, kept)
 		r.wakeParent(ctx, id)
 		return true, nil
 	}
@@ -718,19 +723,20 @@ func holdsWork(ctx context.Context, path, branch, base string, tasks bool) (bool
 // finish leaves the run's branch in one of its free slots, an ordinary worktree now
 // for the person to land, removes the other free ones, and makes the run done. A
 // slot git will not remove, as it has changes, is kept as an ordinary worktree too.
-func (r *Runner) finish(ctx context.Context, run Run) error {
+// It returns the path of the worktree on the run's branch, "" for none.
+func (r *Runner) finish(ctx context.Context, run Run) (string, error) {
 	log := logging.FromContext(ctx)
-	kept := false
+	kept := ""
 	for _, sl := range run.Slots {
 		held := slices.ContainsFunc(run.Tasks, func(t TaskRun) bool { return t.Slot == sl.Number })
 		switch {
 		case held:
 			log.Info("slot kept for its task", "slot", sl.Number, "path", sl.Path)
-		case !kept:
+		case kept == "":
 			if err := git.Switch(ctx, sl.Path, run.Branch); err != nil {
-				return err
+				return "", err
 			}
-			kept = true
+			kept = sl.Path
 			log.Info("slot kept on the plan's branch", "slot", sl.Number, "path", sl.Path, "branch", run.Branch)
 		default:
 			if err := r.opts.RemoveWorktree(ctx, run.ProjectID, sl.Path); err != nil {
@@ -738,10 +744,54 @@ func (r *Runner) finish(ctx context.Context, run Run) error {
 			}
 		}
 		if err := r.store.DropSlot(ctx, run.PlanID, sl.Number); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return r.store.Finish(ctx, run.PlanID)
+	return kept, r.store.Finish(ctx, run.PlanID)
+}
+
+// openPR lands the worktree at path, on the done run's branch, by PR, if its plan,
+// or the plan of plans listing it, says pr: true. A landing that fails or cannot
+// start leaves the plan done, its work on its branch either way: one that fails
+// says why in the worktree's landing, one that cannot start in the log, and the
+// person lands it once they have dealt with it.
+func (r *Runner) openPR(ctx context.Context, run Run, path string) {
+	log := logging.FromContext(ctx).With("branch", run.Branch)
+	pr, err := r.wantsPR(ctx, run)
+	if err != nil {
+		log.Error("plan's PR not opened, as whether it wants one is not known", "err", err)
+		return
+	}
+	switch {
+	case !pr:
+		return
+	case path == "":
+		log.Info("plan's PR not opened, as no worktree is on its branch")
+		return
+	}
+	if err := r.opts.LandByPR(ctx, run.ProjectID, path); err != nil {
+		log.Error("plan's PR landing not started: the plan stays done", "path", path, "err", err)
+		return
+	}
+	log.Info("plan's PR landing started", "path", path)
+}
+
+// wantsPR reports whether the run's plan wants its PR opened once done: a plan a
+// plan of plans lists, as its parent says, any other as it says itself.
+func (r *Runner) wantsPR(ctx context.Context, run Run) (bool, error) {
+	p, err := r.store.Get(ctx, run.PlanID)
+	if err != nil || p.Parent == "" {
+		return run.Definition.PR, err
+	}
+	parent, err := r.store.GetByName(ctx, p.ProjectID, p.Parent)
+	if err != nil {
+		return false, err
+	}
+	parentRun, ran, err := r.store.Run(ctx, parent.ID)
+	if err != nil || !ran {
+		return false, err
+	}
+	return parentRun.Definition.PR, nil
 }
 
 // removeAgents removes the agents of the tasks of a run that is over, done or

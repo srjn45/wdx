@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/db"
@@ -107,6 +109,7 @@ func (d *Daemon) startRunner() {
 			}
 			return plan.PullRequest{Number: pr.Number, MergeCommit: pr.MergeCommit}, true, nil
 		},
+		LandByPR: d.landPlanByPR,
 		Changed: func(projectID string) {
 			d.tracker.Refresh(projectID, "")
 			d.notices.notify()
@@ -180,5 +183,36 @@ func (d *Daemon) runPlanCheck(ctx context.Context, projectID, dir, command strin
 	if ctx.Err() != nil {
 		stop(context.WithoutCancel(ctx))
 	}
+	return err
+}
+
+// landPlanByPR starts landing the project's worktree at path by PR, a done plan's,
+// with the project's check, as wdx worktree land --method pr does.
+func (d *Daemon) landPlanByPR(ctx context.Context, projectID, path string) error {
+	p, err := d.projects.GetByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	settings, ok, err := d.projects.LandSettings(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errLandNotConfigured
+	}
+	c := checkoutsOf(p)
+	list, err := worktree.List(ctx, c)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(list, func(s worktree.Status) bool { return s.Path == path })
+	if i < 0 {
+		return fmt.Errorf("%w: %s", worktree.ErrNotFound, path)
+	}
+	agents, err := d.agents.Store().List(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	_, err = d.lander.Start(ctx, p.ID, c, list[i].Name, workingAgents(agents), worktree.LandSettings{Method: worktree.MethodPR, Check: settings.Check, Push: settings.Push})
 	return err
 }

@@ -19,8 +19,15 @@ import (
 type Definition struct {
 	Goal        string
 	Constraints []string
-	Tasks       []Task  // nil for a plan of plans
-	Plans       []Child // nil for a plan of tasks
+	// PR says wdx opens the plan's PR once it is done; on a plan of plans, each
+	// plan it lists does.
+	PR bool
+	// Stacked, on a plan of plans only, starts each plan on the branch of the one
+	// before it (docs/PLANS.md, Step 7 in detail).
+	Stacked bool
+	Tasks   []Task  // nil for a plan of plans
+	Plans   []Child // nil for a plan of tasks
+	prLine  int     // pr's line, 0 when it is not set, for a parent's check
 }
 
 // Task is one task of a plan: a prompt for an agent, and the tasks it waits for.
@@ -119,8 +126,8 @@ func (p *parsed) problem(line int, format string, args ...any) {
 
 // top reads the plan's keys.
 func (p *parsed) top(root *yaml.Node) {
-	var goal, tasks, plans *yaml.Node
-	for _, kv := range p.pairs(root, "goal", "constraints", "tasks", "plans") {
+	var goal, tasks, plans, stacked, pr *yaml.Node
+	for _, kv := range p.pairs(root, "goal", "constraints", "pr", "stacked", "tasks", "plans") {
 		switch kv.key.Value {
 		case "goal":
 			goal = kv.key
@@ -129,6 +136,13 @@ func (p *parsed) top(root *yaml.Node) {
 			}
 		case "constraints":
 			p.def.Constraints = p.texts(kv.value, "constraints")
+		case "pr":
+			pr = kv.key
+			p.def.PR = p.flag(kv.value, "pr")
+			p.def.prLine = kv.key.Line
+		case "stacked":
+			stacked = kv.key
+			p.def.Stacked = p.flag(kv.value, "stacked")
 		case "tasks":
 			tasks, p.listed = kv.key, kv.value
 			p.entries = p.list(kv.value, "tasks", "task", maxTaskID, true)
@@ -149,6 +163,17 @@ func (p *parsed) top(root *yaml.Node) {
 		p.entries = nil
 	case tasks == nil && plans == nil:
 		p.problem(root.Line, "no tasks or plans")
+	}
+	switch {
+	case stacked == nil || !p.def.Stacked:
+	case tasks != nil:
+		p.problem(stacked.Line, "stacked is for a plan of plans: it stacks the plans it lists")
+	case !p.def.PR:
+		line := stacked.Line
+		if pr != nil {
+			line = pr.Line
+		}
+		p.problem(line, "stacked needs pr: true, as each plan's PR goes on the one before it")
 	}
 	if len(p.problems) > 0 {
 		return
@@ -194,6 +219,16 @@ func (p *parsed) text(n *yaml.Node, what string) (string, bool) {
 		return "", true
 	}
 	return n.Value, true
+}
+
+// flag returns n's value if it is true or false, reporting anything else.
+func (p *parsed) flag(n *yaml.Node, what string) bool {
+	var b bool
+	if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" || n.Decode(&b) != nil {
+		p.problem(n.Line, "%s is not true or false", what)
+		return false
+	}
+	return b
 }
 
 // texts returns n's values if it is a list of texts.

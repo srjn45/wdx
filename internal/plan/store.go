@@ -36,6 +36,7 @@ type summary struct {
 	revision  int
 	tasks     int
 	plans     []string
+	setsPR    bool // its definition has pr, true or false
 }
 
 // NewStore returns a Store backed by database, keeping a copy of each plan's latest
@@ -302,7 +303,7 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 		return Reduced{}, nil, &InvalidError{Problems: problems}
 	}
 	children := r.Definition.Plans
-	if children == nil {
+	if children == nil && r.Definition.prLine == 0 {
 		return r, nil, nil
 	}
 	if self != "" {
@@ -315,8 +316,20 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 			if err != nil {
 				return Reduced{}, nil, s.translate(ctx, err)
 			}
-			problems = append(problems, Problem{Line: children[0].Line, Message: fmt.Sprintf("%s is one of the plans of %s, so it cannot list plans: plans of plans have one level", name, parent.Name)})
+			if children != nil {
+				problems = append(problems, Problem{Line: children[0].Line, Message: fmt.Sprintf("%s is one of the plans of %s, so it cannot list plans: plans of plans have one level", name, parent.Name)})
+			}
+			if r.Definition.prLine != 0 {
+				problems = append(problems, Problem{Line: r.Definition.prLine, Message: fmt.Sprintf("%s is one of the plans of %s, so it cannot set pr: set pr on the plan of plans", name, parent.Name)})
+			}
 		}
+	}
+	if children == nil {
+		if problems != nil {
+			logging.FromContext(ctx).Info("plan refused", "name", name, "problems", len(problems))
+			return Reduced{}, nil, &InvalidError{Problems: problems}
+		}
+		return r, nil, nil
 	}
 	var ids []string
 	for _, c := range children {
@@ -342,6 +355,8 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 		switch {
 		case sum.plans != nil:
 			problems = append(problems, Problem{Line: c.Line, Message: fmt.Sprintf("%s lists plans itself: plans of plans have one level", d.Name)})
+		case sum.setsPR:
+			problems = append(problems, Problem{Line: c.Line, Message: fmt.Sprintf("%s sets pr itself: set pr on the plan of plans", d.Name)})
 		case d.ParentID != "" && d.ParentID != self:
 			parent, err := s.docs.Get(ctx, d.ParentID)
 			if err != nil {
@@ -620,7 +635,7 @@ func (s *Store) summary(ctx context.Context, d doc.Doc) (summary, error) {
 	if err != nil {
 		return summary{}, err
 	}
-	sum = summary{projectID: d.ProjectID, revision: d.Revision, tasks: len(def.Tasks)}
+	sum = summary{projectID: d.ProjectID, revision: d.Revision, tasks: len(def.Tasks), setsPR: def.prLine != 0}
 	if def.Plans != nil {
 		sum.plans = make([]string, len(def.Plans))
 		for i, c := range def.Plans {
