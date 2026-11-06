@@ -213,6 +213,25 @@ fi
 
 tar -xzf "$tmp/$archive" -C "$tmp" "$NAME" || die "failed to extract $archive"
 
+# --- signing (macOS) ------------------------------------------------------
+# macOS keys the permissions it grants wdx (Full Disk Access) to its
+# signature: signed with the same certificate every time, wdx keeps them
+# across updates (the wdx doc MAC_SIGNING). The release signs a copy of
+# itself, before it is installed, so the daemon never starts unsigned.
+certificate_made=
+if [ "$os" = darwin ]; then
+	cp "$tmp/$NAME" "$tmp/$NAME.signed"
+	if signed="$(env -u WDX_HOME "$tmp/$NAME" codesign --path "$tmp/$NAME.signed" --color never 2>&1)"; then
+		mv -f "$tmp/$NAME.signed" "$tmp/$NAME"
+		info "signed $NAME, so macOS keeps the permissions it grants it across updates"
+		case "$signed" in *"made the "*" certificate"*) certificate_made=1 ;; esac
+	else
+		rm -f "$tmp/$NAME.signed"
+		warn "$NAME is installed unsigned, so macOS will ask for its permissions again after each update:"
+		printf '%s\n' "$signed" | sed 's/^/    /' >&2
+	fi
+fi
+
 # --- install --------------------------------------------------------------
 # Copy then rename so a running wdx is never replaced by a half-written file.
 mkdir -p "$BIN_DIR"
@@ -353,4 +372,8 @@ esac
 # fails if it does not answer.
 wdx daemon start >/dev/null || die "the daemon did not start; see $NAME daemon status and the log in $HOME_DIR/logs"
 wdx daemon status
+if [ -n "$certificate_made" ]; then
+	info "grant $NAME Full Disk Access once, so macOS stops asking for each folder:"
+	info "  System Settings → Privacy & Security → Full Disk Access → + → Cmd+Shift+G → $TARGET"
+fi
 info "to see the logs and metrics in Grafana, run: $NAME observe start (needs Docker or Podman)"

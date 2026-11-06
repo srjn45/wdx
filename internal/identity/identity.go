@@ -61,6 +61,12 @@ func HolderSocket(home, id string) string {
 	return filepath.Join(home, "run", id+".sock")
 }
 
+// CodesignDir holds, on macOS, the keychain wdx signs itself with and the
+// keychain's password (the wdx doc MAC_SIGNING). Only the user may enter it.
+func CodesignDir(home string) string {
+	return filepath.Join(home, "codesign")
+}
+
 // DocsDir holds a read-only copy of each doc's latest revision under home, to
 // recover docs from if the database is lost (docs/DOCS.md).
 func DocsDir(home string) string {

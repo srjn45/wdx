@@ -51,6 +51,7 @@ const (
 	resultUnchanged  = "unchanged"
 	resultInstalled  = "installed"
 	resultReady      = "ready"
+	resultSigned     = "signed"
 )
 
 // What the daemon did with a setting set, besides resultNotRunning.
