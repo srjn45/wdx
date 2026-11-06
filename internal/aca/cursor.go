@@ -19,10 +19,9 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// Cursor is Anysphere's Cursor CLI, cursor-agent. It has no screen parser, backup,
-// sessions or brief yet: the wdx doc ACA_CURSOR.
+// Cursor is Anysphere's Cursor CLI, cursor-agent: the wdx docs ACA_CURSOR and
+// CURSOR_PARITY. Its backup keeps only the session so far.
 type Cursor struct {
-	NoBackUp
 	NoBeginSession
 	NoBrief
 	NoDetached
@@ -54,16 +53,29 @@ const cursorConfigDir = "cursor-config"
 // cursorSettingsFile is Cursor's settings file, in ~/.cursor or CURSOR_CONFIG_DIR.
 const cursorSettingsFile = "cli-config.json"
 
-// Command implements AiCodingAgent. It ignores l.SessionID: every start begins a new
-// conversation, as resuming one is not written yet. --trust skips the prompt a
-// directory Cursor has not been told to trust starts with, which a message delivered
-// into makes it quit; Cursor saves that trust for the directory. With a backup, Cursor
-// runs with a config folder of the agent's own, so --model changes only the agent's
-// settings; without one, --model also becomes the user's default in
-// ~/.cursor/cli-config.json, so it is passed only when a model was asked for
-// (docs/ACA.md).
+// Command implements AiCodingAgent. Cursor names its own chats: l.SessionID is
+// resumed once it names a chat of the agent's config folder made in l.Dir, which
+// BackUp makes it after the first message, and before that a start begins a new
+// chat, which the launch note reaches only then, as --resume runs no sessionStart
+// hook. --trust skips the prompt a directory Cursor has not been told to trust starts
+// with, which a message delivered into makes it quit; Cursor saves that trust for the
+// directory. With a backup, Cursor runs with a config folder of the agent's own, so
+// --model changes only the agent's settings; without one, --model also becomes the
+// user's default in ~/.cursor/cli-config.json, so it is passed only when a model was
+// asked for (docs/ACA.md).
 func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 	command := []string{"cursor-agent", "--trust"}
+	var config string
+	if l.BackupDir != "" {
+		config = filepath.Join(l.BackupDir, cursorConfigDir)
+		resume, err := cursorResumes(config, l.SessionID, l.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("look for Cursor's chat %s: %w", l.SessionID, err)
+		}
+		if resume {
+			command = append(command, "--resume", l.SessionID)
+		}
+	}
 	if l.Model != "" {
 		command = append(command, "--model", l.Model)
 	}
@@ -73,7 +85,6 @@ func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 	if l.BackupDir == "" {
 		return command, nil
 	}
-	config := filepath.Join(l.BackupDir, cursorConfigDir)
 	if err := cursorWriteSettings(ctx, config, l.UserHome); err != nil {
 		return nil, fmt.Errorf("write the agent's Cursor settings: %w", err)
 	}

@@ -45,7 +45,7 @@ func TestCursorCommand(t *testing.T) {
 		{"full", aca.Launch{Permissions: aca.PermissionsFull},
 			[]string{"cursor-agent", "--trust", "--force", "--sandbox", "disabled", "--approve-mcps"}},
 		{"model", aca.Launch{Model: "gpt-5.2"}, []string{"cursor-agent", "--trust", "--model", "gpt-5.2"}},
-		{"the session is ignored", aca.Launch{SessionID: "s-1", Dir: "/work"}, []string{"cursor-agent", "--trust"}},
+		{"no backup, no resume", aca.Launch{SessionID: "s-1", Dir: "/work"}, []string{"cursor-agent", "--trust"}},
 		{"no backup, no note", aca.Launch{Note: "use wdx"}, []string{"cursor-agent", "--trust"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
