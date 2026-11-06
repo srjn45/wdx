@@ -22,6 +22,9 @@ func TestAntigravityIsKnown(t *testing.T) {
 	if aca.CanBeginSession(got) {
 		t.Error("it can begin a session, with no BeginSession of its own")
 	}
+	if _, ok := got.ScreenParser().(aca.AntigravityScreenParser); !ok {
+		t.Errorf("Antigravity's parser is %T", got.ScreenParser())
+	}
 }
 
 // TestAntigravityCommand: the session id is not passed, as Antigravity names its

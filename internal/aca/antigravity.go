@@ -17,7 +17,8 @@ import (
 )
 
 // Antigravity is Google's Antigravity CLI. It has written only its command, its
-// delivering and its models; the rest are stand-ins. The wdx doc ACA_ANTIGRAVITY.
+// delivering, its screen parser and its models; the rest are stand-ins. The wdx
+// docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
 	NoBackUp
 	NoBeginSession
@@ -124,7 +125,7 @@ const (
 func (Antigravity) Interrupt() []byte { return []byte("\x1b") }
 
 // ScreenParser implements AiCodingAgent.
-func (Antigravity) ScreenParser() ScreenParser { return NoScreenParser{} }
+func (Antigravity) ScreenParser() ScreenParser { return AntigravityScreenParser{} }
 
 // antigravityModelsTime is how long `agy models` may take: it asks over the network.
 const antigravityModelsTime = 30 * time.Second
