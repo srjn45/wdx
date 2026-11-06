@@ -283,7 +283,7 @@ Supported, though most users will mostly use the keyboard.
 - Double-click a frame title, both clicks on the same thing, or click a `[⤢]` button on it, to zoom.
 - Click a terminal tab or an agent tab to switch to it, an agent tab's `(-)` to close it, and `◀` or `▶` on the strip to go to the nearest tab hidden there.
 - Drag the dividers to resize.
-- The wheel scrolls a pane's scrollback.
+- The wheel scrolls a pane's scrollback, and the left pane's list, whichever pane has the focus; the cursor stays in view, moved to the nearest row when the scroll would take it out.
 - Programs that request the mouse (vim, htop) get mouse events inside their pane.
 - Dragging selects text inside the pane where the drag started, never past its edges, highlighted in reverse; releasing copies it, as terminals do on Linux. A click or a key clears it. The copy goes both through OSC 52, which works over ssh, and through the system's tool (`wl-copy`, `xclip` or `xsel` on Linux, `pbcopy` on macOS), since GNOME Terminal and Terminal.app ignore OSC 52. In a pane whose program takes the mouse, the program will get the drags instead.
 - The terminal's own selection, `Shift`-drag (Linux) or `Option`-drag (macOS), still works but crosses the panes, as the terminal knows nothing of them.

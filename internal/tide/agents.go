@@ -1065,6 +1065,44 @@ func (m *Model) visibleItems(height int) (shown []paneItem, top section) {
 	return items[first:min(first+body, len(items))], top
 }
 
+// wheel scrolls the list by a turn of the wheel in a pane of height rows, the
+// cursor staying in view: when the scroll takes it out, it moves to the row
+// nearest to where it was that the cursor can stop on.
+func (s *projectScreen) wheel(msg tea.MouseWheelMsg, height int) {
+	m := s.m
+	l := m.list()
+	if l == nil {
+		return
+	}
+	items := m.paneItems()
+	body := max(m.listHeight(height)-1, 1)
+	from := l.offset
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		l.offset = max(l.offset-valueWheelStep, 0)
+	case tea.MouseWheelDown:
+		l.offset = max(min(l.offset+valueWheelStep, len(items)-body), 0)
+	default:
+		return
+	}
+	last := min(l.offset+body, len(items)) - 1
+	cursor := slices.IndexFunc(items, l.isCursor)
+	if cursor >= l.offset && cursor <= last {
+		return
+	}
+	step, at := 1, l.offset // the cursor went off the top: the first stop below
+	if cursor > last {
+		step, at = -1, last
+	}
+	for j := at; j >= l.offset && j <= last; j += step {
+		if items[j].stop() {
+			m.moveToItem(items[j])
+			m.log.Debug("cursor moved by the wheel", "from_offset", from, "offset", l.offset, "section", l.section.letter())
+			return
+		}
+	}
+}
+
 // click takes a click at the column and row of the pane's area, of the given size:
 // on a row's fold mark it folds or unfolds, elsewhere on a row it moves the cursor
 // there and shows what the row is.

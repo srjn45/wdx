@@ -416,9 +416,14 @@ func (m *Model) programMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 	return a.pane.Update(out), true
 }
 
-// paneWheel gives a turn of the wheel over the pane p to it: to the program,
-// or scrolling its history.
+// paneWheel gives a turn of the wheel over the pane p to it: scrolling the
+// project's list, or what the right pane shows, or to the program, or scrolling
+// its history.
 func (m *Model) paneWheel(p pane, msg tea.MouseWheelMsg, area uv.Rectangle) tea.Cmd {
+	if s, ok := m.root.(*projectScreen); ok && p == project && m.projects.loaded {
+		s.wheel(msg, area.Dy())
+		return nil
+	}
 	if p == agent && m.textShown() {
 		m.diffWheel(msg)
 		return nil

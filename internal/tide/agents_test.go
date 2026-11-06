@@ -212,6 +212,57 @@ func TestAgentsScroll(t *testing.T) {
 	}
 }
 
+// TestAgentsWheel: the wheel over the list scrolls it, whichever pane has the
+// focus, the cursor kept in view on the row nearest to where it was.
+func TestAgentsWheel(t *testing.T) {
+	t.Parallel()
+	var agents []api.Agent
+	for i := range 20 {
+		agents = append(agents, exited(fmt.Sprintf("agent-%02d", i), 0))
+	}
+	m := newAgentsModel(80, 16, agents...) // the project pane has 11 rows inside: the heading and 10
+	m.layout.setFocus(agent)
+	wheel := func(button tea.MouseButton, times int) {
+		for range times {
+			m.Update(tea.MouseWheelMsg{X: 5, Y: 5, Button: button})
+		}
+	}
+
+	wheel(tea.MouseWheelDown, 1)
+	if got := text(m); strings.Contains(got, "agent-02") || !strings.Contains(got, "agent-12") {
+		t.Fatalf("not scrolled by 3:\n%s", got)
+	}
+	if m.layout.focus != agent {
+		t.Fatalf("the wheel moved the focus to %s", m.layout.focus)
+	}
+	m.layout.setFocus(project)
+	wantRow(t, m, "agent-03", "▸")
+
+	// A click takes the row under the pointer at the scroll: the second row
+	// shown, agent-10.
+	wheel(tea.MouseWheelDown, 2)
+	m.Update(clickAt(5, 3))
+	if a, ok := m.activeAgent(); !ok || a.Name != "agent-10" {
+		t.Fatalf("active %+v, %v:\n%s", a, ok, text(m))
+	}
+
+	// Scrolled back to the top, the cursor leaves the bottom for the last row shown.
+	wheel(tea.MouseWheelUp, 4)
+	wantRow(t, m, "agent-09", "▸")
+	if got := text(m); !strings.Contains(got, "agent-00") || strings.Contains(got, "│  ○ agent-10") {
+		t.Fatalf("not at the top:\n%s", got)
+	}
+
+	// At the bottom it stays.
+	wheel(tea.MouseWheelDown, 20)
+	bottom := m.list().offset
+	wheel(tea.MouseWheelDown, 1)
+	text(m)
+	if got := m.list().offset; got != bottom || bottom != len(m.paneItems())-10 {
+		t.Fatalf("offset %d, then %d, of %d items", bottom, got, len(m.paneItems()))
+	}
+}
+
 func TestAgentsClick(t *testing.T) {
 	t.Parallel()
 	m := newAgentsModel(100, 41, demoAgents()...)
