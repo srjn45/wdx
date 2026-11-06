@@ -106,7 +106,7 @@ func TestCodexOnRecordedScreens(t *testing.T) {
 }
 
 // TestCodexNotReadyWhileLoading checks every read a holder makes before the status
-// line first shows: a message delivered then loses its Tab.
+// line first shows: a message delivered then lost its Tab.
 func TestCodexNotReadyWhileLoading(t *testing.T) {
 	t.Parallel()
 	for _, dir := range []string{"ready-120x40", "ready-40x24"} {

@@ -82,30 +82,28 @@ const (
 	// codexPasteSettle keeps the key apart from the paste: Codex takes keys that come
 	// fast as a paste, where Enter is a newline.
 	codexPasteSettle = 150 * time.Millisecond
-	// codexSubmit is Tab, which queues a message during a turn, as Claude Code does
-	// with Enter, and submits it at rest.
-	codexSubmit = "\t"
-	// codexSteer is Enter, which gives a message to the running turn, and submits it
-	// at rest.
-	codexSteer = "\r"
+	// codexSubmit is Enter, which gives a message to the running turn at its next
+	// step, and submits it at rest. Tab would queue it for after the turn.
+	codexSubmit = "\r"
 )
 
-// Deliver implements AiCodingAgent. A paste-end marker in the message is taken out,
-// or the rest would be typed as keys, and a message starting with "/" gets a space
-// before it, or Codex reads it as a command and submits nothing.
+// Deliver implements AiCodingAgent: the message is read at the turn's next step, as
+// Claude Code reads one. A paste-end marker in the message is taken out, or the rest
+// would be typed as keys, and a message starting with "/" gets a space before it, or
+// Codex reads it as a command and submits nothing.
 func (Codex) Deliver(w io.Writer, message string) error {
-	return codexType(w, message, codexSubmit)
+	return codexType(w, message)
 }
 
-// Steer implements AiCodingAgent: as Deliver, with Enter. Checked on 0.163.0 while
-// Codex thinks, runs a tool and streams, and with messages queued, which it keeps
-// for after the turn (the wdx doc CODEX_STEER).
+// Steer implements AiCodingAgent: the same keys as Deliver, as Enter already steers.
+// Checked on 0.163.0 while Codex thinks, runs a tool and streams, and with messages
+// queued, which it keeps for after the turn (the wdx doc CODEX_STEER).
 func (Codex) Steer(w io.Writer, message string) error {
-	return codexType(w, message, codexSteer)
+	return codexType(w, message)
 }
 
-// codexType pastes message, then presses key once the paste has settled.
-func codexType(w io.Writer, message, key string) error {
+// codexType pastes message, then presses Enter once the paste has settled.
+func codexType(w io.Writer, message string) error {
 	for strings.Contains(message, codexPasteEnd) {
 		message = strings.ReplaceAll(message, codexPasteEnd, "")
 	}
@@ -116,7 +114,7 @@ func codexType(w io.Writer, message, key string) error {
 		return err
 	}
 	time.Sleep(codexPasteSettle)
-	_, err := io.WriteString(w, key)
+	_, err := io.WriteString(w, codexSubmit)
 	return err
 }
 

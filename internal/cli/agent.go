@@ -527,17 +527,17 @@ func newAgentSendCmd() *cobra.Command {
 		Long: "The message is queued for the agent, in the order sent. It waits while text\n" +
 			"is in the agent's input box, a prompt is open or its screen cannot be read,\n" +
 			"for as long as that lasts. During a turn it goes in, for the agent to take\n" +
-			"up after it. This does not wait for it to go in or for a reply. A message still\n" +
-			"queued when the agent ends is kept: it goes on when the agent is started again\n" +
-			"in the same session or restarted, or else waits in wdx message list.\n\n" +
-			"--instant goes before the other messages, and interrupts the agent's turn\n" +
-			"first. It waits as they do, and in a pane too narrow to show that a turn is\n" +
-			"running it does not interrupt. An AI coding agent that can take a message\n" +
-			"into its running turn, as Claude Code and Codex, is given it there instead,\n" +
-			"without being interrupted.",
+			"up at its next step (Claude Code, Codex), or after the turn (Cursor,\n" +
+			"Antigravity). This does not wait for it to go in or for a reply. A message\n" +
+			"still queued when the agent ends is kept: it goes on when the agent is started\n" +
+			"again in the same session or restarted, or else waits in wdx message list.\n\n" +
+			"--instant goes before the other messages, and waits as they do. Claude Code\n" +
+			"takes it at once, Codex at its next step. An AI coding agent that cannot take\n" +
+			"a message into its running turn has the turn interrupted first, but not in a\n" +
+			"pane too narrow to show that a turn is running.",
 		Example: examples(
 			"Give an agent of the project you are in a task", identity.Name+" agent send --name reviewer --prompt summarize",
-			"Stop what it is doing and give it this instead", identity.Name+" agent send --name reviewer --prompt stop --instant",
+			"Give it this first: Claude Code takes it at once", identity.Name+" agent send --name reviewer --prompt stop --instant",
 			"By id, as JSON", identity.Name+" agent send --id agent-1a2b3c4d --prompt summarize --json",
 		),
 		Args: cobra.NoArgs,
@@ -568,7 +568,7 @@ func newAgentSendCmd() *cobra.Command {
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to give it; it is submitted")
-	cmd.Flags().BoolVar(&instant, "instant", false, "go before other messages, and interrupt its turn, or give it to the turn running when its AI coding agent can")
+	cmd.Flags().BoolVar(&instant, "instant", false, "go before other messages; Claude Code takes it at once, and an AI coding agent that cannot take it into its turn is interrupted")
 	cmd.MarkFlagRequired(promptFlag)
 	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
 	return cmd

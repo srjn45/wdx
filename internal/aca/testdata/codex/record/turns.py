@@ -40,7 +40,8 @@ threading.Thread(target=frames, daemon=True).start()
 
 
 def send(text):
-    """As wdx delivers a message: a paste, a moment, then Tab."""
+    """As wdx delivered a message when this was recorded: a paste, a moment, then
+    Tab. It presses Enter now."""
     r.paste(text)
     time.sleep(0.15)
     r.keys('Tab')

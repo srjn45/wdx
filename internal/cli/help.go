@@ -754,7 +754,7 @@ func agentsTopic(st style.Style) string {
 	) + `
 ` + heading("Messages") + commands(
 		w+" agent send --name <name> --prompt <text>", "delivered once it can take it",
-		w+" agent send --name <name> --prompt <text> --instant", "first, interrupting its turn",
+		w+" agent send --name <name> --prompt <text> --instant", "first; Claude Code takes it at once",
 		w+" message list", "those still waiting",
 	) + `
 ` + heading("Worktrees") + commands(

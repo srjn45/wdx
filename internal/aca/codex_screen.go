@@ -11,8 +11,9 @@ import (
 // whether the box holds a draft, the model, and what it is doing. Checked on Codex
 // 0.163.0; the wdx docs ACA_READY and CODEX_ACTIVITY.
 //
-// The box is drawn while Codex still loads, and a Tab typed then is lost, so the box
-// counts as ready only once the status line shows under it, after one blank line:
+// The box is drawn while Codex still loads, and a message submitted then was lost
+// (its Tab dropped, when Deliver pressed Tab), so the box counts as ready only once
+// the status line shows under it, after one blank line:
 //
 //	› Ask Codex to do anything
 //

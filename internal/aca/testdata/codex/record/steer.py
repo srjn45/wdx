@@ -11,7 +11,8 @@ r = Rec(name, cols, rows, '--dangerously-bypass-approvals-and-sandbox')
 
 
 def put(text, key):
-    """As wdx's Deliver (Tab) or Steer (Enter) types a message."""
+    """Tab, as wdx's Deliver typed a message when this was recorded, or Enter, as
+    Steer did and both do now."""
     r.paste(text)
     time.sleep(0.15)
     r.keys(key)

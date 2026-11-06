@@ -3,6 +3,7 @@ package aca_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,44 +80,30 @@ func TestCodexAskPassesNoPermissions(t *testing.T) {
 	}
 }
 
-func TestCodexDeliver(t *testing.T) {
+// Deliver and Steer type the same keys: a paste, then Enter, which Codex reads at the
+// running turn's next step and submits at rest. Tab would queue it for after the turn.
+func TestCodexDeliverAndSteer(t *testing.T) {
 	t.Parallel()
+	codex := aca.Codex{}
 	for _, c := range []struct{ name, message, want string }{
-		{"plain, submitted by Tab", "hello", "\x1b[200~hello\x1b[201~\t"},
-		{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\t"},
-		{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\t"},
-		{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\t"},
-		{"not read as a command", "/tmp is a dir", "\x1b[200~ /tmp is a dir\x1b[201~\t"},
-		{"a mention as it is", "@main.go", "\x1b[200~@main.go\x1b[201~\t"},
+		{"plain, submitted by Enter", "hello", "\x1b[200~hello\x1b[201~\r"},
+		{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\r"},
+		{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\r"},
+		{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\r"},
+		{"not read as a command", "/tmp is a dir", "\x1b[200~ /tmp is a dir\x1b[201~\r"},
+		{"a mention as it is", "@main.go", "\x1b[200~@main.go\x1b[201~\r"},
 	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			var got bytes.Buffer
-			if err := (aca.Codex{}).Deliver(&got, c.message); err != nil {
-				t.Fatal(err)
-			}
-			if got.String() != c.want {
-				t.Fatalf("got %q, want %q", got.String(), c.want)
-			}
-		})
-	}
-}
-
-// Steer types as Deliver does, with Enter, which gives the message to the running
-// turn, in place of Tab, which would queue it.
-func TestCodexSteer(t *testing.T) {
-	t.Parallel()
-	for message, want := range map[string]string{
-		"hello":         "\x1b[200~hello\x1b[201~\r",
-		"a\x1b[201~b":   "\x1b[200~ab\x1b[201~\r",
-		"/tmp is a dir": "\x1b[200~ /tmp is a dir\x1b[201~\r",
-	} {
-		var got bytes.Buffer
-		if err := (aca.Codex{}).Steer(&got, message); err != nil {
-			t.Fatal(err)
-		}
-		if got.String() != want {
-			t.Errorf("Steer(%q) wrote %q, want %q", message, got.String(), want)
+		for method, write := range map[string]func(io.Writer, string) error{"Deliver": codex.Deliver, "Steer": codex.Steer} {
+			t.Run(method+"/"+c.name, func(t *testing.T) {
+				t.Parallel()
+				var got bytes.Buffer
+				if err := write(&got, c.message); err != nil {
+					t.Fatal(err)
+				}
+				if got.String() != c.want {
+					t.Fatalf("got %q, want %q", got.String(), c.want)
+				}
+			})
 		}
 	}
 }

@@ -56,7 +56,7 @@ r.keys('BSpace')
 time.sleep(STEP)
 r.snap('menu_closed')
 
-# As wdx delivers: a paste, a moment, then Tab.
+# As wdx delivered when this was recorded: a paste, a moment, then Tab (Enter now).
 r.paste('count from 1 to 40, one number per line, then say DONE')
 time.sleep(0.15)
 r.keys('Tab')
