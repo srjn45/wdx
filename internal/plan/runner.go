@@ -268,7 +268,7 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 		if err := r.store.Close(ctx, id); err != nil {
 			return false, err
 		}
-		r.removeAgents(ctx, run, f.Agents)
+		r.removeAgents(ctx, run)
 		return true, nil
 	case ActionLand:
 		return true, r.land(ctx, run, a.Task)
@@ -279,7 +279,7 @@ func (r *Runner) step(ctx context.Context, id string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		r.removeAgents(ctx, run, f.Agents)
+		r.removeAgents(ctx, run)
 		r.openPR(ctx, run, kept)
 		r.wakeParent(ctx, id)
 		return true, nil
@@ -643,7 +643,12 @@ func (r *Runner) landed(ctx context.Context, run Run, taskID string, sl Slot, co
 	if deleted, err := git.DeleteBranch(ctx, sl.Path, branch); err != nil || !deleted {
 		logging.FromContext(ctx).Info("task branch kept", "branch", branch, "err", err)
 	}
-	return r.store.Landed(ctx, run.PlanID, taskID)
+	if err := r.store.Landed(ctx, run.PlanID, taskID); err != nil {
+		return err
+	}
+	task, _ := run.Task(taskID)
+	r.removeAgent(ctx, run.PlanID, taskID, task.AgentID)
+	return nil
 }
 
 // release takes back the slot a skipped task holds, whose agent has ended, or, in a
@@ -794,22 +799,33 @@ func (r *Runner) wantsPR(ctx context.Context, run Run) (bool, error) {
 	return parentRun.Definition.PR, nil
 }
 
-// removeAgents removes the agents of the tasks of a run that is over, done or
-// closed, whose agents have all ended. Each task keeps its state and summary, its
-// agent becoming null. One that cannot be removed stays for the person to remove,
-// as the run is over either way.
-func (r *Runner) removeAgents(ctx context.Context, run Run, agents map[string]AgentState) {
-	log := logging.FromContext(ctx)
+// removeAgents removes what is left of the agents of the tasks of a run that is
+// over, done or closed, whose agents have all ended: those of tasks done or skipped
+// went with them, the others' stayed for a retry to resume.
+func (r *Runner) removeAgents(ctx context.Context, run Run) {
 	for _, t := range run.Tasks {
-		if state, ok := agents[t.AgentID]; t.AgentID == "" || !ok || state == AgentRemoved {
-			continue
-		}
-		if err := r.opts.RemoveAgent(ctx, t.AgentID); err != nil {
-			log.Error("plan agent not removed", "task_id", t.ID, "agent_id", t.AgentID, "err", err)
-			continue
-		}
-		log.Info("plan agent removed", "plan_id", run.PlanID, "task_id", t.ID, "agent_id", t.AgentID)
+		r.removeAgent(ctx, run.PlanID, t.ID, t.AgentID)
 	}
+}
+
+// removeAgent removes the agent of a task that is over, which nothing resumes: done,
+// skipped, or of a run that is over. The task keeps its state and summary, its agent
+// becoming null. One already removed, or a tombstone, is left as it is; one that
+// cannot be removed, as one live, stays for the person to remove, and fails nothing.
+func (r *Runner) removeAgent(ctx context.Context, planID, taskID, agentID string) {
+	if agentID == "" {
+		return
+	}
+	log := logging.FromContext(ctx)
+	states, err := r.opts.AgentStates(ctx, []string{agentID})
+	if state, ok := states[agentID]; err == nil && (!ok || state == AgentRemoved) {
+		return
+	}
+	if err := r.opts.RemoveAgent(ctx, agentID); err != nil {
+		log.Error("plan agent not removed", "plan_id", planID, "task_id", taskID, "agent_id", agentID, "err", err)
+		return
+	}
+	log.Info("plan agent removed", "plan_id", planID, "task_id", taskID, "agent_id", agentID)
 }
 
 // BranchExistsError is returned when a run's branch cannot be made, as it, or a
@@ -1009,14 +1025,19 @@ func (r *Runner) RetryTask(ctx context.Context, planID, taskID string, fresh boo
 	return t, err
 }
 
-// SkipTask skips the task, and wakes the plan to release its slot and start what
-// waits for it.
+// SkipTask skips the task, removes its agent, and wakes the plan to release its slot
+// and start what waits for it.
 func (r *Runner) SkipTask(ctx context.Context, planID, taskID string) (TaskRun, error) {
 	t, err := r.store.SkipTask(ctx, planID, taskID)
-	if err == nil {
-		r.Wake(planID)
+	if err != nil {
+		return t, err
 	}
-	return t, err
+	r.Wake(planID)
+	if t.AgentID == "" {
+		return t, nil
+	}
+	r.removeAgent(ctx, planID, taskID, t.AgentID)
+	return r.store.taskRun(ctx, planID, taskID)
 }
 
 // Pause pauses the plan's run, and reports false when it already was; a plan of

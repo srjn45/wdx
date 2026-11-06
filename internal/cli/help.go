@@ -890,13 +890,14 @@ dropped.
   agent is told the goal, the constraints, the summaries of the tasks it waits
   for, and its prompt. Once its work is committed, it says so:
     ` + st.Command(w+" plan task done --agent-id $"+identity.Env("AGENT_ID")+" --summary <text>") + `
-  ` + w + ` then stops it and rebases its work onto plan/sso, and what waited for it
-  starts. Landing runs the project's landing check first, if it has one.
+  ` + w + ` then stops it and rebases its work onto plan/sso, removes the agent,
+  and what waited for it starts; the task keeps its state and summary, with
+  no agent. Landing runs the project's landing check first, if it has one.
     ` + st.Command(w+" plan status --name sso") + `       every task's state
     ` + st.Command(w+" plan task get --plan sso --task <id>") + `   one task's prompt and summary
-  Once every task is done, one worktree is left on plan/sso, to land as any,
-  and the tasks' agents are removed, as they are when a plan is cancelled:
-  each task keeps its state and summary, with no agent.
+  Once every task is done, one worktree is left on plan/sso, to land as any.
+  Cancelling a plan removes the agents left, as a task's agent is kept only
+  while its task can be retried.
   A plan runs once, and cannot be changed once it has. To run it again, or
   start from it, copy it to a draft; one that is over can be archived, out
   of plan list until --all:
@@ -912,7 +913,7 @@ dropped.
     ` + st.Command(w+" plan task retry ... --fresh") + `             a new agent, told of the earlier commits
     ` + st.Command(w+" plan task land --plan sso --task <id>") + `    you dealt with it in its worktree yourself
     ` + st.Command(w+" plan task done --plan sso --task <id> --summary <text>") + `   you finished a failed one
-    ` + st.Command(w+" plan task skip --plan sso --task <id>") + `    what waits for it goes on without it
+    ` + st.Command(w+" plan task skip --plan sso --task <id>") + `    what waits for it goes on without it, its agent removed
   A task keeps its worktree and commits through all of these.
     ` + st.Command(w+" plan pause --name sso") + `  nothing new starts; ` + st.Command("resume") + ` goes on
     ` + st.Command(w+" plan set --name sso --parallel <n>") + `   more or fewer tasks at once

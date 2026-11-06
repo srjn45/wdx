@@ -181,8 +181,8 @@ func TestPlanRunsToDone(t *testing.T) {
 	if len(slots) != 2 || !slots[*a.SlotPath] {
 		t.Errorf("b and c do not run in a's slot and one more: %v", slots)
 	}
-	if agent, err := td.client.GetAgentWithResponse(ctx, "id:"+a.Agent.Id, nil); err != nil || agent.JSON200 == nil || agent.JSON200.Agent.State != api.AgentStateExited {
-		t.Errorf("a's agent was not stopped: %v %s", err, agent.Body)
+	if taskIn(c, "a").Agent != nil {
+		t.Errorf("a's agent was not removed: %+v", taskIn(c, "a").Agent)
 	}
 
 	td.finishTask(t, repo, "auth", "b")
@@ -244,6 +244,58 @@ func TestPlanDoneRemovesItsAgents(t *testing.T) {
 		if got := taskIn(c, task); got.State != api.PlanTaskStateDone || got.Summary == nil || *got.Summary != "did "+task || got.Agent != nil {
 			t.Errorf("%s: %+v", task, got)
 		}
+	}
+}
+
+// TestPlanDoneTaskRemovesItsAgent: a task done has its agent removed at once, while
+// the task after it runs, keeping its state and summary with no agent.
+func TestPlanDoneTaskRemovesItsAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.runPlan(t, "auth", 0)
+	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
+	a := taskIn(c, "a").Agent
+	td.finishTask(t, repo, "auth", "a")
+	c = td.waitPlan(t, "auth", "a done, b running", stateIs("a:done b:running"))
+	if got := taskIn(c, "a"); got.Agent != nil || got.Summary == nil || *got.Summary != "did a" {
+		t.Errorf("a: %+v", got)
+	}
+	if _, err := td.daemon.agents.Store().Get(ctx, a.Id); !errors.Is(err, agent.ErrNotFound) {
+		t.Errorf("a's agent not removed: %v", err)
+	}
+	if b := taskIn(c, "b").Agent; b == nil || !td.agentLive(t, b.Id) {
+		t.Errorf("b's agent: %+v", b)
+	}
+}
+
+// TestPlanFailedTaskKeepsItsAgent: a failed task's agent stays for a retry to
+// resume, while the task beside it lands and has its agent removed.
+func TestPlanFailedTaskKeepsItsAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "a exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.runPlan(t, "auth", 2)
+	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
+	a, b := taskIn(c, "a").Agent, taskIn(c, "b").Agent
+	touch(t, filepath.Join(repo, ".git", "end-a"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:running"))
+	td.finishTask(t, repo, "auth", "b")
+	c = td.waitPlan(t, "auth", "b done, its agent removed", func(c api.PlanContent) bool {
+		return states(c) == "a:failed b:done" && taskIn(c, "b").Agent == nil
+	})
+	if _, err := td.daemon.agents.Store().Get(ctx, b.Id); !errors.Is(err, agent.ErrNotFound) {
+		t.Errorf("b's agent not removed: %v", err)
+	}
+	if got := taskIn(c, "a").Agent; got == nil || got.Id != a.Id {
+		t.Errorf("a's agent: %+v", got)
+	}
+	if _, err := td.daemon.agents.Store().Get(ctx, a.Id); err != nil {
+		t.Errorf("a's agent: %v", err)
 	}
 }
 

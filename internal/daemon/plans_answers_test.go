@@ -362,6 +362,30 @@ func TestPlanCancelled(t *testing.T) {
 	}
 }
 
+// TestPlanSkippedTaskRemovesItsAgent: a task skipped has its agent removed at the
+// skip, while the task beside it runs.
+func TestPlanSkippedTaskRemovesItsAgent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := start(t)
+	repo := td.planProject(t, "a exit\nb exit\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.runPlan(t, "auth", 2)
+	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
+	a := taskIn(c, "a").Agent
+	touch(t, filepath.Join(repo, ".git", "end-a"))
+	td.waitPlan(t, "auth", "a failed", stateIs("a:failed b:running"))
+	td.skip(t, "a")
+	c = td.waitPlan(t, "auth", "a skipped", stateIs("a:skipped b:running"))
+	if got := taskIn(c, "a").Agent; got != nil {
+		t.Errorf("a's agent: %+v", got)
+	}
+	if _, err := td.daemon.agents.Store().Get(ctx, a.Id); !errors.Is(err, agent.ErrNotFound) {
+		t.Errorf("a's agent not removed: %v", err)
+	}
+	touch(t, filepath.Join(repo, ".git", "end-b"))
+}
+
 // TestPlanAgentNotRemoved: a task's agent live when its plan is done, as the person
 // restarted it, is not removed, and the plan is done all the same.
 func TestPlanAgentNotRemoved(t *testing.T) {

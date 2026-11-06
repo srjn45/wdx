@@ -3546,7 +3546,7 @@ components:
     PlanTaskAgent:
       type: object
       nullable: true
-      description: The agent doing the task, or that did it; null when it has none, as once the plan is done or cancelled, which removes its agents.
+      description: The agent doing the task, or that did it; null when it has none, as once the task is done or skipped, or its plan cancelled, which removes its agent.
       required: [id, name]
       properties:
         id: { type: string }
