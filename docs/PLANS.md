@@ -1,6 +1,6 @@
 # Plans
 
-Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built; step 6, running plans of plans, designed in detail and approved on 2026-11-05 (Step 6 in detail); its step 1, the parent's run, built on 2026-11-05; its step 2, the person's answer, built on 2026-11-05; its step 3, copying a plan of plans, built on 2026-11-05; its step 4, tide, built on 2026-11-05; its step 5, the docs, done on 2026-11-05: step 6 is built. Step 8, the plan's tab redesigned, designed in detail and approved on 2026-11-05 (Step 8 in detail); its step 1, the rail, built on 2026-11-05; its step 2, the tab, built on 2026-11-05; its step 3, the detail panel, built on 2026-11-05; its step 4, the docs, done on 2026-11-05: step 8 is built. Step 9, cleaning up a plan that is over, designed in detail and approved on 2026-11-05 (Step 9 in detail); its step 1, removing a plan's agents, built on 2026-11-05; its step 2, the Plans section's selector, built on 2026-11-05; its step 3, the docs, done on 2026-11-05: step 9 is built. "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
+Status: being designed with the human, started on 2026-11-03. Step 1, plans written, read and checked with nothing running, built on 2026-11-03; step 2, running a plan, designed in detail and approved on 2026-11-03 (Step 2 in detail), built on 2026-11-03; step 3, the person's part, designed in detail and approved on 2026-11-04 (Step 3 in detail), built on 2026-11-04; step 4, the rest of the lifecycle, designed in detail and approved on 2026-11-04 (Step 4 in detail); its step 1, the store, the API and the CLI, built on 2026-11-04; its step 2, tide, built on 2026-11-04; its step 3, the docs, done on 2026-11-04: step 4 is built; step 5, tide's grouping, designed in detail and approved on 2026-11-04 (Step 5 in detail); its step 1, slots and the guard, built on 2026-11-04; its step 2, the Agents section, built on 2026-11-04; its step 3, the Worktrees section, built on 2026-11-04; its step 4, the docs, done on 2026-11-04: step 5 is built; step 6, running plans of plans, designed in detail and approved on 2026-11-05 (Step 6 in detail); its step 1, the parent's run, built on 2026-11-05; its step 2, the person's answer, built on 2026-11-05; its step 3, copying a plan of plans, built on 2026-11-05; its step 4, tide, built on 2026-11-05; its step 5, the docs, done on 2026-11-05: step 6 is built. Step 8, the plan's tab redesigned, designed in detail and approved on 2026-11-05 (Step 8 in detail); its step 1, the rail, built on 2026-11-05; its step 2, the tab, built on 2026-11-05; its step 3, the detail panel, built on 2026-11-05; its step 4, the docs, done on 2026-11-05: step 8 is built. Step 9, cleaning up a plan that is over, designed in detail and approved on 2026-11-05 (Step 9 in detail); its step 1, removing a plan's agents, built on 2026-11-05; its step 2, the Plans section's selector, built on 2026-11-05; its step 3, the docs, done on 2026-11-05: step 9 is built. Step 7, stacking, designed in detail and approved on 2026-11-06 (Step 7 in detail). "Agreed" is what the human said; "Proposed" came from the AI and is not yet approved. docs/IDE.md has the wider picture, docs/DOCS.md the docs plans are kept as.
 
 A plan is the work of a feature broken into tasks, each a prompt for an agent, with the tasks it must wait for. wdx runs it: it starts an agent for every task that can run, lands each finished task on the plan's branch, and starts what that unblocked, until every task is done. The person steps in where an agent cannot go on.
 
@@ -378,7 +378,7 @@ Each is designed again in detail before it is built.
 4. The rest of the lifecycle: `copy`, `archive`, `unarchive`.
 5. tide's grouping of a plan's agents and slots.
 6. Running plans of plans: a parent starting its children, each from the default branch once the plans before it have landed, waiting for the person at each PR; copying a plan of plans.
-7. Stacking, and rebasing a stacked branch onto the default one (`git rebase --onto`, from the old base's tip the run keeps) once the PR under it is squash-merged: split from step 6 by the human on 2026-11-05, to design once running parents has been used.
+7. Stacking: `pr: true` on a plan, `stacked: true` on a plan of plans, and rebasing any worktree when asked, a stacked one with `git rebase --onto` from the base's commit the run keeps once the PR under it is merged: split from step 6 by the human on 2026-11-05, designed in detail and approved on 2026-11-06 (Step 7 in detail).
 8. The plan's tab redesigned: a header with a progress bar, the tasks with their DAG drawn as `git log --graph` draws commits, a panel for the task under the cursor, and the keys the plan's state takes.
 9. A plan over cleaned up: its agents removed once it is done or cancelled, and the Plans section's selector of All, Draft & in progress, and Completed.
 
@@ -1125,6 +1125,64 @@ A plan that is over leaves nothing behind but its branch, its worktrees with wor
 1. The daemon: removing a plan's agents at Finishing and on cancel.
 2. tide: the Plans section's selector.
 3. docs/CLI_TIDE.md, `wdx help plans` (a plan's agents removed once it is over) and the README.
+
+## Step 7 in detail (approved 2026-11-06)
+
+Stacking, and the PRs it needs. Asked by the human on 2026-11-06, after using plans: a plan of plans waits at each child until the PR before it is merged, which is slow when review takes time, and stacks can be deep. Decided by the human: a plan can say `pr: true`, and wdx, not the ACA, opens its PR once it is done; a plan of plans says it for its plans, and says `stacked: true` to stack them; the rebase once a PR under a branch is merged is not automatic but asked for, on any worktree, plan or not; wdx tries it first, and a conflict or uncommitted changes go to an agent the person picks; what exists is reused. Rebasing by itself, when a merge is seen, is deferred, as is autonomous mode (agreed above), which the human will design once agents' prompts, limits and stuck states are screened well enough for it not to be flaky.
+
+### Rebasing a worktree
+
+- `R` on a worktree's row in the Worktrees section and in its tab, and `wdx worktree rebase --name`: the rebase step of landing by rebase (docs/TIDE_WORKTREES.md, Landing) on its own, without the check, the move of the base or the push. Any worktree but the main checkout (`worktree_is_clone`), a plan's slot included only once its plan is over (`worktree_in_plan`, as `L`).
+- Refused as landing refuses: `agent_working`, `worktree_busy`, `no_local_base`, `detached_head`.
+- It rebases onto the worktree's base, the local default branch, or a stacked one's (below). Results: `rebased`, with the head before and after, or `up_to_date`, when the branch already sits on its base.
+- **A conflict** aborts it, leaving everything as it was, `rebase_failed` with the files, as landing does; tide opens the box landing opens, `Rebase <branch> onto <base> in <path>, resolving the conflicts`, the agent chosen as for `C`. Once that agent is done, `R` again finds it `up_to_date`.
+- **Uncommitted changes**: wdx never stashes, so it does not start: `not_committed`. tide opens `C`'s box, its text `Commit what is not committed in <path>, then rebase <branch> onto <base>`, the agent chosen as for `C`.
+- The CLI sends nothing to an agent: it returns the code with the files, and the hint names `wdx agent send`, as `worktree land` does. The question is tide's, where the person is. A stacked worktree's rebase goes the same way, for its conflicts and uncommitted changes alike (agreed).
+- Proposed: it runs in the request, under the daemon's changes lock, as `worktree remove` does: a rebase without a check is short. The worktree's state streams as after any rebase, from the events git's files give.
+
+### `pr: true`
+
+- A new key of the definition, `pr`, `true` or `false`, `false` when left out, for a plan of tasks and a plan of plans alike.
+- A plan of tasks with `pr: true`: at the end of Finishing, once the run is `done` and its worktree on `plan/<name>`, wdx lands that worktree by PR, as `wdx worktree land --method pr` does: the project's check, `gh pr view`, the push, `gh pr create --fill --base <base> --head plan/<name>`. It runs in the background as any landing, and the worktree's `landing` says how it ended.
+- A landing that fails or cannot start (`land_not_configured`, `dependency_missing`, `check_failed`, `push_failed`, `pr_failed`) leaves the plan `done`: its work is on its branch either way. It is logged, the worktree's row says why, as any landing's does, and `L` opens the PR once dealt with.
+- A plan of plans with `pr: true` says it for every plan it lists: each opens its PR once done. `pr` and `stacked` are set on the parent only, and a plan a parent lists that sets `pr` is a problem of the parent's (`invalid_plan`, `set pr on the plan of plans`), as a child runs only through its parent and its PR is part of the parent's chain.
+- With `pr: false`, nothing changes: the person lands the plan's worktree, as now.
+
+### `stacked: true`
+
+- A key of a plan of plans only (`invalid_plan` on a plan of tasks), `false` when left out. It needs `pr: true` (`invalid_plan` otherwise): without PRs, the person lands by rebase, and the next plan starts at once.
+- **Starting**: `NextParent` starts a child whose `after` is a single plan, `done` but not landed, at once, from that plan's branch: `plan/<child>` from `plan/<after>`'s tip. A child waiting for several plans waits until all of them have landed and starts from the default branch, as agreed, and so does one whose plan before it has landed already.
+- **What the run keeps**: `plan_runs.base` is `plan/<after>`, and a new column, `plan_runs.base_commit`, the commit of it the branch sits on: its tip at the start, moved on by each rebase onto it. A nullable column, added: older binaries keep working.
+- **A worktree's base**: a stacked plan's worktree, and its slots while it runs, have `plan/<after>` as their base rather than the default branch, while it is not landed: so the diff, `+ −`, `↑3`, landing's checks and the PR are against the plan below, and show only the plan's own work (agreed). `worktree` gets a base from outside: the daemon gives it the bases its plans' runs keep, as `worktree` must not read `plan` (`plan -> worktree`).
+- **Its PR** targets `plan/<after>`: `gh pr create --base plan/<after>`, as the worktree's base.
+- **`R` on a stacked worktree** asks gh, as the person asked, whether `plan/<after>`'s PR has merged:
+  - merged, its merge commit in the local default branch: `git rebase --onto <default> <base_commit>`, so that only the plan's own commits move, whether the PR was squashed or merged; then `gh pr edit --base <default>` on its PR, and the worktree's base is the default branch from then on, `base_commit` cleared;
+  - merged but not pulled: refused, `base_not_pulled` (new, 409), hint `pull main: auth-a's PR is merged on GitHub`;
+  - not merged: `git rebase --onto plan/<after> <base_commit>`, taking the review's fixes from the plan below; `base_commit` moves to `plan/<after>`'s tip.
+- `--onto` from the kept commit rather than a plain rebase: the branch below may have been rewritten (squashed, or itself rebased), and a plain rebase would replay its old commits too, conflicting with their new selves.
+- **Deep chains**: in A ← B ← C, A's PR merging lets `R` on B move it onto the default branch; C stays on `plan/B`, and `R` on C moves it onto B's new commits from its kept `base_commit`. Each `R` is the person's, from the bottom up; tide's parent tab says, on each stacked plan, `stacked on auth-a`, and `rebase: R` on one whose plan below has moved on.
+- **The push** (decided by the human on 2026-11-06): a branch rebased by `R` that is on origin, as a stacked plan's is for its PR, can only go up again with `--force`. wdx pushes it after the rebase with `--force-with-lease=<branch>:<its commit on origin before the rebase>`, which refuses when anything else was pushed there since (`push_failed`, the rebase kept). It is the one place wdx forces, and docs/TIDE_WORKTREES.md says so. A branch not on origin is not pushed.
+
+### The CLI and tide
+
+- `wdx worktree rebase --name`, `--json`; results `rebased`, `up_to_date`; errors `worktree_is_clone`, `push_failed`, `worktree_in_plan`, `agent_working`, `worktree_busy`, `no_local_base`, `detached_head`, `not_committed`, `rebase_failed`, `base_not_pulled`, `dependency_missing` (gh, for a stacked worktree only).
+- `R` on a worktree's row and tab; the bar says `R rebase` when its base has moved on.
+- `wdx help plans`: `pr` and `stacked`. docs/CLI_TIDE.md: rows for rebasing a worktree, a plan's PR, stacking.
+
+### Logging and tests
+
+- Logged at info: a rebase asked, its base and `base_commit`, how it ended, the files of a conflict; gh's answer on the PR below, with its number; a plan's PR landing started; a child started stacked and on what.
+- worktree: a rebase up to date, done, conflicting (undone, files listed), refused for uncommitted changes; `--onto` from a kept commit after the branch below was squashed, with real git.
+- Runner: a parent `stacked: true` of A and B after A: A done, B starts at once from `plan/A` with `base_commit` its tip; C after A and B waits for both to land. A plan `pr: true` lands its worktree by PR at Finishing (ghtest); a PR that fails leaves it `done`.
+- cli: one test per outcome of `worktree rebase`, the stacked cases with ghtest: merged, merged not pulled, not merged.
+- tide: `R` on a row and tab, the conflict's box, the commit box for uncommitted changes.
+
+### Steps of step 7
+
+1. Rebasing a worktree: `wdx worktree rebase`, `R`, the boxes.
+2. `pr: true`: the key, landing by PR at Finishing.
+3. `stacked: true`: starting stacked, `base_commit`, a worktree's base from its plan, its PR's base, `R` on a stacked worktree and retargeting.
+4. docs/CLI_TIDE.md, `wdx help plans` and the README.
 
 ## Open
 
