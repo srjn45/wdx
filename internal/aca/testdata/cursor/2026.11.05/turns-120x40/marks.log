@@ -1,0 +1,14 @@
+3.685 started
+9.884 tool_running
+12.355 queued
+25.212 after_queue
+31.476 steered
+33.491 idle_with_task
+50.086 task_finished_wakes
+57.993 after_wake
+62.971 streaming
+65.644 steer_pending
+68.756 interrupted
+74.264 interrupted_later
+81.542 subagent
+109.545 after_subagent

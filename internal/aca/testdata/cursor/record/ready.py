@@ -1,0 +1,35 @@
+"""Records what a ready check reads: loading, the empty box, drafts, modes, the / menu, a turn and after."""
+import sys, time
+from rec import Rec
+STEP = 1.5
+name, cols, rows = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+r = Rec(name, cols, rows, '--trust --model gemini-3.8-flash-low --force --sandbox disabled --approve-mcps')
+def clear():
+    r.keys('C-c'); time.sleep(3.6)
+def clear_in_turn():
+    for _ in range(30): r.keys('BSpace')
+    time.sleep(0.3)
+def step(n): r.snap(n); time.sleep(STEP)
+time.sleep(0.3); step('loading')
+r.wait('Plan, search', 30); time.sleep(1); step('ready')
+r.type('hello there'); time.sleep(0.5); step('draft')
+clear(); step('cleared')
+r.paste('first line\nsecond line\nthird line'); time.sleep(0.8); step('draft_multiline')
+clear()
+r.paste('\n'.join('pasted line %d' % i for i in range(40))); time.sleep(0.8); step('draft_pasted')
+clear(); step('cleared2')
+r.type('!'); time.sleep(0.8); step('shell_mode')
+r.type('ls'); time.sleep(0.5); step('shell_draft')
+clear()
+r.type('&'); time.sleep(0.8); step('cloud_mode')
+clear()
+r.type('/'); time.sleep(0.8); step('slash_menu')
+r.keys('Escape'); time.sleep(0.5); clear(); step('after_menu')
+r.send('Run the shell command `sleep 4` and then reply with only the word DONE.')
+r.wait(r'\$ sleep 4', 30); time.sleep(0.5); step('turn_tool')
+r.type('typed during the turn'); time.sleep(0.5); step('turn_draft')
+clear_in_turn()
+r.wait(r'^\s*DONE\s*$', 60); time.sleep(1); step('after_turn')
+r.keys('C-c'); time.sleep(0.3); step('exit_armed')
+time.sleep(4); step('exit_disarmed')
+r.kill()
