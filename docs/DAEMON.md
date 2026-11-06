@@ -30,6 +30,16 @@ Terminals outlive the daemon: each shell runs in its own `wdx holder` process, w
 
 `scripts/install.sh --uninstall` stops and removes the service and the binary. `~/.wdx` (settings, database, logs, projects) stays, and so does linger, which other services may need.
 
+## Signed on macOS
+
+macOS keys the permissions it grants a program (Full Disk Access, the Downloads, Documents and Desktop folders) to its signing identity. A release of wdx is not signed, so its identity is the hash of its bytes, new with every version, and macOS would ask again after each update. So on macOS, `scripts/install.sh` has the release it downloaded sign a copy of itself with the hidden `wdx codesign`, and `wdx update` signs each release it installs, both before the daemon starts on it. The signature is always the same: identifier `com.github.srjn45.wdx`, certificate `wdx-codesign`. The wdx doc MAC_SIGNING has the design and what was checked on a Mac.
+
+- **The certificate** is self-signed, made by wdx the first time it signs, with `openssl` and `security`. It is kept in a keychain of its own, `~/.wdx/codesign/wdx.keychain-db`, with a random password in `~/.wdx/codesign/password`, which wdx uses to unlock it, so signing shows no dialog. The keychain is added to the user's keychain search list, where `codesign` looks for it, so Keychain Access shows it.
+- **Granting Full Disk Access once** is left to the person: no program can grant itself a permission. When the certificate is new, the install script, or the update, says so: System Settings → Privacy & Security → Full Disk Access → `+` → `~/.local/bin/wdx`. After that, every signed update keeps the grant.
+- **When signing fails,** the install and the update go on with the binary unsigned, and warn: macOS asks for its permissions again until a signed version is installed.
+- **A keychain the password no longer opens,** or one removed, is made anew, with a new certificate: a new identity, which needs Full Disk Access granted again. Uninstalling keeps `~/.wdx`, and with it the certificate.
+- Any program running as the user can read the password and sign itself as wdx, taking its Full Disk Access with it. Such a program can already read the user's files.
+
 ## Shell completion
 
 The installer also installs the completion of every shell it finds, so Tab completes commands, flags and their values: project names and ids from the daemon (only open ones for `wdx project close`), directories for `--local` and `--path`, and the help topics after `wdx help`.

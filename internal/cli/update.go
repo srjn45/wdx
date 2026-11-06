@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -13,8 +14,10 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/codesign"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/service"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/update"
 )
@@ -142,6 +145,20 @@ func updateOptions(cmd *cobra.Command) update.Options {
 			},
 		},
 		Progress: progress,
+		Sign:     signer(inv.env.Config.Home),
+	}
+}
+
+// signer signs the releases wdx update installs on macOS, where the
+// permissions granted to wdx stay only while it is signed the same way
+// (the wdx doc MAC_SIGNING); elsewhere nil.
+func signer(home string) func(ctx context.Context, binary string) (bool, error) {
+	if !codesign.Supported(runtime.GOOS) {
+		return nil
+	}
+	return func(ctx context.Context, binary string) (bool, error) {
+		r, err := codesign.Sign(ctx, home, binary, service.Label)
+		return r.CertificateMade, err
 	}
 }
 

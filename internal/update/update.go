@@ -48,6 +48,11 @@ type Options struct {
 	// Preflight is how long the new binary gets to write the settings and to
 	// say its version: preflightTimeout when zero.
 	Preflight time.Duration
+	// Sign signs the binary at the path in place, so that the permissions
+	// macOS grants wdx survive the update (the wdx doc MAC_SIGNING), and
+	// reports whether it made a new certificate. nil installs releases as
+	// they come, as on Linux.
+	Sign func(ctx context.Context, binary string) (certificateMade bool, err error)
 }
 
 // Daemon stops and starts the daemon of the home.
@@ -229,6 +234,14 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 	staged, settings, err := preflight(ctx, o, binary, target, dir)
 	if err != nil {
 		return Result{}, err
+	}
+	if o.Sign != nil {
+		o.progress("signing %s %s", identity.Name, target)
+		var warning string
+		binary, warning = o.sign(ctx, binary, target)
+		if warning != "" {
+			warnings = append(warnings, warning)
+		}
 	}
 
 	replaced, err := o.switchTo(ctx, binary, "", staged, target)
@@ -426,6 +439,31 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		return "", o.undo(ctx, "start", err, r)
 	}
 	return dir, nil
+}
+
+// sign returns a signed copy of binary, or binary itself with a warning
+// saying why it is not signed: an unsigned release runs as well, and only
+// loses the permissions macOS granted until an update signs one again.
+func (o Options) sign(ctx context.Context, binary, version string) (installed, warning string) {
+	log := logging.FromContext(ctx)
+	signed := binary + ".signed"
+	err := atomicfile.Copy(signed, binary, 0o755)
+	var made bool
+	if err == nil {
+		made, err = o.Sign(ctx, signed)
+	}
+	if err != nil {
+		if err := os.Remove(signed); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Error("unsigned copy not deleted", "path", signed, "err", err)
+		}
+		log.Warn("release installed unsigned", "version", version, "err", err)
+		return binary, fmt.Sprintf("%s %s is installed unsigned: %v; macOS will ask for its permissions again until an update signs it", identity.Name, version, err)
+	}
+	log.Info("release signed", "version", version, "path", signed, "certificate_made", made)
+	if made {
+		return signed, fmt.Sprintf("a new signing certificate was made: grant %s Full Disk Access once, in System Settings, Privacy & Security, Full Disk Access, adding %s", identity.Name, o.Binary)
+	}
+	return signed, ""
 }
 
 // replaced is the directory a switch keeps what it replaces in, whether
