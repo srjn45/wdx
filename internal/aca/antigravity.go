@@ -17,7 +17,7 @@ import (
 )
 
 // Antigravity is Google's Antigravity CLI. It has written its command, its
-// session, its delivering and steering, its screen parser and its models; the
+// backup, its delivering and steering, its screen parser and its models; the
 // rest are stand-ins. The wdx docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
 	NoBeginSession
@@ -36,8 +36,9 @@ func (Antigravity) Program() string { return "agy" }
 
 // Command implements AiCodingAgent. Antigravity names its own conversations:
 // l.SessionID is resumed once it names one Antigravity keeps, which BackUp makes it
-// after the first message, and before that a start begins a new conversation, as
-// one whose db is gone would, silently. It has no flag for the system prompt, so
+// after the first message, its db put back from the backup when Antigravity's is
+// gone; before that a start begins a new conversation, as one whose db is gone
+// would, silently. It has no flag for the system prompt, so
 // the note is the rules file of a folder of the backup added to the workspace for
 // this session, whose hooks report each conversation to the backup. What
 // --settings holds is for this session only, never saved, over the user's own
@@ -45,6 +46,9 @@ func (Antigravity) Program() string { return "agy" }
 func (Antigravity) Command(l Launch) ([]string, error) {
 	command := []string{"agy"}
 	resume, err := antigravityKeeps(l.UserHome, l.SessionID)
+	if err == nil && !resume {
+		resume, err = antigravityRestore(l)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("look for Antigravity's conversation %s: %w", l.SessionID, err)
 	}

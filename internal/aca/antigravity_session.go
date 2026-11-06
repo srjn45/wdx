@@ -55,23 +55,37 @@ func antigravityKeeps(home, id string) (bool, error) {
 	return err == nil, err
 }
 
-// BackUp implements AiCodingAgent, for now only to say the session: the latest
-// conversation of the hooks file that none of its others names as a subagent, and
-// the workspace folder it started in that is not the agent's own. Before the first
-// message there is none, and the agent keeps wdx's id. The rest of a backup is not
-// kept yet, which ErrNotSupported says.
-func (Antigravity) BackUp(_ context.Context, l Launch) (Backup, error) {
+// BackUp implements AiCodingAgent: it copies what is new of the user's conversations
+// and their subagents' to the backup, with a snapshot of each one's db that changed,
+// appends what is new of the conversations to TranscriptFile as text, and returns the
+// latest conversation of the hooks file that none of its others names as a subagent,
+// and the workspace folder it started in that is not the agent's own. Before the
+// first message there is none, and the agent keeps wdx's id.
+func (Antigravity) BackUp(ctx context.Context, l Launch) (Backup, error) {
 	starts, err := antigravityStarts(filepath.Join(l.BackupDir, antigravityHooksFile))
 	if err != nil {
 		return Backup{}, err
 	}
-	for _, s := range slices.Backward(starts) {
-		if antigravityIsSubagent(l.UserHome, s.ConversationID, starts) {
+	var conversations []string
+	subagent := map[string]bool{}
+	for _, s := range starts {
+		id := s.ConversationID
+		if _, seen := subagent[id]; seen {
 			continue
 		}
-		return Backup{Session: s.ConversationID, Dir: antigravityWorkDir(l.BackupDir, s.WorkspacePaths)}, ErrNotSupported
+		subagent[id] = antigravityIsSubagent(l.UserHome, id, starts)
+		if !subagent[id] {
+			conversations = append(conversations, id)
+		}
 	}
-	return Backup{}, ErrNotSupported
+	replaced, copied := antigravityBackUpConversations(ctx, l, conversations)
+	failed := errors.Join(copied, antigravityRenderConversations(ctx, l.BackupDir, conversations, replaced))
+	for _, s := range slices.Backward(starts) {
+		if !subagent[s.ConversationID] {
+			return Backup{Session: s.ConversationID, Dir: antigravityWorkDir(l.BackupDir, s.WorkspacePaths)}, failed
+		}
+	}
+	return Backup{}, failed
 }
 
 // antigravityStart is what a SessionStart hook says of a conversation.

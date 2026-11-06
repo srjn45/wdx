@@ -3,7 +3,6 @@ package aca_test
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +66,7 @@ func writeHooksFile(t *testing.T, backup string, lines ...string) {
 
 // The session is the latest conversation, past a subagent's that came after it and a
 // line a stopped hook cut short, and Dir is where it started, without the agent's
-// folder. The rest of the backup is not kept yet.
+// folder.
 func TestAntigravityBackUpFindsTheSession(t *testing.T) {
 	t.Parallel()
 	backup, home := t.TempDir(), t.TempDir()
@@ -82,8 +81,8 @@ func TestAntigravityBackUpFindsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := aca.Antigravity{}.BackUp(t.Context(), aca.Launch{UserHome: home, BackupDir: backup})
-	if !errors.Is(err, aca.ErrNotSupported) {
-		t.Fatalf("err = %v, want ErrNotSupported", err)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if want := (aca.Backup{Session: antigravityCleared, Dir: project}); got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
@@ -107,7 +106,7 @@ func TestAntigravityBackUpTakesTheLastStarted(t *testing.T) {
 func TestAntigravityBackUpBeforeTheFirstMessage(t *testing.T) {
 	t.Parallel()
 	got, err := aca.Antigravity{}.BackUp(t.Context(), aca.Launch{UserHome: t.TempDir(), BackupDir: t.TempDir()})
-	if !errors.Is(err, aca.ErrNotSupported) || got != (aca.Backup{}) {
+	if err != nil || got != (aca.Backup{}) {
 		t.Fatalf("got %+v, %v; want nothing", got, err)
 	}
 }
@@ -180,7 +179,7 @@ func TestAntigravityHookKeepsEachConversation(t *testing.T) {
 		}
 	}
 	got, err := aca.Antigravity{}.BackUp(t.Context(), aca.Launch{UserHome: t.TempDir(), BackupDir: backup})
-	if !errors.Is(err, aca.ErrNotSupported) || got.Session != antigravityCleared {
+	if err != nil || got.Session != antigravityCleared {
 		t.Fatalf("after the hook: %+v, %v; want %s", got, err, antigravityCleared)
 	}
 	kept, err := os.ReadFile(filepath.Join(backup, "antigravity-hooks.jsonl"))
