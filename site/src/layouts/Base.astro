@@ -32,6 +32,9 @@ const url = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={url} />
+    <meta property="og:image" content={new URL(`${base}/og.png`, Astro.site)} />
+    <meta property="og:image:alt" content="wdx tide: a project's agents, worktrees, docs and plans on the left, an agent on the right, terminals below." />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#13161c" />
     <script is:inline>
       // The theme the visitor picked last; the system's otherwise.
