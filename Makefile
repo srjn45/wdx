@@ -134,7 +134,7 @@ changelog: $(GIT_CLIFF)
 # Test and build the website into site/dist (needs Node); not part of make check,
 # so the Go work needs no Node. .github/workflows/site.yml deploys it.
 site:
-	cd site && npm ci && npm test && npm run build
+	cd site && npm ci && npm test && npm run build && npm run test:built
 
 # Serve the website with live reload on http://localhost:4321/wdx/.
 site-dev:
