@@ -187,7 +187,8 @@ type Daemon struct {
 	terminals    *terminal.Supervisor
 	tracker      *worktree.Tracker
 	// watcher is the one inotify instance everything the daemon watches goes
-	// through: the tracker's git files and tabs (the wdx doc WATCHERS).
+	// through: the tracker's git files and tabs, the agents' context sizes (the
+	// wdx doc WATCHERS).
 	watcher  *fswatch.Watcher
 	marks    *worktree.Marks
 	comments *worktree.Comments
@@ -302,7 +303,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
 	d.watcher = fswatch.New(logged)
-	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, opts.ContextInterval)
+	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, d.watcher, opts.ContextInterval)
 	contextSizes.OnChange = d.notices.notify
 	d.backups.OnSessionChange = contextSizes.SessionChanged
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{

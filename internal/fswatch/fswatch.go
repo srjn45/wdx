@@ -257,7 +257,9 @@ func (w *Watcher) read(inst *fsnotify.Watcher, reading chan struct{}) {
 	}
 }
 
-// changed hands e to the subscribers of its path and of its directory, each once.
+// changed hands e to the subscribers of its path and of its directory, each
+// once. A watched path removed or renamed took the kernel's watch with it: it is
+// forgotten, so that adding it again, once it is back, watches it again.
 func (w *Watcher) changed(e fsnotify.Event) {
 	w.mu.Lock()
 	var subs []Subscriber
@@ -269,6 +271,15 @@ func (w *Watcher) changed(e fsnotify.Event) {
 				subs = append(subs, s)
 			}
 		}
+	}
+	if e.Has(fsnotify.Remove) || e.Has(fsnotify.Rename) {
+		for s := range w.paths[e.Name] {
+			delete(w.subs[s], e.Name)
+			if len(w.subs[s]) == 0 {
+				delete(w.subs, s)
+			}
+		}
+		delete(w.paths, e.Name)
 	}
 	w.mu.Unlock()
 	for _, s := range subs {

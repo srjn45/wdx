@@ -231,6 +231,33 @@ func TestAnEventOnTheDirectoryItselfReachesItsSubscribers(t *testing.T) {
 	}
 }
 
+func TestAPathGoneIsWatchedAgainOnceAddedBack(t *testing.T) {
+	t.Parallel()
+	w := newWatcher(t)
+	file := filepath.Join(t.TempDir(), "f")
+	touch(t, file)
+	a := newSub()
+	if err := w.Add(a, file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	for !a.next(t).Has(fsnotify.Remove) {
+	}
+	if got := w.watched(); len(got) != 0 {
+		t.Fatalf("watched %v after the file went", got)
+	}
+	touch(t, file)
+	if err := w.Add(a, file); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, file)
+	if e := a.next(t); e.Name != file || !e.Has(fsnotify.Write) {
+		t.Fatalf("told of %v, want %s written", e, file)
+	}
+}
+
 func TestAddOfAMissingPathSaysSo(t *testing.T) {
 	t.Parallel()
 	w := newWatcher(t)

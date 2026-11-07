@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/fswatch"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -27,6 +28,7 @@ type ContextSizes struct {
 	store    *Store
 	home     string
 	acas     *ACAs
+	watcher  *fswatch.Watcher
 	interval time.Duration
 	// OnChange, when set, is told an agent's context size changed.
 	OnChange func()
@@ -37,13 +39,13 @@ type ContextSizes struct {
 }
 
 // NewContextSizes returns the context sizes of the agents in store, whose backups
-// are under home, of the AI coding agents acas knows, read at most once an interval,
-// or DefaultContextInterval when 0.
-func NewContextSizes(ctx context.Context, store *Store, home string, acas *ACAs, interval time.Duration) *ContextSizes {
+// are under home, of the AI coding agents acas knows, watched through the daemon's
+// watcher and read at most once an interval, or DefaultContextInterval when 0.
+func NewContextSizes(ctx context.Context, store *Store, home string, acas *ACAs, watcher *fswatch.Watcher, interval time.Duration) *ContextSizes {
 	if interval == 0 {
 		interval = DefaultContextInterval
 	}
-	return &ContextSizes{ctx: context.WithoutCancel(ctx), store: store, home: home, acas: acas, interval: interval, asked: map[string]chan struct{}{}}
+	return &ContextSizes{ctx: context.WithoutCancel(ctx), store: store, home: home, acas: acas, watcher: watcher, interval: interval, asked: map[string]chan struct{}{}}
 }
 
 // Watch follows the context size of the agent on terminal row terminalID, whose
@@ -99,26 +101,20 @@ func (c *ContextSizes) watch(ctx context.Context, terminalID string) {
 	}
 	// Watched before the first read, so that no change falls between. The backup is
 	// there: its launch wrote it.
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Error("agent context size not followed", "agent_id", a.ID, "err", err)
-		return
-	}
-	defer watcher.Close()
-	if err := watcher.Add(l.BackupDir); err != nil {
+	w := &contextWatch{watcher: c.watcher, events: make(chan fsnotify.Event, 16), asked: make(chan struct{}, 1)}
+	if err := c.watcher.Add(w, l.BackupDir); err != nil {
 		log.Error("agent context size not followed", "agent_id", a.ID, "path", l.BackupDir, "err", err)
 		return
 	}
-	asked := make(chan struct{}, 1)
+	defer c.watcher.Drop(w)
 	c.mu.Lock()
-	c.asked[a.ID] = asked
+	c.asked[a.ID] = w.asked
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
 		delete(c.asked, a.ID)
 		c.mu.Unlock()
 	}()
-	w := &contextWatch{watcher: watcher}
 	read := func() bool {
 		var ok bool
 		if l, ok = c.launch(ctx, terminalID, l); !ok {
@@ -143,24 +139,14 @@ func (c *ContextSizes) watch(ctx context.Context, terminalID string) {
 		select {
 		case <-ctx.Done():
 			return
-		case e, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
+		case e := <-w.events:
 			// A file gone is followed no more, whoever took it: the next read follows
 			// it again if it is back.
 			if e.Has(fsnotify.Remove) || e.Has(fsnotify.Rename) {
 				w.followed = slices.DeleteFunc(w.followed, func(path string) bool { return path == e.Name })
 			}
 			ask()
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return
-			}
-			// An overflow lost changes: read again, as for one.
-			log.Error("agent backup watch failed", "agent_id", a.ID, "err", err)
-			ask()
-		case <-asked:
+		case <-w.asked:
 			ask()
 		case <-next:
 			next = nil
@@ -172,11 +158,30 @@ func (c *ContextSizes) watch(ctx context.Context, terminalID string) {
 	}
 }
 
-// contextWatch is what one agent's watch follows besides its backup: the files its
-// AI coding agent's ContextSize named.
+// contextWatch is one agent's subscription to the daemon's watcher: its backup, and
+// the files its AI coding agent's ContextSize named, which it follows besides.
 type contextWatch struct {
-	watcher  *fsnotify.Watcher
+	watcher  *fswatch.Watcher
+	events   chan fsnotify.Event // a full one drops the event: a read is asked for already
+	asked    chan struct{}       // a read asked for: events lost, or the session changed
 	followed []string
+}
+
+// Changed is given each event on the backup or on a file followed, by the
+// watcher's goroutine: it is kept for the agent's own.
+func (w *contextWatch) Changed(e fsnotify.Event) {
+	select {
+	case w.events <- e:
+	default:
+	}
+}
+
+// Lost says events were lost: a read is asked for, as for one.
+func (w *contextWatch) Lost() {
+	select {
+	case w.asked <- struct{}{}:
+	default:
+	}
 }
 
 // launch is l with what the agent's row says now, its session above all, which a
@@ -231,10 +236,7 @@ func (c *ContextSizes) follow(ctx context.Context, w *contextWatch, want []strin
 		if slices.Contains(want, path) {
 			continue
 		}
-		if err := w.watcher.Remove(path); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
-			log.Error("agent context file not dropped", "path", path, "err", err)
-			continue
-		}
+		w.watcher.Remove(w, path)
 		log.Info("agent context file dropped", "path", path)
 	}
 	w.followed = slices.DeleteFunc(w.followed, func(path string) bool { return !slices.Contains(want, path) })
@@ -242,7 +244,7 @@ func (c *ContextSizes) follow(ctx context.Context, w *contextWatch, want []strin
 		if slices.Contains(w.followed, path) {
 			continue
 		}
-		if err := w.watcher.Add(path); err != nil {
+		if err := w.watcher.Add(w, path); err != nil {
 			log.Error("agent context file not followed", "path", path, "err", err)
 			continue
 		}
