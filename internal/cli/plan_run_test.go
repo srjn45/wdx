@@ -214,7 +214,9 @@ func TestPlanTaskDone(t *testing.T) {
 func TestPlanRunText(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
-	repo := planRepo(t, home, "a manual\n")
+	// b is manual too: its agent would say it is done by itself, so the list at
+	// the end could show 2/2, running or done.
+	repo := planRepo(t, home, "a manual\nb manual\n")
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: Add the table.\n  - id: b\n    after: [a]\n    prompt: p\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "2")
 	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
