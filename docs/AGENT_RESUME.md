@@ -150,7 +150,7 @@ From create to restart, checked on 2026-11-06 with a binary built from the finis
 
 ### Cursor's sessions
 
-Cursor names its own chats too, and keeps every run's settings and chats in `~/.cursor`, so each Cursor agent runs with a config folder of its own, `CURSOR_CONFIG_DIR=<backup>/cursor-config` (the wdx doc CURSOR_PARITY, decisions 1 to 4). At every start `Command` writes the folder's `cli-config.json` from the user's `~/.cursor/cli-config.json`, key for key, with `steering: true`, so the user's settings as they are then apply, `--model` changes only the agent's copy, and what the agent changed in its copy (`/config`, "Add to allowlist") is lost. The login, hooks, MCP servers, rules and the trust `--trust` saves stay the user's, as Cursor reads them from the home. The cost: an agent's chats are not in the user's own `cursor-agent ls` or `--resume` list.
+Cursor names its own chats too, and keeps every run's settings and chats in `~/.cursor`, so each Cursor agent runs with a config folder of its own, `CURSOR_CONFIG_DIR=<backup>/cursor-config` (the wdx doc CURSOR_PARITY, decisions 1 to 4). At every start `Command` writes the folder's `cli-config.json` from the user's `~/.cursor/cli-config.json`, key for key, with `steering: true` and the `statusLine` that keeps the context size in the backup (docs/AGENT.md), so the user's settings as they are then apply, `--model` changes only the agent's copy, and what the agent changed in its copy (`/config`, "Add to allowlist") is lost. The login, hooks, MCP servers, rules and the trust `--trust` saves stay the user's, as Cursor reads them from the home. The cost: an agent's chats are not in the user's own `cursor-agent ls` or `--resume` list.
 
 - **The session** is the agent's chat with a conversation that was updated last, as nobody else's chats are in its folder: `chats/<md5 of the directory>/<id>/`, whose `meta.json` says `cwd`, `createdAtMs`, `updatedAtMs` and `hasConversation`. So `session_id` follows `/clear` and Cursor's own `/resume`. Before the first message there is none, and the agent keeps wdx's id.
 - **Where it resumes.** `Backup.Dir` is the chat's `cwd`, where Cursor filed it, not where its shell last went. `Command` passes `--resume <id>` only when the chat is in the folder with that `cwd` equal to the directory it starts in: from another directory Cursor would start an empty chat with the same id under that directory's hash. Otherwise it begins a new chat, as when the chat's worktree is gone. A new chat is also the only kind the launch note reaches, as `--resume` runs no `sessionStart` hook; a chat keeps the note in its system message, so a resumed one still has it.
@@ -191,6 +191,8 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
   cursor-plugin/                     the plugin whose sessionStart hook gives the launch note
   cursor-rendered.json               how far transcript.md has got in Cursor's chats
   cursor-restarts.jsonl              every restart of a Cursor agent, with how many chats it had
+  cursor-status.sh                   Cursor's status line command, which it runs as sh <script>
+  cursor-status.json                 what Cursor last gave its status line: the context size (docs/AGENT.md)
   transcripts/<chat id>.db           a snapshot of each Cursor chat's store.db
   transcripts/<session id>.jsonl     the ACA's own bytes
   transcripts/<session id>/          its subagents/, and Claude's tool-results/

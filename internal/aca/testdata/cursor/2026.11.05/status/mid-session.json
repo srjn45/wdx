@@ -1,0 +1,35 @@
+{
+  "session_id": "5b1c9b2e-7a7e-4b5a-9f2c-2d8e3f4a5b6c",
+  "transcript_path": "/home/someone/.cursor/projects/-work/agent-transcripts/5b1c9b2e-7a7e-4b5a-9f2c-2d8e3f4a5b6c/5b1c9b2e-7a7e-4b5a-9f2c-2d8e3f4a5b6c.jsonl",
+  "render_width_chars": 136,
+  "cwd": "/work",
+  "autorun": true,
+  "model": {
+    "id": "grok-4.5",
+    "display_name": "Grok 4.5 High",
+    "param_summary": "High"
+  },
+  "workspace": {
+    "current_dir": "/work",
+    "project_dir": "/home/someone/.cursor/projects/-work",
+    "added_dirs": []
+  },
+  "version": "2026.11.05-86047df",
+  "output_style": {
+    "name": "compact"
+  },
+  "context_window": {
+    "total_input_tokens": 12032,
+    "total_output_tokens": 20,
+    "context_window_size": 256000,
+    "used_percentage": 4.7,
+    "remaining_percentage": 95.3,
+    "current_usage": {
+      "input_tokens": 9296,
+      "output_tokens": 20,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2816
+    }
+  },
+  "session_name": "Say Hi"
+}

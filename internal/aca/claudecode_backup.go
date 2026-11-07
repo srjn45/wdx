@@ -73,17 +73,12 @@ func claudeCodeWriteSettings(ctx context.Context, l Launch) (string, error) {
 	return path, atomicfile.Write(path, data, 0o600)
 }
 
-// claudeCodeStatusLine is the status line's command: it writes what Claude Code gives
-// it to claudeCodeStatusFile whole, through a file of its own renamed into place, so
-// that a read never sees half of one and two runs at once do not mix. The status line
-// given with --settings replaces the user's own, so theirs then runs on the same
-// input, in braces, which take any command a shell does (checked on 2.1.319).
+// claudeCodeStatusLine is the status line's command, which Claude Code runs through a
+// shell: it keeps what Claude Code gives it in claudeCodeStatusFile. The status line
+// given with --settings replaces the user's own, so theirs then runs after it on the
+// same input (checked on 2.1.319).
 func claudeCodeStatusLine(ctx context.Context, l Launch) string {
-	command := "f=" + shellQuote(filepath.Join(l.BackupDir, claudeCodeStatusFile)) + `; cat > "$f.$$" && mv "$f.$$" "$f"`
-	if theirs := claudeCodeUserStatusLine(ctx, l.UserHome); theirs != "" {
-		command += "; {\n" + theirs + "\n} < \"$f\""
-	}
-	return command
+	return statusLineCommand(filepath.Join(l.BackupDir, claudeCodeStatusFile), claudeCodeUserStatusLine(ctx, l.UserHome))
 }
 
 // claudeCodeUserStatusLine is the command of the user's own status line, in their

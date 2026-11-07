@@ -3,6 +3,8 @@ package aca
 import (
 	"cmp"
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 )
@@ -22,8 +24,12 @@ type cursorRestart struct {
 // BeginSession implements AiCodingAgent. Its line is what makes session the one BackUp
 // says the agent is in until the new chat's first message, so that the next start
 // begins a chat rather than resume the one before, and what tells the brief that the
-// chat which comes next is a restart's, not a /clear.
+// chat which comes next is a restart's, not a /clear. What the old chat last gave its
+// status line goes, or its context size would come back as the new session's.
 func (Cursor) BeginSession(_ context.Context, l Launch, session string) error {
+	if err := os.Remove(filepath.Join(l.BackupDir, cursorStatusFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	chats, err := cursorConversations(filepath.Join(l.BackupDir, cursorConfigDir))
 	if err != nil {
 		return err

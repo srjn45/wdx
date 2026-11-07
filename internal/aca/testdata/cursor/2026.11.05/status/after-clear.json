@@ -1,0 +1,35 @@
+{
+  "session_id": "9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a",
+  "transcript_path": "/home/someone/.cursor/projects/-work/agent-transcripts/9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a/9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a.jsonl",
+  "render_width_chars": 136,
+  "cwd": "/work",
+  "autorun": true,
+  "model": {
+    "id": "grok-4.5",
+    "display_name": "Grok 4.5 High",
+    "param_summary": "High"
+  },
+  "workspace": {
+    "current_dir": "/work",
+    "project_dir": "/home/someone/.cursor/projects/-work",
+    "added_dirs": []
+  },
+  "version": "2026.11.05-86047df",
+  "output_style": {
+    "name": "compact"
+  },
+  "context_window": {
+    "total_input_tokens": null,
+    "total_output_tokens": 20,
+    "context_window_size": null,
+    "used_percentage": null,
+    "remaining_percentage": null,
+    "current_usage": {
+      "input_tokens": 9296,
+      "output_tokens": 20,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2816
+    }
+  },
+  "session_name": "New Agent"
+}

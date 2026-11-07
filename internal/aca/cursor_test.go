@@ -110,8 +110,8 @@ func TestCursorGivesTheNote(t *testing.T) {
 }
 
 // TestCursorConfigFolder: with a backup, Cursor runs with a config folder of the
-// agent's own, whose cli-config.json is the user's, key for key, with steering on,
-// written anew at every start; the user's file is left as it was.
+// agent's own, whose cli-config.json is the user's, key for key, with steering on and
+// wdx's status line, written anew at every start; the user's file is left as it was.
 func TestCursorConfigFolder(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
@@ -136,7 +136,8 @@ func TestCursorConfigFolder(t *testing.T) {
 		t.Fatalf("command = %q, want %q", got, want)
 	}
 	copied := filepath.Join(config, "cli-config.json")
-	wantCopy := map[string]any{"version": 1.0, "model": map[string]any{"modelId": "gpt-5.2"}, "steering": true,
+	statusLine := map[string]any{"type": "command", "command": "sh " + filepath.Join(backup, "cursor-status.sh")}
+	wantCopy := map[string]any{"version": 1.0, "model": map[string]any{"modelId": "gpt-5.2"}, "steering": true, "statusLine": statusLine,
 		"permissions": map[string]any{"allow": []any{"Shell(ls)"}, "deny": []any{}}, "approvalMode": "allowlist"}
 	var agentSettings map[string]any
 	readJSON(t, copied, &agentSettings)
@@ -161,7 +162,7 @@ func TestCursorConfigFolder(t *testing.T) {
 	}
 	agentSettings = nil
 	readJSON(t, copied, &agentSettings)
-	wantCopy = map[string]any{"model": map[string]any{"modelId": "the user's"}, "editor": map[string]any{"vimMode": true}, "steering": true}
+	wantCopy = map[string]any{"model": map[string]any{"modelId": "the user's"}, "editor": map[string]any{"vimMode": true}, "steering": true, "statusLine": statusLine}
 	if !reflect.DeepEqual(agentSettings, wantCopy) {
 		t.Fatalf("the agent's settings at the next start = %v, want %v", agentSettings, wantCopy)
 	}
@@ -171,8 +172,8 @@ func TestCursorConfigFolder(t *testing.T) {
 }
 
 // TestCursorConfigWithoutTheUsersSettings: a user file that is missing, or is not a
-// JSON object, gives steering alone and does not fail the start; one that is there
-// but unusable is logged.
+// JSON object, gives steering and wdx's status line alone and does not fail the start;
+// one that is there but unusable is logged.
 func TestCursorConfigWithoutTheUsersSettings(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -203,9 +204,11 @@ func TestCursorConfigWithoutTheUsersSettings(t *testing.T) {
 			if _, err := (aca.Cursor{}).Command(ctx, aca.Launch{UserHome: home, BackupDir: backup}); err != nil {
 				t.Fatal(err)
 			}
-			data, err := os.ReadFile(filepath.Join(backup, "cursor-config", "cli-config.json"))
-			if err != nil || string(data) != `{"steering":true}` {
-				t.Fatalf("the agent's settings = %q (%v), want steering alone", data, err)
+			var agentSettings map[string]any
+			readJSON(t, filepath.Join(backup, "cursor-config", "cli-config.json"), &agentSettings)
+			want := map[string]any{"steering": true, "statusLine": map[string]any{"type": "command", "command": "sh " + filepath.Join(backup, "cursor-status.sh")}}
+			if !reflect.DeepEqual(agentSettings, want) {
+				t.Fatalf("the agent's settings = %v, want steering and the status line alone", agentSettings)
 			}
 			if got := strings.Contains(logged.String(), "user cursor settings not copied"); got != c.logged {
 				t.Fatalf("logged = %v, want %v: %s", got, c.logged, logged.String())

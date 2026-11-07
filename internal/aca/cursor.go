@@ -22,7 +22,6 @@ import (
 // Cursor is Anysphere's Cursor CLI, cursor-agent: the wdx docs ACA_CURSOR and
 // CURSOR_PARITY.
 type Cursor struct {
-	NoContextSize
 	NoDetached
 }
 
@@ -88,7 +87,7 @@ func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 	if l.BackupDir == "" {
 		return command, nil
 	}
-	if err := cursorWriteSettings(ctx, config, l.UserHome); err != nil {
+	if err := cursorWriteSettings(ctx, config, l); err != nil {
 		return nil, fmt.Errorf("write the agent's Cursor settings: %w", err)
 	}
 	command = append([]string{"env", "CURSOR_CONFIG_DIR=" + config}, command...)
@@ -104,14 +103,15 @@ func (Cursor) Command(ctx context.Context, l Launch) ([]string, error) {
 
 // cursorWriteSettings writes the agent's cli-config.json in config: the user's, key
 // for key, as it is at this start, with steering on, so that Enter on a queued
-// message steers it into the turn rather than stopping the running tool. What the
-// agent changed in its own copy is lost. A user file that is missing or cannot be
-// read as an object gives steering alone, as Cursor's defaults are then the user's
-// too.
-func cursorWriteSettings(ctx context.Context, config, userHome string) error {
+// message steers it into the turn rather than stopping the running tool, and with the
+// status line that keeps the context size in the backup, the user's own run after it.
+// What the agent changed in its own copy is lost. A user file that is missing or
+// cannot be read as an object gives those two alone, as Cursor's defaults are then
+// the user's too.
+func cursorWriteSettings(ctx context.Context, config string, l Launch) error {
 	settings := map[string]json.RawMessage{}
-	if userHome != "" {
-		user := filepath.Join(userHome, ".cursor", cursorSettingsFile)
+	if l.UserHome != "" {
+		user := filepath.Join(l.UserHome, ".cursor", cursorSettingsFile)
 		data, err := os.ReadFile(user)
 		if err == nil {
 			err = json.Unmarshal(data, &settings)
@@ -127,6 +127,11 @@ func cursorWriteSettings(ctx context.Context, config, userHome string) error {
 		}
 	}
 	settings["steering"] = json.RawMessage("true")
+	statusLine, err := cursorStatusLine(ctx, l, settings["statusLine"])
+	if err != nil {
+		return err
+	}
+	settings["statusLine"] = statusLine
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return err
