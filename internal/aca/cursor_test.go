@@ -249,6 +249,9 @@ func TestCursorDeliverAndSteer(t *testing.T) {
 				{"nor one the removal leaves last", "a\\\x1b[201~", "\x1b[200~a\\ \x1b[201~\r\r"},
 				{"a backslash inside stays", `a\b`, "\x1b[200~a\\b\x1b[201~\r\r"},
 				{"a command stays one", "/clear", "\x1b[200~/clear\x1b[201~\r\r"},
+				{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\r\r"},
+				{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\r\r"},
+				{"a bang then a final backslash", "!\\", "\x1b[200~\\!\\ \x1b[201~\r\r"},
 			} {
 				var got bytes.Buffer
 				if err := send(&got, c.message); err != nil {

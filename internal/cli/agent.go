@@ -534,7 +534,9 @@ func newAgentSendCmd() *cobra.Command {
 			"--instant goes before the other messages, and waits as they do. Claude Code\n" +
 			"takes it at once, Codex at its next step. An AI coding agent that cannot take\n" +
 			"a message into its running turn has the turn interrupted first, but not in a\n" +
-			"pane too narrow to show that a turn is running.",
+			"pane too narrow to show that a turn is running.\n\n" +
+			"A message whose first non-blank character is ! is given to the model as \\!,\n" +
+			"never run as a shell command.",
 		Example: examples(
 			"Give an agent of the project you are in a task", identity.Name+" agent send --name reviewer --prompt summarize",
 			"Give it this first: Claude Code takes it at once", identity.Name+" agent send --name reviewer --prompt stop --instant",

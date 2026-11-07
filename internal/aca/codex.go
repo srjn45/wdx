@@ -107,6 +107,7 @@ func codexType(w io.Writer, message string) error {
 	for strings.Contains(message, codexPasteEnd) {
 		message = strings.ReplaceAll(message, codexPasteEnd, "")
 	}
+	message = escapeBang(message)
 	if strings.HasPrefix(message, "/") {
 		message = " " + message
 	}

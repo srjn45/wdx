@@ -180,6 +180,8 @@ func TestAntigravityDeliverAndSteer(t *testing.T) {
 			{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\x1bm"},
 			{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\x1bm"},
 			{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\x1bm"},
+			{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
+			{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
 		} {
 			t.Run(send.name+"/"+c.name, func(t *testing.T) {
 				t.Parallel()

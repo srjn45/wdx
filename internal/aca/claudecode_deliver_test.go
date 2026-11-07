@@ -16,6 +16,8 @@ func TestClaudeCodeDeliver(t *testing.T) {
 		{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\r"},
 		{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\r"},
 		{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\r"},
+		{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\r"},
+		{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\r"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -58,6 +60,7 @@ func TestClaudeCodeSteer(t *testing.T) {
 		"hello":       "\x1b[200~hello\x1b[201~\r\x18\x13",
 		"one\ntwo":    "\x1b[200~one\ntwo\x1b[201~\r\x18\x13",
 		"a\x1b[201~b": "\x1b[200~ab\x1b[201~\r\x18\x13",
+		"!x":          "\x1b[200~\\!x\x1b[201~\r\x18\x13",
 	} {
 		var got bytes.Buffer
 		if err := (aca.ClaudeCode{}).Steer(&got, message); err != nil {

@@ -202,6 +202,7 @@ func cursorType(w io.Writer, message string) error {
 	for strings.Contains(message, cursorPasteEnd) {
 		message = strings.ReplaceAll(message, cursorPasteEnd, "")
 	}
+	message = escapeBang(message)
 	if strings.HasSuffix(message, `\`) {
 		message += " "
 	}

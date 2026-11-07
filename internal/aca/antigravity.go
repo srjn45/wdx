@@ -167,6 +167,7 @@ func antigravityType(w io.Writer, message string) error {
 	for strings.Contains(message, antigravityPasteEnd) {
 		message = strings.ReplaceAll(message, antigravityPasteEnd, "")
 	}
+	message = escapeBang(message)
 	if _, err := io.WriteString(w, antigravityPasteStart+message+antigravityPasteEnd); err != nil {
 		return err
 	}

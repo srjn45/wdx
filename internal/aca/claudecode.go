@@ -108,6 +108,7 @@ func claudeCodeType(w io.Writer, message string) error {
 	for strings.Contains(message, claudeCodePasteEnd) {
 		message = strings.ReplaceAll(message, claudeCodePasteEnd, "")
 	}
+	message = escapeBang(message)
 	if _, err := io.WriteString(w, claudeCodePasteStart+message+claudeCodePasteEnd); err != nil {
 		return err
 	}

@@ -92,6 +92,8 @@ func TestCodexDeliverAndSteer(t *testing.T) {
 		{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\r"},
 		{"not read as a command", "/tmp is a dir", "\x1b[200~ /tmp is a dir\x1b[201~\r"},
 		{"a mention as it is", "@main.go", "\x1b[200~@main.go\x1b[201~\r"},
+		{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\r"},
+		{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\r"},
 	} {
 		for method, write := range map[string]func(io.Writer, string) error{"Deliver": codex.Deliver, "Steer": codex.Steer} {
 			t.Run(method+"/"+c.name, func(t *testing.T) {
