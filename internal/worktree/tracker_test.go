@@ -111,8 +111,8 @@ func testWatcher(t *testing.T) *fswatch.Watcher {
 	t.Helper()
 	w := fswatch.New(t.Context())
 	t.Cleanup(w.Close)
-	if !w.Watching() {
-		t.Fatal("no inotify instance left for the test: fs.inotify.max_user_instances (128 by default) are all in use")
+	if err := w.Open(); err != nil {
+		t.Fatalf("no inotify instance left for the test (%v): fs.inotify.max_user_instances (128 by default) are all in use", err)
 	}
 	return w
 }

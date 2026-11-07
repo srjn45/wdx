@@ -91,9 +91,6 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 		t.Fatal(err)
 	}
 	td.daemon = d
-	if !d.watcher.Watching() {
-		t.Fatal("no inotify instance left for the test's daemon: fs.inotify.max_user_instances (128 by default) are all in use")
-	}
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(ctx) }()
 	td.stop = sync.OnceFunc(func() {

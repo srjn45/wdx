@@ -91,10 +91,32 @@ func newWatcher(t *testing.T) *Watcher {
 	t.Helper()
 	w := New(t.Context())
 	t.Cleanup(w.Close)
-	if !w.Watching() {
-		t.Fatal("no inotify instance left for the test: fs.inotify.max_user_instances (128 by default) are all in use")
+	if err := w.Open(); err != nil {
+		t.Fatalf("no inotify instance left for the test (%v): fs.inotify.max_user_instances (128 by default) are all in use", err)
 	}
 	return w
+}
+
+// isOpen reports whether the instance is open.
+func (w *Watcher) isOpen() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.inst != nil
+}
+
+func TestTheInstanceOpensAtTheFirstAdd(t *testing.T) {
+	t.Parallel()
+	w := New(t.Context())
+	t.Cleanup(w.Close)
+	if w.isOpen() || !w.Watching() {
+		t.Fatalf("new: open %v, watching %v; want closed and nothing refused", w.isOpen(), w.Watching())
+	}
+	if err := w.Add(newSub(), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if !w.isOpen() || !w.Watching() {
+		t.Fatal("not open after the first add")
+	}
 }
 
 // watched returns the paths the instance watches, sorted.
@@ -282,8 +304,11 @@ func TestRefusedThenHealed(t *testing.T) {
 		return fsnotify.NewWatcher()
 	})
 	t.Cleanup(w.Close)
+	if err := w.Open(); !errors.Is(err, syscall.EMFILE) {
+		t.Fatalf("open while refused: %v, want the kernel's refusal", err)
+	}
 	if w.Watching() {
-		t.Fatal("watching with no instance")
+		t.Fatal("watching after a refusal")
 	}
 	one, two, three := t.TempDir(), t.TempDir(), t.TempDir()
 	a, b := newSub(), newSub()
@@ -318,19 +343,19 @@ func TestRefusedThenHealed(t *testing.T) {
 func TestCloseEndsTheWatching(t *testing.T) {
 	t.Parallel()
 	w := New(t.Context())
-	if !w.Watching() {
-		t.Fatal("no inotify instance left for the test: fs.inotify.max_user_instances (128 by default) are all in use")
-	}
 	a := newSub()
 	if err := w.Add(a, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	w.Close()
 	w.Close()
-	if w.Watching() {
+	if w.Watching() || w.isOpen() {
 		t.Fatal("watching after close")
 	}
 	if err := w.Add(a, t.TempDir()); !errors.Is(err, ErrClosed) {
 		t.Fatalf("add after close: %v, want %v", err, ErrClosed)
+	}
+	if err := w.Open(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("open after close: %v, want %v", err, ErrClosed)
 	}
 }

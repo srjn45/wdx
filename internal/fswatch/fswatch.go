@@ -43,26 +43,37 @@ type Watcher struct {
 	refused bool // the refusal is logged, until an instance opens
 }
 
-// New opens the instance, or runs without one when the kernel refuses, as
-// when the user's fs.inotify.max_user_instances are all in use: it then tries
-// again on every Add and Set, and tells every subscriber Lost once it has one.
+// New returns a watcher whose instance opens at the first path added, so that a
+// daemon with nothing to watch holds none. When the kernel refuses one, as when
+// the user's fs.inotify.max_user_instances are all in use, the watcher runs
+// without, tries again on every Add and Set, and tells every subscriber Lost once
+// it has one.
 func New(ctx context.Context) *Watcher {
 	return newWith(ctx, fsnotify.NewWatcher)
 }
 
 func newWith(ctx context.Context, open func() (*fsnotify.Watcher, error)) *Watcher {
-	w := &Watcher{ctx: ctx, open: open, paths: map[string]map[Subscriber]bool{}, subs: map[Subscriber]map[string]bool{}}
-	w.mu.Lock()
-	w.tryOpen()
-	w.mu.Unlock()
-	return w
+	return &Watcher{ctx: ctx, open: open, paths: map[string]map[Subscriber]bool{}, subs: map[Subscriber]map[string]bool{}}
 }
 
-// Watching reports whether the instance is open: false means no change is seen.
+// Open opens the instance now, and returns the kernel's refusal: a test that needs
+// one fails at once with it rather than at its deadline.
+func (w *Watcher) Open() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return ErrClosed
+	}
+	_, err := w.tryOpen()
+	return err
+}
+
+// Watching reports whether what was added is watched: false once the kernel
+// refused an instance, until one opens, and once closed.
 func (w *Watcher) Watching() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.inst != nil
+	return w.inst != nil || (!w.refused && !w.closed)
 }
 
 // Add watches path for s, a directory or a file. A path not there is not
@@ -144,7 +155,7 @@ func (w *Watcher) Close() {
 // subscribers to tell Lost when it just did: what changed while there was none
 // went unseen.
 func (w *Watcher) opened() []Subscriber {
-	if !w.tryOpen() {
+	if opened, _ := w.tryOpen(); !opened {
 		return nil
 	}
 	lost := make([]Subscriber, 0, len(w.subs))
@@ -155,10 +166,10 @@ func (w *Watcher) opened() []Subscriber {
 }
 
 // tryOpen opens the instance when there is none, under w.mu, and watches
-// every path wanted meanwhile; true when it just opened.
-func (w *Watcher) tryOpen() bool {
+// every path wanted meanwhile: true when it just opened, or the refusal.
+func (w *Watcher) tryOpen() (opened bool, err error) {
 	if w.inst != nil || w.closed {
-		return false
+		return false, nil
 	}
 	log := logging.FromContext(w.ctx)
 	inst, err := w.open()
@@ -167,7 +178,7 @@ func (w *Watcher) tryOpen() bool {
 			log.Error("files not watched", "err", err, "setting", "fs.inotify.max_user_instances")
 			w.refused = true
 		}
-		return false
+		return false, err
 	}
 	w.inst, w.reading = inst, make(chan struct{})
 	go w.read(inst, w.reading)
@@ -184,7 +195,7 @@ func (w *Watcher) tryOpen() bool {
 		log.Info("files watched again", "paths", len(w.paths))
 		w.refused = false
 	}
-	return true
+	return true, nil
 }
 
 // add records that s watches path, under w.mu, watching it when s is its first:

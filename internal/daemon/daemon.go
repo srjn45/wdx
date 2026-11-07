@@ -188,7 +188,7 @@ type Daemon struct {
 	tracker      *worktree.Tracker
 	// watcher is the one inotify instance everything the daemon watches goes
 	// through: the tracker's git files and tabs, the agents' context sizes (the
-	// wdx doc WATCHERS).
+	// wdx doc WATCHERS). It opens at the first path watched.
 	watcher  *fswatch.Watcher
 	marks    *worktree.Marks
 	comments *worktree.Comments
