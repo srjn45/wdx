@@ -79,6 +79,7 @@ zoomed       pane // none, project, agent or terminal
 - A PTY pane that changes size resizes its PTY, so the program inside redraws to fit.
 - The status line takes the last row; the ratios share the rows above it.
 - Neighbouring panes share one border line, as in the drawing above; the border around the focused pane is highlighted.
+- tide paints its own dark background where nothing else sets one, a program's default background in a terminal pane included: slate, and a darker bluish grey inside the focused pane; none with color off. The colors are in the wdx doc TIDE_COLORS.
 - Small screens just get cramped for now. No automatic zoom. No size is ever negative and a pane with no room is not drawn; when a shown pane would have no cell inside its frame, tide shows only "window too small": below 8 × 5 cells for the panes above the status line, 3 × 3 when one is zoomed.
 
 ## Screens

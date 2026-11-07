@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"image/color"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -57,6 +58,13 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if highlight && m.sel != nil && m.sel.dragged {
 		m.sel.highlight(buf)
 	}
+	focused := frames[m.layout.focus].Inset(1)
+	paintBackground(buf, func(at uv.Position) color.Color {
+		if at.In(focused) {
+			return m.st.FocusedBase()
+		}
+		return m.st.Base()
+	})
 	if m.stripShown {
 		m.drawStrip(buf)
 	}
@@ -91,7 +99,23 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 		m.drawPopup(buf, m.menuPopup())
 	}
 	uv.NewStyledString(m.statusLine()).Draw(buf, uv.Rect(0, m.height-1, m.width, 1))
+	// What was drawn over the panes takes the base all over, not the focused
+	// pane's background where it lies over it.
+	paintBackground(buf, func(uv.Position) color.Color { return m.st.Base() })
 	return buf, true
+}
+
+// paintBackground gives every cell of buf left at the terminal's default
+// background the one bg returns for it, so that tide looks the same in
+// every terminal; a background something set stays.
+func paintBackground(buf uv.ScreenBuffer, bg func(uv.Position) color.Color) {
+	for y := range buf.Height() {
+		for x := range buf.Width() {
+			if c := buf.CellAt(x, y); c != nil && c.Style.Bg == nil {
+				c.Style.Bg = bg(uv.Pos(x, y))
+			}
+		}
+	}
 }
 
 // joins are the sides of a border cell its lines leave by.

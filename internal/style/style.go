@@ -1,10 +1,12 @@
 // Package style colors the text wdx prints to a terminal. Its styles are
 // named by what the text is, not by its color, and use only the 16 basic
-// ANSI colors so they follow the terminal's theme.
+// ANSI colors so they follow the terminal's theme. The exception is tide's
+// palette, which paints its own dark background (the wdx doc TIDE_COLORS).
 package style
 
 import (
 	"fmt"
+	"image/color"
 	"io"
 	"regexp"
 	"strings"
@@ -39,6 +41,28 @@ const (
 	purple = "35"
 	cyan   = "36"
 )
+
+// tide's backgrounds, for a dark theme only.
+var (
+	base        = color.RGBA{R: 0x23, G: 0x28, B: 0x34, A: 0xff} // slate
+	focusedBase = color.RGBA{R: 0x1e, G: 0x22, B: 0x2a, A: 0xff} // bluish grey, a step darker
+)
+
+// Base is the background tide paints where nothing else sets one; nil when off.
+func (s Style) Base() color.Color {
+	if !s.on {
+		return nil
+	}
+	return base
+}
+
+// FocusedBase is the background inside tide's focused pane; nil when off.
+func (s Style) FocusedBase() color.Color {
+	if !s.on {
+		return nil
+	}
+	return focusedBase
+}
 
 // Heading styles the title of a section or the header of a table.
 func (s Style) Heading(text string) string { return s.apply(text, bold) }
