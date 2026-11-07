@@ -42,6 +42,8 @@ linters:
               desc: the cli calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/proc
               desc: the cli calls the daemon's API, which stops processes
+            - pkg: github.com/srjn45/wdx/internal/fswatch
+              desc: the cli calls the daemon's API; the daemon watches the files
         # The holder stays free of ACA code: it is given a parser, by the cli.
         holder-without-aca:
           files: ["**/internal/holder/*.go", "!$test"]
