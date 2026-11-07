@@ -1,0 +1,12 @@
+---
+import Base from '../layouts/Base.astro';
+import { latestRelease } from '../release.js';
+
+const version = latestRelease();
+---
+<Base title="wdx · run a team of AI coding agents from one terminal" description="wdx runs Claude Code, Codex, Cursor and Antigravity agents in their own git worktrees, long after your terminal closes. tide, its terminal IDE, shows all of them in one window.">
+  <div class="band"><div class="wrap" style="padding-block:96px">
+    <h1>Run a team of AI coding agents from one terminal.</h1>
+    <p class="lede" style="margin-top:16px">wdx {version}. The landing page is on its way.</p>
+  </div></div>
+</Base>

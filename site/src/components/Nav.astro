@@ -1,0 +1,25 @@
+---
+// Docs points to the README until the docs are on the site (the wdx doc SITE, step C).
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<header class="nav band"><div class="wrap">
+  <a class="logo" href={`${base}/`} aria-label="wdx home">wdx<i></i></a>
+  <nav aria-label="Main">
+    <a href={`${base}/#tide`}>tide</a>
+    <a href={`${base}/#features`}>Features</a>
+    <a href={`${base}/#how`}>How it works</a>
+    <a href="https://github.com/srjn45/wdx#readme">Docs</a>
+  </nav>
+  <span class="sp"></span>
+  <button class="theme" type="button" id="theme" aria-label="Switch between dark and light">◐</button>
+  <a class="btn" href="https://github.com/srjn45/wdx">GitHub</a>
+  <a class="btn primary" href={`${base}/#install`}>Install</a>
+</div></header>
+<script>
+  const root = document.documentElement;
+  document.getElementById('theme')?.addEventListener('click', () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('wdx-theme', root.dataset.theme); } catch (_) {}
+  });
+</script>

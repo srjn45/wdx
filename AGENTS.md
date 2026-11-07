@@ -19,6 +19,7 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `chore:`): the next version and `CHANGELOG.md` are worked out from them, so the type must say what the change is.
 - A change a user or script can notice breaks them: the `--json` output, error codes, exit codes, commands and flags, settings, the API. Mark it with `!` (`feat!:`) and say what breaks in a `BREAKING CHANGE:` footer.
 - After adding, removing or upgrading a dependency, run `make notices` and commit `THIRD-PARTY-NOTICES.md` with it; never edit it by hand. A dependency must be under a permissive license (Apache-2.0, MIT, BSD, ISC); ask the human before adding any other.
+- The website under `site/` has Node dependencies of its own, in `site/package.json` with exact versions; they never reach the binary or `THIRD-PARTY-NOTICES.md`. They follow the same license rule, except the site's fonts (SIL OFL 1.1).
 - Never edit `CHANGELOG.md` or move a tag. Release only when the human asks (`make release-dev`, `make release`); see docs/RELEASING.md.
 
 ## Code style
@@ -58,6 +59,7 @@ internal/style/  colors text output on a terminal with semantic styles
 internal/editor/  the terminal editors wdx runs on a file: how to start each, and what to type to save or discard; docs/TIDE_CODE.md
 internal/deps/   the programs wdx needs besides itself (git, a clipboard tool, docker or podman, the editors), the features each enables, and whether they are ready; docs/DEPS.md
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
+site/          the website on GitHub Pages (Astro): the landing page and its tide demo, a replica in the browser that runs nothing (site/src/tide-demo/); make site, make site-dev; the wdx doc SITE
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
 scripts/test-changed.sh repeats the tests of the test files changed that a change can reach, on a machine kept busy (make test-changed, by hand now and then)
@@ -69,6 +71,7 @@ scripts/vt-sync.sh rebases the vt fork onto upstream and moves go.mod to it (mak
 scripts/tide-lag-sample.sh gathers, on a machine where tide lags, what the wdx doc TIDE_LAG asks for: the holder logs, the wdx processes and a CPU sample of tide (sample on macOS, perf on Linux)
 scripts/notices.sh writes THIRD-PARTY-NOTICES.md, which every release archive carries with LICENSE and NOTICE
 .github/workflows/ci.yml  runs make check and the tests on every push to main and every PR; docs/RELEASING.md
+.github/workflows/site.yml  tests, builds and deploys the website on GitHub Pages
 .github/workflows/release.yml  publishes the GitHub Release of every pushed tag, through scripts/publish.sh
 .github/workflows/stress.yml  runs the tests over and over nightly (make test-stress), to catch the ones that fail only now and then
 .golangci.yml   the linters make lint runs

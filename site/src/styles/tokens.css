@@ -1,0 +1,24 @@
+/* The site's colours and type. Dark first, with a light theme; the tide window
+   stays dark in both, as a terminal does. data-theme on <html> overrides the
+   system's choice. */
+:root {
+  --ground: #13161c; --surface: #1a1e26; --raised: #222733; --line: #2c3240; --ink: #e9ecf2; --muted: #98a1b3;
+  --brand: #6fd3c1; --brand-ink: #0b2420; --amber: #e2b75e; --green: #6ccf7f;
+  --win: #1e222a; --win-bar: #262b36; --win-line: #2e3443; --win-ink: #d5dae4; --glow: rgba(111, 211, 193, .16);
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f4f5f7; --surface: #ffffff; --raised: #eceef3; --line: #d9dde5; --ink: #151922; --muted: #586072;
+    --brand: #0d8574; --brand-ink: #ffffff; --amber: #a86a00; --green: #2a8a3a; --glow: rgba(13, 133, 116, .12);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #f4f5f7; --surface: #ffffff; --raised: #eceef3; --line: #d9dde5; --ink: #151922; --muted: #586072;
+  --brand: #0d8574; --brand-ink: #ffffff; --amber: #a86a00; --green: #2a8a3a; --glow: rgba(13, 133, 116, .12);
+  color-scheme: light;
+}

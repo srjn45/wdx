@@ -1,0 +1,44 @@
+/* What every page shares: type, links, buttons, the nav and the footer. */
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 16px/1.6 var(--body); }
+.band { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.08; }
+h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -.01em; }
+h3 { font-size: 19px; font-weight: 700; }
+p { margin: 0; }
+a { color: var(--brand); }
+code, kbd, .mono { font-family: var(--mono); }
+kbd { font-size: .82em; padding: 2px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--ink); }
+.eyebrow { font: 700 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brand); }
+.lede { color: var(--muted); font-size: 18px; max-width: 62ch; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 12px; z-index: 20; background: var(--surface); padding: 8px 12px; border-radius: 6px; }
+
+/* nav */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ground); }
+.nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: color-mix(in srgb, var(--ground) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+.logo { display: flex; align-items: center; gap: 2px; font: 800 22px/1 var(--display); color: var(--ink); text-decoration: none; letter-spacing: -.02em; }
+.logo i { display: inline-block; width: .5em; height: .95em; background: var(--brand); margin-left: 3px; transform: translateY(1px); }
+@media (prefers-reduced-motion: no-preference) { .logo i { animation: blink 1.06s steps(1) infinite; } }
+@keyframes blink { 50% { opacity: 0; } }
+.nav nav { display: flex; gap: 20px; font-size: 15px; }
+.nav nav a { color: var(--muted); text-decoration: none; }
+.nav nav a:hover { color: var(--ink); }
+.nav .sp { flex: 1; }
+@media (max-width: 760px) { .nav nav { display: none; } }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 7px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font: 600 14px/1 var(--body); background: var(--surface); cursor: pointer; }
+.btn:hover { border-color: var(--brand); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.theme { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 7px; width: 36px; height: 34px; cursor: pointer; font: 16px/1 var(--mono); }
+.theme:hover { color: var(--ink); border-color: var(--brand); }
+
+/* footer */
+footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+footer .wrap { display: grid; gap: 14px; padding-block: 36px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+footer nav a { color: var(--ink); text-decoration: none; }

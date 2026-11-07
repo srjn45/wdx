@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 IDENTITY := github.com/srjn45/wdx/internal/identity
 LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog clean
+.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev clean
 
 # Build for this machine only.
 build:
@@ -130,6 +130,15 @@ release-dev: $(GIT_CLIFF)
 # Print what changed since the last stable release.
 changelog: $(GIT_CLIFF)
 	@RUST_LOG=error $(GIT_CLIFF) --unreleased --strip all
+
+# Test and build the website into site/dist (needs Node); not part of make check,
+# so the Go work needs no Node. .github/workflows/site.yml deploys it.
+site:
+	cd site && npm ci && npm test && npm run build
+
+# Serve the website with live reload on http://localhost:4321/wdx/.
+site-dev:
+	cd site && npm install && npm run dev
 
 $(GIT_CLIFF):
 	scripts/fetch-release.sh git-cliff $(GIT_CLIFF_VERSION) $@

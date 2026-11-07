@@ -1,0 +1,47 @@
+---
+// Every page's <head>, nav and footer. Fonts are served from the site itself,
+// so a visit asks no third party.
+import '@fontsource/bricolage-grotesque/500.css';
+import '@fontsource/bricolage-grotesque/700.css';
+import '@fontsource/bricolage-grotesque/800.css';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@fontsource/ibm-plex-sans/600.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/700.css';
+import '../styles/tokens.css';
+import '../styles/base.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const url = new URL(Astro.url.pathname, Astro.site);
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={url} />
+    <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={url} />
+    <meta name="theme-color" content="#13161c" />
+    <script is:inline>
+      // The theme the visitor picked last; the system's otherwise.
+      try { const t = localStorage.getItem('wdx-theme'); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#top">Skip to content</a>
+    <Nav />
+    <main id="top"><slot /></main>
+    <Footer />
+  </body>
+</html>
