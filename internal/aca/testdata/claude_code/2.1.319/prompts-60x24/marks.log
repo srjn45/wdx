@@ -1,0 +1,13 @@
+2.545 01_trust
+7.566 02_idle_start
+14.483 04_permission_bash
+17.497 05_permission_bash_moved
+22.011 06_after_deny
+30.319 08_permission_write
+34.831 09_after_write_esc
+42.603 14_decision_radio
+46.114 15_radio_answered
+54.105 17_decision_checkbox
+57.119 18_decision_checkbox_ticked
+61.631 19_after_checkbox_esc
+66.643 24_idle_end

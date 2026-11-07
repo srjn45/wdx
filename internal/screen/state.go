@@ -1,5 +1,7 @@
 package screen
 
+import "slices"
+
 // Activity is what an agent's ACA is doing right now, read from its screen.
 type Activity string
 
@@ -35,4 +37,54 @@ type ScreenState struct {
 	// says so, as "Haiku 5.5"; "" when it does not, which is most screens, so
 	// whoever reads the screen over time keeps the last.
 	Model string
+	// Prompt is what the ACA asks, read only with ActivityWaiting; nil when the
+	// parser cannot read the prompt, so waiting alone means what it did.
+	Prompt *Prompt
+}
+
+// Equal reports whether two states read the same, prompts included.
+func (s ScreenState) Equal(o ScreenState) bool {
+	a, b := s, o
+	a.Prompt, b.Prompt = nil, nil
+	return a == b && s.Prompt.Equal(o.Prompt)
+}
+
+// PromptKind is what answers a prompt.
+type PromptKind string
+
+const (
+	// PromptYesNo is answered yes or no, in one of the ACA's variants: a
+	// permission, a plan approval, the trust prompt.
+	PromptYesNo PromptKind = "yes_no"
+	// PromptDecision is a question the ACA's model asks, with options of its own.
+	PromptDecision PromptKind = "decision"
+)
+
+// Prompt is what an ACA asks on its screen, when the parser can read it.
+type Prompt struct {
+	Kind PromptKind
+	// Title is what the ACA heads it with: "Bash command", "Create file",
+	// "Accessing workspace", a decision's tab "Color"; "" when it has none.
+	Title string
+	// Question is the line that asks: "Do you want to proceed?", "Which color
+	// do you choose?".
+	Question string
+	// Detail is what a yes/no prompt is about: the command, the file name, the
+	// workspace path; "" when there is none.
+	Detail string
+	// Options is every label, in order as shown, without its number, box or tick.
+	Options []string
+	// Selected is the index of the option the cursor is on; -1 when none shows.
+	Selected int
+	// Multi is a decision whose options are checkboxes.
+	Multi bool
+}
+
+// Equal reports whether two prompts read the same; two nil prompts do.
+func (p *Prompt) Equal(o *Prompt) bool {
+	if p == nil || o == nil {
+		return p == o
+	}
+	return p.Kind == o.Kind && p.Title == o.Title && p.Question == o.Question && p.Detail == o.Detail &&
+		p.Selected == o.Selected && p.Multi == o.Multi && slices.Equal(p.Options, o.Options)
 }

@@ -1,0 +1,532 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject[40Gyou[44Gcreated[52Gor[55Gone
+[2Gyou[6Gtrust?[13G(Like[19Gyour[24Gown[28Gcode,[34Ga[36Gwell-known[47Gopen[52Gsource
+[2Gproject,[11Gor[14Gwork[19Gfrom[24Gyour[29Gteam).[36GIf[39Gnot,[44Gtake[49Ga[51Gmoment[58Gto
+[2Greview[9Gwhat's[16Gin[19Gthis[24Gfolder[31Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,[40Gand[44Gexecute[52Gfiles
+[2Ghere.
+
+[2G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mSecurity guide[39m]8;;
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u]7501;?[c[?2026$p[c[1D[4B[1C[4A [4GNo, exit[1C[1B[38;5;153m❯[4GYes, I trust this folder[39m
+
+
+[1C[3A[>4m[<u[?1004l[?2031l[?2004l[1D[3B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[19A[?2004h[?2031h[?1004h[<u[>5u[>4;2m]0;✳ Claude Code[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.319[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m/xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[37Gdisabled[46G(CLAUDE.md,[39m
+[3G[38;5;220mskills,[11Gplugins,[20Ghooks,[27GMCP,[32Gagents,[40Gand[44Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[34Gre-enable[39m
+
+[38;5;244m────────────────────────────────────────────────────────────[39m
+❯ [2mTry[7G"refactor[17G<filepath>"[22m
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G·[40G←[42Gfor[46Gagents[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[41C[2A[38;5;246m1 agent[39m[K
+
+[2C[4A[?25h[>0q[c[?2026$p[c[?25l[2D[4B[2C[4ARun this exact command with[31Gthe[35GBash[40Gtool:[46Gtouch[1B  wdx-a.txt[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on[39m
+[11C[3A[?25h[?25l[11D[3B[5A[48;5;237m[38;5;246m❯ [38;5;231mRun this exact command with the Bash tool: touch [39m         [1B  [38;5;231mwdx-a.txt[39m                                                 [2C[1B[49m[K[1B[38;5;174m·[39m [38;5;174mFiddle-fadd[38;5;216mlin[38;5;174mg… [39m[K[2C[1B[K
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39G·[41G←[43G1[45Gagent[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✢[13G[38;5;216md[16G[38;5;174mn[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m*[12G[38;5;216md[15G[38;5;174mi[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✶[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✻[11G[38;5;216ma[14G[38;5;174ml[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✽[10G[38;5;216mf[13G[38;5;174md[39m
+
+
+
+
+
+
+[2C[4A[?25h]0;✳ Touch wdx-a.txt file[?25l[2D[4B[8C[7A[38;5;216m-[12G[38;5;174md[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7C[7A[38;5;216me[11G[38;5;174ma[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✻[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✶[7G[38;5;216ml[10G[38;5;174mf[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m*[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✢[6G[38;5;216md[9G[38;5;174m-[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[7A[38;5;174mBloviating… [39m[K
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m·[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;246m●[3G[39m[1mBash[22m(touch wdx-a.txt)[1B[38;5;246m  ⎿  Waiting…[1B[39m[K[1B[38;5;153m────────────────────────────────────────────────────────────[1B[39m [38;5;153m[1mBash command[22m[39m[K[1C[1B[1mTip: auto mode handles these prompts for you — choose [1C[1B"switch to auto mode" below[41G[22m[K
+[2G[38;5;246mCreate[9Gempty[15Gfile[20Gwdx-a.txt[39m
+[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[39m
+[2Gtouch[8Gwdx-a.txt
+[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[39m
+[2GDo[5Gyou[9Gwant[14Gto[17Gproceed?
+[2G[38;5;153m❯[4G[38;5;246m1.[7G[38;5;153mYes[39m
+[4G[38;5;246m2.[7G[39mYes,[12Gand[16Galways[23Gallow[29Gaccess[36Gto
+[7G[1m/xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn[52G[22mfrom[57Gthis
+[7Gproject
+[4G[38;5;246m3.[7G[39mYes,[12Gand[16Gswitch[23Gto[26Gauto[31Gmode[38;5;246m ·[38Gauto[43Gmode[48Ghandles[56Gthese[39m
+[7G[38;5;246mprompts[15Gfor[19Gyou[39m
+[4G[38;5;246m4.[7G[39mNo
+
+[2G[38;5;246mEsc[6Gto[9Gcancel[16G·[18GTab[22Gto[25Gamend[39m
+[1C[9A(B[?2004h[<u[>5u[>4;2m[1D[9B[1C[9A [7GYes[1C[1B[38;5;153m❯[7GYes, and always allow access to [6C[1B[1m/xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn[22m from this[6C[1Bproject[14C[5B[39m[K
+[1C[8A[1D[8B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.319[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m/xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[37Gdisabled[46G(CLAUDE.md,[39m
+[3G[38;5;220mskills,[11Gplugins,[20Ghooks,[27GMCP,[32Gagents,[40Gand[44Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[34Gre-enable[39m
+
+[48;5;237m[38;5;246m❯ [38;5;231mRun this exact command with the Bash tool: touch [39m         [49m
+[48;5;237m  [38;5;231mwdx-a.txt[39m                                                 [49m
+
+[38;5;211m●[3G[39m[1mBash[22m(touch[14Gwdx-a.txt)
+[38;5;246m [3G⎿[5G Interrupted[18G·[20GWhat[25Gshould[32GClaude[39Gdo[42Ginstead?[39m
+
+[38;5;246m✻[3GSautéed[11Gfor[15G1s[18G·[20Gdone[25G12:57[31GPM[39m
+
+[38;5;244m────────────────────────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G·[40G←[42G1[44Gagent[39m
+[3G[38;5;246mtmux[8Gfocus-events[21Goff[25G·[27Gadd[31G'set[36G-g[39Gfocus-events[52Gon'[56Gto…[39m
+[2C[4A[?25h[?25l[2D[4B[2C[1A                                      [38;5;246m◐ medium ·[52G/effort[39m
+[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4ACreate[10Gthe[14Gfile[19Gwdx-b.txt[29Gcontaining[40Gthe[44Gword[49Ghi,[53Gwith[1B  the Write tool.[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on[39m
+[17C[3A[?25h[?25l[17D[3B[5A[48;5;237m[38;5;246m❯ [38;5;231mCreate the file wdx-b.txt containing the word hi, with [39m   [1B  [38;5;231mthe Write tool.[39m                                           [2C[1B[49m[K[1B[38;5;174m·[39m [38;5;174mDood[38;5;216mlin[38;5;174mg… [39m[K[1B[38;5;246m  ⎿[5G Tip: Use /theme to change the color th[45Gme[39m[K
+
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39G·[41G←[43G1[45Gagent[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✢[6G[38;5;216md[9G[38;5;174mn[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m*[5G[38;5;216mo[8G[38;5;174mi[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✶[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✻[4G[38;5;216mo[7G[38;5;174ml[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✽[3G[38;5;216mD[6G[38;5;174md[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[4C[8A[38;5;174mo[13G[38;5;246m(1s · [38;5;248mthinking[38;5;246m)[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✻[4Go[19G[38;5;249mthinking[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✶[3GD[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m*[19G[38;5;246m↓[39m [38;5;246m38 tokens · [38;5;249mthinking[38;5;246m)[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;174m✢[21G[38;5;246m63[39m
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;246m●[3G[39m[1mWrite[22m(]8;id=hmcdzn;file:///xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn/wdx-b.txtwdx-b.txt]8;;)[K[1B[K[1B[38;5;153m────────────────────────────────────────────────────────────[1B[39m [38;5;153m[1mCreate file[22m[39m[K[1B [38;5;246mwdx-b.txt[1B[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[1C[1B[38;5;231m[2m 1 [22mhi[39m[K[1B[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[39m
+[2GDo[5Gyou[9Gwant[14Gto[17Gcreate[24G[1mwdx-b.txt[22m?
+[2G[38;5;153m❯[4G[38;5;246m1.[7G[38;5;153mYes[39m
+[4G[38;5;246m2.[7G[39mYes,[12Gand[16Gswitch[23Gto[26G[1maccept[33Gedits[39G(auto-approve[53Gfile[22m
+[7G[1medits[13Gand[17Gcommon[24Gfile[29Gcommands)[39G[22mfor[43Gthis[48Gsession
+[7G[1m(shift+tab)[22m
+[4G[38;5;246m3.[7G[39mNo
+
+[2G[38;5;246mEsc[6Gto[9Gcancel[16G·[18GTab[22Gto[25Gamend[39m
+[1C[7A(B[?2004h[<u[>5u[>4;2m[1D[7B[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[11A[38;5;211m●[1B[38;5;246m  ⎿  User rejected write to ]8;id=hmcdzn;file:///xxx/xxxxxx-xxxx/xxx-xxxxxxx/work/w-zaawlzfn/wdx-b.txt[1mwdx-b.txt]8;;[1B[22m[39m     [38;5;231m[2m 1 hi[22m[39m[K[1C[1B[K[1B[38;5;246m✻[39m [38;5;246mBaked for 1s · done 12:58 PM[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[39m❯ [K[1B[38;5;244m────────────────────────────────────────────────────────────[1C[1B[39m [38;5;246m⏸ manual mode on · ? for shortcuts · ← 1 agent[3C[1B[39m       [12G   [16G      [23G  [26G               [38;5;246m◐ medium · /effort[1B[39m[K[1B[K[1B[K[1B[K[1B[K[4A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4AUse[7Gthe[11GAskUserQuestion[27Gtool[32Gto[35Gask[39Gme[42Gto[45Gchoose[52Ga[1B  color: red or blue, single choice. Do nothing else.[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on[39m
+[53C[3A[?25h[?25l[53D[3B[5A[48;5;237m[38;5;246m❯ [38;5;231mUse the AskUserQuestion tool to ask me to choose a color:[39m [1B  [38;5;231mred or blue, single choice. Do nothing else.[39m              [2C[1B[49m[K[1B[38;5;174m✽[39m [38;5;174mFluttering… [39m[K[1B[38;5;246m  ⎿[5G Tip: Sen[15G messages to Claude while it works[50Gto stee[58G [39m
+[6G[38;5;246mClaude[13Gin[16Greal-time[39m
+
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39G·[41G←[43G1[45Gagent[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[12C[9A[38;5;216m…[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✻[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✶[12G[38;5;216mg[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✢[11G[38;5;216mn[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m·[10G[38;5;216mi[13G[38;5;174m…[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;246m────────────────────────────────────────────────────────────[1B[48;5;153m[38;5;16m ☐ Color [39m[49m[K[1B[K[1B[38;5;231m[1mWhich color do you choose?[2B[22m[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mRed[39m[K[1B  [6G[38;5;246mChoose red[1B[39m  [38;5;246m2.[39m Blue[K[2C[1B   [38;5;246mChoose blue[39m[K[2C[1B[38;5;246m3. Type something.[41G[39m[K
+[38;5;246m────────────────────────────────────────────────────────────[39m
+[3G4.[6GChat[11Gabout[17Gthis
+
+[38;5;246mEnter[7Gto[10Gselect[17G·[19G↑/↓[23Gto[26Gnavigate[35G·[37GEsc[41Gto[44Gcancel[39m
+[9A[9B[2K[G[1A[13A[K[1B[38;5;246m● [39mUser answered[17GClaude's[26Gquestions:[1B[38;5;246m  ⎿  · Which color do you choose? → Red[1B[39m[K[1B[38;5;174m*[3GFluttering… [38;5;246m(1s · ↓[23G129 tokens)[1B  ⎿  Tip: Send messages to Claude while it works to steer [6C[1Blaud[13Gin real-time[2C[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · esc to interrupt · ← 1 agent[40C[1B◐ medium · /effort[1B[39m[K[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[9A[38;5;180mFluttering…[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m·[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[9A[38;5;216mFluttering…[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m*[16G[38;5;246m2[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[9A[38;5;174mFluttering…[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✶[24G[38;5;246m31[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;231m●[3G[39m[K[1B[K[1B[38;5;174m✶[3GFluttering… [38;5;246m(2s · ↓[39m [38;5;246m131 tokens)[1B  ⎿  Tip: Send messages to Claude while it works to steer [1B[39m     [38;5;246mClaude in real-time[39m[K[1B[K[2B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39G·[41G←[43G1[45Gagent[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✻[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[11AYou[7Gchose[13Gred.[18GI[20Ghaven't[28Gdone[33Ganything[42Gelse,[48Gand[52Gthe[56Gtwo[2C[1Bearlier[11Gfile[16Gcreations[26G([38;5;153mwdx-a.txt[37G[39mand[41G[38;5;153mwdx-b.txt[39m)[52Gwere[57Gboth[1B[K[1B[38;5;174m✻[39m [38;5;174mFluttering… [38;5;246m(2s · ↓[39m [38;5;246m131 tokens)[39m[K[1B[38;5;246m  ⎿  Tip: Send[16Gm[18Gssages to Claude while it works to steer [5C[1BClaude in real-time[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · esc to interrupt · ←[43G1 agent[39m[K
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[2C[10Arejected,[13Gso[16Gno[19Gfiles[25Gwere[30Gwritten.[1B[K[1B[38;5;174m✻[39m [38;5;174mFluttering… [38;5;246m(2s · ↓[39m [38;5;246m131 tokens)[39m[K[1B[38;5;246m  ⎿  Tip: Send[16Gm[18Gssages to Claude while it works to steer [5C[1BClaude in real-time[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · esc to interrupt · ←[43G1 agent[39m[K
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[2K[1A[2K[G[1A[7A[38;5;246m✻[3GSautéed for 2s · done [26G2:58 PM[39m[K[1B[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[39m❯ [2B  [38;5;246m⏸ manual mode on · ? for shortcuts · ← 1 agent[1B[39m                                        [38;5;246m◐ medium · /effort[39m[K[1B[K[1B[K[1A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4AUse[7Gthe[11GAskUserQuestion[27Gtool[32Gwith[37GmultiSelect[49Gtrue[54Gto[1B  ask which fruits I like: apple, pear, plum. Do nothing[K[2C[1Belse.[K[1B[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[41G◐[43Gmedium[50G·[52G/effort[39m
+[7C[3A[?25h[?25l[7D[3B[6A[48;5;237m[38;5;246m❯ [38;5;231mUse the AskUserQuestion tool with multiSelect true to ask[39m [1B  [38;5;231mwhich fruits I like: apple, pear, plum. Do nothing else.[39m  [2C[1B[49m[K[1B[38;5;174m·[3GRazzle-dazzling… [1B[38;5;246m  ⎿  Tip: Use git worktrees to run multiple Claude sessions [2C[1B[39m   [38;5;246mi[8G parall[16Gl.[39m[K
+
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt[39G·[41G←[43G1[45Gagent[39m
+[41G[38;5;246m◐[43Gmedium[50G·[52G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✻[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✽[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✻[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[9A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;246m────────────────────────────────────────────────────────────[1B← [48;5;153m[38;5;16m ☐ Fruits [39m[49m ✔ Submit[24G→[1B[K[1B[38;5;231m[1mWhich fruits do you like?[2B[22m[38;5;153m❯[39m [38;5;246m1.[39m [ ] [38;5;153mApple[39m[K[1B  [10G[38;5;246mApple[1B[39m  [38;5;246m2.[39m [ ] Pear[K[2C[1B       [38;5;246mPear[39m[K[2C[1B[38;5;246m3.[6G[39m[[8G][10GPlum[41G[K
+[10G[38;5;246mPlum[39m
+[3G[38;5;246m4.[6G[39m[[8G][10G[38;5;246mType[15Gsomething[39m
+[6G[1mSubmit[22m
+[38;5;246m────────────────────────────────────────────────────────────[39m
+[3G5.[6GChat[11Gabout[17Gthis
+
+[38;5;246mEnter[7Gto[10Gselect[17G·[19G↑/↓[23Gto[26Gnavigate[35G·[37GEsc[41Gto[44Gcancel[39m
+[12A[12B[3C[16A[48;5;153m[38;5;16m☒[5C[4B[49m[38;5;114m[✔][39m
+
+
+
+
+
+
+
+
+
+
+
+[12A[12B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[11A[K[1B[38;5;246m● [39mUser declined to answer[27Gquestions[1B[38;5;246m  ⎿  · Which fruits do you like? (Apple / Pear / Plum)[1B[39m[K[1B[38;5;246m✻[3GCooked for 1s · done 12:58 PM[1B[39m[K[1B[38;5;244m────────────────────────────────────────────────────────────[1B[39m❯ [K[1B[38;5;244m────────────────────────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · ? for shortcuts · ← 1 agent[9C[1B[39m    [41G[38;5;246m◐ medium · /effort[1B[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[5A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2K[G[1A[2C[1A[38;5;246mPress Ctrl-C again[22Gto exit[39m            [38;5;246m◐ medium · /effort[1B[39m[K[2C[3A[?25h[?1006l[?1003l[?1002l[?1000l[2D[3B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;[2m[22m
+[2mResume this session with:[22m
+[2mclaude --resume 00000000-0000-0000-0000-000000000000[22m
+[2m[22m

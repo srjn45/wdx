@@ -156,14 +156,14 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 	}
 	tail := claudeCodeTail(lines)
 	if strings.Contains(strings.Join(tail[max(0, len(tail)-2):], " "), "Esc to cancel") {
-		return screen.ScreenState{Activity: screen.ActivityWaiting}
+		return screen.ScreenState{Activity: screen.ActivityWaiting, Prompt: claudeCodePrompt(lines)}
 	}
 	box, ok := claudeCodeInputBox(lines)
 	if !ok {
 		// A multi-line draft's footer has this too, under the box's rule, even
 		// when the box's top has scrolled away. Plan approval has no such rule.
 		if len(tail) == min(len(lines), claudeCodeTailLines) && strings.Contains(strings.Join(tail, " "), "ctrl+g to edit in") {
-			return screen.ScreenState{Activity: screen.ActivityWaiting}
+			return screen.ScreenState{Activity: screen.ActivityWaiting, Prompt: claudeCodePrompt(lines)}
 		}
 		return screen.ScreenState{Activity: screen.ActivityUnknown}
 	}

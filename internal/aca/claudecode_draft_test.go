@@ -188,7 +188,8 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "an open prompt has none",
 			lines:    []string{rule, " Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel · Tab to amend"},
 			undimmed: []string{rule, " Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel · Tab to amend"},
-			want:     screen.ScreenState{Activity: waiting},
+			want: screen.ScreenState{Activity: waiting, Prompt: &screen.Prompt{Kind: screen.PromptYesNo,
+				Question: "Do you want to proceed?", Options: []string{"Yes"}}},
 		},
 		{
 			name:     "a numbered option is no box and no draft, whatever the footer",
@@ -237,7 +238,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			lines, undimmed := slices.Clone(c.lines), slices.Clone(c.undimmed)
-			if got := (aca.ClaudeCodeScreenParser{}).Parse(lines, undimmed); got != c.want {
+			if got := (aca.ClaudeCodeScreenParser{}).Parse(lines, undimmed); !got.Equal(c.want) {
 				t.Errorf("%+v, want %+v", got, c.want)
 			}
 			if !slices.Equal(lines, c.lines) || !slices.Equal(undimmed, c.undimmed) {

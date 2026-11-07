@@ -4,7 +4,7 @@ Status: built. `ScreenParser` and `ClaudeCodeScreenParser` read the screen, the 
 
 What an agent's ACA is doing right now. It is not the terminal's `state`, which stays whether the process is alive (docs/AGENT.md). Later features build on it: auto-approve, switching ACA or resuming at a limit, autopilot. None of those is in this step.
 
-This step answers only "is it working, idle or waiting?", from the bottom of the screen. Why it is waiting, the prompt, is a separate problem for the next step (see Later).
+The first step answered only "is it working, idle or waiting?", from the bottom of the screen; the prompt, why it is waiting, is read for Claude Code since (see Why it is waiting).
 
 ## The model
 
@@ -365,17 +365,21 @@ Known wrong answers, none of which matters for display:
 - **`/model` changes the default of every later agent.** Enter in the menu and `/model <name>` both write `"model"` to Claude's settings (`saved as your default for new sessions`), only `s` in the menu does not. So an agent's `/model` reaches the next agent started.
 - **`/clear` starts a new session,** a transcript of its own, and `--resume` of the old id goes back to the conversation before it. An agent's `session_id` now follows it through a hook, so a relaunch goes on from the latest conversation (docs/AGENT_RESUME.md).
 
-## Later: why it is waiting
+## Why it is waiting
 
-The next step, on top of `waiting`. Decided so far: tide shows `limited` at a limit, and what is being asked is shown by `wdx agent get` and tide, kept out of the logs.
+Built for Claude Code (the wdx doc CLAUDE_PROMPTS, step 1); the other three parsers leave it nil. `ScreenState.Prompt` is what the ACA asks, read only with `waiting` and nil when the parser sees a prompt it cannot read, so `waiting` alone is what it was. Decided: what is being asked is shown by `wdx agent get` and tide (step 2), kept out of the logs; `limited` is for a later step of its own.
 
-| Kind | How the screen shows it |
+| `Prompt` | What it holds |
 |---|---|
-| `permission` | `Do you want to proceed?` or `Do you want to create <file>?`, numbered options |
-| `decision` | radio: options `1. Red`; checkbox: options `1. [ ] Apple` and a `✔ Submit` tab |
-| `trust` | `Accessing workspace:`; the cursor starts on `No, exit`, so a bare Enter quits Claude |
-| `input`, `auth` | not recorded |
-| `limited` | its own activity rather than a kind, since the user cannot answer it. The old warden's capture (`internal/agentbackend/backends/testdata/ratelimit/claude_limited.txt` in `~/dev/warden`, `Usage limit reached, resets 3:45pm (UTC)`) is the only sample, so unproven until a real one is recorded |
+| `Kind` | `yes_no`, answered yes or no in one of Claude's variants (a permission, a plan approval, the trust prompt), or `decision`, a question Claude's model asks with options of its own. Which yes/no prompt it is is not a field: the step that answers them adds it |
+| `Title` | `Bash command`, `Create file`, `Bash command · from the general-purpose agent`, `Accessing workspace`, a decision's tab `Color`; `""` for the plan approval |
+| `Question` | `Do you want to proceed?`, `Do you want to create wdx-b.txt?`, `Claude has written up a plan and is ready to execute. Would you like to proceed?`, `Accessing workspace:`, a decision's question |
+| `Detail` | the command, the file's name, the workspace path; `""` for a decision and the plan |
+| `Options` | every label as shown, without its number, box or tick; a decision's hold Claude's own `Type something` and `Chat about this` |
+| `Selected` | the option with `❯`; -1 when none shows |
+| `Multi` | a decision whose options are checkboxes |
+
+How Claude Code's parser reads it, in the two branches that read `waiting`: the kind from the footer and the line above the options, never from the options' words, which a reply above can hold too; the options upward from the footer; the question right above them; the title and detail from the block under the last full rule, never above it. The rules are in docs/ACA.md's row, the widths' findings in the wdx doc CLAUDE_PROMPTS. The holder compares states with `ScreenState.Equal`, so a selection moving or a box ticked is a change it publishes.
 
 Options differ per prompt: `No` is 4 for Bash and 3 for a file, and offers depend on the mode, so whatever answers later goes by label, not number.
 
@@ -398,4 +402,4 @@ From Claude Code's hook docs, not yet tried:
 - `PreToolUse` on `AskUserQuestion` can answer a decision: `allow`, with `updatedInput` holding the `questions` and an `answers` map from question text to the chosen label.
 - `StopFailure` gives `error` (`rate_limit`, `billing_error`, `authentication_failed` and others), `error_details` and `last_assistant_message`.
 - `Stop` does not fire on a user interrupt, and cancelling a tool fires no failure hook.
-- The docs do not list `--settings` as a hook source, and `disableAllHooks` can turn hooks off, so a hook-based feature must test the first and survive the second.
+- The docs do not list `--settings` as a hook source, but wdx's `SessionStart` hook given there runs; `disableAllHooks` can turn hooks off, and `--safe-mode` silences every hook, those from `--settings` too (2.1.319 prints `Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)`), so a hook-based feature must survive both. wdx does not use `--safe-mode`; the record scripts do, which is why step 1 of the wdx doc CLAUDE_PROMPTS could not compare the hooks' JSON with the screen.

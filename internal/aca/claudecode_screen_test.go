@@ -43,9 +43,10 @@ func reading(lines []string) screen.Activity {
 	return state.Activity
 }
 
-// claudeCodeRecording is one real session of Claude Code 2.1.314, in
-// testdata/claude_code/2.1.314. The classic- ones ran with
-// CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1; the others use the alternate screen.
+// claudeCodeRecording is one real session of Claude Code, of 2.1.314 in
+// testdata/claude_code/2.1.314 unless its name says the version (recordingDir). The classic-
+// ones ran with CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1; the others use the
+// alternate screen.
 type claudeCodeRecording struct {
 	dir string
 	// screens gives what the rule table reads at every step in marks.log: a
@@ -137,6 +138,47 @@ var claudeCodeRecordings = []claudeCodeRecording{
 		},
 	},
 	{
+		dir:     "../2.1.319/prompts-120x40",
+		screens: promptScreens2319,
+		sequence: []screen.Activity{
+			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
+			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+		},
+	},
+	{
+		dir:     "../2.1.319/prompts-60x24",
+		screens: promptScreens2319,
+		sequence: []screen.Activity{
+			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
+			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+		},
+	},
+	{
+		dir:     "../2.1.319/prompts-40x24",
+		screens: promptScreens2319,
+		sequence: []screen.Activity{
+			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
+			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+		},
+	},
+	{
+		dir:      "../2.1.319/plan-120x40",
+		screens:  planScreens2319(idle),
+		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle, inputBox},
+	},
+	{
+		dir:      "../2.1.319/plan-60x24",
+		screens:  planScreens2319(idle),
+		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle, inputBox},
+	},
+	{
+		// At 40 columns the footer at rest is the mode alone, so the box's
+		// activity is not read from it.
+		dir:      "../2.1.319/plan-40x24",
+		screens:  planScreens2319(inputBox),
+		sequence: []screen.Activity{waiting, unknown, inputBox, waiting, inputBox},
+	},
+	{
 		dir: "narrow-40x24",
 		screens: map[string]screen.Activity{
 			"01_idle": idle, "02_typing_wrapped": inputBox, "03_working": working, "04_idle_after_story": idle,
@@ -160,7 +202,24 @@ var (
 		"01_idle_plan_mode": idle, "02_working_plan_mode": working, "03_plan_approval": waiting,
 		"04_after_plan_esc": idle, "05_idle_end": idle,
 	}
+	// promptScreens2319 names the screens of the 2.1.319 prompts recordings, the
+	// prompts of 2.1.314's without the ping and the long turns.
+	promptScreens2319 = map[string]screen.Activity{
+		"01_trust": waiting, "02_idle_start": idle, "04_permission_bash": waiting, "05_permission_bash_moved": waiting,
+		"06_after_deny": idle, "08_permission_write": waiting, "09_after_write_esc": idle, "14_decision_radio": waiting,
+		"15_radio_answered": idle, "17_decision_checkbox": waiting, "18_decision_checkbox_ticked": waiting,
+		"19_after_checkbox_esc": idle, "24_idle_end": idle,
+	}
 )
+
+// planScreens2319 names the screens of a 2.1.319 plan recording, which starts at
+// the trust prompt; atRest is what its box reads with nothing going on.
+func planScreens2319(atRest screen.Activity) map[string]screen.Activity {
+	return map[string]screen.Activity{
+		"01_trust": waiting, "02_idle_plan_mode": atRest, "03_plan_approval": waiting,
+		"04_after_plan_esc": atRest, "05_idle_end": atRest,
+	}
+}
 
 // backgroundPromptScreens names the screens of a session with a shell and a
 // subagent in the background, whose prompts differ in number by the session.
@@ -359,6 +418,9 @@ func recordingSize(dir string) (cols, rows int) {
 	return cols, rows
 }
 
+// recordingDir is where a recording is: 2.1.314's are named alone, a later
+// version's relative to them, as "../2.1.319/prompts-120x40", and the other
+// ACAs' as "../../codex/0.163.0/<name>".
 func recordingDir(dir string) string {
 	return filepath.Join("testdata", "claude_code", "2.1.314", dir)
 }

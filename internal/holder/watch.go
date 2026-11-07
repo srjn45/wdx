@@ -227,7 +227,7 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 			state, ok := w.parsed(lines, undimmed)
 			failed = !ok
 			if !failed {
-				if state != parsed {
+				if !state.Equal(parsed) {
 					parsed = state
 					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model)
 				}
@@ -274,7 +274,7 @@ func panicError(r any) string {
 
 func (w *screenWatch) publish(state screen.ScreenState) {
 	last := w.state()
-	if state == last {
+	if state.Equal(last) {
 		return
 	}
 	w.latest.Store(&state)
