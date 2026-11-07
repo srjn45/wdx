@@ -43,6 +43,7 @@ Design A, chosen by the human in a preview, with its default colors:
 - The heading is a band of black on white, bold, with the number of agents at its right end; `style.Section`, in reverse video with color off.
 - The active row is tinted bright black; `style.ActiveRow`, nothing with color off, where `◂` tells it.
 - A row has the state mark of the terminal tabs, the name, and a muted detail only where it says more than the mark: `exited 0`, `failed`. Running has none. A narrow pane cuts the name with `…`, and drops the detail rather than leave a name under 10 cells.
+- After the detail, before `◂`, comes the agent's context size, `150k` or `1.5M` (`api.TokenCount`): green below `context.threshold.warning`, yellow from it, red from `context.threshold.critical`; nothing before its ACA has told it. A narrow pane drops it before the detail (the wdx doc CONTEXT_SIZE).
 - The list scrolls to keep the cursor in view, under the heading.
 
 ## Creating an agent

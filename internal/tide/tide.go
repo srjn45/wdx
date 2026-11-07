@@ -96,6 +96,7 @@ type Model struct {
 	resume        *Resume                                   // what to show first, until the projects are listed
 	stripLinger   time.Duration                             // from Options
 	sections      []section                                 // the left pane's, in the order set
+	thresholds    contextThresholds                         // the colors of the agents' context sizes
 
 	values      valuePane     // the agent info or the settings shown, if any
 	settings    []api.Setting // what the daemon last said, while a settings tab reads them
@@ -132,6 +133,9 @@ type Options struct {
 	StripLinger time.Duration
 	// SectionOrder is the tide.section_order setting; "" is the default order.
 	SectionOrder string
+	// ContextWarning and ContextCritical are the context.threshold settings; zero is
+	// the default.
+	ContextWarning, ContextCritical int64
 	// ViewSettle is how long what tide shows stays the same before it is sent to
 	// the daemon; zero is half a second.
 	ViewSettle time.Duration
@@ -173,6 +177,7 @@ func New(ctx context.Context, opts Options) *Model {
 		resume:      opts.Resume,
 		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
 		sections:    sectionOrder(opts.SectionOrder),
+		thresholds:  newContextThresholds(opts.ContextWarning, opts.ContextCritical),
 		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and

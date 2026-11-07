@@ -85,6 +85,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "draft", values: present(a.Draft, yesNo)},
 		{key: "queued", values: present(a.Queued, strconv.Itoa)},
 		{key: "held", values: []string{strconv.Itoa(a.Held)}},
+		{key: "context", values: present(a.Context, api.ContextText), paint: m.contextPaint(a)},
 	}
 }
 

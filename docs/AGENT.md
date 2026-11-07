@@ -149,7 +149,7 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 
 `terminal_id` is there because attaching dials that terminal's holder. Text output never shows it.
 
-`context` is null until the agent's ACA has told it, and again once a restart begins a new session; its `window` is null when the ACA does not tell. `agent get` shows it as `context  70k of 200k (35%)`, or `70k` with no window, and `agent list` in a `CONTEXT` column, the size alone, empty when it is null. One function writes a size, `api.TokenCount`: the number under 1,000 (`850`), thousands rounded down with `k` (`150k`), millions with one decimal rounded down with `M` (`1.5M`, `2M`).
+`context` is null until the agent's ACA has told it, and again once a restart begins a new session; its `window` is null when the ACA does not tell. `agent get` shows it as `context  70k of 200k (35%)`, or `70k` with no window, and `agent list` in a `CONTEXT` column, the size alone, empty when it is null; both color it green below `context.threshold.warning`, yellow from it and red from `context.threshold.critical` (`style.ContextFine`, `ContextWarning`, `ContextCritical`), as tide does. One function writes a size, `api.TokenCount`: the number under 1,000 (`850`), thousands rounded down with `k` (`150k`), millions with one decimal rounded down with `M` (`1.5M`, `2M`).
 
 Projects:
 

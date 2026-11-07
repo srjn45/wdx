@@ -46,6 +46,10 @@ type Config struct {
 	Editor string
 	// TideSectionOrder orders the sections of tide's left pane, a letter each.
 	TideSectionOrder string
+	// ContextWarning and ContextCritical are the tokens in an agent's context from
+	// which tide and the cli show its size as a warning, and as critical; warning is
+	// below critical.
+	ContextWarning, ContextCritical int64
 	// DocsGitPath is the directory of each project's repository the daemon keeps
 	// its docs written into; "" for none.
 	DocsGitPath string
@@ -325,6 +329,20 @@ var ownSettings = []setting{
 		get: func(c Config) string { return c.TideSectionOrder },
 	},
 	{
+		key:         contextWarningKey,
+		description: "tokens in an agent's context from which tide and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below " + contextCriticalKey,
+		def:         "200000",
+		set:         func(c *Config, v string) error { return setTokens(&c.ContextWarning, v) },
+		get:         func(c Config) string { return strconv.FormatInt(c.ContextWarning, 10) },
+	},
+	{
+		key:         contextCriticalKey,
+		description: "tokens in an agent's context from which tide and wdx agent show its size as critical, in red; a whole number above " + contextWarningKey,
+		def:         "400000",
+		set:         func(c *Config, v string) error { return setTokens(&c.ContextCritical, v) },
+		get:         func(c Config) string { return strconv.FormatInt(c.ContextCritical, 10) },
+	},
+	{
 		key:         "docs.git_path",
 		description: "directory of each project's repository, relative to its main checkout, that the daemon keeps the project's docs written into, read-only, on every change, as wdx doc sync-to-git does once; empty for none",
 		def:         "",
@@ -397,6 +415,38 @@ func checkGitPath(v string) error {
 		return fmt.Errorf("%q is in git's own directory", v)
 	}
 	return nil
+}
+
+const (
+	contextWarningKey  = "context.threshold.warning"
+	contextCriticalKey = "context.threshold.critical"
+)
+
+// setTokens sets tokens to v, a whole number of at least 1.
+func setTokens(tokens *int64, v string) error {
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 1 {
+		return fmt.Errorf("%q is not a whole number of at least 1", v)
+	}
+	*tokens = n
+	return nil
+}
+
+// thresholdsProblem is what is wrong with the context thresholds of c together,
+// each valid alone: warning not below critical. It names the one set, critical
+// when both are.
+func thresholdsProblem(c Config) *Problem {
+	_, warningSet := c.From[contextWarningKey]
+	_, criticalSet := c.From[contextCriticalKey]
+	if !warningSet || !criticalSet || c.ContextWarning < c.ContextCritical {
+		return nil
+	}
+	key, reason := contextCriticalKey, fmt.Sprintf("%d is not above %s, %d", c.ContextCritical, contextWarningKey, c.ContextWarning)
+	if c.From[contextCriticalKey] == "default" {
+		key, reason = contextWarningKey, fmt.Sprintf("%d is not below %s, %d", c.ContextWarning, contextCriticalKey, c.ContextCritical)
+	}
+	value := c.Value(key)
+	return &Problem{Key: key, From: c.From[key], Value: &value, Reason: reason}
 }
 
 // SectionLetters are the letters tide.section_order takes, in their default order.
@@ -505,6 +555,10 @@ func resolve(table []setting, sources []Source) (Config, error) {
 			continue
 		}
 		c.From[s.key] = from
+	}
+	if p := thresholdsProblem(c); p != nil {
+		problems = append(problems, *p)
+		delete(c.From, p.Key)
 	}
 	if len(problems) > 0 {
 		return c, &Error{Problems: problems}

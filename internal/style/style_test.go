@@ -47,6 +47,7 @@ func TestStyles(t *testing.T) {
 			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
 			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "bar name": s.BarName, "bar muted": s.BarMuted,
 			"code keyword": s.CodeKeyword, "code string": s.CodeString, "code comment": s.CodeComment, "code number": s.CodeNumber, "code type": s.CodeType, "code function": s.CodeFunction,
+			"context fine": s.ContextFine, "context warning": s.ContextWarning, "context critical": s.ContextCritical,
 		} {
 			got := f("text")
 			if Width(got) != len("text") || (got != "text") != on {
@@ -127,5 +128,26 @@ func TestBarVersion(t *testing.T) {
 	}
 	if got, want := New(true).BarVersion(""), "\x1b[1m[wdx "+running+"]\x1b[22m"; got != want {
 		t.Errorf("colored: %q, want bold %q", got, want)
+	}
+}
+
+// TestContext: a context size takes the color of the threshold its tokens reached,
+// from each one up.
+func TestContext(t *testing.T) {
+	t.Parallel()
+	s := New(true)
+	for _, tc := range []struct {
+		tokens int64
+		want   func(string) string
+	}{
+		{999, s.ContextFine}, {1000, s.ContextWarning}, {1001, s.ContextWarning},
+		{1999, s.ContextWarning}, {2000, s.ContextCritical}, {2001, s.ContextCritical},
+	} {
+		if got, want := s.Context(tc.tokens, 1000, 2000, "1k"), tc.want("1k"); got != want {
+			t.Errorf("%d: %q, want %q", tc.tokens, got, want)
+		}
+	}
+	if got := New(false).Context(2001, 1000, 2000, "2k"); got != "2k" {
+		t.Errorf("off: %q", got)
 	}
 }

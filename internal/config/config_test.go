@@ -65,7 +65,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\naca:\n  claude_code:\n    enabled: false\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\naca:\n  claude_code:\n    enabled: false\ncontext:\n  threshold:\n    warning: 1000\n    critical: 2000\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -74,29 +74,31 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
-		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", PlanParallel: 5, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", PlanParallel: 5, ContextWarning: 1000, ContextCritical: 2000, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		ACAEnabled: map[string]bool{"claude_code": false, "antigravity": true, "cursor": true, "codex": true},
 		From: map[string]string{
-			"aca.claude_code.enabled": path + ":23",
-			"aca.antigravity.enabled": "default",
-			"aca.cursor.enabled":      "default",
-			"aca.codex.enabled":       "default",
-			"tide.section_order":      path + ":16",
-			"docs.git_path":           path + ":18",
-			"plan.parallel":           path + ":20",
-			"update.channel":          "default",
-			"update.base_url":         "default",
-			"terminal.shell":          path + ":11",
-			"terminal.history_lines":  path + ":12",
-			"terminal.history_tail":   path + ":13",
-			"editor":                  path + ":14",
-			"home":                    "WDX_HOME",
-			"no_input":                path + ":5",
-			"color":                   path + ":9",
-			"log.level":               path + ":3",
-			"log.retention_days":      path + ":4",
-			"otel.endpoint":           path + ":7",
-			"otel.interval_seconds":   path + ":8",
+			"aca.claude_code.enabled":    path + ":23",
+			"aca.antigravity.enabled":    "default",
+			"aca.cursor.enabled":         "default",
+			"aca.codex.enabled":          "default",
+			"tide.section_order":         path + ":16",
+			"context.threshold.warning":  path + ":26",
+			"context.threshold.critical": path + ":27",
+			"docs.git_path":              path + ":18",
+			"plan.parallel":              path + ":20",
+			"update.channel":             "default",
+			"update.base_url":            "default",
+			"terminal.shell":             path + ":11",
+			"terminal.history_lines":     path + ":12",
+			"terminal.history_tail":      path + ":13",
+			"editor":                     path + ":14",
+			"home":                       "WDX_HOME",
+			"no_input":                   path + ":5",
+			"color":                      path + ":9",
+			"log.level":                  path + ":3",
+			"log.retention_days":         path + ":4",
+			"otel.endpoint":              path + ":7",
+			"otel.interval_seconds":      path + ":8",
 		},
 	}
 	if !reflect.DeepEqual(c, want) {
@@ -343,6 +345,32 @@ func TestGitPath(t *testing.T) {
 	for v, why := range map[string]string{"/abs": "relative", "..": "leads out", "../docs": "leads out", "a/../../x": "leads out", ".git": "git's own", ".git/docs": "git's own"} {
 		if err := checkGitPath(v); err == nil || !strings.Contains(err.Error(), why) {
 			t.Errorf("%q: %v, want %q", v, err, why)
+		}
+	}
+}
+
+func TestContextThresholds(t *testing.T) {
+	t.Parallel()
+	if d := Default(); d.ContextWarning != 200_000 || d.ContextCritical != 400_000 {
+		t.Fatalf("defaults %d, %d", d.ContextWarning, d.ContextCritical)
+	}
+	home, e := homeWith(t, "context:\n  threshold:\n    warning: 1000\n    critical: 1001\n")
+	if c, err := Load(e.getenv); err != nil || c.ContextWarning != 1000 || c.ContextCritical != 1001 || c.From[contextWarningKey] != filepath.Join(home, "config.yaml")+":3" {
+		t.Fatalf("set: %+v %v", c, err)
+	}
+	for _, tc := range []struct{ content, key, why string }{
+		{"context:\n  threshold:\n    warning: 0\n", contextWarningKey, "at least 1"},
+		{"context:\n  threshold:\n    critical: -5\n", contextCriticalKey, "at least 1"},
+		{"context:\n  threshold:\n    warning: 200k\n", contextWarningKey, "not a whole number"},
+		{"context:\n  threshold:\n    warning: 1.5\n", contextWarningKey, "not a whole number"},
+		// Not below: equal fails too, and each names the one set.
+		{"context:\n  threshold:\n    warning: 400000\n", contextWarningKey, "400000 is not below context.threshold.critical, 400000"},
+		{"context:\n  threshold:\n    critical: 100000\n", contextCriticalKey, "100000 is not above context.threshold.warning, 200000"},
+		{"context:\n  threshold:\n    warning: 500\n    critical: 300\n", contextCriticalKey, "300 is not above context.threshold.warning, 500"},
+	} {
+		cfgErr, _ := loadErr(t, tc.content)
+		if len(cfgErr.Problems) != 1 || cfgErr.Problems[0].Key != tc.key || !strings.Contains(cfgErr.Problems[0].Reason, tc.why) {
+			t.Errorf("%q: %+v, want %s %q", tc.content, cfgErr.Problems, tc.key, tc.why)
 		}
 	}
 }

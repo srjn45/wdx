@@ -85,6 +85,9 @@ func (m *Model) settingSaved(msg settingSaved) {
 	if msg.err == nil && msg.setting.Key == sectionSettingKey {
 		m.setSectionOrder(msg.setting.Value)
 	}
+	if msg.err == nil && m.thresholds.set(msg.setting.Key, msg.setting.Value) {
+		m.log.Info("context thresholds changed", "warning", m.thresholds.warning, "critical", m.thresholds.critical)
+	}
 	m.values.saved(msg.valueSaved)
 }
 

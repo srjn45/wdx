@@ -228,12 +228,12 @@ func TestAgentStatusText(t *testing.T) {
 	t.Parallel()
 	waiting, yes, two, model := api.AgentActivityWaiting, true, 2, "Haiku 5.5"
 	var out bytes.Buffer
-	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two, Model: &model}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two, Model: &model}}}.text(&out, style.New(false))
 	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`model\s+Haiku 5\.5\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
 		t.Errorf("running: %s", out.String())
 	}
 	out.Reset()
-	agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}}.text(&out, style.New(false))
 	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") || strings.Contains(out.String(), "model") {
 		t.Errorf("exited: %s", out.String())
 	}
@@ -1013,7 +1013,7 @@ func TestAgentContextText(t *testing.T) {
 		{nil, ""},
 	} {
 		var out bytes.Buffer
-		agentDetail{Agent: api.Agent{Name: "helper", State: api.AgentStateExited, Context: tc.context}}.text(&out, style.New(false))
+		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited, Context: tc.context}}}.text(&out, style.New(false))
 		var got string
 		for line := range strings.Lines(out.String()) {
 			if strings.HasPrefix(strings.TrimSpace(line), "context") {
@@ -1022,6 +1022,31 @@ func TestAgentContextText(t *testing.T) {
 		}
 		if got != tc.want {
 			t.Errorf("%s: %q in %s", tc.want, got, out.String())
+		}
+	}
+}
+
+// TestAgentContextColors: agent get and agent list color the size by the
+// thresholds, from each one up.
+func TestAgentContextColors(t *testing.T) {
+	t.Parallel()
+	st, thresholds := style.New(true), contextThresholds{warning: 1000, critical: 2000}
+	for _, tc := range []struct {
+		tokens int64
+		color  func(string) string
+	}{
+		{999, st.ContextFine}, {1000, st.ContextWarning}, {1999, st.ContextWarning}, {2000, st.ContextCritical}, {2001, st.ContextCritical},
+	} {
+		a := api.Agent{Name: "helper", State: api.AgentStateExited, Context: &api.AgentContext{Tokens: tc.tokens}}
+		var out bytes.Buffer
+		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: a}, thresholds: thresholds}.text(&out, st)
+		if want := tc.color(api.TokenCount(tc.tokens)) + "\n"; !strings.Contains(out.String(), want) {
+			t.Errorf("get %d: want %q in %q", tc.tokens, want, out.String())
+		}
+		out.Reset()
+		agentList{AgentList: api.AgentList{Agents: []api.Agent{a}}, thresholds: thresholds}.text(&out, st)
+		if want := tc.color(api.TokenCount(tc.tokens)) + " "; !strings.Contains(out.String(), want) {
+			t.Errorf("list %d: want %q in %q", tc.tokens, want, out.String())
 		}
 	}
 }

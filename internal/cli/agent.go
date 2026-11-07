@@ -309,7 +309,7 @@ func newAgentListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, ", or --all")
 			}
-			return printResult(cmd, agentList{list, all})
+			return printResult(cmd, agentList{list, all, contextThresholdsOf(cmd)})
 		},
 	}
 	scope.addFlags(cmd)
@@ -382,7 +382,7 @@ func newAgentGetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, agentDetail(a))
+			return printResult(cmd, agentDetail{a, contextThresholdsOf(cmd)})
 		},
 	}
 	ref.addFlags(cmd)
@@ -796,7 +796,8 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 // projects.
 type agentList struct {
 	api.AgentList
-	all bool
+	all        bool
+	thresholds contextThresholds
 }
 
 func (l agentList) text(w io.Writer, st style.Style) {
@@ -812,7 +813,7 @@ func (l agentList) text(w io.Writer, st style.Style) {
 	table.Row(heading...)
 	for _, r := range agentTreeRows(l.Agents) {
 		a := r.agent
-		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), agentModelText(a), agentContextSize(a), a.Aca, a.Dir, st.Muted(a.Id)}
+		row := []string{st.Muted(r.guide) + st.Name(a.Name), agentStateText(st, a), agentActivityText(st, a), agentModelText(a), st.Context(agentContextTokens(a), l.thresholds.warning, l.thresholds.critical, agentContextSize(a)), a.Aca, a.Dir, st.Muted(a.Id)}
 		if l.all {
 			row = append([]string{st.Name(a.ProjectName)}, row...)
 		}
@@ -854,7 +855,10 @@ func agentChildRows(list []api.Agent, lead string, nested bool) []agentTreeRow {
 }
 
 // agentDetail is one agent, in any state.
-type agentDetail api.AgentEnvelope
+type agentDetail struct {
+	api.AgentEnvelope
+	thresholds contextThresholds
+}
 
 func (d agentDetail) text(w io.Writer, st style.Style) {
 	a := d.Agent
@@ -892,7 +896,7 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 		field("model", model)
 	}
 	if a.Context != nil {
-		field("context", agentContextDetail(*a.Context))
+		field("context", st.Context(a.Context.Tokens, d.thresholds.warning, d.thresholds.critical, api.ContextText(*a.Context)))
 	}
 	field("permissions", string(a.Permissions))
 	field("session", a.SessionId)
@@ -931,6 +935,15 @@ func agentModelText(a api.Agent) string {
 	return *a.Model
 }
 
+// agentContextTokens is how many tokens are in a's context, 0 before its AI coding
+// agent has told.
+func agentContextTokens(a api.Agent) int64 {
+	if a.Context == nil {
+		return 0
+	}
+	return a.Context.Tokens
+}
+
 // agentContextSize is how many tokens are in a's context; nothing before its AI
 // coding agent has told.
 func agentContextSize(a api.Agent) string {
@@ -940,13 +953,13 @@ func agentContextSize(a api.Agent) string {
 	return api.TokenCount(a.Context.Tokens)
 }
 
-// agentContextDetail is how full a context is, out of its window when that is
-// known: 70k of 200k (35%).
-func agentContextDetail(c api.AgentContext) string {
-	if c.Window == nil || *c.Window <= 0 {
-		return api.TokenCount(c.Tokens)
-	}
-	return fmt.Sprintf("%s of %s (%d%%)", api.TokenCount(c.Tokens), api.TokenCount(*c.Window), c.Tokens*100 / *c.Window)
+// contextThresholds are the tokens in a context from which its size is a warning,
+// and critical: the context.threshold settings.
+type contextThresholds struct{ warning, critical int64 }
+
+func contextThresholdsOf(cmd *cobra.Command) contextThresholds {
+	cfg := invocationOf(cmd).env.Config
+	return contextThresholds{warning: cfg.ContextWarning, critical: cfg.ContextCritical}
 }
 
 // agentActivityText is what a is doing, which a human may have to answer when it

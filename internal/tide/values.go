@@ -44,6 +44,8 @@ type valueRow struct {
 	// open is what Enter or a click does on it in place of editing, as showing a
 	// task's prompt in a plan's tab; nil for none.
 	open func() tea.Cmd
+	// paint styles each line of its value, as what it tells calls for; nil for none.
+	paint func(string) string
 }
 
 // selectable reports whether the cursor stops on the row: it can be edited, or
@@ -286,8 +288,11 @@ func (p *valuePane) valueLines(r valueRow, i, room int, current bool, st style.S
 	var lines []string
 	for _, v := range r.values {
 		for _, l := range wrapValue(v, room) {
-			if current {
+			switch {
+			case current:
 				l = st.Name(l)
+			case r.paint != nil:
+				l = r.paint(l)
 			}
 			lines = append(lines, l)
 		}

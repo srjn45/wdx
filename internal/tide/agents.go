@@ -1230,7 +1230,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 			if r := rows[it.row]; r.plan != "" {
 				lines = append(lines, m.planGroupLine(r, cursor, width))
 			} else {
-				lines = append(lines, agentRow(st, r, cursor, it.row == activeRow, width))
+				lines = append(lines, agentRow(st, m.thresholds, r, cursor, it.row == activeRow, width))
 			}
 		case it.section == sectionWorktrees:
 			r := worktrees[it.row]
@@ -1312,7 +1312,7 @@ func fitGuide(guide string, depth, room int) (fitted string, left int) {
 
 // agentRow is r's row: the cursor when it is there, the tree's lines and fold
 // mark, its state mark, its name, and at the row's end what its state does not
-// tell and, when active, a mark that shows with color off too.
+// tell, its context size and, when active, a mark that shows with color off too.
 // planGroupLine is the row of a plan in the Agents section, width wide: its fold
 // mark, its name, its state and progress as the Plans section has them, and, folded,
 // how many agents it hides or are waiting, and whether it needs the person. Its
@@ -1368,7 +1368,7 @@ func (m *Model) planGroupLine(r agentListRow, cursor bool, width int) string {
 	return row
 }
 
-func agentRow(st style.Style, r agentListRow, cursor, active bool, width int) string {
+func agentRow(st style.Style, thresholds contextThresholds, r agentListRow, cursor, active bool, width int) string {
 	a := r.agent
 	pointer, end, name := "  ", " ", a.Name
 	if cursor {
@@ -1379,13 +1379,15 @@ func agentRow(st style.Style, r agentListRow, cursor, active bool, width int) st
 	}
 	guide, room := rowGuide(r, width)
 	room -= style.Width(end)
-	detail := agentDetail(r)
-	if room-len(detail)-1 < minAgentName {
+	detail, size := agentDetail(r), contextSize(a)
+	// The size gives way first, then the detail, so that the name keeps its room.
+	if room-endWidth(detail)-endWidth(size) < minAgentName {
+		size = ""
+	}
+	if room-endWidth(detail) < minAgentName {
 		detail = ""
 	}
-	if detail != "" {
-		room -= len(detail) + 1
-	}
+	room -= endWidth(detail) + endWidth(size)
 	name = ansi.Truncate(name, max(room, 0), "…")
 	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
 	switch {
@@ -1397,14 +1399,25 @@ func agentRow(st style.Style, r agentListRow, cursor, active bool, width int) st
 	if detail != "" {
 		detail = " " + agentDetailStyle(st, r, detail)
 	}
+	if size != "" {
+		size = " " + st.Context(a.Context.Tokens, thresholds.warning, thresholds.critical, size)
+	}
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	row := pointer + st.Muted(guide) + agentMark(st, a) + " " + name + gap + detail + end
+	row := pointer + st.Muted(guide) + agentMark(st, a) + " " + name + gap + detail + size + end
 	if active {
 		return st.ActiveRow(row)
 	}
 	return row
+}
+
+// endWidth is the cells text takes at a row's end, after a space: none for none.
+func endWidth(text string) int {
+	if text == "" {
+		return 0
+	}
+	return ansi.StringWidth(text) + 1
 }
 
 // agentMark is a's state mark: the terminal tabs' or, for a tombstone, its own.

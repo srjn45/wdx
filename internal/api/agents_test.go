@@ -13,3 +13,22 @@ func TestTokenCount(t *testing.T) {
 		}
 	}
 }
+
+func TestContextText(t *testing.T) {
+	t.Parallel()
+	window, none := int64(200_000), int64(0)
+	for _, tc := range []struct {
+		context AgentContext
+		want    string
+	}{
+		{AgentContext{Tokens: 70_086, Window: &window}, "70k of 200k (35%)"},
+		{AgentContext{Tokens: 199_999, Window: &window}, "199k of 200k (99%)"},
+		{AgentContext{Tokens: 0, Window: &window}, "0 of 200k (0%)"},
+		{AgentContext{Tokens: 70_086}, "70k"},
+		{AgentContext{Tokens: 70_086, Window: &none}, "70k"},
+	} {
+		if got := ContextText(tc.context); got != tc.want {
+			t.Errorf("ContextText(%+v) = %q, want %q", tc.context, got, tc.want)
+		}
+	}
+}

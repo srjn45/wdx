@@ -294,13 +294,13 @@ func TestAgentRow(t *testing.T) {
 		{20, "  ○ a-rather-lon… ◂ "},
 	}
 	for _, tt := range tests {
-		got := agentRow(st, agentListRow{agent: a}, false, true, tt.width)
+		got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, false, true, tt.width)
 		if got != tt.want {
 			t.Errorf("width %d: %q, want %q", tt.width, got, tt.want)
 		}
 	}
 	for _, width := range []int{1, 5, 8, 20, 50, 100} {
-		if got := agentRow(st, agentListRow{agent: a}, true, false, width); width >= 20 && ansi.StringWidth(got) != width {
+		if got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, true, false, width); width >= 20 && ansi.StringWidth(got) != width {
 			t.Errorf("width %d: %q is %d wide", width, got, ansi.StringWidth(got))
 		}
 	}
@@ -733,10 +733,10 @@ func TestAgentsDeepRow(t *testing.T) {
 	t.Parallel()
 	st := style.New(false)
 	r := agentListRow{agent: running("swift-falcon"), depth: 3, guide: "  │   │   ├ "}
-	if got := agentRow(st, r, false, false, 50); !strings.Contains(got, "  │   │   ├ ● swift-falcon") {
+	if got := agentRow(st, newContextThresholds(0, 0), r, false, false, 50); !strings.Contains(got, "  │   │   ├ ● swift-falcon") {
 		t.Errorf("wide: %q", got)
 	}
-	got := agentRow(st, r, false, false, 24)
+	got := agentRow(st, newContextThresholds(0, 0), r, false, false, 24)
 	if !strings.Contains(got, "⋯3 ├ ● swift-falcon") || ansi.StringWidth(got) != 24 {
 		t.Errorf("narrow: %q, %d wide", got, ansi.StringWidth(got))
 	}
@@ -863,7 +863,7 @@ func TestAgentRowActivity(t *testing.T) {
 		{"a parent hiding none", agentListRow{agent: doing(api.AgentActivityWorking), below: 2}, 40, "  ● helper                      2 below "},
 	}
 	for _, tt := range tests {
-		if got := agentRow(st, tt.row, false, false, tt.width); got != tt.want {
+		if got := agentRow(st, newContextThresholds(0, 0), tt.row, false, false, tt.width); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
 	}

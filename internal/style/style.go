@@ -58,6 +58,29 @@ func (s Style) Success(text string) string { return s.apply(text, bold, green) }
 // Warning styles what needs attention but is not a failure.
 func (s Style) Warning(text string) string { return s.apply(text, yellow) }
 
+// ContextFine styles an agent's context size below the warning threshold.
+func (s Style) ContextFine(text string) string { return s.apply(text, green) }
+
+// ContextWarning styles an agent's context size from the warning threshold: the
+// yellow of Warning, as there is no orange among the basic colors.
+func (s Style) ContextWarning(text string) string { return s.apply(text, yellow) }
+
+// ContextCritical styles an agent's context size from the critical threshold.
+func (s Style) ContextCritical(text string) string { return s.apply(text, red) }
+
+// Context styles text, which tells an agent's context size, by the threshold its
+// tokens reached: ContextFine below warning, ContextWarning from it,
+// ContextCritical from critical.
+func (s Style) Context(tokens, warning, critical int64, text string) string {
+	switch {
+	case tokens >= critical:
+		return s.ContextCritical(text)
+	case tokens >= warning:
+		return s.ContextWarning(text)
+	}
+	return s.ContextFine(text)
+}
+
 // Added styles what a diff adds.
 func (s Style) Added(text string) string { return s.apply(text, green) }
 

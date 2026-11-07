@@ -34,3 +34,12 @@ func TokenCount(n int64) string {
 	}
 	return fmt.Sprintf("%d.%dM", tenths/10, tenths%10)
 }
+
+// ContextText is how full c is, out of its window when that is known, the
+// percentage rounded down: 70k of 200k (35%); the tokens alone with no window.
+func ContextText(c AgentContext) string {
+	if c.Window == nil || *c.Window <= 0 {
+		return TokenCount(c.Tokens)
+	}
+	return fmt.Sprintf("%s of %s (%d%%)", TokenCount(c.Tokens), TokenCount(*c.Window), c.Tokens*100 / *c.Window)
+}
