@@ -326,11 +326,18 @@ export class Render {
     const fam = '"JetBrains Mono", ui-monospace, Menlo, monospace';
     ctx.textBaseline = 'middle';
     const thin = Math.max(1, Math.round(cw * 0.13 * dpr) / dpr), thick = Math.max(2, Math.round(cw * 0.3 * dpr) / dpr);
+    // Backgrounds first: each overlaps its neighbours by a pixel against seams,
+    // and drawn in the same pass it would cover the end of the line before it.
+    for (let y = 0; y < g.h; y++) {
+      for (let x = 0; x < g.w; x++) {
+        ctx.fillStyle = g.cells[y * g.w + x].bg;
+        ctx.fillRect(Math.floor(x * cw), Math.floor(y * ch), Math.ceil(cw) + 1, Math.ceil(ch) + 1);
+      }
+    }
     let font = '';
     for (let y = 0; y < g.h; y++) {
       for (let x = 0; x < g.w; x++) {
         const c = g.cells[y * g.w + x], px = x * cw, py = y * ch;
-        ctx.fillStyle = c.bg; ctx.fillRect(Math.floor(px), Math.floor(py), Math.ceil(cw) + 1, Math.ceil(ch) + 1);
         let arms = c.lw ? [c.u, c.d, c.l, c.r] : null, lc = c.lc;
         if (!arms && BOX[c.ch]) { arms = BOX[c.ch]; lc = c.fg; }
         if (arms) {

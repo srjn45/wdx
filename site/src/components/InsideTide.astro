@@ -1,0 +1,16 @@
+---
+// The screens are drawn by the page's script from the demo's scenes; each
+// opens live in the dialog.
+import TideWindow from './TideWindow.astro';
+---
+<section class="sec alt band" id="tide"><div class="wrap">
+  <div class="sec-head"><span class="eyebrow">Inside tide</span><h2>Every agent, worktree and plan of a project, one key away.</h2><p class="lede">These are tide's own screens, drawn live by the same engine as the window above. Open any of them to try that screen.</p></div>
+  <div class="bento" id="bento"></div>
+</div></section>
+
+<dialog class="lb" id="lb" aria-label="tide screen">
+  <TideWindow simId="lb-sim" titleId="lb-title" title="tide">
+    <button slot="bar" type="button" id="lb-close">Close · Esc</button>
+    <div class="capbar driving"><span class="dot" aria-hidden="true"></span><span class="cap" id="lb-sim-cap">You're driving.</span></div>
+  </TideWindow>
+</dialog>

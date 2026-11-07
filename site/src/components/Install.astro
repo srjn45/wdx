@@ -1,0 +1,14 @@
+---
+interface Props { install: string; }
+const { install } = Astro.props;
+---
+<section class="sec band" id="install"><div class="wrap">
+  <div class="sec-head"><span class="eyebrow">Get started</span><h2>Four commands to your first agent.</h2><p class="lede">The installer puts <code>wdx</code> in <code>~/.local/bin</code>, adds shell completions and runs the daemon as a systemd or launchd user service. wdx needs git; each agent needs its AI CLI installed.</p></div>
+  <div class="steps">
+    <div class="step"><b>1 · INSTALL</b><code>{install}</code></div>
+    <div class="step"><b>2 · OPEN A PROJECT</b><code>wdx project open --local ~/code/api</code></div>
+    <div class="step"><b>3 · START AN AGENT</b><code>wdx agent create --name fix --worktree fix</code></div>
+    <div class="step"><b>4 · SEE IT ALL</b><code>wdx tide</code></div>
+  </div>
+  <div class="ctas start"><a class="btn primary" href="https://github.com/srjn45/wdx#readme">Read the quickstart</a><a class="btn" href="https://github.com/srjn45/wdx/releases">Releases</a></div>
+</div></section>

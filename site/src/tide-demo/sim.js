@@ -43,6 +43,8 @@ export class TideSim {
     this.sizeCanvas(window.devicePixelRatio || 1);
     this.dirty = true;
     this.emit('size', { W: this.W, H: this.H });
+    // resizing the canvas clears it: draw again now, not at the next tick
+    if (this.grid) this.render();
   }
   sizeCanvas(dpr) {
     this.dpr = dpr;

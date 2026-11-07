@@ -1,0 +1,20 @@
+---
+// Commands and output as wdx prints them; keep them in step with the CLI.
+---
+<section class="sec alt band"><div class="wrap split">
+  <div class="sec-head flat"><span class="eyebrow">The CLI</span><h2>tide for people, the same features for scripts and agents.</h2><p class="lede">Agents that wdx runs learn it from <code>wdx help agents</code>: they make child agents, worktrees, docs and plans through wdx, so you see all of it in tide.</p></div>
+  <pre class="term"><span class="p">$</span> wdx agent create --name fix-auth --worktree fix-auth --aca codex
+<span class="d">created agent fix-auth in shop-api</span>
+<span class="d">worktree fix-auth (new)</span>
+
+<span class="p">$</span> wdx agent list --json
+&#123;<span class="k">"agents"</span>: [&#123;
+  <span class="k">"name"</span>: <span class="s">"fix-auth"</span>, <span class="k">"aca"</span>: <span class="s">"codex"</span>,
+  <span class="k">"state"</span>: <span class="s">"running"</span>, <span class="k">"activity"</span>: <span class="s">"waiting"</span>,
+  <span class="k">"prompt"</span>: &#123;<span class="k">"kind"</span>: <span class="s">"yes_no"</span>, <span class="k">"question"</span>: <span class="s">"Do you want to proceed?"</span>&#125;,
+  <span class="k">"context"</span>: &#123;<span class="k">"tokens"</span>: 154210&#125;
+&#125;]&#125;
+
+<span class="p">$</span> wdx worktree land --name fix-auth
+<span class="d">landed worktree fix-auth on main</span></pre>
+</div></section>
