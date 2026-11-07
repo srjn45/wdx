@@ -2,6 +2,134 @@
 
 Every release of wdx, generated from the commits by git-cliff: do not edit.
 
+## v0.4.0 - 2026-11-07
+
+### Breaking changes
+
+- show only the sections tide.section_order names, default awdpc
+- run one tide per home
+- set out tide's C-q menu by level, with a Project submenu
+- keep an agent's model and permissions for every start
+- choose the AI coding agent of a new agent, from those installed and enabled
+- show a plan's slots, and refuse to land or remove one while it runs
+- run plans of plans, each plan after those before it have landed
+- start a plan its parent lists on the person's answer, once the plans before it have landed
+- copy a plan of plans with the plans it lists that are not done
+- remove a plan's agents once it is done or cancelled
+- remove a plan task's agent as soon as the task is done or skipped
+- give a message starting with ! to the model, never run it
+
+### Features
+
+- add wdx help agents, the manual for an AI agent wdx runs
+- point every agent wdx starts to wdx help agents with a launch note
+- keep tide's tabs in the daemon, closed by removals through wdx
+- open tide's tabs from the daemon and send them on every change
+- keep tide's view in the daemon, outside the line of changes
+- bring tide back as it was left, from the view the daemon keeps
+- mark tide's tabs whose file or worktree was removed outside wdx
+- keep plans in the docs table, apart from docs by kind
+- check a plan's YAML, order its DAG and reduce it
+- serve plans through the API, plans of plans included
+- add wdx plan and wdx help plans
+- show plans in tide, a section and a tab of each
+- rename the agent selected in tide with r
+- remove the project shown from tide with C-q p x
+- open a tab from tide's left pane and stay, or go with Shift+Enter or o
+- close a row's tab from tide's left pane with - or C-q -
+- keep plans' runs and decide each run's next step
+- land on a branch no checkout has, stop one agent, create one linked
+- run plans: a runner starts and lands their tasks
+- add wdx plan run, plan task done and plan task get
+- show a plan's run in tide, and run a draft with r
+- collapse tide's left-pane sections with a click on the heading or z
+- send keys to terminals' programs by the kitty keyboard protocol
+- answer a plan's stuck tasks and its run in the store, and decide them in Next
+- land a plan's tasks with the project's check, release slots, cancel, retry
+- answer a plan's stuck tasks and its run through the API
+- add wdx plan pause, resume, cancel, set and plan task retry, land, skip
+- answer a plan's stuck tasks and its run from tide
+- list the models an AI coding agent offers
+- put docs and plans in folders
+- show docs and plans in folders in tide, and move them with m
+- ask what a new agent is created with in a form in tide
+- add wdx plan copy, archive and unarchive
+- archive and copy plans from their tab in tide
+- add Antigravity as an AI coding agent
+- group a plan's agents under a row for the plan in tide
+- group a plan's slots under a row for the plan in tide's Worktrees section
+- add Cursor as an AI coding agent
+- add Codex as an AI coding agent
+- show and drive plans of plans in tide, with the plans waiting for you
+- read what Codex is doing from its screen
+- give an instant message to Codex's running turn instead of interrupting it
+- resume a Codex agent's conversation on every start
+- name the ACA in each session heading of transcript.md
+- keep a copy of a Codex agent's session files in its backup
+- render a Codex agent's transcript.md from its session files
+- put back a Codex session file Codex deleted, from its backup
+- tell Codex's tool calls in a few words in the brief
+- restart a Codex agent in a new session
+- give a Codex agent's conversation in brief
+- lay out a plan's DAG as a rail, as git log --graph draws commits
+- draw a plan's tab as a header, its tasks on the rail and its keys
+- show a plan task's panel and whole prompt, and plans of plans in the new tab
+- choose the plans tide's Plans section shows: all, draft and in progress, or completed
+- steer instant messages into Claude Code's running turn with its send-now keys
+- read a plain message at the agent's next step, not after its turn
+- open a plan's PR once it is done, with pr: true
+- rebase a worktree onto its base when asked, with wdx worktree rebase and R in tide
+- stack a plan of plans' PRs with stacked: true, and rebase a stacked worktree with R
+- widen the plan tab's panel to what the task list leaves
+- read Antigravity's box, draft and model from its screen
+- read what Antigravity is doing from its screen
+- resume Antigravity agents in their conversation, learned from a SessionStart hook
+- steer messages into Antigravity's running turn with alt+m
+- back up Antigravity agents' conversations and render their transcript
+- brief and restart Antigravity agents
+- run each Cursor agent with a config folder of its own
+- resume a Cursor agent's chat on every start
+- read Cursor's screen: ready, draft, model, activity and approvals
+- back up a Cursor agent's chats as transcript.md and a snapshot of each store
+- steer a Cursor agent, holding a message while a steer is pending
+- restart a Cursor agent and read its history in brief
+- let the agent asking land or rebase its own worktree
+- stop an agent's leftover processes when its terminal ends
+- sign wdx on macOS at install, so its permissions survive updates
+- scroll tide's left pane with the wheel
+- sign each release wdx update installs on macOS
+- track each agent's context size
+- color each agent's context size, and show it in tide
+- follow a Codex agent's context size
+- follow a Cursor agent's context size
+- paint tide's own dark background, darker in the focused pane
+- tint tide's open tabs, shown tab and cursor, and soften its headings
+- draw tide's focused pane in heavy lines
+- follow an Antigravity agent's context size
+- choose tide's colors with a tide.theme setting
+- read the prompt a waiting Claude Code agent shows
+- show the prompt a waiting agent answers
+- watch files through one inotify instance the daemon shares
+- watch worktrees and tabs through the daemon's one inotify instance
+- follow agents' context sizes through the daemon's one inotify instance
+- open the daemon's one inotify instance only once something is watched
+
+### Fixes
+
+- order tide's tab events by revision, and send the tabs on quitting
+- run every change to its end when its client leaves, views too
+- mark a tab missing as soon as its file or worktree goes outside git
+- keep a project's cursor where its view left it, not on its current tab
+- show a plan's state and counts as of the run getPlan returns with it
+- log every request tide leaves in flight when it quits
+- give Codex a message only once its box is ready
+- tell Antigravity agents to create files in the project, not the note's folder
+- hold a message until the agent's terminal reads keys
+- render a Cursor reply again when its bytes repeat
+- read Cursor's model and box under a long directory
+- run Claude Code agents without the mouse, so tide's selection works
+- read a checkout removed during a project read as not present
+
 ## v0.3.0 - 2026-11-03
 
 ### Breaking changes
