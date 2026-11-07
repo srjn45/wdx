@@ -1,0 +1,26 @@
+---
+// The three newest posts; left out while there are none. Drafts count only
+// in development, as starlight-blog builds them only there.
+import { getCollection } from 'astro:content';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const posts = (await getCollection('docs', (e) => e.id.startsWith('blog/') && !(import.meta.env.PROD && e.data.draft)))
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
+  .slice(0, 3);
+const day = (d: Date) => d.toISOString().slice(0, 10);
+---
+{posts.length > 0 && (
+  <section class="sec alt band" id="blog"><div class="wrap">
+    <div class="sec-head"><span class="eyebrow">From the blog</span><h2>How wdx is built.</h2></div>
+    <div class="posts">
+      {posts.map((p) => (
+        <a class="post" href={`${base}/${p.id}/`}>
+          <span class="m">{day(p.data.date)}{p.data.tags?.length ? ` · ${p.data.tags.join(', ')}` : ''}</span>
+          <h3>{p.data.title}</h3>
+          {p.data.excerpt && <p>{p.data.excerpt}</p>}
+        </a>
+      ))}
+    </div>
+    <p class="feed"><a href={`${base}/blog/`}>All posts</a> · <a href={`${base}/blog/rss.xml`}>RSS</a></p>
+  </div></section>
+)}

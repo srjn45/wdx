@@ -8,6 +8,7 @@ import Cli from '../components/Cli.astro';
 import Architecture from '../components/Architecture.astro';
 import Hub from '../components/Hub.astro';
 import Install from '../components/Install.astro';
+import BlogBand from '../components/BlogBand.astro';
 import { latestRelease, installCommand } from '../release.js';
 import '../styles/landing.css';
 
@@ -22,6 +23,7 @@ const version = latestRelease();
     <Cli />
     <Architecture />
     <Hub />
+    <BlogBand />
     <Install install={installCommand} />
   </div>
 </Base>

@@ -134,3 +134,12 @@ pre.term { margin: 0; }
 .hero h1, .hero .lede { justify-self: center; }
 .hero .stage { display: block; }
 .sim { scrollbar-color: #3a4152 var(--win); }
+
+/* the blog band */
+.posts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.post { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 10px; align-content: start; text-decoration: none; color: inherit; }
+.post:hover { border-color: var(--brand); }
+.post .m { font: 12px var(--mono); color: var(--muted); }
+.post p { color: var(--muted); font-size: 14.5px; }
+.feed { margin-top: 18px; font-size: 14px; color: var(--muted); }
+@media (max-width: 860px) { .posts { grid-template-columns: minmax(0, 1fr); } }

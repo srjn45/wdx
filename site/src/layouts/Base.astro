@@ -36,9 +36,11 @@ const url = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:image:alt" content="wdx tide: a project's agents, worktrees, docs and plans on the left, an agent on the right, terminals below." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#13161c" />
+    <link rel="alternate" type="application/rss+xml" title="wdx blog" href={new URL(`${base}/blog/rss.xml`, Astro.site)} />
     <script is:inline>
-      // The theme the visitor picked last; the system's otherwise.
-      try { const t = localStorage.getItem('wdx-theme'); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
+      // The theme the visitor picked last, here or in Starlight's pages, which
+      // keep it under the same key; the system's otherwise.
+      try { const t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (_) {}
     </script>
   </head>
   <body>
