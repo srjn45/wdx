@@ -143,3 +143,4 @@ pre.term { margin: 0; }
 .post p { color: var(--muted); font-size: 14.5px; }
 .feed { margin-top: 18px; font-size: 14px; color: var(--muted); }
 @media (max-width: 860px) { .posts { grid-template-columns: minmax(0, 1fr); } }
+.diagram .lbl { fill: var(--surface); }
