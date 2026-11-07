@@ -38,7 +38,7 @@ The browser is opened with `xdg-open` or `open`, an optional entry in `wdx deps`
 ### `wdx hub logout`
 
 - Tells the hub to revoke this node, deletes `<home>/hub/`, and ends remote sessions in and out.
-- With the hub unreachable it still deletes everything here: the node's day-long certificate dies without its key. The result says so, hinting `remove it from another node: wdx hub node remove --name <name>`.
+- With the hub unreachable it still deletes everything here: the node's certificate is useless without its key, which is gone. The result says so, hinting `remove it from another node: wdx hub node remove --name <name>`.
 - No confirmation: nothing on the machine is lost. Projects, agents and docs stay, and docs already on the hub stay there.
 - Results: `logged_out`, with `"hub_told": true|false`. Errors: `not_logged_in` (1).
 
@@ -102,6 +102,8 @@ Closing an outgoing session ends one's own access; closing an incoming one, on t
 - Its bottom bar is cyan and its title names the node.
 - When the host closes the session, or the network is gone too long, a full-window message says `session to <name> closed` and offers to type a code again to reconnect, or quit.
 - The host's own tide shows that a remote session is open, and from which node.
+- Its view is not saved: it starts with the default view each time, since tide's saved tabs and view are the host's own tide's (docs/HUB_ARCH.md, "Tide's state in a remote session"); `C-q r` keeps it as before. Keeping it in the client's daemon per node is later.
+- It takes the same `tide.lock` as a local tide, so one tide runs per machine, local or remote: leave one to start the other, or `tide_running` says which is running. A lock per node can come later. (Decided 2026-11-07.)
 
 ## `wdx hub node`, `wdx project sync`, the settings
 
@@ -129,7 +131,7 @@ Not in the MVP. Results: `renamed`. Errors: `name_taken`.
 ### `wdx project sync --id | --name [--on | --off]`
 
 - With neither, shows `sync` (on or off), `pending` (changes not yet on the hub), `failed` (changes the hub refused, each with its doc and code, such as `doc_name_taken` when another of one's own nodes made a doc of that name in this repository; renaming the doc pushes it), `last_pushed_at` and the project's repository key.
-- `--on` pushes every doc of the project with all its revisions, then each change: a new doc, a revision, a change of status, labels or name, a removal. It works logged out or offline; changes wait for the connection.
+- `--on` pushes every doc of the project with all its revisions, then each change: a new doc, a revision, a change of status, labels, folder or name, a removal. Docs only: plans share their table (docs/HUB_ARCH.md) and come later. It works logged out or offline; changes wait for the connection.
 - `--off` stops pushing. What is on the hub stays there: teams will rely on it once docs are distributed. Removing it from the hub is a later command.
 - A doc removed on the node is removed on the hub too.
 - Needs a git remote, which is how a project is matched across machines: `no_remote` (422).

@@ -11,7 +11,7 @@ A daemon has one tide. Several tides on one daemon would need their changes reco
 | state | owner |
 |---|---|
 | tide's tabs and view | the daemon the tide is part of |
-| a web-tide's tabs and view (later) | hub-be, per user, per node, per web-tide |
+| a remote tide's tabs and view (later) | its own daemon, per node; in the MVP a remote tide keeps them in memory (docs/HUB_ARCH.md, "Tide's state in a remote session") |
 | a machine's agents, worktrees, docs, plans, code | that machine's daemon |
 
 Later, a wdx on another machine reaching this one through the hub keeps its own tide's state in its own daemon, while this machine's daemon keeps both in sync on the resources. Both see the same filesystem, so a change made outside wdx shows as missing in both. That is the hub's design, not this one. This design is local only, and its one part that will have to change for remote is noted below.

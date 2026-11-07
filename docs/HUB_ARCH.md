@@ -1,6 +1,6 @@
 # wdx-hub: architecture
 
-Status: draft, started 2026-11-03 and reviewed end to end the same day; the review's findings are folded in and listed under "Decided while drafting". For the human's review section by section; nothing here is agreed until they say so. docs/HUB.md has the requirements, docs/HUB_COMMANDS.md the commands this serves.
+Status: approved 2026-11-03, after a review end to end the same day whose findings are under "Decided while drafting"; reviewed again against the code on 2026-11-07, whose findings are under "Decided in the review against the code" and folded into the sections they touch. docs/HUB.md has the requirements, docs/HUB_COMMANDS.md the commands this serves.
 
 ## The picture
 
@@ -40,20 +40,27 @@ cli ──unix socket──► client daemon ──TLS 1.3 between nodes, in a s
 - **Later streams of a session** need no code: TLS with the pinned keys, plus the session's id, which the host checks in its table of open sessions.
 - **A session ends when the host's daemon restarts:** at startup the host closes every session, and the client enters a code again; tide's reconnect screen covers it. Streams end with the connection they ran in; a command cut off mid-way fails with `session_closed`.
 - **Asking for a stream has a timeout:** when the host's control socket is down at that moment, the hub cannot tell it, and the request ends as `node_offline`.
+- **Every stream the daemon serves is an HTTP Upgrade,** never a request whose body streams: the connect stream, the attach relay and the login's state stream hijack their connection. The daemon's `logRequests` reads every request body whole before a handler runs, and `oneChangeAtATime` holds the changes lock for every request that is not a GET until it returns, so a streaming body would never arrive and a stream would hold every change up. These routes are exempt from the lock as the view paths are, the response recorder implements `http.Hijacker`, and `streamOperation`, today the one `streamProject`, becomes the set of operations whose response is not logged. (Review of 2026-11-07.)
 - **CPace:** `filippo.io/cpace` (BSD-3-Clause) is small, but is marked experimental, not maintained, and follows a 2021 draft the IRTF has since restructured, so its test vectors may not match the current draft's. Proposed: copy it into `third_party/cpace` as `cancelreader` is, with its README saying why. It is the one piece of cryptography wdx carries itself rather than taking from Go's standard library, and is named as such in the scope of the outside security review.
 
 ### The host's rules for a remote session
 
 The host serves a session with its usual API handler, behind a layer that:
 
-- allows only a fixed list of routes: what the `--node` commands and tide need. Never `/v1/hub/...` (so no session opens a session onward to a third node, no code setup, no login or logout), never a `hub.*` setting, never stopping the daemon or updating wdx. A test checks that every route the CLI and tide call with `--node` is on the list, so that a new feature cannot silently fail remotely;
+- allows only a fixed list of routes: what the `--node` commands and tide need. Never `/v1/hub/...` (so no session opens a session onward to a third node, no code setup, no login or logout), never a `hub.*` setting, never stopping the daemon or updating wdx, and never tide's state (`/v1/tide/view`, `/v1/projects/{project}/view` and `/v1/projects/{project}/tabs`; see "Tide's state in a remote session"). A test checks that every route the CLI and tide call with `--node` is on the list, so that a new feature cannot silently fail remotely;
 - refuses a request without a live session, and moves the session's idle time on. Bytes on an attach stream are activity too: a person typing in a remote terminal makes no request;
 - logs each request with the session and the node it came from, under the client's `debug_id`;
 - closes every incoming session when `hub.remote_access` goes off.
 
 ### Attach
 
-Locally, clients dial the holder's socket, so that a session outlives a daemon restart. Remotely, the host daemon relays: `POST /v1/terminals/{id}/attach` upgraded to a stream that speaks the holder's protocol, which the daemon passes to the holder's socket. ATTACH.md planned this relay for the web; it serves remote attach instead. The holder learns the client's pid from the socket, which for a relayed client is the daemon's, so the relay's `hello` says the client is remote and from which node, and the holder logs that.
+Locally, clients dial the holder's socket, so that a session outlives a daemon restart. Remotely, the host daemon relays: `POST /v1/terminals/{id}/attach` upgraded to a stream that speaks the holder's protocol, which the daemon passes to the holder's socket. ATTACH.md planned this relay for the web; it serves remote attach instead. The holder learns the client's pid from the socket (`SO_PEERCRED`), which for a relayed client is the daemon's, so the relay's `hello` says the client is remote and from which node, and the holder logs that.
+
+Today tide dials `identity.HolderSocket(home, id)` itself and `holder.Attach` takes a socket path, and `client.Options` has only `Socket`. Remote gives tide a dial function, `holder.Attach` a form that takes the connection it is handed, and the client a dialer that opens a stream through the daemon. (Review of 2026-11-07.)
+
+### Tide's state in a remote session
+
+docs/TIDE_STATE.md, built the day this design was written: a daemon has one tide, and tide's tabs and view are rows in that daemon's database. A remote tide that used the host's routes would overwrite the tabs and cursor of the host's own tide. So those routes are not on the list, and in the MVP a remote tide keeps its view in memory, starting with the default view each time; `C-q r` keeps it through `--resume` as before. Keeping it in the client's daemon per node, as TIDE_STATE.md foresees, is a later step: a tab would then point at another daemon's resources, which no cascade reaches. A remote tide also takes the client's `tide.lock`, which is per home, so one tide runs per machine, local or remote; a lock per node can come later. (Decided 2026-11-07.)
 
 ### Paths and the working directory with `--node`
 
@@ -62,7 +69,7 @@ Locally, clients dial the holder's socket, so that a session outlives a daemon r
 
 ### Versions between nodes
 
-The API carries `Wdx-Version` already, but releases are not what nodes must agree on: the API is. `api/openapi.yaml` gets an API version in `info.version`, raised by every `feat!:` that changes it, and a release states the oldest API version it can talk to. The client daemon checks the host's on the first stream: outside the range, `node_version_unsupported` names which side to update.
+The API carries `Wdx-Version` already, but releases are not what nodes must agree on: the API is. `api/openapi.yaml` gets an API version in `info.version` (today a fixed `v1`), raised by every `feat!:` that changes it, and a release states the oldest API version it can talk to. The client daemon checks the host's on the first stream: outside the range, `node_version_unsupported` names which side to update. The client's warning that the daemon runs another version (`VersionMismatch`) would fire on every remote command when the two machines run different releases; with `--node` this check replaces it.
 
 ## The hub's certificate authority
 
@@ -104,7 +111,9 @@ The hub's CA certificate and the node endpoint's address come over the web endpo
 
 ## Docs going to the hub
 
-- **An outbox on the node.** Each change of a doc in a synced project (created, a revision, status, labels, name, removed) adds a row to `hub_outbox` in the same transaction as the change, so that no change is ever lost or pushed twice in the wrong order. `project sync --on` adds every doc and revision the project has.
+- **An outbox on the node.** Each change of a doc in a synced project (created, a revision, status, labels, folder, name, removed) adds a row to `hub_outbox` in the same transaction as the change, so that no change is ever lost or pushed twice in the wrong order. `project sync --on` adds every doc and revision the project has.
+- **The doc store writes the outbox itself,** inside the transaction of each change, when the project's `hub_sync` is on (an `INSERT … SELECT` over `projects`). No other package can join that transaction, and the store's one hook, `OnChange`, runs after the commit, where a crash between the two writes would lose a change. `hublink` only reads and deletes the rows. (Decided 2026-11-07.)
+- **Plans share the table.** Since docs/PLANS.md, plans are rows of `docs` with `kind` (`doc` or `plan`), `parent_id` and a stored name `plan:<name>`, and since docs/FOLDERS.md every row has a `folder`. The pusher sends only `kind = doc` in the MVP, as agreed; each change carries the doc's `kind` and `folder`, and the hub's `docs` table holds both, so a folder arrives with its doc and plans need no change of the hub's tables when they come. `parent_id` comes with plans. (Decided 2026-11-07.)
 - **The pusher** in hublink sends the outbox in order over a stream, deleting each row once the hub acknowledges it. The hub applies each change idempotently, by the doc's id and revision, so a push retried after a lost acknowledgement does nothing.
 - **Offline**, rows wait; `project sync` shows how many.
 - **On the hub**, docs are stored by owner, by the project's repository key (`git.RepoKey` of the remote), and by the doc's id, which is random and global already. A project whose remote changes gets a new key, and its docs on the hub start anew under it; rare, and `project sync` shows a project's key.
@@ -132,7 +141,7 @@ STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for 
 | `web_sessions` | `id`, `user_id`, `token_hash`, `created_at`, `last_seen_at`, `expires_at` |
 | `node_logins` | `id`, `flow` (`browser`, `device`), `code_hash` (the authorization code's or the device code's), `pkce_challenge`, `callback`, `user_code`, `name`, `os`, `public_key`, `status` (`pending`, `approved`, `denied`), `user_id`, `node_id`, `created_at`, `expires_at` |
 | `nodes` | `id` (`node-`), `user_id`, `name` (unique per user, `NOCASE`), `public_key`, `os`, `version`, `remote_access`, `code_setup`, `created_at`, `last_seen_at`, `revoked_at` |
-| `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `name`, `format`, `labels`, `status`, `revision`, `data_key` (wrapped), `created_at`, `updated_at`; unique on owner, repository and name |
+| `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `kind`, `name`, `folder`, `format`, `labels`, `status`, `revision`, `data_key` (wrapped), `created_at`, `updated_at`; unique on owner, repository and name |
 | `doc_revisions` | `doc_id`, `revision`, `content` (gzip, sealed), `size`, `created_at` |
 | `audit` | `id`, `at`, `user_id`, `node_id`, `action`, `details` (JSON), `hash`: each row's hash covers the one before, so a row changed or removed breaks the chain |
 
@@ -162,7 +171,7 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 
 ### Daemon endpoints in `api/openapi.yaml`
 
-`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning link and code) and its state stream; `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `secrets.go` does for file contents), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
+`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning link and code) and its state stream; `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `requestLogged` and the response switch in `internal/daemon/http.go` leave prompts and file contents out), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
 
 ## The hub's API, `api/hub.yaml`
 
@@ -177,6 +186,7 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 - **The node endpoint needs its TLS untouched,** since the hub must see the node's certificate. On Fly that is raw TCP, which a shared IPv4 does not carry: it needs a dedicated IPv4 (about $2 a month) or IPv6 only, which many home networks lack. The other way, authenticating nodes by a signature inside Fly's TLS, works on the shared address but is not mTLS. Open question to the human.
 - **Litestream** runs in the image as the supervisor, `litestream replicate -exec "wdx-hub serve"`, streaming `hub.db` to Tigris. Fly's daily volume snapshots are a second copy.
 - **Secrets** (`WDX_HUB_DOCS_KEY`, Tigris's credentials) are Fly secrets.
+- **Shipping:** `scripts/dist.sh` builds `cmd/wdx` alone today, and nothing builds or signs images. The MVP adds `wdx-hub` to the release archives beside `wdx`; the multi-arch image on GHCR, cosign and the SBOM come with the Fly deployment, after the first release. (Decided 2026-11-07.)
 - Self-hosted, the same image runs with a volume and the same settings; `web.tls` decides who terminates TLS on the web endpoint, and the node endpoint is always the hub's.
 
 ## The sign-in pages
@@ -206,7 +216,7 @@ Later: plans and billing.
 
 ## Logging and secrets
 
-- `wdx` logs every flag in `command started` and the daemon every request body: so `--code` and the request field `code` are redacted, as `secrets.go` redacts file contents, and the authenticator secret and recovery key never appear in a response that is logged.
+- `wdx` logs every flag in `command started` and the daemon every request body: so `--code` and the request field `code` are redacted, where `promptFlag` in `internal/cli/logs.go` keeps a prompt out of the CLI's log and `requestLogged` in `internal/daemon/http.go` keeps prompts and file contents out of the daemon's, and the authenticator secret and recovery key never appear in a response that is logged.
 - Hub settings have a `secret` attribute: `docs_key`, the object storage credentials and the like are shown as `[secret]` by `wdx-hub setting list` and in `command received`, which logs settings.
 - The hub never logs a doc's content, a token, a code or a password hash; the relay logs that a stream opened and closed, with its bytes counted, never its bytes.
 - The audit chain has a verifier, `wdx-hub audit verify`, and the hub writes the chain's latest hash to its log once an hour, so that a tampered chain can be caught against a copy the server does not hold.
@@ -227,6 +237,18 @@ A guard against accident, not a security boundary: `--node` is refused where `WD
 - **The node endpoint on Fly is decided after the first release** (2026-11-03). Until then the hub runs locally and nodes connect with `--url`; the public hub, and with it a dedicated IPv4 for real mTLS, come later.
 - **The Security page is in the MVP** (2026-11-03): changing the password, passkeys and TOTP, new recovery codes, signed-in browsers. Without it, a lost passkey or a leaked recovery code could be fixed only by an admin's reset.
 - **From the review of 2026-11-03**, agreed by the human: login with a browser is the authorization code flow with a loopback callback, and the device flow, with its code typed, is for `--no-browser` only, since a device-flow link can be forwarded to have an attacker's node approved; node certificates last a year, with revocation the hub's check; codes and keys are redacted from logs; the outbox keeps `removed` rows; CPace carries the code's time step; a session ends when the host's daemon restarts; idle counts terminal bytes; `doc_name_taken` for two of one's own nodes; the API gets a version of its own; the pages' protections, the logging rules and the tests above.
+
+## Decided in the review against the code, 2026-11-07
+
+The design was checked against main at 3369a87, 151 commits after it was written. Nothing in it was contradicted; what landed since (plans, folders, tide's state, the one-change lock, the release scripts) is folded into the sections above, and these were decided by the human:
+
+- The hub's `docs` table and each pushed change carry `kind` and `folder`; the MVP pushes only `kind = doc`.
+- A remote tide keeps its view in memory and never touches the host's tide state; one tide per machine, through the client's `tide.lock`.
+- The doc store writes `hub_outbox` inside its own transaction; `hublink` reads and deletes.
+- Every stream the daemon serves is an Upgrade, exempt from the changes lock.
+- The MVP ships `wdx-hub` in the archives only; image, cosign and SBOM come with Fly.
+
+Shapes found, no decision needed: the settings table already has a per-row `fromEnv`, so `WDX_HUB_<KEY>` for every hub setting is a table-wide switch, but `set` and `get` are closures over wdx's `Config`, so `internal/settings` is the engine made generic over the config type, and a `secret` attribute is new; `db.Open` embeds its own migrations, so `internal/sqlite` takes a migrations filesystem, with `Backup` and `Restore` moving as they are; `remote_not_for_agents` holds for every ACA, since the holder sets `WDX_AGENT_ID` for each agent terminal; projects already carry the repository key (`origin_key`, `git.RepoKey` of the remote, NULL for `no_remote`); `wdx deps` gets the browser opener; `daemon.Settings` gets the two `hub.*` settings for reload. docs/IDE.md's content hash per revision was never built; pushes are idempotent by id and revision and need none.
 
 ## Running the hub locally, until the public one
 
