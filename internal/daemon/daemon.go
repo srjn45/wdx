@@ -27,6 +27,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/doc"
+	"github.com/srjn45/wdx/internal/fswatch"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -185,8 +186,11 @@ type Daemon struct {
 	gitCopy      *gitCopy
 	terminals    *terminal.Supervisor
 	tracker      *worktree.Tracker
-	marks        *worktree.Marks
-	comments     *worktree.Comments
+	// watcher is the one inotify instance everything the daemon watches goes
+	// through: the tracker's git files and tabs (the wdx doc WATCHERS).
+	watcher  *fswatch.Watcher
+	marks    *worktree.Marks
+	comments *worktree.Comments
 	// stopTracker ends what the tracker does, once no stream follows.
 	stopTracker context.CancelFunc
 	// lander lands worktrees, each in the background.
@@ -297,6 +301,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	agents := agent.NewStore(d.db)
 	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
+	d.watcher = fswatch.New(logged)
 	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, opts.ContextInterval)
 	contextSizes.OnChange = d.notices.notify
 	d.backups.OnSessionChange = contextSizes.SessionChanged
@@ -578,6 +583,9 @@ func (d *Daemon) close() {
 		d.stopTracker()
 		d.trackerNotices.Wait() // both read the database, which goes below
 		d.tracker.Wait()
+	}
+	if d.watcher != nil {
+		d.watcher.Close() // once nothing watches through it
 	}
 	if d.terminals != nil {
 		// The holders and their shells run on; the next daemon adopts them.

@@ -36,6 +36,7 @@ func (d *Daemon) startTracker() {
 	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), d.log))
 	d.stopTracker = cancel
 	d.tracker = worktree.NewTracker(ctx, worktree.Options{
+		Watcher: d.watcher,
 		Checkouts: func(ctx context.Context, projectID string) (worktree.Checkouts, error) {
 			p, err := d.projects.GetByID(ctx, projectID)
 			if err != nil {

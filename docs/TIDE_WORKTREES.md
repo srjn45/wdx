@@ -134,7 +134,7 @@ No entry point calls anything new. The daemon's `notices` already says that some
 - Waiting on `index.lock` is a courtesy, since a read is safe beside it: the lock's end fires the watch. A refresh the user asked for does not wait, so a lock left by a crashed git cannot hide changes for good.
 - With no file watch available, as on some network file systems, the other events still work, and the log says so.
 - Up to 4 worktrees are read at once, and each is told of as it is read; on a project's first read the list is told of first, each worktree `unread` and shown `reading…` until its turn. Changed on 2026-11-02 from one at a time, for large repositories: docs/LARGE_REPOS.md.
-- The watches use `fsnotify`, under a BSD license.
+- The watches go through the daemon's one inotify instance (`internal/fswatch`, on `fsnotify`, under a BSD license), with the tabs' (docs/TIDE_STATE.md): the kernel allows a user 128 instances by default, shared by everything the user runs, and wdx took one per project until 2026-11-07. A project leaving drops only its own watches. Refused an instance, the daemon says so once in its log, tries again at each change to what it watches, and reads everything again once it has one; the wdx doc WATCHERS.
 
 ### The lock rule
 

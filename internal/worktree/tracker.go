@@ -2,7 +2,6 @@ package worktree
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/srjn45/wdx/internal/fswatch"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -30,6 +30,9 @@ type Agent struct {
 
 // Options are what the tracker needs from the daemon.
 type Options struct {
+	// Watcher is the daemon's one file watcher, which every project's watches go
+	// through: on git's files, and on what the tabs show.
+	Watcher *fswatch.Watcher
 	// Checkouts returns the checkouts the project knows of.
 	Checkouts func(ctx context.Context, projectID string) (Checkouts, error)
 	// Agents returns the project's agents.
@@ -86,7 +89,7 @@ func (t *Tracker) Follow(projectID string) (stop func()) {
 	p, ok := t.projects[projectID]
 	if !ok {
 		ctx, cancel := context.WithCancel(t.ctx)
-		p = &tracked{t: t, id: projectID, cancel: cancel, wake: make(chan struct{}, 1), agents: map[string]Agent{}, pending: map[string]reading{}, everything: true}
+		p = &tracked{t: t, id: projectID, ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), agents: map[string]Agent{}, pending: map[string]reading{}, everything: true}
 		t.projects[projectID] = p
 		t.wg.Go(func() { p.run(ctx) })
 		p.nudge()
@@ -154,10 +157,12 @@ func (r reading) with(o reading) reading {
 	return reading{files: r.files || o.files, commits: r.commits || o.commits}
 }
 
-// tracked is a project being followed.
+// tracked is a project being followed. It is a subscriber of the daemon's
+// watcher, for the git files of its checkouts and for what its tabs show.
 type tracked struct {
 	t         *Tracker
 	id        string
+	ctx       context.Context // until the project is left
 	cancel    context.CancelFunc
 	wake      chan struct{} // one value: events while it reads make one more read
 	followers int           // under t.mu
@@ -172,12 +177,42 @@ type tracked struct {
 	gitDirs    map[string]gitDirs // of each checkout, by path
 	commonDirs map[string]bool
 	bases      map[string]bool // the files that say a base moved: its ref and its reflog
-	watching   bool            // the watcher works, so the end of a lock will be seen
+	gitWatches map[string]bool // the directories watched for git's files
 
 	tabsMu       sync.Mutex
-	tabWatcher   *fsnotify.Watcher // nil until watchTabs starts, and once it ended
-	tabFiles     map[string]bool   // the files tabs show
-	tabWorktrees map[string]bool   // the directories of the worktrees tabs name
+	tabFiles     map[string]bool // the files tabs show
+	tabWorktrees map[string]bool // the directories of the worktrees tabs name
+	tabWatches   map[string]bool // their parent directories, watched
+}
+
+// Changed is given each event on a directory the project watches: a file of
+// git's, or of a tab's. It only marks what to read.
+func (p *tracked) Changed(e fsnotify.Event) {
+	p.event(e)
+	p.tabEvent(e)
+}
+
+// Lost says events were lost: everything is read again.
+func (p *tracked) Lost() {
+	p.markAll()
+	p.t.opts.Changed()
+}
+
+// syncWatchesWith has the watcher watch exactly the directories the git files
+// and the tabs want, in one set: either changing never drops the other's.
+func (p *tracked) syncWatchesWith() {
+	want := map[string]bool{}
+	p.mu.Lock()
+	for dir := range p.gitWatches {
+		want[dir] = true
+	}
+	p.mu.Unlock()
+	p.tabsMu.Lock()
+	for dir := range p.tabWatches {
+		want[dir] = true
+	}
+	p.tabsMu.Unlock()
+	p.t.opts.Watcher.Set(p, want)
 }
 
 func (p *tracked) nudge() {
@@ -303,21 +338,8 @@ func holding(statuses []Status, dir string) (string, bool) {
 func (p *tracked) run(ctx context.Context) {
 	log := logging.FromContext(ctx).With("project_id", p.id)
 	ctx = logging.NewContext(ctx, log)
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		// Agents stopping and users looking still read it.
-		log.Info("worktrees not watched", "err", err)
-		watcher = nil
-	}
-	if watcher != nil {
-		defer watcher.Close()
-		p.mu.Lock()
-		p.watching = true
-		p.mu.Unlock()
-		p.t.wg.Go(func() { p.watch(ctx, watcher) })
-	}
-	p.startTabWatch(ctx)
-	p.agentsChanged() // what is working now is what may stop
+	defer p.t.opts.Watcher.Drop(p) // only its own: another project's watches stay
+	p.agentsChanged()              // what is working now is what may stop
 	settle := time.NewTimer(p.t.opts.Settle)
 	defer settle.Stop()
 	for {
@@ -332,14 +354,14 @@ func (p *tracked) run(ctx context.Context) {
 			return
 		case <-settle.C:
 		}
-		p.read(ctx, watcher)
+		p.read(ctx)
 	}
 }
 
 // read reads what is pending, and tells of what differs, of each checkout as it is
 // read. Up to parallelReads checkouts at once, from this goroutine alone, so that a
 // project never runs two reads of one checkout at once.
-func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
+func (p *tracked) read(ctx context.Context) {
 	log := logging.FromContext(ctx)
 	c, err := p.t.opts.Checkouts(ctx, p.id)
 	if err != nil {
@@ -372,13 +394,11 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 	dirs := p.dirsOf(ctx, list)
 	// Before reading, with the bases known so far: a change made during the read
 	// must fire a read of its own.
-	if watcher != nil {
-		p.syncWatches(ctx, watcher, list, dirs)
-	}
+	p.syncWatches(list, dirs)
+	watching := p.t.opts.Watcher.Watching()
 	p.mu.Lock()
 	pending, everything, forced := p.pending, p.everything, p.forced
 	p.pending, p.everything, p.forced = map[string]reading{}, false, false
-	watching := p.watching
 	p.gitDirs = dirs
 	p.mu.Unlock()
 	if p.t.opts.listed != nil {
@@ -396,9 +416,7 @@ func (p *tracked) read(ctx context.Context, watcher *fsnotify.Watcher) {
 		told.Lock()
 		now := slices.Clone(list)
 		told.Unlock()
-		if watcher != nil {
-			p.syncWatches(ctx, watcher, now, dirs)
-		}
+		p.syncWatches(now, dirs)
 		p.mu.Lock()
 		changed := !reflect.DeepEqual(p.statuses, now)
 		p.statuses = now
@@ -590,7 +608,7 @@ func exists(path string) bool {
 // which would take a watch per directory (WatchTabs watches the few tabs show): its git directory and logs, what the
 // repository's checkouts share, and where its base's ref and reflog are. A directory not there yet is added when its
 // parent says it came, or at the next read.
-func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, list []Status, dirs map[string]gitDirs) {
+func (p *tracked) syncWatches(list []Status, dirs map[string]gitDirs) {
 	want := map[string]bool{}
 	commons := map[string]bool{}
 	bases := map[string]bool{}
@@ -612,19 +630,10 @@ func (p *tracked) syncWatches(ctx context.Context, watcher *fsnotify.Watcher, li
 			want[filepath.Dir(ref)], want[filepath.Dir(log)] = true, true
 		}
 	}
-	for _, have := range watcher.WatchList() {
-		if !want[have] {
-			_ = watcher.Remove(have) // a directory gone took its watch with it
-		}
-	}
-	for dir := range want {
-		if err := watcher.Add(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
-			logging.FromContext(ctx).Info("directory not watched", "dir", dir, "err", err)
-		}
-	}
 	p.mu.Lock()
-	p.commonDirs, p.bases = commons, bases
+	p.commonDirs, p.bases, p.gitWatches = commons, bases, want
 	p.mu.Unlock()
+	p.syncWatchesWith()
 }
 
 // baseRef is the reference a base names, as its place in a git directory, and of
@@ -634,30 +643,6 @@ func baseRef(base string) string {
 		return filepath.Join("refs", "remotes", "origin", rest)
 	}
 	return filepath.Join("refs", "heads", base)
-}
-
-// watch takes what the watcher says until the project is left.
-func (p *tracked) watch(ctx context.Context, watcher *fsnotify.Watcher) {
-	log := logging.FromContext(ctx)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case e, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-			p.event(e)
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return
-			}
-			log.Info("worktree watch failed", "err", err)
-			if errors.Is(err, fsnotify.ErrEventOverflow) {
-				p.markAll() // events were lost
-			}
-		}
-	}
 }
 
 // event marks what a change to a file of git's means. Only these few say the

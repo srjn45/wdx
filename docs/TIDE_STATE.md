@@ -207,7 +207,7 @@ A tab whose row is still there but whose target is gone was removed outside wdx,
 
 **What wakes the stream.** The tracker's watches are on git's files only (index, HEAD, logs, refs), never on a worktree's files: an `rm` outside git changes none of them. So while a stream follows the worktrees, the tracker also watches what the tabs show (`Tracker.WatchTabs`, called each time the daemon builds the tabs, before it looks at the disk):
 - the file of each `file` tab, and the directory of each worktree a tab names;
-- through their parent directories, so that a file put back is seen too: one watch for each directory, however many tabs are in it;
+- through their parent directories, so that a file put back is seen too: one watch for each directory, however many tabs are in it, on the daemon's one inotify instance with the tracker's watches on git (the wdx doc WATCHERS);
 - a file of a tab created, removed or renamed wakes the streams, whose next event looks at the disk again; a worktree's directory removed (`rm -rf`) has the worktrees read again, which finds it missing. A write wakes nothing.
 - A file under a directory not there when it was watched, or one moved with a directory above its own, is seen at the next event that comes for another reason.
 

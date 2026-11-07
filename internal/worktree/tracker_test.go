@@ -11,6 +11,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/db/dbtest"
+	"github.com/srjn45/wdx/internal/fswatch"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -47,6 +48,7 @@ func trackWith(t *testing.T, dir string, marks *Marks, setup ...func(*trackerHar
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	h.tracker = NewTracker(ctx, Options{
+		Watcher: testWatcher(t),
 		Checkouts: func(context.Context, string) (Checkouts, error) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -100,6 +102,19 @@ func trackWith(t *testing.T, dir string, marks *Marks, setup ...func(*trackerHar
 		h.tracker.Wait()
 	})
 	return h
+}
+
+// testWatcher is a file watcher for a tracker of the test, closed after it. A
+// test needs one: without it, nothing it waits for would come, and it fails at
+// once rather than at its deadline.
+func testWatcher(t *testing.T) *fswatch.Watcher {
+	t.Helper()
+	w := fswatch.New(t.Context())
+	t.Cleanup(w.Close)
+	if !w.Watching() {
+		t.Fatal("no inotify instance left for the test: fs.inotify.max_user_instances (128 by default) are all in use")
+	}
+	return w
 }
 
 // waitFor waits until what is kept satisfies ok. Each change wakes it.
@@ -174,6 +189,7 @@ func TestTrackerNotFollowed(t *testing.T) {
 	dir := repo(t)
 	reads := 0
 	tracker := NewTracker(t.Context(), Options{
+		Watcher: testWatcher(t),
 		Checkouts: func(context.Context, string) (Checkouts, error) {
 			reads++
 			return Checkouts{Clone: dir, Paths: []string{dir}}, nil
@@ -249,6 +265,63 @@ func TestTrackerSeesTheBaseMove(t *testing.T) {
 		s, _ := named2(list, "work")
 		return intOf(s.Ahead) == 0
 	})
+}
+
+// TestTrackerLeavingKeepsAnothersWatches: two projects watch through the one
+// watcher, and the first leaving removes only its own watches: the second still
+// sees its base move.
+func TestTrackerLeavingKeepsAnothersWatches(t *testing.T) {
+	t.Parallel()
+	dirs := map[string]string{"a": repo(t), "b": repo(t)}
+	for _, dir := range dirs {
+		work := linked(t, dir, "work")
+		gittest.Git(t, dir, "switch", "-qc", "elsewhere")
+		commit(t, work, "mine", "m\n")
+	}
+	changed := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	tracker := NewTracker(ctx, Options{
+		Watcher: testWatcher(t),
+		Checkouts: func(_ context.Context, projectID string) (Checkouts, error) {
+			return Checkouts{Clone: dirs[projectID], Paths: []string{dirs[projectID]}}, nil
+		},
+		Agents: func(context.Context, string) ([]Agent, error) { return nil, nil },
+		Changed: func() {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		},
+		Settle: time.Millisecond,
+	})
+	stopA, stopB := tracker.Follow("a"), tracker.Follow("b")
+	t.Cleanup(func() {
+		stopB()
+		cancel()
+		tracker.Wait()
+	})
+	waitAhead := func(project string, want int, what string) {
+		t.Helper()
+		deadline := time.NewTimer(waittest.Limit(t))
+		defer deadline.Stop()
+		for {
+			list := tracker.Statuses(project)
+			if s, ok := named2(list, "work"); ok && s.Ahead != nil && intOf(s.Ahead) == want {
+				return
+			}
+			select {
+			case <-changed:
+			case <-deadline.C:
+				t.Fatalf("waiting for %s of %s, last saw %+v", what, project, list)
+			}
+		}
+	}
+	waitAhead("a", 1, "one ahead")
+	waitAhead("b", 1, "one ahead")
+
+	stopA()
+	gittest.Git(t, dirs["b"], "update-ref", "refs/heads/main", "work")
+	waitAhead("b", 0, "landed")
 }
 
 // TestTrackerWatchesABaseBeforeTellingOfIt moves the base right after the worktree
