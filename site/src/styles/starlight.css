@@ -1,0 +1,26 @@
+/* Starlight in the site's colours and type (tokens.css): its grey scale runs
+   from --sl-color-white, the strongest ink, to --sl-color-black, the page. */
+:root {
+  --sl-font: var(--body);
+  --sl-font-mono: var(--mono);
+  --sl-color-accent-low: #133a34; --sl-color-accent: #2aa892; --sl-color-accent-high: #6fd3c1;
+  --sl-color-white: #f3f5f9; --sl-color-gray-1: #e9ecf2; --sl-color-gray-2: #c4cad6; --sl-color-gray-3: #98a1b3;
+  --sl-color-gray-4: #5a6379; --sl-color-gray-5: #2c3240; --sl-color-gray-6: #1a1e26; --sl-color-black: #13161c;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #cdeee8; --sl-color-accent: #0d8574; --sl-color-accent-high: #07463d;
+  --sl-color-white: #151922; --sl-color-gray-1: #222733; --sl-color-gray-2: #3a4152; --sl-color-gray-3: #586072;
+  --sl-color-gray-4: #8b93a3; --sl-color-gray-5: #d9dde5; --sl-color-gray-6: #eceef3; --sl-color-gray-7: #f4f5f7; --sl-color-black: #ffffff;
+}
+h1, h2, h3, h4, .sl-markdown-content :is(h1, h2, h3, h4) { font-family: var(--display); letter-spacing: -.01em; }
+
+/* the header's left side (components/starlight/SiteTitle.astro) */
+.wdx-title { display: flex; align-items: center; gap: 22px; }
+.wdx-title .logo { display: flex; align-items: center; font: 800 22px/1 var(--display); color: var(--sl-color-white); text-decoration: none; letter-spacing: -.02em; }
+.wdx-title .logo i { display: inline-block; width: .5em; height: .95em; background: var(--sl-color-accent-high); margin-left: 3px; transform: translateY(1px); }
+@media (prefers-reduced-motion: no-preference) { .wdx-title .logo i { animation: wdx-blink 1.06s steps(1) infinite; } }
+@keyframes wdx-blink { 50% { opacity: 0; } }
+.wdx-title nav { display: flex; gap: 18px; font-size: 15px; }
+.wdx-title nav a { color: var(--sl-color-gray-3); text-decoration: none; }
+.wdx-title nav a:hover { color: var(--sl-color-white); }
+@media (max-width: 50rem) { .wdx-title nav { display: none; } }

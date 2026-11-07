@@ -1,0 +1,13 @@
+---
+// Starlight's header, left side: the site's wordmark and the landing page's
+// links, so the blog and the landing page read as one site.
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<div class="wdx-title">
+  <a class="logo" href={`${base}/`} aria-label="wdx home">wdx<i></i></a>
+  <nav aria-label="Site">
+    <a href={`${base}/#tide`}>tide</a>
+    <a href={`${base}/#features`}>Features</a>
+    <a href="https://github.com/srjn45/wdx#readme">Docs</a>
+  </nav>
+</div>
