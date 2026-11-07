@@ -39,10 +39,10 @@ while read -r dir names; do
 	echo "== ./$dir: $names"
 	# Each batch is a process, whose TestMain and what tests share start again.
 	# The cli's are the heaviest: two passes at 1 and 4 CPUs peak at 1.6 GB. The
-	# daemon's and tide's take so long that ten would not end within the timeout.
+	# daemon's and tide's take so long that ten passes of a whole package would
+	# not end within the timeout.
 	case "$dir" in
-	internal/cli) batch=2 ;;
-	internal/daemon | internal/tide) batch=5 ;;
+	internal/cli | internal/daemon | internal/tide) batch=2 ;;
 	*) batch=10 ;;
 	esac
 	left="$TIMES"
