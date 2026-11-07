@@ -67,15 +67,22 @@ func existingAncestor(path string) (string, error) {
 
 // isCheckout reports whether path is still the root of a git work tree.
 func isCheckout(ctx context.Context, path string) (bool, error) {
-	root, err := git.TopLevel(ctx, path)
-	if errors.Is(err, git.ErrNotRepo) {
+	// The path is resolved before git runs: a checkout removed between the
+	// two, as a plan removes a slot's worktree, then fails git, which reads
+	// as not present, rather than the resolution.
+	real, err := filepath.EvalSymlinks(path)
+	if errors.Is(err, os.ErrNotExist) {
 		logging.FromContext(ctx).Info("checkout checked", "path", path, "present", false)
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	real, err := filepath.EvalSymlinks(path)
+	root, err := git.TopLevel(ctx, path)
+	if errors.Is(err, git.ErrNotRepo) {
+		logging.FromContext(ctx).Info("checkout checked", "path", path, "present", false)
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}

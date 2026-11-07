@@ -643,6 +643,21 @@ func TestCreateInProjectsDir(t *testing.T) {
 	}
 }
 
+// TestRemovedCheckoutIsNotPresent: a checkout removed, as a plan removes a
+// slot's worktree, reads as not present, however far the read had got.
+func TestRemovedCheckoutIsNotPresent(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	p := create(t, s, "app", "")
+	path := paths(p)[0]
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := isCheckout(context.Background(), path); err != nil || ok {
+		t.Fatalf("removed checkout: want not present, got %v, %v", ok, err)
+	}
+}
+
 func TestCreateInPath(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
