@@ -66,7 +66,7 @@ func claudeCodePrompt(lines []string) *screen.Prompt {
 	if first < 0 {
 		return nil
 	}
-	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1}
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}}
 	if kind == claudeCodeDecision {
 		prompt.Kind = screen.PromptDecision
 	}
@@ -78,6 +78,9 @@ func claudeCodePrompt(lines []string) *screen.Prompt {
 				prompt.Selected = len(prompt.Options)
 			}
 			prompt.Multi = prompt.Multi || m[3] != ""
+			if strings.Contains(m[3], "✔") {
+				prompt.Ticked = append(prompt.Ticked, len(prompt.Options))
+			}
 			prompt.Options = append(prompt.Options, m[4])
 		case isClaudeCodeRule(line), kind == claudeCodeDecision, kind == claudeCodePlanApproval:
 			// A decision's description under its option, the rule before its last
@@ -167,7 +170,7 @@ func claudeCodeTrustPrompt(lines []string, below int) *screen.Prompt {
 	for first > 0 && !isBlank(lines[first-1]) && !isClaudeCodeRule(lines[first-1]) {
 		first--
 	}
-	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1}
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}}
 	for _, line := range trimmed(lines[first:below]) {
 		if label, ok := strings.CutPrefix(line, "❯"); ok {
 			prompt.Selected = len(prompt.Options)

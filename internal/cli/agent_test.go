@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -232,6 +234,22 @@ func TestAgentStatusText(t *testing.T) {
 	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`model\s+Haiku 5\.5\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
 		t.Errorf("running: %s", out.String())
 	}
+	if strings.Contains(out.String(), "prompt") || strings.Contains(out.String(), "question") || strings.Contains(out.String(), "options") {
+		t.Errorf("without a prompt read, its fields show: %s", out.String())
+	}
+	out.Reset()
+	title, detail, selected := "Bash command", "touch a.txt\nls", 1
+	prompt := &api.AgentPrompt{Kind: api.AgentPromptKindYesNo, Title: &title, Question: "Do you want to proceed?", Detail: &detail, Options: []string{"Yes", "No"}, Selected: &selected}
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt}}}.text(&out, style.New(false))
+	if !strings.Contains(out.String(), "  activity    yes/no\n  prompt      yes/no · Bash command\n  question    Do you want to proceed?\n  detail      touch a.txt\n              ls\n  options       Yes\n              ❯ No\n") {
+		t.Errorf("a yes/no prompt: %s", out.String())
+	}
+	out.Reset()
+	decision := &api.AgentPrompt{Kind: api.AgentPromptKindDecision, Question: "Which fruits do you like?", Options: []string{"Apple", "Pear"}, Multi: true, Ticked: []int{0}}
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision}}}.text(&out, style.New(false))
+	if !strings.Contains(out.String(), "  activity    decision\n  prompt      decision\n  question    Which fruits do you like?\n  options       [✔] Apple\n                [ ] Pear\n") || strings.Contains(out.String(), "detail") {
+		t.Errorf("a decision: %s", out.String())
+	}
 	out.Reset()
 	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}}.text(&out, style.New(false))
 	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") || strings.Contains(out.String(), "model") {
@@ -242,6 +260,35 @@ func TestAgentStatusText(t *testing.T) {
 		Context: &api.AgentContext{Tokens: 1_500_000}}}}}.text(&out, style.New(false))
 	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+MODEL\s+CONTEXT\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+Haiku 5\.5\s+1\.5M\s+claude_code`).MatchString(out.String()) {
 		t.Errorf("list: %s", out.String())
+	}
+	out.Reset()
+	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt, Aca: "claude_code"},
+		{Name: "picker", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision, Aca: "claude_code"}}}}.text(&out, style.New(false))
+	if !regexp.MustCompile(`helper\s+running\s+yes/no\s+claude_code`).MatchString(out.String()) || !regexp.MustCompile(`picker\s+running\s+decision\s+claude_code`).MatchString(out.String()) {
+		t.Errorf("list with prompts: %s", out.String())
+	}
+}
+
+// TestAgentPromptKeptOutOfTheLog: what the log says of a response holding an agent
+// has the prompt's kind and how many options it has, never its text.
+func TestAgentPromptKeptOutOfTheLog(t *testing.T) {
+	t.Parallel()
+	waiting, title, selected := api.AgentActivityWaiting, "Bash command", 0
+	prompt := &api.AgentPrompt{Kind: api.AgentPromptKindYesNo, Title: &title, Question: "Do you want to proceed?", Options: []string{"Yes", "No"}, Selected: &selected}
+	a := api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt}
+	for name, logged := range map[string]slog.Value{
+		"get":     agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: a}}.LogValue(),
+		"list":    agentList{AgentList: api.AgentList{Agents: []api.Agent{a}}}.LogValue(),
+		"result":  agentResult(api.AgentResult{Result: api.ResultStarted, Agent: a}).LogValue(),
+		"project": projectDetail(api.ProjectEnvelope{Project: api.Project{Name: "app", Agents: &[]api.Agent{a}}}).LogValue(),
+	} {
+		b, err := json.Marshal(logged.Any())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "Do you want") || strings.Contains(string(b), `"Yes"`) || !strings.Contains(string(b), `"prompt":{"kind":"yes_no","options":2}`) {
+			t.Errorf("%s logs %s", name, b)
+		}
 	}
 }
 

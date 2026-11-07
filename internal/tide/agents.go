@@ -1431,6 +1431,14 @@ func agentMark(st style.Style, a api.Agent) string {
 	return stateMark(st, api.TerminalState(a.State))
 }
 
+// promptKindText is a prompt's kind as a person reads it: yes/no or decision.
+func promptKindText(kind api.AgentPromptKind) string {
+	if kind == api.AgentPromptKindYesNo {
+		return "yes/no"
+	}
+	return string(kind)
+}
+
 func agentWaiting(a api.Agent) bool {
 	return a.Activity != nil && *a.Activity == api.AgentActivityWaiting
 }
@@ -1456,7 +1464,8 @@ func agentDetailStyle(st style.Style, r agentListRow, detail string) string {
 
 // agentDetail is what the row says beside its mark: how many agents a folded
 // parent hides, or how many of them are waiting, or what its state does not tell:
-// of a running agent, that it is working or waiting.
+// of a running agent, that it is working or waiting, and what kind of prompt it
+// waits on when that is read.
 func agentDetail(r agentListRow) string {
 	a := r.agent
 	switch {
@@ -1466,6 +1475,8 @@ func agentDetail(r agentListRow) string {
 		return fmt.Sprintf("%d below", r.below)
 	case a.State == api.AgentStateRunning && a.Held > 0:
 		return fmt.Sprintf("%d held", a.Held)
+	case a.State == api.AgentStateRunning && a.Prompt != nil:
+		return promptKindText(a.Prompt.Kind)
 	case a.State == api.AgentStateRunning:
 		if a.Activity != nil && (*a.Activity == api.AgentActivityWorking || *a.Activity == api.AgentActivityWaiting) {
 			return string(*a.Activity)

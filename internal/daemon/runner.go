@@ -162,6 +162,19 @@ func (d *Daemon) agentEnded(terminalID string) {
 	}
 }
 
+// clearPrompt forgets the prompt of the agent whose terminal ended: its text stays
+// only while it is open, and the stream tells of the change.
+func (d *Daemon) clearPrompt(terminalID string) {
+	ctx := logging.NewContext(context.Background(), d.log)
+	changed, err := d.agents.Store().ClearPrompt(ctx, terminalID)
+	if err != nil {
+		logging.FromContext(ctx).Error("ended agent's prompt not cleared", "terminal_id", terminalID, "err", err)
+	}
+	if changed {
+		d.notices.notify()
+	}
+}
+
 // runPlanCheck runs the project's landing check in a slot, as a worktree's landing
 // does, in the terminal plan.CheckTerminal names. A check of the slot's still
 // running is a landing's that was cut short, as slots are the plan's: it is stopped

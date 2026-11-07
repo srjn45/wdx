@@ -1,6 +1,7 @@
 package tide
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -65,7 +66,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 	for _, c := range childrenOf(a) {
 		children = append(children, c.Name)
 	}
-	return []valueRow{
+	rows := []valueRow{
 		name,
 		{key: "id", values: []string{a.Id}},
 		{key: "aca", values: []string{a.Aca}},
@@ -82,10 +83,48 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "exit_code", values: present(a.ExitCode, strconv.Itoa)},
 		{key: "error", values: present(a.Error, identical)},
 		{key: "activity", values: present(a.Activity, func(v api.AgentActivity) string { return string(v) })},
-		{key: "draft", values: present(a.Draft, yesNo)},
-		{key: "queued", values: present(a.Queued, strconv.Itoa)},
-		{key: "held", values: []string{strconv.Itoa(a.Held)}},
-		{key: "context", values: present(a.Context, api.ContextText), paint: m.contextPaint(a)},
+	}
+	rows = append(rows, promptRows(a)...)
+	return append(rows,
+		valueRow{key: "draft", values: present(a.Draft, yesNo)},
+		valueRow{key: "queued", values: present(a.Queued, strconv.Itoa)},
+		valueRow{key: "held", values: []string{strconv.Itoa(a.Held)}},
+		valueRow{key: "context", values: present(a.Context, api.ContextText), paint: m.contextPaint(a)},
+	)
+}
+
+// promptRows are the rows of what a asks, only while a prompt shows: its kind and
+// title, its question, its detail and its options, ❯ before the selected one and
+// a box before each of a multi-select, ticked or not.
+func promptRows(a api.Agent) []valueRow {
+	if a.Prompt == nil {
+		return nil
+	}
+	p := *a.Prompt
+	kind := promptKindText(p.Kind)
+	if p.Title != nil {
+		kind += " · " + *p.Title
+	}
+	var detail []string
+	if p.Detail != nil {
+		detail = strings.Split(*p.Detail, "\n")
+	}
+	options := make([]string, 0, len(p.Options))
+	for i, option := range p.Options {
+		mark := "  "
+		if p.Selected != nil && *p.Selected == i {
+			mark = "❯ "
+		}
+		if p.Multi {
+			mark += promptBox(p, i)
+		}
+		options = append(options, mark+option)
+	}
+	return []valueRow{
+		{key: "prompt", values: []string{kind}},
+		{key: "question", values: []string{p.Question}},
+		{key: "detail", values: detail},
+		{key: "options", values: options},
 	}
 }
 
@@ -231,4 +270,12 @@ func (m *Model) valueSavedMsg(msg valueSaved) {
 		m.log.Info("value not saved", "owner", msg.owner, "err", msg.err)
 	}
 	m.values.saved(msg)
+}
+
+// promptBox is the box before option i of a multi-select: ticked or not.
+func promptBox(p api.AgentPrompt, i int) string {
+	if slices.Contains(p.Ticked, i) {
+		return "[✔] "
+	}
+	return "[ ] "
 }

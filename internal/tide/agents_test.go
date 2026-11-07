@@ -847,6 +847,11 @@ func TestAgentRowActivity(t *testing.T) {
 	doing := func(activity api.AgentActivity) api.Agent {
 		return api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &activity}
 	}
+	asking := func(kind api.AgentPromptKind) api.Agent {
+		a := doing(api.AgentActivityWaiting)
+		a.Prompt = &api.AgentPrompt{Kind: kind, Question: "Which?", Options: []string{"Yes", "No"}}
+		return a
+	}
 	tests := []struct {
 		name  string
 		row   agentListRow
@@ -855,6 +860,9 @@ func TestAgentRowActivity(t *testing.T) {
 	}{
 		{"waiting", agentListRow{agent: doing(api.AgentActivityWaiting)}, 40, "  ? helper                      waiting "},
 		{"waiting in a narrow pane", agentListRow{agent: doing(api.AgentActivityWaiting)}, 14, "  ? helper    "},
+		{"waiting on a yes/no prompt", agentListRow{agent: asking(api.AgentPromptKindYesNo)}, 40, "  ? helper                       yes/no "},
+		{"waiting on a decision", agentListRow{agent: asking(api.AgentPromptKindDecision)}, 40, "  ? helper                     decision "},
+		{"a parent hiding an agent on a prompt", agentListRow{agent: asking(api.AgentPromptKindYesNo), below: 2, waiting: 1}, 40, "  ? helper                    1 waiting "},
 		{"working", agentListRow{agent: doing(api.AgentActivityWorking)}, 40, "  ● helper                      working "},
 		{"idle", agentListRow{agent: doing(api.AgentActivityIdle)}, 40, "  ● helper                              "},
 		{"unknown", agentListRow{agent: doing(api.AgentActivityUnknown)}, 40, "  ● helper                              "},

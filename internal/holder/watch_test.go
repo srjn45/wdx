@@ -67,6 +67,7 @@ draw() { printf '\033[2J\033[H%s\r\n%s\r\n❯ \r\n%s\r\n%s' "$1" "$rule" "$rule"
 idle() { draw "$1" '  ⏸ manual mode on · ? for shortcuts · ← 1 agent'; }
 working() { draw "$1" '  ⏸ manual mode on · esc to interrupt · ← 1 agent'; }
 waiting() { printf '\033[2J\033[H%s\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n\r\n Esc to cancel · Tab to amend' "$1"; }
+moved() { printf '\033[2J\033[H%s\r\n Do you want to proceed?\r\n   1. Yes\r\n ❯ 2. No\r\n\r\n Esc to cancel' "$1"; }
 cutoff() { draw "$1" '  ⏸ manual mode on · /tasks to see su…'; }
 background() { draw "$1" '  ⏸ manual mode on · 1 shell · ← 1 agent'; }
 drafted() { printf '\033[2J\033[H%s\r\n%s\r\n❯ typed\r\n%s\r\n%s' "$1" "$rule" "$rule" '  ⏸ manual mode on'; }
@@ -717,9 +718,10 @@ func (f fixture) statusFrames(t *testing.T, id string) (Hello, func() Status) {
 	}
 }
 
-// TestStatusPushed: each change reaches the daemon as a complete status, a change
-// only to what stays in the holder sends nothing, and a daemon connecting is told
-// the current one.
+// TestStatusPushed: each change reaches the daemon as a complete status, the
+// prompt read with it, a change only to what stays in the holder sends nothing, a
+// change only to the prompt sends one, and a daemon connecting is told the current
+// one.
 func TestStatusPushed(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -731,6 +733,8 @@ wait_for background
 background two
 wait_for prompt
 waiting three
+wait_for moved
+moved three
 wait_for typed
 drafted four
 wait_for end
@@ -747,8 +751,14 @@ wait_for end
 	waitParsed(t, dir, "two")
 	step(t, dir, "prompt")
 	// Working in a turn and in the background differ only in InTurn: no frame.
-	if got := next(); got != (Status{Activity: "waiting"}) {
-		t.Errorf("status after the background %+v", got)
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes"}}
+	if got := next(); !got.Equal(Status{Activity: "waiting", Prompt: prompt}) {
+		t.Errorf("status after the background %+v, prompt %+v", got, got.Prompt)
+	}
+	step(t, dir, "moved")
+	moved := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes", "No"}, Selected: 1}
+	if got := next(); !got.Equal(Status{Activity: "waiting", Prompt: moved}) {
+		t.Errorf("status after the selection moved %+v, prompt %+v", got, got.Prompt)
 	}
 	step(t, dir, "typed")
 	for got := next(); got != (Status{Activity: "idle", Draft: true}); got = next() {

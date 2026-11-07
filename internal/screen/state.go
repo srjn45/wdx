@@ -60,24 +60,28 @@ const (
 	PromptDecision PromptKind = "decision"
 )
 
-// Prompt is what an ACA asks on its screen, when the parser can read it.
+// Prompt is what an ACA asks on its screen, when the parser can read it. Its
+// JSON is what the holder tells the daemon and what the daemon keeps.
 type Prompt struct {
-	Kind PromptKind
+	Kind PromptKind `json:"kind"`
 	// Title is what the ACA heads it with: "Bash command", "Create file",
 	// "Accessing workspace", a decision's tab "Color"; "" when it has none.
-	Title string
+	Title string `json:"title"`
 	// Question is the line that asks: "Do you want to proceed?", "Which color
 	// do you choose?".
-	Question string
+	Question string `json:"question"`
 	// Detail is what a yes/no prompt is about: the command, the file name, the
 	// workspace path; "" when there is none.
-	Detail string
+	Detail string `json:"detail"`
 	// Options is every label, in order as shown, without its number, box or tick.
-	Options []string
+	Options []string `json:"options"`
 	// Selected is the index of the option the cursor is on; -1 when none shows.
-	Selected int
+	Selected int `json:"selected"`
 	// Multi is a decision whose options are checkboxes.
-	Multi bool
+	Multi bool `json:"multi"`
+	// Ticked is the index of each option whose box is ticked, in order; empty,
+	// never nil, for a multi-select with none and for every other prompt.
+	Ticked []int `json:"ticked"`
 }
 
 // Equal reports whether two prompts read the same; two nil prompts do.
@@ -86,5 +90,5 @@ func (p *Prompt) Equal(o *Prompt) bool {
 		return p == o
 	}
 	return p.Kind == o.Kind && p.Title == o.Title && p.Question == o.Question && p.Detail == o.Detail &&
-		p.Selected == o.Selected && p.Multi == o.Multi && slices.Equal(p.Options, o.Options)
+		p.Selected == o.Selected && p.Multi == o.Multi && slices.Equal(p.Options, o.Options) && slices.Equal(p.Ticked, o.Ticked)
 }

@@ -315,6 +315,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		AgentEnded: func(id string) {
 			d.backups.Request(id)
 			d.agentEnded(id)
+			d.clearPrompt(id)
 		},
 		AgentFollowed: contextSizes.Watch,
 		AgentOf: func(ctx context.Context, id string) (string, error) {
@@ -326,7 +327,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			return a.SessionID, err
 		},
 		AgentStatus: func(ctx context.Context, id string, status holder.Status) {
-			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft, status.Queued, status.Model)
+			changed, err := agents.SetStatus(ctx, id, status.Activity, status.Draft, status.Queued, status.Model, status.Prompt)
 			if err != nil {
 				logging.FromContext(ctx).Error("agent status not recorded", "terminal_id", id, "err", err)
 			}
@@ -344,6 +345,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		return nil, err
 	}
 	if err := d.terminals.Sweep(logged); err != nil {
+		return nil, err
+	}
+	// A terminal that ended while no daemon ran kept its agent's prompt.
+	if err := agents.ClearEndedPrompts(logged); err != nil {
 		return nil, err
 	}
 	// A copy is only a backup of what the database holds, so one left

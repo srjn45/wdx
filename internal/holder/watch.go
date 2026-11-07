@@ -164,7 +164,16 @@ func (w *screenWatch) stateChanged() <-chan struct{} {
 func (w *screenWatch) state() screen.ScreenState { return *w.latest.Load() }
 
 func statusOf(state screen.ScreenState) Status {
-	return Status{Activity: string(state.Activity), Draft: state.Draft, Model: state.Model}
+	return Status{Activity: string(state.Activity), Draft: state.Draft, Model: state.Model, Prompt: state.Prompt}
+}
+
+// promptAttrs is what the log says of a prompt: its kind and how many options it
+// has, never its text, which is the agent's.
+func promptAttrs(p *screen.Prompt) []any {
+	if p == nil {
+		return nil
+	}
+	return []any{"prompt_kind", p.Kind, "prompt_options", len(p.Options)}
 }
 
 // watchScreen waits the moment after a change, reads the screen and parses it
@@ -229,7 +238,7 @@ func (w *screenWatch) watchScreen(done <-chan struct{}) {
 			if !failed {
 				if !state.Equal(parsed) {
 					parsed = state
-					w.log.Debug("screen read", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model)
+					w.log.Debug("screen read", append([]any{"activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model}, promptAttrs(state.Prompt)...)...)
 				}
 				if state.Model != "" {
 					model = state.Model
@@ -279,10 +288,10 @@ func (w *screenWatch) publish(state screen.ScreenState) {
 	}
 	w.latest.Store(&state)
 	wake(w.published)
-	if statusOf(state) != statusOf(last) {
+	if !statusOf(state).Equal(statusOf(last)) {
 		wake(w.statusChanged)
 	}
-	w.log.Info("screen state changed", "activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model)
+	w.log.Info("screen state changed", append([]any{"activity", state.Activity, "input_box", state.InputBox, "draft", state.Draft, "in_turn", state.InTurn, "steer_pending", state.SteerPending, "model", state.Model}, promptAttrs(state.Prompt)...)...)
 }
 
 // isInput reports whether a frame of a client's input is what the fallback

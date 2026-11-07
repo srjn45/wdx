@@ -378,8 +378,11 @@ Built for Claude Code (the wdx doc CLAUDE_PROMPTS, step 1); the other three pars
 | `Options` | every label as shown, without its number, box or tick; a decision's hold Claude's own `Type something` and `Chat about this` |
 | `Selected` | the option with `❯`; -1 when none shows |
 | `Multi` | a decision whose options are checkboxes |
+| `Ticked` | the index of each option whose box is `[✔]`, in order; empty for a multi-select with none and for every other prompt |
 
 How Claude Code's parser reads it, in the two branches that read `waiting`: the kind from the footer and the line above the options, never from the options' words, which a reply above can hold too; the options upward from the footer; the question right above them; the title and detail from the block under the last full rule, never above it. The rules are in docs/ACA.md's row, the widths' findings in the wdx doc CLAUDE_PROMPTS. The holder compares states with `ScreenState.Equal`, so a selection moving or a box ticked is a change it publishes.
+
+From the holder to the person (step 2): `holder.Status` carries it as `prompt`, left out when none is read, so an older holder reads as none; a status goes out when the prompt alone changes. The daemon keeps it in `agents.prompt` as JSON with the activity, only with `waiting`, cleared when the terminal ends and, for terminals that ended with no daemon running, at the daemon's start, and serves it as `Agent.prompt` (docs/AGENT.md), which the project stream sends as any other change. The logs say its `prompt_kind` and `prompt_options`, the count, never the text: the holder's `screen state changed`, the daemon's `agent status changed`, and the request and command logs, whose responses go through `api.AgentResponseLogged`. tide's row and `agent list` read `yes/no` or `decision` in place of `waiting`; the info tab and `agent get` show `prompt`, `question`, `detail` and `options`, `❯` before the selected one and, in a multi-select, `[✔]` before a ticked option and `[ ]` before the others.
 
 Options differ per prompt: `No` is 4 for Bash and 3 for a file, and offers depend on the mode, so whatever answers later goes by label, not number.
 

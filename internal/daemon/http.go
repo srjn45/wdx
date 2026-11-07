@@ -204,6 +204,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = api.PlanTaskResponseLogged(rec.body.Bytes())
 			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
 				response = api.WorktreeResponseLogged(rec.body.Bytes())
+			case agentResponses[operation] && rec.status < http.StatusBadRequest:
+				response = api.AgentResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
 				response = "event stream"
 			}
@@ -216,7 +218,9 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 // The worktree operations that carry a file's contents, or what is said of them.
 var (
 	// Messages too: their text can hold secrets.
-	worktreeRequests  = map[string]bool{"createWorktreeComment": true, "editWorktreeComment": true, "sendWorktreeReview": true}
+	worktreeRequests = map[string]bool{"createWorktreeComment": true, "editWorktreeComment": true, "sendWorktreeReview": true}
+	// The operations whose responses carry agents, whose prompt's text is the agent's.
+	agentResponses    = map[string]bool{"listAgents": true, "createAgent": true, "getAgent": true, "updateAgent": true, "deleteAgent": true, "startAgent": true, "restartAgent": true, "sendAgent": true, "getProject": true}
 	worktreeResponses = map[string]bool{"listWorktrees": true, "getWorktreeDiff": true, "getWorktreeFileDiff": true, "listWorktreeFiles": true, "getWorktreeFileContent": true, "listWorktreeComments": true, "createWorktreeComment": true, "listMessages": true, "resendMessage": true}
 )
 

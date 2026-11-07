@@ -679,6 +679,12 @@ rule=────────────────
 stty raw -echo
 wait_for() { until [ -f "$1" ]; do sleep 0.01; done; }
 printf '\033[2J\033[H%s\r\n ❯ 1. Yes\r\n\r\n Esc to cancel · Tab to amend' 'Do you want to proceed?'
+wait_for moved
+printf '\033[2J\033[H%s\r\n   1. Yes\r\n ❯ 2. No\r\n\r\n Esc to cancel' 'Do you want to proceed?'
+wait_for boxes
+printf '\033[2J\033[H%s\r\n ☐ Fruits\r\n\r\n Which fruits?\r\n\r\n ❯ 1. [ ] Apple\r\n   2. [ ] Pear\r\n\r\n Enter to select · Esc to cancel' "$rule"
+wait_for tick
+printf '\033[2J\033[H%s\r\n ☒ Fruits\r\n\r\n Which fruits?\r\n\r\n ❯ 1. [✔] Apple\r\n   2. [ ] Pear\r\n\r\n Enter to select · Esc to cancel' "$rule"
 wait_for draft
 printf '\033[2J\033[H%s\r\n❯ typed\r\n%s\r\n  ⏸ manual mode on · esc to interrupt' "$rule" "$rule"
 wait_for banner
@@ -708,6 +714,23 @@ func agentsIn(e event) []api.Agent {
 		return nil
 	}
 	return *e.project.Agents
+}
+
+// waitPrompt follows the project's stream until the agent named name shows a
+// prompt whose selected option is the given one, with the given options ticked.
+func (td *testDaemon) waitPrompt(t *testing.T, name string, selected int, ticked ...int) api.AgentPrompt {
+	t.Helper()
+	var prompt api.AgentPrompt
+	td.waitProject(t, "app", fmt.Sprintf("agent %s prompt on option %d, ticked %v", name, selected, ticked), func(e event) bool {
+		for _, a := range agentsIn(e) {
+			if a.Name == name && a.Prompt != nil && a.Prompt.Selected != nil && *a.Prompt.Selected == selected && slices.Equal(a.Prompt.Ticked, ticked) {
+				prompt = *a.Prompt
+				return true
+			}
+		}
+		return false
+	})
+	return prompt
 }
 
 // waitActivity follows the project's stream until the agent named name shows the
@@ -749,10 +772,36 @@ func TestAgentStatus(t *testing.T) {
 	if activityOf(got) != "waiting" || got.Draft == nil || *got.Draft {
 		t.Errorf("get agent: %s %v", activityOf(got), got.Draft)
 	}
+	if p := got.Prompt; p == nil || p.Kind != api.AgentPromptKindYesNo || p.Question != "Do you want to proceed?" || !slices.Equal(p.Options, []string{"Yes"}) ||
+		p.Selected == nil || *p.Selected != 0 || p.Title != nil || p.Detail != nil || p.Multi || p.Ticked == nil || len(p.Ticked) != 0 {
+		t.Errorf("get agent: prompt %+v", got.Prompt)
+	}
 	updated := got.UpdatedAt
+
+	// The selection moving is a change of the agent, which the stream tells.
+	step("moved")
+	if p := td.waitPrompt(t, "helper", 1); !slices.Equal(p.Options, []string{"Yes", "No"}) {
+		t.Errorf("the moved prompt: %+v", p)
+	}
+	if got := td.waitAgentState(t, a.Id, api.AgentStateRunning); activityOf(got) != "waiting" {
+		t.Errorf("with a prompt read, the activity is %s", activityOf(got))
+	}
+
+	// A box ticked is a change of the agent too.
+	step("boxes")
+	if p := td.waitPrompt(t, "helper", 0); p.Kind != api.AgentPromptKindDecision || !p.Multi || p.Title == nil || *p.Title != "Fruits" || !slices.Equal(p.Options, []string{"Apple", "Pear"}) {
+		t.Errorf("the decision: %+v", p)
+	}
+	step("tick")
+	if p := td.waitPrompt(t, "helper", 0, 0); !p.Multi || !slices.Equal(p.Options, []string{"Apple", "Pear"}) {
+		t.Errorf("the ticked decision: %+v", p)
+	}
 
 	step("draft")
 	td.waitActivity(t, "helper", "working", true)
+	if got := td.waitAgentState(t, a.Id, api.AgentStateRunning); got.Prompt != nil {
+		t.Errorf("a working agent shows a prompt: %+v", got.Prompt)
+	}
 	step("banner")
 	td.waitActivity(t, "helper", "working", false)
 	if got := td.waitAgentState(t, a.Id, api.AgentStateRunning); modelOf(got) != "Haiku 5.5" {
@@ -786,8 +835,8 @@ func TestAgentStatus(t *testing.T) {
 
 	step("end")
 	got = next.waitAgentState(t, a.Id, api.AgentStateExited)
-	if got.Activity != nil || got.Draft != nil || got.Model != nil {
-		t.Errorf("an exited agent shows %s, %v, %s", activityOf(got), got.Draft, modelOf(got))
+	if got.Activity != nil || got.Draft != nil || got.Model != nil || got.Prompt != nil {
+		t.Errorf("an exited agent shows %s, %v, %s, %+v", activityOf(got), got.Draft, modelOf(got), got.Prompt)
 	}
 
 	step("again")
@@ -812,8 +861,8 @@ func TestAgentStatusOfAHolderThatSaysNothing(t *testing.T) {
 	td := startOn(t, home, telemetry.Options{}, func(o *Options) { o.ACAs = []aca.AiCodingAgent{otherACA{&acatest.ACA{}}} })
 	app := td.create(t, "app").Worktrees[0].Path
 	a := td.createAgent(t, "", app, "helper")
-	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft || a.Model != nil {
-		t.Errorf("got %s, %v, %s", activityOf(a), a.Draft, modelOf(a))
+	if activityOf(a) != "unknown" || a.Draft == nil || *a.Draft || a.Model != nil || a.Prompt != nil {
+		t.Errorf("got %s, %v, %s, %+v", activityOf(a), a.Draft, modelOf(a), a.Prompt)
 	}
 }
 
@@ -825,8 +874,11 @@ func TestAgentQueued(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(app, "run"), []byte(statusScript), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(app, "draft"), nil, 0o600); err != nil {
-		t.Fatal(err)
+	// The script's steps up to the draft are over before it starts.
+	for _, step := range []string{"moved", "boxes", "tick", "draft"} {
+		if err := os.WriteFile(filepath.Join(app, step), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	a := td.createAgent(t, "", app, "helper")
 	td.waitActivity(t, "helper", "working", true)

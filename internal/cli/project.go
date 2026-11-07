@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -815,6 +816,9 @@ func (r projectResult) text(w io.Writer, st style.Style) {
 
 // projectDetail is a project with which of its checkouts are on disk.
 type projectDetail api.ProjectEnvelope
+
+// LogValue keeps the text of its agents' prompts out of the log.
+func (d projectDetail) LogValue() slog.Value { return loggedAgents(api.ProjectEnvelope(d)) }
 
 func (d projectDetail) text(w io.Writer, st style.Style) {
 	p := d.Project

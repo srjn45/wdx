@@ -71,6 +71,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | No ACA can be used | `agent create` and `agent models` fail with `aca_unavailable` | `C-q a`, `C-q c` say so on the status line | Same | |
 | List agents | `agent list` | the left pane | Same | |
 | Show an agent | `agent get` | the info tab | Same | The fields differ and change as needed: `agent get` also has session, pid and times |
+| See what a waiting agent asks | `agent get`'s `prompt`, `question`, `detail` and `options`; `agent list`'s `ACTIVITY` reads `yes/no` or `decision` in place of `waiting` | the row reads `yes/no` or `decision` in place of `waiting`; the info tab's `prompt`, `question`, `detail` and `options` rows | Same | Only while a prompt is read (Claude Code for now, docs/AGENT_STATE.md); a folded parent's `N waiting` stays. Both show `❯` before the selected option and, in a multi-select, `[✔]` before a ticked one and `[ ]` before the others |
 | See how full its context is | `agent get` (`70k of 200k (35%)`), `agent list`'s `CONTEXT` column | the info tab, the size at its row's end | Same | Both color it by `context.threshold.warning` and `context.threshold.critical`: green below warning, yellow from it, red from critical (the wdx doc CONTEXT_SIZE) |
 | Rename an agent | `agent rename` | `r` on it, in the list or its tab, or the info tab | Same | |
 | Talk to an agent | `agent attach` | its tab | Same | |

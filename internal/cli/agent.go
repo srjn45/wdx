@@ -2,9 +2,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -862,6 +865,24 @@ type agentDetail struct {
 	thresholds contextThresholds
 }
 
+// LogValue keeps the prompt's text out of the log.
+func (d agentDetail) LogValue() slog.Value { return loggedAgents(d.AgentEnvelope) }
+
+// LogValue keeps the prompts' text out of the log.
+func (l agentList) LogValue() slog.Value { return loggedAgents(l.AgentList) }
+
+// LogValue keeps the prompt's text out of the log.
+func (r agentResult) LogValue() slog.Value { return loggedAgents(api.AgentResult(r)) }
+
+// loggedAgents keeps the text of the agents' prompts out of the log.
+func loggedAgents(v any) slog.Value {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return slog.StringValue("unreadable response")
+	}
+	return slog.AnyValue(api.AgentResponseLogged(b))
+}
+
 func (d agentDetail) text(w io.Writer, st style.Style) {
 	a := d.Agent
 	field := fieldPrinter(w, st, 11)
@@ -869,6 +890,25 @@ func (d agentDetail) text(w io.Writer, st style.Style) {
 	field("state", agentStateText(st, a))
 	if a.Activity != nil {
 		field("activity", agentActivityText(st, a))
+	}
+	if a.Prompt != nil {
+		p := *a.Prompt
+		field("prompt", promptKindText(st, p.Kind)+promptTitleText(st, p))
+		field("question", p.Question)
+		if p.Detail != nil {
+			lines := strings.Split(*p.Detail, "\n")
+			field("detail", lines[0])
+			for _, line := range lines[1:] {
+				field("", line)
+			}
+		}
+		for i, option := range promptOptionLines(p) {
+			if i == 0 {
+				field("options", option)
+			} else {
+				field("", option)
+			}
+		}
 	}
 	if a.Draft != nil && *a.Draft {
 		field("draft", "yes")
@@ -965,17 +1005,57 @@ func contextThresholdsOf(cmd *cobra.Command) contextThresholds {
 }
 
 // agentActivityText is what a is doing, which a human may have to answer when it
-// is waiting; nothing when it is not running.
+// is waiting, then the kind of the prompt when it is read; nothing when it is not
+// running.
 func agentActivityText(st style.Style, a api.Agent) string {
 	switch {
 	case a.Activity == nil:
 		return ""
+	case a.Prompt != nil:
+		return promptKindText(st, a.Prompt.Kind)
 	case *a.Activity == api.AgentActivityWaiting:
 		return st.Warning(string(*a.Activity))
 	case *a.Activity == api.AgentActivityUnknown:
 		return st.Muted(string(*a.Activity))
 	}
 	return string(*a.Activity)
+}
+
+// promptKindText is a prompt's kind as a human reads it: yes/no or decision, as
+// what waits for them.
+func promptKindText(st style.Style, kind api.AgentPromptKind) string {
+	if kind == api.AgentPromptKindYesNo {
+		return st.Warning("yes/no")
+	}
+	return st.Warning(string(kind))
+}
+
+// promptTitleText is " · " and the prompt's title, "" without one.
+func promptTitleText(st style.Style, p api.AgentPrompt) string {
+	if p.Title == nil {
+		return ""
+	}
+	return " · " + st.Name(*p.Title)
+}
+
+// promptOptionLines is a prompt's options, one a line, ❯ before the selected one
+// and a box before each of a multi-select, ticked or not.
+func promptOptionLines(p api.AgentPrompt) []string {
+	lines := make([]string, 0, len(p.Options))
+	for i, option := range p.Options {
+		mark := "  "
+		if p.Selected != nil && *p.Selected == i {
+			mark = "❯ "
+		}
+		if p.Multi {
+			mark += "[ ] "
+			if slices.Contains(p.Ticked, i) {
+				mark = strings.Replace(mark, "[ ]", "[✔]", 1)
+			}
+		}
+		lines = append(lines, mark+option)
+	}
+	return lines
 }
 
 func agentStateText(st style.Style, a api.Agent) string {

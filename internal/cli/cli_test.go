@@ -443,6 +443,14 @@ func wantLogged(t *testing.T, home string, args []string, out output) {
 			}
 		}
 		if obj, ok := printed.(map[string]any); ok {
+			if obj["agent"] != nil || obj["agents"] != nil || obj["project"] != nil {
+				// A prompt's text is the agent's: its kind and options are counted, not logged.
+				if b, err := json.Marshal(api.AgentResponseLogged([]byte(out.stdout))); err == nil {
+					printed = nil
+					_ = json.Unmarshal(b, &printed)
+					obj, _ = printed.(map[string]any)
+				}
+			}
 			if h, ok := obj["history"].(map[string]any); ok {
 				h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged
 			}

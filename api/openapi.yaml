@@ -3155,7 +3155,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, draft, queued, model, requested_model, permissions, context, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, prompt, draft, queued, model, requested_model, permissions, context, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3181,6 +3181,10 @@ components:
           nullable: true
           enum: [working, idle, waiting, unknown]
           description: What it is doing, while running; otherwise null. Unknown when its screen cannot be read, or its process was started by a wdx too old to say.
+        prompt:
+          allOf: [{ $ref: "#/components/schemas/AgentPrompt" }]
+          nullable: true
+          description: What it asks while its activity is waiting, as its screen shows it; null when no prompt is read, when it is not waiting, and when its process was started by a wdx too old to tell. Its text stays only while the prompt is open.
         draft: { type: boolean, nullable: true, description: "Whether a human left text in its input box, never the text, while running; otherwise null." }
         queued: { type: integer, nullable: true, description: "How many messages wait to go into it, as behind a draft, while running; otherwise null." }
         model: { type: string, nullable: true, description: "The AI model's name as its ACA last showed it, such as Haiku 5.5, for display, while running; otherwise null, as before it has shown one. A change it does not show, such as an automatic fallback, is not seen." }
@@ -3202,6 +3206,27 @@ components:
         ended_at: { type: string, format: date-time, nullable: true }
         removed_at: { type: string, format: date-time, nullable: true, description: When it was removed, if it is a tombstone. }
 
+    AgentPrompt:
+      type: object
+      required: [kind, title, question, detail, options, selected, multi, ticked]
+      properties:
+        kind:
+          type: string
+          enum: [yes_no, decision]
+          description: yes_no is answered yes or no in one of the AI coding agent's variants, as a permission, a plan approval or the trust prompt; decision is a question its model asks, with options of its own.
+        title: { type: string, nullable: true, description: "What the AI coding agent heads it with, as Bash command, Create file, Accessing workspace, or a decision's tab; null when it has none." }
+        question: { type: string, description: "The line that asks, as Do you want to proceed?" }
+        detail: { type: string, nullable: true, description: "What a yes/no prompt is about: the command, the file's name, the workspace path; null when there is none." }
+        options:
+          type: array
+          items: { type: string }
+          description: Every option's label as shown, in order, without its number or box; a decision's hold the AI coding agent's own, as Type something and Chat about this.
+        selected: { type: integer, nullable: true, description: "The index of the option the cursor is on; null when none shows." }
+        multi: { type: boolean, description: "A decision whose options are checkboxes, several of which can be ticked." }
+        ticked:
+          type: array
+          items: { type: integer }
+          description: The index of each option whose box is ticked, in order; empty for a multi-select with none and for every other prompt.
     AgentContext:
       type: object
       required: [tokens, window]

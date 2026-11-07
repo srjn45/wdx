@@ -155,6 +155,57 @@ func TestInfoShowsTheFields(t *testing.T) {
 	}
 }
 
+// TestInfoShowsThePrompt: while a prompt is read, the tab says its kind and title,
+// question, detail and options, the selected one marked and a multi-select's boxed;
+// without one, none of those rows.
+func TestInfoShowsThePrompt(t *testing.T) {
+	t.Parallel()
+	waiting, title, detail, selected := api.AgentActivityWaiting, "Bash command", "touch a.txt\nls", 1
+	a := api.Agent{Name: "lead", State: api.AgentStateRunning, Aca: "claude_code", ProjectName: "demo", Activity: &waiting, Permissions: api.AgentPermissionsAsk,
+		Prompt: &api.AgentPrompt{Kind: api.AgentPromptKindYesNo, Title: &title, Question: "Do you want to proceed?", Detail: &detail, Options: []string{"Yes", "No"}, Selected: &selected}}
+	m := newAgentsModel(120, 41, a)
+	m.layout.setFocus(project)
+	keys(m, "i")
+	got := text(m)
+	for _, want := range []string{
+		"activity:           waiting",
+		"prompt:             yes/no · Bash command",
+		"question:           Do you want to proceed?",
+		"detail:             touch a.txt",
+		"                    ls",
+		"options:              Yes",
+		"                    ❯ No",
+		"draft:              —",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+	if activity, prompt, draft := strings.Index(got, "activity:"), strings.Index(got, "prompt:"), strings.Index(got, "draft:"); activity > prompt || prompt > draft {
+		t.Errorf("the prompt is not between the activity and the draft:\n%s", got)
+	}
+
+	fruits := api.Agent{Name: "lead", State: api.AgentStateRunning, Aca: "claude_code", ProjectName: "demo", Activity: &waiting, Permissions: api.AgentPermissionsAsk,
+		Prompt: &api.AgentPrompt{Kind: api.AgentPromptKindDecision, Question: "Which fruits do you like?", Options: []string{"Apple", "Pear"}, Multi: true, Ticked: []int{1}}}
+	m = newAgentsModel(120, 41, fruits)
+	m.layout.setFocus(project)
+	keys(m, "i")
+	got = text(m)
+	// A decision has no detail: its row is empty, as every absent value's.
+	for _, want := range []string{"prompt:             decision", "detail:             —", "options:              [ ] Apple", "                      [✔] Pear"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+
+	m = newAgentsModel(120, 41, running("lead"))
+	m.layout.setFocus(project)
+	keys(m, "i")
+	if got := text(m); strings.Contains(got, "prompt:") || strings.Contains(got, "question:") || strings.Contains(got, "options:") {
+		t.Errorf("without a prompt, its rows show:\n%s", got)
+	}
+}
+
 func TestInfoIsLive(t *testing.T) {
 	t.Parallel()
 	m := infoModel()

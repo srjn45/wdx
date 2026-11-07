@@ -6,6 +6,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -34,9 +35,12 @@ type Agent struct {
 	Held       int       // how many messages for it wait for a human: docs/SEND.md
 	RemovedAt  time.Time // when it was removed, keeping it as a tombstone; zero otherwise
 	Activity   string    // what its process is doing, as a screen.Activity; "" unless it is running
-	Draft      bool      // whether a human left text in its input box
-	Queued     int       // how many messages wait to go into it
-	Model      string    // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
+	// Prompt is what its process asks while Activity is waiting, when its holder
+	// reads it; nil otherwise, and unless it is running.
+	Prompt *screen.Prompt
+	Draft  bool   // whether a human left text in its input box
+	Queued int    // how many messages wait to go into it
+	Model  string // the AI model's name as its ACA last showed it; "" until it has, or unless it is running
 	// RequestedModel is the model it is started with every time, as it was asked
 	// for; "" is its ACA's default.
 	RequestedModel string
@@ -60,7 +64,7 @@ func (a Agent) OnRow(t terminal.Terminal) Agent {
 	a.Terminal = t
 	switch {
 	case t.State != terminal.StateRunning:
-		a.Activity, a.Draft, a.Queued, a.Model = "", false, 0, ""
+		a.Activity, a.Draft, a.Queued, a.Model, a.Prompt = "", false, 0, "", nil
 	case a.Activity == "":
 		a.Activity = string(screen.ActivityUnknown)
 	}
@@ -116,22 +120,58 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Agent, erro
 
 // SetStatus records what the process of the agent on terminalID is doing, and
 // reports whether that changes anything. A running holder can be newer than this
-// daemon, so an activity it does not know is unknown.
-func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool, queued int, model string) (bool, error) {
+// daemon, so an activity it does not know is unknown. The prompt is kept only
+// with waiting, as JSON, and its text is never logged.
+func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool, queued int, model string, prompt *screen.Prompt) (bool, error) {
 	switch screen.Activity(activity) {
 	case screen.ActivityWorking, screen.ActivityIdle, screen.ActivityWaiting, screen.ActivityUnknown:
 	default:
 		logging.FromContext(ctx).Warn("unknown activity read as unknown", "terminal_id", terminalID, "activity", activity)
 		activity = string(screen.ActivityUnknown)
 	}
-	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = NULLIF(?4, '') WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR model IS NOT NULLIF(?4, ''))", activity, draft, queued, model, terminalID)
+	if activity != string(screen.ActivityWaiting) {
+		prompt = nil
+	}
+	var promptJSON sql.NullString
+	if prompt != nil {
+		b, err := json.Marshal(prompt)
+		if err != nil {
+			return false, err
+		}
+		promptJSON = sql.NullString{String: string(b), Valid: true}
+	}
+	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = NULLIF(?4, ''), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR model IS NOT NULLIF(?4, '') OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
 	if err != nil {
 		return false, err
 	}
 	if rows > 0 {
-		logging.FromContext(ctx).Info("agent status changed", "terminal_id", terminalID, "activity", activity, "draft", draft, "queued", queued, "model", model)
+		attrs := []any{"terminal_id", terminalID, "activity", activity, "draft", draft, "queued", queued, "model", model}
+		if prompt != nil {
+			attrs = append(attrs, "prompt_kind", prompt.Kind, "prompt_options", len(prompt.Options))
+		}
+		logging.FromContext(ctx).Info("agent status changed", attrs...)
 	}
 	return rows > 0, nil
+}
+
+// ClearPrompt forgets the prompt of the agent on terminalID, whose terminal ended:
+// the prompt's text stays only while it is open. It reports whether there was one.
+func (s *Store) ClearPrompt(ctx context.Context, terminalID string) (bool, error) {
+	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE terminal_id = ? AND prompt IS NOT NULL", terminalID)
+	if rows > 0 {
+		logging.FromContext(ctx).Info("agent prompt cleared", "terminal_id", terminalID)
+	}
+	return rows > 0, err
+}
+
+// ClearEndedPrompts forgets the prompts of the agents whose terminals are not
+// running, which ended while no daemon was there to clear them.
+func (s *Store) ClearEndedPrompts(ctx context.Context) error {
+	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE prompt IS NOT NULL AND terminal_id IN (SELECT id FROM terminals WHERE state != 'running')")
+	if rows > 0 {
+		logging.FromContext(ctx).Info("prompts of ended agents cleared", "count", rows)
+	}
+	return err
 }
 
 // setContext records how full the context of the agent with id is, and reports
@@ -207,6 +247,7 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 			CASE WHEN t.state = 'running' THEN COALESCE(a.draft, 0) END,
 			CASE WHEN t.state = 'running' THEN COALESCE(a.queued, 0) END,
 			CASE WHEN t.state = 'running' THEN a.model END,
+			CASE WHEN t.state = 'running' THEN a.prompt END,
 			a.current_dir, a.requested_model, a.permissions, a.context_tokens, a.context_window,
 			(SELECT COUNT(*) FROM messages m WHERE m.terminal_id = a.terminal_id AND m.state = 'held'),
 			(`+taskOfAgent+`),
@@ -225,15 +266,21 @@ func (s *Store) query(ctx context.Context, where string, args ...any) ([]Agent, 
 		var a Agent
 		var parent, parentName sql.NullString
 		var removed sql.NullInt64
-		var worktree, activity, model, currentDir, requestedModel, task sql.NullString
+		var worktree, activity, model, prompt, currentDir, requestedModel, task sql.NullString
 		var draft sql.NullBool
 		var queued, contextTokens, contextWindow sql.NullInt64
-		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &currentDir, &requestedModel, &a.Permissions,
+		if a.Terminal, err = terminal.ScanRow(rows.Scan, &a.ID, &a.ACA, &a.SessionID, &parent, &parentName, &removed, &worktree, &activity, &draft, &queued, &model, &prompt, &currentDir, &requestedModel, &a.Permissions,
 			&contextTokens, &contextWindow, &a.Held, &task); err != nil {
 			return nil, err
 		}
 		a.ParentID, a.Parent = parent.String, parentName.String
 		a.Activity, a.Draft, a.Queued, a.Model = activity.String, draft.Bool, int(queued.Int64), model.String
+		if prompt.Valid {
+			a.Prompt = &screen.Prompt{}
+			if err := json.Unmarshal([]byte(prompt.String), a.Prompt); err != nil {
+				return nil, fmt.Errorf("prompt of agent %s: %w", a.ID, err)
+			}
+		}
 		a.CurrentDir, a.RequestedModel = currentDir.String, requestedModel.String
 		a.Plan, a.Task, _ = strings.Cut(task.String, "\x00")
 		if contextTokens.Valid {

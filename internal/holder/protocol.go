@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 // Version is the protocol version this binary speaks. A holder keeps
@@ -101,6 +103,16 @@ type Status struct {
 	Queued int `json:"queued"`
 	// Model is the AI model's name as the program last showed it; "" until it has.
 	Model string `json:"model,omitempty"`
+	// Prompt is what the program asks while Activity is waiting, when the parser
+	// reads it; nil otherwise, and from a holder too old to tell.
+	Prompt *screen.Prompt `json:"prompt,omitempty"`
+}
+
+// Equal reports whether two statuses say the same, prompts included.
+func (s Status) Equal(o Status) bool {
+	a, b := s, o
+	a.Prompt, b.Prompt = nil, nil
+	return a == b && s.Prompt.Equal(o.Prompt)
 }
 
 // Size is a terminal's size in cells.

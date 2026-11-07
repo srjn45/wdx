@@ -19,6 +19,7 @@ import (
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -623,7 +624,7 @@ func TestSetStatus(t *testing.T) {
 	store := f.agents.Store()
 	set := func(activity string, draft bool, queued int, wantChanged bool) Agent {
 		t.Helper()
-		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft, queued, "")
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, draft, queued, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -648,7 +649,7 @@ func TestSetStatus(t *testing.T) {
 	}
 	setModel := func(model string, wantChanged bool) string {
 		t.Helper()
-		changed, err := store.SetStatus(ctx, a.Terminal.ID, "waiting", true, 2, model)
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, "waiting", true, 2, model, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -674,10 +675,52 @@ func TestSetStatus(t *testing.T) {
 		t.Errorf("a value not known reads %q", got.Activity)
 	}
 
+	prompt := &screen.Prompt{Kind: screen.PromptDecision, Title: "Fruits", Question: "Which fruits?", Options: []string{"Apple", "Pear"}, Selected: 0, Multi: true, Ticked: []int{1}}
+	setPrompt := func(activity string, p *screen.Prompt, wantChanged bool) *screen.Prompt {
+		t.Helper()
+		changed, err := store.SetStatus(ctx, a.Terminal.ID, activity, true, 2, "", p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed != wantChanged {
+			t.Errorf("SetStatus(%s, prompt %v) changed = %v", activity, p != nil, changed)
+		}
+		got, err := store.Get(ctx, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Prompt
+	}
+	if got := setPrompt("waiting", prompt, true); !got.Equal(prompt) {
+		t.Errorf("the prompt not kept: %+v", got)
+	}
+	setPrompt("waiting", prompt, false)
+	moved := *prompt
+	moved.Selected = 1
+	if got := setPrompt("waiting", &moved, true); got == nil || got.Selected != 1 {
+		t.Errorf("the selection moving is no change: %+v", got)
+	}
+	if got := setPrompt("waiting", nil, true); got != nil {
+		t.Errorf("a prompt no longer read stays: %+v", got)
+	}
+	if got := setPrompt("working", prompt, true); got != nil {
+		t.Errorf("a prompt is kept with an activity other than waiting: %+v", got)
+	}
+	setPrompt("waiting", prompt, true)
+	if changed, err := store.ClearPrompt(ctx, a.Terminal.ID); err != nil || !changed {
+		t.Errorf("clearing the prompt: changed %v, %v", changed, err)
+	}
+	if got, err := store.Get(ctx, a.ID); err != nil || got.Prompt != nil || got.Activity != "waiting" {
+		t.Errorf("after clearing: %+v, %v", got.Prompt, err)
+	}
+	if changed, err := store.ClearPrompt(ctx, a.Terminal.ID); err != nil || changed {
+		t.Errorf("clearing again: changed %v, %v", changed, err)
+	}
+
 	if _, _, err := f.agents.Remove(ctx, a.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0, ""); err != nil || changed {
+	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0, "", nil); err != nil || changed {
 		t.Errorf("no agent: changed %v, %v", changed, err)
 	}
 }
@@ -689,14 +732,14 @@ func TestStatusOnlyWhileRunning(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, "until [ -f end ]; do sleep 0.01; done; exit 0")
 	a := f.create(t, "helper")
-	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true, 3, ""); err != nil {
+	if _, err := f.agents.Store().SetStatus(ctx, a.Terminal.ID, "waiting", true, 3, "", &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes", "No"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(f.dir, "end"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft || got.Queued != 0 {
-		t.Errorf("an exited agent shows %q, draft %v, queued %d", got.Activity, got.Draft, got.Queued)
+	if got := f.waitState(t, a.ID, terminal.StateExited); got.Activity != "" || got.Draft || got.Queued != 0 || got.Prompt != nil {
+		t.Errorf("an exited agent shows %q, draft %v, queued %d, prompt %+v", got.Activity, got.Draft, got.Queued, got.Prompt)
 	}
 }
 
@@ -704,7 +747,7 @@ func TestStatusOnlyWhileRunning(t *testing.T) {
 // shell does not draw.
 func (f fixture) setIdle(t *testing.T, a Agent, draft bool) {
 	t.Helper()
-	if _, err := f.agents.Store().SetStatus(context.Background(), a.Terminal.ID, "idle", draft, 0, ""); err != nil {
+	if _, err := f.agents.Store().SetStatus(context.Background(), a.Terminal.ID, "idle", draft, 0, "", nil); err != nil {
 		t.Fatal(err)
 	}
 }

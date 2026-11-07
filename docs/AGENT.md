@@ -4,7 +4,7 @@ Status: implemented. Checked against the real Claude Code 2.1.314 (see Tests).
 
 An agent is an AI coding agent (an ACA: Claude Code for now, Codex, Cursor, Antigravity later) running in a terminal of a project. It has everything a terminal has, its holder included: it outlives the daemon and the window that showed it, and you attach to it and detach from it the same way. On top it knows which ACA it runs and which session of that ACA is its own.
 
-Child agents and tombstones are in docs/CHILD_AGENTS.md. What the ACA is doing, `activity` and `draft`, and the model it shows, `model`, are in docs/AGENT_STATE.md. Not in this step: choosing a model, an initial prompt, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
+Child agents and tombstones are in docs/CHILD_AGENTS.md. What the ACA is doing, `activity` and `draft`, the prompt it asks while waiting, `prompt`, and the model it shows, `model`, are in docs/AGENT_STATE.md. Not in this step: choosing a model, an initial prompt, the agent pane in tide. `state` below is only whether the process is alive. Two agents in one checkout share its files.
 
 ## Architecture
 
@@ -147,11 +147,13 @@ Below both, the supervisor's process work takes a terminal row of either kind: r
 ```json
 {"id": "agent-1a2b3c4d", "name": "swift-falcon", "project_id": "proj-…", "project_name": "wdx",
  "parent_agent_id": null, "children": [], "terminal_id": "term-5e6f7a8b", "aca": "claude_code", "session_id": "…", "dir": "/home/me/dev/wdx", "worktree": "main",
- "state": "running", "activity": "idle", "draft": false, "queued": 0, "model": "Haiku 5.5", "context": {"tokens": 70086, "window": 200000}, "pid": 4242, "exit_code": null, "error": null,
+ "state": "running", "activity": "idle", "prompt": null, "draft": false, "queued": 0, "model": "Haiku 5.5", "context": {"tokens": 70086, "window": 200000}, "pid": 4242, "exit_code": null, "error": null,
  "created_at": "…", "updated_at": "…", "started_at": "…", "ended_at": null, "removed_at": null}
 ```
 
 `terminal_id` is there because attaching dials that terminal's holder. Text output never shows it.
+
+`prompt` is what the agent asks while `activity` is `waiting`, as its screen shows it and the holder reads it (docs/AGENT_STATE.md, Why it is waiting; the wdx doc CLAUDE_PROMPTS): `{"kind": "yes_no", "title": "Bash command", "question": "Do you want to proceed?", "detail": "touch wdx-a.txt", "options": ["Yes", "Yes, and always allow access to /tmp/… from this project", "Yes, and switch to auto mode · auto mode handles these prompts for you", "No"], "selected": 0, "multi": false}`, or a `decision` with `"title": "Fruits"`, `"detail": null`, `"multi": true` and `"ticked": [0]`, the indexes of the options whose box is ticked, in order, `[]` when none is and for every other prompt. `title` and `detail` are null when the prompt has none, `selected` when no option is marked; the whole is null when no prompt is read, when the agent is not waiting, and when its holder is too old to tell. The text is kept only while the prompt is open: the row is cleared when the terminal ends, and the logs hold its kind and options' count, never its words. `agent get` shows `prompt` (`yes/no · Bash command`), `question`, `detail` and `options`, `❯` before the selected one and, in a multi-select, `[✔]` before a ticked option and `[ ]` before the others; `agent list`'s `ACTIVITY` column reads `yes/no` or `decision` in place of `waiting`.
 
 `context` is null until the agent's ACA has told it, and again once a restart begins a new session; its `window` is null when the ACA does not tell. `agent get` shows it as `context  70k of 200k (35%)`, or `70k` with no window, and `agent list` in a `CONTEXT` column, the size alone, empty when it is null; both color it green below `context.threshold.warning`, yellow from it and red from `context.threshold.critical` (`style.ContextFine`, `ContextWarning`, `ContextCritical`), as tide does. One function writes a size, `api.TokenCount`: the number under 1,000 (`850`), thousands rounded down with `k` (`150k`), millions with one decimal rounded down with `M` (`1.5M`, `2M`).
 

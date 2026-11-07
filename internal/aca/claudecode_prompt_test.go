@@ -1,6 +1,7 @@
 package aca_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -47,6 +48,9 @@ var (
 	redOrBlue = prompt(decision, "Color", "Red or blue?", "", 0, "Red", "Blue", "Type something.", "Chat about this")
 	fruits    = &screen.Prompt{Kind: decision, Title: "Fruits", Question: "Which fruits do you like?", Multi: true,
 		Options: []string{"Apple", "Pear", "Plum", "Type something", "Chat about this"}}
+	// fruitsTicked is fruits with Apple's box ticked.
+	fruitsTicked = &screen.Prompt{Kind: decision, Title: "Fruits", Question: "Which fruits do you like?", Multi: true,
+		Options: []string{"Apple", "Pear", "Plum", "Type something", "Chat about this"}, Ticked: []int{0}}
 )
 
 // moved is p with the cursor on another option.
@@ -77,7 +81,7 @@ var promptRecordings = []struct {
 		"10_permission_ping":          ping("Bash command", "ping -c 25 127.0.0.1"),
 		"14_decision_radio":           color,
 		"17_decision_checkbox":        fruits,
-		"18_decision_checkbox_ticked": fruits,
+		"18_decision_checkbox_ticked": fruitsTicked,
 	}},
 	{"plan", map[string]*screen.Prompt{"03_plan_approval": plan}},
 	{"classic-plan", map[string]*screen.Prompt{"03_plan_approval": plan}},
@@ -134,7 +138,7 @@ func promptsOf2319(dir string, cols int) map[string]*screen.Prompt {
 		"08_permission_write":         write,
 		"14_decision_radio":           color,
 		"17_decision_checkbox":        fruits,
-		"18_decision_checkbox_ticked": fruits,
+		"18_decision_checkbox_ticked": fruitsTicked,
 	}
 }
 
@@ -289,7 +293,9 @@ func TestClaudeCodePromptRules(t *testing.T) {
 		{"a decision without a tab line", []string{rule, " Which?", "", " ❯ 1. Red", "", " Enter to select · Esc to cancel"},
 			prompt(decision, "", "Which?", "", 0, "Red")},
 		{"checkboxes", []string{rule, "←  ☒ Fruits  ✔ Submit  →", "", " Which?", "", " ❯ 1. [✔] Apple", "   2. [ ] Pear", "", " Enter to select · Esc to cancel"},
-			&screen.Prompt{Kind: decision, Title: "Fruits", Question: "Which?", Options: []string{"Apple", "Pear"}, Multi: true}},
+			&screen.Prompt{Kind: decision, Title: "Fruits", Question: "Which?", Options: []string{"Apple", "Pear"}, Multi: true, Ticked: []int{0}}},
+		{"two boxes ticked", []string{rule, "←  ☒ Fruits  ✔ Submit  →", "", " Which?", "", "   1. [✔] Apple", "   2. [ ] Pear", " ❯ 3. [✔] Plum", "", " Enter to select · Esc to cancel"},
+			&screen.Prompt{Kind: decision, Title: "Fruits", Question: "Which?", Options: []string{"Apple", "Pear", "Plum"}, Multi: true, Selected: 2, Ticked: []int{0, 2}}},
 		{"no cursor", []string{rule, " Do you want to proceed?", "   1. Yes", "   2. No", "", " Esc to cancel"},
 			prompt(yesNo, "", "Do you want to proceed?", "", -1, "Yes", "No")},
 		{"a command's detail is the dashed block", []string{rule, " Bash command", " Lists files", dashed, " ls -la", " ls /tmp", dashed, " Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel"},
@@ -322,5 +328,6 @@ func promptString(p *screen.Prompt) string {
 		return "no prompt"
 	}
 	return strings.Join([]string{string(p.Kind), "title " + p.Title, "question " + p.Question, "detail " + p.Detail,
-		"options " + strings.Join(p.Options, " | "), "selected " + strings.Repeat("*", max(0, p.Selected+1)), "multi " + map[bool]string{true: "yes", false: "no"}[p.Multi]}, "; ")
+		"options " + strings.Join(p.Options, " | "), "selected " + strings.Repeat("*", max(0, p.Selected+1)), "multi " + map[bool]string{true: "yes", false: "no"}[p.Multi],
+		fmt.Sprintf("ticked %v", p.Ticked)}, "; ")
 }

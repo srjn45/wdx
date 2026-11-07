@@ -12,6 +12,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/screen"
 )
 
 func (s *server) ListAgents(ctx context.Context, req api.ListAgentsRequestObject) (api.ListAgentsResponseObject, error) {
@@ -404,6 +405,7 @@ func agentView(a agent.Agent) api.Agent {
 		if a.Model != "" {
 			v.Model = &a.Model
 		}
+		v.Prompt = promptView(a.Prompt)
 	}
 	if a.Tombstone() {
 		v.State = api.AgentStateRemoved
@@ -414,6 +416,27 @@ func agentView(a agent.Agent) api.Agent {
 	}
 	if t.Error != "" {
 		v.Error = &t.Error
+	}
+	return v
+}
+
+// promptView is p as the API serves it; nil for none.
+func promptView(p *screen.Prompt) *api.AgentPrompt {
+	if p == nil {
+		return nil
+	}
+	v := &api.AgentPrompt{Kind: api.AgentPromptKind(p.Kind), Question: p.Question, Options: p.Options, Multi: p.Multi, Ticked: []int{}}
+	if p.Ticked != nil {
+		v.Ticked = p.Ticked
+	}
+	if p.Title != "" {
+		v.Title = &p.Title
+	}
+	if p.Detail != "" {
+		v.Detail = &p.Detail
+	}
+	if p.Selected >= 0 {
+		v.Selected = &p.Selected
 	}
 	return v
 }
