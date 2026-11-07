@@ -34,7 +34,7 @@ func TestFilterMatches(t *testing.T) {
 func leftPane(m *Model) string {
 	var rows []string
 	for line := range strings.Lines(text(m)) {
-		if cells := strings.SplitN(line, "│", 3); len(cells) == 3 {
+		if cells := strings.SplitN(lightSides(line), "│", 3); len(cells) == 3 {
 			rows = append(rows, cells[1])
 		}
 	}

@@ -504,7 +504,7 @@ func mapWith(m map[string]bool, key string) map[string]bool {
 func paneLines(m *Model) []string {
 	var lines []string
 	for _, l := range strings.Split(text(m), "\n") {
-		r := []rune(l)
+		r := []rune(lightSides(l))
 		lines = append(lines, string(r[:min(len(r), 31)]))
 	}
 	return lines

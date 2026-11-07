@@ -104,7 +104,7 @@ func TestSettingsOpens(t *testing.T) {
 	if !slices.Equal(m.list().tabs, []string{"agent-swift-falcon", settingsTab}) {
 		t.Fatalf("tabs %v", m.list().tabs)
 	}
-	if !strings.Contains(titleRow(m), "─[settings(-)]─") {
+	if !strings.Contains(titleRow(m), "━[settings(-)]━") {
 		t.Fatalf("title %q", titleRow(m))
 	}
 	wantText(t, m, "loading…")

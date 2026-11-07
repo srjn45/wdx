@@ -57,7 +57,7 @@ func TestDocsInFolders(t *testing.T) {
 	}
 	lines := paneLines(m)
 	for _, want := range []string{" ▸− design", "    └ arch", "  − hub", "    ├ − initial", "    │   └ spec", "    └ api", "    zed"} {
-		if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(strings.TrimPrefix(l, "│"), want) }) {
+		if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(strings.TrimPrefix(lightSides(l), "│"), want) }) {
 			t.Errorf("no line starting %q in:\n%s", want, strings.Join(lines, "\n"))
 		}
 	}

@@ -78,7 +78,7 @@ func demoAgents() []api.Agent {
 func row(t *testing.T, m *Model, name string) string {
 	t.Helper()
 	for line := range strings.Lines(text(m)) {
-		if cells := strings.SplitN(line, "│", 3); len(cells) == 3 && strings.Contains(cells[1], name) {
+		if cells := strings.SplitN(lightSides(line), "│", 3); len(cells) == 3 && strings.Contains(cells[1], name) {
 			return "│" + cells[1]
 		}
 	}
@@ -201,7 +201,7 @@ func TestAgentsScroll(t *testing.T) {
 	for range 10 {
 		m.Update(keyMsgs("up")[0])
 	}
-	if !strings.Contains(row(t, m, "agent-02"), "▸") || !strings.Contains(text(m), "│ − Agents") {
+	if !strings.Contains(row(t, m, "agent-02"), "▸") || !strings.Contains(lightSides(text(m)), "│ − Agents") {
 		t.Fatalf("the cursor at the top of what shows, under the heading:\n%s", text(m))
 	}
 

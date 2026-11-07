@@ -128,18 +128,107 @@ const (
 	joinRight
 )
 
-var boxChars = map[joins]string{
-	joinLeft | joinRight:                     "─",
-	joinUp | joinDown:                        "│",
-	joinDown | joinRight:                     "┌",
-	joinDown | joinLeft:                      "┐",
-	joinUp | joinRight:                       "└",
-	joinUp | joinLeft:                        "┘",
-	joinUp | joinDown | joinRight:            "├",
-	joinUp | joinDown | joinLeft:             "┤",
-	joinDown | joinLeft | joinRight:          "┬",
-	joinUp | joinLeft | joinRight:            "┴",
-	joinUp | joinDown | joinLeft | joinRight: "┼",
+// line is how a border cell's line leaves by one side: not at all, light, or
+// heavy for the focused pane's.
+type line uint8
+
+const (
+	noLine line = iota
+	lightLine
+	heavyLine
+)
+
+// boxChars are Unicode's box drawing characters by the line each leaves by,
+// up, down, left and right: every mix of light and heavy lines that joins two
+// sides or more.
+var boxChars = map[[4]line]string{
+	{0, 0, 1, 1}: "─",
+	{0, 0, 1, 2}: "╼",
+	{0, 0, 2, 1}: "╾",
+	{0, 0, 2, 2}: "━",
+	{0, 1, 0, 1}: "┌",
+	{0, 1, 0, 2}: "┍",
+	{0, 1, 1, 0}: "┐",
+	{0, 1, 1, 1}: "┬",
+	{0, 1, 1, 2}: "┮",
+	{0, 1, 2, 0}: "┑",
+	{0, 1, 2, 1}: "┭",
+	{0, 1, 2, 2}: "┯",
+	{0, 2, 0, 1}: "┎",
+	{0, 2, 0, 2}: "┏",
+	{0, 2, 1, 0}: "┒",
+	{0, 2, 1, 1}: "┰",
+	{0, 2, 1, 2}: "┲",
+	{0, 2, 2, 0}: "┓",
+	{0, 2, 2, 1}: "┱",
+	{0, 2, 2, 2}: "┳",
+	{1, 0, 0, 1}: "└",
+	{1, 0, 0, 2}: "┕",
+	{1, 0, 1, 0}: "┘",
+	{1, 0, 1, 1}: "┴",
+	{1, 0, 1, 2}: "┶",
+	{1, 0, 2, 0}: "┙",
+	{1, 0, 2, 1}: "┵",
+	{1, 0, 2, 2}: "┷",
+	{1, 1, 0, 0}: "│",
+	{1, 1, 0, 1}: "├",
+	{1, 1, 0, 2}: "┝",
+	{1, 1, 1, 0}: "┤",
+	{1, 1, 1, 1}: "┼",
+	{1, 1, 1, 2}: "┾",
+	{1, 1, 2, 0}: "┥",
+	{1, 1, 2, 1}: "┽",
+	{1, 1, 2, 2}: "┿",
+	{1, 2, 0, 0}: "╽",
+	{1, 2, 0, 1}: "┟",
+	{1, 2, 0, 2}: "┢",
+	{1, 2, 1, 0}: "┧",
+	{1, 2, 1, 1}: "╁",
+	{1, 2, 1, 2}: "╆",
+	{1, 2, 2, 0}: "┪",
+	{1, 2, 2, 1}: "╅",
+	{1, 2, 2, 2}: "╈",
+	{2, 0, 0, 1}: "┖",
+	{2, 0, 0, 2}: "┗",
+	{2, 0, 1, 0}: "┚",
+	{2, 0, 1, 1}: "┸",
+	{2, 0, 1, 2}: "┺",
+	{2, 0, 2, 0}: "┛",
+	{2, 0, 2, 1}: "┹",
+	{2, 0, 2, 2}: "┻",
+	{2, 1, 0, 0}: "╿",
+	{2, 1, 0, 1}: "┞",
+	{2, 1, 0, 2}: "┡",
+	{2, 1, 1, 0}: "┦",
+	{2, 1, 1, 1}: "╀",
+	{2, 1, 1, 2}: "╄",
+	{2, 1, 2, 0}: "┩",
+	{2, 1, 2, 1}: "╃",
+	{2, 1, 2, 2}: "╇",
+	{2, 2, 0, 0}: "┃",
+	{2, 2, 0, 1}: "┠",
+	{2, 2, 0, 2}: "┣",
+	{2, 2, 1, 0}: "┨",
+	{2, 2, 1, 1}: "╂",
+	{2, 2, 1, 2}: "╊",
+	{2, 2, 2, 0}: "┫",
+	{2, 2, 2, 1}: "╉",
+	{2, 2, 2, 2}: "╋",
+}
+
+// boxChar is the character of a border cell whose lines leave by all, the
+// focused pane's, those of heavy, heavy.
+func boxChar(all, heavy joins) string {
+	var key [4]line
+	for i, side := range []joins{joinUp, joinDown, joinLeft, joinRight} {
+		switch {
+		case heavy&side != 0:
+			key[i] = heavyLine
+		case all&side != 0:
+			key[i] = lightLine
+		}
+	}
+	return boxChars[key]
 }
 
 // border returns the joins of each cell of f's border.
@@ -172,7 +261,7 @@ func border(f uv.Rectangle) map[uv.Position]joins {
 }
 
 // drawBorders draws the frames' borders, joined where they meet, the
-// focused frame's styled as focused.
+// focused frame's in heavy lines and styled as focused.
 func (m *Model) drawBorders(buf uv.Screen, frames map[pane]uv.Rectangle) {
 	cells := map[uv.Position]joins{}
 	for _, f := range frames {
@@ -182,8 +271,9 @@ func (m *Model) drawBorders(buf uv.Screen, frames map[pane]uv.Rectangle) {
 	}
 	focused := border(frames[m.layout.focus])
 	for at, j := range cells {
-		char := boxChars[j]
-		if _, ok := focused[at]; ok {
+		heavy, ok := focused[at]
+		char := boxChar(j, heavy)
+		if ok {
 			char = m.st.Focused(char)
 		} else {
 			char = m.st.Muted(char)

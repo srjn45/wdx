@@ -60,12 +60,12 @@ func TestTideDetachesAttach(t *testing.T) {
 	run := startInTerminal(t, home, home, 128, 24, []string{"tide"})
 	run.waitScreen("┃ Switch Project")
 	run.input("\r")
-	run.waitScreen("┌ [Project: app]")
+	run.waitScreen("┏ [Project: app]")
 	run.input("\x1b[1;3B") // Alt+↓: the terminal pane
 	run.waitScreen(" app · terminal · first")
 	run.input("\x1d") // C-]: zoomed, room for attach
 	run.waitScreen("zoomed")
-	run.waitScreen("│$") // attached: until then the pane drops what is typed
+	run.waitScreen("┃$") // attached: until then the pane drops what is typed
 	// A pane takes keys one at a time: a binary's whole path takes seconds to type.
 	writeFile(t, filepath.Join(dir, "a"), "#!/bin/sh\nexec "+wdxBinary+" terminal attach --id "+other.Id+"\n")
 	run.input("./a\r")
@@ -95,7 +95,7 @@ func TestTide(t *testing.T) {
 	run := startInTerminal(t, home, home, 128, 24, []string{"tide"}) // wide enough for the project pane's title
 	run.waitScreen("┃ Open Project")
 	run.input("\x1b[B\x1b[B\x1b[B\r") // ↓ ↓ ↓ enter: reopen app
-	run.waitScreen("┌ [Project: app]")
+	run.waitScreen("┏ [Project: app]")
 	run.waitScreen(" [● shell] ") // relaunched with the project
 	newTerminal(t, home, dir, "build")
 	run.waitScreen(" [● build] [● shell] ")

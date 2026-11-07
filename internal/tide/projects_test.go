@@ -586,7 +586,7 @@ func TestPopupFrameSmallWindow(t *testing.T) {
 		// The margin is the row above the outer frame, blank over the panes.
 		margin := false
 		for y, row := range rows {
-			if x := strings.Index(row, "┏"); x >= 0 && tc.outer {
+			if x := strings.Index(row, "┏━"); x >= 0 && tc.outer { // not the focused pane's "┏ ["
 				margin = y > 0 && []rune(rows[y-1])[utf8.RuneCountInString(row[:x])] == ' '
 				break
 			}

@@ -44,6 +44,10 @@ func key(code rune, mod tea.KeyMod) tea.KeyPressMsg { return tea.KeyPressMsg{Cod
 func clickAt(x, y int) tea.MouseClickMsg { return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft} }
 
 // text is what m shows, a line per row, without trailing spaces.
+// lightSides gives a line of the window light sides, so that a test finds a
+// pane's row whether or not the pane has the focus, whose sides are heavy.
+func lightSides(line string) string { return strings.ReplaceAll(line, "┃", "│") }
+
 func text(m *Model) string {
 	lines := strings.Split(ansi.Strip(m.render()), "\n")
 	for i, l := range lines {
@@ -158,14 +162,16 @@ func TestRender(t *testing.T) {
 	m, _ := newModel(40, 11)
 	m.Update(key(tea.KeyRight, tea.ModAlt))
 	m.Update(key('x', 0))
-	want := `┌ [Pr─[⤢]─┬ agent ─────────────────[⤢]─┐
-│ − Agents│no agents: C-q a creates one│
-│ no agent│                            │
-│ − Worktr│                            │
-│ loading…│                            │
-│ − Docs0 │                            │
-│ no docs:│                            │
-├ [● shell] [● tests] [● server] ──[⤢]─┤
+	// The agent pane has the focus: its border is heavy, and mixed where it
+	// meets the others' light lines.
+	want := `┌ [Pr─[⤢]─┲ agent ━━━━━━━━━━━━━━━━━[⤢]━┓
+│ − Agents┃no agents: C-q a creates one┃
+│ no agent┃                            ┃
+│ − Worktr┃                            ┃
+│ loading…┃                            ┃
+│ − Docs0 ┃                            ┃
+│ no docs:┃                            ┃
+├ [● shell] [● tests] [● server] ━━[⤢]━┩
 │● shell running                       │
 └──────────────────────────────────────┘
  demo · agent Alt+arrows move  C-] zoom`
@@ -188,7 +194,7 @@ func TestTooSmall(t *testing.T) {
 	// Zoomed, a pane fits where the three do not.
 	m, _ := newModel(4, 5)
 	m.Update(key(']', tea.ModCtrl))
-	if got := text(m); got == tooSmall || !strings.HasPrefix(got, "┌") {
+	if got := text(m); got == tooSmall || !strings.HasPrefix(got, "┏") {
 		t.Fatalf("zoomed at 4×5:\n%s", got)
 	}
 }

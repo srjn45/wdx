@@ -149,8 +149,8 @@ func TestTabStrip(t *testing.T) {
 		tab6 = "[● tab-6(-)]"
 	)
 	row := func(parts ...string) string {
-		s := "┬─" + strings.Join(parts, "─") + "─"
-		return s + strings.Repeat("─", 70-ansi.StringWidth(s)) + "[⤢]─┐"
+		s := "┲━" + strings.Join(parts, "━") + "━" // the agent pane focused, in heavy lines
+		return s + strings.Repeat("━", 70-ansi.StringWidth(s)) + "[⤢]━┓"
 	}
 	wantTitle(t, m, row(tab0, tab1, tab2, tab3, tab4, "▶"))
 
@@ -184,7 +184,7 @@ func TestTabStrip(t *testing.T) {
 func TestTabStripNoTabs(t *testing.T) {
 	t.Parallel()
 	m, _ := tabsModel(0)
-	if got := titleRow(m); !strings.Contains(got, " agent ─") {
+	if got := titleRow(m); !strings.Contains(got, " agent ━") {
 		t.Fatalf("title %q", got)
 	}
 }
