@@ -22,25 +22,26 @@ type claudeCodeStatus struct {
 
 // ContextSize implements AiCodingAgent, from what Claude Code last gave its status
 // line: the tokens in the context, cache reads and writes among them, and the
-// model's window. Before the first message and after /clear the tokens are 0.
-// Checked on 2.1.319 (the wdx doc CONTEXT_SIZE).
-func (ClaudeCode) ContextSize(l Launch) (ContextSize, error) {
+// model's window. Before the first message and after /clear the tokens are 0. The
+// status file is in the backup, so there is nothing else to follow. Checked on
+// 2.1.319 (the wdx doc CONTEXT_SIZE).
+func (ClaudeCode) ContextSize(l Launch) (ContextSize, []string, error) {
 	if l.BackupDir == "" {
-		return ContextSize{}, ErrNoContextSize
+		return ContextSize{}, nil, ErrNoContextSize
 	}
 	data, err := os.ReadFile(filepath.Join(l.BackupDir, claudeCodeStatusFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return ContextSize{}, ErrNoContextSize
+		return ContextSize{}, nil, ErrNoContextSize
 	}
 	if err != nil {
-		return ContextSize{}, err
+		return ContextSize{}, nil, err
 	}
 	var status claudeCodeStatus
 	if err := json.Unmarshal(data, &status); err != nil {
-		return ContextSize{}, fmt.Errorf("read %s: %w", claudeCodeStatusFile, err)
+		return ContextSize{}, nil, fmt.Errorf("read %s: %w", claudeCodeStatusFile, err)
 	}
 	if status.ContextWindow == nil {
-		return ContextSize{}, ErrNoContextSize
+		return ContextSize{}, nil, ErrNoContextSize
 	}
-	return ContextSize{Tokens: status.ContextWindow.TotalInputTokens, Window: status.ContextWindow.ContextWindowSize}, nil
+	return ContextSize{Tokens: status.ContextWindow.TotalInputTokens, Window: status.ContextWindow.ContextWindowSize}, nil, nil
 }

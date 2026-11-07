@@ -1366,3 +1366,46 @@ func TestAgentContextFollowsItsACA(t *testing.T) {
 	tell(aca.ContextSize{Tokens: 5, Window: 200_000})
 	waitContext("5 of 200000")
 }
+
+// TestAgentContextFollowsTheSessionsFile: an ACA that tells its size in a file outside
+// the backup, as Codex does in its session file, names it, and the daemon follows it:
+// the size follows the new session's file as soon as a backup finds the session changed,
+// and each write to that file after.
+func TestAgentContextFollowsTheSessionsFile(t *testing.T) {
+	t.Parallel()
+	files := t.TempDir()
+	session := filepath.Join(t.TempDir(), "session")
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{ContextFiles: files, Session: session}}
+		o.ContextInterval = time.Millisecond
+	})
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	waitContext := func(want string) {
+		t.Helper()
+		td.waitProject(t, "app", "context "+want, func(e event) bool { return contextOf(e, "helper") == want })
+	}
+	// As Codex names its session on the first turn: its file is there, with a size,
+	// before a backup tells wdx of the session.
+	const named = "01a1abcb-0000-7000-8000-000000000009"
+	file := filepath.Join(files, named)
+	tell := func(size aca.ContextSize) {
+		t.Helper()
+		if err := acatest.AppendContextSize(file, size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tell(aca.ContextSize{Tokens: 14_626, Window: 258_400})
+	if err := os.WriteFile(session, []byte(named+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	td.daemon.backups.Request(a.TerminalId)
+	waitContext("14626 of 258400")
+	tell(aca.ContextSize{Tokens: 14_137, Window: 258_400})
+	waitContext("14137 of 258400")
+	tell(aca.ContextSize{Tokens: 7_274, Window: 258_400})
+	waitContext("7274 of 258400")
+	if !td.logged(t, "agent context file followed") {
+		t.Error("the daemon did not say it follows the file")
+	}
+}

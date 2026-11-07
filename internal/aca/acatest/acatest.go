@@ -45,6 +45,12 @@ type ACA struct {
 	// ProgramName is what Program says, "sh" when "": a name never installed makes
 	// it an ACA that is not.
 	ProgramName string
+	// ContextFiles, when set, is a directory outside the backup where ContextSize
+	// reads the size of session l.SessionID from the file named after it, which it
+	// names to follow, as Codex's is read from its session file: a size a line, the
+	// last one counting, none yet in an empty file. "" reads ContextFile in the
+	// backup, as Claude Code's is.
+	ContextFiles string
 	// BriefOf, when set, is the ACA whose Brief it gives, Claude Code's when nil.
 	BriefOf aca.AiCodingAgent
 }
@@ -87,7 +93,8 @@ func (a *ACA) BackUp(_ context.Context, l aca.Launch) (aca.Backup, error) {
 }
 
 // BeginSession implements aca.AiCodingAgent: what a says it is in, if it says. The
-// old session's ContextFile goes, as Claude Code's status file does.
+// old session's ContextFile goes, as Claude Code's status file does; a session's file
+// in ContextFiles is no longer the agent's, as Codex's is not.
 func (a *ACA) BeginSession(_ context.Context, l aca.Launch, session string) error {
 	if err := os.Remove(filepath.Join(l.BackupDir, ContextFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -123,18 +130,35 @@ func (a *ACA) StopDetached(_ context.Context, _ aca.Launch, d aca.DetachedSessio
 // and the window, as two numbers.
 const ContextFile = "context-size"
 
-// ContextSize implements aca.AiCodingAgent: what ContextFile says.
-func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, error) {
-	data, err := os.ReadFile(filepath.Join(l.BackupDir, ContextFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return aca.ContextSize{}, aca.ErrNoContextSize
+// ContextSize implements aca.AiCodingAgent: what ContextFile in the backup says, or
+// with ContextFiles the session's file there, named to follow once it exists.
+func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, []string, error) {
+	if a.ContextFiles == "" {
+		size, err := readContextSize(filepath.Join(l.BackupDir, ContextFile))
+		return size, nil, err
 	}
+	file := filepath.Join(a.ContextFiles, l.SessionID)
+	size, err := readContextSize(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return aca.ContextSize{}, nil, aca.ErrNoContextSize
+	}
+	return size, []string{file}, err
+}
+
+// readContextSize is the size the last line of path says; aca.ErrNoContextSize when
+// it is empty, and os.ErrNotExist when there is none.
+func readContextSize(path string) (aca.ContextSize, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return aca.ContextSize{}, err
 	}
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return aca.ContextSize{}, aca.ErrNoContextSize
+	}
 	var size aca.ContextSize
-	if _, err := fmt.Sscan(string(data), &size.Tokens, &size.Window); err != nil {
-		return aca.ContextSize{}, fmt.Errorf("read %s: %w", ContextFile, err)
+	if _, err := fmt.Sscan(text[strings.LastIndexByte(text, '\n')+1:], &size.Tokens, &size.Window); err != nil {
+		return aca.ContextSize{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	return size, nil
 }
@@ -142,7 +166,17 @@ func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, error) {
 // WriteContextSize writes size as ContextSize reads it into backup, whole, as Claude
 // Code's status line does.
 func WriteContextSize(backup string, size aca.ContextSize) error {
-	return atomicfile.Write(filepath.Join(backup, ContextFile), fmt.Appendf(nil, "%d %d\n", size.Tokens, size.Window), 0o600)
+	return atomicfile.Write(filepath.Join(backup, ContextFile), contextLine(size), 0o600)
+}
+
+// AppendContextSize adds size to the end of the file at path, in ContextFiles, as Codex
+// appends to its session file.
+func AppendContextSize(path string, size aca.ContextSize) error {
+	return appendLine(path, strings.TrimSuffix(string(contextLine(size)), "\n"))
+}
+
+func contextLine(size aca.ContextSize) []byte {
+	return fmt.Appendf(nil, "%d %d\n", size.Tokens, size.Window)
 }
 
 // Models implements aca.AiCodingAgent: Claude Code's, as its id is.

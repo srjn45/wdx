@@ -62,8 +62,8 @@ func (NoDetached) StopDetached(context.Context, Launch, DetachedSession) error {
 type NoContextSize struct{}
 
 // ContextSize implements AiCodingAgent.
-func (NoContextSize) ContextSize(Launch) (ContextSize, error) {
-	return ContextSize{}, ErrNotSupported
+func (NoContextSize) ContextSize(Launch) (ContextSize, []string, error) {
+	return ContextSize{}, nil, ErrNotSupported
 }
 
 // NoSteer is Steer for an AI coding agent that cannot take a message into a running

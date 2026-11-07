@@ -55,10 +55,11 @@ type AiCodingAgent interface {
 	// Shell and UserHome, for one that runs its CLI to ask.
 	Models(ctx context.Context, l Launch) ([]Model, error)
 	// ContextSize returns how full the agent's context is, as its ACA last told,
-	// read from what its launch keeps in l.BackupDir; ErrNoContextSize when it has
-	// told nothing yet. The daemon reads it each time the backup changes, at most once
-	// a second. docs/AGENT.md.
-	ContextSize(l Launch) (ContextSize, error)
+	// and the files outside l.BackupDir it read, which the daemon follows too;
+	// ErrNoContextSize when it has told nothing yet, with the files still named when
+	// known. The daemon reads it each time the backup or a followed file changes, and
+	// when l.SessionID changes, at most once a second. docs/AGENT.md.
+	ContextSize(l Launch) (size ContextSize, follow []string, err error)
 }
 
 // ContextSize is how full an agent's context is.

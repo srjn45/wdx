@@ -51,8 +51,10 @@ type Backups struct {
 	home      string
 	acas      *ACAs
 	retention time.Duration
-	// OnChange, when set, is told an agent's session changed.
+	// OnChange, when set, is told an agent's session or directory changed.
 	OnChange func()
+	// OnSessionChange, when set, is told which agent's session a backup found changed.
+	OnSessionChange func(agentID string)
 
 	// work is held while a backup or the trash changes, which can take a while.
 	work    sync.Mutex
@@ -171,6 +173,9 @@ func (b *Backups) up(ctx context.Context, a Agent) (string, error) {
 		logging.FromContext(ctx).Info("agent session changed", "agent_id", a.ID, "from", a.SessionID, "session_id", session)
 		if changed && b.OnChange != nil {
 			b.OnChange()
+		}
+		if changed && b.OnSessionChange != nil {
+			b.OnSessionChange(a.ID)
 		}
 		a.SessionID = session
 	}

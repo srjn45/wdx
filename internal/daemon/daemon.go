@@ -299,6 +299,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups.OnChange = d.notices.notify
 	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, opts.ContextInterval)
 	contextSizes.OnChange = d.notices.notify
+	d.backups.OnSessionChange = contextSizes.SessionChanged
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:    opts.Executable,
 		Home:          opts.Home,

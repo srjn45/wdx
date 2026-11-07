@@ -67,9 +67,9 @@ func TestClaudeCodeContextSize(t *testing.T) {
 		if out := statusLine(t, b.launch, statusInput(t, tc.file)); out != "" {
 			t.Errorf("%s: status line printed %q", tc.file, out)
 		}
-		got, err := aca.ClaudeCode{}.ContextSize(b.launch)
-		if err != nil || got != tc.want {
-			t.Errorf("%s: context size = %+v, %v; want %+v", tc.file, got, err, tc.want)
+		got, follow, err := aca.ClaudeCode{}.ContextSize(b.launch)
+		if err != nil || got != tc.want || follow != nil {
+			t.Errorf("%s: context size = %+v, %v, following %q; want %+v and nothing to follow", tc.file, got, err, follow, tc.want)
 		}
 	}
 }
@@ -79,15 +79,15 @@ func TestClaudeCodeContextSize(t *testing.T) {
 func TestClaudeCodeContextSizeUnknown(t *testing.T) {
 	t.Parallel()
 	b := newClaudeBackup(t)
-	if _, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
+	if _, _, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
 		t.Errorf("before the status line ran: %v", err)
 	}
 	statusLine(t, b.launch, []byte(`{"session_id": "s-1", "context_window": {`))
-	if _, err := (aca.ClaudeCode{}).ContextSize(b.launch); err == nil || errors.Is(err, aca.ErrNoContextSize) {
+	if _, _, err := (aca.ClaudeCode{}).ContextSize(b.launch); err == nil || errors.Is(err, aca.ErrNoContextSize) {
 		t.Errorf("a file that does not parse: %v", err)
 	}
 	statusLine(t, b.launch, []byte(`{"session_id": "s-1"}`))
-	if _, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
+	if _, _, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
 		t.Errorf("no context window: %v", err)
 	}
 }
@@ -116,7 +116,7 @@ func TestClaudeCodeStatusLineRunsTheUsers(t *testing.T) {
 	if got, err := os.ReadFile(theirs); err != nil || string(got) != string(input) {
 		t.Errorf("their input = %q, %v", got, err)
 	}
-	if got, err := (aca.ClaudeCode{}).ContextSize(b.launch); err != nil || got.Tokens != 44_139 {
+	if got, _, err := (aca.ClaudeCode{}).ContextSize(b.launch); err != nil || got.Tokens != 44_139 {
 		t.Errorf("context size = %+v, %v", got, err)
 	}
 }
@@ -148,7 +148,7 @@ func TestClaudeCodeBeginSessionForgetsTheContextSize(t *testing.T) {
 	if err := (aca.ClaudeCode{}).BeginSession(t.Context(), b.launch, "s-2"); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
+	if got, _, err := (aca.ClaudeCode{}).ContextSize(b.launch); !errors.Is(err, aca.ErrNoContextSize) {
 		t.Errorf("after a new session began: %+v, %v", got, err)
 	}
 }
