@@ -6,6 +6,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -102,5 +103,22 @@ func TestBackgroundOff(t *testing.T) {
 				t.Fatalf("cell %d,%d has background %v with color off", x, y, bg)
 			}
 		}
+	}
+}
+
+// A theme saved in the settings tab is painted at once, and color stays as it
+// was: off, no theme paints anything.
+func TestThemeSaved(t *testing.T) {
+	t.Parallel()
+	m := newAgentsModel(80, 24, running("agent-1"))
+	m.st = style.New(true)
+	m.Update(settingSaved{setting: api.Setting{Key: themeSettingKey, Value: "slate"}})
+	if got, want := background(t, m, inside(t, m, agent)), style.New(true).WithTheme("slate").Base(); got != want {
+		t.Errorf("after the save: background %v, want slate's %v", got, want)
+	}
+	off := newAgentsModel(80, 24, running("agent-1"))
+	off.Update(settingSaved{setting: api.Setting{Key: themeSettingKey, Value: "slate"}})
+	if off.st.On() {
+		t.Error("saving a theme turned color on")
 	}
 }

@@ -74,9 +74,10 @@ func TestFileSettings(t *testing.T) {
 	want := Config{
 		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
-		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", DocsGitPath: "docs/wdx", PlanParallel: 5, ContextWarning: 1000, ContextCritical: 2000, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
+		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", TideTheme: "slate", DocsGitPath: "docs/wdx", PlanParallel: 5, ContextWarning: 1000, ContextCritical: 2000, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		ACAEnabled: map[string]bool{"claude_code": false, "antigravity": true, "cursor": true, "codex": true},
 		From: map[string]string{
+			"tide.theme":                 "default",
 			"aca.claude_code.enabled":    path + ":23",
 			"aca.antigravity.enabled":    "default",
 			"aca.cursor.enabled":         "default",
@@ -153,6 +154,8 @@ func TestEveryProblemReported(t *testing.T) {
 		"  history_lines: -1",
 		"  history_tail: 20000",
 		"editor: micro",
+		"tide:",
+		"  theme: light",
 	}, "\n"))
 	want := []string{
 		path + `:1: no_input: "maybe" is not true or false`,
@@ -171,6 +174,7 @@ func TestEveryProblemReported(t *testing.T) {
 		path + `:19: terminal.history_lines: "-1" is not a whole number of at least 0`,
 		path + `:20: terminal.history_tail: "20000" is not a whole number from 1 to 10000`,
 		path + `:21: editor: "micro" is not one of vi, vim, nvim, nano, hx, emacs`,
+		path + `:23: tide.theme: "light" is not one of slate`,
 	}
 	slices.Sort(want)
 	var got []string
@@ -312,6 +316,7 @@ func TestChoicesAreAccepted(t *testing.T) {
 		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
 		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi", "vim", "nvim", "nano", "hx", "emacs"},
 		"aca.claude_code.enabled": {"true", "false"}, "aca.antigravity.enabled": {"true", "false"}, "aca.cursor.enabled": {"true", "false"}, "aca.codex.enabled": {"true", "false"},
+		"tide.theme": {"slate"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)

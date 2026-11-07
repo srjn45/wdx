@@ -774,6 +774,10 @@ const defaultSectionOrder = "awdpc"
 // sectionSettingKey is the setting that orders the sections.
 const sectionSettingKey = "tide.section_order"
 
+// themeSettingKey is the setting of the theme tide paints in, which a save in
+// the settings tab applies at once.
+const themeSettingKey = "tide.theme"
+
 // sectionOrder returns the sections the setting's letters name, in their order:
 // one left out is hidden. A letter it does not know, which the setting refuses, is
 // passed over, and letters naming none of the sections give the default order, so

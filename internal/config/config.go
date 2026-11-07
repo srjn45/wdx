@@ -23,6 +23,7 @@ import (
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/editor"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // Config is every setting.
@@ -46,6 +47,8 @@ type Config struct {
 	Editor string
 	// TideSectionOrder orders the sections of tide's left pane, a letter each.
 	TideSectionOrder string
+	// TideTheme is the theme tide paints in, one of style.ThemeNames.
+	TideTheme string
 	// ContextWarning and ContextCritical are the tokens in an agent's context from
 	// which tide and the cli show its size as a warning, and as critical; warning is
 	// below critical.
@@ -327,6 +330,20 @@ var ownSettings = []setting{
 			return nil
 		},
 		get: func(c Config) string { return c.TideSectionOrder },
+	},
+	{
+		key:         "tide.theme",
+		description: "the theme of colors tide paints its panes in: slate, for a dark terminal, is the only one so far; with color off tide paints none",
+		def:         style.ThemeNames()[0],
+		choices:     style.ThemeNames(),
+		set: func(c *Config, v string) error {
+			if !slices.Contains(style.ThemeNames(), v) {
+				return fmt.Errorf("%q is not one of %s", v, strings.Join(style.ThemeNames(), ", "))
+			}
+			c.TideTheme = v
+			return nil
+		},
+		get: func(c Config) string { return c.TideTheme },
 	},
 	{
 		key:         contextWarningKey,

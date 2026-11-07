@@ -35,6 +35,7 @@ Decided on the way:
 | `editor` | the daemon, when an editor starts | new editors |
 | `docs.git_path` | the daemon, on every change to a doc | immediately: the docs of every project are written into the new directory; the old one is left as it is |
 | `tide.section_order` | `tide`, when it starts | a `tide` started later; a save in tide's settings tab, at once in that `tide` |
+| `tide.theme` | `tide`, when it starts | a `tide` started later; a save in tide's settings tab, at once in that `tide` |
 | `context.threshold.warning`, `context.threshold.critical` | `tide`, when it starts, and each command (`agent get`, `agent list`) | the next command; a `tide` started later; a save in tide's settings tab, at once in that `tide`. The daemon does not read them (the wdx doc CONTEXT_SIZE) |
 | `otel.endpoint`, `otel.interval_seconds` | the daemon's metrics exporter | immediately; the metric's counts restart from zero, a normal counter reset for Grafana |
 | `aca.<id>.enabled`, one per AI coding agent wdx knows | the daemon, when a new agent is created or models are listed | immediately; agents that exist go on starting, as disabling is for new agents (the wdx doc ACA_SELECT) |

@@ -1,7 +1,7 @@
 // Package style colors the text wdx prints to a terminal. Its styles are
 // named by what the text is, not by its color, and use only the 16 basic
 // ANSI colors so they follow the terminal's theme. The exception is tide's
-// palette, which paints its own dark background (the wdx doc TIDE_COLORS).
+// themes, which paint its own background (the wdx doc TIDE_COLORS).
 package style
 
 import (
@@ -19,12 +19,23 @@ import (
 
 // Style colors text, or returns it unchanged when off.
 type Style struct {
-	on bool
+	on    bool
+	theme theme
 }
 
-// New returns a style that colors text when on.
+// New returns a style that colors text when on, tide's in the default theme.
 func New(on bool) Style {
-	return Style{on: on}
+	return Style{on: on, theme: themes[0]}
+}
+
+// WithTheme returns s with tide in the theme named; an unknown name keeps s's.
+func (s Style) WithTheme(name string) Style {
+	for _, t := range themes {
+		if t.name == name {
+			s.theme = t
+		}
+	}
+	return s
 }
 
 // On reports whether s colors text.
@@ -42,18 +53,43 @@ const (
 	cyan   = "36"
 )
 
-// tide's backgrounds, for a dark theme only.
-var (
-	base        = color.RGBA{R: 0x23, G: 0x28, B: 0x34, A: 0xff} // slate
-	focusedBase = color.RGBA{R: 0x1e, G: 0x22, B: 0x2a, A: 0xff} // bluish grey, a step darker
-)
+// theme is a palette tide paints with: its backgrounds, and its list rows'
+// tints as SGR backgrounds, chosen against the base.
+type theme struct {
+	name              string
+	base, focusedBase color.Color
+	heading           string // a section's heading
+	shown             string // the row of the tab shown
+	open              string // the row of a tab open
+	cursor            string // the row under the cursor
+}
+
+// themes are tide's themes, the default first.
+var themes = []theme{{
+	name:        "slate", // for a dark terminal
+	base:        color.RGBA{R: 0x23, G: 0x28, B: 0x34, A: 0xff},
+	focusedBase: color.RGBA{R: 0x1e, G: 0x22, B: 0x2a, A: 0xff}, // bluish grey, a step darker
+	heading:     "48;2;54;61;78",
+	shown:       "48;2;54;61;78",
+	open:        "48;2;43;49;63",
+	cursor:      "48;2;38;79;120",
+}}
+
+// ThemeNames are the names of tide's themes, the default first.
+func ThemeNames() []string {
+	names := make([]string, 0, len(themes))
+	for _, t := range themes {
+		names = append(names, t.name)
+	}
+	return names
+}
 
 // Base is the background tide paints where nothing else sets one; nil when off.
 func (s Style) Base() color.Color {
 	if !s.on {
 		return nil
 	}
-	return base
+	return s.theme.base
 }
 
 // FocusedBase is the background inside tide's focused pane; nil when off.
@@ -61,7 +97,7 @@ func (s Style) FocusedBase() color.Color {
 	if !s.on {
 		return nil
 	}
-	return focusedBase
+	return s.theme.focusedBase
 }
 
 // Heading styles the title of a section or the header of a table.
@@ -158,14 +194,6 @@ func (s Style) Muted(text string) string { return s.apply(text, dim) }
 // as a pane's border.
 func (s Style) Focused(text string) string { return s.apply(text, bold, green) }
 
-// tide's tints of the list rows, chosen against its base, as SGR backgrounds.
-const (
-	headingTint = "48;2;54;61;78" // a section's heading, the same as the tab shown
-	shownTint   = "48;2;54;61;78" // the row of the tab shown
-	openTint    = "48;2;43;49;63" // the row of a tab open
-	cursorTint  = "48;2;38;79;120"
-)
-
 // Section styles the heading of a section of a pane, as a band across it: its
 // title bold, its count muted. In reverse video when off, so that it still
 // stands apart from what is below it.
@@ -173,20 +201,20 @@ func (s Style) Section(title, count string) string {
 	if !s.on {
 		return "\x1b[7m" + title + count + "\x1b[0m"
 	}
-	return "\x1b[" + headingTint + ";1m" + title + "\x1b[22;2m" + count + "\x1b[0m"
+	return "\x1b[" + s.theme.heading + ";1m" + title + "\x1b[22;2m" + count + "\x1b[0m"
 }
 
 // ActiveRow tints the row of a list that marks what is shown, styled already;
 // nothing when off, so the row needs a mark of its own too.
-func (s Style) ActiveRow(text string) string { return s.tint(text, shownTint) }
+func (s Style) ActiveRow(text string) string { return s.tint(text, s.theme.shown) }
 
 // OpenRow tints the row of a list whose tab is open, styled already; nothing
 // when off.
-func (s Style) OpenRow(text string) string { return s.tint(text, openTint) }
+func (s Style) OpenRow(text string) string { return s.tint(text, s.theme.open) }
 
 // CursorRow tints the row under a list's cursor, styled already; nothing when
 // off, so the row needs a mark of its own too.
-func (s Style) CursorRow(text string) string { return s.tint(text, cursorTint) }
+func (s Style) CursorRow(text string) string { return s.tint(text, s.theme.cursor) }
 
 // Selected marks the row under a list's cursor, styled already, as CursorRow
 // does; in reverse video when off, so that it still stands out.

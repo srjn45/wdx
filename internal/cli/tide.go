@@ -134,7 +134,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	c := client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.debugID})
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
-	opts := tide.Options{Client: c, Style: viewStyle(cmd), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
+	opts := tide.Options{Client: c, Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
 		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
 		SectionOrder: env.Config.TideSectionOrder, ContextWarning: env.Config.ContextWarning, ContextCritical: env.Config.ContextCritical}
 	// Tide's requests end with it: those it left in flight are cancelled once it

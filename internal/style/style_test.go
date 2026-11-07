@@ -36,6 +36,25 @@ func TestSection(t *testing.T) {
 	}
 }
 
+// A style paints tide in the theme named, the default when no theme has the
+// name.
+func TestWithTheme(t *testing.T) {
+	t.Parallel()
+	if names := ThemeNames(); len(names) == 0 || names[0] != "slate" {
+		t.Fatalf("themes %q, want slate first, the default", names)
+	}
+	def := New(true)
+	if def.theme.name != "slate" {
+		t.Errorf("New's theme %q, want the default", def.theme.name)
+	}
+	if got := def.WithTheme("slate"); got.theme.name != "slate" || got.Base() != themes[0].base {
+		t.Errorf("slate: theme %q, base %v", got.theme.name, got.Base())
+	}
+	if got := def.WithTheme("nope"); got != def {
+		t.Errorf("an unknown theme changed the style: %+v", got)
+	}
+}
+
 // Selected takes the cursor's tint, and reverse video when off.
 func TestSelected(t *testing.T) {
 	t.Parallel()

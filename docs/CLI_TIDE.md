@@ -112,6 +112,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Create, rename and delete files and directories | none, only the API | `n`, `N`, `r` and `x` in the Code section, in popups | By design | A script or an AI changes files itself |
 | Choose the editor | `setting set editor` | the settings tab | Same | |
 | Order the left pane's sections | `setting set tide.section_order` | the settings tab, which applies it at once | Same | |
+| Choose tide's colors | `setting set tide.theme` | the settings tab, which applies it at once | Same | Only `slate` so far (the wdx doc TIDE_COLORS) |
 | Filter the left pane's list | none | `/`: agents, worktrees, their changed files, the chosen worktree's paths, docs and plans | By design | A script filters the `--json` output itself |
 | Install the editor | `deps install --name vi` | none | By design | As every dependency: `deps` manages wdx itself |
 
