@@ -36,14 +36,14 @@ Design A, chosen by the human in a preview, with its default colors:
 │ Agents                             4 │
 │  ● ample-deer                        │
 │  ✕ bold-heron                 failed │
-│▸ ○ calm-otter               exited 0 │  ← the cursor: green ▸, bold name; hidden out of the pane
-│  ● swift-falcon                    ◂ │  ← active: the whole row tinted, and ◂
+│ ▸○ calm-otter               exited 0 │  ← the cursor: green ▸, bold name, blue row; hidden out of the pane
+│▌ ● swift-falcon                      │  ← active: green ▌, the row tinted
 ```
 
-- The heading is a band of black on white, bold, with the number of agents at its right end; `style.Section`, in reverse video with color off.
-- The active row is tinted bright black; `style.ActiveRow`, nothing with color off, where `◂` tells it.
+- The heading is a dark grey band, bold, with the number of agents muted at its right end; `style.Section`, in reverse video with color off. The colors are the wdx doc TIDE_COLORS's.
+- The active row is tinted grey and starts with a green `▌`; `style.ActiveRow`, nothing with color off, where `▌` tells it. A row whose tab is open, but not shown, is tinted fainter (`style.OpenRow`), and the cursor's row slate blue over either (`style.CursorRow`), in every section of the pane.
 - A row has the state mark of the terminal tabs, the name, and a muted detail only where it says more than the mark: `exited 0`, `failed`. Running has none. A narrow pane cuts the name with `…`, and drops the detail rather than leave a name under 10 cells.
-- After the detail, before `◂`, comes the agent's context size, `150k` or `1.5M` (`api.TokenCount`): green below `context.threshold.warning`, yellow from it, red from `context.threshold.critical`; nothing before its ACA has told it. A narrow pane drops it before the detail (the wdx doc CONTEXT_SIZE).
+- After the detail comes the agent's context size, `150k` or `1.5M` (`api.TokenCount`): green below `context.threshold.warning`, yellow from it, red from `context.threshold.critical`; nothing before its ACA has told it. A narrow pane drops it before the detail (the wdx doc CONTEXT_SIZE).
 - The list scrolls to keep the cursor in view, under the heading.
 
 ## Creating an agent

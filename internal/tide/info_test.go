@@ -179,7 +179,7 @@ func TestInfoAttachesNothing(t *testing.T) {
 	if a, ok := m.activeAgent(); !ok || a.Name != "swift-falcon" {
 		t.Fatalf("active %q, %v", a.Name, ok)
 	}
-	if !strings.Contains(row(t, m, "swift-falcon"), "◂") {
+	if !strings.Contains(row(t, m, "swift-falcon"), "▌") {
 		t.Fatalf("no mark: %s", row(t, m, "swift-falcon"))
 	}
 }

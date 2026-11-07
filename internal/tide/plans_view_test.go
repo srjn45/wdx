@@ -55,7 +55,7 @@ func TestPlansViewSelector(t *testing.T) {
 	t.Parallel()
 	m := plansViewModel(t)
 	l := m.list()
-	wantText(t, m, "< Draft & in progress >", "− Plans                   4")
+	wantText(t, m, "< Draft & in progress >", "− Plans                     4")
 	if got := planRowNames(m); !slices.Equal(got, []string{">", "auth", "auth-a", "auth-b", "sso"}) {
 		t.Errorf("Draft & in progress: %q", got)
 	}
@@ -71,7 +71,7 @@ func TestPlansViewSelector(t *testing.T) {
 	}
 
 	keys(m, "right")
-	wantText(t, m, "< Completed >", "− Plans                   2")
+	wantText(t, m, "< Completed >", "− Plans                     2")
 	if got := planRowNames(m); !slices.Equal(got, []string{">", "/over", "old", "gone"}) {
 		t.Errorf("Completed: %q", got)
 	}
@@ -79,7 +79,7 @@ func TestPlansViewSelector(t *testing.T) {
 		t.Error("a folder of the view does not need you for its plan")
 	}
 	keys(m, "l") // round to the first
-	wantText(t, m, "< All >", "− Plans                   6")
+	wantText(t, m, "< All >", "− Plans                     6")
 	if got := planRowNames(m); !slices.Equal(got, []string{">", "/over", "old", "auth", "auth-a", "auth-b", "sso", "gone"}) {
 		t.Errorf("All: %q", got)
 	}
@@ -94,7 +94,7 @@ func TestPlansViewSelector(t *testing.T) {
 
 	// None in the view: the selector alone, and a line saying so.
 	setPlans(m, inState(aPlan("doc-old", "old", 1, 1), api.PlanStateDone))
-	wantText(t, m, "< Draft & in progress >", "no plans in this view", "− Plans                   0")
+	wantText(t, m, "< Draft & in progress >", "no plans in this view", "− Plans                     0")
 }
 
 // TestPlansViewClick: a click on < goes to the view before, on > to the one after.

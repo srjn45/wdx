@@ -321,7 +321,7 @@ func TestCodeDrawn(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 128, Height: 60})
 	m.moveToCode(13)
 	got := text(m)
-	for _, want := range []string{" Code", "< main >", "▸ ", "⋯", "…"} {
+	for _, want := range []string{" Code", "< main >", "▸", "⋯", "…"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
@@ -467,7 +467,7 @@ func TestCodeMarksDrawn(t *testing.T) {
 	st, marks := m.st, m.codeMarks()
 	line := func(path string, cursor bool) string {
 		i := slices.IndexFunc(m.codeRowsShown(), func(r codeRow) bool { return r.key() == path })
-		return m.codeLine(m.codeRowsShown()[i], marks, cursor, 31)
+		return m.codeLine(m.codeRowsShown()[i], marks, rowLook{cursor: cursor}, 31)
 	}
 	for _, tc := range []struct {
 		what, path string
@@ -476,7 +476,7 @@ func TestCodeMarksDrawn(t *testing.T) {
 	}{
 		{"an untracked file, in green", "new.go", false, []string{st.Added("new.go"), " " + st.Added("?")}},
 		{"a file changed in both, as not committed", "both.go", false, []string{st.Warning("both.go"), " " + st.Warning("M")}},
-		{"a committed file under the cursor, bold in cyan", "pr.go", true, []string{st.Name(st.Committed("pr.go")), " " + st.Committed("M")}},
+		{"a committed file under the cursor, bold in cyan on the cursor's tint", "pr.go", true, []string{"\x1b[1m\x1b[36mpr.go\x1b[0m\x1b[48;2;38;79;120m", st.Committed("M")}},
 		{"an unchanged file, plain", "plain.go", false, []string{"\x1b[0mplain.go   "}},
 		{"a directory with a file deleted in a commit, its count in cyan", "dir", false, []string{st.Committed("dir"), " " + st.Committed("1")}},
 	} {
@@ -487,7 +487,7 @@ func TestCodeMarksDrawn(t *testing.T) {
 			}
 		}
 	}
-	if got := m.codeLine(m.codeRowsShown()[0], marks, false, 31); !strings.Contains(got, st.Name("main")) {
+	if got := m.codeLine(m.codeRowsShown()[0], marks, rowLook{cursor: false}, 31); !strings.Contains(got, st.Name("main")) {
 		t.Errorf("the worktree selector is not bold without the cursor: %q", got)
 	}
 }
@@ -683,7 +683,7 @@ func TestFileOpens(t *testing.T) {
 	if !strings.Contains(titleRow(m), "[file: main/a.go") {
 		t.Errorf("a file has a title and no state mark: %q", titleRow(m))
 	}
-	wantText(t, m, "loading…", "◂")
+	wantText(t, m, "loading…", "▌")
 	loadFile(m, aFile, sourceOf("package a\n\nfunc A() {}\n"))
 	wantText(t, m, "1 package a", "3 func A() {}", "line 1 of 3")
 	if strings.Contains(text(m), "change ") {
@@ -699,13 +699,13 @@ func TestFileOpens(t *testing.T) {
 
 	// A folded directory carries the mark of what it hides; another worktree's tree none.
 	keys(m, "left", "left")
-	if !m.codeRowActive(m.codeRowsShown()[1]) {
+	if !m.codeRowShows(m.codeRowsShown()[1], m.list().active) {
 		t.Error("the folded directory has no mark")
 	}
 	m.moveToCode(0)
 	keys(m, "right")
 	m.Update(newCodeLoaded("proj-demo", "auth-fix", fileList{paths: []string{"dir/a.go"}}, nil))
-	if slices.ContainsFunc(m.codeRowsShown(), m.codeRowActive) {
+	if slices.ContainsFunc(m.codeRowsShown(), func(r codeRow) bool { return m.codeRowShows(r, m.list().active) }) {
 		t.Error("another worktree's file has the mark")
 	}
 }

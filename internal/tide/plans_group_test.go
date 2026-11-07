@@ -114,7 +114,7 @@ func TestPlanAgentsFold(t *testing.T) {
 	if m.list().active != planTab("doc-sso") {
 		t.Errorf("Enter on a plan's row opened %q", m.list().active)
 	}
-	if r := row(t, m, "plan sso"); !strings.Contains(r, "◂") {
+	if r := row(t, m, "plan sso"); !strings.Contains(r, "▌") {
 		t.Errorf("the plan's row, its tab shown: %q", r)
 	}
 }

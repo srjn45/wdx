@@ -464,18 +464,14 @@ func (m *Model) planHintFor() string {
 	return planHint
 }
 
-// planRowActive reports whether the row's plan is the current tab's, or the row is
-// a folded folder holding it.
-func (m *Model) planRowActive(r planRow) bool {
-	l := m.list()
-	if l == nil {
-		return false
-	}
+// planRowShows reports whether tab is the row's plan's, or the row is a folded
+// folder holding its plan.
+func (m *Model) planRowShows(r planRow, tab string) bool {
 	if r.place.folder != "" {
-		p, ok := m.planOf(strings.TrimPrefix(l.active, planTabPrefix))
-		return r.place.fold == foldClosed && isPlanTab(l.active) && ok && inFolder(p.Folder, r.place.folder)
+		p, ok := m.planOf(strings.TrimPrefix(tab, planTabPrefix))
+		return r.place.fold == foldClosed && isPlanTab(tab) && ok && inFolder(p.Folder, r.place.folder)
 	}
-	return l.active == planTab(r.plan.Id)
+	return tab == planTab(r.plan.Id)
 }
 
 // planSize is how many tasks a plan has, or plans for a plan of plans.
@@ -511,17 +507,10 @@ func plural(n int, noun string) string {
 // chosen, or the tree's lines, then a folder's fold mark and name, or a plan of
 // plans' fold mark, a plan's indent under it, the name, its state and its size, the
 // state giving way first.
-func planLine(st style.Style, r planRow, view plansView, folded, cursor, active bool, width int) string {
-	pointer := "  "
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
+func planLine(st style.Style, r planRow, view plansView, folded bool, look rowLook, width int) string {
+	pointer, end := look.lead(st), " "
 	if r.selector {
-		return pointer + st.Muted("<") + " " + st.Name(selectorName(view.title(), width)) + " " + st.Muted(">")
-	}
-	end := " "
-	if active {
-		end = " " + st.Focused("◂") + " "
+		return look.paint(st, padRow(pointer+st.Muted("<")+" "+st.Name(selectorName(view.title(), width))+" "+st.Muted(">"), width))
 	}
 	lead := treeLead(r.place)
 	switch {
@@ -533,7 +522,7 @@ func planLine(st style.Style, r planRow, view plansView, folded, cursor, active 
 	}
 	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
 	if r.place.folder != "" {
-		return folderLine(st, r.place, r.needsYou, pointer, end, cursor, active, room)
+		return folderLine(st, r.place, r.needsYou, pointer, end, look, room)
 	}
 	name := ansi.Truncate(r.plan.Name, room, "…")
 	room -= ansi.StringWidth(name)
@@ -557,17 +546,13 @@ func planLine(st style.Style, r planRow, view plansView, folded, cursor, active 
 	}
 	room -= ansi.StringWidth(state)
 	gap := strings.Repeat(" ", max(room, 0))
-	if cursor || active {
+	if look.bold() {
 		name = st.Name(name)
 	}
 	if r.plan.State == api.PlanStateDraft || isArchived(r.plan) {
 		state = st.Muted(state)
 	}
-	row := pointer + st.Muted(lead) + name + state + size + st.Warning(need) + gap + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+st.Muted(lead)+name+state+size+st.Warning(need)+gap+end)
 }
 
 // planView is what a plan's tab holds: the revision last read, and how its list

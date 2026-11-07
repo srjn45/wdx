@@ -86,7 +86,7 @@ func TestDocRowFits(t *testing.T) {
 		15: "  auth         ", // no labels without the status
 		10: "  auth    ",
 	} {
-		if got := docLine(st, r, false, false, width); got != want {
+		if got := docLine(st, r, rowLook{}, width); got != want {
 			t.Errorf("%d: %q, want %q", width, got, want)
 		}
 	}
@@ -127,7 +127,7 @@ func TestDocOpens(t *testing.T) {
 	if !strings.Contains(titleRow(m), "[doc: auth r2 approved") {
 		t.Errorf("title %q", titleRow(m))
 	}
-	wantText(t, m, "loading…", "◂")
+	wantText(t, m, "loading…", "▌")
 	loadDoc(m, aDoc("doc-auth", "auth", api.DocStatusApproved, 2), "# Auth\n\nTokens.\n")
 	wantText(t, m, "1 # Auth", "3 Tokens.", "line 1 of 3")
 	if v := m.shownDiff(); v.file != "auth.md" {

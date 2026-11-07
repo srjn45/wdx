@@ -229,36 +229,25 @@ func (v *diffView) setDoc(c api.DocContent) {
 	v.lineOf = sourceLines(c.Content)
 }
 
-// docRowActive reports whether the row's doc is the current tab's, or the row is a
-// folded folder holding it.
-func (m *Model) docRowActive(r docRow) bool {
-	l := m.list()
-	if l == nil {
-		return false
-	}
+// docRowShows reports whether tab is the row's doc's, or the row is a folded
+// folder holding its doc.
+func (m *Model) docRowShows(r docRow, tab string) bool {
 	if r.place.folder != "" {
-		d, ok := m.docOf(strings.TrimPrefix(l.active, docTabPrefix))
-		return r.place.fold == foldClosed && isDocTab(l.active) && ok && inFolder(d.Folder, r.place.folder)
+		d, ok := m.docOf(strings.TrimPrefix(tab, docTabPrefix))
+		return r.place.fold == foldClosed && isDocTab(tab) && ok && inFolder(d.Folder, r.place.folder)
 	}
-	return l.active == docTab(r.doc.Id)
+	return tab == docTab(r.doc.Id)
 }
 
 // docLine is the row r of the section, width wide: the tree's lines, then a
 // folder's fold mark and name, or a doc's name, status and labels, which give way
 // first.
-func docLine(st style.Style, r docRow, cursor, active bool, width int) string {
-	pointer := "  "
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
-	end := " "
-	if active {
-		end = " " + st.Focused("◂") + " "
-	}
+func docLine(st style.Style, r docRow, look rowLook, width int) string {
+	pointer, end := look.lead(st), " "
 	lead := treeLead(r.place)
 	room := max(width-style.Width(pointer)-style.Width(end)-ansi.StringWidth(lead), 0)
 	if r.place.folder != "" {
-		return folderLine(st, r.place, false, pointer, end, cursor, active, room)
+		return folderLine(st, r.place, false, pointer, end, look, room)
 	}
 	name := ansi.Truncate(r.doc.Name, room, "…")
 	status := string(r.doc.Status)
@@ -274,14 +263,10 @@ func docLine(st style.Style, r docRow, cursor, active bool, width int) string {
 		room -= ansi.StringWidth(labels)
 	}
 	gap := strings.Repeat(" ", max(room, 0))
-	if cursor || active {
+	if look.bold() {
 		name = st.Name(name)
 	}
-	row := pointer + st.Muted(lead) + name + paintStatus(st, r.doc.Status, status) + st.Muted(labels) + gap + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+st.Muted(lead)+name+paintStatus(st, r.doc.Status, status)+st.Muted(labels)+gap+end)
 }
 
 // paintStatus styles text, which says a doc's status, by what it is.

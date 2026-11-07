@@ -46,10 +46,10 @@ func TestAgentRowContextSize(t *testing.T) {
 	working := api.AgentActivityWorking
 	a := api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &working}
 
-	if got := agentRow(off, thresholds, agentListRow{agent: withContext(a, 150_000, 0)}, false, true, 40); !strings.HasPrefix(got, "  ● helper  ") || !strings.HasSuffix(got, " working 150k ◂ ") || ansi.StringWidth(got) != 40 {
+	if got := agentRow(off, thresholds, agentListRow{agent: withContext(a, 150_000, 0)}, rowLook{active: true}, 40); !strings.HasPrefix(got, "▌ ● helper  ") || !strings.HasSuffix(got, " working 150k ") || ansi.StringWidth(got) != 40 {
 		t.Errorf("plain: %q", got)
 	}
-	if got := agentRow(off, thresholds, agentListRow{agent: a}, false, false, 40); got != "  ● helper                      working " {
+	if got := agentRow(off, thresholds, agentListRow{agent: a}, rowLook{}, 40); got != "  ● helper                      working " {
 		t.Errorf("no size: %q", got)
 	}
 	for _, tc := range []struct {
@@ -59,7 +59,7 @@ func TestAgentRowContextSize(t *testing.T) {
 		{999, on.ContextFine}, {1000, on.ContextWarning}, {1001, on.ContextWarning},
 		{1999, on.ContextWarning}, {2000, on.ContextCritical}, {2001, on.ContextCritical},
 	} {
-		got := agentRow(on, thresholds, agentListRow{agent: withContext(a, tc.tokens, 0)}, false, false, 40)
+		got := agentRow(on, thresholds, agentListRow{agent: withContext(a, tc.tokens, 0)}, rowLook{}, 40)
 		if want := " " + tc.color(api.TokenCount(tc.tokens)) + " "; !strings.HasSuffix(got, want) {
 			t.Errorf("%d: %q, want it to end %q", tc.tokens, got, want)
 		}
@@ -81,7 +81,7 @@ func TestAgentRowContextGivesWay(t *testing.T) {
 		{28, "  ○ a-rather-long… exited 0 "},
 		{22, "  ○ a-rather-long-ag… "},
 	} {
-		got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, false, false, tt.width)
+		got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, rowLook{}, tt.width)
 		if got != tt.want || ansi.StringWidth(got) != tt.width {
 			t.Errorf("width %d: %q, want %q", tt.width, got, tt.want)
 		}

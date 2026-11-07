@@ -115,12 +115,12 @@ func TestPlanRowFits(t *testing.T) {
 		16: "  sso 4 tasks",
 		10: "  sso",
 	} {
-		if got := strings.TrimRight(planLine(st, r, plansGoingOn, false, false, false, width), " "); got != want {
+		if got := strings.TrimRight(planLine(st, r, plansGoingOn, false, rowLook{}, width), " "); got != want {
 			t.Errorf("%d: %q, want %q", width, got, want)
 		}
 	}
 	child := planRow{plan: aPlan("doc-a", "auth-a", 1, 2), child: true, place: treePlace{depth: 1, guide: "  "}}
-	if got := strings.TrimRight(planLine(st, child, plansGoingOn, false, false, false, 30), " "); got != "    auth-a draft 2 tasks" {
+	if got := strings.TrimRight(planLine(st, child, plansGoingOn, false, rowLook{}, 30), " "); got != "    auth-a draft 2 tasks" {
 		t.Errorf("a plan under its plan of plans: %q", got)
 	}
 }
@@ -187,7 +187,7 @@ func TestPlanTab(t *testing.T) {
 	if !strings.Contains(titleRow(m), "[plan: sso r2") {
 		t.Errorf("title %q", titleRow(m))
 	}
-	wantText(t, m, "loading…", "◂")
+	wantText(t, m, "loading…", "▌")
 	tasks := []api.PlanTask{
 		{Id: "schema", After: []string{}, Prompt: "Add the table.\nWith an index.\n"},
 		{Id: "api", After: []string{"schema"}, Prompt: "Use it."},

@@ -48,7 +48,7 @@ func TestPlanOfPlansShown(t *testing.T) {
 	if !rows[1].needsYou || !rows[2].needsYou || rows[3].needsYou {
 		t.Errorf("needs you: auth %v, auth-b %v, auth-a %v", rows[1].needsYou, rows[2].needsYou, rows[3].needsYou)
 	}
-	if got := strings.TrimRight(planLine(m.st, rows[1], plansGoingOn, false, false, false, 60), " "); got != "  − auth running 1/2 plans needs you" {
+	if got := strings.TrimRight(planLine(m.st, rows[1], plansGoingOn, false, rowLook{}, 60), " "); got != "  − auth running 1/2 plans needs you" {
 		t.Errorf("the parent's row: %q", got)
 	}
 	wantText(t, m, "● running", "1/2 plans", "p pause  c cancel", "auth-b waiting for you 1 task", "needs you", "auth-a done            2/2")

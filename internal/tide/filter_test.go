@@ -127,7 +127,7 @@ func TestFilterKeepsParentsOpen(t *testing.T) {
 	keys(m, "/", "d", "e", "e", "p")
 	wantRow(t, m, "a-parent", "− ● a-parent")
 	wantRow(t, m, "c-middle", "└ − ● c-middle")
-	wantRow(t, m, "d-deep", "│▸       ├ ● d-deep")
+	wantRow(t, m, "d-deep", "▸      ├ ● d-deep")
 	wantRow(t, m, "e-deep", "└ ○ e-deep")
 	for _, gone := range []string{"b-child", "f-alone"} {
 		if strings.Contains(text(m), gone) {
@@ -136,11 +136,11 @@ func TestFilterKeepsParentsOpen(t *testing.T) {
 	}
 	// ← only moves to the parent: what matches stays open.
 	keys(m, "enter", "left", "left")
-	wantRow(t, m, "a-parent", "│▸ − ● a-parent")
+	wantRow(t, m, "a-parent", "▸− ● a-parent")
 	wantRow(t, m, "d-deep", "d-deep")
 
 	keys(m, "esc")
-	wantRow(t, m, "a-parent", "│▸ + ● a-parent")
+	wantRow(t, m, "a-parent", "▸+ ● a-parent")
 }
 
 func TestFilterCursorStaysOnAMatch(t *testing.T) {

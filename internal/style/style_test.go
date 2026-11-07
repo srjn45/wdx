@@ -7,33 +7,44 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 )
 
-func TestActiveRowKeepsItsTint(t *testing.T) {
+func TestRowTintsKeptAcrossResets(t *testing.T) {
 	t.Parallel()
 	s := New(true)
-	got := s.ActiveRow("a" + s.Muted("b") + "c")
-	want := "\x1b[100ma\x1b[2mb\x1b[0m\x1b[100mc\x1b[0m"
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
+	for name, tc := range map[string]struct {
+		paint func(string) string
+		tint  string
+	}{
+		"active": {s.ActiveRow, "\x1b[48;2;54;61;78m"},
+		"open":   {s.OpenRow, "\x1b[48;2;43;49;63m"},
+		"cursor": {s.CursorRow, "\x1b[48;2;38;79;120m"},
+	} {
+		got := tc.paint("a" + s.Muted("b") + "c")
+		want := tc.tint + "a\x1b[2mb\x1b[0m" + tc.tint + "c\x1b[0m"
+		if got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
 	}
 }
 
 func TestSection(t *testing.T) {
 	t.Parallel()
-	if got, want := New(true).Section("Agents"), "\x1b[1;30;47mAgents\x1b[0m"; got != want {
+	if got, want := New(true).Section("Agents", "3 "), "\x1b[48;2;54;61;78;1mAgents\x1b[22;2m3 \x1b[0m"; got != want {
 		t.Errorf("on: got %q, want %q", got, want)
 	}
-	if got, want := New(false).Section("Agents"), "\x1b[7mAgents\x1b[0m"; got != want {
+	if got, want := New(false).Section("Agents", "3 "), "\x1b[7mAgents3 \x1b[0m"; got != want {
 		t.Errorf("off: got %q, want %q", got, want)
 	}
 }
 
-func TestSelectedKeepsItsReverse(t *testing.T) {
+// Selected takes the cursor's tint, and reverse video when off.
+func TestSelected(t *testing.T) {
 	t.Parallel()
 	s := New(true)
-	if got, want := s.Selected("a"+s.Muted("b")+"c"), "\x1b[7ma\x1b[2mb\x1b[0m\x1b[7mc\x1b[0m"; got != want {
+	if got, want := s.Selected("row"), s.CursorRow("row"); got != want {
 		t.Errorf("on: got %q, want %q", got, want)
 	}
-	if got, want := New(false).Selected("row"), "\x1b[7mrow\x1b[0m"; got != want {
+	off := New(false)
+	if got, want := off.Selected("a"+off.Muted("b")+"c"), "\x1b[7mabc\x1b[0m"; got != want {
 		t.Errorf("off: got %q, want %q", got, want)
 	}
 }
@@ -45,7 +56,7 @@ func TestStyles(t *testing.T) {
 		for name, f := range map[string]func(string) string{
 			"heading": s.Heading, "command": s.Command, "flag": s.Flag, "placeholder": s.Placeholder,
 			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
-			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "bar name": s.BarName, "bar muted": s.BarMuted,
+			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "open row": s.OpenRow, "cursor row": s.CursorRow, "bar name": s.BarName, "bar muted": s.BarMuted,
 			"code keyword": s.CodeKeyword, "code string": s.CodeString, "code comment": s.CodeComment, "code number": s.CodeNumber, "code type": s.CodeType, "code function": s.CodeFunction,
 			"context fine": s.ContextFine, "context warning": s.ContextWarning, "context critical": s.ContextCritical,
 		} {

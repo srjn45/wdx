@@ -103,28 +103,28 @@ func TestAgentsList(t *testing.T) {
 	wantRow(t, m, "calm-otter", "exited 0")
 	// The first running agent is active, on the frame of the agent pane, with
 	// the cursor on it.
-	wantRow(t, m, "swift-falcon", "│▸ ● swift-falcon")
-	wantRow(t, m, "swift-falcon", "◂")
+	wantRow(t, m, "swift-falcon", "▸● swift-falcon")
+	wantRow(t, m, "swift-falcon", "▌")
 	wantText(t, m, "[● swift-falcon(-)]─", "↑↓ select  Enter show")
 
 	// The arrows move the cursor alone; it stops at the ends.
 	m.Update(key('k', 0))
-	wantRow(t, m, "calm-otter", "│▸ ○ calm-otter")
-	wantRow(t, m, "swift-falcon", "│  ● swift-falcon")
-	wantRow(t, m, "swift-falcon", "◂")
+	wantRow(t, m, "calm-otter", "▸○ calm-otter")
+	wantRow(t, m, "swift-falcon", "│▌ ● swift-falcon")
+	wantRow(t, m, "swift-falcon", "▌")
 	for range 3 {
 		m.Update(keyMsgs("up")[0])
 	}
-	wantRow(t, m, "bold-heron", "│▸ ✕ bold-heron")
+	wantRow(t, m, "bold-heron", "▸✕ bold-heron")
 	// ← and → do nothing in a linear list.
 	m.Update(keyMsgs("left")[0])
 	m.Update(keyMsgs("right")[0])
-	wantRow(t, m, "bold-heron", "│▸ ✕ bold-heron")
+	wantRow(t, m, "bold-heron", "▸✕ bold-heron")
 
 	// Enter makes it active and leaves the focus in the list.
 	m.Update(keyMsgs("enter")[0])
-	wantRow(t, m, "bold-heron", "◂")
-	if strings.Contains(row(t, m, "swift-falcon"), "◂") {
+	wantRow(t, m, "bold-heron", "▌")
+	if strings.Contains(row(t, m, "swift-falcon"), "▌") {
 		t.Fatalf("two active:\n%s", text(m))
 	}
 	if m.layout.focus != project {
@@ -134,8 +134,8 @@ func TestAgentsList(t *testing.T) {
 
 	// Out of the pane, the cursor hides and the active agent stays.
 	m.Update(keyMsgs("alt+right")[0])
-	wantRow(t, m, "bold-heron", "│  ✕ bold-heron")
-	wantRow(t, m, "bold-heron", "◂")
+	wantRow(t, m, "bold-heron", "│▌ ✕ bold-heron")
+	wantRow(t, m, "bold-heron", "▌")
 	wantText(t, m, " demo · agent · bold-heron")
 }
 
@@ -172,15 +172,15 @@ func TestAgentsGone(t *testing.T) {
 	t.Parallel()
 	m := newAgentsModel(100, 41, demoAgents()...)
 	sentAgents(m, demoAgents()[0], demoAgents()[1], demoAgents()[3])
-	wantRow(t, m, "wise-owl", "│▸ ● wise-owl")
-	if strings.Contains(row(t, m, "wise-owl"), "◂") {
+	wantRow(t, m, "wise-owl", "▸● wise-owl")
+	if strings.Contains(row(t, m, "wise-owl"), "▌") {
 		t.Fatalf("another agent became active:\n%s", text(m))
 	}
 	wantText(t, m, " agent ─", "no agent shown")
 
 	// The last row gone, the cursor stays on the list.
 	sentAgents(m, demoAgents()[0], demoAgents()[1])
-	wantRow(t, m, "calm-otter", "│▸ ○ calm-otter")
+	wantRow(t, m, "calm-otter", "▸○ calm-otter")
 }
 
 func TestAgentsScroll(t *testing.T) {
@@ -276,7 +276,7 @@ func TestAgentsClick(t *testing.T) {
 	if a, _ := m.activeAgent(); a.Name != "bold-heron" {
 		t.Fatalf("active %s, want the row clicked", a.Name)
 	}
-	wantRow(t, m, "bold-heron", "│▸ ✕ bold-heron")
+	wantRow(t, m, "bold-heron", "▸✕ bold-heron")
 }
 
 func TestAgentRow(t *testing.T) {
@@ -287,20 +287,20 @@ func TestAgentRow(t *testing.T) {
 		width int
 		want  string
 	}{
-		{50, "  ○ a-rather-long-agent-name-indeed    exited 0 ◂ "},
+		{50, "▌ ○ a-rather-long-agent-name-indeed      exited 0 "},
 		// The detail keeps its place while the name has room.
-		{30, "  ○ a-rather-long… exited 0 ◂ "},
+		{30, "▌ ○ a-rather-long-a… exited 0 "},
 		// Then it gives way to the name.
-		{20, "  ○ a-rather-lon… ◂ "},
+		{20, "▌ ○ a-rather-long-… "},
 	}
 	for _, tt := range tests {
-		got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, false, true, tt.width)
+		got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, rowLook{active: true}, tt.width)
 		if got != tt.want {
 			t.Errorf("width %d: %q, want %q", tt.width, got, tt.want)
 		}
 	}
 	for _, width := range []int{1, 5, 8, 20, 50, 100} {
-		if got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, true, false, width); width >= 20 && ansi.StringWidth(got) != width {
+		if got := agentRow(st, newContextThresholds(0, 0), agentListRow{agent: a}, rowLook{cursor: true}, width); width >= 20 && ansi.StringWidth(got) != width {
 			t.Errorf("width %d: %q is %d wide", width, got, ansi.StringWidth(got))
 		}
 	}
@@ -629,7 +629,7 @@ func TestAgentsTree(t *testing.T) {
 	m := newAgentsModel(128, 41, demoTree()...)
 
 	wantRow(t, m, " Agents", "6")
-	wantRow(t, m, "a-parent", "│▸ − ● a-parent")
+	wantRow(t, m, "a-parent", "▸− ● a-parent")
 	wantRow(t, m, "b-child", "│    ├ ● b-child")
 	wantRow(t, m, "c-middle", "│    └ − ● c-middle")
 	wantRow(t, m, "d-deep", "│        ├ ● d-deep")
@@ -639,35 +639,35 @@ func TestAgentsTree(t *testing.T) {
 
 	// ↓ walks the rows in order.
 	keys(m, "down", "down", "down")
-	wantRow(t, m, "d-deep", "│▸       ├ ● d-deep")
+	wantRow(t, m, "d-deep", "▸      ├ ● d-deep")
 
 	// ← moves to the parent, and only closes the row the cursor is on.
 	keys(m, "left")
-	wantRow(t, m, "c-middle", "│▸   └ − ● c-middle")
+	wantRow(t, m, "c-middle", "▸  └ − ● c-middle")
 	keys(m, "left")
-	wantRow(t, m, "c-middle", "│▸   └ + ● c-middle")
+	wantRow(t, m, "c-middle", "▸  └ + ● c-middle")
 	wantRow(t, m, "c-middle", "2 below")
 	if strings.Contains(text(m), "d-deep") {
 		t.Fatalf("closed still shows children:\n%s", text(m))
 	}
 	// → opens it, the cursor staying; on an open parent it does nothing.
 	keys(m, "right")
-	wantRow(t, m, "c-middle", "│▸   └ − ● c-middle")
+	wantRow(t, m, "c-middle", "▸  └ − ● c-middle")
 	keys(m, "right")
 	wantRow(t, m, "d-deep", "d-deep")
 
 	// A closed parent's own closed row moves to its parent on ←.
 	keys(m, "left", "left")
-	wantRow(t, m, "a-parent", "│▸ − ● a-parent")
+	wantRow(t, m, "a-parent", "▸− ● a-parent")
 	// On a top-level row with no children, nothing moves.
 	keys(m, "down", "down", "down")
-	wantRow(t, m, "f-alone", "│▸   ● f-alone")
+	wantRow(t, m, "f-alone", "▸  ● f-alone")
 	keys(m, "left")
-	wantRow(t, m, "f-alone", "│▸   ● f-alone")
+	wantRow(t, m, "f-alone", "▸  ● f-alone")
 
 	// Reopening a parent restores what was open inside it.
 	keys(m, "up", "up", "up", "left")
-	wantRow(t, m, "a-parent", "│▸ + ● a-parent")
+	wantRow(t, m, "a-parent", "▸+ ● a-parent")
 	wantRow(t, m, "a-parent", "4 below")
 	keys(m, "right")
 	wantRow(t, m, "c-middle", "+ ● c-middle")
@@ -678,15 +678,15 @@ func TestAgentsFoldedActive(t *testing.T) {
 	t.Parallel()
 	m := newAgentsModel(128, 41, demoTree()...)
 	keys(m, "down", "down", "down", "enter")
-	wantRow(t, m, "d-deep", "◂")
+	wantRow(t, m, "d-deep", "▌")
 	keys(m, "left", "left")
-	wantRow(t, m, "c-middle", "◂")
+	wantRow(t, m, "c-middle", "▌")
 	keys(m, "left", "left")
-	wantRow(t, m, "a-parent", "◂")
+	wantRow(t, m, "a-parent", "▌")
 	wantText(t, m, "[● d-deep(-)]─")
 	keys(m, "right")
-	wantRow(t, m, "c-middle", "◂")
-	if strings.Contains(row(t, m, "a-parent"), "◂") {
+	wantRow(t, m, "c-middle", "▌")
+	if strings.Contains(row(t, m, "a-parent"), "▌") {
 		t.Fatalf("two active:\n%s", text(m))
 	}
 }
@@ -698,7 +698,7 @@ func TestAgentsFoldClick(t *testing.T) {
 	// The cursor is under c-middle, row 4 of the pane below its heading: its
 	// mark is after the frame, the pointer and the guide.
 	m.Update(clickAt(1+2+4, 1+1+2))
-	wantRow(t, m, "c-middle", "│▸   └ + ● c-middle")
+	wantRow(t, m, "c-middle", "▸  └ + ● c-middle")
 	if m.list().active != "agent-a-parent" {
 		t.Fatalf("a click on the mark made %s active", m.list().active)
 	}
@@ -706,7 +706,7 @@ func TestAgentsFoldClick(t *testing.T) {
 	wantRow(t, m, "c-middle", "− ● c-middle")
 	// Elsewhere on a row, it moves the cursor and makes it active.
 	m.Update(clickAt(1+12, 1+1+2))
-	wantRow(t, m, "c-middle", "◂")
+	wantRow(t, m, "c-middle", "▌")
 }
 
 // TestAgentsTombstoneRow: muted, with its own mark; no count, no C-q x or C-q c.
@@ -717,7 +717,7 @@ func TestAgentsTombstoneRow(t *testing.T) {
 	)
 	wantRow(t, m, " Agents", "1")
 	keys(m, "up")
-	wantRow(t, m, "a-gone", "│▸ − † a-gone")
+	wantRow(t, m, "a-gone", "▸− † a-gone")
 	wantRow(t, m, "a-gone", "removed")
 	keys(m, "C-q")
 	if t1 := text(m); strings.Contains(t1, "remove a-gone") || strings.Contains(t1, "new child") {
@@ -733,10 +733,10 @@ func TestAgentsDeepRow(t *testing.T) {
 	t.Parallel()
 	st := style.New(false)
 	r := agentListRow{agent: running("swift-falcon"), depth: 3, guide: "  │   │   ├ "}
-	if got := agentRow(st, newContextThresholds(0, 0), r, false, false, 50); !strings.Contains(got, "  │   │   ├ ● swift-falcon") {
+	if got := agentRow(st, newContextThresholds(0, 0), r, rowLook{}, 50); !strings.Contains(got, "  │   │   ├ ● swift-falcon") {
 		t.Errorf("wide: %q", got)
 	}
-	got := agentRow(st, newContextThresholds(0, 0), r, false, false, 24)
+	got := agentRow(st, newContextThresholds(0, 0), r, rowLook{}, 24)
 	if !strings.Contains(got, "⋯3 ├ ● swift-falcon") || ansi.StringWidth(got) != 24 {
 		t.Errorf("narrow: %q, %d wide", got, ansi.StringWidth(got))
 	}
@@ -863,7 +863,7 @@ func TestAgentRowActivity(t *testing.T) {
 		{"a parent hiding none", agentListRow{agent: doing(api.AgentActivityWorking), below: 2}, 40, "  ● helper                      2 below "},
 	}
 	for _, tt := range tests {
-		if got := agentRow(st, newContextThresholds(0, 0), tt.row, false, false, tt.width); got != tt.want {
+		if got := agentRow(st, newContextThresholds(0, 0), tt.row, rowLook{}, tt.width); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
 	}

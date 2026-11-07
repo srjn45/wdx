@@ -134,14 +134,14 @@ func TestPlanSlotsFold(t *testing.T) {
 	}
 	l.slotsFolded["doc-sso"] = true
 	l.openTab(committedTab("sso-1"))
-	if r := row(t, m, "plan/sso"); !strings.Contains(r, "◂") {
+	if r := row(t, m, "plan/sso"); !strings.Contains(r, "▌") {
 		t.Errorf("a folded plan's row, a slot's tab shown: %q", r)
 	}
 	keys(m, "right")
 	if l.slotsFolded["doc-sso"] {
 		t.Error("→ left the slots folded")
 	}
-	if r := row(t, m, "plan/sso"); strings.Contains(r, "◂") {
+	if r := row(t, m, "plan/sso"); strings.Contains(r, "▌") {
 		t.Errorf("an unfolded plan's row, a slot's tab shown: %q", r)
 	}
 	(&projectScreen{m: m}).clickWorktree(1, 2)
@@ -152,7 +152,7 @@ func TestPlanSlotsFold(t *testing.T) {
 	if l.active != planTab("doc-sso") {
 		t.Errorf("Enter on a plan's row opened %q", l.active)
 	}
-	if r := row(t, m, "plan/sso"); !strings.Contains(r, "◂") {
+	if r := row(t, m, "plan/sso"); !strings.Contains(r, "▌") {
 		t.Errorf("the plan's row, its tab shown: %q", r)
 	}
 }

@@ -56,7 +56,7 @@ func TestDocsInFolders(t *testing.T) {
 		t.Errorf("rows %q, want %q", got, want)
 	}
 	lines := paneLines(m)
-	for _, want := range []string{"▸ − design", "    └ arch", "  − hub", "    ├ − initial", "    │   └ spec", "    └ api", "    zed"} {
+	for _, want := range []string{" ▸− design", "    └ arch", "  − hub", "    ├ − initial", "    │   └ spec", "    └ api", "    zed"} {
 		if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(strings.TrimPrefix(l, "│"), want) }) {
 			t.Errorf("no line starting %q in:\n%s", want, strings.Join(lines, "\n"))
 		}
@@ -66,7 +66,7 @@ func TestDocsInFolders(t *testing.T) {
 	flat.sections = sectionOrder("dawc")
 	setDocs(flat, aDoc("doc-a", "a", api.DocStatusWip, 1), inFolderOf(aDoc("doc-b", "b", api.DocStatusWip, 1), "/"))
 	flat.moveToDoc(0)
-	wantText(t, flat, "▸ a wip", "  b wip")
+	wantText(t, flat, "▸a wip", "  b wip")
 }
 
 // TestDocFolderFolds: ← and → fold a folder, ← on a doc folds its folder, Enter and
@@ -132,16 +132,16 @@ func TestDocFolderActive(t *testing.T) {
 	m.moveToDoc(slices.Index(docRowNames(m), "arch"))
 	m.openDoc(false)
 	rows := m.docRows()
-	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/design" }); m.docRowActive(rows[i]) {
+	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/design" }); m.docRowShows(rows[i], m.list().active) {
 		t.Error("an open folder holding the doc shown is marked, as well as the doc")
 	}
 	keys(m, "left")
 	rows = m.docRows()
 	i := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/design" })
-	if !m.docRowActive(rows[i]) {
+	if !m.docRowShows(rows[i], m.list().active) {
 		t.Error("a folded folder holding the doc shown is not marked")
 	}
-	if j := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/hub" }); m.docRowActive(rows[j]) {
+	if j := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/hub" }); m.docRowShows(rows[j], m.list().active) {
 		t.Error("an open folder not holding it is marked")
 	}
 
@@ -150,7 +150,7 @@ func TestDocFolderActive(t *testing.T) {
 	m.moveToDoc(slices.Index(docRowNames(m), "/hub/"))
 	keys(m, "left")
 	rows = m.docRows()
-	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/hub" }); !m.docRowActive(rows[i]) {
+	if i := slices.IndexFunc(rows, func(r docRow) bool { return r.place.folder == "/hub" }); !m.docRowShows(rows[i], m.list().active) {
 		t.Error("a folded folder holding the doc shown in a folder under it is not marked")
 	}
 }

@@ -1179,7 +1179,7 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	m := s.m
 	l, width := m.list(), area.Dx()
 	if l == nil {
-		lines := []string{sectionHeading(st, headingLead(false, false)+sectionAgents.title(), "", width), st.Muted(" loading…")}
+		lines := []string{sectionHeading(st, headingLead(false, false)+sectionAgents.title(), "", false, width), st.Muted(" loading…")}
 		uv.NewStyledString(strings.Join(lines, "\n")).Draw(buf, area)
 		return
 	}
@@ -1198,13 +1198,11 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	heading := func(s section) string {
 		it := paneItem{section: s, heading: true, collapsed: m.sectionCollapsedShown(s)}
 		cursor := l.isCursor(it) && m.layout.focus == project
-		return sectionHeading(st, headingLead(l.collapsed[s.letter()], cursor)+s.title(), counts[s], width)
+		return sectionHeading(st, headingLead(l.collapsed[s.letter()], cursor)+s.title(), counts[s], cursor, width)
 	}
 
 	shown, top := m.visibleItems(m.listHeight(area.Dy()))
 	lines := []string{heading(top)}
-	// A parent folded over the active agent carries its mark.
-	activeRow := shownAs(rows, agents, tabAgent(l.active))
 	for _, it := range shown {
 		cursor := l.isCursor(it) && m.layout.focus == project
 		switch {
@@ -1227,21 +1225,24 @@ func (s *projectScreen) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		case it.empty:
 			lines = append(lines, st.Muted(" no worktrees"))
 		case it.section == sectionAgents:
+			look := m.lookOf(cursor, func(tab string) bool { return m.agentRowShows(rows, agents, it.row, tab) })
 			if r := rows[it.row]; r.plan != "" {
-				lines = append(lines, m.planGroupLine(r, cursor, width))
+				lines = append(lines, m.planGroupLine(r, look, width))
 			} else {
-				lines = append(lines, agentRow(st, m.thresholds, r, cursor, it.row == activeRow, width))
+				lines = append(lines, agentRow(st, m.thresholds, r, look, width))
 			}
 		case it.section == sectionWorktrees:
 			r := worktrees[it.row]
-			lines = append(lines, m.worktreeLine(r, cursor, m.worktreeRowActive(r), width))
+			lines = append(lines, m.worktreeLine(r, m.lookOf(cursor, func(tab string) bool { return m.worktreeRowShows(r, tab) }), width))
 		case it.section == sectionCode:
-			lines = append(lines, m.codeLine(code[it.row], marks, cursor, width))
+			r := code[it.row]
+			lines = append(lines, m.codeLine(r, marks, m.lookOf(cursor, func(tab string) bool { return m.codeRowShows(r, tab) }), width))
 		case it.section == sectionDocs:
-			lines = append(lines, docLine(st, docs[it.row], cursor, m.docRowActive(docs[it.row]), width))
+			r := docs[it.row]
+			lines = append(lines, docLine(st, r, m.lookOf(cursor, func(tab string) bool { return m.docRowShows(r, tab) }), width))
 		case it.section == sectionPlans:
 			r := plans[it.row]
-			lines = append(lines, planLine(st, r, l.plansView, l.plansFolded[r.plan.Id], cursor, m.planRowActive(r), width))
+			lines = append(lines, planLine(st, r, l.plansView, l.plansFolded[r.plan.Id], m.lookOf(cursor, func(tab string) bool { return m.planRowShows(r, tab) }), width))
 		}
 	}
 	if l.filter.on() {
@@ -1273,10 +1274,27 @@ func headingLead(collapsed, cursor bool) string {
 	return lead + foldOpen + " "
 }
 
-// sectionHeading is a section's band, with its count at the right end.
-func sectionHeading(st style.Style, title, count string, width int) string {
-	gap := max(width-len(title)-len(count), 0)
-	return st.Section(ansi.Truncate(title+strings.Repeat(" ", gap)+count, width, ""))
+// sectionHeading is a section's band, with its count at the right end; the
+// cursor's tint when it is there.
+func sectionHeading(st style.Style, title, count string, cursor bool, width int) string {
+	title = ansi.Truncate(title, width, "")
+	count = ansi.Truncate(count, width-ansi.StringWidth(title), "")
+	title += strings.Repeat(" ", max(width-ansi.StringWidth(title)-ansi.StringWidth(count), 0))
+	if cursor && st.On() {
+		return st.CursorRow(st.Name(title) + st.Muted(count))
+	}
+	return st.Section(title, count)
+}
+
+// agentRowShows reports whether tab is that of the agent or plan on rows[i]; a
+// parent folded over an agent, or its plan's row, stands for the agent's tab.
+func (m *Model) agentRowShows(rows []agentListRow, agents []api.Agent, i int, tab string) bool {
+	if r := rows[i]; r.plan != "" {
+		if p, ok := m.planNamed(r.plan); ok && tab == planTab(p.Id) {
+			return true
+		}
+	}
+	return shownAs(rows, agents, tabAgent(tab)) == i
 }
 
 func countRemoved(agents []api.Agent) int {
@@ -1310,25 +1328,14 @@ func fitGuide(guide string, depth, room int) (fitted string, left int) {
 	return guide, room - ansi.StringWidth(guide)
 }
 
-// agentRow is r's row: the cursor when it is there, the tree's lines and fold
-// mark, its state mark, its name, and at the row's end what its state does not
-// tell, its context size and, when active, a mark that shows with color off too.
 // planGroupLine is the row of a plan in the Agents section, width wide: its fold
 // mark, its name, its state and progress as the Plans section has them, and, folded,
 // how many agents it hides or are waiting, and whether it needs the person. Its
 // tab's being the current one gives it the active mark.
-func (m *Model) planGroupLine(r agentListRow, cursor bool, width int) string {
+func (m *Model) planGroupLine(r agentListRow, look rowLook, width int) string {
 	st := m.st
 	p, known := m.planNamed(r.plan)
-	l := m.list()
-	active := known && l != nil && l.active == planTab(p.Id)
-	pointer, end := "  ", " "
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
-	if active {
-		end = " " + st.Focused("◂") + " "
-	}
+	pointer, end := look.lead(st), " "
 	label := r.plan
 	if known {
 		label = p.Name // an agent's task may name it in another case
@@ -1358,25 +1365,18 @@ func (m *Model) planGroupLine(r agentListRow, cursor bool, width int) string {
 			tail += st.Muted(" " + part)
 		}
 	}
-	if cursor || active {
+	if look.bold() {
 		name = st.Name(name)
 	}
-	row := pointer + r.fold + " " + st.Muted("plan ") + name + tail + strings.Repeat(" ", max(room, 0)) + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+r.fold+" "+st.Muted("plan ")+name+tail+strings.Repeat(" ", max(room, 0))+end)
 }
 
-func agentRow(st style.Style, thresholds contextThresholds, r agentListRow, cursor, active bool, width int) string {
+// agentRow is r's row: its look's marks, the tree's lines and fold mark, its
+// state mark, its name, and at the row's end what its state does not tell and
+// its context size.
+func agentRow(st style.Style, thresholds contextThresholds, r agentListRow, look rowLook, width int) string {
 	a := r.agent
-	pointer, end, name := "  ", " ", a.Name
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
-	if active {
-		end = " " + st.Focused("◂") + " "
-	}
+	pointer, end, name := look.lead(st), " ", a.Name
 	guide, room := rowGuide(r, width)
 	room -= style.Width(end)
 	detail, size := agentDetail(r), contextSize(a)
@@ -1391,7 +1391,7 @@ func agentRow(st style.Style, thresholds contextThresholds, r agentListRow, curs
 	name = ansi.Truncate(name, max(room, 0), "…")
 	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
 	switch {
-	case cursor || active:
+	case look.bold():
 		name = st.Name(name)
 	case a.State == api.AgentStateRemoved:
 		name = st.Muted(name)
@@ -1405,11 +1405,7 @@ func agentRow(st style.Style, thresholds contextThresholds, r agentListRow, curs
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	row := pointer + st.Muted(guide) + agentMark(st, a) + " " + name + gap + detail + size + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+st.Muted(guide)+agentMark(st, a)+" "+name+gap+detail+size+end)
 }
 
 // endWidth is the cells text takes at a row's end, after a space: none for none.

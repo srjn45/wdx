@@ -43,7 +43,7 @@ func TestArchivedPlansHidden(t *testing.T) {
 	if !slices.Equal(names, []string{"auth", "auth-a", "sso"}) {
 		t.Errorf("rows %q", names)
 	}
-	wantText(t, m, "− Plans                   3")
+	wantText(t, m, "− Plans                     3")
 	if m.folderNeedsYou("/gone") {
 		t.Error("an archived plan says it needs you")
 	}
@@ -62,7 +62,7 @@ func TestArchivedPlansHidden(t *testing.T) {
 	}
 	m.list().filter.text = "old"
 	rows := m.planRows()
-	if got := strings.TrimRight(planLine(m.st, rows[2], plansGoingOn, false, false, false, 40), " "); got != "    └ old cancelled, archived 1 task" {
+	if got := strings.TrimRight(planLine(m.st, rows[2], plansGoingOn, false, rowLook{}, 40), " "); got != "    └ old cancelled, archived 1 task" {
 		t.Errorf("an archived plan's row: %q", got)
 	}
 }

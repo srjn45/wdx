@@ -158,33 +158,57 @@ func (s Style) Muted(text string) string { return s.apply(text, dim) }
 // as a pane's border.
 func (s Style) Focused(text string) string { return s.apply(text, bold, green) }
 
-// Section styles the heading of a section of a pane, as a band across it; in
-// reverse video when off, so that it still stands apart from what is below it.
-func (s Style) Section(text string) string {
+// tide's tints of the list rows, chosen against its base, as SGR backgrounds.
+const (
+	headingTint = "48;2;54;61;78" // a section's heading, the same as the tab shown
+	shownTint   = "48;2;54;61;78" // the row of the tab shown
+	openTint    = "48;2;43;49;63" // the row of a tab open
+	cursorTint  = "48;2;38;79;120"
+)
+
+// Section styles the heading of a section of a pane, as a band across it: its
+// title bold, its count muted. In reverse video when off, so that it still
+// stands apart from what is below it.
+func (s Style) Section(title, count string) string {
 	if !s.on {
-		return "\x1b[7m" + text + "\x1b[0m"
+		return "\x1b[7m" + title + count + "\x1b[0m"
 	}
-	return s.apply(text, bold, "30", "47")
+	return "\x1b[" + headingTint + ";1m" + title + "\x1b[22;2m" + count + "\x1b[0m"
 }
 
-// ActiveRow tints a row of a list, styled already, which marks what is active;
+// ActiveRow tints the row of a list that marks what is shown, styled already;
 // nothing when off, so the row needs a mark of its own too.
-func (s Style) ActiveRow(text string) string {
+func (s Style) ActiveRow(text string) string { return s.tint(text, shownTint) }
+
+// OpenRow tints the row of a list whose tab is open, styled already; nothing
+// when off.
+func (s Style) OpenRow(text string) string { return s.tint(text, openTint) }
+
+// CursorRow tints the row under a list's cursor, styled already; nothing when
+// off, so the row needs a mark of its own too.
+func (s Style) CursorRow(text string) string { return s.tint(text, cursorTint) }
+
+// Selected marks the row under a list's cursor, styled already, as CursorRow
+// does; in reverse video when off, so that it still stands out.
+func (s Style) Selected(text string) string {
+	if !s.on {
+		if text == "" {
+			return text
+		}
+		const reverse, reset = "\x1b[7m", "\x1b[0m"
+		return reverse + strings.ReplaceAll(text, reset, reset+reverse) + reset
+	}
+	return s.CursorRow(text)
+}
+
+// tint gives text, styled already, the background code, kept across the resets
+// inside it.
+func (s Style) tint(text, code string) string {
 	if !s.on || text == "" {
 		return text
 	}
-	const tint, reset = "\x1b[100m", "\x1b[0m"
-	return tint + strings.ReplaceAll(text, reset, reset+tint) + reset
-}
-
-// Selected marks the row under a list's cursor, styled already, in reverse
-// video; also when off, as Section does, so that it still stands out.
-func (s Style) Selected(text string) string {
-	if text == "" {
-		return text
-	}
-	const reverse, reset = "\x1b[7m", "\x1b[0m"
-	return reverse + strings.ReplaceAll(text, reset, reset+reverse) + reset
+	on, reset := "\x1b["+code+"m", "\x1b[0m"
+	return on + strings.ReplaceAll(text, reset, reset+on) + reset
 }
 
 // StatusBar is the state a status line shows, which picks its colors.

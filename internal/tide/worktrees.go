@@ -350,19 +350,19 @@ func (m *Model) worktreesSync() tea.Cmd {
 	return m.refreshWorktrees("", false)
 }
 
-// worktreeRowActive reports whether the tab shown is the row's; a folded worktree
-// carries the mark of its file's tab, and a folded plan that of its slots'.
-func (m *Model) worktreeRowActive(r worktreeRow) bool {
+// worktreeRowShows reports whether tab is the row's; a folded worktree stands
+// for its files' tabs, and a folded plan for its slots'.
+func (m *Model) worktreeRowShows(r worktreeRow, tab string) bool {
 	l := m.list()
-	if r.tab() == l.active {
+	if r.tab() == tab {
 		return true
 	}
 	if r.isPlan() {
-		worktree, _ := diffTabOf(l.active)
+		worktree, _ := diffTabOf(tab)
 		s, ok := m.slotNamed(worktree)
-		return isDiffTab(l.active) && ok && s.plan.Id == r.plan.Id && l.slotsFolded[r.plan.Id] && !m.filtering()
+		return isDiffTab(tab) && ok && s.plan.Id == r.plan.Id && l.slotsFolded[r.plan.Id] && !m.filtering()
 	}
-	if worktree, file := diffTabOf(l.active); r.file == nil && isDiffTab(l.active) && file != "" && worktree == r.worktree.Name {
+	if worktree, file := diffTabOf(tab); r.file == nil && isDiffTab(tab) && file != "" && worktree == r.worktree.Name {
 		if words := m.filterWords(); words != nil {
 			return !matches(file, words)
 		}
@@ -540,21 +540,15 @@ func (m *Model) agentsIn(name string) []string {
 
 // worktreeLine draws a row of the section, width wide: its worktree's name with
 // what it says at the end, or a file's status and path, whose end is what tells it.
-func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) string {
+func (m *Model) worktreeLine(r worktreeRow, look rowLook, width int) string {
 	st := m.st
-	pointer, end := "  ", " "
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
-	if active {
-		end = " " + st.Focused("◂") + " "
-	}
+	pointer, end := look.lead(st), " "
 	room := width - ansi.StringWidth("▸ ") - style.Width(end) - r.indent()
 	pointer += strings.Repeat(" ", r.indent())
 	var row string
 	switch {
 	case r.isPlan():
-		row = pointer + m.slotsHeading(*r.plan, room, cursor || active) + end
+		row = pointer + m.slotsHeading(*r.plan, room, look.bold()) + end
 	case r.file != nil:
 		// Under its worktree's name: past the fold mark.
 		room -= ansi.StringWidth("  M ")
@@ -562,7 +556,7 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 		if ansi.StringWidth(r.file.Path) <= room {
 			p = r.file.Path
 		}
-		if cursor || active {
+		if look.bold() {
 			p = st.Name(p)
 		}
 		check := "  "
@@ -571,12 +565,9 @@ func (m *Model) worktreeLine(r worktreeRow, cursor, active bool, width int) stri
 		}
 		row = pointer + check + worktreeMark(st, r.file.Status) + " " + p + strings.Repeat(" ", max(room-ansi.StringWidth(stripped(p)), 0)) + end
 	default:
-		row = pointer + m.worktreeHeading(r, room, cursor || active) + end
+		row = pointer + m.worktreeHeading(r, room, look.bold()) + end
 	}
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, row)
 }
 
 // stripped is s as it shows, without its style.

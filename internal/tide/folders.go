@@ -110,7 +110,7 @@ func treeLead(p treePlace) string {
 // folderLine is a folder's row in the Docs or Plans section, room left for its
 // name between pointer and end: the tree's lines, its fold mark, its name and, when
 // needsYou, that a plan in it waits for the person.
-func folderLine(st style.Style, p treePlace, needsYou bool, pointer, end string, cursor, active bool, room int) string {
+func folderLine(st style.Style, p treePlace, needsYou bool, pointer, end string, look rowLook, room int) string {
 	name := ansi.Truncate(p.name(), room, "…")
 	room -= ansi.StringWidth(name)
 	need := ""
@@ -118,14 +118,10 @@ func folderLine(st style.Style, p treePlace, needsYou bool, pointer, end string,
 		need = " needs you"
 	}
 	room -= ansi.StringWidth(need)
-	if cursor || active {
+	if look.bold() {
 		name = st.Name(name)
 	}
-	row := pointer + st.Muted(p.guide) + p.fold + " " + name + st.Warning(need) + strings.Repeat(" ", max(room, 0)) + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+st.Muted(p.guide)+p.fold+" "+name+st.Warning(need)+strings.Repeat(" ", max(room, 0))+end)
 }
 
 // atTop reports whether folder is the top, which has no row: a daemon sends /, and

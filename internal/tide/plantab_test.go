@@ -304,8 +304,8 @@ func TestPlanTabMarks(t *testing.T) {
 		t.Fatalf("no row of %s", id)
 		return ""
 	}
-	if !strings.Contains(row("e2e"), "\x1b[7m") || strings.Contains(row("callback"), "\x1b[7m") {
-		t.Errorf("reverse video: e2e %q, callback %q", row("e2e"), row("callback"))
+	if cursor := "\x1b[48;2;38;79;120m"; !strings.Contains(row("e2e"), cursor) || strings.Contains(row("callback"), cursor) {
+		t.Errorf("the cursor's tint: e2e %q, callback %q", row("e2e"), row("callback"))
 	}
 	join := slices.IndexFunc(d.lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "├───╯") })
 	split := slices.IndexFunc(d.lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "├─╮") })

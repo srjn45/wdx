@@ -536,14 +536,14 @@ func (s *projectScreen) clickCode(i, col, width int) {
 	m.openCodeFile(r.node.path, false)
 }
 
-// codeRowActive reports whether the tab shown is the row's file; a folded directory
-// carries the mark of what it hides.
-func (m *Model) codeRowActive(r codeRow) bool {
+// codeRowShows reports whether tab is the row's file's; a folded directory stands
+// for what it hides.
+func (m *Model) codeRowShows(r codeRow, tab string) bool {
 	l := m.list()
-	if r.node == nil || !isFileTab(l.active) {
+	if r.node == nil || !isFileTab(tab) {
 		return false
 	}
-	worktree, file := diffTabOf(l.active)
+	worktree, file := diffTabOf(tab)
 	if worktree != l.code.worktree {
 		return false
 	}
@@ -644,20 +644,12 @@ func codeGuide(r codeRow, width int) (guide string, room int) {
 
 // codeLine draws a row of the section, width wide: a changed file with its letter
 // from marks, a directory holding changes with their count.
-func (m *Model) codeLine(r codeRow, marks treeMarks, cursor bool, width int) string {
+func (m *Model) codeLine(r codeRow, marks treeMarks, look rowLook, width int) string {
 	st := m.st
-	pointer := "  "
-	if cursor {
-		pointer = st.Focused("▸ ")
-	}
+	pointer, end := look.lead(st), " "
 	if r.node == nil {
 		name := st.Name(selectorName(m.list().code.worktree, width))
-		return pointer + st.Muted("<") + " " + name + " " + st.Muted(">")
-	}
-	active := m.codeRowActive(r)
-	end := " "
-	if active {
-		end = " " + st.Focused("◂") + " "
+		return look.paint(st, padRow(pointer+st.Muted("<")+" "+name+" "+st.Muted(">"), width))
 	}
 	mark, label := marks.files[r.node.path], ""
 	if r.node.dir {
@@ -674,15 +666,11 @@ func (m *Model) codeLine(r codeRow, marks treeMarks, cursor bool, width int) str
 	name := ansi.Truncate(r.node.name, max(room, 0), "…")
 	gap := strings.Repeat(" ", max(room-ansi.StringWidth(name), 0))
 	name = mark.paint(st, name)
-	if cursor || active {
+	if look.bold() {
 		name = st.Name(name)
 	}
 	if r.fold != "" {
 		guide += r.fold + " "
 	}
-	row := pointer + st.Muted(guide) + name + gap + label + end
-	if active {
-		return st.ActiveRow(row)
-	}
-	return row
+	return look.paint(st, pointer+st.Muted(guide)+name+gap+label+end)
 }
