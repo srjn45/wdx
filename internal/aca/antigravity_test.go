@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -63,6 +64,8 @@ func TestAntigravityCommand(t *testing.T) {
 // TestAntigravityGivesTheNote: in the agent's folder, as --add-dir makes it part of
 // the workspace, written anew at every start, ending with where to work, as
 // Antigravity creates new files in the first folder by path, which is the agent's.
+// With a backup the settings also carry the status line that keeps the context size
+// there.
 func TestAntigravityGivesTheNote(t *testing.T) {
 	t.Parallel()
 	backup := t.TempDir()
@@ -75,8 +78,17 @@ func TestAntigravityGivesTheNote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := []string{"agy", "--add-dir", dir, "--settings", `{"queuedMessages":"queue","trustedWorkspaces":["/work"]}`}; !slices.Equal(got, want) {
-			t.Fatalf("command = %q, want %q", got, want)
+		if want := []string{"agy", "--add-dir", dir, "--settings"}; len(got) != 5 || !slices.Equal(got[:4], want) {
+			t.Fatalf("command = %q, want %q and the settings", got, want)
+		}
+		settings := antigravitySettings(t, got)
+		line, _ := settings["statusLine"].(map[string]any)
+		delete(settings, "statusLine")
+		if want := map[string]any{"queuedMessages": "queue", "trustedWorkspaces": []any{"/work"}}; !equalJSON(settings, want) {
+			t.Fatalf("settings = %v, want %v and the status line", settings, want)
+		}
+		if command, _ := line["command"].(string); !strings.Contains(command, filepath.Join(backup, "antigravity-status.json")) || line["stack_with_default"] != true {
+			t.Fatalf("status line = %v, want wdx's command on the backup's file, stacked with the default", line)
 		}
 		if got, want := folderHolds(t, dir), []string{".agents", "AGENTS.md"}; !slices.Equal(got, want) {
 			t.Fatalf("the agent's folder holds %q, want %q", got, want)

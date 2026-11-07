@@ -187,6 +187,7 @@ Asked for by the human on 2026-11-01: wdx keeps a backup of an agent's conversat
   antigravity-conversations/<id>.db  a snapshot of each conversation's db, to resume from
   antigravity-rendered.json          how far transcript.md has got in Antigravity's conversations
   antigravity-restarts.jsonl         each restart of an Antigravity agent
+  antigravity-status.json            what Antigravity last gave its status line: the context size (docs/AGENT.md)
   cursor-config/                     Cursor's config folder for this agent: its cli-config.json and chats/
   cursor-plugin/                     the plugin whose sessionStart hook gives the launch note
   cursor-rendered.json               how far transcript.md has got in Cursor's chats

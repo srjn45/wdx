@@ -38,6 +38,11 @@ import (
 // running", and is counted on the footer's right, "· 1 task(s) · /tasks", which a
 // narrow screen cuts. An approval, the trust prompt and the model picker replace
 // the box and end with "↑/↓ Navigate · …"; the "/" menu shows it below the box.
+//
+// The footer is the first line under the box's lower rule, past the panel's rows
+// and its rule, and past the "/" menu's hint. What comes under the footer is not
+// read: the user's own status line, which wdx runs with its own and agy draws there
+// (the wdx doc ANTIGRAVITY_CONTEXT).
 type AntigravityScreenParser struct{}
 
 const (
@@ -59,24 +64,28 @@ var (
 // Parse implements ScreenParser.
 func (AntigravityScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 	unknown := screen.ScreenState{Activity: screen.ActivityUnknown}
-	footer := len(lines) - 1
-	for footer >= 0 && strings.TrimSpace(lines[footer]) == "" {
-		footer--
+	last := len(lines) - 1
+	for last >= 0 && strings.TrimSpace(lines[last]) == "" {
+		last--
 	}
-	if footer < 0 || footer >= len(undimmed) {
+	if last < 0 {
 		return unknown
 	}
-	top, end := antigravityFindBox(lines[:footer])
-	menu := antigravityMenu(lines[:footer+1])
+	top, end := antigravityFindBox(lines[:last])
+	hint := antigravityMenu(lines[:last+1])
 	if top < 0 {
-		if menu {
+		if hint >= 0 {
 			return screen.ScreenState{Activity: screen.ActivityWaiting}
 		}
 		return unknown
 	}
+	footer := antigravityFooter(lines[:last+1], end+1, hint)
+	if footer < 0 || footer >= len(undimmed) {
+		return unknown
+	}
 	state := unknown
 	// The "/" menu's footer says esc to cancel at rest too.
-	if !menu {
+	if hint < 0 {
 		state.Activity, state.InTurn = antigravityActivity(lines[:top], lines[end+1:footer], lines[footer], undimmed[footer])
 	}
 	model := antigravityModel(lines[footer], undimmed[footer])
@@ -97,9 +106,9 @@ func (AntigravityScreenParser) Parse(lines, undimmed []string) screen.ScreenStat
 	return state
 }
 
-// antigravityMenu is true when the last lines end a menu or a prompt to choose
-// from, which a narrow screen cuts.
-func antigravityMenu(lines []string) bool {
+// antigravityMenu is the line among the last three that ends a menu or a prompt to
+// choose from, with the hint a narrow screen cuts; -1 when none does.
+func antigravityMenu(lines []string) int {
 	seen := 0
 	for i := len(lines) - 1; i >= 0 && seen < 3; i-- {
 		if strings.TrimSpace(lines[i]) == "" {
@@ -107,10 +116,27 @@ func antigravityMenu(lines []string) bool {
 		}
 		seen++
 		if strings.Contains(lines[i], antigravityMenuHint) {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
+}
+
+// antigravityFooter is the footer's line: the first from below, the line under the
+// box's lower rule, that is not blank, a rule or a row of the panel, or the first
+// after the "/" menu's hint when it is at hint; -1 when there is none.
+func antigravityFooter(lines []string, below, hint int) int {
+	if hint >= below {
+		below = hint + 1
+	}
+	for i := below; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || antigravityRuleLine(lines[i]) || strings.HasPrefix(line, antigravityPanelRow) {
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 // antigravityActivity reads what agy is doing from the footer, the lines above the

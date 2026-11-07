@@ -2,6 +2,7 @@ package aca_test
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,7 @@ import (
 )
 
 // antigravityRecordings were made by the scripts in testdata/antigravity/record/.
-var antigravityRecordings = []string{"turns-120x40", "turns-40x24", "approval-120x40", "approval-40x24", "steer-120x40", "sub-120x40"}
+var antigravityRecordings = []string{"turns-120x40", "turns-40x24", "approval-120x40", "approval-40x24", "steer-120x40", "sub-120x40", "status-120x40", "status-user-120x40"}
 
 // antigravityStep is what one step of those scripts left on agy's screen: whether a
 // message can go in, whether the box holds what a human put there, and what agy
@@ -86,15 +87,22 @@ var antigravityAtStep = map[string]antigravityStep{
 // columns, a message queued or sent at once leaves no room for the model, so the
 // box is not ready and the inbox holds until it is taken (the human's decision,
 // 2026-11-06), though the footer's left still says it is in a turn. And on 40
-// columns the background task had ended by the time turns.py looked for it.
+// columns the background task had ended by the time turns.py looked for it, and in
+// status.py's run the model waited for it before it answered.
 var antigravityAtRecordedStep = map[string]antigravityStep{
-	"turns-40x24/queued":           {activity: screen.ActivityWorking, inTurn: true},
-	"turns-40x24/sent_now_pending": {activity: screen.ActivityWorking, inTurn: true},
-	"turns-40x24/task_in_turn":     antigravityIdle,
-	"turns-40x24/task_after_turn":  antigravityIdle,
-	"turns-40x24/task_over":        antigravityIdle,
-	"turns-40x24/task_over_still":  antigravityIdle,
-	"turns-40x24/interrupted":      antigravityIdle,
+	"status-120x40/task_over":            antigravityIdle,
+	"status-120x40/task_over_still":      antigravityIdle,
+	"status-120x40/interrupted":          antigravityIdle,
+	"status-user-120x40/task_over":       antigravityIdle,
+	"status-user-120x40/task_over_still": antigravityIdle,
+	"status-user-120x40/interrupted":     antigravityIdle,
+	"turns-40x24/queued":                 {activity: screen.ActivityWorking, inTurn: true},
+	"turns-40x24/sent_now_pending":       {activity: screen.ActivityWorking, inTurn: true},
+	"turns-40x24/task_in_turn":           antigravityIdle,
+	"turns-40x24/task_after_turn":        antigravityIdle,
+	"turns-40x24/task_over":              antigravityIdle,
+	"turns-40x24/task_over_still":        antigravityIdle,
+	"turns-40x24/interrupted":            antigravityIdle,
 }
 
 func antigravityRecordingDir(dir string) string {
@@ -131,22 +139,17 @@ func TestAntigravityOnRecordedScreens(t *testing.T) {
 // footer first names the model: the box is drawn by then, but readiness waits.
 func TestAntigravityNotReadyBeforeTheModel(t *testing.T) {
 	t.Parallel()
-	for _, dir := range []string{"turns-120x40", "turns-40x24", "approval-120x40", "approval-40x24"} {
+	for _, dir := range []string{"turns-120x40", "turns-40x24", "approval-120x40", "approval-40x24", "status-120x40", "status-user-120x40"} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 			sawBox := false
 			for _, m := range replayed(t, antigravityRecordingDir(dir)).moments {
-				footer := ""
-				for _, line := range m.lines {
-					if strings.TrimSpace(line) != "" {
-						footer = line
-					}
-				}
-				// The recordings ran on this model.
-				if strings.Contains(footer, "Gemini 3.8 Flash") {
+				// The recordings ran on this model; only the footer writes it so. In
+				// status-user-120x40 the user's line is under the footer.
+				if slices.ContainsFunc(m.lines, func(line string) bool { return strings.Contains(line, "Gemini 3.8 Flash · low") }) {
 					break
 				}
-				sawBox = sawBox || strings.HasPrefix(footer, "? for shortcuts")
+				sawBox = sawBox || slices.ContainsFunc(m.lines, func(line string) bool { return strings.HasPrefix(line, "? for shortcuts") })
 				if got := (aca.AntigravityScreenParser{}).Parse(m.lines, m.undimmed); got.InputBox {
 					t.Errorf("at %s, before the model shows, the box reads ready\n%s", m.at, bottom(m.lines))
 				}
@@ -204,14 +207,60 @@ func TestAntigravityBoxNeedsItsRule(t *testing.T) {
 	}
 }
 
+// TestAntigravityFooterAboveTheUsersLine: the footer is the line under the box's
+// rule, past the panel and the "/" menu; what agy draws under it, the user's own
+// status line that wdx runs with its own, is not read, and a prompt to choose from
+// still reads waiting with that line among the last three.
+func TestAntigravityFooterAboveTheUsersLine(t *testing.T) {
+	t.Parallel()
+	const (
+		rule  = "────────────────────────────────────────"
+		model = "Gemini 3.8 Flash · low"
+		users = "their line: 1639 bytes"
+	)
+	footer := func(left, right string) string { return left + strings.Repeat(" ", 5) + right }
+	for _, c := range []struct {
+		name  string
+		lines []string
+		// undimmed is the footer's left part, which is not dim; "" for a screen with no footer.
+		undimmed string
+		want     antigravityStep
+		model    string
+	}{
+		{"at rest", []string{rule, ">", rule, footer("? for shortcuts", model), users}, "? for shortcuts", antigravityIdle, "Gemini 3.8 Flash"},
+		{"in a turn", []string{rule, ">", rule, footer("esc to cancel", model), users}, "esc to cancel", antigravityInTurn, "Gemini 3.8 Flash"},
+		{"a draft", []string{rule, "> hi", rule, footer("", model), users}, "", antigravityDraft, "Gemini 3.8 Flash"},
+		{"a panel", []string{rule, ">", rule, "  ● [09:54:17] sleep 25 running", rule, footer("? for shortcuts", model+" · 1 task(s) · /tasks"), users}, "? for shortcuts", antigravityBackground, "Gemini 3.8 Flash"},
+		{"the / menu", []string{rule, "> /", rule, "  /add-dir   Add a directory", "  ↑/↓ Navigate · enter Select · tab Complete", footer("esc to cancel", model), users}, "esc to cancel", antigravityDraft, "Gemini 3.8 Flash"},
+		{"an approval", []string{"Run this command?", "> 1. Yes, run command", "  4. No, cancel", "", "↑/↓ Navigate · tab Amend", footer("esc to cancel", model), users}, "esc to cancel", antigravityStep{activity: screen.ActivityWaiting}, ""},
+		{"the model not shown yet", []string{rule, ">", rule, "? for shortcuts", users}, "? for shortcuts", antigravityStep{activity: screen.ActivityIdle}, ""},
+	} {
+		undimmed := append([]string(nil), c.lines...)
+		for i, line := range c.lines {
+			if strings.Contains(line, model) {
+				undimmed[i] = c.undimmed
+			}
+		}
+		got := aca.AntigravityScreenParser{}.Parse(c.lines, undimmed)
+		if got.InputBox != c.want.inputBox || got.Draft != c.want.draft || got.Activity != c.want.activity || got.InTurn != c.want.inTurn || got.Model != c.model {
+			t.Errorf("%s: input box %v, draft %v, %s, in turn %v, model %q; want %v, %v, %s, %v, %q", c.name,
+				got.InputBox, got.Draft, got.Activity, got.InTurn, got.Model, c.want.inputBox, c.want.draft, c.want.activity, c.want.inTurn, c.model)
+		}
+	}
+}
+
 // antigravityTurns are stretches of the recordings where agy was in a turn: from a
 // step in it to the step after it ended, less two seconds, as the scripts mark the
 // end up to 1.5 s after it shows.
 var antigravityTurns = map[string][][2]string{
 	"turns-120x40": {{"generating", "turn_done"}, {"task_in_turn", "task_after_turn"}},
-	"turns-40x24":  {{"generating", "turn_done"}, {"sent_now_pending", "sent_now_done"}},
-	"steer-120x40": {{"steer_generating", "steer_generating_done"}},
-	"sub-120x40":   {{"sub00", "sub05"}},
+	// Recorded with wdx's status line on, with stack_with_default, and with a user's
+	// line under the footer (the wdx doc ANTIGRAVITY_CONTEXT).
+	"status-120x40":      {{"generating", "turn_done"}, {"task_in_turn", "task_after_turn"}},
+	"status-user-120x40": {{"generating", "turn_done"}, {"task_in_turn", "task_after_turn"}},
+	"turns-40x24":        {{"generating", "turn_done"}, {"sent_now_pending", "sent_now_done"}},
+	"steer-120x40":       {{"steer_generating", "steer_generating_done"}},
+	"sub-120x40":         {{"sub00", "sub05"}},
 }
 
 // TestAntigravityNeverIdleInATurn checks every read a holder makes during a turn:

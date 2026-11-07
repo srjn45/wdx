@@ -8,6 +8,7 @@ These throwaway scripts made the recordings in `../1.5.2/` (the wdx doc ANTIGRAV
 - `approval.py <name> <cols> <rows>` records a command approval in ask mode, with the allow list emptied for that session, and its denial with Esc.
 - `steer.py <name> <cols> <rows>` records messages sent at once with alt+m while agy generates an answer and while it runs a command.
 - `sub.py <name> <cols> <rows>` records a subagent working after the main turn has ended, marking the screen every 2.5 s.
+- `status.py <name> <cols> <rows> [user]` records turns.py's steps, less the message sent at once, with the `statusLine` wdx gives in `--settings` (the wdx doc ANTIGRAVITY_CONTEXT): a command that keeps the JSON in a file and prints nothing, with `stack_with_default`, so that the footer the parser reads stays; with `user`, a stand-in for the user's own status line follows it in braces, as wdx chains theirs, and agy draws its line under the footer. Settings holding a `$` go to agy as a file (`settings_file=True`), as the shell tmux runs the command in would expand them inline.
 - `transcript.py <name>` records one conversation's files: a command, a file written and edited, a file read, `/compact`, `/exit`, a resume with `--conversation`, then `/clear` and a turn in the new conversation. It keeps `brain/<id>/` (agy's `.system_generated`, without the `chunks/` that only split the same lines) and `hooks.jsonl`.
 - `copy.py <name>` copies a recording in: without script's header and what came after the last timed read, with the username, the account's email and plan, and every UUID masked, lengths kept; a plan a narrow screen cuts short is masked too. Check its result for anything private before committing it.
 
@@ -21,4 +22,6 @@ Each run leaves conversations in `~/.gemini/antigravity-cli` (`conversations/`, 
     python3 approval.py approval-40x24 40 24 && python3 copy.py approval-40x24
     python3 steer.py steer-120x40 120 40 && python3 copy.py steer-120x40
     python3 sub.py sub-120x40 120 40 && python3 copy.py sub-120x40
+    python3 status.py status-120x40 120 40 && python3 copy.py status-120x40
+    python3 status.py status-user-120x40 120 40 user && python3 copy.py status-user-120x40
     python3 transcript.py transcript && python3 copy.py transcript

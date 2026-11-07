@@ -19,8 +19,9 @@ MODEL = os.environ.get('AGY_REC_MODEL', 'gemini-3.8-flash-low')
 
 
 class Rec:
-    def __init__(s, name, cols=120, rows=40, full=True, extra='', hooks=True, note='Answer briefly.', settings=None):
+    def __init__(s, name, cols=120, rows=40, full=True, extra='', hooks=True, note='Answer briefly.', settings=None, settings_file=False):
         s.more = settings or {}
+        s.settings_file = settings_file
         s.name = name
         s.sock = 'agyrec-' + name
         s.out = os.path.join(OUT, name)
@@ -56,7 +57,13 @@ class Rec:
         if s.full:
             a += " --dangerously-skip-permissions"
             settings["enableTerminalSandbox"] = False
-        a += f" --add-dir {s.note} --settings '{json.dumps(settings)}' {s.extra} {more}"
+        given = "'" + json.dumps(settings) + "'"
+        if s.settings_file:
+            # The shell tmux runs the command in would expand a $ in an inline value.
+            given = os.path.join(s.base, 'settings.json')
+            with open(given, 'w') as f:
+                json.dump(settings, f)
+        a += f" --add-dir {s.note} --settings {given} {s.extra} {more}"
         return a
 
     def start(s, more='', raw='raw', cwd=None):
@@ -64,6 +71,10 @@ class Rec:
                f"--log-out {s.out}/{raw}.out -c \"agy {s.args(more).replace(chr(34), chr(92) + chr(34))}\"")
         subprocess.run(['tmux', '-L', s.sock, 'new-session', '-d', '-s', 'r',
                         '-x', str(s.cols), '-y', str(s.rows), cmd], check=True)
+        # The marks' clock is script's, whose timing log starts when it starts: on a
+        # loaded machine that is well after tmux returns.
+        while not os.path.exists(f'{s.out}/{raw}.timing'):
+            time.sleep(0.01)
         s.t0 = time.time()
 
     def tmux(s, *a):

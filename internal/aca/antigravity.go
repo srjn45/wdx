@@ -20,7 +20,6 @@ import (
 // Detached, as nothing of its conversations runs outside its terminal. The wdx
 // docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
-	NoContextSize
 	NoDetached
 }
 
@@ -41,8 +40,8 @@ func (Antigravity) Program() string { return "agy" }
 // the note is the rules file of a folder of the backup added to the workspace for
 // this session, whose hooks report each conversation to the backup. What
 // --settings holds is for this session only, never saved, over the user's own
-// settings.
-func (Antigravity) Command(_ context.Context, l Launch) ([]string, error) {
+// settings: among them the status line that keeps the context size in the backup.
+func (Antigravity) Command(ctx context.Context, l Launch) ([]string, error) {
 	command := []string{"agy"}
 	resume, err := antigravityKeeps(l.UserHome, l.SessionID)
 	if err == nil && !resume {
@@ -77,6 +76,9 @@ func (Antigravity) Command(_ context.Context, l Launch) ([]string, error) {
 	}
 	if l.Permissions == PermissionsFull {
 		settings["enableTerminalSandbox"] = false
+	}
+	if l.BackupDir != "" {
+		settings["statusLine"] = antigravityStatusLine(ctx, l)
 	}
 	data, err := json.Marshal(settings)
 	if err != nil {

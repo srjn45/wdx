@@ -2,6 +2,8 @@ package aca
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 )
 
@@ -21,8 +23,13 @@ type antigravityRestart struct {
 // BeginSession implements AiCodingAgent. Its line makes session the one BackUp says
 // the agent is in until the new conversation's first message, so that the next start
 // begins one rather than resume the conversation before, and tells the brief that
-// the conversation which comes next is a restart's, not a /clear.
+// the conversation which comes next is a restart's, not a /clear. What the old
+// conversation last gave its status line goes, or its context size would come back
+// as the new session's.
 func (Antigravity) BeginSession(_ context.Context, l Launch, session string) error {
+	if err := os.Remove(filepath.Join(l.BackupDir, antigravityStatusFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	starts, err := antigravityStarts(filepath.Join(l.BackupDir, antigravityHooksFile))
 	if err != nil {
 		return err

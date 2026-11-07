@@ -1,0 +1,15 @@
+1.889 box_drawn
+2.919 ready
+6.406 draft
+7.768 slash_menu
+8.708 rest
+9.212 generating
+12.601 running_command
+13.746 queued
+21.298 turn_done
+25.108 task_in_turn
+32.387 task_after_turn
+52.950 task_over
+56.006 task_over_still
+59.778 before_esc
+61.331 interrupted
