@@ -22,6 +22,8 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 - [Child agents](/wdx/docs/guides/child-agents/): agents that start agents of their own.
 - [Messages and sending](/wdx/docs/guides/messages/): tasks for agents from scripts and other agents.
 - [Worktrees and landing](/wdx/docs/guides/worktrees/): a branch per agent, a diff, and landing with no merge commit.
+- [Docs](/wdx/docs/guides/docs/): designs kept in wdx with a revision per change.
+- [Plans](/wdx/docs/guides/plans/) and [Running plans](/wdx/docs/guides/running-plans/): a feature as tasks for agents, run and landed by wdx.
 
 ## Scripts and AI agents
 
@@ -39,4 +41,4 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 
 These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
 
-More guides, and how wdx is built, are on their way.
+TIDE's own pages and how wdx is built are on their way.

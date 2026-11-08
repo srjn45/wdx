@@ -1,0 +1,82 @@
+---
+title: Docs
+description: Designs, specs and notes kept in wdx with a revision per change, for you and your agents to read and change without overwriting each other.
+commands: [doc create, doc list, doc get, doc update, doc history, doc set, doc rename, doc remove, doc sync-to-git]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A doc is a project's text kept in wdx rather than in its repository: a design, a spec, a plan in words. Every person and agent reads the same doc the moment it is written, on whatever branch or worktree they are in. Every change is a new revision, made on the revision it was read at, so two writers never overwrite each other. A doc's **status** says whether it is agreed on: `wip`, `review`, `approved` or `rejected`. See [Concepts](/wdx/docs/start/concepts/#docs).
+
+## Try it
+
+Create a doc from a file, or from stdin with `--path -`:
+
+```console
+$ wdx doc create --path checkout.md --name CHECKOUT --labels design
+doc CHECKOUT created
+  project  app
+  folder   /
+  status   wip
+  revision 1
+  labels   design
+  format   md
+  id       doc-bd41036e
+$ wdx doc get --name CHECKOUT
+# Checkout
+
+Orders are placed from the cart.
+```
+
+To change it, get a copy to edit, then give it back naming the revision you read:
+
+```console
+$ wdx doc get --name CHECKOUT --out CHECKOUT.md
+revision 1 of CHECKOUT written to /home/you/CHECKOUT.md
+$ echo "Payment goes through Stripe." >> CHECKOUT.md
+$ wdx doc update --name CHECKOUT --path CHECKOUT.md --base 1
+CHECKOUT is at revision 2
+```
+
+Had someone written revision 2 first, yours would be refused rather than written over theirs:
+
+```console
+$ wdx doc update --name CHECKOUT --path CHECKOUT.md --base 1
+wdx: not updated: doc CHECKOUT is at revision 2, not 1  [doc_changed]
+  hint: get it again with wdx doc get --name CHECKOUT --out <file> --overwrite, apply your change, and update with --base 2
+  debug_id: dbg-dd7b22a40bea
+```
+
+Put it up for review, in a folder, and see where things stand:
+
+```console
+$ wdx doc set --name CHECKOUT --status review --folder /shop
+doc CHECKOUT is review, in /shop, with labels design
+$ wdx doc list
+FOLDER  NAME      STATUS  REVISION  LABELS  UPDATED
+/shop   CHECKOUT  review  2         design  2026-11-08 02:05:22
+$ wdx doc history --name CHECKOUT
+REVISION  SIZE  CREATED
+2         75    2026-11-08 02:05:22
+1         45    2026-11-08 02:05:22
+```
+
+## In TIDE
+
+The Docs section of the left pane lists the project's docs as a tree of folders, with each one's status, kept up to date as they change. Enter opens one, read-only, in the right pane; `/` filters by name or label, and `m` moves the doc under the cursor to another folder. Writing, history and status are the CLI's: in practice agents write docs and you read them in TIDE.
+
+## How it behaves
+
+- **Names** have letters, numbers, `_` and `-`, and are unique in a project whatever their case. Without `--name`, the file's name without its extension. A name the project has is refused: changing a doc is `doc update`.
+- **Revisions.** `--base` is the revision your change was made on. If the doc has a newer one, nothing is written (`doc_changed`): get it again, apply your change, and update with the new base. Every revision is kept until the doc is removed; `doc get --revision` reads an old one.
+- **Status.** A new revision makes a doc `wip` again, whatever it was, as what was agreed has changed. Content equal to the latest makes no revision. `doc set` changes the status, folder and labels without a new revision.
+- **Folders** such as `/shop/checkout` only say where TIDE shows a doc; `/` is the top. **Labels** have lowercase letters, numbers, `_` and `-`; `doc list --labels` shows the docs with all of them.
+- **Format** is the extension its copies get, the file's or `md`. Content is UTF-8 text of at most 2 MiB.
+- **Removing** asks first, as nothing brings a doc back; `--yes` answers in advance.
+- **A copy in the repository.** `doc sync-to-git --path docs/wdx` writes each doc's latest revision there, read-only, as `<name>.<format>`, with a `.wdx-docs` file listing what it wrote. It never stages or commits, never touches a file it did not write, and removes only the files of docs that are gone. The `docs.git_path` setting has the daemon do it on every change.
+- **Agents** are told to read and change docs only through `wdx doc`, never a copy in the repository, and to leave approving to you. See [Working with AI agents](/wdx/docs/guides/ai-agents/).
+
+## Commands
+
+<Commands />

@@ -1,0 +1,102 @@
+---
+title: Running plans
+description: wdx starts an agent for each task that is ready, lands each finished task on the plan's branch, and waits for you only when a task cannot go on.
+commands: [plan run, plan status, plan task get, plan task done, plan task retry, plan task land, plan task skip, plan pause, plan resume, plan cancel]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+Running a [plan](/wdx/docs/guides/plans/) makes a branch for it, `plan/<name>`, and starts an agent for every task whose afters are done, each in a worktree of the plan's. When an agent says its task is done, wdx rebases the task's work onto the plan's branch, running the project's landing check first, and starts what waited for it. When every task is done, one worktree is left on the plan's branch, to land as any other. A task that cannot go on waits for you while the rest goes on.
+
+## Try it
+
+Run the plan from [Plans](/wdx/docs/guides/plans/). The first task's agent starts at once:
+
+```console
+$ wdx plan run --name first-release
+plan first-release running on plan/first-release
+  project  app
+  tasks    2 tasks
+  id       doc-853c115e
+$ wdx plan status --name first-release
+first-release: running, 0/2 tasks done, on plan/first-release
+  goal        Get app ready for its first contributors.
+  constraint  Keep each file to one or two lines.
+TASK          STATE                     AFTER         AGENT                       SLOT
+contributing  running                                 first-release-contributing  first-release-1
+notes         waiting for contributing  contributing
+```
+
+Each agent commits its work and says so, with `wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>`. Here the project's landing check refuses any `TODO`, and the second task wrote one, so its landing failed and waits for you:
+
+```console
+$ wdx plan status --name first-release
+first-release: running, 1/2 tasks done, 1 failed, on plan/first-release
+  goal        Get app ready for its first contributors.
+  constraint  Keep each file to one or two lines.
+TASK          STATE                                               AFTER         AGENT                SLOT
+contributing  done
+notes         land failed: check (terminal land-first-release-1)  contributing  first-release-notes  first-release-1
+$ wdx plan task get --plan first-release --task notes
+notes of first-release: land failed: check (terminal land-first-release-1)
+  after    contributing
+  agent    first-release-notes
+  worktree /home/you/code/app/.worktrees/first-release-1
+  check    its output in the terminal land-first-release-1
+
+PROMPT
+Create NOTES.md with the line "TODO: write notes" and commit it.
+
+SUMMARY
+Created NOTES.md with the single line 'TODO: write notes' and committed it on task/first-release/notes (1ef2341).
+```
+
+`wdx plan task retry` would resume its agent, told what went wrong. Fixing it yourself instead, commit in the task's worktree and land it again:
+
+```console
+$ cd ~/code/app/.worktrees/first-release-1
+$ echo "Notes go here." > NOTES.md && git commit -qam "docs: drop the TODO from the notes"
+$ wdx plan task land --plan first-release --task notes
+task notes of first-release landing on plan/first-release
+$ wdx plan status --name first-release
+first-release: done, 2/2 tasks done, on plan/first-release
+  goal        Get app ready for its first contributors.
+  constraint  Keep each file to one or two lines.
+TASK          STATE  AFTER         AGENT  SLOT
+contributing  done
+notes         done   contributing
+```
+
+The plan's worktree is now on `plan/first-release`, ready to [land](/wdx/docs/guides/worktrees/):
+
+```console
+$ wdx worktree list
+NAME             BRANCH              AHEAD  CHANGED  PATH
+main             main                -      0        /home/you/code/app
+first-release-1  plan/first-release  3      0        /home/you/code/app/.worktrees/first-release-1
+$ wdx worktree land --name first-release-1
+```
+
+## In TIDE
+
+A plan's tab follows its run as it goes: `r` runs a draft after a question, `p` pauses and resumes it, `c` cancels it. Enter on a running task goes to its agent; on a task that failed or did not land, it opens a box to retry it (`r`), with a new agent (`f`), land it again (`l`), skip it (`s`), or read the failed check's output (`t`). The Agents and Worktrees sections show a running plan's agents and worktrees under a row for the plan, and the Plans section says `needs you` when a task waits for you.
+
+## How it behaves
+
+- **Who runs.** Up to `plan.parallel` tasks at once (3 by default), or `--parallel` for this run; `plan set --parallel` changes it while it runs. Each task's agent is told the goal, the constraints, the summaries of the tasks it waits for, and its prompt.
+- **Done** is the agent's to say, once its work is committed on its branch: `plan task done` with a summary, which the tasks waiting for it are told. wdx then stops the agent and lands the task. A person who finished a failed task names the plan and task instead.
+- **Failed** means its agent ended before saying it was done, did not start, or lost its worktree. **Land failed** means its rebase onto the plan's branch stopped on a conflict, or the check failed; the check's output stays in a terminal named `land-<worktree>`. Either way, what waits for it waits for you:
+  - `plan task retry` resumes its agent, told what went wrong; `--fresh` starts a new one, told of the earlier commits;
+  - `plan task land` lands it again once you dealt with it in its worktree yourself;
+  - `plan task done` with a summary, when you finished it yourself;
+  - `plan task skip` lets what waits for it go on without it.
+- **Nothing is lost.** A task keeps its worktree and commits through all of these. `plan cancel` stops a plan for good, after a question (`--yes`), keeping every worktree that holds work, and its branch.
+- **Pausing** starts nothing new; tasks at work go on and land. Closing the project pauses its plans, and opening it resumes them.
+- **A plan's worktrees** cannot be landed or removed while it runs (`worktree_in_plan`). Once the plan is over, its agents are removed and its worktrees are ordinary ones.
+- **A plan of plans** starts each plan it lists from the default branch once those before it are done and their work is in the default branch: landed through wdx, or a PR merged and pulled (wdx fetches nothing). A plan whose work it cannot see waits for you, and `plan run` on that plan is your answer, asking `gh` whether the PR before it is merged.
+- **PRs.** With `pr: true`, wdx lands a finished plan by PR, as `worktree land --method pr` does. With `stacked: true` on a plan of plans too, a plan waiting for one other starts on that one's branch as soon as it is done, its PR against it, so a review does not hold up the next. Once the PR below moves on or merges, `wdx worktree rebase` on the plan's worktree, from the bottom of the stack up, moves it along.
+
+## Commands
+
+<Commands />

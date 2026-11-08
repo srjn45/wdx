@@ -14,10 +14,11 @@ const guides = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/docs/guides`;
     <a class="more" href={`${guides}/worktrees/`}>The worktrees guide →</a></div>
     <div class="crop" id="crop-diff"></div></div>
   <div class="spot"><div class="copy"><span class="eyebrow">Plans</span><h3>Split a feature into tasks, and let wdx run them.</h3><p>A plan is a DAG of tasks. wdx starts an agent for each task that is ready, each in a worktree of the plan's, and lands every finished task on the plan's branch. Plans of plans land as stacked PRs.</p>
-    <ul><li>Drawn the way <code>git log --graph</code> draws commits</li><li>A task that fails waits for you to retry, land or skip it</li></ul></div>
+    <ul><li>Drawn the way <code>git log --graph</code> draws commits</li><li>A task that fails waits for you to retry, land or skip it</li></ul>
+    <a class="more" href={`${guides}/plans/`}>The plans guide →</a></div>
     <div class="crop" id="crop-plan"></div></div>
   <div class="cards">
-    <div class="card"><span class="g">doc</span><h3>Docs with revisions</h3><p>Designs live in wdx with a status, wip to approved, so people and agents read the same thing.</p></div>
+    <div class="card"><span class="g">doc</span><h3>Docs with revisions</h3><p>Designs live in wdx with a status, wip to approved, so people and agents read the same thing.</p><a class="more" href={`${guides}/docs/`}>The docs guide →</a></div>
     <div class="card"><span class="g">--json</span><h3>For scripts and AIs</h3><p>Every command returns one JSON object with stable error codes, and never prompts.</p><a class="more" href={`${guides}/scripting/`}>The scripting guide →</a></div>
     <div class="card"><span class="g">$_</span><h3>Terminals that stay</h3><p>Shells in PTYs that outlive the daemon, with their scrollback, attachable from anywhere.</p><a class="more" href={`${guides}/terminals/`}>The terminals guide →</a></div>
     <div class="card"><span class="g">◔</span><h3>Observable</h3><p>Every run logged with a debug id, metrics in Grafana with one command.</p><a class="more" href={`${guides}/observability/`}>The observability guide →</a></div>

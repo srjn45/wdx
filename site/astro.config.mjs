@@ -34,6 +34,9 @@ export default defineConfig({
             'docs/guides/child-agents',
             'docs/guides/messages',
             'docs/guides/worktrees',
+            'docs/guides/docs',
+            'docs/guides/plans',
+            'docs/guides/running-plans',
           ],
         },
         {
