@@ -17,6 +17,7 @@ import (
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/settings"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -118,7 +119,7 @@ func newSettingSetCmd() *cobra.Command {
 			}
 			home := invocationOf(cmd).env.Config.Home
 			r, err := config.Set(home, s.Key, value)
-			if _, invalid := errors.AsType[*config.Error](err); invalid {
+			if _, invalid := errors.AsType[*settings.Error](err); invalid {
 				return &hinted{err, "see what it takes in " + identity.Name + " help settings"}
 			}
 			if err != nil {
@@ -230,16 +231,16 @@ func newSettingWriteCmd() *cobra.Command {
 }
 
 // findSetting returns the setting named key.
-func findSetting(key string) (config.Setting, error) {
+func findSetting(key string) (settings.Setting, error) {
 	list := config.Settings()
-	if i := slices.IndexFunc(list, func(s config.Setting) bool { return s.Key == key }); i >= 0 {
+	if i := slices.IndexFunc(list, func(s settings.Setting) bool { return s.Key == key }); i >= 0 {
 		return list[i], nil
 	}
-	return config.Setting{}, &hinted{&usageError{fmt.Errorf("no setting is named %q", key)}, "see every setting with " + identity.Name + " setting list"}
+	return settings.Setting{}, &hinted{&usageError{fmt.Errorf("no setting is named %q", key)}, "see every setting with " + identity.Name + " setting list"}
 }
 
 // viewOf is s as the commands and the API show it.
-func viewOf(cfg config.Config, s config.Setting) api.Setting {
+func viewOf(cfg config.Config, s settings.Setting) api.Setting {
 	v := api.Setting{Key: s.Key, Value: cfg.Value(s.Key), Default: s.Default, Description: s.Description, From: cfg.From[s.Key], Editable: s.EnvVar == ""}
 	if s.Choices != nil {
 		v.Choices = &s.Choices
@@ -264,7 +265,7 @@ func (s settingStore) List() ([]api.Setting, error) {
 
 func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
 	list := config.Settings()
-	i := slices.IndexFunc(list, func(setting config.Setting) bool { return setting.Key == key })
+	i := slices.IndexFunc(list, func(setting settings.Setting) bool { return setting.Key == key })
 	if i < 0 {
 		return api.Setting{}, false, &daemon.UnknownSettingError{Key: key}
 	}
@@ -272,7 +273,7 @@ func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
 		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: fmt.Errorf("%s is read from %s, not the config file", key, list[i].EnvVar)}
 	}
 	r, err := config.Set(s.home, key, value)
-	if e, invalid := errors.AsType[*config.Error](err); invalid {
+	if e, invalid := errors.AsType[*settings.Error](err); invalid {
 		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: settingRefusal(e, key)}
 	}
 	if err != nil {
@@ -287,7 +288,7 @@ func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
 
 // settingRefusal is why the setting key was refused: only that, when its own value
 // is what was wrong, for a row that already names it.
-func settingRefusal(e *config.Error, key string) error {
+func settingRefusal(e *settings.Error, key string) error {
 	for _, p := range e.Problems {
 		if p.Key == key && p.Value != nil {
 			return errors.New(p.Reason)
@@ -361,7 +362,7 @@ func (r settingSetResult) text(w io.Writer, st style.Style) {
 // file and err names only keys no setting has: such a command moves them out
 // of the way, so it runs on the settings that loaded.
 func RewritesSettings(args []string, err error) bool {
-	e, ok := errors.AsType[*config.Error](err)
+	e, ok := errors.AsType[*settings.Error](err)
 	if !ok || !e.OnlyUnknown() {
 		return false
 	}
@@ -402,7 +403,7 @@ func (r settingsResult) text(w io.Writer, st style.Style) {
 
 // settingsProblem is the problem of settings that failed to load or to be
 // written anew.
-func settingsProblem(e *config.Error) api.Problem {
+func settingsProblem(e *settings.Error) api.Problem {
 	p := api.NewProblem(api.ErrorCodeUsage, e.Error())
 	hint := "fix or remove them"
 	if e.OnlyUnknown() {

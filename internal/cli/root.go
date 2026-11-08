@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/observe"
 	"github.com/srjn45/wdx/internal/service"
+	"github.com/srjn45/wdx/internal/settings"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -205,7 +206,7 @@ func ConfigError(args []string, env Env, err error) int {
 	p := api.NewProblem(api.ErrorCodeUsage, err.Error())
 	hint := "fix or remove them"
 	p.Hint = &hint
-	if e, ok := errors.AsType[*config.Error](err); ok {
+	if e, ok := errors.AsType[*settings.Error](err); ok {
 		p = settingsProblem(e)
 	}
 	asJSON := slices.Contains(args, "--json")

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/srjn45/wdx/internal/settings"
 )
 
 // env is a fake environment.
@@ -29,11 +31,11 @@ func homeWith(t *testing.T, content string) (string, env) {
 	return home, env{"WDX_HOME": home}
 }
 
-func loadErr(t *testing.T, content string) (*Error, string) {
+func loadErr(t *testing.T, content string) (*settings.Error, string) {
 	t.Helper()
 	home, e := homeWith(t, content)
 	_, err := Load(e.getenv)
-	cfgErr, ok := errors.AsType[*Error](err)
+	cfgErr, ok := errors.AsType[*settings.Error](err)
 	if !ok {
 		t.Fatalf("want *Error, got %v", err)
 	}
@@ -110,26 +112,6 @@ func TestFileSettings(t *testing.T) {
 	}
 }
 
-func TestEmptyAndNullValues(t *testing.T) {
-	t.Parallel()
-	for _, content := range []string{"", "# nothing\n", "log:\n  level:\n"} {
-		_, e := homeWith(t, content)
-		c, err := Load(e.getenv)
-		if err != nil || c.LogLevel != slog.LevelInfo || c.From["log.level"] != "default" {
-			t.Fatalf("%q: want defaults, got %+v, %v", content, c, err)
-		}
-	}
-}
-
-func TestOnlySettingsFromEnvironmentAreRead(t *testing.T) {
-	t.Parallel()
-	home := t.TempDir()
-	c, err := Load(env{"WDX_HOME": home, "WDX_LOG_LEVEL": "debug", "WDX_NO_INPUT": "1"}.getenv)
-	if err != nil || c.LogLevel != slog.LevelInfo || c.NoInput {
-		t.Fatalf("want only WDX_HOME read, got %+v, %v", c, err)
-	}
-}
-
 func TestEveryProblemReported(t *testing.T) {
 	t.Parallel()
 	e, path := loadErr(t, strings.Join([]string{
@@ -185,70 +167,9 @@ func TestEveryProblemReported(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	i := slices.IndexFunc(e.Problems, func(p Problem) bool { return p.Key == "log.level" })
+	i := slices.IndexFunc(e.Problems, func(p settings.Problem) bool { return p.Key == "log.level" })
 	if p := e.Problems[i]; p.Value == nil || *p.Value != "loud" {
 		t.Fatalf("unexpected problem %+v", p)
-	}
-}
-
-func TestNotASingleValue(t *testing.T) {
-	t.Parallel()
-	for content, want := range map[string]string{
-		"log:\n  level: [debug]\n": ":2: log.level: not a single value",
-		"log:\n  level: {a: b}\n":  ":2: log.level: not a single value",
-		"log: debug\n":             ":1: log: unknown setting",
-	} {
-		e, path := loadErr(t, content)
-		if len(e.Problems) != 1 || e.Problems[0].String() != path+want {
-			t.Fatalf("%q: want %s, got %v", content, want, e)
-		}
-	}
-}
-
-func TestBadFile(t *testing.T) {
-	t.Parallel()
-	for content, want := range map[string]string{
-		"log: [":                            ":1: did not find expected node content",
-		"- debug\n":                         ":1: not a mapping of settings",
-		"no_input: true\nno_input: false\n": ":2: no_input: already set at line 1",
-		"log:\n  level: info\nlog:\n  level: x\n": ":3: log: already set at line 1",
-	} {
-		e, path := loadErr(t, content)
-		if len(e.Problems) != 1 || e.Problems[0].String() != path+want {
-			t.Fatalf("%q: want %q, got %v", content, want, e)
-		}
-	}
-}
-
-func TestUnreadableFile(t *testing.T) {
-	t.Parallel()
-	home := t.TempDir()
-	if err := os.Mkdir(filepath.Join(home, "config.yaml"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Load(env{"WDX_HOME": home}.getenv)
-	if err == nil || !strings.Contains(err.Error(), "config.yaml: cannot be read: ") {
-		t.Fatalf("want unreadable file reported, got %v", err)
-	}
-}
-
-func TestRequiredSetting(t *testing.T) {
-	t.Parallel()
-	table := slices.Concat(settings, []setting{{
-		key:      "token",
-		required: true,
-		set:      func(*Config, string) error { return nil },
-		get:      func(Config) string { return "" },
-	}})
-	_, e := homeWith(t, "")
-	_, err := load(table, e.getenv)
-	cfgErr, ok := errors.AsType[*Error](err)
-	if !ok || len(cfgErr.Problems) != 1 || cfgErr.Problems[0].Value != nil || err.Error() != "invalid settings: token: required" {
-		t.Fatalf("want token required, got %v", err)
-	}
-	_, e = homeWith(t, "token: x\n")
-	if _, err := load(table, e.getenv); err != nil {
-		t.Fatalf("want token accepted, got %v", err)
 	}
 }
 
@@ -270,6 +191,15 @@ func TestTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	template := string(r.Content)
+	header := "# wdx settings. wdx setting set changes one and applies it at once.\n" +
+		"# After editing this file by hand run: wdx daemon restart\n" +
+		"# Every setting is optional; uncomment one to change it. See wdx help settings.\n" +
+		"# wdx update, wdx setting set and wdx setting write rewrite this file: they\n" +
+		"# keep the values set and add new settings, but not comments of your own.\n" +
+		"\n# Never prompt, as --no-input does: true or false.\n# no_input: false\n"
+	if !strings.HasPrefix(template, header) {
+		t.Errorf("want the template to start\n%s\ngot\n%s", header, template)
+	}
 	uncommented := regexp.MustCompile(`(?m)^# ( *[a-z_]+:.*)$`).ReplaceAllString(template, "$1")
 	_, e := homeWith(t, uncommented)
 	c, err := Load(e.getenv)
@@ -285,21 +215,26 @@ func TestTemplate(t *testing.T) {
 			t.Errorf("%s: want the template to set its default %q, got %q from %q", s.Key, d.Value(s.Key), c.Value(s.Key), c.From[s.Key])
 		}
 	}
+	home, _ := homeWith(t, "old: 1\n")
+	r, err = Rewrite(filepath.Join(home, "config.yaml"), nil)
+	if want := "\n\n# No longer read by wdx, kept for reference:\n# old: 1\n"; err != nil || !strings.HasSuffix(string(r.Content), want) {
+		t.Errorf("want the template to end %q, got %v\n%s", want, err, r.Content)
+	}
 }
 
 // A choice the panes offer must be a value the setting takes.
 func TestChoicesAreAccepted(t *testing.T) {
 	t.Parallel()
 	offered := 0
-	for _, s := range settings {
-		for _, choice := range s.choices {
+	for _, s := range table.Rows {
+		for _, choice := range s.Choices {
 			offered++
 			c := Default()
-			if err := s.set(&c, choice); err != nil {
-				t.Errorf("%s: %v", s.key, err)
+			if err := s.Set(&c, choice); err != nil {
+				t.Errorf("%s: %v", s.Key, err)
 			}
-			if got := s.get(c); got != choice {
-				t.Errorf("%s: %q reads as %q", s.key, choice, got)
+			if got := s.Get(c); got != choice {
+				t.Errorf("%s: %q reads as %q", s.Key, choice, got)
 			}
 		}
 	}

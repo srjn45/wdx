@@ -10,8 +10,8 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
-	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/settings"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -114,7 +114,7 @@ func problem(err error) (api.Problem, int) {
 		p = op
 	} else if ap, ok := attachProblem(err); ok {
 		p = ap
-	} else if e, ok := errors.AsType[*config.Error](err); ok {
+	} else if e, ok := errors.AsType[*settings.Error](err); ok {
 		p = settingsProblem(e)
 	} else if ip, ok := depsProblem(err); ok {
 		p = ip

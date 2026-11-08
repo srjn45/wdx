@@ -21,6 +21,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/settings"
 )
 
 func TestSettingsWrite(t *testing.T) {
@@ -91,8 +92,8 @@ func TestSettingsWriteText(t *testing.T) {
 
 func TestRewritesSettings(t *testing.T) {
 	t.Parallel()
-	unknown := &config.Error{Problems: []config.Problem{{Key: "old", Reason: "unknown setting"}}}
-	invalid := &config.Error{Problems: []config.Problem{{Key: "color", Reason: `"loud" is not one of auto, always, never`}}}
+	unknown := &settings.Error{Problems: []settings.Problem{{Key: "old", Reason: "unknown setting"}}}
+	invalid := &settings.Error{Problems: []settings.Problem{{Key: "color", Reason: `"loud" is not one of auto, always, never`}}}
 	for _, tc := range []struct {
 		args []string
 		err  error
