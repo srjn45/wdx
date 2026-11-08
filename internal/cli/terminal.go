@@ -264,8 +264,8 @@ func newTerminalSendCmd() *cobra.Command {
 		Short: "Type a message into a running terminal and press Enter",
 		Long: "The message is queued for the terminal and typed as soon as its shell can\n" +
 			"take it, in the order sent, into whatever is running there. This does not\n" +
-			"wait for it to be typed or to run, and a message still queued when the shell\n" +
-			"ends is lost.",
+			"wait for it to be typed or to run. A message still queued when the shell\n" +
+			"ends is kept, and waits in wdx message list to be sent again or discarded.",
 		Example: examples(
 			"Run a command in a terminal of the project you are in", identity.Name+" terminal send --name server --prompt make",
 			"By id, as JSON", identity.Name+" terminal send --id term-1a2b3c4d --prompt make --json",

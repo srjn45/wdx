@@ -1047,7 +1047,8 @@ paths:
       description: |
         The message goes in the inbox of the terminal's holder, which types it
         into the shell and presses Enter; it may not have reached the shell
-        when this returns. It is lost if the shell ends first.
+        when this returns. One still queued when the shell ends is kept, held
+        for a human: listMessages, resendMessage and discardMessage.
 
         A message that does not reach the holder returns send_failed with the
         terminal under details.terminal: the holder is too old and the terminal
@@ -1318,7 +1319,9 @@ paths:
         The message goes in the inbox of the agent's holder, which delivers it
         once its screen allows: never while text is in its input box or a prompt
         is open, nor on a screen it cannot read. It may not have reached the
-        agent when this returns, and is lost if the agent ends first.
+        agent when this returns. One still queued when the agent ends is kept:
+        it goes on when the agent resumes the same session, or else is held
+        for a human (listMessages).
 
         With instant it goes before the general messages and, when the agent is
         in a turn, its turn is interrupted first.

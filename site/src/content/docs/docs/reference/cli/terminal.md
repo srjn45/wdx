@@ -335,7 +335,7 @@ Type a message into a running terminal and press Enter.
 wdx terminal send (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --prompt <text> [flags]
 ```
 
-The message is queued for the terminal and typed as soon as its shell can take it, in the order sent, into whatever is running there. This does not wait for it to be typed or to run, and a message still queued when the shell ends is lost.
+The message is queued for the terminal and typed as soon as its shell can take it, in the order sent, into whatever is running there. This does not wait for it to be typed or to run. A message still queued when the shell ends is kept, and waits in wdx message list to be sent again or discarded.
 
 ### Flags
 
