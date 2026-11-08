@@ -164,18 +164,22 @@ Runs the hub in the foreground, as a container's entry point. It listens on two 
 
 ### `wdx-hub user`
 
-| Command | |
-|---|---|
-| `invite [--expires <duration>]` | a one-time sign-up link, 24 hours by default, that works while registration is closed. Results: `invited` |
-| `list` | `users`: `username`, `created_at`, `disabled`, `nodes` (a count) |
-| `get --username <name>` | one user, with their nodes |
-| `disable --username`, `enable --username` | disabling refuses their logins and cuts off their nodes. Results: `disabled`, `enabled` |
-| `reset --username [--second-factor]` | a one-time link to set a new password, since there is no email; `--second-factor` also clears their passkeys and TOTP. Results: `reset` |
-| `remove --username [--yes]` | deletes the account, its nodes and its private docs, asking first. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them. The username is never given again, so `<user>/<doc>` keeps meaning one person. Results: `removed` |
+Each is an operation of `api/hub.yaml` tagged `admin`, built in step 4 (the wdx doc HUB_ACCOUNTS). Every one also fails with `hub_unavailable` (3), hinting `run wdx-hub serve`. A user is `username`, `created_at`, `last_login_at` (`null` when they never logged in), `disabled` and `second_factor` (`totp`, or `null` while none is enrolled).
+
+| Command | | Results | Errors |
+|---|---|---|---|
+| `invite [--expires <duration>]` | a one-time sign-up link, `<public_url>/signup?invite=<token>`, 24 hours by default and at most 30 days, that works while registration is closed: `{"result": "invited", "invite": {"link", "expires_at"}}` | `invited` | `invalid_argument` |
+| `list` | `users`; removed users are left out. `nodes`, a count, comes with step 5 | | |
+| `get --username <name>` | one user, with `sessions`, the count of their browser sessions that have not ended; their nodes come with step 5 | | `not_found` |
+| `disable --username`, `enable --username` | the user as they now are; disabling ends their browser sessions and refuses their logins, and from step 5 cuts off their nodes | `disabled`, `enabled`, `unchanged` | `not_found` |
+| `reset --username [--second-factor]` | a one-time link to set a new password, since there is no email, `<public_url>/reset?token=<token>`, 24 hours; a new reset voids an earlier one; `--second-factor` also removes their TOTP and recovery codes, and from the passkeys step their passkeys: `{"result": "reset", "reset": {"link", "expires_at", "second_factor"}}` | `reset` | `not_found` |
+| `remove --username [--yes]` | the user as they were; asks first, and `--json` needs `--yes`. Keeps the row, so the username is never given again and `<user>/<doc>` keeps meaning one person, and deletes their password hash, factor, recovery codes, sessions and resets; steps 5 and 6 add their nodes and private docs. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them | `removed` | `not_found`, `cancelled` (answered no) |
+
+An invite or reset link is a secret: printed on a line of its own, since the admin must hand it on, but never logged; the server's `request returned` and the command's `command returned` measure it as `link_bytes`.
 
 ### The rest
 
-`wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's, with settings marked secret shown as `[secret]`; `wdx-hub audit verify`, which walks the audit chain and reports the first broken row; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
+`wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's, with settings marked secret shown as `[secret]`; `wdx-hub audit verify`, which walks the audit chain: `{"audit": {"rows", "head"}}`, `head` the last row's hash or `null` for an empty chain, or `audit_broken` (exit 1) with the first broken row's `id` and `at` in `details`; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
 
 ### The hub's settings
 
@@ -188,6 +192,6 @@ Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at star
 | `listen.nodes` | `:8443` | the node endpoint |
 | `web.tls` | `off` | `off` behind a TLS proxy, as on Fly; `acme` (Let's Encrypt); `files`, with `web.tls_cert` and `web.tls_key` |
 | `registration` | `closed` | `closed` or `open`; invites work either way |
-| `trusted_proxies` | empty | addresses whose forwarding header gives the client's address, as Fly's proxy |
-| `docs_key` | required | the master key sealing docs at rest; secret |
+| `trusted_proxies` | empty | addresses or CIDR ranges, comma-separated, whose `X-Forwarded-For` gives the client's address, as Fly's proxy |
+| `master_key` | required | 32 bytes as base64, secret; seals the TOTP secrets and, in step 6, the docs' data keys. `serve` refuses to start without it, hinting `make one with: head -c 32 /dev/urandom | base64` |
 | `log.level`, `otel.endpoint` | `info`, empty | |

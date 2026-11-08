@@ -217,6 +217,14 @@ linters:
               desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
             - pkg: github.com/srjn45/wdx/internal/aca
               desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+        # seal is a few lines of the standard library's crypto, so that what
+        # guards the hub's secrets at rest is read whole (the wdx doc
+        # HUB_ACCOUNTS).
+        seal-standard-library-only:
+          files: ["**/internal/hub/seal/*.go", "!$test"]
+          list-mode: strict
+          allow:
+            - $gostd
         # Only wdx-hub uses the hub, until hublink in step 5 takes hubapi.
         hub-in-wdx-hub-only:
           files:

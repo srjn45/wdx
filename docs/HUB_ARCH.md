@@ -122,28 +122,28 @@ The hub's CA certificate and the node endpoint's address come over the web endpo
 ### Encrypted at rest
 
 - Each doc has a data key; its revisions are gzipped, then sealed with AES-256-GCM under it. The data key is stored wrapped by a master key.
-- The master key is the setting `docs_key`: on Fly a secret (`WDX_HUB_DOCS_KEY`), self-hosted from the environment or the config file. Fly has no key service; a secret is what it offers.
+- The master key is the setting `master_key`, which also seals the TOTP secrets (step 4, the wdx doc HUB_ACCOUNTS): on Fly a secret (`WDX_HUB_MASTER_KEY`), self-hosted from the environment or the config file. Fly has no key service; a secret is what it offers.
 - So a stolen database or Litestream copy in object storage shows no doc's content. Someone with the running server has the key, which is why end-to-end docs remain the later step.
 - Rotating the master key is later; wrapping each doc's data key is what makes it cheap when it comes, since only the wrapped keys are rewritten.
 
 ## The hub's tables
 
-STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for wdx. MVP only; teams come with sharing.
+STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for wdx. MVP only; teams come with sharing. The accounts' tables, `users` to `web_sessions` and `audit`, are built (step 4, migration `0002_accounts`, the wdx doc HUB_ACCOUNTS), with the columns it found missing; the rest come with their steps.
 
 | Table | Holds |
 |---|---|
-| `users` | `id` (`usr-`), `username` (unique, `COLLATE NOCASE`, never given again), `password_hash` (argon2id), `created_at`, `disabled_at`, `removed_at` |
-| `invites` | `id`, `token_hash`, `created_at`, `expires_at`, `used_by`, `used_at` |
-| `password_resets` | `id`, `user_id`, `token_hash`, `second_factor`, `created_at`, `expires_at`, `used_at` |
-| `totp_factors` | `user_id`, `secret` (sealed under the master key), `created_at` |
-| `passkeys` | `id`, `user_id`, `name`, `credential_id`, `public_key`, `sign_count`, `created_at`, `last_used_at` |
+| `users` | `id` (`usr-`), `username` (unique, `COLLATE NOCASE`, never given again), `password_hash` (argon2id; NULL once removed), `created_at`, `last_login_at`, `disabled_at`, `removed_at` |
+| `invites` | `id` (`inv-`), `token_hash`, `created_at`, `expires_at`, `used_by`, `used_at` |
+| `password_resets` | `id` (`rst-`), `user_id`, `token_hash`, `second_factor`, `created_at`, `expires_at`, `used_at` |
+| `totp_factors` | `user_id` (primary key), `secret` (sealed under the master key, the user's id as additional data), `pending_secret` (a replacement being enrolled, so the factor in use works until it is confirmed), `confirmed_at` (NULL while being enrolled), `last_step` (the last 30-second step accepted, so a code is used once), `created_at` |
+| `passkeys` | `id`, `user_id`, `name`, `credential_id`, `public_key`, `sign_count`, `created_at`, `last_used_at`; comes with passkeys, not created in step 4 |
 | `recovery_codes` | `user_id`, `code_hash`, `used_at` |
-| `web_sessions` | `id`, `user_id`, `token_hash`, `created_at`, `last_seen_at`, `expires_at` |
+| `web_sessions` | `id` (`ws-`), `user_id`, `token_hash`, `second_factor_at` (NULL until the second factor passed), `address`, `user_agent`, `created_at`, `last_seen_at`, `expires_at` |
 | `node_logins` | `id`, `flow` (`browser`, `device`), `code_hash` (the authorization code's or the device code's), `pkce_challenge`, `callback`, `user_code`, `name`, `os`, `public_key`, `status` (`pending`, `approved`, `denied`), `user_id`, `node_id`, `created_at`, `expires_at` |
 | `nodes` | `id` (`node-`), `user_id`, `name` (unique per user, `NOCASE`), `public_key`, `os`, `version`, `remote_access`, `code_setup`, `created_at`, `last_seen_at`, `revoked_at` |
 | `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `kind`, `name`, `folder`, `format`, `labels`, `status`, `revision`, `data_key` (wrapped), `created_at`, `updated_at`; unique on owner, repository and name |
 | `doc_revisions` | `doc_id`, `revision`, `content` (gzip, sealed), `size`, `created_at` |
-| `audit` | `id`, `at`, `user_id`, `node_id`, `action`, `details` (JSON), `hash`: each row's hash covers the one before, so a row changed or removed breaks the chain |
+| `audit` | `id`, `at`, `user_id` (no foreign key, as a cascade would delete rows of the chain), `node_id` (with step 5), `actor` (`user`, `admin` or `hub`), `action`, `address`, `details` (JSON), `hash`: each row's hash covers the one before and the row's own fields, so a row changed, removed or inserted breaks the chain |
 
 Tokens, codes and device codes are stored hashed, never as given. Secrets the hub must read back (TOTP) are sealed under the master key.
 
@@ -187,7 +187,7 @@ Each operation has one tag, `web`, `nodes` or `admin`, saying which endpoint ser
 - **The web endpoint** goes through Fly's proxy on the free shared IPv4: Fly terminates TLS with its certificate for `<app>.fly.dev` and passes plain HTTP to `listen.web`.
 - **The node endpoint needs its TLS untouched,** since the hub must see the node's certificate. On Fly that is raw TCP, which a shared IPv4 does not carry: it needs a dedicated IPv4 (about $2 a month) or IPv6 only, which many home networks lack. The other way, authenticating nodes by a signature inside Fly's TLS, works on the shared address but is not mTLS. Open question to the human.
 - **Litestream** runs in the image as the supervisor, `litestream replicate -exec "wdx-hub serve"`, streaming `hub.db` to Tigris. Fly's daily volume snapshots are a second copy.
-- **Secrets** (`WDX_HUB_DOCS_KEY`, Tigris's credentials) are Fly secrets.
+- **Secrets** (`WDX_HUB_MASTER_KEY`, Tigris's credentials) are Fly secrets.
 - **Shipping:** `scripts/dist.sh` builds `wdx-hub` into release archives of its own beside `wdx`'s (step 3), and `deploy/hub` has the Dockerfile, but nothing builds or signs images in a release; the multi-arch image on GHCR, cosign and the SBOM come with the Fly deployment, after the first release. (Decided 2026-11-07.)
 - Self-hosted, the same image runs with a volume and the same settings; `web.tls` decides who terminates TLS on the web endpoint, and the node endpoint is always the hub's.
 
@@ -211,7 +211,7 @@ Later: plans and billing.
 
 ### The pages' protections
 
-- Every POST carries a CSRF token, and cookies are `Secure`, `HttpOnly` and `SameSite=Lax`.
+- Cross-site requests are refused by the standard library's `http.CrossOriginProtection`, from the `Sec-Fetch-Site` or `Origin` header every current browser sends, with `public_url`'s origin trusted; there is no per-form CSRF token (decided in the wdx doc HUB_ACCOUNTS, 2026-11-08). Cookies are `Secure`, `HttpOnly` and `SameSite=Lax`.
 - Rate limits, per account and per address: passwords, TOTP and recovery codes, the device page's user code, and the device flow's polling (RFC 8628's `slow_down`).
 - Behind a proxy, as on Fly, the client's address is taken from the forwarding header only from addresses in `trusted_proxies`, a setting; the approval page and the audit log show the real address.
 - Passkeys are bound to the hub's domain. Moving the public hub from `fly.dev` to a domain of its own invalidates every passkey: the move's plan has users re-enrol them, with TOTP as the factor that keeps working.
@@ -219,7 +219,7 @@ Later: plans and billing.
 ## Logging and secrets
 
 - `wdx` logs every flag in `command started` and the daemon every request body: so `--code` and the request field `code` are redacted, where `promptFlag` in `internal/cli/logs.go` keeps a prompt out of the CLI's log, and `requestLogged` in `internal/daemon/http.go` with `internal/api/secrets.go` keep prompts and file contents out of the daemon's and the CLI's, and the authenticator secret and recovery key never appear in a response that is logged.
-- Hub settings have a `secret` attribute: `docs_key`, the object storage credentials and the like are shown as `[secret]` by `wdx-hub setting list` and in `command received`, which logs settings.
+- Hub settings have a `secret` attribute: `master_key`, the object storage credentials and the like are shown as `[secret]` by `wdx-hub setting list` and in `command received`, which logs settings.
 - The hub never logs a doc's content, a token, a code or a password hash; the relay logs that a stream opened and closed, with its bytes counted, never its bytes.
 - The audit chain has a verifier, `wdx-hub audit verify`, and the hub writes the chain's latest hash to its log once an hour, so that a tampered chain can be caught against a copy the server does not hold.
 
