@@ -29,7 +29,7 @@ List the comments left on a worktree's diffs.
 wdx worktree comments --name <worktree> [--project-id <id> | --project-name <name>] [flags]
 ```
 
-Comments are written in tide, and sent to an agent together as a review. Each says whether it was sent.
+Comments are written in TIDE, and sent to an agent together as a review. Each says whether it was sent.
 
 ### Flags
 

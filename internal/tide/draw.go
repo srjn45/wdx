@@ -15,7 +15,7 @@ func (m *Model) View() tea.View {
 	view := tea.NewView(m.render())
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
-	view.WindowTitle = "tide"
+	view.WindowTitle = "TIDE"
 	view.Cursor = m.paneCursor()
 	return view
 }

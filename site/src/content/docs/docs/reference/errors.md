@@ -420,7 +420,7 @@ Exit 1 · HTTP 409 · returned by [`wdx terminal remove`](/wdx/docs/reference/cl
 
 ## tide_running
 
-A tide is already running for this home.
+A TIDE is already running for this home.
 
 Exit 1 · HTTP 409 · returned by [`wdx tide`](/wdx/docs/reference/cli/tide/)
 

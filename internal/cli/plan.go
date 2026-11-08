@@ -138,7 +138,7 @@ func newPlanCreateCmd() *cobra.Command {
 			"project's plans whatever their case; a doc may have the same name.\n\n" +
 			"An after another path already covers is dropped, and said so: the plan is\n" +
 			"stored without it.\n\n" +
-			"Its folder, / by default, is only where tide shows it, cleaned and checked as\n" +
+			"Its folder, / by default, is only where TIDE shows it, cleaned and checked as\n" +
 			"a doc's (" + identity.Name + " doc --help). A plan of plans and the plans it lists share\n" +
 			"one: those it lists move to its folder, and moved names them.",
 		Example: examples(
@@ -184,7 +184,7 @@ func newPlanCreateCmd() *cobra.Command {
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the plan")
 	cmd.Flags().StringVar(&path, "path", "", "`file` holding the plan's YAML, - for stdin")
-	addFolderFlag(cmd, &folder, "`folder` tide shows it in, such as /hub (default: /, the top)")
+	addFolderFlag(cmd, &folder, "`folder` TIDE shows it in, such as /hub (default: /, the top)")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("path")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)

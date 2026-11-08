@@ -85,7 +85,7 @@ var Codes = map[ErrorCode]CodeInfo{
 	ErrorCodePrivilegesRequired: {http.StatusForbidden, ExitRejected, "installing needs root, and sudo cannot ask for the password"},
 	ErrorCodeEditorRunning:      {http.StatusConflict, ExitRejected, "an editor has the file, or a file in the directory, open"},
 	ErrorCodeDocChanged:         {http.StatusConflict, ExitRejected, "the doc has a newer revision than the base given"},
-	ErrorCodeTideRunning:        {http.StatusConflict, ExitRejected, "a tide is already running for this home"},
+	ErrorCodeTideRunning:        {http.StatusConflict, ExitRejected, "a TIDE is already running for this home"},
 	ErrorCodeInvalidPlan:        {http.StatusUnprocessableEntity, ExitRejected, "the plan's YAML has problems: details.problems lists them"},
 	ErrorCodePlanChanged:        {http.StatusConflict, ExitRejected, "the plan has a newer revision than the base given"},
 	ErrorCodePlanInUse:          {http.StatusConflict, ExitRejected, "a plan of plans lists the plan"},

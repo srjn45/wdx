@@ -25,11 +25,11 @@ func newTideCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tide",
 		Short: "Work in the terminal IDE: a project, an agent and terminals in one window",
-		Long: "tide takes the whole window: the project on the left, an agent on the right\n" +
+		Long: "TIDE takes the whole window: the project on the left, an agent on the right\n" +
 			"and the project's terminals below. Alt and an arrow move the focus between\n" +
 			"them, C-] zooms the focused pane or leaves the zoom, C-\\ shows or hides the\n" +
 			"terminals and C-q opens the menu: what acts on the thing selected first, such\n" +
-			"as r to rename an agent, then on the left pane's list, then on tide and the\n" +
+			"as r to rename an agent, then on the left pane's list, then on TIDE and the\n" +
 			"project, such as a new agent or terminal, p for the Project submenu (open,\n" +
 			"switch, close, remove) and q to quit;\n" +
 			"\\, ] and C-q send C-\\, C-] and C-q to the program in the focused\n" +
@@ -50,16 +50,16 @@ func newTideCmd() *cobra.Command {
 			"Projects open from a local repository, are cloned or created, or reopen\n" +
 			"when closed. The terminal pane has a tab for each of the project's\n" +
 			"terminals, kept up to date as they change, and the agent pane a tab for each\n" +
-			"agent opened, each live in its pane. tide needs the daemon running, runs in\n" +
-			"the terminal it was started from and has no --json. One tide runs per home:\n" +
+			"agent opened, each live in its pane. TIDE needs the daemon running, runs in\n" +
+			"the terminal it was started from and has no --json. One TIDE runs per home:\n" +
 			"another is refused.",
 		Example: examples(
-			"Open tide", identity.Name+" tide",
+			"Open TIDE", identity.Name+" tide",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "tide did not start",
-			outputNote:    "Once you quit, that tide closed; it gives the window back as it was.",
+			failurePrefix: "TIDE did not start",
+			outputNote:    "Once you quit, that TIDE closed; it gives the window back as it was.",
 			resultList:    annotation("closed"),
 			errorList:     codeList(api.ErrorCodeTideRunning),
 		},
@@ -94,13 +94,13 @@ func daemonVersionCheck(cmd *cobra.Command) func(context.Context) (string, error
 // the tide that ended, which ran for long enough for either to be the old one.
 func warnTideVersion(cmd *cobra.Command, daemonVersion string) {
 	st := stderrStyle(cmd)
-	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but this tide was %s; open tide again if the daemon is the newer, or run %s if it is the older\n",
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but this TIDE was %s; open TIDE again if the daemon is the newer, or run %s if it is the older\n",
 		identity.Name, st.Warning("warning:"), daemonVersion, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
 
 func runTide(cmd *cobra.Command, _ []string) error {
 	if jsonMode(cmd) {
-		return &usageError{errors.New("tide is interactive and has no --json")}
+		return &usageError{errors.New("TIDE is interactive and has no --json")}
 	}
 	env := invocationOf(cmd).env
 	lock, err := lockTide(env.Config.Home)
@@ -110,11 +110,11 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	defer lock.Close()
 	logging.FromContext(cmd.Context()).Info("tide lock taken", "path", lock.Name())
 	if env.TTY == nil {
-		return &usageError{errors.New("no terminal to run tide in: run it in one")}
+		return &usageError{errors.New("no terminal to run TIDE in: run it in one")}
 	}
 	tty, err := env.TTY()
 	if err != nil {
-		return &usageError{fmt.Errorf("no terminal to run tide in: %w", err)}
+		return &usageError{fmt.Errorf("no terminal to run TIDE in: %w", err)}
 	}
 	defer tty.Close()
 
@@ -164,7 +164,7 @@ type tideResult struct {
 }
 
 func (r tideResult) text(w io.Writer, st style.Style) {
-	fmt.Fprintf(w, "tide %s\n", st.Success(string(r.Result)))
+	fmt.Fprintf(w, "TIDE %s\n", st.Success(string(r.Result)))
 }
 
 // tideRunningError is a tide that did not start, as another runs for the home.
@@ -172,9 +172,9 @@ type tideRunningError struct{ pid int }
 
 func (e *tideRunningError) Error() string {
 	if e.pid == 0 {
-		return "a tide is already running for this home"
+		return "a TIDE is already running for this home"
 	}
-	return fmt.Sprintf("a tide is already running for this home, as pid %d", e.pid)
+	return fmt.Sprintf("a TIDE is already running for this home, as pid %d", e.pid)
 }
 
 // tideProblem returns the problem of a tide that did not start, if err is one.

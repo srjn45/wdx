@@ -92,7 +92,7 @@ func newSettingSetCmd() *cobra.Command {
 		Short: "Change a setting and apply it at once",
 		Long: "The value is checked, saved in the config file, then applied: the daemon\n" +
 			"reads the file again, and every later command reads it anyway. Terminals\n" +
-			"already running keep their shell and history limit, and a running tide its\n" +
+			"already running keep their shell and history limit, and a running TIDE its\n" +
 			"colors. The file is written anew, as by " + identity.Name + " setting write, so comments\n" +
 			"of your own are not kept.",
 		Example: examples(

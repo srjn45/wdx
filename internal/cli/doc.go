@@ -34,7 +34,7 @@ func newDocCmd() *cobra.Command {
 			"revision it was read at: get a copy with doc get --out, change it, and write\n" +
 			"it back with doc update --base. Its status says whether it is agreed on:\n" +
 			"wip, review, approved or rejected; changing its content makes it wip.\n\n" +
-			"Its folder, such as /hub/initial, is only where tide shows it, / for the\n" +
+			"Its folder, such as /hub/initial, is only where TIDE shows it, / for the\n" +
 			"top: a folder given is cleaned (whitespace dropped, lowercased, one / between\n" +
 			"its parts and at its start) and then has a-z, 0-9, _, - and / only. Names\n" +
 			"stay unique within a project whatever the folder.",
@@ -179,7 +179,7 @@ func newDocCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&format, "format", "", "`extension` of its copies, such as md or txt (default: the file's, else md)")
 	cmd.Flags().StringSliceVar(&labels, "labels", nil, "`labels` to give it, comma-separated")
 	addStatusFlag(cmd, &status, "`status` to create it in: wip, review, approved or rejected (default: wip)")
-	addFolderFlag(cmd, &folder, "`folder` tide shows it in, such as /hub/initial (default: /, the top)")
+	addFolderFlag(cmd, &folder, "`folder` TIDE shows it in, such as /hub/initial (default: /, the top)")
 	completeFlag(cmd, "name", cobra.NoFileCompletions)
 	completeFlag(cmd, "path", completeFiles)
 	completeFlag(cmd, "format", cobra.NoFileCompletions)

@@ -91,7 +91,7 @@ Change a setting and apply it at once.
 wdx setting set --name <key> --value <value> [flags]
 ```
 
-The value is checked, saved in the config file, then applied: the daemon reads the file again, and every later command reads it anyway. Terminals already running keep their shell and history limit, and a running tide its colors. The file is written anew, as by wdx setting write, so comments of your own are not kept.
+The value is checked, saved in the config file, then applied: the daemon reads the file again, and every later command reads it anyway. Terminals already running keep their shell and history limit, and a running TIDE its colors. The file is written anew, as by wdx setting write, so comments of your own are not kept.
 
 ### Flags
 

@@ -206,13 +206,13 @@ The YAML is the file `--path` names, or stdin with `--path` -, which an AI uses 
 
 An after another path already covers is dropped, and said so: the plan is stored without it.
 
-Its folder, / by default, is only where tide shows it, cleaned and checked as a doc's (wdx doc `--help`). A plan of plans and the plans it lists share one: those it lists move to its folder, and moved names them.
+Its folder, / by default, is only where TIDE shows it, cleaned and checked as a doc's (wdx doc `--help`). A plan of plans and the plans it lists share one: those it lists move to its folder, and moved names them.
 
 ### Flags
 
 | Flag | Default | Description |
 |---|---|---|
-| `--folder <folder>` |  | folder tide shows it in, such as /hub (default: /, the top) |
+| `--folder <folder>` |  | folder TIDE shows it in, such as /hub (default: /, the top) |
 | `--name <name>` |  | name of the plan |
 | `--path <file>` |  | file holding the plan's YAML, - for stdin |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |

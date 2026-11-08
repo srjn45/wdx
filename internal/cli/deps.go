@@ -334,7 +334,7 @@ func newDepsInstallCmd() *cobra.Command {
 			"podman each provide the container dependency. A dependency already ready\n" +
 			"is left as it is. Every failure says why and how to install it yourself.",
 		Example: examples(
-			"Install the clipboard tool tide copies with", identity.Name+" deps install --name clipboard",
+			"Install the clipboard tool TIDE copies with", identity.Name+" deps install --name clipboard",
 			"Install docker without being asked", identity.Name+" deps install --name docker --yes",
 			"From a script, where sudo needs no password", identity.Name+" deps install --name git --yes --json",
 		),

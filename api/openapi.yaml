@@ -341,9 +341,9 @@ paths:
       - $ref: "#/components/parameters/ProjectRef"
     put:
       operationId: replaceTabs
-      summary: Replace the tabs tide has open in a project
+      summary: Replace the tabs TIDE has open in a project
       description: |
-        tide's alone, which the CLI does not show (docs/TIDE_STATE.md). The
+        TIDE's alone, which the CLI does not show (docs/TIDE_STATE.md). The
         list given becomes the project's whole list, in its order, in one step;
         an open or closed project alike. A removal made through wdx takes the
         tabs of what it removed by itself. The project's stream carries them.
@@ -370,9 +370,9 @@ paths:
       - $ref: "#/components/parameters/ProjectRef"
     get:
       operationId: getProjectView
-      summary: Read what tide shows of a project besides its tabs
+      summary: Read what TIDE shows of a project besides its tabs
       description: |
-        tide's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
+        TIDE's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
         when none was saved.
 
         Errors: not_found.
@@ -385,7 +385,7 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     put:
       operationId: replaceProjectView
-      summary: Replace what tide shows of a project besides its tabs
+      summary: Replace what TIDE shows of a project besides its tabs
       description: |
         Kept as given, as the daemon reads nothing in it. It neither waits for
         other changes nor wakes the project's streams, which do not carry it.
@@ -407,9 +407,9 @@ paths:
   /v1/tide/view:
     get:
       operationId: getTideView
-      summary: Read what tide shows as a whole, such as the project shown
+      summary: Read what TIDE shows as a whole, such as the project shown
       description: |
-        tide's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
+        TIDE's alone, which the CLI does not show (docs/TIDE_STATE.md). {}
         when none was saved.
       responses:
         "200":
@@ -420,7 +420,7 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     put:
       operationId: replaceTideView
-      summary: Replace what tide shows as a whole
+      summary: Replace what TIDE shows as a whole
       description: |
         Kept as given, as the daemon reads nothing in it. It does not wait for
         other changes.
@@ -1571,7 +1571,7 @@ paths:
         2 MiB. A folder is cleaned (whitespace dropped, lowercased, a leading
         "/" added, every run of "/" made one and a trailing one dropped), then
         must be a-z, 0-9, "_", "-" and "/", or it is invalid_argument; it is
-        only a label tide shows the docs under. Docs work in a closed project
+        only a label TIDE shows the docs under. Docs work in a closed project
         too.
 
         Errors: invalid_argument, invalid_name, invalid_path, name_taken (with
@@ -2797,14 +2797,14 @@ components:
         project: { $ref: "#/components/schemas/Project" }
         tabs:
           type: array
-          description: The tabs tide has open in the project, in their order.
+          description: The tabs TIDE has open in the project, in their order.
           items: { $ref: "#/components/schemas/Tab" }
         tabs_revision: { $ref: "#/components/schemas/TabsRevision" }
 
     Tab:
       type: object
       description: |
-        A tab tide has open. Each kind has the fields it names and null for the
+        A tab TIDE has open. Each kind has the fields it names and null for the
         others: agent and info an agent_id, doc a doc_id, plan the plan's id
         in doc_id, file and diff a worktree and a path, pr a worktree;
         settings and stats none.
@@ -2843,7 +2843,7 @@ components:
       properties:
         view:
           type: object
-          description: What tide shows, as tide wrote it; only tide reads it.
+          description: What TIDE shows, as TIDE wrote it; only TIDE reads it.
           additionalProperties: true
 
     ViewResult:
@@ -2878,7 +2878,7 @@ components:
       format: int64
       description: |
         How many changes the project's tabs had, 0 before any. A later read
-        never has fewer, so tide tells an event sent before its own change
+        never has fewer, so TIDE tells an event sent before its own change
         from one sent after.
 
     ProjectRemoved:
@@ -3389,7 +3389,7 @@ components:
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
-        folder: { type: string, description: "The folder tide shows it in, as /hub/initial; / for the top (wdx help docs)." }
+        folder: { type: string, description: "The folder TIDE shows it in, as /hub/initial; / for the top (wdx help docs)." }
         format: { type: string, description: "Its file extension, as md; empty for none." }
         labels:
           type: array
@@ -3547,7 +3547,7 @@ components:
         name: { type: string }
         project_id: { type: string }
         project_name: { type: string }
-        folder: { type: string, description: "The folder tide shows it in, as /hub/initial; / for the top. A plan of plans and the plans it lists always have the same one (wdx help plans)." }
+        folder: { type: string, description: "The folder TIDE shows it in, as /hub/initial; / for the top. A plan of plans and the plans it lists always have the same one (wdx help plans)." }
         state: { $ref: "#/components/schemas/PlanState" }
         tasks: { type: integer, format: int64, nullable: true, description: How many tasks it has; null for a plan of plans. }
         tasks_done: { type: integer, format: int64, nullable: true, description: How many of them its run has done; null for a draft and a plan of plans. }

@@ -110,7 +110,7 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 	}
 	if name == "clipboard" && sys.OS == "linux" && sys.Session == "" {
 		return unsupported("no graphical session, so no clipboard a program can reach",
-			"tide copies through the terminal (OSC 52) in terminals that take it: kitty, WezTerm, iTerm2, foot, Alacritty")
+			"TIDE copies through the terminal (OSC 52) in terminals that take it: kitty, WezTerm, iTerm2, foot, Alacritty")
 	}
 	if p, ok := editorPackages[name]; ok && sys.OS == "darwin" && p.brew == "" {
 		return Plan{}, nil // macOS comes with it

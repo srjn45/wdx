@@ -306,7 +306,7 @@ var ownSettings = []setting{
 	},
 	{
 		key:         "editor",
-		description: "terminal editor tide edits a file with: " + strings.Join(editor.Names(), ", "),
+		description: "terminal editor TIDE edits a file with: " + strings.Join(editor.Names(), ", "),
 		def:         editor.Default,
 		choices:     editor.Names(),
 		set: func(c *Config, v string) error {
@@ -320,7 +320,7 @@ var ownSettings = []setting{
 	},
 	{
 		key:         "tide.section_order",
-		description: "the sections tide's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden",
+		description: "the sections TIDE's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden",
 		def:         SectionLetters,
 		set: func(c *Config, v string) error {
 			if err := checkSectionOrder(v); err != nil {
@@ -333,7 +333,7 @@ var ownSettings = []setting{
 	},
 	{
 		key:         "tide.theme",
-		description: "the theme of colors tide paints its panes in: slate, for a dark terminal, is the only one so far; with color off tide paints none",
+		description: "the theme of colors TIDE paints its panes in: slate, for a dark terminal, is the only one so far; with color off TIDE paints none",
 		def:         style.ThemeNames()[0],
 		choices:     style.ThemeNames(),
 		set: func(c *Config, v string) error {
@@ -347,14 +347,14 @@ var ownSettings = []setting{
 	},
 	{
 		key:         contextWarningKey,
-		description: "tokens in an agent's context from which tide and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below " + contextCriticalKey,
+		description: "tokens in an agent's context from which TIDE and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below " + contextCriticalKey,
 		def:         "200000",
 		set:         func(c *Config, v string) error { return setTokens(&c.ContextWarning, v) },
 		get:         func(c Config) string { return strconv.FormatInt(c.ContextWarning, 10) },
 	},
 	{
 		key:         contextCriticalKey,
-		description: "tokens in an agent's context from which tide and wdx agent show its size as critical, in red; a whole number above " + contextWarningKey,
+		description: "tokens in an agent's context from which TIDE and wdx agent show its size as critical, in red; a whole number above " + contextWarningKey,
 		def:         "400000",
 		set:         func(c *Config, v string) error { return setTokens(&c.ContextCritical, v) },
 		get:         func(c Config) string { return strconv.FormatInt(c.ContextCritical, 10) },

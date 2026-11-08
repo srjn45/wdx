@@ -26,11 +26,11 @@ Read when wdx starts; an invalid one fails every command. The home is read from 
 | `terminal.shell` |  | absolute path of the shell terminals run; empty runs the user's login shell, /bin/sh when the system names none |
 | `terminal.history_lines` | `100000` | lines of each terminal's history kept on disk, which wdx terminal attach scrolls back through; 0 keeps none, since terminal output can hold secrets |
 | `terminal.history_tail` | `1000` | lines of a terminal's history wdx terminal history prints when not told how many; at most 10000 |
-| `editor` | `vi` | terminal editor tide edits a file with: vi, vim, nvim, nano, hx, emacs |
-| `tide.section_order` | `awdpc` | the sections tide's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden |
-| `tide.theme` | `slate` | the theme of colors tide paints its panes in: slate, for a dark terminal, is the only one so far; with color off tide paints none |
-| `context.threshold.warning` | `200000` | tokens in an agent's context from which tide and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below context.threshold.critical |
-| `context.threshold.critical` | `400000` | tokens in an agent's context from which tide and wdx agent show its size as critical, in red; a whole number above context.threshold.warning |
+| `editor` | `vi` | terminal editor TIDE edits a file with: vi, vim, nvim, nano, hx, emacs |
+| `tide.section_order` | `awdpc` | the sections TIDE's left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden |
+| `tide.theme` | `slate` | the theme of colors TIDE paints its panes in: slate, for a dark terminal, is the only one so far; with color off TIDE paints none |
+| `context.threshold.warning` | `200000` | tokens in an agent's context from which TIDE and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below context.threshold.critical |
+| `context.threshold.critical` | `400000` | tokens in an agent's context from which TIDE and wdx agent show its size as critical, in red; a whole number above context.threshold.warning |
 | `docs.git_path` |  | directory of each project's repository, relative to its main checkout, that the daemon keeps the project's docs written into, read-only, on every change, as wdx doc sync-to-git does once; empty for none |
 | `plan.parallel` | `3` | the most tasks each plan runs at once, each an agent in a worktree of its own, unless wdx plan run `--parallel` says otherwise; from 1 to 20 |
 | `aca.claude_code.enabled` | `true` | whether new agents may run claude\_code, when it is installed: true or false |

@@ -12,7 +12,7 @@ Manage docs: a project's text, kept by wdx outside its repository.
 
 A doc belongs to a project and is there for every person and agent as soon as it is written. Every change of its content is a new revision, made on the revision it was read at: get a copy with doc get `--out`, change it, and write it back with doc update `--base`. Its status says whether it is agreed on: wip, review, approved or rejected; changing its content makes it wip.
 
-Its folder, such as /hub/initial, is only where tide shows it, / for the top: a folder given is cleaned (whitespace dropped, lowercased, one / between its parts and at its start) and then has a-z, 0-9, \_, - and / only. Names stay unique within a project whatever the folder.
+Its folder, such as /hub/initial, is only where TIDE shows it, / for the top: a folder given is cleaned (whitespace dropped, lowercased, one / between its parts and at its start) and then has a-z, 0-9, \_, - and / only. Names stay unique within a project whatever the folder.
 
 | Command | What it does |
 |---|---|
@@ -42,7 +42,7 @@ A name the project has is refused: changing a doc's content is doc update.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--folder <folder>` |  | folder tide shows it in, such as /hub/initial (default: /, the top) |
+| `--folder <folder>` |  | folder TIDE shows it in, such as /hub/initial (default: /, the top) |
 | `--format <extension>` |  | extension of its copies, such as md or txt (default: the file's, else md) |
 | `--labels <labels>` | `[]` | labels to give it, comma-separated |
 | `--name <name>` |  | name of the doc (default: the file's, without its extension) |

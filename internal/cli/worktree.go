@@ -136,7 +136,7 @@ func newWorktreeCommentsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "comments --name <worktree> [--project-id <id> | --project-name <name>]",
 		Short: "List the comments left on a worktree's diffs",
-		Long: "Comments are written in tide, and sent to an agent together as a review.\n" +
+		Long: "Comments are written in TIDE, and sent to an agent together as a review.\n" +
 			"Each says whether it was sent.",
 		Example: examples(
 			"The comments on a worktree", identity.Name+" worktree comments --name auth-fix",

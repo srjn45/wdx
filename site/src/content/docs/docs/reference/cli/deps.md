@@ -40,7 +40,7 @@ On Ubuntu and Debian with apt, on macOS with brew. When installing needs root, t
 ### Examples
 
 ```sh
-# Install the clipboard tool tide copies with
+# Install the clipboard tool TIDE copies with
 wdx deps install --name clipboard
 
 # Install docker without being asked
