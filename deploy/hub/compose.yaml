@@ -1,0 +1,26 @@
+# Runs wdx-hub on this machine, its home in the named volume hub-data:
+#
+#   docker compose -f deploy/hub/compose.yaml up --build
+#
+# Every setting can be given here as WDX_HUB_<KEY>; wdx-hub help settings lists them.
+services:
+  hub:
+    build:
+      context: ../..
+      dockerfile: deploy/hub/Dockerfile
+      args:
+        VERSION: ${VERSION:-0.0.0-dev}
+        COMMIT: ${COMMIT:-none}
+    environment:
+      WDX_HUB_PUBLIC_URL: http://localhost:8080
+      WDX_HUB_LISTEN_WEB: ":8080"
+      WDX_HUB_LISTEN_NODES: ":8443"
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - hub-data:/data
+    restart: unless-stopped
+
+volumes:
+  hub-data:

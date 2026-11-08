@@ -24,9 +24,10 @@ LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMM
 
 .PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
 
-# Build for this machine only.
+# Build wdx and wdx-hub for this machine only.
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/wdx ./cmd/wdx
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/wdx-hub ./cmd/wdx-hub
 
 # Regenerate internal/api from api/openapi.yaml.
 generate:

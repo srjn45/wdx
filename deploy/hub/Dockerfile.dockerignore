@@ -1,0 +1,6 @@
+# What the build of Dockerfile, from the repository's root, leaves out.
+.git
+.worktrees
+bin
+dist
+site
