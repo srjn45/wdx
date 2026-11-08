@@ -61,7 +61,7 @@ internal/deps/   the programs wdx needs besides itself (git, a clipboard tool, d
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
 assets/brand/  the wdx mark and wordmark as SVG, in the site's colours; its README says which file is for what; site/public/favicon.svg is a copy of its favicon
 site/          the website on GitHub Pages (Astro): the landing page and its tide demo, a replica in the browser that runs nothing (site/src/tide-demo/); make site, make site-dev; the wdx doc SITE
-scripts/sitegen/ writes the website's reference pages from wdx's help, settings, error codes and CHANGELOG.md (make site-ref); TestReferenceCurrent fails when they are stale
+scripts/sitegen/ writes the website's reference pages and site/src/data/commands.json from wdx's help, settings, error codes and CHANGELOG.md (make site-ref); TestReferenceCurrent fails when they are stale, TestGuideCoverage when a command is in no guide (a guide's frontmatter commands:)
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
 scripts/test-changed.sh repeats the tests of the test files changed that a change can reach, on a machine kept busy (make test-changed, by hand now and then)

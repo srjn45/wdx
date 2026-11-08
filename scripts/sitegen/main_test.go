@@ -28,18 +28,22 @@ func TestReferenceCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(root, referenceDir)
 	have := map[string]string{}
-	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(filepath.Join(root, referenceDir), func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		b, err := os.ReadFile(path)
-		name, _ := filepath.Rel(dir, path)
-		have[name] = string(b)
+		name, _ := filepath.Rel(root, path)
+		have[filepath.ToSlash(name)] = string(b)
 		return err
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(root, commandsFile)); err == nil {
+		have[commandsFile] = string(b)
+	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	var stale []string
@@ -55,6 +59,6 @@ func TestReferenceCurrent(t *testing.T) {
 	}
 	if len(stale) > 0 {
 		slices.Sort(stale)
-		t.Fatalf("the website's reference is stale; run make site-ref and commit %s. Pages that differ: %v", referenceDir, stale)
+		t.Fatalf("the website's reference is stale; run make site-ref and commit %s and %s. Files that differ: %v", referenceDir, commandsFile, stale)
 	}
 }

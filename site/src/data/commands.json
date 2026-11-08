@@ -1,0 +1,342 @@
+{
+  "agent acas": {
+    "summary": "List the AI coding agents new agents can run",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-acas"
+  },
+  "agent attach": {
+    "summary": "Show an agent full-window and talk to it, as tmux does",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-attach"
+  },
+  "agent create": {
+    "summary": "Create an agent and start its AI coding agent",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-create"
+  },
+  "agent get": {
+    "summary": "Show an agent",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-get"
+  },
+  "agent list": {
+    "summary": "List agents",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-list"
+  },
+  "agent models": {
+    "summary": "List the models agent create --model takes",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-models"
+  },
+  "agent remove": {
+    "summary": "Delete an agent",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-remove"
+  },
+  "agent rename": {
+    "summary": "Give an agent a new name",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-rename"
+  },
+  "agent restart": {
+    "summary": "Start an agent again in a new session, which reads its history in brief",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-restart"
+  },
+  "agent send": {
+    "summary": "Give a running agent a message, submitted once it can take it",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-send"
+  },
+  "agent start": {
+    "summary": "Start an agent that exited, failed or was lost, in the same session",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-start"
+  },
+  "agent transcript": {
+    "summary": "Print an agent's conversation as text",
+    "href": "/wdx/docs/reference/cli/agent/#wdx-agent-transcript"
+  },
+  "completion bash": {
+    "summary": "Print the bash completion script",
+    "href": "/wdx/docs/reference/cli/completion/#wdx-completion-bash"
+  },
+  "completion fish": {
+    "summary": "Print the fish completion script",
+    "href": "/wdx/docs/reference/cli/completion/#wdx-completion-fish"
+  },
+  "completion zsh": {
+    "summary": "Print the zsh completion script",
+    "href": "/wdx/docs/reference/cli/completion/#wdx-completion-zsh"
+  },
+  "daemon restart": {
+    "summary": "Restart the daemon, or start it",
+    "href": "/wdx/docs/reference/cli/daemon/#wdx-daemon-restart"
+  },
+  "daemon start": {
+    "summary": "Start the daemon",
+    "href": "/wdx/docs/reference/cli/daemon/#wdx-daemon-start"
+  },
+  "daemon status": {
+    "summary": "Show whether the daemon is running",
+    "href": "/wdx/docs/reference/cli/daemon/#wdx-daemon-status"
+  },
+  "daemon stop": {
+    "summary": "Stop the daemon",
+    "href": "/wdx/docs/reference/cli/daemon/#wdx-daemon-stop"
+  },
+  "deps install": {
+    "summary": "Install a dependency with the system's package manager",
+    "href": "/wdx/docs/reference/cli/deps/#wdx-deps-install"
+  },
+  "deps list": {
+    "summary": "List the programs wdx needs, whether each is ready, and what it enables",
+    "href": "/wdx/docs/reference/cli/deps/#wdx-deps-list"
+  },
+  "doc create": {
+    "summary": "Create a doc, from a file or empty",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-create"
+  },
+  "doc get": {
+    "summary": "Print a doc's content, or write it to a file to change",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-get"
+  },
+  "doc history": {
+    "summary": "List a doc's revisions",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-history"
+  },
+  "doc list": {
+    "summary": "List a project's docs",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-list"
+  },
+  "doc remove": {
+    "summary": "Delete a doc and all its revisions",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-remove"
+  },
+  "doc rename": {
+    "summary": "Rename a doc",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-rename"
+  },
+  "doc set": {
+    "summary": "Change a doc's folder, status or labels",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-set"
+  },
+  "doc sync-to-git": {
+    "summary": "Write a project's docs, read-only, into a directory of its repository",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-sync-to-git"
+  },
+  "doc update": {
+    "summary": "Write a doc's content as a new revision",
+    "href": "/wdx/docs/reference/cli/doc/#wdx-doc-update"
+  },
+  "message discard": {
+    "summary": "Discard a message still waiting",
+    "href": "/wdx/docs/reference/cli/message/#wdx-message-discard"
+  },
+  "message list": {
+    "summary": "List a project's messages still waiting, oldest first",
+    "href": "/wdx/docs/reference/cli/message/#wdx-message-list"
+  },
+  "message resend": {
+    "summary": "Send a message still waiting to its terminal or agent, as it is now",
+    "href": "/wdx/docs/reference/cli/message/#wdx-message-resend"
+  },
+  "observe start": {
+    "summary": "Start Grafana with the logs and metrics",
+    "href": "/wdx/docs/reference/cli/observe/#wdx-observe-start"
+  },
+  "observe status": {
+    "summary": "Show whether Grafana is running",
+    "href": "/wdx/docs/reference/cli/observe/#wdx-observe-status"
+  },
+  "observe stop": {
+    "summary": "Stop Grafana",
+    "href": "/wdx/docs/reference/cli/observe/#wdx-observe-stop"
+  },
+  "plan archive": {
+    "summary": "Archive a done or cancelled plan, leaving it out of plan list",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-archive"
+  },
+  "plan cancel": {
+    "summary": "Cancel a running or paused plan: its agents stop, and it cannot run again",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-cancel"
+  },
+  "plan copy": {
+    "summary": "Create a draft from a plan's latest revision, to run again or start from",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-copy"
+  },
+  "plan create": {
+    "summary": "Create a plan from its YAML",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-create"
+  },
+  "plan get": {
+    "summary": "Print a plan's YAML, or write it to a file to change",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-get"
+  },
+  "plan history": {
+    "summary": "List a plan's revisions",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-history"
+  },
+  "plan list": {
+    "summary": "List a project's plans",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-list"
+  },
+  "plan pause": {
+    "summary": "Pause a running plan: nothing new starts, and tasks at work go on and land",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-pause"
+  },
+  "plan remove": {
+    "summary": "Delete a plan and all its revisions",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-remove"
+  },
+  "plan rename": {
+    "summary": "Rename a plan",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-rename"
+  },
+  "plan resume": {
+    "summary": "Resume a paused plan, which starts what its pause held back",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-resume"
+  },
+  "plan run": {
+    "summary": "Run a draft plan: an agent for each task, landing on the plan's branch",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-run"
+  },
+  "plan set": {
+    "summary": "Change a plan's folder, or how many tasks a running or paused plan runs at once",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-set"
+  },
+  "plan status": {
+    "summary": "Show what a plan defines and how its run goes: its goal, and its tasks or plans in DAG order",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-status"
+  },
+  "plan task done": {
+    "summary": "Say a task of a running plan is done, so that it lands on the plan's branch",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-task-done"
+  },
+  "plan task get": {
+    "summary": "Show a plan's task: its state, agent and worktree, prompt and summary",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-task-get"
+  },
+  "plan task land": {
+    "summary": "Land a land_failed task again, once you dealt with what stopped it",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-task-land"
+  },
+  "plan task retry": {
+    "summary": "Run a failed or land_failed task again, keeping its worktree and commits",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-task-retry"
+  },
+  "plan task skip": {
+    "summary": "Skip a pending, failed or land_failed task: what waits for it goes on without it",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-task-skip"
+  },
+  "plan unarchive": {
+    "summary": "Show an archived plan in plan list again",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-unarchive"
+  },
+  "plan update": {
+    "summary": "Write a plan's YAML as a new revision",
+    "href": "/wdx/docs/reference/cli/plan/#wdx-plan-update"
+  },
+  "project close": {
+    "summary": "Close a project",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-close"
+  },
+  "project create": {
+    "summary": "Create a project in a new git repository",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-create"
+  },
+  "project get": {
+    "summary": "Show a project, which of its checkouts are on disk and its terminals",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-get"
+  },
+  "project landing": {
+    "summary": "Show or say how a project lands its worktrees",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-landing"
+  },
+  "project list": {
+    "summary": "List projects",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-list"
+  },
+  "project open": {
+    "summary": "Open a project: a known one, a local repository or a clone",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-open"
+  },
+  "project remove": {
+    "summary": "Delete a project and everything that belongs to it",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-remove"
+  },
+  "setting get": {
+    "summary": "Show one setting",
+    "href": "/wdx/docs/reference/cli/setting/#wdx-setting-get"
+  },
+  "setting list": {
+    "summary": "List every setting with its value",
+    "href": "/wdx/docs/reference/cli/setting/#wdx-setting-list"
+  },
+  "setting set": {
+    "summary": "Change a setting and apply it at once",
+    "href": "/wdx/docs/reference/cli/setting/#wdx-setting-set"
+  },
+  "setting write": {
+    "summary": "Write the config file anew, listing every setting of this version",
+    "href": "/wdx/docs/reference/cli/setting/#wdx-setting-write"
+  },
+  "terminal attach": {
+    "summary": "Show a terminal full-window and type into it, as tmux does",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-attach"
+  },
+  "terminal create": {
+    "summary": "Create a terminal and start its shell",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-create"
+  },
+  "terminal get": {
+    "summary": "Show a terminal",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-get"
+  },
+  "terminal history": {
+    "summary": "Print the lines that scrolled off a terminal's screen",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-history"
+  },
+  "terminal list": {
+    "summary": "List terminals",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-list"
+  },
+  "terminal remove": {
+    "summary": "Delete a terminal",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-remove"
+  },
+  "terminal send": {
+    "summary": "Type a message into a running terminal and press Enter",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-send"
+  },
+  "terminal start": {
+    "summary": "Start a fresh shell for a terminal that exited, failed or was lost",
+    "href": "/wdx/docs/reference/cli/terminal/#wdx-terminal-start"
+  },
+  "tide": {
+    "summary": "Work in the terminal IDE: a project, an agent and terminals in one window",
+    "href": "/wdx/docs/reference/cli/tide/"
+  },
+  "update": {
+    "summary": "Show whether a newer wdx is released, install it or roll it back",
+    "href": "/wdx/docs/reference/cli/update/"
+  },
+  "version": {
+    "summary": "Print the version of wdx and of the daemon",
+    "href": "/wdx/docs/reference/cli/version/"
+  },
+  "worktree comments": {
+    "summary": "List the comments left on a worktree's diffs",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-comments"
+  },
+  "worktree diff": {
+    "summary": "Show what a worktree has committed, or what it has not",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-diff"
+  },
+  "worktree land": {
+    "summary": "Land a worktree's commits on its base, with no merge commit or through a PR",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-land"
+  },
+  "worktree list": {
+    "summary": "List every worktree git lists for a project, with its changes",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-list"
+  },
+  "worktree rebase": {
+    "summary": "Rebase a worktree onto its base, the default branch or a stacked plan's plan below",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-rebase"
+  },
+  "worktree remove": {
+    "summary": "Remove a worktree that landed, with its branch",
+    "href": "/wdx/docs/reference/cli/worktree/#wdx-worktree-remove"
+  }
+}

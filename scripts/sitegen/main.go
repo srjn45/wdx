@@ -30,6 +30,10 @@ import (
 // removed.
 const referenceDir = "site/src/content/docs/docs/reference"
 
+// commandsFile is every command's summary and reference link, for the guides'
+// Commands tables and TestGuideCoverage, relative to the repository's root.
+const commandsFile = "site/src/data/commands.json"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "sitegen:", err)
@@ -66,14 +70,14 @@ func build(root, bin string, env []string) error {
 	return nil
 }
 
-// write replaces the reference directory under root with pages.
-func write(root string, pages map[string]string) error {
-	dir := filepath.Join(root, referenceDir)
-	if err := os.RemoveAll(dir); err != nil {
+// write replaces the reference directory under root, and the commands file,
+// with files, by their paths relative to root.
+func write(root string, files map[string]string) error {
+	if err := os.RemoveAll(filepath.Join(root, referenceDir)); err != nil {
 		return err
 	}
-	for name, content := range pages {
-		path := filepath.Join(dir, name)
+	for name, content := range files {
+		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
@@ -84,8 +88,8 @@ func write(root string, pages map[string]string) error {
 	return nil
 }
 
-// generate returns every reference page, by its path in the reference
-// directory, from the wdx at bin and the repository at root.
+// generate returns every reference page and the commands file, by their paths
+// relative to root, from the wdx at bin and the repository at root.
 func generate(bin, root string) (map[string]string, error) {
 	w := wdx{bin: bin}
 	rootHelp, err := w.command(nil)
@@ -121,10 +125,37 @@ func generate(bin, root string) (map[string]string, error) {
 		return nil, err
 	}
 	pages["changelog.md"] = changelogPage(string(changelog))
+	files := map[string]string{}
 	for name, page := range pages {
-		pages[name] = blankLines.ReplaceAllString(page, "\n\n")
+		files[referenceDir+"/"+name] = blankLines.ReplaceAllString(page, "\n\n")
 	}
-	return pages, nil
+	commands, err := commandsData(tops)
+	if err != nil {
+		return nil, err
+	}
+	files[commandsFile] = commands
+	return files, nil
+}
+
+// commandsData is every command that runs, by its path without the leading
+// wdx, with its summary and the link to its reference section.
+func commandsData(tops []command) (string, error) {
+	type entry struct {
+		Summary string `json:"summary"`
+		Href    string `json:"href"`
+	}
+	data := map[string]entry{}
+	for _, top := range tops {
+		for _, c := range leavesOf(top) {
+			data[strings.TrimPrefix(c.Path, "wdx ")] = entry{Summary: c.Summary, Href: commandLink(c.Path)}
+		}
+	}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(data)
+	return b.String(), err
 }
 
 // command is a command's help as --help --json prints it, with its
