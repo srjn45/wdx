@@ -18,15 +18,6 @@ const guidesDir = "site/src/content/docs/docs/guides"
 // waiting are the commands no guide covers yet: the guides still to be
 // written take them off, and the test fails until they do.
 var waiting = []string{
-	"completion bash",
-	"completion fish",
-	"completion zsh",
-	"daemon restart",
-	"daemon start",
-	"daemon status",
-	"daemon stop",
-	"deps install",
-	"deps list",
 	"doc create",
 	"doc get",
 	"doc history",
@@ -36,9 +27,6 @@ var waiting = []string{
 	"doc set",
 	"doc sync-to-git",
 	"doc update",
-	"observe start",
-	"observe status",
-	"observe stop",
 	"plan archive",
 	"plan cancel",
 	"plan copy",
@@ -60,13 +48,7 @@ var waiting = []string{
 	"plan task skip",
 	"plan unarchive",
 	"plan update",
-	"setting get",
-	"setting list",
-	"setting set",
-	"setting write",
 	"tide",
-	"update",
-	"version",
 }
 
 // TestGuideCoverage fails when a command is in no guide, a guide names a

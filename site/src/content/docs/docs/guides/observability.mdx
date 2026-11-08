@@ -1,0 +1,63 @@
+---
+title: Observability
+description: Every run logged with a debug id you can follow through the CLI and the daemon, and the logs and metrics in Grafana with one command.
+commands: [observe start, observe status, observe stop]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+wdx logs every run: what was asked, each step it took and why, and what it returned. Every line of a run carries its `debug_id`, in the CLI and in the daemon, and an error prints it, so one id finds the whole story. The daemon also sends metrics. `wdx observe start` runs Grafana, with the logs and metrics in it, in a container on your machine.
+
+## Try it
+
+A failing command prints its `debug_id`:
+
+```console
+$ wdx terminal get --name nope
+wdx: terminal not found: "nope"  [not_found]
+  hint: names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id
+  debug_id: dbg-c99cc82c372f
+```
+
+Find its lines in the day's log, here with `jq`:
+
+```console
+$ grep -h dbg-c99cc82c372f ~/.wdx/logs/wdx-2026-11-08.log | jq -c '{level, msg, process}'
+{"level":"INFO","msg":"command received","process":"cli"}
+{"level":"INFO","msg":"command started","process":"cli"}
+{"level":"INFO","msg":"request received","process":"daemon"}
+{"level":"INFO","msg":"project looked up by path","process":"daemon"}
+{"level":"ERROR","msg":"request returned","process":"daemon"}
+{"level":"INFO","msg":"daemon called","process":"cli"}
+{"level":"ERROR","msg":"command returned","process":"cli"}
+```
+
+Or see everything in Grafana:
+
+```sh
+wdx observe start     # the first start pulls the image, which can take minutes
+```
+
+`wdx observe status` says whether it runs, and where everything is:
+
+```console
+$ wdx observe status
+observability stack not running (container exited)
+  grafana: http://localhost:3000
+  metrics: http://localhost:4318
+  logs:    /home/you/.wdx/logs
+  runtime: docker, container wdx-observability (docker.io/grafana/otel-lgtm:0.36.0)
+```
+
+## How it behaves
+
+- **Logs** are JSON lines in daily files, `~/.wdx/logs/wdx-<date>.log`, shared by the CLI, the daemon and the holders, and kept `log.retention_days` days (7). `log.level` sets how much is logged; `debug` adds the SQL and git output. `wdx help logs` says the same.
+- **What is never logged:** your environment beyond wdx's own settings, prompt text, or what agents print. Credentials in URLs are redacted.
+- **The stack** is the `grafana/otel-lgtm` image under docker or podman, with Grafana on `127.0.0.1:3000` and the collector the daemon sends metrics to on `127.0.0.1:4318`, reading the log files. It runs until stopped, and its data stays across starts; `observe stop --purge` removes it.
+- **Metrics** go to `otel.endpoint`, by default that collector; set it empty to send none. A collector that is not there is logged once and slows nothing.
+- **A container runtime** is needed for the stack only: [Dependencies](/wdx/docs/guides/dependencies/) says whether one is ready.
+
+## Commands
+
+<Commands />

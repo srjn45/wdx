@@ -23,6 +23,10 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 - [Messages and sending](/wdx/docs/guides/messages/): tasks for agents from scripts and other agents.
 - [Worktrees and landing](/wdx/docs/guides/worktrees/): a branch per agent, a diff, and landing with no merge commit.
 
+## Running wdx
+
+- [The daemon and its service](/wdx/docs/guides/daemon/), [Settings](/wdx/docs/guides/settings/), [Updating](/wdx/docs/guides/updating/), [Dependencies](/wdx/docs/guides/dependencies/), [Observability](/wdx/docs/guides/observability/) and [Shell completion](/wdx/docs/guides/completion/).
+
 ## Reference
 
 - [The CLI](/wdx/docs/reference/cli/): every command, its flags, examples, output and errors.

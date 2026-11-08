@@ -1,0 +1,38 @@
+---
+title: Shell completion
+description: Tab completes wdx's commands, flags and their values, project and agent names included, in bash, zsh and fish.
+commands: [completion bash, completion zsh, completion fish]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+Tab completes wdx's commands and flags, and the values of flags: project names from the daemon, directories for `--local` and `--path`, help topics after `wdx help`. The installer sets it up for every shell it finds. `wdx completion <shell>` prints the script, for setting it up by hand.
+
+## Try it
+
+Type `wdx project open --name ` and press Tab: the projects wdx knows are offered. Set it up by hand, if the installer did not:
+
+```sh
+# bash, in ~/.bashrc
+source <(wdx completion bash)
+
+# zsh: save it in a directory of your fpath, before compinit in ~/.zshrc
+mkdir -p ~/.zsh/completions
+wdx completion zsh > ~/.zsh/completions/_wdx
+# fpath=(~/.zsh/completions $fpath)
+
+# fish
+wdx completion fish > ~/.config/fish/completions/wdx.fish
+```
+
+## How it behaves
+
+- **Where the installer puts it.** bash: `~/.local/share/bash-completion/completions/wdx`, loaded by the bash-completion package. zsh: Homebrew's `site-functions/_wdx` when it is writable, else `~/.zsh/completions/_wdx`. fish: `~/.config/fish/completions/wdx.fish`. It never edits your shell's startup files: when one needs a line, it prints it.
+- **Always current.** The scripts ask `wdx` for the candidates on every Tab, so new commands and flags complete without installing them again. `scripts/install.sh --completions` installs them again, after installing a new shell for instance.
+- **Never in the way.** A completion that asks the daemon waits at most half a second and offers nothing when it does not answer. It never prompts, and is logged at debug level only.
+- **Suggestions in grey** as you type come from the shell, fish's built in or zsh's zsh-autosuggestions plugin, and draw on these completions with nothing more to set up.
+
+## Commands
+
+<Commands />

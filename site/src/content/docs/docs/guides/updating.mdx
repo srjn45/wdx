@@ -1,0 +1,60 @@
+---
+title: Updating
+description: See whether a newer wdx is out, install it with your data and settings kept, and roll it back.
+commands: [update, version]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+`wdx update` installs a newer release over the one you have, stopping and starting the daemon around it, and keeps the old binary, a backup of the database and the config file, so that `--rollback` brings them back. Terminals and agents keep running through it.
+
+## Try it
+
+Without a flag it only looks:
+
+```console
+$ wdx update
+update available: wdx 0.3.0 -> 0.4.0 (stable channel)
+  run wdx update --apply
+$ wdx update --apply
+==> downloading wdx 0.4.0
+==> checking that it runs on the settings
+==> stopping the daemon
+==> backing up wdx 0.3.0, the database and the settings
+==> installing wdx 0.4.0
+==> starting the daemon
+updated wdx 0.3.0 -> 0.4.0
+  schema:   16 -> 27
+  rollback: wdx update --rollback goes back to 0.3.0
+$ wdx version
+wdx 0.4.0 (31f674f)
+daemon 0.4.0 (31f674f)
+```
+
+Changed your mind:
+
+```console
+$ wdx update --rollback
+==> stopping the daemon
+==> backing up wdx 0.4.0, the database and the settings
+==> installing wdx 0.3.0
+==> starting the daemon
+rolled back wdx 0.4.0 -> 0.3.0
+  schema:   27
+  database: kept
+```
+
+## How it behaves
+
+- **Channels.** `stable` by default, or `dev` for the development builds released between stable ones: the `update.channel` setting, or `--channel` for once. `--version` installs a given release.
+- **All or nothing.** If any step fails, the old binary, database and config file are put back and the daemon starts on the old binary.
+- **Settings.** The new release writes the config file anew: your values stay, its new settings are listed, and keys it no longer has are commented out at the end. A rollback puts the file back as it was.
+- **The database on rollback.** Most releases only add to the database, so the older version goes on using it and nothing is lost. When a release since the update changed it in a way the older one cannot read, the backup taken at the update is restored, losing what changed since; you are asked first, or `--discard-changes` and `--cancel` answer.
+- **One previous version** is kept, so a rollback goes back one step only.
+- **Running terminals** keep the holder that started them, on the old version, until they start again; the [daemon](/wdx/docs/guides/daemon/) and new terminals run the new one.
+- **The [changelog](/wdx/docs/reference/changelog/)** says what each release changed, and what it breaks.
+
+## Commands
+
+<Commands />

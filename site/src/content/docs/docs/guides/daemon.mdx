@@ -1,0 +1,65 @@
+---
+title: The daemon and its service
+description: The one background process that keeps wdx's state and serves the CLI and TIDE, and how it runs as a systemd or launchd service.
+commands: [daemon status, daemon start, daemon stop, daemon restart]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+The daemon is wdx's one background process per user. It keeps every record in `~/.wdx/wdx.db`, starts terminals and agents, follows git, and serves an API on a Unix socket, `~/.wdx/wdx.sock`. The CLI and TIDE are its clients. The installer runs it as a service: a systemd user unit on Linux, a launchd agent on macOS, so it is there from boot or login. See [Concepts](/wdx/docs/start/concepts/#the-daemon).
+
+## Try it
+
+```console
+$ wdx daemon status
+daemon running (pid 2878651)
+  version: 0.4.0 (31f674f)
+  started: 2026-11-08 02:05:21 (up 9m6s)
+  home:    /home/you/.wdx
+  socket:  /home/you/.wdx/wdx.sock
+```
+
+Restart it, after changing `config.yaml` by hand for instance. Terminals and agents keep running through it:
+
+```console
+$ wdx daemon restart
+daemon restarted (pid 2960995, version 0.4.0) on /home/you/.wdx/wdx.sock
+$ wdx terminal list
+NAME    STATE    DIR                 ID
+server  running  /home/you/code/app  term-d69a3fb4
+```
+
+With the daemon stopped, commands that need it say so, and never start it themselves:
+
+```console
+$ wdx daemon stop
+daemon stopped (pid 2960995)
+$ wdx terminal list
+wdx: the daemon is not answering on /home/you/.wdx/wdx.sock: connect: no such file or directory  [daemon_unavailable]
+  hint: run wdx daemon start
+  debug_id: dbg-f419e933ac6d
+$ wdx daemon start
+daemon started (pid 2961213, version 0.4.0) on /home/you/.wdx/wdx.sock
+```
+
+## How it behaves
+
+- **Through the service.** `start`, `stop` and `restart` go through systemd or launchd when the installer set the daemon up as a service, and run it in the background otherwise. `--foreground` runs it in your terminal until `Ctrl-C`, as a service manager does.
+- **The service.** On Linux `~/.config/systemd/user/wdx.service`, running from boot with linger enabled (`loginctl enable-linger`), its own output in `journalctl --user -u wdx.service`. On macOS `~/Library/LaunchAgents/com.github.srjn45.wdx.plist`, running from login, its output in `~/Library/Logs/wdx.log`. `scripts/install.sh --uninstall` removes it and the binary, and leaves `~/.wdx`.
+- **Terminals outlive it.** Each shell and agent runs in a holder process of its own, which the next daemon finds again. Stopping, restarting or [updating](/wdx/docs/guides/updating/) the daemon stops the daemon alone.
+- **Stopping** lets the requests in flight finish first.
+- **No daemon, no work:** a command that needs it fails with `daemon_unavailable` (exit 3) and the hint to start it. A daemon of another version than the CLI's gets a warning; `wdx version` shows both.
+- **Its environment.** The service does not run from your shell, so it does not see your shell's variables. The installer gives it the `PATH` you installed with. Terminals get `PATH`, the locale, `SSH_AUTH_SOCK` and the desktop session's variables from the daemon. On Linux, to clone `git@` URLs with keys in an ssh agent, give the service your agent's socket:
+
+  ```sh
+  systemctl --user edit wdx.service
+  # [Service]
+  # Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
+  wdx daemon restart
+  ```
+- **Another home.** `WDX_HOME` gives a daemon of its own, with its own socket, database and settings, run in the background: the service runs the default home only.
+
+## Commands
+
+<Commands />

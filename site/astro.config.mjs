@@ -37,6 +37,17 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Running wdx',
+          items: [
+            'docs/guides/daemon',
+            'docs/guides/settings',
+            'docs/guides/updating',
+            'docs/guides/dependencies',
+            'docs/guides/observability',
+            'docs/guides/completion',
+          ],
+        },
+        {
           label: 'Reference',
           collapsed: true,
           items: [

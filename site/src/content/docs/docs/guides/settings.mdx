@@ -1,0 +1,50 @@
+---
+title: Settings
+description: Every setting in one config file, written by wdx, changed with one command and applied at once.
+commands: [setting list, setting get, setting set, setting write]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+wdx's settings live in one file, `~/.wdx/config.yaml`, which wdx writes itself: every setting with its description as a comment, the ones you set with their values, the others commented out with their defaults. `wdx setting set` changes one and applies it at once. The [settings reference](/wdx/docs/reference/settings/) lists them all.
+
+## Try it
+
+```console
+$ wdx setting get --name log.level
+log.level info
+  description lowest level logged: debug, info, warn, error
+  default     info
+  from        default
+$ wdx setting set --name log.level --value debug
+set log.level to debug
+  the daemon applied it
+$ wdx setting list
+home                        /home/you/.wdx                                   WDX_HOME
+no_input                    false                                            default
+color                       auto                                             default
+log.level                   debug                                            /home/you/.wdx/config.yaml:16
+log.retention_days          7                                                default
+otel.endpoint               http://localhost:4318                            default
+...
+```
+
+`from` says where each value comes from: its default, a line of the config file, or the environment.
+
+## In TIDE
+
+`C-q s` opens the settings tab: every setting with its value and description, to change in place. TIDE's own settings, its colors and the order of the left pane's sections, apply at once.
+
+## How it behaves
+
+- **Layers.** Defaults, then the config file, then the environment, later winning. Only the home comes from the environment, `WDX_HOME`, as the config file lives in it.
+- **Applied at once.** `setting set` checks the value, saves it, and has the daemon read the file again; every later command reads it anyway. Terminals already running keep their shell and history limit. The answer says whether the daemon applied it, was not running, or needs a restart.
+- **Nested keys** make the dotted key: `log: {level: debug}` is `log.level`.
+- **Written, not edited.** `setting set` and `setting write` write the whole file anew from wdx's table of settings, so comments of your own are not kept. Keys no setting has, as one an older version had, are moved, commented out, to the end of the file. [`wdx update`](/wdx/docs/guides/updating/) writes it the same way with the new release's settings.
+- **Editing by hand** works too: run `wdx daemon restart` after.
+- **Checked.** An invalid value, an unknown key or a duplicate fails every command at startup, naming the file and line.
+
+## Commands
+
+<Commands />
