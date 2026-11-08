@@ -182,6 +182,8 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
 | Pushing a project's docs to the hub, and what waits or was refused (`project sync`, `--on`, `--off`) | CLI | Later (tide) | Not in tide in the MVP (the wdx doc HUB_DOCS_PUSH): it is set once per project, and its state, a count and the docs refused, can come to tide with the hub's |
 | Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's window is where a remote session will show, with step 9 of the hub (docs/HUB_ARCH.md), and the hub's state can come to it then |
+| The host's authenticator code (`hub code setup`, `--replace`, `recover`) and its audit chain (`hub audit verify`) | CLI | By design | The secret and the recovery key are shown once, and must never reach a screen an AI reads: tide's panes show agents' terminals. Setting up a code is done once per node, which a terminal command does best; both commands are interactive only (the wdx doc HUB_TUNNEL) |
+| Sessions between one's own nodes (`hub session open`, `list`, `close`) | CLI | Later (tide) | Nothing runs through a session until step 8 of the hub; tide shows that a session is open, and opens one for a remote tide, with step 9 (docs/HUB_ARCH.md) |
 
 ## `wdx project open`
 

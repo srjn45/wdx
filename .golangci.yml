@@ -44,6 +44,8 @@ linters:
               desc: the cli calls the daemon's API, which stops processes
             - pkg: github.com/srjn45/wdx/internal/fswatch
               desc: the cli calls the daemon's API; the daemon watches the files
+            - pkg: github.com/srjn45/wdx/internal/nodeaudit
+              desc: the cli calls the daemon's API, which verifies the node's audit chain
         # The command framework knows no program: its name, codes, settings
         # and errors come in through clikit.Env.
         clikit-knows-no-program:
@@ -146,6 +148,10 @@ linters:
               desc: tide calls the daemon's API, never the database
             - pkg: github.com/srjn45/wdx/internal/proc
               desc: tide calls the daemon's API, which stops processes
+            - pkg: github.com/srjn45/wdx/internal/authcode
+              desc: tide calls the daemon's API; the code is set up with the cli alone
+            - pkg: github.com/srjn45/wdx/internal/nodeaudit
+              desc: tide calls the daemon's API, never the domain
         # The editors are data the settings, wdx deps, the daemon and tide share.
         editor-is-data:
           files: ["**/internal/editor/*.go", "!$test"]
@@ -217,6 +223,10 @@ linters:
               desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
             - pkg: github.com/srjn45/wdx/internal/aca
               desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/authcode
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package; the node's code never reaches the hub
+            - pkg: github.com/srjn45/wdx/internal/nodeaudit
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
         # seal is a few lines of the standard library's crypto, so that what
         # guards the hub's secrets at rest is read whole (the wdx doc
         # HUB_ACCOUNTS).
@@ -259,16 +269,45 @@ linters:
           deny:
             - pkg: github.com/srjn45/wdx/internal/hubapi
               desc: only wdx-hub, hublink and the daemon serving its routes use the hub's API
-        # The daemon holds the node's one link to the hub; the cli reaches it
-        # through the daemon's /v1/hub routes.
+        # The daemon holds the node's one link to the hub, and remote its
+        # streams for the daemon; the cli reaches both through the daemon's
+        # /v1/hub routes.
         hublink-in-daemon-only:
           files:
             - "$all"
             - "!**/internal/daemon/**"
             - "!**/internal/hublink/**"
+            - "!**/internal/remote/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/hublink
-              desc: only the daemon uses hublink; others call the daemon's /v1/hub routes
+              desc: only the daemon, and remote for it, use hublink; others call the daemon's /v1/hub routes
+        # Sessions between one's own nodes are the daemon's (the wdx doc
+        # HUB_TUNNEL); the cli opens and closes them through its API.
+        remote-in-daemon-only:
+          files:
+            - "$all"
+            - "!**/internal/daemon/**"
+            - "!**/internal/remote/**"
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/remote
+              desc: only the daemon uses remote; others call the daemon's /v1/hub/sessions routes
+        # remote is what lets another node in, so what it builds on is kept
+        # short and read whole: the link, CPace, the code, the audit chain
+        # and the database, and no other domain package.
+        remote-not-domain:
+          files: ["**/internal/remote/*.go", "!$test"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - filippo.io/cpace
+            - github.com/srjn45/wdx/internal/hublink
+            - github.com/srjn45/wdx/internal/authcode
+            - github.com/srjn45/wdx/internal/nodeaudit
+            - github.com/srjn45/wdx/internal/atomicfile
+            - github.com/srjn45/wdx/internal/db
+            - github.com/srjn45/wdx/internal/sqlite
+            - github.com/srjn45/wdx/internal/identity
+            - github.com/srjn45/wdx/internal/logging
         # hublink speaks to the hub through its API alone.
         hublink-not-hub:
           files: ["**/internal/hublink/*.go", "!$test"]

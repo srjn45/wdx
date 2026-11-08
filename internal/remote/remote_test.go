@@ -21,7 +21,7 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/hub/hubtest"
-	"github.com/srjn45/wdx/internal/hublink" //nolint:depguard // remote is the daemon's side of sessions (wdx doc HUB_TUNNEL); the plan's finish task allows it in .golangci.yml
+	"github.com/srjn45/wdx/internal/hublink"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/nodeaudit"

@@ -30,7 +30,7 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 | `--name <name>` | this node's name in the account; the hostname by default; unique in the account |
 | `--no-browser` | print the link and code; open no browser |
 
-- What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`; the hint `run wdx hub code setup to allow remote access`, when no authenticator is set up, comes with step 7.
+- What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`; the hint `run wdx hub code setup to allow remote access`, when no authenticator is set up, is `wdx hub status`'s, which login's one line leaves out (step 7, the wdx doc HUB_TUNNEL).
 - `--json` never prompts; the link, and the code, still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {...}}`, the hub's status as `wdx hub status` gives it.
 - A login enqueues every doc of every synced project anew, in place of what waited, so that the hub logged in to gets every doc.
 - Results: `logged_in`.
@@ -45,7 +45,7 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 
 ### `wdx hub status`
 
-Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`, `revoked` when another node removed this one, hinting `wdx hub logout`, and `disabled` when the admin disabled the account), the hub's version (`hub_version`) with whether this wdx is in its range (`in_range`) and, when it is not, which side is `behind` (`node` or `hub`), for the hint to update; `remote_access` (`on`, `off`), `code_setup` and `sessions` (`{incoming, outgoing}`) come with step 7. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
+Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`, `revoked` when another node removed this one, hinting `wdx hub logout`, and `disabled` when the admin disabled the account), the hub's version (`hub_version`) with whether this wdx is in its range (`in_range`) and, when it is not, which side is `behind` (`node` or `hub`), for the hint to update; `remote_access` (`on`, `off`), `code_setup` and `sessions` (`{incoming, outgoing}`, the sessions open), hinting `run wdx hub code setup to allow remote access` with no code set up and `run wdx setting set --name hub.remote_access --value true to allow sessions into this node` with a code and remote access off. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
 
 ## `wdx hub code setup`, `recover`
 
@@ -55,16 +55,21 @@ Only the host checks a code, so each node that allows remote access has an authe
 
 ### `wdx hub code setup`
 
-- Shows a QR code in the terminal and the secret as text, for an app that cannot scan; asks for one code back, to prove the entry works; then prints a recovery key, once.
+- Shows a QR code in the terminal, drawn with half-block characters from `boombuler/barcode`'s matrix for a dark terminal, and the secret as text, for an app that cannot scan; asks for one code back, to prove the entry works, three tries at most; then prints a recovery key, once, five groups of four base32 characters, with `write this down: it is the only way to set up a new authenticator here`.
 - Interactive only: with `--json` or without a terminal it fails with a `usage` error, as `tide` does. The secret opens sessions into the node, so it is never printed where an AI's transcript would keep it.
-- Results: `set_up`. Errors: `code_exists`, hinting `--replace`, which asks first: the old entry stops working.
+- Results: `set_up`. Errors: `code_exists`, hinting `--replace`, which asks first: the old entry stops working, and sessions open stay; `code_wrong` after the third wrong code; `not_logged_in`.
+- The files are `code.secret`, `code.step` (the last step accepted, so a code is used once, also across a restart) and `recovery.hash` in `<home>/hub/`, 0600; `wdx hub logout` deletes them.
 - Until a code is set up, sessions into the node are refused with `code_not_set_up`, and `wdx hub status` hints at this command.
 
 ### `wdx hub code recover`
 
 - Asks for the recovery key, hidden as it is typed, then sets up anew as `setup` does.
 - Interactive only, on the node itself.
-- Results: `recovered`. Errors: `recovery_key_wrong`; wrong keys slow down and are logged.
+- Results: `recovered`, with a new recovery key; the old one is spent. Errors: `recovery_key_wrong`, `code_not_set_up`, `not_logged_in`; after a wrong key the next try waits, from 1 second doubling to 5 minutes, and each is logged and in the node's audit chain.
+
+### `wdx hub audit verify`
+
+Walks the node's audit chain, `hub_audit` in `wdx.db`: each row's hash is the SHA-256 of the one before and its own fields, for what matters about access to the node (`code.set_up`, `code.replaced`, `code.recovered`, `code.wrong`, `recovery_key.wrong`, `session.opened`, `session.closed` with the reason, `remote_access.on`, `remote_access.off`, `node_key.mismatch`). Read-only, and works logged out: `{"audit": {"rows", "head"}}`, `head` the last row's hash or `null` for an empty chain, as `wdx-hub audit verify` has it. Errors: `audit_broken`, with the first row that does not match (`id`, `at`) in its details.
 
 ## `--node` and `wdx hub session`
 
@@ -79,15 +84,17 @@ Agreed on 2026-11-03.
 - In text mode a `--node` command writes `on node <name>` to stderr, in the cyan of a remote tide's bar, so that a remote result is never read as a local one. `--json` is unchanged.
 - With no session to the node open: with a terminal it asks `code for <name>:` and opens one; with `--json` or `--no-input` it fails with `session_required`, hinting `wdx hub session open --node <name> --code <code>`.
 - Refused for agents: where `WDX_AGENT_ID` is set, `--node` fails with `remote_not_for_agents`, so that an agent on the client never works on another node through a session its human opened. A person in a wdx terminal may use it. In a remote tide, agents work on the host with no `--node`.
-- Errors: `not_logged_in`, `node_not_found`, `node_offline`, `remote_access_off` (the host's setting), `code_not_set_up`, `code_wrong` (slowed down and logged at the host), `node_version_unsupported`, `route_not_allowed`, `session_required`, `session_closed` (the session ended while the command ran: the host closed it, its daemon restarted, or it went idle), `remote_not_for_agents`.
+- Errors: `not_logged_in`, `node_not_found`, `node_offline`, `remote_access_off` (the host's setting), `code_not_set_up`, `code_wrong` (slowed down and logged at the host), `node_version_unsupported`, `node_key_mismatch`, `too_many_streams`, `route_not_allowed`, `session_required`, `session_closed` (the session ended while the command ran: the host closed it, its daemon restarted, or it went idle), `remote_not_for_agents`.
 
 ### `wdx hub session open --node <name> [--code <code>]`
 
-Opens a session ahead of time, for scripts and `--json`, which needs `--code`; otherwise the code is asked for. `--code` is never logged, where every other flag is. A code is single use at the host. Results: `opened`; `unchanged` when one is open already. A session ends when the host's daemon restarts.
+Opens a session ahead of time, for scripts and `--json`, which needs `--code`; otherwise the code is asked for. `--code` is never logged, where every other flag is. A code is single use at the host. Results: `opened`, with the session's id and the host's idle timeout; `unchanged` when one is open already, which asks nothing. A session ends when the host's daemon restarts. Errors: `not_logged_in`, `node_not_found`, `node_offline`, `remote_access_off` (hinting the setting on the host), `code_not_set_up`, `code_wrong`, `node_version_unsupported`, `node_key_mismatch` (the node showed a key other than the one pinned for it: audited on both nodes), `too_many_streams` (the account has 32 streams through the hub open or waiting), `hub_unreachable`. `--node` completes from the account's nodes.
+
+Wrong codes slow down at the host, per client node and in total: after one, the next is refused unread, as `code_wrong` saying how long to wait, for 1 second, doubling to 5 minutes, until a right one. The total is because a hacked hub can make as many new nodes as it likes; the cost is that someone guessing makes the owner wait too. Wrong codes never turn remote access off.
 
 ### `wdx hub session list`
 
-Read-only, `sessions`, incoming and outgoing: `id`, `direction`, `node`, `opened_at`, `last_used_at`, `idle_expires_at`.
+Read-only, `sessions`, the open ones, incoming and outgoing: `id`, `direction`, `node`, `opened_at`, `last_used_at`, `idle_expires_at`. An outgoing session's row stays open until the client learns it ended: at its next stream, refused with `session_closed` and the host's reason, or at `close`.
 
 ### `wdx hub session close --id <id> | --all`
 
@@ -112,11 +119,11 @@ Agreed on 2026-11-03.
 
 ### `wdx hub node list`
 
-Read-only, `nodes`: `id`, `name`, `this` (the machine it runs on), `online` (it has a control connection now), `last_seen_at`, `version`, `os`, `created_at`, and, with step 7, `remote_access` and `code_setup` as the node last reported them. Text is a table with this node marked. Errors: `not_logged_in`, `hub_unreachable`.
+Read-only, `nodes`: `id`, `name`, `this` (the machine it runs on), `online` (it has a control connection now), `last_seen_at`, `version`, `os`, `created_at`, and `remote_access` and `code_setup` as the node last reported them in its `state` control message, for display: the host decides every session itself. Text is a table with this node marked. Errors: `not_logged_in`, `hub_unreachable`.
 
 ### `wdx hub node get --id <id> | --name <name>`
 
-One node, with its key's `fingerprint` (`SHA256:` and the key's SHA-256 in base64); `key_known` (whether this node pinned it in an earlier session) and the sessions open with it come with step 7. Errors: `not_logged_in`, `node_not_found`, `hub_unreachable`.
+One node, with its key's `fingerprint` (`SHA256:` and the key's SHA-256 in base64); `key_known` (whether this node pinned it in an earlier session) and `sessions`, those open with it both ways. Errors: `not_logged_in`, `node_not_found`, `hub_unreachable`.
 
 ### `wdx hub node remove --id | --name [--yes]`
 
