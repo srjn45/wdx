@@ -3,7 +3,7 @@
 # the tag. GitHub publishes the release from the tag, once CI passes on it
 # (.github/workflows/release.yml).
 #
-#   scripts/release.sh stable   vX.Y.Z: commits CHANGELOG.md, then tags that commit
+#   scripts/release.sh stable   vX.Y.Z: commits CHANGELOG.md and the reference pages made from it, then tags that commit
 #   scripts/release.sh dev      vX.Y.Z-dev.N: tags HEAD, without a commit
 #
 # X.Y.Z is the next stable version, which git-cliff works out from the
@@ -56,9 +56,12 @@ if [ "$channel" = stable ]; then
 	tag="$next"
 	notes="$(cliff --unreleased --tag "$tag" --strip all)"
 	cliff --tag "$tag" --output CHANGELOG.md
-	git add CHANGELOG.md
+	# The website's changelog page is generated from it (make site-ref), and a
+	# test fails on a commit whose pages are stale.
+	go run ./scripts/sitegen
+	git add CHANGELOG.md site/src/content/docs/docs/reference
 	git commit -q -m "chore(release): $tag"
-	info "committed CHANGELOG.md"
+	info "committed CHANGELOG.md and the website's reference"
 else
 	tag="$next-dev.$(git rev-list --count "${last:+$last..}HEAD")"
 	notes="$(cliff --unreleased --strip all)"

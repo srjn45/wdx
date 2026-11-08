@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 IDENTITY := github.com/srjn45/wdx/internal/identity
 LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev clean
+.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
 
 # Build for this machine only.
 build:
@@ -135,6 +135,11 @@ changelog: $(GIT_CLIFF)
 # so the Go work needs no Node. .github/workflows/site.yml deploys it.
 site:
 	cd site && npm ci && npm test && npm run build && npm run test:built
+
+# Write the website's reference pages from wdx's own help, settings, error
+# codes and CHANGELOG.md (scripts/sitegen); a test fails when they are stale.
+site-ref:
+	go run ./scripts/sitegen
 
 # Serve the website with live reload on http://localhost:4321/wdx/.
 site-dev:

@@ -12,4 +12,11 @@ wdx runs AI coding agents (Claude Code, Codex, Cursor and Antigravity) on your m
 - [Quickstart](/wdx/docs/start/quickstart/): a project, an agent and TIDE in five minutes.
 - [Concepts](/wdx/docs/start/concepts/): the words the rest of the docs use.
 
-The guides to each feature, the reference for every command and setting, and how wdx is built are on their way. Until then, `wdx help` and `wdx <command> --help` describe every command, and the [README](https://github.com/srjn45/wdx#readme) covers the rest.
+## Reference
+
+- [The CLI](/wdx/docs/reference/cli/): every command, its flags, examples, output and errors.
+- [Settings](/wdx/docs/reference/settings/), [Errors and exit codes](/wdx/docs/reference/errors/), [JSON output](/wdx/docs/reference/json/) and the [Changelog](/wdx/docs/reference/changelog/).
+
+These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
+
+The guides to each feature and how wdx is built are on their way.

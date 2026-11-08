@@ -25,6 +25,17 @@ export default defineConfig({
           label: 'Start',
           items: ['docs/start/what-is-wdx', 'docs/start/install', 'docs/start/quickstart', 'docs/start/concepts'],
         },
+        {
+          label: 'Reference',
+          collapsed: true,
+          items: [
+            { label: 'CLI', collapsed: true, items: [{ autogenerate: { directory: 'docs/reference/cli' } }] },
+            'docs/reference/settings',
+            'docs/reference/errors',
+            'docs/reference/json',
+            'docs/reference/changelog',
+          ],
+        },
       ],
       components: { SiteTitle: './src/components/starlight/SiteTitle.astro' },
       customCss: [
