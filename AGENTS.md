@@ -59,6 +59,7 @@ internal/style/  colors text output on a terminal with semantic styles
 internal/editor/  the terminal editors wdx runs on a file: how to start each, and what to type to save or discard; docs/TIDE_CODE.md
 internal/deps/   the programs wdx needs besides itself (git, a clipboard tool, docker or podman, the editors), the features each enables, and whether they are ready; docs/DEPS.md
 internal/observe/  runs Grafana with the logs and metrics in a container (wdx observe); docs/OBSERVABILITY.md
+assets/brand/  the wdx mark and wordmark as SVG, in the site's colours; its README says which file is for what; site/public/favicon.svg is a copy of its favicon
 site/          the website on GitHub Pages (Astro): the landing page and its tide demo, a replica in the browser that runs nothing (site/src/tide-demo/); make site, make site-dev; the wdx doc SITE
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions

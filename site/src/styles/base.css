@@ -22,10 +22,9 @@ kbd { font-size: .82em; padding: 2px 6px; border: 1px solid var(--line); border-
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ground); }
 .nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: color-mix(in srgb, var(--ground) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
-.logo { display: flex; align-items: center; gap: 2px; font: 800 22px/1 var(--display); color: var(--ink); text-decoration: none; letter-spacing: -.02em; }
-.logo i { display: inline-block; width: .5em; height: .95em; background: var(--brand); margin-left: 3px; transform: translateY(1px); }
-@media (prefers-reduced-motion: no-preference) { .logo i { animation: blink 1.06s steps(1) infinite; } }
-@keyframes blink { 50% { opacity: 0; } }
+.logo { display: flex; align-items: center; color: var(--ink); }
+.logo svg { display: block; height: 26px; width: auto; }
+.logo .x { stroke: var(--brand); }
 .nav nav { display: flex; gap: 20px; font-size: 15px; }
 .nav nav a { color: var(--muted); text-decoration: none; }
 .nav nav a:hover { color: var(--ink); }

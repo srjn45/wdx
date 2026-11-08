@@ -16,10 +16,9 @@ h1, h2, h3, h4, .sl-markdown-content :is(h1, h2, h3, h4) { font-family: var(--di
 
 /* the header's left side (components/starlight/SiteTitle.astro) */
 .wdx-title { display: flex; align-items: center; gap: 22px; }
-.wdx-title .logo { display: flex; align-items: center; font: 800 22px/1 var(--display); color: var(--sl-color-white); text-decoration: none; letter-spacing: -.02em; }
-.wdx-title .logo i { display: inline-block; width: .5em; height: .95em; background: var(--sl-color-accent-high); margin-left: 3px; transform: translateY(1px); }
-@media (prefers-reduced-motion: no-preference) { .wdx-title .logo i { animation: wdx-blink 1.06s steps(1) infinite; } }
-@keyframes wdx-blink { 50% { opacity: 0; } }
+.wdx-title .logo { display: flex; align-items: center; color: var(--sl-color-white); }
+.wdx-title .logo svg { display: block; height: 26px; width: auto; }
+.wdx-title .logo .x { stroke: var(--sl-color-accent-high); }
 .wdx-title nav { display: flex; gap: 18px; font-size: 15px; }
 .wdx-title nav a { color: var(--sl-color-gray-3); text-decoration: none; }
 .wdx-title nav a:hover { color: var(--sl-color-white); }
