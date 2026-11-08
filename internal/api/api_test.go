@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/clikit"
@@ -59,5 +60,19 @@ func TestEveryCodeDescribed(t *testing.T) {
 		if !ok || info.Description == "" || info.Status < 400 || info.Exit < clikit.ExitRejected || info.Exit > clikit.ExitSystem {
 			t.Errorf("code %s: incomplete %+v", code, info)
 		}
+	}
+}
+
+func TestVersionIsTheSpecs(t *testing.T) {
+	t.Parallel()
+	spec, err := GetSpec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := spec.Info.Version; got != strconv.Itoa(CurrentVersion) {
+		t.Errorf("the spec's info.version is %q, CurrentVersion %d: raise both together", got, CurrentVersion)
+	}
+	if OldestCompatible < 1 || OldestCompatible > CurrentVersion {
+		t.Errorf("OldestCompatible %d is not between 1 and CurrentVersion %d", OldestCompatible, CurrentVersion)
 	}
 }

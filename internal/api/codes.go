@@ -110,6 +110,9 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeTooManyStreams:         codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "the account has as many streams open through the hub as it may"),
 	ErrorCodeNodeOffline:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is not connected to the hub, or did not answer in time"),
 	ErrorCodeNodeVersionUnsupported: codeInfo(http.StatusConflict, clikit.ExitRejected, "the two nodes speak no version in common between them: update the older"),
+	ErrorCodeRouteNotAllowed:        codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node does not serve this through a session, or does not have it"),
+	ErrorCodeSessionRequired:        codeInfo(http.StatusConflict, clikit.ExitRejected, "no session into the node is open: open one with its code"),
+	ErrorCodeRemoteNotForAgents:     codeInfo(http.StatusForbidden, clikit.ExitRejected, "an agent cannot run commands on another node"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

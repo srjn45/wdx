@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -26,11 +28,13 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// handler serves the API: every request is logged, checked against the spec,
-// and run one at a time when it changes anything.
-func (d *Daemon) handler() http.Handler {
+// handlers serve the API: local on the socket, and remote on the streams of
+// the sessions into this node, through remoteRules. Every request is
+// logged, checked against the spec, and run one at a time when it changes
+// anything.
+func (d *Daemon) handlers() (local, remote http.Handler) {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote, nodeStreams: d.nodeStreams}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -39,7 +43,8 @@ func (d *Daemon) handler() http.Handler {
 		BaseRouter:       http.NewServeMux(),
 		ErrorHandlerFunc: badRequest,
 	})
-	return d.logRequests(router, validate(d.oneChangeAtATime(routes)))
+	served := validate(d.oneChangeAtATime(routes))
+	return d.logRequests(router, served), d.logRequests(router, d.remoteRules(router, served))
 }
 
 // validation is what the embedded spec gives: parsed once, as it costs a test
@@ -145,6 +150,9 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 			id = logging.NewDebugID()
 		}
 		log := d.opts.Log.With("debug_id", id)
+		if session, ok := sessionOf(r.Context()); ok {
+			log = log.With("session_id", session.ID, "from_node", session.Node.Name)
+		}
 		if r.Header.Get(api.LogLevelHeader) == api.LogLevelDebug {
 			log = logging.Quiet(log)
 		}
@@ -220,6 +228,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = api.AgentResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
 				response = "event stream"
+			case rec.status == http.StatusSwitchingProtocols:
+				response = "byte stream"
 			}
 			log.Log(context.Background(), level, "request returned", append(attrs, "response", response)...)
 		}()
@@ -328,6 +338,16 @@ type recorder struct {
 
 // Unwrap lets http.ResponseController flush a stream's events.
 func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// Hijack takes the connection over for a byte stream, which is logged as
+// switched.
+func (r *recorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := http.NewResponseController(r.ResponseWriter).Hijack()
+	if err == nil && r.status == 0 {
+		r.status = http.StatusSwitchingProtocols
+	}
+	return conn, rw, err
+}
 
 // code is the error code of the problem written.
 func (r *recorder) code() api.ErrorCode {

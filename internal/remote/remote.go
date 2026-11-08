@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -98,6 +99,10 @@ type Options struct {
 	// Exporter is the TLS exporter value both sides bind CPace to; nil is
 	// the connection's own. Tests give a side another connection's.
 	Exporter func(tls.ConnectionState) ([]byte, error)
+	// ServeStream, when not nil, serves conn, a stream of the session s
+	// into this node, until it is done with it; the Remote closes conn when
+	// the session closes. Without it, a stream ends once opened.
+	ServeStream func(ctx context.Context, conn net.Conn, s Session)
 	// idleChecked, when not nil, is called each time the idle timer has
 	// looked, for tests to wait on.
 	idleChecked func()
@@ -124,6 +129,10 @@ type Remote struct {
 	slowed map[string]*slowdown
 	total  slowdown
 
+	// streams are the streams of each incoming session being served, by
+	// its id, which close with it.
+	streams map[string]map[net.Conn]struct{}
+
 	// kicked says the idle timer should look again: a session opened, or
 	// the timeout changed.
 	kicked chan struct{}
@@ -143,7 +152,7 @@ func New(ctx context.Context, opts Options) (*Remote, error) {
 		opts.Exporter = exporter
 	}
 	ctx, stop := context.WithCancel(ctx)
-	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), slowed: map[string]*slowdown{}, kicked: make(chan struct{}, 1)}
+	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), slowed: map[string]*slowdown{}, streams: map[string]map[net.Conn]struct{}{}, kicked: make(chan struct{}, 1)}
 	if _, err := r.closeWhere(ctx, ReasonRestart, "direction = 'incoming'"); err != nil {
 		stop()
 		return nil, err
@@ -246,6 +255,54 @@ func (r *Remote) identity() (self, tls.Certificate, error) {
 	}
 	cert, err := certificate(key)
 	return self{node: node, key: key.Public().(ed25519.PublicKey)}, cert, err
+}
+
+// carry keeps conn among the streams of the session id, which closing it
+// closes, and reports whether the session is open still: it may have
+// closed since the stream was checked.
+func (r *Remote) carry(id string, conn net.Conn) bool {
+	r.mu.Lock()
+	if r.streams[id] == nil {
+		r.streams[id] = map[net.Conn]struct{}{}
+	}
+	r.streams[id][conn] = struct{}{}
+	r.mu.Unlock()
+	var open bool
+	err := r.opts.DB.QueryRowContext(r.ctx, "SELECT closed_at IS NULL FROM hub_sessions WHERE id = ?", id).Scan(&open)
+	if err != nil || !open {
+		r.dropped(id, conn)
+		return false
+	}
+	return true
+}
+
+// dropped forgets conn, a stream of the session id that ended.
+func (r *Remote) dropped(id string, conn net.Conn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.streams[id], conn)
+	if len(r.streams[id]) == 0 {
+		delete(r.streams, id)
+	}
+}
+
+// cut closes the streams of the sessions closed, whatever they carry.
+func (r *Remote) cut(ctx context.Context, closed []Session) {
+	var conns []net.Conn
+	r.mu.Lock()
+	for _, s := range closed {
+		for conn := range r.streams[s.ID] {
+			conns = append(conns, conn)
+		}
+	}
+	r.mu.Unlock()
+	// Outside the lock: closing a TLS connection may wait on its peer.
+	for _, conn := range conns {
+		conn.Close()
+	}
+	if len(conns) > 0 {
+		logging.FromContext(ctx).Info("session streams cut", "streams", len(conns))
+	}
 }
 
 // asError is errors.AsType for *Error.

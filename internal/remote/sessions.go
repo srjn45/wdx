@@ -171,6 +171,7 @@ func (r *Remote) closeWhere(ctx context.Context, reason Reason, where string, ar
 	for _, s := range closed {
 		log.Info("session closed", "session_id", s.ID, "direction", s.Direction, "node_id", s.Node.ID, "reason", reason)
 	}
+	r.cut(ctx, closed)
 	return closed, nil
 }
 

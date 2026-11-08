@@ -87,36 +87,17 @@ func (r *Remote) refuseStream(ctx context.Context, w io.Writer, e *Error, reason
 }
 
 // hostSession serves a stream of a session open: a stream, which moves
-// the idle timer on, or a close.
+// the idle timer on and is handed to Options.ServeStream, or a close.
 func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink.NodeRef, m message) {
 	log := logging.FromContext(ctx).With("session_id", m.Session)
 	ctx = logging.NewContext(ctx, log)
-	if !r.opts.RemoteAccess() {
-		// Apply closes them all, which this may come before.
-		if _, err := r.closeWhere(ctx, ReasonRemoteAccessOff, "direction = 'incoming'"); err != nil {
-			log.Error("incoming sessions not closed", "err", err)
-			return
-		}
-	}
-	s, err := r.openSession(ctx, m.Session, Incoming)
-	if err == nil && s.Node.ID != client.ID {
-		err = refusal(CodeSessionNotFound, "the session is another node's")
-	}
-	if e, ok := asError(err); ok && e.Code == CodeSessionNotFound {
-		r.refuseStream(ctx, conn, refusal(CodeSessionClosed, "session %s is not open on this node: open one again with a code", m.Session), r.closedReason(ctx, m.Session, client.ID))
+	s, err := r.Use(ctx, m.Session, client)
+	if e, ok := asError(err); ok {
+		r.refuseStream(ctx, conn, e, ReasonOf(e))
 		return
 	}
 	if err != nil {
 		log.Error("session not read", "err", err)
-		return
-	}
-	if now := r.opts.Clock.Now(); !now.Before(s.IdleExpiresAt) {
-		// Before the idle timer got to it.
-		if _, err := r.closeWhere(ctx, ReasonIdle, "id = ?", s.ID); err != nil {
-			log.Error("session not closed", "err", err)
-			return
-		}
-		r.refuseStream(ctx, conn, refusal(CodeSessionClosed, "session %s went idle: open one again with a code", s.ID), ReasonIdle)
 		return
 	}
 	if m.Type == msgClose {
@@ -124,15 +105,71 @@ func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink
 			log.Error("session not closed", "err", err)
 			return
 		}
-	} else if err := r.touch(ctx, s.ID, r.opts.Clock.Now()); err != nil {
-		log.Error("session use not recorded", "err", err)
-		return
 	}
 	if err := write(conn, message{Type: msgOK}); err != nil {
 		log.Info("stream ended", "err", err)
 		return
 	}
 	log.Info("session stream served", "kind", m.Type)
+	if m.Type != msgStream || r.opts.ServeStream == nil {
+		return
+	}
+	_ = conn.SetDeadline(time.Time{})
+	if !r.carry(s.ID, conn) {
+		log.Info("stream ended", "reason", "the session closed")
+		return
+	}
+	defer r.dropped(s.ID, conn)
+	r.opts.ServeStream(ctx, conn, s)
+}
+
+// Use checks the session id, incoming from client, is open and not idle,
+// with remote access on, and moves its idle time on: at each stream, and at
+// each request a stream carries. A session that is not is an *Error with
+// CodeSessionClosed, whose ReasonOf says why when it is known.
+func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Session, error) {
+	if !r.opts.RemoteAccess() {
+		// Apply closes them all, which this may come before.
+		if _, err := r.closeWhere(ctx, ReasonRemoteAccessOff, "direction = 'incoming'"); err != nil {
+			return Session{}, err
+		}
+	}
+	s, err := r.openSession(ctx, id, Incoming)
+	if err == nil && s.Node.ID != client.ID {
+		err = refusal(CodeSessionNotFound, "the session is another node's")
+	}
+	if e, ok := asError(err); ok && e.Code == CodeSessionNotFound {
+		closed := refusal(CodeSessionClosed, "session %s is not open on this node: open one again with a code", id)
+		if reason := r.closedReason(ctx, id, client.ID); reason != "" {
+			closed.Details = map[string]any{"reason": string(reason)}
+		}
+		return Session{}, closed
+	}
+	if err != nil {
+		return Session{}, err
+	}
+	now := r.opts.Clock.Now()
+	if !now.Before(s.IdleExpiresAt) {
+		// Before the idle timer got to it.
+		if _, err := r.closeWhere(ctx, ReasonIdle, "id = ?", s.ID); err != nil {
+			return Session{}, err
+		}
+		closed := refusal(CodeSessionClosed, "session %s went idle: open one again with a code", s.ID)
+		closed.Details = map[string]any{"reason": string(ReasonIdle)}
+		return Session{}, closed
+	}
+	if err := r.touch(ctx, s.ID, now); err != nil {
+		return Session{}, err
+	}
+	s.LastUsedAt, s.IdleExpiresAt = now, now.Add(s.idleTimeout)
+	return s, nil
+}
+
+// ReasonOf is why the session of e, session_closed, closed; empty when it
+// is not known.
+func ReasonOf(e *Error) Reason {
+	reason, _ := e.Details["reason"].(string)
+	return Reason(reason)
 }
 
 // closedReason is why the incoming session id of client closed, empty when

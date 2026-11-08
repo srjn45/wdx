@@ -45,6 +45,7 @@ type server struct {
 	hubLogins    *hubLogins
 	access       *hubAccess
 	remote       *remote.Remote
+	nodeStreams  *nodeStreams
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

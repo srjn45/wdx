@@ -472,6 +472,12 @@ The node allows no sessions: hub.remote_access is off there.
 
 Exit 1 · HTTP 403 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
 
+## remote_not_for_agents
+
+An agent cannot run commands on another node.
+
+Exit 1 · HTTP 403
+
 ## repo_exists
 
 The directory is already in a git repository.
@@ -483,6 +489,12 @@ Exit 1 · HTTP 409 · returned by [`wdx project create`](/wdx/docs/reference/cli
 Rolling back needs the database backup, losing the changes since the update.
 
 Exit 1 · HTTP 409 · returned by [`wdx update`](/wdx/docs/reference/cli/update/)
+
+## route_not_allowed
+
+The node does not serve this through a session, or does not have it.
+
+Exit 1 · HTTP 403
 
 ## runtime_failed
 
@@ -513,6 +525,12 @@ Exit 1 · HTTP 409
 No session of this id is open.
 
 Exit 1 · HTTP 404 · returned by [`wdx hub session close`](/wdx/docs/reference/cli/hub/#wdx-hub-session-close)
+
+## session_required
+
+No session into the node is open: open one with its code.
+
+Exit 1 · HTTP 409
 
 ## settings_invalid
 

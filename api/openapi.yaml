@@ -1,9 +1,17 @@
 openapi: 3.0.3
 info:
   title: wdx daemon API
-  version: v1
+  # Raised by every change an older client or host cannot handle, the feat!
+  # changes; internal/api keeps it, and the oldest it still talks to, by hand.
+  version: "1"
   description: |
     The API of the wdx daemon, served over the Unix socket <home>/wdx.sock.
+
+    Another node of the account reaches it through a session (connectHubNode),
+    sending Wdx-Api-Version, the version of this spec it was built with; the
+    daemon answers with its own, and refuses a client older than the oldest it
+    talks to with node_version_unsupported. Through a session, only some
+    operations are served: the others are route_not_allowed.
 
     A request may send a Wdx-Debug-Id header (dbg- and 12 hex digits) to have
     the daemon log it under that id; the response echoes the id the request
@@ -2426,6 +2434,40 @@ paths:
               schema: { $ref: "#/components/schemas/HubNodeResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/hub/nodes/{node}/connect:
+    parameters:
+      - name: node
+        in: path
+        required: true
+        description: The node's name, whatever its case, or "id:" and its id.
+        schema: { type: string, minLength: 1 }
+    post:
+      operationId: connectHubNode
+      parameters:
+        - name: Upgrade
+          in: header
+          required: true
+          description: What the connection is switched to.
+          schema: { type: string, enum: [wdx-stream] }
+      tags: [hub]
+      summary: A byte stream to the API of another node, through the session open into it
+      description: |
+        An HTTP Upgrade: the request sends Connection: Upgrade and Upgrade:
+        wdx-stream, and once switched the connection is a stream of the
+        session open from this node into the node, over which the client
+        speaks HTTP to that node's API, as it does to this one's. Each
+        connection is a stream of its own, closed when either side closes
+        it, or when the session closes. Nothing of the stream is logged but
+        the bytes counted.
+
+        Errors: session_required (no session into the node is open here, or
+        the host closed it: open one with openHubSession), node_key_mismatch,
+        node_offline, not_logged_in, hub_unreachable, too_many_streams.
+      responses:
+        "101":
+          description: Switched, the connection is the stream.
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/hub/code:
     post:
       operationId: startHubCode
@@ -4656,6 +4698,9 @@ components:
         - too_many_streams
         - node_offline
         - node_version_unsupported
+        - route_not_allowed
+        - session_required
+        - remote_not_for_agents
 
     Problem:
       type: object

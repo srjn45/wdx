@@ -246,6 +246,12 @@ type Daemon struct {
 	access     *hubAccess
 	remote     *remote.Remote
 	hubStreams *hubStreams
+	// nodeStreams are the CLI's connections switched to streams into other
+	// nodes; sessionStreams the streams of sessions into this one, which
+	// sessionServer serves.
+	nodeStreams    *nodeStreams
+	sessionStreams *sessionStreams
+	sessionServer  *http.Server
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -391,11 +397,13 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if opts.Hub.Clock != nil {
 		clock = opts.Hub.Clock
 	}
+	d.nodeStreams, d.sessionStreams = newNodeStreams(), newSessionStreams()
 	// It closes every incoming session, which a restart ends.
 	if d.remote, err = remote.New(context.WithoutCancel(logged), remote.Options{
 		DB: d.db, Link: d.hub, Code: d.access.files, Clock: clock,
 		RemoteAccess: d.access.remoteAccess.Load,
 		IdleTimeout:  func() time.Duration { return time.Duration(d.access.idleTimeout.Load()) },
+		ServeStream:  d.sessionStreams.serve,
 	}); err != nil {
 		return nil, err
 	}
@@ -578,11 +586,15 @@ func lock(path string) (*os.File, error) {
 // Serve serves requests until ctx is done, then lets the requests in flight
 // finish, closes the database and gives up the socket and the lock.
 func (d *Daemon) Serve(ctx context.Context) error {
-	srv := &http.Server{Handler: d.handler(), ReadHeaderTimeout: 10 * time.Second}
+	local, remote := d.handlers()
+	srv := &http.Server{Handler: local, ReadHeaderTimeout: 10 * time.Second}
 	// Streams never end by themselves, and Shutdown waits for them.
 	srv.RegisterOnShutdown(func() { close(d.stopping) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(d.listener) }()
+	d.sessionServer = newSessionServer(remote)
+	sessionsServed := make(chan error, 1)
+	go func() { sessionsServed <- d.sessionServer.Serve(d.sessionStreams) }()
 
 	var err error
 	select {
@@ -600,6 +612,16 @@ func (d *Daemon) Serve(ctx context.Context) error {
 		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
 			d.log.Error("daemon stopped serving", "err", err)
 		}
+	}
+	// The sessions' requests, before the link's end cuts their streams.
+	shutdown, cancel := context.WithTimeout(context.Background(), d.opts.ShutdownTimeout)
+	defer cancel()
+	if err := d.sessionServer.Shutdown(shutdown); err != nil {
+		d.log.Error("session requests cut short", "err", err)
+		d.sessionServer.Close()
+	}
+	if err := <-sessionsServed; !errors.Is(err, http.ErrServerClosed) {
+		d.log.Error("daemon stopped serving sessions", "err", err)
 	}
 	d.close()
 	d.log.Info("daemon stopped", "uptime_ms", time.Since(d.started).Milliseconds())
@@ -628,6 +650,12 @@ func (d *Daemon) cancelChanges() {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.sessionStreams != nil {
+		d.sessionStreams.Close()
+	}
+	if d.nodeStreams != nil {
+		d.nodeStreams.close()
 	}
 	if d.hub != nil {
 		d.hub.Close() // it ends the login pending, the control connection and the streams
