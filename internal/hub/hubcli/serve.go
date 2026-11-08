@@ -81,12 +81,13 @@ func runServe(cmd *cobra.Command, _ []string) error {
 }
 
 // checkTLSFiles fails, as a setting that cannot be used, when web.tls is
-// files and one of them is not there.
+// files and one of them is not there, naming the first of the two in order.
 func checkTLSFiles(cfg hubconfig.Config) error {
 	if cfg.WebTLS != hubconfig.TLSFiles {
 		return nil
 	}
-	for key, path := range map[string]string{"web.tls_cert": cfg.WebTLSCert, "web.tls_key": cfg.WebTLSKey} {
+	for _, f := range []struct{ key, path string }{{"web.tls_cert", cfg.WebTLSCert}, {"web.tls_key", cfg.WebTLSKey}} {
+		key, path := f.key, f.path
 		if _, err := os.Stat(path); err != nil {
 			return &clikit.Hinted{
 				Err:  &clikit.UsageError{Err: fmt.Errorf("%s is %s, which cannot be read: %w", key, path, err)},
