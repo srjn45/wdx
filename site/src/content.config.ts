@@ -8,11 +8,16 @@ import { blogSchema } from 'starlight-blog/schema';
 // excerpt, tags and authors to Starlight's own (title, draft, ...). A guide's
 // adds commands, the wdx commands it is about, named without wdx
 // (agent create): <Commands /> shows them and TestGuideCoverage checks them.
+// since: is the release a page's feature came in, which its title shows as a
+// badge (components/Since.astro).
 export const collections = {
   docs: defineCollection({
     loader: docsLoader(),
     schema: docsSchema({
-      extend: (context) => blogSchema(context).extend({ commands: z.array(z.string()).optional() }),
+      extend: (context) => blogSchema(context).extend({
+        commands: z.array(z.string()).optional(),
+        since: z.string().regex(/^\d+\.\d+\.\d+$/, 'a version like 0.5.0').optional(),
+      }),
     }),
   }),
 };

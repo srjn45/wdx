@@ -5,6 +5,7 @@ sidebar:
   label: Docs and plans
 ---
 import TideScreen from '../../../../components/TideScreen.astro';
+import Since from '../../../../components/Since.astro';
 
 The Docs and Plans sections list the project's docs and plans in their folders, each with its status, kept up to date as agents write them. TIDE is where you read them; writing them is the CLI's, or an agent's. The CLI side is in [Docs](/wdx/docs/guides/docs/), [Plans](/wdx/docs/guides/plans/) and [Running plans](/wdx/docs/guides/running-plans/).
 
@@ -43,7 +44,7 @@ The keys a plan's state takes are on its tab's last line.
 ## How it behaves
 
 - **Folders** are trees in both sections, folded with `←` `→`; a folded folder says `needs you` when a plan in it does.
-- **A doc renders** as glamour renders Markdown in a terminal: headings, lists, emphasis and code, links you can click (http, https and mailto only). A very large doc shows as source. Its tab's title gives its revision and status; it reads anew when an agent writes a new revision.
+- **A doc renders** <Since v="0.5.0" /> as glamour renders Markdown in a terminal: headings, lists, emphasis and code, links you can click (http, https and mailto only). A very large doc shows as source. Its tab's title gives its revision and status; it reads anew when an agent writes a new revision.
 - **A plan's tab** follows its run as it goes. The rail's lanes show what runs in parallel; past six lanes the rail is left out. The task under the cursor marks what it needs `▲` and what waits for it `▼`.
 - **`needs you`** on a plan's row means a task failed or did not land, or one of its agents waits for your answer.
 - **A plan of plans** lists its plans under it, and its tab lists them as its tasks; `Enter` on one goes to that plan, `r` on one waiting for you starts it.

@@ -1,0 +1,22 @@
+---
+// A since badge: the release a feature came in, or "unreleased" while no
+// stable release has it yet, linking to the dev channel that does. Pages put
+// since: in their frontmatter (shown by the title); a section of an older page
+// puts <Since v="0.5.0" /> after its heading or at the start of its paragraph.
+import { latestRelease } from '../release.js';
+import { sinceLabel } from '../since.js';
+
+interface Props { v: string; }
+const { v } = Astro.props;
+const label = sinceLabel(v, latestRelease());
+const updating = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/docs/guides/updating/#how-it-behaves`;
+---
+{label === 'unreleased'
+  ? <a class="wdx-since unreleased" href={updating} title={`Not in a stable release yet: in the dev channel's builds, and stable from ${v}`}>unreleased</a>
+  : <span class="wdx-since">{label}</span>}
+
+<style is:global>
+  .wdx-since { display: inline-block; vertical-align: middle; margin: 0 .35em; padding: 1px 8px; border: 1px solid var(--sl-color-accent); border-radius: 999px; color: var(--sl-color-accent-high); font: 600 12px/1.6 var(--mono); letter-spacing: 0; text-decoration: none; white-space: nowrap; }
+  .wdx-since.unreleased { border-color: var(--amber); color: var(--amber); }
+  a.wdx-since.unreleased:hover { background: var(--amber); color: var(--sl-color-black); }
+</style>

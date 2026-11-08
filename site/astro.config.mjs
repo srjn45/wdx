@@ -100,7 +100,10 @@ export default defineConfig({
           ],
         },
       ],
-      components: { SiteTitle: './src/components/starlight/SiteTitle.astro' },
+      components: {
+        SiteTitle: './src/components/starlight/SiteTitle.astro',
+        PageTitle: './src/components/starlight/PageTitle.astro',
+      },
       customCss: [
         '@fontsource/bricolage-grotesque/500.css',
         '@fontsource/bricolage-grotesque/700.css',

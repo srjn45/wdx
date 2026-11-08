@@ -1,0 +1,15 @@
+---
+// Starlight's page title, with the page's since badge after it when its
+// frontmatter has since:.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import Since from '../Since.astro';
+
+const { since } = Astro.locals.starlightRoute.entry.data;
+---
+<Default />
+{since && <p class="wdx-title-since"><Since v={since} /></p>}
+
+<style>
+  .wdx-title-since { margin: .5rem 0 0; }
+  .wdx-title-since :global(.wdx-since) { margin: 0; }
+</style>

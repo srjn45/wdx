@@ -5,6 +5,7 @@ sidebar:
   label: Code
 ---
 import TideScreen from '../../../../components/TideScreen.astro';
+import Since from '../../../../components/Since.astro';
 
 The Code section is a worktree's files as a tree, marked with what git says of each: a way to read what an agent is working on, and to change a file yourself, without leaving TIDE. There is no CLI command for it: a script or an AI reads files itself.
 
@@ -15,7 +16,7 @@ The Code section is a worktree's files as a tree, marked with what git says of e
 - **The worktree** is picked on the section's first row, `< main >`: `←` `→` there go through the project's worktrees.
 - **The tree** holds the files git tracks and the untracked ones it does not ignore, directories first, folded until opened.
 - **Marks** at a row's end are git's letters, `M` modified, `A` added, `D` deleted, `?` untracked, colored by kind; a directory says how many of its files changed.
-- **A file's tab** is read-only, with line numbers and syntax highlighting in any of about 300 languages, built into wdx. A Markdown file shows rendered, and `m` switches it to its source and back.
+- **A file's tab** is read-only, with line numbers and syntax highlighting in any of about 300 languages, built into wdx. A Markdown file shows rendered, and `m` switches it to its source and back <Since v="0.5.0" />.
 
 ## Keys
 
