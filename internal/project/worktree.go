@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // mainWorktree names the project's clone, among its worktrees.
@@ -140,11 +140,11 @@ func (s *Store) recordWorktree(ctx context.Context, projectID, path string) (str
 	if err != nil {
 		return "", err
 	}
-	id, err := db.NewID("wt")
+	id, err := sqlite.NewID("wt")
 	if err != nil {
 		return "", err
 	}
-	if _, err := db.Exec(ctx, s.db, `
+	if _, err := sqlite.Exec(ctx, s.db, `
 		INSERT INTO project_worktrees (id, project_id, path, git_common_dir, created_at)
 		VALUES (?, ?, ?, ?, ?)`, id, projectID, root, commonDir, time.Now().UnixMilli()); err != nil {
 		return "", err
@@ -181,7 +181,7 @@ func (s *Store) SetLandSettings(ctx context.Context, projectID string, v LandSet
 	if v.Check != "" {
 		check = v.Check
 	}
-	if _, err := db.Exec(ctx, s.db, `
+	if _, err := sqlite.Exec(ctx, s.db, `
 		INSERT INTO project_landing (project_id, method, check_command, push, updated_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (project_id) DO UPDATE SET method = excluded.method, check_command = excluded.check_command, push = excluded.push, updated_at = excluded.updated_at`,
 		projectID, v.Method, check, v.Push, time.Now().UnixMilli()); err != nil {
@@ -212,7 +212,7 @@ func (s *Store) AddWorktreeOn(ctx context.Context, p Project, path, branch strin
 // ForgetWorktree removes the project's record of the checkout at path, if it has one:
 // a worktree wdx did not make has none.
 func (s *Store) ForgetWorktree(ctx context.Context, projectID, path string) error {
-	if _, err := db.Exec(ctx, s.db, "DELETE FROM project_worktrees WHERE project_id = ? AND path = ?", projectID, path); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, "DELETE FROM project_worktrees WHERE project_id = ? AND path = ?", projectID, path); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("worktree forgotten", "project_id", projectID, "path", path)

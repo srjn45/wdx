@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // State is where a terminal is in its life.
@@ -138,13 +138,13 @@ func cleanName(name string) (string, error) {
 // Store persists terminals.
 type Store struct {
 	db      *sql.DB
-	queries *db.Statements
+	queries *sqlite.Statements
 	changed func() // called after every change; see OnChange
 }
 
 // NewStore returns a Store backed by db.
 func NewStore(database *sql.DB) *Store {
-	return &Store{db: database, queries: db.NewStatements(database), changed: func() {}}
+	return &Store{db: database, queries: sqlite.NewStatements(database), changed: func() {}}
 }
 
 // OnChange makes the store call fn after every change it writes, before it
@@ -160,9 +160,9 @@ const codenameTries = 10
 // codename free in its project among every kind. linked, if any, runs in the
 // same transaction with the new id, so that a crash leaves both its rows or
 // neither.
-func (s *Store) insert(ctx context.Context, t Terminal, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
+func (s *Store) insert(ctx context.Context, t Terminal, linked func(ctx context.Context, tx sqlite.Execer, id string) error) (Terminal, error) {
 	kind, projectID, name, dir, shell := t.Kind, t.ProjectID, t.Name, t.Dir, t.Shell
-	id, err := db.NewID("term")
+	id, err := sqlite.NewID("term")
 	if err != nil {
 		return Terminal{}, err
 	}
@@ -190,7 +190,7 @@ func (s *Store) insert(ctx context.Context, t Terminal, linked func(ctx context.
 		return Terminal{}, err
 	}
 	defer tx.Rollback()
-	if _, err := db.Exec(ctx, tx, `
+	if _, err := sqlite.Exec(ctx, tx, `
 		INSERT INTO terminals (id, kind, project_id, name, dir, shell, editor, editor_path, state, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?)`, id, stored, projectID, name, dir, shell, t.Editor, t.EditorPath, StateStarting, now, now); err != nil {
 		return Terminal{}, err
@@ -229,7 +229,7 @@ func (s *Store) rename(ctx context.Context, id, name string) (Terminal, error) {
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return Terminal{}, err
 	}
-	if _, err := db.Exec(ctx, s.db, "UPDATE terminals SET name = ? WHERE id = ?", name, id); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, "UPDATE terminals SET name = ? WHERE id = ?", name, id); err != nil {
 		return Terminal{}, err
 	}
 	logging.FromContext(ctx).Info("terminal renamed", "terminal_id", id, "name", name, "was", t.Name)
@@ -432,7 +432,7 @@ func (s *Store) ending(ctx context.Context, id string, changed bool, err error) 
 	if err != nil || !changed {
 		return changed, err
 	}
-	n, err := db.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ? AND editor_path IS NOT NULL", id)
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ? AND editor_path IS NOT NULL", id)
 	if err != nil {
 		return changed, err
 	}
@@ -453,7 +453,7 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 	for _, st := range from {
 		all = append(all, st)
 	}
-	n, err := db.Exec(ctx, s.db, "UPDATE terminals SET state = ?, updated_at = ?"+set+" WHERE id = ? AND state IN ("+marks+")", all...)
+	n, err := sqlite.Exec(ctx, s.db, "UPDATE terminals SET state = ?, updated_at = ?"+set+" WHERE id = ? AND state IN ("+marks+")", all...)
 	if err != nil {
 		return false, err
 	}
@@ -467,13 +467,13 @@ func (s *Store) transition(ctx context.Context, id string, to State, from []Stat
 // tombstone ends the row with id for good, keeping it: one left stopped
 // becomes exited, or opening its project would relaunch it. linked runs in the
 // same transaction.
-func (s *Store) tombstone(ctx context.Context, id string, linked func(ctx context.Context, tx db.Execer) error) error {
+func (s *Store) tombstone(ctx context.Context, id string, linked func(ctx context.Context, tx sqlite.Execer) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := db.Exec(ctx, tx, "UPDATE terminals SET state = ?, updated_at = ? WHERE id = ? AND state = ?", StateExited, time.Now().UnixMilli(), id, StateStopped); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE terminals SET state = ?, updated_at = ? WHERE id = ? AND state = ?", StateExited, time.Now().UnixMilli(), id, StateStopped); err != nil {
 		return err
 	}
 	if err := linked(ctx, tx); err != nil {
@@ -489,7 +489,7 @@ func (s *Store) tombstone(ctx context.Context, id string, linked func(ctx contex
 
 // remove deletes the terminal with id.
 func (s *Store) remove(ctx context.Context, id string) error {
-	if _, err := db.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ?", id); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, "DELETE FROM terminals WHERE id = ?", id); err != nil {
 		return err
 	}
 	logging.FromContext(ctx).Info("terminal removed", "terminal_id", id)

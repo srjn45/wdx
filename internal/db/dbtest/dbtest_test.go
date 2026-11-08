@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 func TestSeedIsAtTheLatestSchema(t *testing.T) {
@@ -14,7 +15,7 @@ func TestSeedIsAtTheLatestSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "home", "wdx.db")
 	Seed(t, path)
 
-	schema, err := db.ReadSchema(context.Background(), path)
+	schema, err := sqlite.ReadSchema(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

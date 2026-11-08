@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // A view is what tide shows besides its tabs, as the JSON object tide sends:
@@ -30,7 +30,7 @@ func (s *Store) ReplaceView(ctx context.Context, view json.RawMessage) error {
 	if err := checkView(view); err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, s.db, `INSERT INTO tide_view (id, view, updated_at) VALUES (1, ?, ?)
+	if _, err := sqlite.Exec(ctx, s.db, `INSERT INTO tide_view (id, view, updated_at) VALUES (1, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET view = excluded.view, updated_at = excluded.updated_at`,
 		string(view), time.Now().UnixMilli()); err != nil {
 		return err
@@ -49,7 +49,7 @@ func (s *Store) ReplaceProjectView(ctx context.Context, projectID string, view j
 	if err := checkView(view); err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, s.db, `INSERT INTO tide_project_views (project_id, view, updated_at) VALUES (?, ?, ?)
+	if _, err := sqlite.Exec(ctx, s.db, `INSERT INTO tide_project_views (project_id, view, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT (project_id) DO UPDATE SET view = excluded.view, updated_at = excluded.updated_at`,
 		projectID, string(view), time.Now().UnixMilli()); err != nil {
 		return err

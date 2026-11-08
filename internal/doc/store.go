@@ -12,8 +12,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // Store keeps docs of one kind and their revisions, and a read-only copy of each
@@ -73,7 +73,7 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 			return Doc{}, err
 		}
 	}
-	id, err := db.NewID("doc")
+	id, err := sqlite.NewID("doc")
 	if err != nil {
 		return Doc{}, err
 	}
@@ -86,7 +86,7 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 		return Doc{}, err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := db.Exec(ctx, tx, `
+	if _, err := sqlite.Exec(ctx, tx, `
 		INSERT INTO docs (id, project_id, kind, name, folder, format, labels, status, revision, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`, id, projectID, s.kind, s.kind.stored(n.Name), folder, n.Format, labelsJSON(labels), n.Status, now, now); err != nil {
 		return Doc{}, err
@@ -246,14 +246,14 @@ func (s *Store) update(ctx context.Context, id string, base int, content []byte,
 		return Updated{Doc: d, Previous: d.Status}, nil
 	}
 	next, now := d.Revision+1, time.Now().UnixMilli()
-	if _, err := db.Exec(ctx, tx, "UPDATE docs SET revision = ?, status = ?, updated_at = ? WHERE id = ?", next, StatusWIP, now, id); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET revision = ?, status = ?, updated_at = ? WHERE id = ?", next, StatusWIP, now, id); err != nil {
 		return Updated{}, err
 	}
 	if err := insertRevision(ctx, tx, id, next, content, now); err != nil {
 		return Updated{}, err
 	}
 	if withChildren {
-		if _, err := db.Exec(ctx, tx, "UPDATE docs SET parent_id = NULL WHERE parent_id = ?", id); err != nil {
+		if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET parent_id = NULL WHERE parent_id = ?", id); err != nil {
 			return Updated{}, err
 		}
 		if err := s.setChildren(ctx, tx, id, d.Folder, children, now); err != nil {
@@ -349,7 +349,7 @@ func (s *Store) set(ctx context.Context, id string, c Change) (Doc, bool, []stri
 			return Doc{}, false, nil, err
 		}
 	}
-	if _, err := db.Exec(ctx, tx, "UPDATE docs SET folder = ?, status = ?, labels = ?, updated_at = ? WHERE id = ?", folder, status, labelsJSON(labels), now, id); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET folder = ?, status = ?, labels = ?, updated_at = ? WHERE id = ?", folder, status, labelsJSON(labels), now, id); err != nil {
 		return Doc{}, false, nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -374,7 +374,7 @@ func (s *Store) moveFamily(ctx context.Context, tx *sql.Tx, d Doc, folder string
 	}
 	var moved []string
 	for _, f := range family {
-		if _, err := db.Exec(ctx, tx, "UPDATE docs SET folder = ?, updated_at = ? WHERE id = ?", folder, now, f.ID); err != nil {
+		if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET folder = ?, updated_at = ? WHERE id = ?", folder, now, f.ID); err != nil {
 			return nil, err
 		}
 		moved = append(moved, f.Name)
@@ -400,7 +400,7 @@ func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
 	if err := s.checkFree(ctx, tx, d.ProjectID, name, id); err != nil {
 		return Doc{}, err
 	}
-	if _, err := db.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", s.kind.stored(name), time.Now().UnixMilli(), id); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", s.kind.stored(name), time.Now().UnixMilli(), id); err != nil {
 		return Doc{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -418,7 +418,7 @@ func (s *Store) Remove(ctx context.Context, id string) (Doc, error) {
 	if err != nil {
 		return Doc{}, err
 	}
-	n, err := db.Exec(ctx, s.db, "DELETE FROM docs WHERE id = ?", id)
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM docs WHERE id = ?", id)
 	if err != nil {
 		return Doc{}, err
 	}
@@ -468,7 +468,7 @@ func (s *Store) CatchUpCopies(ctx context.Context) error {
 // error: the caller checked them.
 func (s *Store) setChildren(ctx context.Context, tx *sql.Tx, id, folder string, children []string, now int64) error {
 	for _, child := range children {
-		n, err := db.Exec(ctx, tx, `UPDATE docs SET parent_id = ?, folder = ?,
+		n, err := sqlite.Exec(ctx, tx, `UPDATE docs SET parent_id = ?, folder = ?,
 			updated_at = CASE WHEN folder = ? THEN updated_at ELSE ? END WHERE id = ?`, id, folder, folder, now, child)
 		if err != nil {
 			return err
@@ -542,7 +542,7 @@ func (s *Store) query(ctx context.Context, q queryer, where string, args ...any)
 	return list, rows.Err()
 }
 
-// insertRevision stores content as revision of the doc with id. Not db.Exec, which
+// insertRevision stores content as revision of the doc with id. Not sqlite.Exec, which
 // logs its arguments: the content can be large.
 func insertRevision(ctx context.Context, tx *sql.Tx, id string, revision int, content []byte, now int64) error {
 	packed, err := pack(content)

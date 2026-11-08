@@ -12,8 +12,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // Kind is what a tab shows.
@@ -128,11 +128,11 @@ func (s *Store) Replace(ctx context.Context, projectID string, tabs []Tab) (int6
 			return 0, &InvalidError{Index: i, Reason: why}
 		}
 	}
-	if _, err := db.Exec(ctx, tx, "DELETE FROM tide_tabs WHERE project_id = ?", projectID); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "DELETE FROM tide_tabs WHERE project_id = ?", projectID); err != nil {
 		return 0, err
 	}
 	for i, t := range tabs {
-		if _, err := db.Exec(ctx, tx, `
+		if _, err := sqlite.Exec(ctx, tx, `
 			INSERT INTO tide_tabs (project_id, position, kind, agent_id, doc_id, worktree, path) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			projectID, i, t.Kind, null(t.AgentID), null(t.DocID), null(t.Worktree), null(t.Path)); err != nil {
 			return 0, err
@@ -151,7 +151,7 @@ func (s *Store) Replace(ctx context.Context, projectID string, tabs []Tab) (int6
 
 // RemoveWorktree deletes the tabs of the worktree called name, once wdx removed it.
 func (s *Store) RemoveWorktree(ctx context.Context, projectID, name string) error {
-	n, err := db.Exec(ctx, s.db, "DELETE FROM tide_tabs WHERE project_id = ? AND worktree = ?", projectID, name)
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM tide_tabs WHERE project_id = ? AND worktree = ?", projectID, name)
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (s *Store) RemoveWorktree(ctx context.Context, projectID, name string) erro
 // RemovePath deletes the tabs of the file at path in the worktree called name, or
 // of every file under it when it is a directory, once wdx deleted it.
 func (s *Store) RemovePath(ctx context.Context, projectID, name, path string) error {
-	n, err := db.Exec(ctx, s.db, "DELETE FROM tide_tabs WHERE project_id = ? AND worktree = ? AND "+atOrUnder,
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM tide_tabs WHERE project_id = ? AND worktree = ? AND "+atOrUnder,
 		projectID, name, path)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func (s *Store) RemovePath(ctx context.Context, projectID, name, path string) er
 // RenamePath moves the tabs of the file at from in the worktree called name, or of
 // every file under it when it is a directory, to to, once wdx renamed it.
 func (s *Store) RenamePath(ctx context.Context, projectID, name, from, to string) error {
-	n, err := db.Exec(ctx, s.db, `UPDATE tide_tabs SET path = ?4 || substr(path, length(?3) + 1)
+	n, err := sqlite.Exec(ctx, s.db, `UPDATE tide_tabs SET path = ?4 || substr(path, length(?3) + 1)
 		WHERE project_id = ?1 AND worktree = ?2 AND `+atOrUnder,
 		projectID, name, from, to)
 	if err != nil {

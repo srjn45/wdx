@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // A message's state, as the table has them. docs/SEND.md.
@@ -96,7 +96,7 @@ func (s *Store) Message(ctx context.Context, id string) (Message, error) {
 }
 
 // addMessage records a message before it goes anywhere: safe once stored. Not
-// db.Exec, here and wherever text is written, which logs what it is given: a message
+// sqlite.Exec, here and wherever text is written, which logs what it is given: a message
 // can hold secrets.
 func (s *Store) addMessage(ctx context.Context, terminalID, text string, instant bool, session string) (string, error) {
 	return s.addMessageIn(ctx, s.db, terminalID, text, instant, session)
@@ -106,12 +106,12 @@ func (s *Store) addMessage(ctx context.Context, terminalID, text string, instant
 // e, the transaction that adds the agent: the holder gets it once it is up, as any
 // message sent before. It is instant, as BeginSession's, so that nothing sent later
 // overtakes it while the agent starts.
-func (s *Store) AddFirstMessage(ctx context.Context, e db.Execer, terminalID, session, text string) error {
+func (s *Store) AddFirstMessage(ctx context.Context, e sqlite.Execer, terminalID, session, text string) error {
 	_, err := s.addMessageIn(ctx, e, terminalID, text, true, session)
 	return err
 }
 
-func (s *Store) addMessageIn(ctx context.Context, e db.Execer, terminalID, text string, instant bool, session string) (string, error) {
+func (s *Store) addMessageIn(ctx context.Context, e sqlite.Execer, terminalID, text string, instant bool, session string) (string, error) {
 	raw := make([]byte, 4)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -133,16 +133,16 @@ func (s *Store) addMessageIn(ctx context.Context, e db.Execer, terminalID, text 
 // and it is the same agent going on; those held stay held. They become general, or they
 // would interrupt the agent reading its history. first is instant so that nothing sent
 // later overtakes it while the agent starts.
-func (s *Store) BeginSession(ctx context.Context, e db.Querier, terminalID, session, first string) error {
+func (s *Store) BeginSession(ctx context.Context, e sqlite.Querier, terminalID, session, first string) error {
 	raw := make([]byte, 4)
 	if _, err := rand.Read(raw); err != nil {
 		return err
 	}
 	id := restartMessagePrefix + hex.EncodeToString(raw)
-	if _, err := db.Exec(ctx, e, "DELETE FROM messages WHERE terminal_id = ? AND id LIKE ? AND state IN (?, ?)", terminalID, restartMessagePrefix+"%", MessagePending, MessageHeld); err != nil {
+	if _, err := sqlite.Exec(ctx, e, "DELETE FROM messages WHERE terminal_id = ? AND id LIKE ? AND state IN (?, ?)", terminalID, restartMessagePrefix+"%", MessagePending, MessageHeld); err != nil {
 		return err
 	}
-	carried, err := db.Exec(ctx, e, "UPDATE messages SET session_id = ?, holder_pid = NULL, instant = 0 WHERE terminal_id = ? AND state = ?", session, terminalID, MessagePending)
+	carried, err := sqlite.Exec(ctx, e, "UPDATE messages SET session_id = ?, holder_pid = NULL, instant = 0 WHERE terminal_id = ? AND state = ?", session, terminalID, MessagePending)
 	if err != nil {
 		return err
 	}
@@ -163,14 +163,14 @@ func (s *Store) BeginSession(ctx context.Context, e db.Querier, terminalID, sess
 }
 
 func (s *Store) messageForwarded(ctx context.Context, id string, holderPID int) error {
-	_, err := db.Exec(ctx, s.db, "UPDATE messages SET holder_pid = ?, attempts = attempts + 1, forwarded_at = ? WHERE id = ?", holderPID, time.Now().UnixMilli(), id)
+	_, err := sqlite.Exec(ctx, s.db, "UPDATE messages SET holder_pid = ?, attempts = attempts + 1, forwarded_at = ? WHERE id = ?", holderPID, time.Now().UnixMilli(), id)
 	return err
 }
 
 // messageUnconfirmed ends a message handed to a holder too old to say what became of
 // it. It is not sent again: it may well have arrived.
 func (s *Store) messageUnconfirmed(ctx context.Context, id string, holderPID int) error {
-	_, err := db.Exec(ctx, s.db, "UPDATE messages SET state = ?, text = '', holder_pid = ?, attempts = attempts + 1, forwarded_at = ? WHERE id = ?", MessageUnconfirmed, holderPID, time.Now().UnixMilli(), id)
+	_, err := sqlite.Exec(ctx, s.db, "UPDATE messages SET state = ?, text = '', holder_pid = ?, attempts = attempts + 1, forwarded_at = ? WHERE id = ?", MessageUnconfirmed, holderPID, time.Now().UnixMilli(), id)
 	return err
 }
 
@@ -180,7 +180,7 @@ func (s *Store) messagesDelivered(ctx context.Context, ids []string) error {
 	changed := false
 	now := time.Now().UnixMilli()
 	for _, id := range ids {
-		n, err := db.Exec(ctx, s.db, "UPDATE messages SET state = ?, text = '', delivered_at = ? WHERE id = ? AND state != ?", MessageDelivered, now, id, MessageDelivered)
+		n, err := sqlite.Exec(ctx, s.db, "UPDATE messages SET state = ?, text = '', delivered_at = ? WHERE id = ? AND state != ?", MessageDelivered, now, id, MessageDelivered)
 		if err != nil {
 			return err
 		}
@@ -208,9 +208,9 @@ func (s *Store) holdMessage(ctx context.Context, id string) error {
 	}
 	var err error
 	if linked > 0 {
-		_, err = db.Exec(ctx, s.db, "DELETE FROM messages WHERE id = ?", id)
+		_, err = sqlite.Exec(ctx, s.db, "DELETE FROM messages WHERE id = ?", id)
 	} else {
-		_, err = db.Exec(ctx, s.db, "UPDATE messages SET state = ? WHERE id = ?", MessageHeld, id)
+		_, err = sqlite.Exec(ctx, s.db, "UPDATE messages SET state = ? WHERE id = ?", MessageHeld, id)
 	}
 	if err == nil {
 		logging.FromContext(ctx).Info("message held", "message_id", id, "review", linked > 0)
@@ -221,7 +221,7 @@ func (s *Store) holdMessage(ctx context.Context, id string) error {
 
 // DiscardMessage deletes a message still waiting.
 func (s *Store) DiscardMessage(ctx context.Context, id string) error {
-	n, err := db.Exec(ctx, s.db, "DELETE FROM messages WHERE id = ? AND state IN ('pending', 'held')", id)
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM messages WHERE id = ? AND state IN ('pending', 'held')", id)
 	if err != nil {
 		return err
 	}

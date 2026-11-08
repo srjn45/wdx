@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // The states of a run, which are its plan's; a plan with no run is StateDraft.
@@ -198,7 +198,7 @@ func (s *Store) archive(ctx context.Context, planID string, archive bool) (bool,
 	if archive {
 		archivedAt, cond = time.Now().UnixMilli(), "archived_at IS NULL"
 	}
-	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET archived_at = ?
+	n, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET archived_at = ?
 		WHERE plan_id = ? AND state IN (?, ?) AND finished_at IS NOT NULL AND `+cond, archivedAt, planID, StateDone, StateCancelled)
 	if err != nil {
 		return false, err
@@ -296,12 +296,12 @@ func (s *Store) Start(ctx context.Context, id, base, branch string, parallel int
 	}
 	defer tx.Rollback()
 	now := time.Now().UnixMilli()
-	if _, err := db.Exec(ctx, tx, `INSERT INTO plan_runs (plan_id, revision, base, branch, state, parallel, started_at, base_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := sqlite.Exec(ctx, tx, `INSERT INTO plan_runs (plan_id, revision, base, branch, state, parallel, started_at, base_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, r.Number, base, branch, StateRunning, nullInt(parallel), now, nullString(baseCommit)); err != nil {
 		return Run{}, err
 	}
 	for _, t := range def.Tasks {
-		if _, err := db.Exec(ctx, tx, `INSERT INTO plan_tasks (plan_id, task_id, state) VALUES (?, ?, ?)`, id, t.ID, TaskPending); err != nil {
+		if _, err := sqlite.Exec(ctx, tx, `INSERT INTO plan_tasks (plan_id, task_id, state) VALUES (?, ?, ?)`, id, t.ID, TaskPending); err != nil {
 			return Run{}, err
 		}
 	}
@@ -431,7 +431,7 @@ func (s *Store) HoldSlot(ctx context.Context, planID, taskID string, slot int) e
 
 // AddSlot records the slot numbered slot, made at path.
 func (s *Store) AddSlot(ctx context.Context, planID string, slot int, path string) error {
-	if _, err := db.Exec(ctx, s.db, `INSERT INTO plan_slots (plan_id, slot, path, created_at) VALUES (?, ?, ?, ?)`, planID, slot, path, time.Now().UnixMilli()); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, `INSERT INTO plan_slots (plan_id, slot, path, created_at) VALUES (?, ?, ?, ?)`, planID, slot, path, time.Now().UnixMilli()); err != nil {
 		return err
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
@@ -444,7 +444,7 @@ func (s *Store) AddSlot(ctx context.Context, planID string, slot int, path strin
 // DropSlot forgets the slot numbered slot: it is gone, or no longer the plan's. A
 // task still holding its number keeps it.
 func (s *Store) DropSlot(ctx context.Context, planID string, slot int) error {
-	if _, err := db.Exec(ctx, s.db, `DELETE FROM plan_slots WHERE plan_id = ? AND slot = ?`, planID, slot); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, `DELETE FROM plan_slots WHERE plan_id = ? AND slot = ?`, planID, slot); err != nil {
 		return err
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
@@ -457,7 +457,7 @@ func (s *Store) DropSlot(ctx context.Context, planID string, slot int) error {
 // StartTask makes the pending task running with its agent, in e, the transaction
 // that adds the agent or sends a resumed one its message. A task retried keeps the
 // time it first started, and is no longer failed.
-func (s *Store) StartTask(ctx context.Context, e db.Execer, planID, taskID, agentID string) error {
+func (s *Store) StartTask(ctx context.Context, e sqlite.Execer, planID, taskID, agentID string) error {
 	if err := s.move(ctx, e, planID, taskID, []string{TaskPending},
 		"state = ?, agent_id = ?, started_at = COALESCE(started_at, ?), failure = NULL, conflicts = NULL",
 		TaskRunning, agentID, time.Now().UnixMilli()); err != nil {
@@ -564,7 +564,7 @@ func (s *Store) SkipTask(ctx context.Context, planID, taskID string) (TaskRun, e
 // LeaveSlot clears the slot the task holds, whatever its state: the slot was
 // released, freed for another task or no longer the plan's.
 func (s *Store) LeaveSlot(ctx context.Context, planID, taskID string) error {
-	if _, err := db.Exec(ctx, s.db, `UPDATE plan_tasks SET slot = NULL WHERE plan_id = ? AND task_id = ?`, planID, taskID); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, `UPDATE plan_tasks SET slot = NULL WHERE plan_id = ? AND task_id = ?`, planID, taskID); err != nil {
 		return err
 	}
 	if err := touch(ctx, s.db, planID); err != nil {
@@ -585,7 +585,7 @@ func (s *Store) Resume(ctx context.Context, planID string) (bool, error) {
 }
 
 func (s *Store) changeRun(ctx context.Context, planID, from, to string) (bool, error) {
-	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state = ?`, to, planID, from)
+	n, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state = ?`, to, planID, from)
 	if err != nil {
 		return false, err
 	}
@@ -606,7 +606,7 @@ func (s *Store) changeRun(ctx context.Context, planID, from, to string) (bool, e
 // Cancel makes the running or paused run cancelled; the runner then stops its
 // agents, releases its slots and closes it.
 func (s *Store) Cancel(ctx context.Context, planID string) error {
-	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state IN (?, ?)`, StateCancelled, planID, StateRunning, StatePaused)
+	n, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET state = ? WHERE plan_id = ? AND state IN (?, ?)`, StateCancelled, planID, StateRunning, StatePaused)
 	if err != nil {
 		return err
 	}
@@ -626,7 +626,7 @@ func (s *Store) SetParallel(ctx context.Context, planID string, n int) (bool, er
 	if err := s.goingOn(ctx, planID); err != nil {
 		return false, err
 	}
-	changed, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET parallel = ? WHERE plan_id = ? AND parallel IS NOT ?`, n, planID, n)
+	changed, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET parallel = ? WHERE plan_id = ? AND parallel IS NOT ?`, n, planID, n)
 	if err != nil || changed == 0 {
 		return false, err
 	}
@@ -640,7 +640,7 @@ func (s *Store) SetParallel(ctx context.Context, planID string, n int) (bool, er
 // Close writes when the cancelled run ended, once its agents are stopped and its
 // slots released.
 func (s *Store) Close(ctx context.Context, planID string) error {
-	n, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET finished_at = ? WHERE plan_id = ? AND state = ? AND finished_at IS NULL`, time.Now().UnixMilli(), planID, StateCancelled)
+	n, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET finished_at = ? WHERE plan_id = ? AND state = ? AND finished_at IS NULL`, time.Now().UnixMilli(), planID, StateCancelled)
 	if err != nil {
 		return err
 	}
@@ -678,7 +678,7 @@ func (s *Store) runState(ctx context.Context, planID string) (string, error) {
 
 // Finish makes the running or paused run done, once every task is done or skipped.
 func (s *Store) Finish(ctx context.Context, planID string) error {
-	n, err := db.Exec(ctx, s.db, `
+	n, err := sqlite.Exec(ctx, s.db, `
 		UPDATE plan_runs SET state = ?, finished_at = ?
 		WHERE plan_id = ? AND state IN (?, ?)
 		AND NOT EXISTS (SELECT 1 FROM plan_tasks WHERE plan_id = ? AND state NOT IN (?, ?))`,
@@ -698,13 +698,13 @@ func (s *Store) Finish(ctx context.Context, planID string) error {
 
 // move changes the task with set when its state is one of from, and returns a
 // *TaskStateError when it is not.
-func (s *Store) move(ctx context.Context, e db.Execer, planID, taskID string, from []string, set string, args ...any) error {
+func (s *Store) move(ctx context.Context, e sqlite.Execer, planID, taskID string, from []string, set string, args ...any) error {
 	query := "UPDATE plan_tasks SET " + set + " WHERE plan_id = ? AND task_id = ? AND state IN (?" + strings.Repeat(", ?", len(from)-1) + ")"
 	args = append(args, planID, taskID)
 	for _, f := range from {
 		args = append(args, f)
 	}
-	n, err := db.Exec(ctx, e, query, args...)
+	n, err := sqlite.Exec(ctx, e, query, args...)
 	if err != nil {
 		return err
 	}
@@ -781,8 +781,8 @@ func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[s
 // changed: its run is part of it, and of what its parent shows, and the projects'
 // streams send a plan again only when its row changes. Always forward, even within
 // a millisecond.
-func touch(ctx context.Context, e db.Execer, planID string) error {
-	_, err := db.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?)
+func touch(ctx context.Context, e sqlite.Execer, planID string) error {
+	_, err := sqlite.Exec(ctx, e, `UPDATE docs SET updated_at = MAX(updated_at + 1, ?)
 		WHERE id = ? OR id = (SELECT parent_id FROM docs WHERE id = ?)`, time.Now().UnixMilli(), planID, planID)
 	return err
 }

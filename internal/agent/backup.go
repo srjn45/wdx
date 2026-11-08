@@ -15,10 +15,10 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/atomicfile"
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // DefaultTrashRetention is how long what is kept of a removed agent stays.
@@ -413,7 +413,7 @@ func (b *Backups) transcript(ctx context.Context, a Agent, from *int64, count in
 // backup between would put the row back. A crash before it is told leaves the agent in
 // its old session with a message that says otherwise; the other way round, it would be
 // in a new session with nothing to tell it so.
-func (b *Backups) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier, a Agent) error) ([]string, error) {
+func (b *Backups) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx sqlite.Querier, a Agent) error) ([]string, error) {
 	b.work.Lock()
 	defer b.work.Unlock()
 	a, err := b.store.Get(ctx, id)
@@ -445,7 +445,7 @@ func (b *Backups) beginSession(ctx context.Context, id, session string, linked f
 	if err != nil {
 		return nil, err
 	}
-	if err := b.store.beginSession(ctx, id, session, func(ctx context.Context, tx db.Querier) error { return linked(ctx, tx, a) }); err != nil {
+	if err := b.store.beginSession(ctx, id, session, func(ctx context.Context, tx sqlite.Querier) error { return linked(ctx, tx, a) }); err != nil {
 		return nil, err
 	}
 	dir := identity.AgentDir(b.home, id)

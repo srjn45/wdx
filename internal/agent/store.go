@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
@@ -77,12 +77,12 @@ var ErrNotFound = errors.New("agent not found")
 // Store persists agents. Every query joins them with their terminal rows.
 type Store struct {
 	db      *sql.DB
-	queries *db.Statements
+	queries *sqlite.Statements
 }
 
 // NewStore returns a Store backed by db.
 func NewStore(database *sql.DB) *Store {
-	return &Store{db: database, queries: db.NewStatements(database)}
+	return &Store{db: database, queries: sqlite.NewStatements(database)}
 }
 
 // Get returns the agent with id.
@@ -140,7 +140,7 @@ func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draf
 		}
 		promptJSON = sql.NullString{String: string(b), Valid: true}
 	}
-	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = NULLIF(?4, ''), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR model IS NOT NULLIF(?4, '') OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
+	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = NULLIF(?4, ''), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR model IS NOT NULLIF(?4, '') OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
 	if err != nil {
 		return false, err
 	}
@@ -157,7 +157,7 @@ func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draf
 // ClearPrompt forgets the prompt of the agent on terminalID, whose terminal ended:
 // the prompt's text stays only while it is open. It reports whether there was one.
 func (s *Store) ClearPrompt(ctx context.Context, terminalID string) (bool, error) {
-	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE terminal_id = ? AND prompt IS NOT NULL", terminalID)
+	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE terminal_id = ? AND prompt IS NOT NULL", terminalID)
 	if rows > 0 {
 		logging.FromContext(ctx).Info("agent prompt cleared", "terminal_id", terminalID)
 	}
@@ -167,7 +167,7 @@ func (s *Store) ClearPrompt(ctx context.Context, terminalID string) (bool, error
 // ClearEndedPrompts forgets the prompts of the agents whose terminals are not
 // running, which ended while no daemon was there to clear them.
 func (s *Store) ClearEndedPrompts(ctx context.Context) error {
-	rows, err := db.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE prompt IS NOT NULL AND terminal_id IN (SELECT id FROM terminals WHERE state != 'running')")
+	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET prompt = NULL WHERE prompt IS NOT NULL AND terminal_id IN (SELECT id FROM terminals WHERE state != 'running')")
 	if rows > 0 {
 		logging.FromContext(ctx).Info("prompts of ended agents cleared", "count", rows)
 	}
@@ -178,7 +178,7 @@ func (s *Store) ClearEndedPrompts(ctx context.Context) error {
 // whether that changed anything. A window of 0, which its ACA does not tell, is
 // kept as null.
 func (s *Store) setContext(ctx context.Context, id string, size aca.ContextSize) (bool, error) {
-	n, err := db.Exec(ctx, s.db, "UPDATE agents SET context_tokens = ?1, context_window = NULLIF(?2, 0) WHERE id = ?3 AND (context_tokens IS NOT ?1 OR context_window IS NOT NULLIF(?2, 0))",
+	n, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET context_tokens = ?1, context_window = NULLIF(?2, 0) WHERE id = ?3 AND (context_tokens IS NOT ?1 OR context_window IS NOT NULLIF(?2, 0))",
 		size.Tokens, size.Window, id)
 	return n > 0, err
 }
@@ -206,7 +206,7 @@ const taskOfAgent = `
 // setCurrentDir records where the agent last worked, and reports whether that
 // changed anything.
 func (s *Store) setCurrentDir(ctx context.Context, id, dir string) (bool, error) {
-	n, err := db.Exec(ctx, s.db, "UPDATE agents SET current_dir = ?1 WHERE id = ?2 AND current_dir IS NOT ?1", dir, id)
+	n, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET current_dir = ?1 WHERE id = ?2 AND current_dir IS NOT ?1", dir, id)
 	return n > 0, err
 }
 
@@ -222,14 +222,14 @@ func (s *Store) setSession(ctx context.Context, id, session string) (bool, error
 }
 
 // beginSession gives the agent the session in one transaction with what linked does.
-func (s *Store) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx db.Querier) error) error {
+func (s *Store) beginSession(ctx context.Context, id, session string, linked func(ctx context.Context, tx sqlite.Querier) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	// What the old session filled says nothing of the new one.
-	if _, err := db.Exec(ctx, tx, "UPDATE agents SET session_id = ?, context_tokens = NULL, context_window = NULL WHERE id = ?", session, id); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE agents SET session_id = ?, context_tokens = NULL, context_window = NULL WHERE id = ?", session, id); err != nil {
 		return err
 	}
 	if err := linked(ctx, tx); err != nil {
@@ -309,8 +309,8 @@ func (s *Store) children(ctx context.Context, id string) (int, error) {
 
 // insert adds an agent on the terminal row with terminalID, under the agent
 // with parentID unless it is "", in e, the transaction that adds the row.
-func (s *Store) insert(ctx context.Context, e db.Execer, id, terminalID, acaID, sessionID, parentID string, l Launch) error {
-	_, err := db.Exec(ctx, e, "INSERT INTO agents (id, terminal_id, aca, session_id, parent_agent_id, requested_model, permissions) VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)",
+func (s *Store) insert(ctx context.Context, e sqlite.Execer, id, terminalID, acaID, sessionID, parentID string, l Launch) error {
+	_, err := sqlite.Exec(ctx, e, "INSERT INTO agents (id, terminal_id, aca, session_id, parent_agent_id, requested_model, permissions) VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)",
 		id, terminalID, acaID, sessionID, parentID, l.Model, l.Permissions)
 	if err == nil {
 		logging.FromContext(ctx).Info("agent created", "agent_id", id, "terminal_id", terminalID, "aca", acaID, "session_id", sessionID, "parent_agent_id", parentID,
@@ -321,8 +321,8 @@ func (s *Store) insert(ctx context.Context, e db.Execer, id, terminalID, acaID, 
 
 // markRemoved makes the agent with id a tombstone, in e, the transaction that
 // ends its terminal row.
-func (s *Store) markRemoved(ctx context.Context, e db.Execer, id string) error {
-	_, err := db.Exec(ctx, e, "UPDATE agents SET removed_at = ? WHERE id = ?", time.Now().UnixMilli(), id)
+func (s *Store) markRemoved(ctx context.Context, e sqlite.Execer, id string) error {
+	_, err := sqlite.Exec(ctx, e, "UPDATE agents SET removed_at = ? WHERE id = ?", time.Now().UnixMilli(), id)
 	if err == nil {
 		logging.FromContext(ctx).Info("agent kept as a tombstone", "agent_id", id)
 	}

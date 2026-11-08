@@ -12,11 +12,11 @@ import (
 	"unicode"
 
 	"github.com/srjn45/wdx/internal/aca"
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/terminal"
 )
 
@@ -252,11 +252,11 @@ func (m *Manager) Create(ctx context.Context, projectID, name, dir, parentID str
 // whose linked writes what points at it, both in the transaction that adds it: so
 // that it is never there without its first message, nor what points at it without
 // it.
-func (m *Manager) CreateLinked(ctx context.Context, projectID, name, dir string, l Launch, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+func (m *Manager) CreateLinked(ctx context.Context, projectID, name, dir string, l Launch, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (Agent, error) {
 	return m.create(ctx, projectID, name, dir, "", l, first, linked)
 }
 
-func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID string, l Launch, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID string, l Launch, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (Agent, error) {
 	l, err := l.withDefaults()
 	if err != nil {
 		return Agent{}, err
@@ -278,7 +278,7 @@ func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID str
 			return Agent{}, &RemovedError{Agent: parent}
 		}
 	}
-	id, err := db.NewID("agent")
+	id, err := sqlite.NewID("agent")
 	if err != nil {
 		return Agent{}, err
 	}
@@ -286,7 +286,7 @@ func (m *Manager) create(ctx context.Context, projectID, name, dir, parentID str
 	if err != nil {
 		return Agent{}, err
 	}
-	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx db.Execer, terminalID string) error {
+	t, err := m.terminals.CreateAgent(ctx, projectID, name, dir, func(ctx context.Context, tx sqlite.Execer, terminalID string) error {
 		if err := m.store.insert(ctx, tx, id, terminalID, chosen.ID(), sessionID, parentID, l); err != nil {
 			return err
 		}
@@ -346,7 +346,7 @@ func (m *Manager) Start(ctx context.Context, id string) (Agent, []string, error)
 // linked write what points at it, in one transaction, then starts it if it is not
 // running, as Start does. So a task's agent resumed is never running for its task
 // without being told why. A tombstone fails with a *RemovedError.
-func (m *Manager) ResumeLinked(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (Agent, error) {
+func (m *Manager) ResumeLinked(ctx context.Context, id, text string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (Agent, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
 		return Agent{}, err
@@ -464,7 +464,7 @@ func (m *Manager) Restart(ctx context.Context, id string, force bool) (Agent, []
 	var stopped []string
 	t, err := m.terminals.RestartAgent(ctx, a.Terminal.ID, func(ctx context.Context) error {
 		var err error
-		stopped, err = m.backups.beginSession(ctx, a.ID, session, func(ctx context.Context, tx db.Querier, a Agent) error {
+		stopped, err = m.backups.beginSession(ctx, a.ID, session, func(ctx context.Context, tx sqlite.Querier, a Agent) error {
 			return m.terminals.Store().BeginSession(ctx, tx, a.Terminal.ID, session, firstMessage(a))
 		})
 		return err
@@ -579,7 +579,7 @@ func (m *Manager) Remove(ctx context.Context, id string, stopRunning bool) (Agen
 		stopped = m.backups.stop(ctx, a)
 	}
 	if children > 0 {
-		_, err := m.terminals.TombstoneAgent(ctx, a.Terminal.ID, stopRunning, func(ctx context.Context, tx db.Execer) error {
+		_, err := m.terminals.TombstoneAgent(ctx, a.Terminal.ID, stopRunning, func(ctx context.Context, tx sqlite.Execer) error {
 			return m.store.markRemoved(ctx, tx, id)
 		})
 		if err != nil {

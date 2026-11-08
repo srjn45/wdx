@@ -7,10 +7,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -25,7 +25,7 @@ func agentFixture(t *testing.T) (fixture, *Supervisor, string) {
 	return f, f.supervisor(t), f.project(t, "app")
 }
 
-func noLink(context.Context, db.Execer, string) error { return nil }
+func noLink(context.Context, sqlite.Execer, string) error { return nil }
 
 // TestSendAgentOnlyFindsAnAgentsRow: a shell's row must not take a message for
 // an ACA, whose delivering is another.
@@ -134,7 +134,7 @@ func TestLinkFailureLeavesNoRow(t *testing.T) {
 	ctx := context.Background()
 	_, s, p := agentFixture(t)
 	failure := errors.New("no link")
-	_, err := s.CreateAgent(ctx, p, "helper", t.TempDir(), func(context.Context, db.Execer, string) error { return failure })
+	_, err := s.CreateAgent(ctx, p, "helper", t.TempDir(), func(context.Context, sqlite.Execer, string) error { return failure })
 	if !errors.Is(err, failure) {
 		t.Fatalf("CreateAgent: %v", err)
 	}

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // PullRequests keeps what gh last said of each worktree's pull request, and asks it
@@ -59,7 +59,7 @@ func (p *PullRequests) List(ctx context.Context, projectID string) (map[string]g
 }
 
 func (p *PullRequests) set(ctx context.Context, projectID, path string, v gh.PullRequest) error {
-	_, err := db.Exec(ctx, p.db, `
+	_, err := sqlite.Exec(ctx, p.db, `
 		INSERT INTO worktree_pull_requests (project_id, worktree, number, url, state, head, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (project_id, worktree) DO UPDATE SET number = excluded.number, url = excluded.url, state = excluded.state, head = excluded.head, updated_at = excluded.updated_at`,
 		projectID, path, v.Number, v.URL, v.State, v.Head, time.Now().UnixMilli())
@@ -68,7 +68,7 @@ func (p *PullRequests) set(ctx context.Context, projectID, path string, v gh.Pul
 
 // Forget drops what is known of the pull request of the checkout at path.
 func (p *PullRequests) Forget(ctx context.Context, projectID, path string) error {
-	_, err := db.Exec(ctx, p.db, "DELETE FROM worktree_pull_requests WHERE project_id = ? AND worktree = ?", projectID, path)
+	_, err := sqlite.Exec(ctx, p.db, "DELETE FROM worktree_pull_requests WHERE project_id = ? AND worktree = ?", projectID, path)
 	return err
 }
 

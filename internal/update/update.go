@@ -27,6 +27,7 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // preflightTimeout is how long the new binary gets to write the settings
@@ -208,7 +209,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		return Result{}, err
 	}
 	dbPath := identity.DBPath(o.Home)
-	from, err := db.ReadSchema(ctx, dbPath)
+	from, err := sqlite.ReadSchema(ctx, dbPath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -264,7 +265,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 // schemaTo reads the schema version the switch left, or warns that it
 // could not.
 func (r *Result) schemaTo(ctx context.Context, dbPath string) int {
-	to, err := db.ReadSchema(ctx, dbPath)
+	to, err := sqlite.ReadSchema(ctx, dbPath)
 	if err != nil {
 		logging.FromContext(ctx).Error("schema version not read", "err", err)
 		r.Warnings = append(r.Warnings, "the database's schema version could not be read: "+err.Error())
@@ -342,7 +343,7 @@ func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, erro
 		return Result{}, &NoPreviousError{Kept: p.Version, UpdatedTo: p.UpdatedTo}
 	}
 	dbPath := identity.DBPath(o.Home)
-	from, err := db.ReadSchema(ctx, dbPath)
+	from, err := sqlite.ReadSchema(ctx, dbPath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -402,7 +403,7 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		return "", o.undo(ctx, "back up", err, r)
 	}
 	if r.db {
-		if err := db.Backup(ctx, dbPath, filepath.Join(dir, identity.Name+".db")); err != nil {
+		if err := sqlite.Backup(ctx, dbPath, filepath.Join(dir, identity.Name+".db")); err != nil {
 			return "", o.undo(ctx, "back up", err, r)
 		}
 	}
@@ -419,7 +420,7 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 	log.Info("binary installed", "path", o.Binary, "version", want)
 	if backup != "" {
 		o.progress("restoring the database backup")
-		if err := db.Restore(ctx, backup, dbPath); err != nil {
+		if err := sqlite.Restore(ctx, backup, dbPath); err != nil {
 			return "", o.undo(ctx, "install", err, r)
 		}
 	}
@@ -515,7 +516,7 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 			}
 			dbPath := identity.DBPath(o.Home)
 			if r.db {
-				return db.Restore(ctx, filepath.Join(r.dir, identity.Name+".db"), dbPath)
+				return sqlite.Restore(ctx, filepath.Join(r.dir, identity.Name+".db"), dbPath)
 			}
 			// The new binary created the database; the old one creates its own.
 			for _, suffix := range []string{"", "-wal", "-shm"} {

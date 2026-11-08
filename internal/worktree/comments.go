@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // A comment's state, side and view, as the table has them.
@@ -108,7 +108,7 @@ func (s *Comments) Add(ctx context.Context, projectID string, c Comment) (Commen
 		return Comment{}, err
 	}
 	c.ID, c.State, c.CreatedAt = "cmt-"+hex.EncodeToString(raw), CommentDraft, time.Now().UTC()
-	// Not db.Exec, which logs what it is given: a comment can hold secrets.
+	// Not sqlite.Exec, which logs what it is given: a comment can hold secrets.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO review_comments (id, project_id, worktree, file, line, side, view, quote, content_id, body, state, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -126,7 +126,7 @@ func (s *Comments) Edit(ctx context.Context, projectID, id, body string) error {
 	if body == "" {
 		return ErrEmptyComment
 	}
-	// Not db.Exec, which logs what it is given: a comment can hold secrets.
+	// Not sqlite.Exec, which logs what it is given: a comment can hold secrets.
 	res, err := s.db.ExecContext(ctx, "UPDATE review_comments SET body = ? WHERE id = ? AND project_id = ? AND state = ?", body, id, projectID, CommentDraft)
 	if err != nil {
 		return err
@@ -142,7 +142,7 @@ func (s *Comments) Edit(ctx context.Context, projectID, id, body string) error {
 
 // Remove deletes a comment not sent yet.
 func (s *Comments) Remove(ctx context.Context, projectID, id string) error {
-	n, err := db.Exec(ctx, s.db, "DELETE FROM review_comments WHERE id = ? AND project_id = ? AND state = ?", id, projectID, CommentDraft)
+	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM review_comments WHERE id = ? AND project_id = ? AND state = ?", id, projectID, CommentDraft)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (s *Comments) Remove(ctx context.Context, projectID, id string) error {
 
 // RemoveWorktree deletes the comments of a checkout git no longer lists.
 func (s *Comments) RemoveWorktree(ctx context.Context, projectID, path string) error {
-	_, err := db.Exec(ctx, s.db, "DELETE FROM review_comments WHERE project_id = ? AND worktree = ?", projectID, path)
+	_, err := sqlite.Exec(ctx, s.db, "DELETE FROM review_comments WHERE project_id = ? AND worktree = ?", projectID, path)
 	return err
 }
 
@@ -168,7 +168,7 @@ func (s *Comments) MarkSent(ctx context.Context, projectID string, comments []Co
 	defer tx.Rollback()
 	now := time.Now().UnixMilli()
 	for _, c := range comments {
-		if _, err := db.Exec(ctx, tx, "UPDATE review_comments SET state = ?, agent_id = ?, sent_at = ?, message_id = ? WHERE id = ? AND project_id = ?", CommentSent, agentID, now, messageID, c.ID, projectID); err != nil {
+		if _, err := sqlite.Exec(ctx, tx, "UPDATE review_comments SET state = ?, agent_id = ?, sent_at = ?, message_id = ? WHERE id = ? AND project_id = ?", CommentSent, agentID, now, messageID, c.ID, projectID); err != nil {
 			return err
 		}
 	}

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -82,7 +82,7 @@ func (s *Store) stackedOnOf(ctx context.Context, id string) (string, error) {
 // restack writes the stacked run's new base, at baseCommit, "" once its base is the
 // default branch.
 func (s *Store) restack(ctx context.Context, planID, base, baseCommit string) error {
-	if _, err := db.Exec(ctx, s.db, `UPDATE plan_runs SET base = ?, base_commit = ? WHERE plan_id = ?`, base, nullString(baseCommit), planID); err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, `UPDATE plan_runs SET base = ?, base_commit = ? WHERE plan_id = ?`, base, nullString(baseCommit), planID); err != nil {
 		return err
 	}
 	if err := touch(ctx, s.db, planID); err != nil {

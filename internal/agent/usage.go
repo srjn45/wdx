@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // Usage is how much of one limit of an AI coding agent's account is used, as the ACA
@@ -76,7 +76,7 @@ func (s *Store) setUsage(ctx context.Context, acaID, agentID string, rows []aca.
 		if !u.ResetsAt.IsZero() {
 			resets = u.ResetsAt.UnixMilli()
 		}
-		n, err := db.Exec(ctx, tx, `
+		n, err := sqlite.Exec(ctx, tx, `
 			INSERT INTO aca_usage (aca, window, bucket, used_percent, resets_at, limited, observed_at, agent_id)
 			VALUES (?1, ?2, ?3, ?4, ?5, ?4 >= 100, ?6, NULLIF(?7, ''))
 			ON CONFLICT (aca, window, bucket) DO UPDATE
@@ -90,7 +90,7 @@ func (s *Store) setUsage(ctx context.Context, acaID, agentID string, rows []aca.
 			changed = true
 		}
 	}
-	n, err := db.Exec(ctx, tx, "DELETE FROM aca_usage WHERE aca = ?1 AND (resets_at IS NULL OR resets_at <= ?2) AND (window, bucket) NOT IN (VALUES "+strings.Join(keys, ", ")+")", args...)
+	n, err := sqlite.Exec(ctx, tx, "DELETE FROM aca_usage WHERE aca = ?1 AND (resets_at IS NULL OR resets_at <= ?2) AND (window, bucket) NOT IN (VALUES "+strings.Join(keys, ", ")+")", args...)
 	if err != nil {
 		return false, err
 	}

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // contentDeleted is the content of a file verified as deleted.
@@ -55,7 +55,7 @@ func (m *Marks) List(ctx context.Context, projectID string) ([]Mark, error) {
 
 // Set marks a file verified.
 func (m *Marks) Set(ctx context.Context, projectID string, mark Mark) error {
-	_, err := db.Exec(ctx, m.db, `
+	_, err := sqlite.Exec(ctx, m.db, `
 		INSERT INTO verified_files (project_id, worktree, file, content_id, verified_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (project_id, worktree, file) DO UPDATE SET content_id = excluded.content_id, verified_at = excluded.verified_at`,
 		projectID, mark.Worktree, mark.File, mark.ContentID, time.Now().UnixMilli())
@@ -67,7 +67,7 @@ func (m *Marks) Set(ctx context.Context, projectID string, mark Mark) error {
 
 // Remove takes a mark away.
 func (m *Marks) Remove(ctx context.Context, projectID, worktree, file string) error {
-	_, err := db.Exec(ctx, m.db, "DELETE FROM verified_files WHERE project_id = ? AND worktree = ? AND file = ?", projectID, worktree, file)
+	_, err := sqlite.Exec(ctx, m.db, "DELETE FROM verified_files WHERE project_id = ? AND worktree = ? AND file = ?", projectID, worktree, file)
 	if err == nil {
 		logging.FromContext(ctx).Info("verified mark removed", "project_id", projectID, "path", worktree, "file", file)
 	}

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -40,10 +40,10 @@ type RunnerOptions struct {
 	RemoveWorktree func(ctx context.Context, projectID, path string) error
 	// CreateAgent starts an agent told first, and has linked write what points at it
 	// in the transaction that adds it. It returns the agent's id.
-	CreateAgent func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (string, error)
+	CreateAgent func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (string, error)
 	// ResumeAgent goes on with an agent in its session, told text, with linked
 	// written in the transaction that tells it, and starts it if it is not running.
-	ResumeAgent func(ctx context.Context, agentID, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error
+	ResumeAgent func(ctx context.Context, agentID, text string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) error
 	// AgentIn returns the name of a live agent of the project working in dir, ""
 	// for none.
 	AgentIn func(ctx context.Context, projectID, dir string) (string, error)
@@ -377,7 +377,7 @@ func (r *Runner) startIn(ctx context.Context, run Run, project ProjectInfo, task
 			return err
 		}
 	}
-	linked := func(ctx context.Context, tx db.Execer, agentID string) error {
+	linked := func(ctx context.Context, tx sqlite.Execer, agentID string) error {
 		return r.store.StartTask(ctx, tx, run.PlanID, taskID, agentID)
 	}
 	check, err := r.opts.CheckCommand(ctx, run.ProjectID)

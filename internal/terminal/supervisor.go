@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/editor"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/proc"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // DefaultStopGrace is how long a shell has to end after it is hung up on,
@@ -251,7 +251,7 @@ func (s *Supervisor) CreateCommand(ctx context.Context, projectID, name, dir str
 
 // CreateAgent is Create for an agent's row: linked inserts what points at the
 // new row, in the transaction that inserts it.
-func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir string, linked func(ctx context.Context, tx db.Execer, id string) error) (Terminal, error) {
+func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir string, linked func(ctx context.Context, tx sqlite.Execer, id string) error) (Terminal, error) {
 	return s.createRunning(ctx, Terminal{Kind: KindAgent, ProjectID: projectID, Name: name, Dir: dir}, linked, nil)
 }
 
@@ -341,7 +341,7 @@ func (s *Supervisor) RenameAgent(ctx context.Context, id, name string) (Terminal
 
 // createRunning inserts the row t asks for, with the shell, and starts it, running
 // command when given.
-func (s *Supervisor) createRunning(ctx context.Context, t Terminal, linked func(ctx context.Context, tx db.Execer, id string) error, command []string) (Terminal, error) {
+func (s *Supervisor) createRunning(ctx context.Context, t Terminal, linked func(ctx context.Context, tx sqlite.Execer, id string) error, command []string) (Terminal, error) {
 	shell, err := s.shellFor(ctx)
 	if err != nil {
 		return Terminal{}, err
@@ -485,7 +485,7 @@ func (s *Supervisor) RemoveAgent(ctx context.Context, id string, stopRunning boo
 // stopped when it was live, and failing with a *RunningError unless
 // stopRunning, as RemoveAgent. linked marks what points at the row, in the
 // transaction that ends it. A terminal's is not found.
-func (s *Supervisor) TombstoneAgent(ctx context.Context, id string, stopRunning bool, linked func(ctx context.Context, tx db.Execer) error) (Terminal, error) {
+func (s *Supervisor) TombstoneAgent(ctx context.Context, id string, stopRunning bool, linked func(ctx context.Context, tx sqlite.Execer) error) (Terminal, error) {
 	if _, err := s.stopForRemoval(ctx, KindAgent, id, stopRunning); err != nil {
 		return Terminal{}, err
 	}
@@ -669,7 +669,7 @@ func (s *Supervisor) ResendMessage(ctx context.Context, id string) (Message, err
 		return Message{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
 	}
 	session := s.sessionOf(ctx, t.Kind, t.ID)
-	if _, err := db.Exec(ctx, s.store.db, "UPDATE messages SET state = ?, session_id = NULLIF(?, ''), holder_pid = NULL WHERE id = ?", MessagePending, session, id); err != nil {
+	if _, err := sqlite.Exec(ctx, s.store.db, "UPDATE messages SET state = ?, session_id = NULLIF(?, ''), holder_pid = NULL WHERE id = ?", MessagePending, session, id); err != nil {
 		return Message{}, err
 	}
 	if err := s.store.sendOne(ctx, t.Kind, conn, m); err != nil {

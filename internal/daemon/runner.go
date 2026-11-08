@@ -9,12 +9,12 @@ import (
 	"slices"
 
 	"github.com/srjn45/wdx/internal/agent"
-	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/worktree"
 )
@@ -54,11 +54,11 @@ func (d *Daemon) startRunner() {
 			}
 			return d.tabs.RemoveWorktree(ctx, projectID, filepath.Base(path))
 		},
-		CreateAgent: func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx db.Execer, agentID string) error) (string, error) {
+		CreateAgent: func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (string, error) {
 			a, err := d.agents.CreateLinked(ctx, projectID, name, dir, agent.Launch{}, first, linked)
 			return a.ID, err
 		},
-		ResumeAgent: func(ctx context.Context, id, text string, linked func(ctx context.Context, tx db.Execer, agentID string) error) error {
+		ResumeAgent: func(ctx context.Context, id, text string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) error {
 			_, err := d.agents.ResumeLinked(ctx, id, text, linked)
 			return err
 		},

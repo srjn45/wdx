@@ -20,6 +20,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/screen"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -1167,7 +1168,7 @@ func TestCreateLinked(t *testing.T) {
 		t.Fatal(err)
 	}
 	var linkedID string
-	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, Launch{}, "do the schema", func(ctx context.Context, tx db.Execer, agentID string) error {
+	a, err := f.agents.CreateLinked(ctx, f.project, "app-schema", f.dir, Launch{}, "do the schema", func(ctx context.Context, tx sqlite.Execer, agentID string) error {
 		linkedID = agentID
 		_, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 7 WHERE id = ?`, f.project)
 		return err
@@ -1192,7 +1193,7 @@ func TestCreateLinked(t *testing.T) {
 		t.Errorf("arrived as %q", got)
 	}
 
-	_, err = f.agents.CreateLinked(ctx, f.project, "app-api", f.dir, Launch{}, "do the api", func(ctx context.Context, tx db.Execer, agentID string) error {
+	_, err = f.agents.CreateLinked(ctx, f.project, "app-api", f.dir, Launch{}, "do the api", func(ctx context.Context, tx sqlite.Execer, agentID string) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE projects SET updated_at = 8 WHERE id = ?`, f.project); err != nil {
 			return err
 		}
