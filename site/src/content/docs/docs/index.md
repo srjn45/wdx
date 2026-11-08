@@ -52,3 +52,7 @@ How wdx works inside, each page around a diagram: [the overview](/wdx/docs/archi
 - [Settings](/wdx/docs/reference/settings/), [Errors and exit codes](/wdx/docs/reference/errors/), [JSON output](/wdx/docs/reference/json/) and the [Changelog](/wdx/docs/reference/changelog/).
 
 These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
+
+## Project
+
+The [Roadmap](/wdx/docs/project/roadmap/), the [FAQ](/wdx/docs/project/faq/), [Contributing](/wdx/docs/project/contributing/) and the [License](/wdx/docs/project/license/).

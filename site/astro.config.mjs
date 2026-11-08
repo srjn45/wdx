@@ -99,6 +99,10 @@ export default defineConfig({
             'docs/reference/changelog',
           ],
         },
+        {
+          label: 'Project',
+          items: ['docs/project/roadmap', 'docs/project/faq', 'docs/project/contributing', 'docs/project/license'],
+        },
       ],
       components: {
         SiteTitle: './src/components/starlight/SiteTitle.astro',
