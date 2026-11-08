@@ -21,6 +21,7 @@ Manage projects
 | [`wdx project list`](#wdx-project-list) | List projects |
 | [`wdx project open`](#wdx-project-open) | Open a project: a known one, a local repository or a clone |
 | [`wdx project remove`](#wdx-project-remove) | Delete a project and everything that belongs to it |
+| [`wdx project sync`](#wdx-project-sync) | Show, start or stop pushing a project's docs to the hub |
 
 ## wdx project close
 
@@ -408,6 +409,57 @@ With `--json`, `result` is one of: `removed`.
 | [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
 | [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`project_in_use`](/wdx/docs/reference/errors/#project_in_use) | 1 | terminals or agents are running in the project |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx project sync
+
+Show, start or stop pushing a project's docs to the hub.
+
+```sh
+wdx project sync (--id <id> | --name <name>) [--on | --off] [flags]
+```
+
+With `--on`, every doc of the project goes up to the hub with all its revisions, then each change as it happens; plans never do. With `--off`, it stops, and what is on the hub stays there. Both work logged out or offline: changes wait for the connection. Without either, it shows what is waiting and what the hub refused. The project needs a git remote, whose key the hub files its docs under.
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--id <id>` |  | id of the project |
+| `--name <name>` |  | name of the project (case-insensitive) |
+| `--off` |  | stop pushing them |
+| `--on` |  | push the project's docs to the hub |
+
+- exactly one of `--id` or `--name`
+- at most one of `--on` or `--off`
+
+### Examples
+
+```sh
+# Show how far a project's docs are on the hub
+wdx project sync --name app
+
+# Push its docs
+wdx project sync --name app --on
+
+# Stop, as JSON
+wdx project sync --id proj-1a2b3c4d --off --json
+```
+
+### Output
+
+Whether it is on, the changes waiting, each doc the hub refused with its code, when a change last reached the hub and the repository key. With `--json`: {"sync": {"on": true, "pending": 3, "failed": [...], "last\_pushed\_at": "...", "repo\_key": "...", "logged\_in": true}}, with "result" too given `--on` or `--off`
+
+With `--json`, `result` is one of: `changed` or `unchanged`.
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`no_remote`](/wdx/docs/reference/errors/#no_remote) | 1 | the project has no git remote, whose key the hub files its docs under |
+| [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 

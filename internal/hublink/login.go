@@ -453,6 +453,10 @@ func (g *Login) finish(hc *hubapi.NodeCredentials) {
 		return
 	}
 	l := g.link
+	// Before the control connection starts pushing: the hub may have none
+	// of the docs, and a change written while logged out may be of a
+	// revision it lacks the ones before of.
+	l.enqueueAll(g.ctx)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	g.mu.Lock()

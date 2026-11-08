@@ -27,7 +27,7 @@ func newProjectCmd(home string) *cobra.Command {
 		Args:  clikit.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectLandingCmd(), newProjectRemoveCmd())
+	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectLandingCmd(), newProjectRemoveCmd(), newProjectSyncCmd())
 	return cmd
 }
 

@@ -265,6 +265,8 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	switch {
 	case errors.Is(err, project.ErrNotFound), errors.Is(err, terminal.ErrNotFound), errors.Is(err, agent.ErrNotFound), errors.Is(err, worktree.ErrNotFound), errors.Is(err, terminal.ErrMessageNotFound), errors.Is(err, doc.ErrNotFound), errors.Is(err, plan.ErrNotFound):
 		return api.ErrorCodeNotFound, nil
+	case errors.Is(err, doc.ErrNoRemote):
+		return api.ErrorCodeNoRemote, nil
 	case errors.Is(err, errLandNotConfigured):
 		return api.ErrorCodeLandNotConfigured, nil
 	case errors.Is(err, worktree.ErrAgentWorking):

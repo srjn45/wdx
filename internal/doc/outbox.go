@@ -166,13 +166,19 @@ func (o *Outbox) SyncOff(ctx context.Context, projectID string) (bool, error) {
 }
 
 // EnqueueAll queues every revision of every doc of each synced project, as SyncOn
-// does for one, for a hub that has none of them.
+// does for one, for a hub that may have none of them. What was waiting goes, but
+// the removals: a revision queued earlier would reach the hub before the ones it
+// follows, while the docs' every revision is queued after.
 func (o *Outbox) EnqueueAll(ctx context.Context) error {
 	tx, err := o.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	replaced, err := sqlite.Exec(ctx, tx, "DELETE FROM hub_outbox WHERE change <> 'removed'")
+	if err != nil {
+		return err
+	}
 	queued, err := enqueueAll(ctx, tx, "", time.Now().UnixMilli())
 	if err != nil {
 		return err
@@ -180,7 +186,7 @@ func (o *Outbox) EnqueueAll(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	logging.FromContext(ctx).Info("hub outbox filled", "queued", queued)
+	logging.FromContext(ctx).Info("hub outbox filled", "queued", queued, "replaced", replaced)
 	return nil
 }
 

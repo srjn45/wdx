@@ -1,6 +1,8 @@
 package hubtest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -120,5 +122,28 @@ func (h *Hub) DisableUser(username string) {
 	}
 	if r.StatusCode() != http.StatusOK {
 		h.t.Fatalf("hubtest: disable %s: %d %s", username, r.StatusCode(), r.Body)
+	}
+}
+
+// PushDoc pushes, as n, the first revision of a doc with id named name in the
+// repository repoKey, holding text, as wdx on n does.
+func (h *Hub) PushDoc(n Node, id, repoKey, name, text string) {
+	h.t.Helper()
+	var gz bytes.Buffer
+	w := gzip.NewWriter(&gz)
+	if _, err := w.Write([]byte(text)); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		h.t.Fatal(err)
+	}
+	kind, now, rev, content := hubapi.DocKindDoc, h.Clock.Now(), 1, gz.Bytes()
+	empty, format, status := "", "md", "wip"
+	r, err := h.NodesClient(n).PushDocChangesWithResponse(context.Background(), hubapi.DocChanges{Changes: []hubapi.DocChange{{
+		Seq: 1, DocId: id, Change: hubapi.DocChangeTypeRevision, RepoKey: &repoKey, Kind: &kind, Name: &name, Folder: &empty,
+		Format: &format, Labels: &[]string{}, Status: &status, CreatedAt: &now, UpdatedAt: &now, Revision: &rev, Content: &content,
+	}}})
+	if err != nil || r.JSON200 == nil || len(r.JSON200.Results) != 1 || r.JSON200.Results[0].Status != hubapi.DocChangeResultStatusApplied {
+		h.t.Fatalf("hubtest: push doc %s: %v %d %s", id, err, r.StatusCode(), r.Body)
 	}
 }

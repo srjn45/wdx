@@ -404,6 +404,51 @@ paths:
               schema: { $ref: "#/components/schemas/ViewResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/projects/{project}/sync:
+    parameters:
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: getProjectSync
+      tags: [projects]
+      summary: Whether a project's docs go up to the hub, and how far they are
+      description: |
+        Read from the database: it never waits on the hub, and works logged
+        out. failed lists each doc the hub refused a change of, which holds
+        up its later changes until the doc changes again.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The project's sync.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectSyncEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: updateProjectSync
+      tags: [projects]
+      summary: Start or stop pushing a project's docs to the hub
+      description: |
+        On queues every doc of the project with all its revisions, then each
+        change as it happens; plans are never pushed. Off stops it, deleting
+        the changes waiting: what reached the hub stays there. Either works
+        logged out, the changes waiting for a login.
+
+        Errors: no_remote (on, for a project without a git remote, whose key
+        the hub files its docs under), not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectSyncUpdate" }
+      responses:
+        "200":
+          description: The project's sync, with result changed or unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectSyncResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/tide/view:
     get:
       operationId: getTideView
@@ -2555,7 +2600,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out, changed]
 
     Worktree:
       type: object
@@ -3049,6 +3094,48 @@ components:
         view:
           type: object
           additionalProperties: true
+
+    ProjectSync:
+      type: object
+      required: [on, pending, failed, last_pushed_at, repo_key, logged_in]
+      properties:
+        on: { type: boolean, description: "Whether the project's docs go up to the hub." }
+        pending: { type: integer, description: "The changes not yet on the hub, those refused aside." }
+        failed:
+          type: array
+          description: Each doc the hub refused a change of, oldest first.
+          items: { $ref: "#/components/schemas/ProjectSyncFailure" }
+        last_pushed_at: { type: string, format: date-time, nullable: true, description: "When a change of the project last reached the hub; null if never." }
+        repo_key: { type: string, nullable: true, description: "The repository key the hub files the docs under; null without a git remote." }
+        logged_in: { type: boolean, description: "Whether this node is logged in to a hub; changes wait until it is." }
+
+    ProjectSyncFailure:
+      type: object
+      required: [doc_id, name, code]
+      properties:
+        doc_id: { type: string }
+        name: { type: string, description: "The doc's name; empty once it is removed." }
+        code: { type: string, description: "The hub's code: doc_name_taken, doc_too_large or revision_gap." }
+
+    ProjectSyncEnvelope:
+      type: object
+      required: [sync]
+      properties:
+        sync: { $ref: "#/components/schemas/ProjectSync" }
+
+    ProjectSyncUpdate:
+      type: object
+      required: [on]
+      additionalProperties: false
+      properties:
+        on: { type: boolean, description: "True to push the project's docs, false to stop." }
+
+    ProjectSyncResult:
+      type: object
+      required: [result, sync]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        sync: { $ref: "#/components/schemas/ProjectSync" }
 
     TabsUpdate:
       type: object
@@ -4242,6 +4329,7 @@ components:
         - hub_version_unsupported
         - node_not_found
         - node_is_this
+        - no_remote
 
     Problem:
       type: object

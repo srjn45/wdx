@@ -130,6 +130,7 @@ func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 	if control != nil {
 		control.stop()
 	}
+	l.clearOutbox(ctx)
 	if err := os.RemoveAll(l.dir); err != nil {
 		log.Error("hub login not deleted", "path", l.dir, "err", err)
 		return hubTold, err

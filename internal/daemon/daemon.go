@@ -183,6 +183,7 @@ type Daemon struct {
 	agents   *agent.Manager
 	backups  *agent.Backups
 	docs     *doc.Store
+	outbox   *doc.Outbox
 	plans    *plan.Store
 	runner   *plan.Runner
 	// stopRunner ends the runner, which steps between the requests.
@@ -287,6 +288,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}
 	d.projects = project.NewStore(d.db, identity.ProjectsDir(opts.Home))
 	d.docs = doc.NewStore(d.db, identity.DocsDir(opts.Home))
+	d.outbox = doc.NewOutbox(d.db)
 	d.plans = plan.NewStore(d.db, identity.PlansDir(opts.Home))
 	d.startRunner()
 	d.tabs = tidestate.NewStore(d.db)
@@ -359,9 +361,12 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	})
 	d.agents = agent.NewManager(agents, d.terminals, d.backups)
 	// It lives until the daemon closes it, and connects in the background.
-	if d.hub, err = hublink.Open(context.WithoutCancel(logged), opts.Home, opts.Hub.link()); err != nil {
+	hubOpts := opts.Hub.link()
+	hubOpts.Outbox = hubOutbox{d.outbox}
+	if d.hub, err = hublink.Open(context.WithoutCancel(logged), opts.Home, hubOpts); err != nil {
 		return nil, err
 	}
+	d.docs.OnChange(d.hub.Kick)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err

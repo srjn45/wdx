@@ -1,7 +1,8 @@
 // Package hublink is a node's side of the hub (the wdx doc HUB_LOGIN): the
 // login kept in <home>/hub/, the two ways of logging in, the control
 // connection the daemon holds to the hub's node endpoint with the renewal of
-// the node's certificate, and the hub's routes of the account's nodes.
+// the node's certificate, the hub's routes of the account's nodes, and the
+// pusher of the docs' outbox while connected (the wdx doc HUB_DOCS_PUSH).
 //
 // The hub's web endpoint is trusted through the system's store, or reached
 // over plain HTTP on localhost and 127.0.0.1 only; the node endpoint through
@@ -70,6 +71,12 @@ type Options struct {
 	MinBackoff, MaxBackoff time.Duration
 	LogoutTimeout          time.Duration
 	PingInterval           time.Duration
+	// Outbox is the docs' changes the link pushes to the hub while
+	// connected; nil pushes none.
+	Outbox Outbox
+	// WrapNodes, when not nil, wraps the transport to the node endpoint:
+	// tests lose the hub's answers with it.
+	WrapNodes func(http.RoundTripper) http.RoundTripper
 }
 
 func (o Options) withDefaults() Options {
@@ -197,6 +204,7 @@ type Link struct {
 	control  *loop         // the control connection while logged in
 	pending  *Login
 	finished sync.WaitGroup // the logins' goroutines
+	kicked   chan struct{}  // the outbox has changes; see Kick
 }
 
 // Open reads <home>/hub/ and, when the node is logged in, starts keeping
@@ -204,7 +212,7 @@ type Link struct {
 // what is left of one is removed.
 func Open(ctx context.Context, home string, opts Options) (*Link, error) {
 	ctx, stop := context.WithCancel(ctx)
-	l := &Link{dir: identity.HubDir(home), opts: opts.withDefaults(), ctx: ctx, stop: stop, conn: LoggedOut, changed: make(chan struct{})}
+	l := &Link{dir: identity.HubDir(home), opts: opts.withDefaults(), ctx: ctx, stop: stop, conn: LoggedOut, changed: make(chan struct{}), kicked: make(chan struct{}, 1)}
 	creds, err := readLogin(ctx, l.dir)
 	if err != nil {
 		// Kept as it is, for a person to look at; a login writes it anew.

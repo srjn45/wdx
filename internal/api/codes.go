@@ -97,6 +97,7 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeHubVersionUnsupported: codeInfo(http.StatusConflict, clikit.ExitRejected, "the hub serves no version of the API this wdx speaks"),
 	ErrorCodeNodeNotFound:          codeInfo(http.StatusNotFound, clikit.ExitRejected, "the account has no node of this name or id"),
 	ErrorCodeNodeIsThis:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is this one: leaving is wdx hub logout"),
+	ErrorCodeNoRemote:              codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the project has no git remote, whose key the hub files its docs under"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

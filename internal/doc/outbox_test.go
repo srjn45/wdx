@@ -454,3 +454,31 @@ func TestOutboxClearAndEnqueueAll(t *testing.T) {
 	}
 	f.wantOutbox(t, "every synced project's docs", "revision "+a.ID+" 1", "revision "+a.ID+" 2")
 }
+
+func TestOutboxEnqueueAllReplaces(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	o := NewOutbox(f.db)
+	p := f.synced(t, "wdx")
+	a := f.create(t, p, New{Name: "a"})
+	gone := f.create(t, p, New{Name: "gone"})
+	if err := o.Clear(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Written while logged out: revision 2 alone would reach a new hub first.
+	if _, err := f.store.Update(ctx, a.ID, 1, []byte("two")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.Remove(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Fail(ctx, next(t, o, 1)[0].Seq, "revision_gap"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := o.EnqueueAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	f.wantOutbox(t, "the removal kept, every revision after", "removed "+gone.ID+" 0", "revision "+a.ID+" 1", "revision "+a.ID+" 2")
+}

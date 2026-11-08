@@ -1,7 +1,7 @@
 ---
 title: Hub
-description: Make your machines nodes of your account on a hub, see which are online, and remove one you lost.
-commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove]
+description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, and push a project's docs to it.
+commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync]
 since: 0.5.0
 ---
 import Commands from '../../../../components/Commands.astro';
@@ -43,8 +43,26 @@ open https://hub.example.com/device and type the code WDX-4F7K-9QPA
 - **The hub's address** is `https://`, or plain `http://` to `localhost` and `127.0.0.1` only. TLS is always verified, and there is no flag to skip it.
 - **The connection** is `connected`, `connecting`, or `offline` while the hub cannot be reached, which the daemon tries again and again, waiting longer each time up to 5 minutes. `revoked` (another node removed this one) and `disabled` (the hub's admin disabled your account) are for good: run `wdx hub logout`. `wdx hub status` says which, with what to do; not being logged in is a state, not an error.
 - **Removing a node** cuts it off at once: the hub closes its connection and renews no certificate for it. You are asked first; `--yes` answers, and `--json` needs it. This machine cannot remove itself: `wdx hub logout` does.
-- **Logging out** asks the hub to revoke this node, then deletes the key, the certificate and the login from `~/.wdx/hub/`, whether the hub heard or not: without its key, the node is of no use. When the hub could not be told, remove the node from another one. Projects, agents and docs stay.
-- **Nothing secret is logged:** not the node's key, nor the login's codes, by wdx or by the hub.
+- **Logging out** asks the hub to revoke this node, then deletes the key, the certificate and the login from `~/.wdx/hub/`, whether the hub heard or not: without its key, the node is of no use. When the hub could not be told, remove the node from another one. Projects, agents and docs stay; the doc changes waiting for the hub are dropped, and the next login sends every synced project's docs anew, to whichever hub it is.
+- **Nothing secret is logged:** not the node's key, nor the login's codes, nor a doc's text, by wdx or by the hub.
+
+## Docs on the hub
+
+`wdx project sync --name app --on` sends every doc of the project to the hub, with all its revisions, then each change as it happens: a new doc, a revision, a change of its status, labels, folder or name, a removal. The hub keeps each doc's revisions encrypted under a key of its own. Plans are never sent, and nothing comes back down yet.
+
+```console
+$ wdx project sync --name app --on
+sync turned on
+sync on, 12 changes waiting, never pushed, repository github.com/acme/app
+
+$ wdx project sync --name app
+sync on, 0 changes waiting, last pushed 2 minutes ago, repository github.com/acme/app
+```
+
+- **It needs a git remote:** the hub files a project's docs under its repository, which is how the same project is matched across your machines. A project without one is refused with `no_remote`.
+- **Logged out or offline,** changes wait, in order, and go up once the node is connected. `wdx project sync` says how many wait, and hints `not logged in` when the node is not.
+- **A doc the hub refuses** is listed with the hub's code, and its later changes wait while other docs go on. `doc_name_taken` means another of your nodes made a doc of that name in the repository: rename yours with `wdx doc rename`, which sends it again.
+- **`--off`** stops sending and drops what waits; what reached the hub stays there. So does what a removed project sent.
 
 ## Commands
 

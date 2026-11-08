@@ -279,6 +279,10 @@
     "summary": "Delete a project and everything that belongs to it",
     "href": "/wdx/docs/reference/cli/project/#wdx-project-remove"
   },
+  "project sync": {
+    "summary": "Show, start or stop pushing a project's docs to the hub",
+    "href": "/wdx/docs/reference/cli/project/#wdx-project-sync"
+  },
   "setting get": {
     "summary": "Show one setting",
     "href": "/wdx/docs/reference/cli/setting/#wdx-setting-get"

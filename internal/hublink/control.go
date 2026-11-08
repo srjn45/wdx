@@ -101,7 +101,11 @@ func (l *Link) keepControl(ctx context.Context, c *credentials) {
 	ctx = logging.NewContext(ctx, log)
 	transport := nodeTransport(c)
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport}
+	var rt http.RoundTripper = transport
+	if l.opts.WrapNodes != nil {
+		rt = l.opts.WrapNodes(rt)
+	}
+	client := &http.Client{Transport: rt}
 	backoff := l.opts.MinBackoff
 	for {
 		welcomed, err := l.connectOnce(ctx, c, client)
@@ -174,6 +178,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 		return false, err
 	}
 	var bye hubapi.ControlByeReason
+	pushing := false
 	for {
 		_, b, err := conn.Read(life)
 		if err != nil {
@@ -194,6 +199,10 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			in := true
 			log.Info("control connected", "hub_version", w.HubVersion, "api_version", w.ApiVersion)
 			l.update(c, func() { l.conn, l.hub, l.inRange, l.behind = Connected, w.HubVersion, &in, "" })
+			if !pushing {
+				pushing = true
+				running.Go(func() { l.keepPushing(life, c, client) })
+			}
 		case string(hubapi.ControlCertificateTypeCertificate):
 			var cm hubapi.ControlCertificate
 			if err := json.Unmarshal(b, &cm); err != nil {

@@ -1098,3 +1098,22 @@ func (c *Client) SkipPlanTask(ctx context.Context, ref, project, dir, task strin
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
+
+// ProjectSync is whether the project ref's docs go up to the hub, and how
+// far they are.
+func (c *Client) ProjectSync(ctx context.Context, ref string) (api.ProjectSyncEnvelope, error) {
+	r, err := c.api.GetProjectSyncWithResponse(ctx, ref)
+	if err != nil {
+		return api.ProjectSyncEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// SetProjectSync starts or stops pushing the project ref's docs to the hub.
+func (c *Client) SetProjectSync(ctx context.Context, ref string, on bool) (api.ProjectSyncResult, error) {
+	r, err := c.api.UpdateProjectSyncWithResponse(ctx, ref, api.ProjectSyncUpdate{On: on})
+	if err != nil {
+		return api.ProjectSyncResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

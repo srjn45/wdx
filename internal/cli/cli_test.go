@@ -378,6 +378,7 @@ type jsonOutput struct {
 		Code string `json:"code"`
 	} `json:"conflict"`
 
+	Sync           *api.ProjectSync    `json:"sync"`
 	Doc            *api.Doc            `json:"doc"`
 	Docs           []api.Doc           `json:"docs"`
 	Revisions      []api.DocRevision   `json:"revisions"`

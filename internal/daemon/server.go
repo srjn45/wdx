@@ -23,6 +23,7 @@ type server struct {
 	terminals    *terminal.Supervisor
 	agents       *agent.Manager
 	docs         *doc.Store
+	outbox       *doc.Outbox
 	plans        *plan.Store
 	tabs         *tidestate.Store
 	gitCopy      *gitCopy
