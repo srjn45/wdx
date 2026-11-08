@@ -49,6 +49,7 @@ export default defineConfig({
             'docs/tide/docs-and-plans',
             'docs/tide/menu',
             'docs/tide/settings',
+            'docs/tide/stats',
           ],
         },
         {

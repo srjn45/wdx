@@ -1,0 +1,40 @@
+---
+title: Stats in TIDE
+description: The stats tab shows how much of each AI CLI's limits is used, as its agents last told, and whether it can be used now.
+since: 0.5.0
+sidebar:
+  label: Stats
+---
+
+`C-q S` opens the stats tab: machine-wide facts about the AI CLIs, read from the daemon. Usage is its first section: for each AI CLI, how much of its account's limits is used, when each window resets, and so whether it can be used now. It is `wdx usage` on a screen that keeps itself current. The CLI side, and where the numbers come from, is in [Agents](/wdx/docs/guides/agents/).
+
+## What you see
+
+```
+┬─[● swift-falcon(-)]─[stats(-)]─────────────────────────[⤢]─┐
+
+   claude_code:       available
+     Session (5 h):     54% ▰▰▰▰▰▱▱▱▱▱  resets in 2 h 10 min
+     Week:              51% ▰▰▰▰▰▱▱▱▱▱  resets Nov 12 10:00
+     as of:             16:11
+
+   codex:             nothing observed yet
+```
+
+One block per AI CLI: its line says `available`, or `limited, resets …` in red, then a row per window of its limits with the percentage used, a bar and when it resets, and as of when its agents last told. A window used 100% or more is limited, and the AI CLI can be used only while none of its windows is: a session limit reached closes it until that window resets, even with the week half left, and the other way round.
+
+## Keys
+
+| Key | What it does |
+|---|---|
+| `C-q S` | open the tab, or go to it |
+| `↑` `↓` | scroll the rows |
+| `-` | close the tab |
+
+## How it behaves
+
+- **Where the numbers come from.** The AI CLI tells its agents: Claude Code writes its limits to the status line wdx gives every agent, with each answer. wdx reads the file it already keeps for the context size, asks nothing of the AI CLI and types nothing into an agent. Codex, Cursor and Antigravity do not tell it yet.
+- **One account, many agents.** Usage is the account's, so every agent of one AI CLI draws on the same numbers; the tab shows them once, as of the latest answer of any of its agents. An idle AI CLI's numbers are as old as that answer.
+- **Current without a key.** The tab reads again on each change of the project shown, and the time left to a reset counts down by the minute while the tab shows.
+- **Only the fact.** Nothing pauses, resumes or switches model when a limit is reached; the person decides. A window a plan does not have is simply not there, and an account without limits shows `nothing observed yet`.
+- **Colours.** A window's row is green under 75% used, yellow from there, red from 90%, and red with `limited` once used up.

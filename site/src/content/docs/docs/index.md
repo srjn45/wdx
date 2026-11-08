@@ -27,7 +27,7 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 
 ## TIDE
 
-The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/docs/tide/layout/), [Agents](/wdx/docs/tide/agents/), [Worktrees and diffs](/wdx/docs/tide/worktrees/), [Code](/wdx/docs/tide/code/), [Docs and plans](/wdx/docs/tide/docs-and-plans/), [The menu](/wdx/docs/tide/menu/) and [Settings](/wdx/docs/tide/settings/).
+The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/docs/tide/layout/), [Agents](/wdx/docs/tide/agents/), [Worktrees and diffs](/wdx/docs/tide/worktrees/), [Code](/wdx/docs/tide/code/), [Docs and plans](/wdx/docs/tide/docs-and-plans/), [The menu](/wdx/docs/tide/menu/), [Settings](/wdx/docs/tide/settings/) and [Stats](/wdx/docs/tide/stats/).
 
 ## AI CLIs
 

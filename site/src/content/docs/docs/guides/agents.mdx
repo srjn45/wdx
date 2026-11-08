@@ -4,6 +4,7 @@ description: Run Claude Code, Codex, Cursor or Antigravity in a terminal wdx kee
 commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove, usage]
 ---
 import Commands from '../../../../components/Commands.astro';
+import Since from '../../../../components/Since.astro';
 
 ## What it is
 
@@ -99,7 +100,7 @@ Working directory "/home/you/code/app/.worktrees/fix-readme" was deleted; shell 
 ```
 ````
 
-How much of the AI CLI's limits is used, as its agents last told; the row is the account's, so every agent of one AI CLI shows the same:
+How much of the AI CLI's limits is used <Since v="0.5.0" />, as its agents last told; the row is the account's, so every agent of one AI CLI shows the same. The same in TIDE is the [stats tab](/wdx/docs/tide/stats/):
 
 ```console
 $ wdx usage
@@ -125,7 +126,7 @@ The Agents section of the left pane lists the project's agents, children under t
 - **Names** are generated unless `--name` gives one, unique in a project among agents and terminals; `agent rename` changes one while it runs.
 - **Removing** a running agent asks first, as it interrupts what it does; `--stop-running` or `--cancel` answers in advance. What the ACA keeps of its session stays on disk.
 - **Giving it a task later** is `wdx agent send`, in [Messages and sending](/wdx/docs/guides/messages/).
-- **Usage** is read from what the AI CLI tells its agents, Claude Code's status line for now, with nothing asked of it: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own.
+- **Usage** <Since v="0.5.0" /> is read from what the AI CLI tells its agents, Claude Code's status line for now, with nothing asked of it: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own.
 
 ## Commands
 
