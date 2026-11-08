@@ -1,4 +1,4 @@
-package db_test
+package sqlite_test
 
 import (
 	"context"
@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/srjn45/wdx/internal/db"
-	"github.com/srjn45/wdx/internal/db/dbtest"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 // TestStatements runs a statement many times, on several connections at once and
@@ -15,13 +14,12 @@ import (
 func TestStatements(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "wdx.db")
-	dbtest.Seed(t, path)
-	database, err := db.Open(t.Context(), path)
+	database, err := sqlite.Open(t.Context(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	statements := db.NewStatements(database)
+	statements := sqlite.NewStatements(database)
 	const query = "SELECT ?1 + 1"
 	count := func(ctx context.Context) (int, error) {
 		rows, err := statements.Query(ctx, query, 1)

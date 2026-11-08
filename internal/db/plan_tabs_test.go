@@ -1,8 +1,6 @@
 package db
 
 import (
-	"context"
-	"database/sql"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -13,20 +11,9 @@ import (
 // tabs, and those counting each change of a project's tabs.
 func TestPlanTabsMigration(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	d, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db")+"?_pragma=foreign_keys(1)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	list := mustMigrations()
-	i := slices.IndexFunc(list, func(m migration) bool { return m.name == "migrations/0021_plan_tabs.sql" })
-	if i < 0 {
-		t.Fatal("no 0021")
-	}
-	if err := migrate(ctx, d, list[:i]); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), "test.db")
+	d := openBefore(t, path, "0021_plan_tabs.sql")
+	t.Cleanup(func() { d.Close() })
 	for _, q := range []string{
 		`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-a', 'a', 'open', 0, 0)`,
 		`INSERT INTO terminals (id, project_id, name, dir, shell, state, kind, created_at, updated_at) VALUES ('term-a', 'proj-a', 'a', '/r', 'sh', 'running', 'agent', 0, 0)`,
@@ -52,9 +39,7 @@ func TestPlanTabsMigration(t *testing.T) {
 		return n
 	}
 	before := revision()
-	if err := migrate(ctx, d, list); err != nil {
-		t.Fatal(err)
-	}
+	d = reopen(t, d, path)
 	if got := revision(); got != before {
 		t.Errorf("building the table again counted as changes: %d, was %d", got, before)
 	}

@@ -1,10 +1,8 @@
 package db
 
 import (
-	"context"
 	"database/sql"
 	"path/filepath"
-	"slices"
 	"testing"
 )
 
@@ -12,20 +10,9 @@ import (
 // settings, so they read ask, with no model; no other mode is taken.
 func TestAgentLaunchMigration(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	d, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db")+"?_pragma=foreign_keys(1)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	list := mustMigrations()
-	i := slices.IndexFunc(list, func(m migration) bool { return m.name == "migrations/0023_agent_launch.sql" })
-	if i < 0 {
-		t.Fatal("no 0023")
-	}
-	if err := migrate(ctx, d, list[:i]); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), "test.db")
+	d := openBefore(t, path, "0023_agent_launch.sql")
+	t.Cleanup(func() { d.Close() })
 	for _, q := range []string{
 		`INSERT INTO projects (id, name, state, created_at, updated_at) VALUES ('proj-a', 'a', 'open', 0, 0)`,
 		`INSERT INTO terminals (id, project_id, name, dir, shell, state, kind, created_at, updated_at) VALUES ('term-a', 'proj-a', 'a', '/r', 'sh', 'running', 'agent', 0, 0)`,
@@ -36,9 +23,7 @@ func TestAgentLaunchMigration(t *testing.T) {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
-	if err := migrate(ctx, d, list); err != nil {
-		t.Fatal(err)
-	}
+	d = reopen(t, d, path)
 	var model sql.NullString
 	var permissions string
 	if err := d.QueryRow(`SELECT requested_model, permissions FROM agents WHERE id = 'agent-a'`).Scan(&model, &permissions); err != nil {

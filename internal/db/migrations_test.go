@@ -46,24 +46,24 @@ var committed = []string{
 
 func TestMigrationsNumbered(t *testing.T) {
 	t.Parallel()
-	for i, m := range mustMigrations() {
-		if want := fmt.Sprintf("migrations/%04d_", i+1); !strings.HasPrefix(m.name, want) {
-			t.Errorf("migration %d is %s, want it named %s*.sql", i+1, m.name, want)
+	for i, m := range migrations {
+		if want := fmt.Sprintf("%04d_", i+1); !strings.HasPrefix(m.Name, want) {
+			t.Errorf("migration %d is %s, want it named %s*.sql", i+1, m.Name, want)
 		}
 	}
 }
 
 func TestMigrationsAppendOnly(t *testing.T) {
 	t.Parallel()
-	list := mustMigrations()
+	list := migrations
 	for i, m := range list {
-		sum := sha256.Sum256([]byte(m.body))
+		sum := sha256.Sum256([]byte(m.Body))
 		got := hex.EncodeToString(sum[:])
 		switch {
 		case i >= len(committed):
-			t.Errorf("%s is new: add its sum to committed, %q", m.name, got)
+			t.Errorf("%s is new: add its sum to committed, %q", m.Name, got)
 		case got != committed[i]:
-			t.Errorf("%s was changed: migrations are append-only, add a new one instead", m.name)
+			t.Errorf("%s was changed: migrations are append-only, add a new one instead", m.Name)
 		}
 	}
 	if len(list) < len(committed) {
