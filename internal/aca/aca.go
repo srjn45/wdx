@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"slices"
+	"time"
 )
 
 // AiCodingAgent is one AI CLI wdx can run in an agent.
@@ -60,6 +61,22 @@ type AiCodingAgent interface {
 	// known. The daemon reads it each time the backup or a followed file changes, and
 	// when l.SessionID changes, at most once a second. docs/AGENT.md.
 	ContextSize(l Launch) (size ContextSize, follow []string, err error)
+	// Usage returns what the ACA last told of its account's limits, a row per window
+	// and bucket, and the files outside l.BackupDir it read, which the daemon follows
+	// too; ErrNoUsage when it has told nothing, as on a plan without limits. The
+	// daemon reads it with ContextSize, from the same changes. The wdx doc USAGE.
+	Usage(l Launch) (rows []Usage, follow []string, err error)
+}
+
+// Usage is how much of one limit of an ACA's account is used: a window, of a bucket
+// of models when the ACA meters some apart. It belongs to the account, not to the
+// agent it was read from.
+type Usage struct {
+	Window      string    // the window's key as the ACA gives it, as five_hour
+	Bucket      string    // the bucket's name as the ACA gives it; "" for the one every model draws on
+	UsedPercent int       // 0 to 100, or above past the limit, as given
+	ResetsAt    time.Time // when the window resets; zero when the ACA gives none
+	ObservedAt  time.Time // when the ACA told it, as best known: the file's time
 }
 
 // ContextSize is how full an agent's context is.

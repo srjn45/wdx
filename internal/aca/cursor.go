@@ -23,6 +23,7 @@ import (
 // CURSOR_PARITY.
 type Cursor struct {
 	NoDetached
+	NoUsage
 }
 
 // CursorID is Cursor's ID.

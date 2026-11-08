@@ -1371,7 +1371,7 @@ func TestAgentContextFollowsItsACA(t *testing.T) {
 	t.Parallel()
 	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
 		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{}}
-		o.ContextInterval = time.Millisecond
+		o.StatusInterval = time.Millisecond
 	})
 	ctx := context.Background()
 	app := td.create(t, "app").Worktrees[0].Path
@@ -1419,6 +1419,49 @@ func TestAgentContextFollowsItsACA(t *testing.T) {
 	waitContext("5 of 200000")
 }
 
+// TestAgentUsageFollowsItsACA: what the agent's ACA tells of its account's usage is
+// recorded by ACA, through the same watch as its context size, and stays once its
+// terminal ended; the agent it was read from is kept until that agent is gone.
+func TestAgentUsageFollowsItsACA(t *testing.T) {
+	t.Parallel()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{}}
+		o.StatusInterval = time.Millisecond
+	})
+	ctx := context.Background()
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	backup := identity.AgentDir(td.home, a.Id)
+	resets := time.Now().Add(2 * time.Hour).Truncate(time.Millisecond)
+	// Usage first, then the size: the read records usage before it tells of the size,
+	// so the size's event says the usage is there.
+	if err := acatest.WriteUsage(backup, []aca.Usage{{Window: "five_hour", UsedPercent: 100, ResetsAt: resets, ObservedAt: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := acatest.WriteContextSize(backup, aca.ContextSize{Tokens: 70_086, Window: 200_000}); err != nil {
+		t.Fatal(err)
+	}
+	td.waitProject(t, "app", "context 70086 of 200000", func(e event) bool { return contextOf(e, "helper") == "70086 of 200000" })
+	list, err := td.daemon.agents.Store().Usage(ctx)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("usage = %+v, %v", list, err)
+	}
+	u := list[0]
+	if u.ACA != aca.ClaudeCodeID || u.Window != "five_hour" || u.Bucket != "" || u.UsedPercent != 100 || !u.Limited || !u.ResetsAt.Equal(resets) || u.AgentID != a.Id {
+		t.Errorf("usage = %+v", u)
+	}
+	if !td.logged(t, "usage recorded") {
+		t.Error("the daemon did not say it recorded the usage")
+	}
+	if r, err := td.client.DeleteAgentWithResponse(ctx, "id:"+a.Id, &api.DeleteAgentParams{StopRunning: optional(true)}); err != nil || r.JSON200 == nil {
+		t.Fatalf("remove: %v, %s", err, r.Body)
+	}
+	td.waitProject(t, "app", "the agent gone", func(e event) bool { return contextOf(e, "helper") == "no agent" })
+	if list, err = td.daemon.agents.Store().Usage(ctx); err != nil || len(list) != 1 || list[0].AgentID != "" || list[0].UsedPercent != 100 {
+		t.Errorf("once the agent is gone: %+v, %v", list, err)
+	}
+}
+
 // TestAgentContextFollowsTheSessionsFile: an ACA that tells its size in a file outside
 // the backup, as Codex does in its session file, names it, and the daemon follows it:
 // the size follows the new session's file as soon as a backup finds the session changed,
@@ -1429,7 +1472,7 @@ func TestAgentContextFollowsTheSessionsFile(t *testing.T) {
 	session := filepath.Join(t.TempDir(), "session")
 	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
 		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{ContextFiles: files, Session: session}}
-		o.ContextInterval = time.Millisecond
+		o.StatusInterval = time.Millisecond
 	})
 	app := td.create(t, "app").Worktrees[0].Path
 	a := td.createAgent(t, "", app, "helper")

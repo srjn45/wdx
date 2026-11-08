@@ -1,0 +1,352 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/tmp/claude-1000/-home-xxxxxx-dev-wdx/[22m
+[2G[1m00000000-0000-0000-0000-000000000000/s[22m
+[2G[1mcratchpad/rec/work/w-g026g2i7[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject
+[2Gyou[6Gcreated[14Gor[17Gone[21Gyou[25Gtrust?[32G(Like
+[2Gyour[7Gown[11Gcode,[17Ga[19Gwell-known[30Gopen
+[2Gsource[9Gproject,[18Gor[21Gwork[26Gfrom[31Gyour
+[2Gteam).[9GIf[12Gnot,[17Gtake[22Ga[24Gmoment[31Gto[34Greview
+[2Gwhat's[9Gin[12Gthis[17Gfolder[24Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,
+[2Gand[6Gexecute[14Gfiles[20Ghere.
+
+[2G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mSecurity guide[39m]8;;
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u]7501;?[c[?2026$p[c[>4m[<u[?1004l[?2031l[?2004l[1D[4B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[?2004h[?2031h[?1004h[<u[>5u[>4;2m]0;✳ Claude Code[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.319[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m/…/rec/work/w-g026g2i7[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[39m
+[3G[38;5;220mdisabled[12G(CLAUDE.md,[24Gskills,[32Gplugins,[39m
+[3G[38;5;220mhooks,[10GMCP,[15Gagents,[23Gand[27Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[39m
+[3G[38;5;246mre-enable[39m
+
+[38;5;244m────────────────────────────────────────[39m
+❯ [2mTry[7G"how[12Gdoes[17G<filepath>[28Gwork?"[22m
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[>0q[c[?2026$p[c[?25l[2D[4B[2C[1A[38;5;246mtmux focus-events off · add 's[34Gt -g…[39m
+[2C[4A[?25h[?25l[2D[4B[2K[G[1A[K[2C[3A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[3B[2C[3A[38;5;153m/usage[39m[K[2C[2B[38;5;153m❯ /[1musage[22m          Show session cost,[39m
+[21G[38;5;153mplan[26G[1musage[22m,[33Gand[37Ga…[39m
+[3G[38;5;246m [5G/[39m[1musage[22m[38;5;246m-credits[21GConfigure[31G[39m[1musage[22m
+[21G[38;5;246mcredits[29Gor[32Greques…[39m
+[3G[38;5;246m [5G/context[21GVisualize[31Gcurrent[39m
+[21G[38;5;246mcontext[29G[39m[1musage[22m[38;5;246m as[38G…[39m
+[3G[38;5;246m [5G/effort[21GSet[25Geffort[32Glevel[39m
+[21G[38;5;246mfor[25Gmodel[31G[39m[1musage[22m
+[3G[38;5;246m [5G…limit-options[21GManage[28G[39m[1musage[22m
+[21G[38;5;246mlimits[28Gand[32Gupgrad…[39m
+[3G[38;5;246m [5G/passes[21GShare[27Ga[29Gfree[34Gweek[39m
+[21G[38;5;246mof[24GClaude[31GCode[36Gwi…[39m
+[8C[14A[?25h[?25l[8D[14B[15A[48;5;237m[38;5;246m❯ [38;5;231m/usage[39m                                [1B[49m[K[1B[38;5;153m────────────────────────────────────────[2C[1B[1mSettin[10Gs[22m[39m  Status   Config  [48;5;153m[38;5;16m[1m Usage [22m[39m[49m[K[3C[1BStats[21G[K[2C[1B[K[2C[1B[1mSession[21G[22m[K[2C[1B[K[2C[1B[38;5;246mTotal cost:            $0.0000[39m[K[2C[1B[38;5;246mTotal duration[18G(API):[25G 0s[39m[K[2C[1B[38;5;246mTotal duration (wall): 34s[39m[K[2C[1B[38;5;246mTotal code cha[18Gges:    0[28Glines [2C[1Badded, 0 lines removed[39m[K[2C[1B[38;5;246mUsage:   [21G     0 input, 0 [39m[K[2C[1B[38;5;246moutput, 0 cache read, 0 cache write[39m[K
+
+[3G[1mCurrent[11Gsession[19G[22m[38;5;246m·[21GResets[28G4pm[39m
+[3G[38;5;246m(Europe/Madrid)[39m
+[3G[48;5;102m[38;5;153m███████████████████████▌            [39m[49m
+[3G[48;5;102m[38;5;153m [39m[49m
+[3G62%[7Gused
+
+[3G[1mCurrent[11Gweek[16G(all[21Gmodels)[29G[22m[38;5;246m·[31GResets[39m
+[3G[38;5;246mNov[7G12,[11G10am[16G(Europe/Madrid)[39m
+[3G[48;5;102m[38;5;153m██████████████                      [39m[49m
+[3G[48;5;102m[38;5;153m [39m[49m
+[3G37%[7Gused
+
+[3G[1mWhat's[10Gcontributing[23Gto[26Gyour[31Gusage?[22m
+[3G[38;5;246mApproximate[15G·[17Gsessions[26Gon[29Gthis[39m
+[3G[38;5;246mmachine[11Gonly[39m
+
+[3G[38;5;246mScanning[12Glocal[18Gsessions…[39m
+
+[3G[38;5;246mRefreshing…[39m
+
+[3G[38;5;246mEsc[7Gto[10Gcancel[39m
+[30C[23A[30D[23B[25C[19A[48;5;102m[38;5;153m▉[3C[2B[39m[49m3[2C[8B[1mCurrent week (Fable)[22m [38;5;246m· Resets Nov [2C[1B12, 10a[11G (Europ[19G/Madrid)[39m[K[2C[1B[48;5;102m[38;5;153m█████████████▎                      [2C[1B [2C[1B[39m[49m35% used[K[2C[2B[1mWhat's contributing to your usage?[2C[1B[22m[38;5;246mApproximate · sessions on this [2C[1Bma[6Ghine o[13Gly[39m[K
+
+[3G[38;5;246mScanning[12Glocal[18Gsessions…[39m
+
+[3G[1mUsage[9Gcredits[22m
+[3G[38;5;246mUsage[9Gcredits[17Gare[21Goff[25G·[39m
+[3G[38;5;246m/usage-credits[18Gto[21Gturn[26Gthem[31Gon[39m
+
+[3G[38;5;246mEsc[7Gto[10Gcancel[39m
+[30C[23A[30D[23B[2C[7A[38;5;246mLast 24h[12G· shares overlap[2C[2B[39m67%  Start fresh[20Gwhen[25Gyou[29Gswitch[2C[1B     tasks[38;5;246m · run /clear[39m[K[2C[1B38%  Run fewer sessions at once[38;5;246m · up[7C[1Bto 7 at once[2C[1B[39m30%  Trim ~/dev/wdx/AGENTS.md[38;5;246m · 8k [39m
+[8G[38;5;246mtokens[15Gper[19Grequest[39m
+[3G14%[8GStop[13Gsessions[22Gyou[26Gno[29Glonger
+[8Gneed[38;5;246m ·[15Gsome[20Gran[24G8[26Ghours[32Gor[35Gmore[39m
+
+[3G[1mSkills,[11Gsubagents,[22Gplugins,[31Gand[35GMCP[22m
+[3G[1mservers[22m
+[3G[38;5;246mNo[6Gattribution[18Gdata[23Gyet[27G·[39m
+[3G[38;5;246maccumulates[15Gas[18Gyou[22Guse[26GClaude[39m
+
+[3G[38;5;246mf[5Gto[8Gfix[12G1[14Gof[17G4[19G·[21Gd[23Gto[26Gday[30G·[32Gw[34Gto[39m
+[3G[38;5;246mweek[39m
+
+[3G[1mUsage[9Gcredits[22m
+[3G[38;5;246mUsage[9Gcredits[17Gare[21Goff[25G·[39m
+[3G[38;5;246m/usage-credits[18Gto[21Gturn[26Gthem[31Gon[39m
+
+[3G[38;5;246mEsc[7Gto[10Gcancel[39m
+[30C[23A(B[?2004h[<u[>5u[>4;2m[30D[23B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[3G[38;5;153m[1mSettings[13G[22m[39mStatus[22GConfig[31GUsage
+[3G[48;5;153m[38;5;16m[1m Stats [22m[39m[49m
+
+
+[3G[38;5;231m✽[6G[39mLoading[14Gyour[19GClaude[26GCode[31Gstats…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✻[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✶[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m*[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✢[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m·[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✢[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m*[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✶[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✻[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[2C[19A[38;5;231m✽[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[3C[22A[3D[22B[11C[23A[48;5;153m[38;5;16m[1m Status [2C[1B[22m[39m[49m Stats[K[2C[2B[1mVersion:[22G[22m2.1.319[2C[1B[1mSession name:[22m  [19G   [38;5;246m/rename to add a [21C[1Bname[2C[1B[39m[1mSession ID:[22G[22md054e9d3-c404-40c[21C[1Bd-bf04-56680dd0e3[21C[1Bad[2C[1B[1mSession kind:[22G[22minteractive[2C[1B[1mPeer address:[22G[22muds:/run/user/100[21C[1B0/cc-socks/101817[21C[1B2.sock[2C[1B[1mcwd:[22G[22m/tmp/claude-1000/[21C[1B-home-xxxxxx-dev-[21C[1Bwdx/a054e3c7-2386[21C[1B-497a-9193-853766[21C[1B8fc796/scratchpad[21C[1B/rec/work/w-g026g[21C[1B2i7[2C[1B[1mLogin method:[22G[22mClaude[29GMax[21C[1Baccount[2C[1B[1mOrganization:[22G[22mxxxxxxxxxxxxxx@gm
+[22Gail.com's
+[22GOrganization
+[3G[1mEmail:[22G[22mxxxxxxxxxxxxxx@gm
+[22Gail.com
+[3G[1mCloud[9Gsessions:[22G[22mGitHub[29Gconnected
+[3G[1m [22m
+[3G[1mModel:[22G[22mhaiku[28G(claude-hai
+[22Gku-5-5)
+[3G[1mSetting[11Gsources:[22G[22mUser[27Gsettings
+[3G[1mAuto[8Gmode[13Gserver:[22G[22mDisabled
+
+[3G[38;5;246mEsc[7Gto[10Gcancel[39m
+[12C[23A[12D[23B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.319[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m/…/rec/work/w-g026g2i7[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[39m
+[3G[38;5;220mdisabled[12G(CLAUDE.md,[24Gskills,[32Gplugins,[39m
+[3G[38;5;220mhooks,[10GMCP,[15Gagents,[23Gand[27Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[39m
+[3G[38;5;246mre-enable[39m
+
+[48;5;237m[38;5;246m❯[39m [38;5;231m/usage[39m [49m
+[38;5;246m [3G⎿[6G[39mSettings[15Gdialog[22Gdismissed
+
+[38;5;244m────────────────────────────────────────[39m
+❯ 
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[2C[2A[38;5;246mPress Ctrl-C again[22Gto exit[39m[K
+
+[2C[4A[?25h[?1006l[?1003l[?1002l[?1000l[2D[4B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;[2m[22m
+[2mResume this session with:[22m
+[2mclaude --safe-mode --model haiku --permission-mode manual --resume 00000000-0000-0000-0000-000000000000[22m
+[2m[22m

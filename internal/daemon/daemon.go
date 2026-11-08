@@ -94,9 +94,9 @@ type Options struct {
 	// is asked to stop, before the changes among them are cancelled;
 	// DefaultShutdownTimeout when 0.
 	ShutdownTimeout time.Duration
-	// ContextInterval is the least time between two reads of an agent's context size;
-	// agent.DefaultContextInterval when 0.
-	ContextInterval time.Duration
+	// StatusInterval is the least time between two reads of what an agent's ACA tells
+	// of its status, its context size and its usage; agent.DefaultStatusInterval when 0.
+	StatusInterval time.Duration
 	// TrashRetention is how long what is kept of a removed agent stays;
 	// agent.DefaultTrashRetention when 0.
 	TrashRetention time.Duration
@@ -187,7 +187,7 @@ type Daemon struct {
 	terminals    *terminal.Supervisor
 	tracker      *worktree.Tracker
 	// watcher is the one inotify instance everything the daemon watches goes
-	// through: the tracker's git files and tabs, the agents' context sizes (the
+	// through: the tracker's git files and tabs, the agents' status files (the
 	// wdx doc WATCHERS). It opens at the first path watched.
 	watcher  *fswatch.Watcher
 	marks    *worktree.Marks
@@ -303,9 +303,9 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
 	d.watcher = fswatch.New(logged)
-	contextSizes := agent.NewContextSizes(logged, agents, opts.Home, acas, d.watcher, opts.ContextInterval)
-	contextSizes.OnChange = d.notices.notify
-	d.backups.OnSessionChange = contextSizes.SessionChanged
+	statusReads := agent.NewStatusReads(logged, agents, opts.Home, acas, d.watcher, opts.StatusInterval)
+	statusReads.OnChange = d.notices.notify
+	d.backups.OnSessionChange = statusReads.SessionChanged
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:    opts.Executable,
 		Home:          opts.Home,
@@ -323,7 +323,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			d.agentEnded(id)
 			d.clearPrompt(id)
 		},
-		AgentFollowed: contextSizes.Watch,
+		AgentFollowed: statusReads.Watch,
 		AgentOf: func(ctx context.Context, id string) (string, error) {
 			a, err := agents.GetByTerminal(ctx, id)
 			return a.ID, err

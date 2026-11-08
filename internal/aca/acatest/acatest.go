@@ -5,6 +5,7 @@ package acatest
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -145,6 +146,37 @@ func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, []string, error) {
 	return size, []string{file}, err
 }
 
+// UsageFile is the file in an agent's backup ACA's Usage reads: the rows as JSON,
+// as WriteUsage writes them.
+const UsageFile = "usage.json"
+
+// Usage implements aca.AiCodingAgent: what UsageFile in the backup says, nothing to
+// follow; aca.ErrNoUsage while there is none.
+func (a *ACA) Usage(l aca.Launch) ([]aca.Usage, []string, error) {
+	data, err := os.ReadFile(filepath.Join(l.BackupDir, UsageFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, aca.ErrNoUsage
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	var rows []aca.Usage
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return nil, nil, fmt.Errorf("read %s: %w", UsageFile, err)
+	}
+	return rows, nil, nil
+}
+
+// WriteUsage writes rows as what the test ACA's Usage tells for the agent whose
+// backup is backup, whole, as Claude Code's status line is.
+func WriteUsage(backup string, rows []aca.Usage) error {
+	data, err := json.Marshal(rows)
+	if err != nil {
+		return err
+	}
+	return atomicfile.Write(filepath.Join(backup, UsageFile), data, 0o600)
+}
+
 // readContextSize is the size the last line of path says; aca.ErrNoContextSize when
 // it is empty, and os.ErrNotExist when there is none.
 func readContextSize(path string) (aca.ContextSize, error) {
@@ -266,6 +298,7 @@ type Bare struct {
 	aca.NoContextSize
 	aca.NoDetached
 	aca.NoSteer
+	aca.NoUsage
 	// Name is its id, and ProgramName what Program says, "sh" when "".
 	Name, ProgramName string
 }

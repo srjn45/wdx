@@ -13,6 +13,10 @@ var ErrNotSupported = errors.New("this AI coding agent cannot do that yet")
 // how full its context is.
 var ErrNoContextSize = errors.New("no context size told yet")
 
+// ErrNoUsage is what Usage answers while an AI coding agent has told nothing of its
+// account's limits: before its first answer, or on a plan without any.
+var ErrNoUsage = errors.New("no usage told")
+
 // The types below stand in for the methods an AI coding agent has not written:
 // it embeds each it needs and drops it once it writes the method. docs/ACA.md.
 
@@ -64,6 +68,15 @@ type NoContextSize struct{}
 // ContextSize implements AiCodingAgent.
 func (NoContextSize) ContextSize(Launch) (ContextSize, []string, error) {
 	return ContextSize{}, nil, ErrNotSupported
+}
+
+// NoUsage is Usage for an AI coding agent whose account's limits wdx does not read
+// yet.
+type NoUsage struct{}
+
+// Usage implements AiCodingAgent.
+func (NoUsage) Usage(Launch) ([]Usage, []string, error) {
+	return nil, nil, ErrNotSupported
 }
 
 // NoSteer is Steer for an AI coding agent that cannot take a message into a running
