@@ -172,7 +172,7 @@ linters:
             - "!**/internal/clikit/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/settings
-              desc: only the cli, config and clikit read settings; the daemon and the domain are handed the values they need
+              desc: only cmd, the cli, config and clikit read settings; the daemon and the domain are handed the values they need
     errcheck:
       # Errors these return have nothing left to handle: a rollback after
       # the commit, a response the client stopped reading, a completion or
