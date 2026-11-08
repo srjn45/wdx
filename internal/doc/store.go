@@ -94,6 +94,9 @@ func (s *Store) Create(ctx context.Context, projectID string, n New) (Doc, error
 	if err := insertRevision(ctx, tx, id, 1, n.Content, now); err != nil {
 		return Doc{}, err
 	}
+	if err := enqueue(ctx, tx, id, ChangeRevision, 1, now); err != nil {
+		return Doc{}, err
+	}
 	if err := s.setChildren(ctx, tx, id, folder, n.Children, now); err != nil {
 		return Doc{}, err
 	}
@@ -252,6 +255,9 @@ func (s *Store) update(ctx context.Context, id string, base int, content []byte,
 	if err := insertRevision(ctx, tx, id, next, content, now); err != nil {
 		return Updated{}, err
 	}
+	if err := enqueue(ctx, tx, id, ChangeRevision, next, now); err != nil {
+		return Updated{}, err
+	}
 	if withChildren {
 		if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET parent_id = NULL WHERE parent_id = ?", id); err != nil {
 			return Updated{}, err
@@ -352,6 +358,9 @@ func (s *Store) set(ctx context.Context, id string, c Change) (Doc, bool, []stri
 	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET folder = ?, status = ?, labels = ?, updated_at = ? WHERE id = ?", folder, status, labelsJSON(labels), now, id); err != nil {
 		return Doc{}, false, nil, err
 	}
+	if err := enqueue(ctx, tx, id, ChangeMetadata, 0, now); err != nil {
+		return Doc{}, false, nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Doc{}, false, nil, err
 	}
@@ -377,6 +386,9 @@ func (s *Store) moveFamily(ctx context.Context, tx *sql.Tx, d Doc, folder string
 		if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET folder = ?, updated_at = ? WHERE id = ?", folder, now, f.ID); err != nil {
 			return nil, err
 		}
+		if err := enqueue(ctx, tx, f.ID, ChangeMetadata, 0, now); err != nil {
+			return nil, err
+		}
 		moved = append(moved, f.Name)
 	}
 	return moved, nil
@@ -400,7 +412,11 @@ func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
 	if err := s.checkFree(ctx, tx, d.ProjectID, name, id); err != nil {
 		return Doc{}, err
 	}
-	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", s.kind.stored(name), time.Now().UnixMilli(), id); err != nil {
+	now := time.Now().UnixMilli()
+	if _, err := sqlite.Exec(ctx, tx, "UPDATE docs SET name = ?, updated_at = ? WHERE id = ?", s.kind.stored(name), now, id); err != nil {
+		return Doc{}, err
+	}
+	if err := enqueue(ctx, tx, id, ChangeMetadata, 0, now); err != nil {
 		return Doc{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -414,16 +430,23 @@ func (s *Store) Rename(ctx context.Context, id, name string) (Doc, error) {
 
 // Remove deletes the doc with id and its revisions, and returns what it was.
 func (s *Store) Remove(ctx context.Context, id string) (Doc, error) {
-	d, err := s.Get(ctx, id)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Doc{}, err
 	}
-	n, err := sqlite.Exec(ctx, s.db, "DELETE FROM docs WHERE id = ?", id)
+	defer tx.Rollback()
+	d, err := s.one(ctx, tx, "d.id = ?", id)
 	if err != nil {
 		return Doc{}, err
 	}
-	if n == 0 {
-		return Doc{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	if err := enqueue(ctx, tx, id, ChangeRemoved, 0, time.Now().UnixMilli()); err != nil {
+		return Doc{}, err
+	}
+	if _, err := sqlite.Exec(ctx, tx, "DELETE FROM docs WHERE id = ?", id); err != nil {
+		return Doc{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Doc{}, err
 	}
 	logging.FromContext(ctx).Info("doc removed", "doc_id", id, "kind", s.kind, "name", d.Name, "project_id", d.ProjectID, "revisions", d.Revision)
 	s.copies.remove(ctx, d)
