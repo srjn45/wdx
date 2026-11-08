@@ -40,7 +40,7 @@ cli ──unix socket──► client daemon ──TLS 1.3 between nodes, in a s
 - **Later streams of a session** need no code: TLS with the pinned keys, plus the session's id, which the host checks in its table of open sessions.
 - **A session ends when the host's daemon restarts:** at startup the host closes every session, and the client enters a code again; tide's reconnect screen covers it. Streams end with the connection they ran in; a command cut off mid-way fails with `session_closed`.
 - **Asking for a stream has a timeout:** when the host's control socket is down at that moment, the hub cannot tell it, and the request ends as `node_offline`.
-- **Every stream the daemon serves is an HTTP Upgrade,** never a request whose body streams: the connect stream, the attach relay and the login's state stream hijack their connection. The daemon's `logRequests` reads every request body whole before a handler runs, and `oneChangeAtATime` holds the changes lock for every request that is not a GET until it returns, so a streaming body would never arrive and a stream would hold every change up. These routes are exempt from the lock as the view paths are, the response recorder implements `http.Hijacker`, and `streamOperation`, today the one `streamProject`, becomes the set of operations whose response is not logged. (Review of 2026-11-07.)
+- **Every stream the daemon serves is an HTTP Upgrade,** never a request whose body streams: the connect stream and the attach relay hijack their connection. The daemon's `logRequests` reads every request body whole before a handler runs, and `oneChangeAtATime` holds the changes lock for every request that is not a GET until it returns, so a streaming body would never arrive and a stream would hold every change up. These routes are exempt from the lock as the view paths are, and the response recorder implements `http.Hijacker`. (Review of 2026-11-07.) The login's state stream, which has no body and changes nothing, is instead `GET /v1/hub/login` with server-sent events, as `streamProject` is; `streamOperations` is the set of the two, whose response is not logged, and every `/v1/hub` route skips the changes lock (`isHubPath`), since none may wait behind a change, nor a change behind the hub (step 5, the wdx doc HUB_LOGIN).
 - **CPace:** `filippo.io/cpace` (BSD-3-Clause) is small, but is marked experimental, not maintained, and follows a 2021 draft the IRTF has since restructured, so its test vectors may not match the current draft's. Proposed: copy it into `third_party/cpace` as `cancelreader` is, with its README saying why. It is the one piece of cryptography wdx carries itself rather than taking from Go's standard library, and is named as such in the scope of the outside security review.
 
 ### The host's rules for a remote session
@@ -74,8 +74,8 @@ The API carries `Wdx-Version` already, but releases are not what nodes must agre
 ## The hub's certificate authority
 
 - **The CA:** an Ed25519 key and a self-signed certificate valid 10 years, made at the hub's first start, in its home with mode 0600.
-- **The node endpoint's certificate** is issued by the CA for the node endpoint's host name. Nodes trust the CA they were given at login, never the system's store, for this endpoint: a rogue public CA cannot stand in for it.
-- **A node's identity is its Ed25519 key,** made on the node at login. Its certificate names the node (`URI:wdx-node:<node-id>`) and lasts a year; the hub issues a new one over the control socket once two thirds of its life have passed.
+- **The node endpoint's certificate** is issued by the CA for the node endpoint's host name, `nodes_url`'s, which by default is `public_url`'s host with `listen.nodes`' port. Nodes trust the CA they were given at login, never the system's store, for this endpoint: a rogue public CA cannot stand in for it.
+- **A node's identity is its Ed25519 key,** made on the node at login. Its certificate (`ca.IssueNode`) names the node (`URI:wdx-node:<node-id>`) and lasts a year; the hub issues a new one over the control socket once two thirds of its life have passed, checked on `welcome` and daily, from `nodes.cert_expires_at`.
 - **Revocation is the hub's check, not the certificate's life.** The hub is the only party that verifies node certificates and it has the database, so it checks `revoked_at` on every connection and cuts any open one at once. A short-lived certificate would add nothing to that, would not limit a stolen key, which can renew, and would need a way for a node offline longer than its certificate to renew without one. (The day-long certificates of the approved security list were dropped for this on 2026-11-03.)
 - **Offline logout** deletes the key, so the node can never connect again; the hub's row stays until `wdx hub node remove` from another node.
 - **Between nodes,** certificates are self-signed by each node's key and verified by pinning and CPace, never through the CA: a node never takes the hub's word for who the other node is.
@@ -91,7 +91,7 @@ The way Claude Code and `gh` log in: only the machine that started the login can
 1. The daemon makes the node key. The CLI listens on `127.0.0.1` on a port the system picks, for this login only, and opens the browser at the hub's login page with the node's name, OS and public key, a PKCE challenge, and the callback address.
 2. In the browser: sign up or log in, second factor, then the approval page, which names the node and lets the user change its name if the account has one already.
 3. The hub sends the browser back to the callback with a one-time authorization code; the CLI hands it to the daemon.
-4. The daemon exchanges it at the web endpoint, with the PKCE verifier, for the node's id, its first certificate, the hub's CA certificate and the node endpoint's address.
+4. The daemon exchanges it at the web endpoint, with the PKCE verifier, for the node's id, its first certificate, the hub's CA certificate and the node endpoint's address, the hub's setting `nodes_url`.
 5. The daemon writes `<home>/hub/`, connects the control socket, and the CLI prints `logged_in`.
 
 The daemon opens no network port: the listener is the CLI's, on loopback, for the minutes of the login.
@@ -100,7 +100,7 @@ The daemon opens no network port: the listener is the CLI's, on loopback, for th
 
 For a shell over SSH, where the browser is on another device.
 
-1. The daemon calls `POST /v1/node-logins` with the node's name, OS and public key, and gets a device code (secret, for the daemon) and a user code to show (`WDX-4F7K`).
+1. The daemon calls `POST /v1/node-logins` with the node's name, OS and public key, and gets a device code (secret, for the daemon) and a user code to show (`WDX-4F7K-9QPA`).
 2. The CLI prints the hub's device page's address and the code. The link does not carry the code: the user types it on the page, as `gh` has it, so that a link sent by an attacker to have their node approved gets them nothing without also talking the victim into typing a code. The page says what approving means.
 3. In the browser: sign up or log in, second factor, the code, then the same approval page.
 4. The daemon polls `POST /v1/node-logins/token` with the device code, as RFC 8628 has it, until approved, denied or expired (10 minutes), then as above.
@@ -128,7 +128,7 @@ The hub's CA certificate and the node endpoint's address come over the web endpo
 
 ## The hub's tables
 
-STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for wdx. MVP only; teams come with sharing. The accounts' tables, `users` to `web_sessions` and `audit`, are built (step 4, migration `0002_accounts`, the wdx doc HUB_ACCOUNTS), with the columns it found missing; the rest come with their steps.
+STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for wdx. MVP only; teams come with sharing. The accounts' tables, `users` to `web_sessions` and `audit`, are built (step 4, migration `0002_accounts`, the wdx doc HUB_ACCOUNTS), with the columns it found missing; `nodes`, `node_logins` and `audit.node_id` too (step 5, migration `0003_nodes`, the wdx doc HUB_LOGIN); the rest come with their steps.
 
 | Table | Holds |
 |---|---|
@@ -139,8 +139,8 @@ STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for 
 | `passkeys` | `id`, `user_id`, `name`, `credential_id`, `public_key`, `sign_count`, `created_at`, `last_used_at`; comes with passkeys, not created in step 4 |
 | `recovery_codes` | `user_id`, `code_hash`, `used_at` |
 | `web_sessions` | `id` (`ws-`), `user_id`, `token_hash`, `second_factor_at` (NULL until the second factor passed), `address`, `user_agent`, `created_at`, `last_seen_at`, `expires_at` |
-| `node_logins` | `id`, `flow` (`browser`, `device`), `code_hash` (the authorization code's or the device code's), `pkce_challenge`, `callback`, `user_code`, `name`, `os`, `public_key`, `status` (`pending`, `approved`, `denied`), `user_id`, `node_id`, `created_at`, `expires_at` |
-| `nodes` | `id` (`node-`), `user_id`, `name` (unique per user, `NOCASE`), `public_key`, `os`, `version`, `remote_access`, `code_setup`, `created_at`, `last_seen_at`, `revoked_at` |
+| `node_logins` | `id`, `flow` (`browser`, `device`), `code_hash` (the device code's from the start, the authorization code's once a browser login is approved), `pkce_challenge`, `callback`, `user_code_hash`, `name`, `os`, `version` (of wdx), `public_key`, `status` (`pending`, `approved`, `denied`), `user_id`, `node_id`, `address` (the one that started it, shown on the approval page), `created_at`, `expires_at`, `polled_at` (the device flow's last poll, for `slow_down`) |
+| `nodes` | `id` (`node-`), `user_id`, `name` (unique per user among the nodes not revoked, `NOCASE`), `public_key`, `os`, `version`, `remote_access`, `code_setup`, `created_at`, `last_seen_at`, `cert_expires_at` (when its current certificate ends, so renewal is decided without reading it), `revoked_at`; a removed node is kept, revoked, so its certificate is refused as revoked |
 | `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `kind`, `name`, `folder`, `format`, `labels`, `status`, `revision`, `data_key` (wrapped), `created_at`, `updated_at`; unique on owner, repository and name |
 | `doc_revisions` | `doc_id`, `revision`, `content` (gzip, sealed), `size`, `created_at` |
 | `audit` | `id`, `at`, `user_id` (no foreign key, as a cascade would delete rows of the chain), `node_id` (with step 5), `actor` (`user`, `admin` or `hub`), `action`, `address`, `details` (JSON), `hash`: each row's hash covers the one before and the row's own fields, so a row changed, removed or inserted breaks the chain |
@@ -153,7 +153,7 @@ Tokens, codes and device codes are stored hashed, never as given. Secrets the hu
 
 | File | |
 |---|---|
-| `login.json` | hub address, user, node id and name |
+| `login.json` | hub address, `nodes_url` (the node endpoint's), user, node id and name; written last, so a crash part way leaves no login |
 | `node.key`, `node.crt` | the node key and its current certificate |
 | `hub-ca.crt` | the hub's CA, from login |
 | `code.secret`, `recovery.hash` | the authenticator secret and the recovery key's hash |
@@ -171,14 +171,14 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 
 ### Daemon endpoints in `api/openapi.yaml`
 
-`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning link and code) and its state stream; `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `requestLogged` and the response switch in `internal/daemon/http.go` do, with `internal/api/secrets.go`, for prompts and file contents), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
+`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning the login's id and the link and code), `GET /v1/hub/login?login=<id>` (its state, as server-sent events), `DELETE /v1/hub/login?login=<id>` (cancel) and `POST /v1/hub/login/code` (the browser flow's code, which the CLI's callback received); `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `requestLogged` and the response switch in `internal/daemon/http.go` do, with `internal/api/secrets.go`, for prompts and file contents), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
 
 ## The hub's API, `api/hub.yaml`
 
 Each operation has one tag, `web`, `nodes` or `admin`, saying which endpoint serves it; another endpoint answers it 404. One path has one operation, so what each endpoint serves alike has a path per endpoint: the version is `GET /v1/version` on the web endpoint, `GET /v1/node/version` on the node endpoint and `GET /v1/admin/version` on the socket (step 3, the wdx doc HUB_SKELETON).
 
 - Web endpoint: `POST /v1/node-logins` and `POST /v1/node-logins/token` (the device flow), `POST /v1/node-logins/exchange` (the authorization code for the node's credentials), and the sign-in pages' own routes.
-- Node endpoint, mTLS: `GET /v1/control` (the control WebSocket, which also carries certificate re-issuance), `GET /v1/streams/{id}` (a stream WebSocket), `POST /v1/streams` (ask for a stream to a node), `GET /v1/nodes`, `GET` and `DELETE /v1/nodes/{node}`, `POST /v1/docs/changes` (the outbox, in order).
+- Node endpoint, mTLS, every request's certificate checked against the database (a revoked node, or a disabled or removed user, is refused with `node_revoked` or `account_disabled`): `GET /v1/control` (the control WebSocket, with `github.com/coder/websocket`, which also carries certificate re-issuance; the messages `hello`, `welcome`, `certificate`, `certificate_saved` and `bye`), `GET /v1/streams/{id}` (a stream WebSocket), `POST /v1/streams` (ask for a stream to a node), `GET /v1/nodes`, `GET` and `DELETE /v1/nodes/{node}`, `POST /v1/docs/changes` (the outbox, in order).
 - Control messages are JSON objects with a `type`, described in the spec as schemas, so both sides are generated from one place.
 - A hub states the range of `hub.yaml` versions it serves; the hello on the control socket checks it, and `hub_version_unsupported` says which side is behind.
 
@@ -251,6 +251,10 @@ The design was checked against main at 3369a87, 151 commits after it was written
 - The MVP ships `wdx-hub` in the archives only; image, cosign and SBOM come with Fly.
 
 Shapes found, no decision needed: the settings table already has a per-row `fromEnv`, so `WDX_HUB_<KEY>` for every hub setting is a table-wide switch, but `set` and `get` are closures over wdx's `Config`, so `internal/settings` is the engine made generic over the config type, and a `secret` attribute is new; `db.Open` embeds its own migrations, so `internal/sqlite` takes a migrations filesystem, with `Backup` and `Restore` moving as they are; `remote_not_for_agents` holds for every ACA, since the holder sets `WDX_AGENT_ID` for each agent terminal; projects already carry the repository key (`origin_key`, `git.RepoKey` of the remote, NULL for `no_remote`); `wdx deps` gets the browser opener; `daemon.Settings` gets the two `hub.*` settings for reload. docs/IDE.md's content hash per revision was never built; pushes are idempotent by id and revision and need none.
+
+## Settled in step 5, 2026-11-08
+
+The wdx doc HUB_LOGIN, built: the login's state is `GET /v1/hub/login` with server-sent events, not an Upgrade; the hub has a setting `nodes_url` for where nodes dial the node endpoint, sent at login and kept in `login.json`; a second login replaces a pending one, whose CLI ends with `login_cancelled`; `internal/hub/hubtest` is the one hub package wdx's tests import; the package is `internal/hub/node`. The daemon is the only user of `internal/hublink`, which uses the hub's API alone.
 
 ## Running the hub locally, until the public one
 

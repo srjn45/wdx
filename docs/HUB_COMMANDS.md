@@ -13,7 +13,7 @@ Two flows (docs/HUB_ARCH.md, "Login"):
 - **With a browser on the machine,** the default: the CLI opens the browser at the hub's login page and listens on loopback for the browser to come back. The user signs up or logs in, passes the second factor, and approves the node, changing its name on the page if the account has that name already. Only the machine that started the login can finish it, so a forwarded link gets an attacker nothing.
 - **`--no-browser`,** for a shell over SSH: the CLI prints the hub's device page and a code. The user opens the page on any device and types the code, as `gh` has it; the link never carries it.
 
-The browser is opened with `xdg-open` or `open`, an optional entry in `wdx deps`. Without it, or with `--no-browser`, nothing is opened. The CLI waits on a stream from the daemon until the login is approved, denied or expired.
+The browser is opened with `xdg-open` or `open`, the optional entry `browser` in `wdx deps`. Without it, or with `--no-browser`, nothing is opened and the device flow is used, saying so. The CLI waits on the daemon's `GET /v1/hub/login`, the login's state as server-sent events, until the login is approved, denied, expired or replaced; Ctrl-C cancels it. A second login replaces a pending one, whose CLI ends with `login_cancelled`. Built in step 5 (the wdx doc HUB_LOGIN).
 
 ### Which hub
 
@@ -30,21 +30,21 @@ The browser is opened with `xdg-open` or `open`, an optional entry in `wdx deps`
 | `--name <name>` | this node's name in the account; the hostname by default; unique in the account |
 | `--no-browser` | print the link and code; open no browser |
 
-- What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`, with the hint `run wdx hub code setup to allow remote access` when no authenticator is set up.
-- `--json` never prompts; the link, and the code, still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {"url", "user", "node": {"id", "name"}}}`.
+- What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`; the hint `run wdx hub code setup to allow remote access`, when no authenticator is set up, comes with step 7.
+- `--json` never prompts; the link, and the code, still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {...}}`, the hub's status as `wdx hub status` gives it.
 - Results: `logged_in`.
-- Errors: `hub_unreachable` (3); `hub_version_unsupported` (1); `already_logged_in` (1), hinting `wdx hub logout`; `name_taken` (1) only with `--json` and `--no-browser`, where the page cannot ask, hinting `--name`; `login_denied` (1), when Deny was clicked; `login_expired` (1), when not approved within about 10 minutes.
+- Errors: `hub_unreachable` (3); `hub_version_unsupported` (1); `already_logged_in` (1), hinting `wdx hub logout`; `name_taken` (1), hinting `--name`, which the hub as built never sends, since its approval page always asks for another name when the account has one; `login_denied` (1), when Deny was clicked; `login_expired` (1), when not approved within about 10 minutes; `login_cancelled` (1), when another login replaced it.
 
 ### `wdx hub logout`
 
 - Tells the hub to revoke this node, deletes `<home>/hub/`, and ends remote sessions in and out.
 - With the hub unreachable it still deletes everything here: the node's certificate is useless without its key, which is gone. The result says so, hinting `remove it from another node: wdx hub node remove --name <name>`.
 - No confirmation: nothing on the machine is lost. Projects, agents and docs stay, and docs already on the hub stay there.
-- Results: `logged_out`, with `"hub_told": true|false`. Errors: `not_logged_in` (1).
+- Results: `logged_out`, with `"hub_told": true|false` and `hub`, the status as it was; telling the hub is best effort, with a short timeout. Errors: `not_logged_in` (1).
 
 ### `wdx hub status`
 
-Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`, `revoked` when another node removed this one, hinting `wdx hub logout`, and `disabled` when the admin disabled the account), `remote_access` (`on`, `off`), `code_setup`, `sessions` (`{incoming, outgoing}`), and the hub's version with whether this wdx is in its range. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
+Read-only: `{"hub": {...}}` with `url` and `user` (`null` when logged out), `node` (`{id, name}`), `connection` (`connected`, `connecting`, `offline`, `logged_out`, `revoked` when another node removed this one, hinting `wdx hub logout`, and `disabled` when the admin disabled the account), the hub's version (`hub_version`) with whether this wdx is in its range (`in_range`) and, when it is not, which side is `behind` (`node` or `hub`), for the hint to update; `remote_access` (`on`, `off`), `code_setup` and `sessions` (`{incoming, outgoing}`) come with step 7. Text's first line states the state, such as `connected to <url> as <user>, node <name>`, then hints for what is missing. Not being logged in is a state, not an error.
 
 ## `wdx hub code setup`, `recover`
 
@@ -111,11 +111,11 @@ Agreed on 2026-11-03.
 
 ### `wdx hub node list`
 
-Read-only, `nodes`: `id`, `name`, `this` (the machine it runs on), `online`, `last_seen_at`, `version`, `os`, and `remote_access` and `code_setup` as the node last reported them. Text is a table with this node marked. Errors: `not_logged_in`, `hub_unreachable`.
+Read-only, `nodes`: `id`, `name`, `this` (the machine it runs on), `online` (it has a control connection now), `last_seen_at`, `version`, `os`, `created_at`, and, with step 7, `remote_access` and `code_setup` as the node last reported them. Text is a table with this node marked. Errors: `not_logged_in`, `hub_unreachable`.
 
 ### `wdx hub node get --id <id> | --name <name>`
 
-One node, with its key's fingerprint, `key_known` (whether this node pinned it in an earlier session) and the sessions open with it.
+One node, with its key's `fingerprint` (`SHA256:` and the key's SHA-256 in base64); `key_known` (whether this node pinned it in an earlier session) and the sessions open with it come with step 7. Errors: `not_logged_in`, `node_not_found`, `hub_unreachable`.
 
 ### `wdx hub node remove --id | --name [--yes]`
 
@@ -169,11 +169,11 @@ Each is an operation of `api/hub.yaml` tagged `admin`, built in step 4 (the wdx 
 | Command | | Results | Errors |
 |---|---|---|---|
 | `invite [--expires <duration>]` | a one-time sign-up link, `<public_url>/signup?invite=<token>`, 24 hours by default and at most 30 days, that works while registration is closed: `{"result": "invited", "invite": {"link", "expires_at"}}` | `invited` | `invalid_argument` |
-| `list` | `users`; removed users are left out. `nodes`, a count, comes with step 5 | | |
-| `get --username <name>` | one user, with `sessions`, the count of their browser sessions that have not ended; their nodes come with step 5 | | `not_found` |
-| `disable --username`, `enable --username` | the user as they now are; disabling ends their browser sessions and refuses their logins, and from step 5 cuts off their nodes | `disabled`, `enabled`, `unchanged` | `not_found` |
+| `list` | `users`; removed users are left out; `nodes`, a count of their nodes not revoked | | |
+| `get --username <name>` | one user, with `sessions`, the count of their browser sessions that have not ended, `nodes`, and `node_list`, each node's `id`, `name`, `os`, `version`, `created_at`, `last_seen_at` and `online` | | `not_found` |
+| `disable --username`, `enable --username` | the user as they now are; disabling ends their browser sessions, refuses their logins, and cuts off their nodes at once | `disabled`, `enabled`, `unchanged` | `not_found` |
 | `reset --username [--second-factor]` | a one-time link to set a new password, since there is no email, `<public_url>/reset?token=<token>`, 24 hours; a new reset voids an earlier one; `--second-factor` also removes their TOTP and recovery codes, and from the passkeys step their passkeys: `{"result": "reset", "reset": {"link", "expires_at", "second_factor"}}` | `reset` | `not_found` |
-| `remove --username [--yes]` | the user as they were; asks first, and `--json` needs `--yes`. Keeps the row, so the username is never given again and `<user>/<doc>` keeps meaning one person, and deletes their password hash, factor, recovery codes, sessions and resets; steps 5 and 6 add their nodes and private docs. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them | `removed` | `not_found`, `cancelled` (answered no) |
+| `remove --username [--yes]` | the user as they were; asks first, and `--json` needs `--yes`. Keeps the row, so the username is never given again and `<user>/<doc>` keeps meaning one person, and deletes their password hash, factor, recovery codes, sessions, resets, node logins and nodes, cutting the nodes off at once; step 6 adds their private docs. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them | `removed` | `not_found`, `cancelled` (answered no) |
 
 An invite or reset link is a secret: printed on a line of its own, since the admin must hand it on, but never logged; the server's `request returned` and the command's `command returned` measure it as `link_bytes`.
 
@@ -190,6 +190,7 @@ Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at star
 | `public_url` | required | the address nodes and browsers use, put in login links |
 | `listen.web` | `:8080` | sign-in pages and API |
 | `listen.nodes` | `:8443` | the node endpoint |
+| `nodes_url` | empty | where nodes reach the node endpoint, `https://<host>[:<port>]`, when a proxy or a port mapping makes it differ from `listen.nodes`; empty is `public_url`'s host with `listen.nodes`' port. Sent at login and kept in the node's `login.json`; the node endpoint's certificate names its host |
 | `web.tls` | `off` | `off` behind a TLS proxy, as on Fly; `acme` (Let's Encrypt); `files`, with `web.tls_cert` and `web.tls_key` |
 | `registration` | `closed` | `closed` or `open`; invites work either way |
 | `trusted_proxies` | empty | addresses or CIDR ranges, comma-separated, whose `X-Forwarded-For` gives the client's address, as Fly's proxy |

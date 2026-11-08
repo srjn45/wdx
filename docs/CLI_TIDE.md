@@ -180,6 +180,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Panes, tabs, focus, zoom, folding, selection, the menu's parts | tide | By design | They are tide's own interface |
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
 | Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
+| Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's window is where a remote session will show, with step 9 of the hub (docs/HUB_ARCH.md), and the hub's state can come to it then |
 
 ## `wdx project open`
 
