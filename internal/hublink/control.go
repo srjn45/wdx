@@ -279,12 +279,14 @@ func (l *Link) renew(ctx context.Context, conn *websocket.Conn, c *credentials, 
 		log.Error("certificate not written", "path", l.dir, "err", err)
 		return
 	}
-	c.setCertificate(cert)
-	log.Info("certificate renewed", "expires_at", cert.Leaf.NotAfter)
-	l.update(c, func() {}) // what Watch tells of
+	// The hub is told before the certificate is used, so that whoever sees
+	// it renewed knows the hub was told.
 	if err := write(ctx, conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: m.ExpiresAt}); err != nil {
 		log.Info("certificate saved not sent", "err", err)
 	}
+	c.setCertificate(cert)
+	log.Info("certificate renewed", "expires_at", cert.Leaf.NotAfter)
+	l.update(c, func() {}) // what Watch tells of
 }
 
 // ping pings the hub every PingInterval, closing the connection when no
