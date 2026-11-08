@@ -54,3 +54,5 @@ Every input is a flag, every entity is named by `--name` or `--id`, and every co
 | `~/.wdx/projects/` | repositories created with `wdx project create` |
 
 `WDX_HOME` moves all of `~/.wdx` elsewhere.
+
+Next: the guides, starting with [Projects](/wdx/docs/guides/projects/).

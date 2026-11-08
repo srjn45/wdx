@@ -1,0 +1,67 @@
+---
+title: Child agents
+description: Agents that start agents of their own through wdx, in a tree you can see, each perhaps in a worktree of its own.
+commands: [agent create]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A child agent is an [agent](/wdx/docs/guides/agents/) created with a parent. Agents make children to split up their work, as they would use subagents of their own, but a child is a full agent in wdx: you can see it, attach to it, send it messages and give it a worktree. wdx tells every agent it runs to make children through wdx rather than by its own means, so that all the work shows in one place.
+
+## Try it
+
+Give an agent a child, here in a worktree of its own:
+
+```console
+$ wdx agent create --name fix-readme --parent-name lead --worktree fix-readme
+created agent fix-readme in app
+  parent   agent-c132a237
+  worktree fix-readme (new)
+  dir      /home/you/code/app/.worktrees/fix-readme
+  aca      claude_code
+  id       agent-e38aeb90
+$ wdx agent list
+NAME          STATE    ACTIVITY  MODEL      CONTEXT  ACA          DIR                                       ID
+lead          running  idle      Fable 5.1  0        claude_code  /home/you/code/app                        agent-c132a237
+└ fix-readme  running  idle      Fable 5.1  0        claude_code  /home/you/code/app/.worktrees/fix-readme  agent-e38aeb90
+```
+
+An agent makes its own children the same way. wdx puts its id in `WDX_AGENT_ID`, and `wdx help agents` tells it how:
+
+```sh
+wdx agent create --parent-id "$WDX_AGENT_ID" --name tests --worktree tests \
+  --prompt "write the tests for the parser; tell me with wdx agent send when done"
+```
+
+Remove a parent and it stays in the tree as removed, for as long as it has children:
+
+```console
+$ wdx agent remove --name lead --stop-running
+removed agent lead from app
+  kept as removed until its children are gone
+  dir  /home/you/code/app
+  aca  claude_code
+  id   agent-c132a237
+$ wdx agent list
+NAME      STATE    ACTIVITY  MODEL      CONTEXT  ACA          DIR                                       ID
+lead      removed                       0        claude_code  /home/you/code/app                        agent-c132a237
+└ readme  running  idle      Fable 5.1  45k      claude_code  /home/you/code/app/.worktrees/fix-readme  agent-e38aeb90
+```
+
+## In TIDE
+
+Children are indented under their parents in the Agents list, and a parent can be folded to one row, which then says how many of its children are waiting. `C-q c` on an agent opens the new agent form with the parent filled in.
+
+## How it behaves
+
+- **Its project and directory are its parent's.** `--parent-id` finds the parent wherever the command runs; `--parent-name` looks in the project flags' project, or the working directory's. A child starts in its parent's directory, or with `--worktree` in a worktree of the project, which a new name creates on a new branch from the parent's checkout, so a child builds on its parent's commits.
+- **A parent is set once,** when the child is created. There is no depth limit, and no cycles.
+- **Children run on their own.** A parent that exits leaves its children running, and a child can outlive it.
+- **Without a parent flag an agent is at the top level,** even when another agent creates it.
+- **Removing a parent** with children stops it and keeps it in the tree as `removed`, its children untouched, so none is ever orphaned. It goes when its last child is removed, and that can go up the tree. Its name stays taken until then. A removed parent cannot be started or given children.
+- **Reporting back** is up to the agents: a parent puts its id in the child's task and asks it to answer with [`wdx agent send`](/wdx/docs/guides/messages/).
+
+## Commands
+
+<Commands />

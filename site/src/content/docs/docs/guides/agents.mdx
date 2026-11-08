@@ -1,0 +1,121 @@
+---
+title: Agents
+description: Run Claude Code, Codex, Cursor or Antigravity in a terminal wdx keeps, see what each is doing, and pick up its conversation again.
+commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+An agent is a [terminal](/wdx/docs/guides/terminals/) that runs an AI CLI, which wdx calls an ACA (AI coding agent): Claude Code, Codex, Cursor or Antigravity. wdx starts it, reads its screen to say whether it is working, idle or waiting for you and with what question, and follows its session, so that an agent started again goes on in the same conversation. It keeps its own copy of that conversation too. See [Concepts](/wdx/docs/start/concepts/#agents-and-ai-clis).
+
+## Try it
+
+See which AI CLIs are installed, and the models of the default one:
+
+```console
+$ wdx agent acas
+AI coding agents
+ID
+claude_code (default)
+antigravity
+cursor
+codex
+$ wdx agent models
+models of claude_code
+ID      NAME
+fable   Fable
+opus    Opus
+sonnet  Sonnet
+haiku   Haiku
+with no --model, your own setting for it
+```
+
+Create an agent in the project you are in. `--prompt` would start it on a task; `--aca` and `--model` choose what runs it:
+
+```console
+$ cd ~/code/app
+$ wdx agent create --name lead
+created agent lead in app
+  dir  /home/you/code/app
+  aca  claude_code
+  id   agent-c132a237
+```
+
+The list says what each is doing. This one waits on Claude Code's question about trusting the folder, and `agent get` shows it:
+
+```console
+$ wdx agent list
+NAME  STATE    ACTIVITY  MODEL  CONTEXT  ACA          DIR                 ID
+lead  running  yes/no                    claude_code  /home/you/code/app  agent-c132a237
+$ wdx agent get --name lead
+agent lead in app
+  state       running
+  activity    yes/no
+  prompt      yes/no · Accessing workspace
+  question    Accessing workspace:
+  detail      /home/you/code/app
+  options     ❯ No, exit
+                Yes, I trust this folder
+  worktree    main
+  dir         /home/you/code/app
+  aca         claude_code
+  permissions full
+  session     789aa95c-6e50-4680-9834-dacb71edc6b3
+  pid         2753818
+  id          agent-c132a237
+  created     2026-11-08 01:48:13
+  started     2026-11-08 01:48:13
+```
+
+Attach to answer it and talk to the agent. `C-\ d` detaches and leaves it running:
+
+```console
+$ wdx agent attach --name lead
+```
+
+Once answered, the list shows it idle, with its model and how full its context is:
+
+```console
+$ wdx agent list
+NAME  STATE    ACTIVITY  MODEL      CONTEXT  ACA          DIR                 ID
+lead  running  idle      Fable 5.1  0        claude_code  /home/you/code/app  agent-c132a237
+```
+
+Read back what an agent said and did, as Markdown, without attaching. Here the end of one that has been at work:
+
+````console
+$ wdx agent transcript --name readme --tail 12
+### Tool: Bash
+
+```
+{"command":"cd /home/you/code/app && git status --short --branch && git worktree list && git branch -a","description":"Show branch, worktrees and status of main clone"}
+```
+
+### Result (error)
+
+```
+Working directory "/home/you/code/app/.worktrees/fix-readme" was deleted; shell cwd recovered to "/home/you". Re-issue your command (it will run from the recovered directory).
+```
+````
+
+## In TIDE
+
+The Agents section of the left pane lists the project's agents, children under their parents, each with its activity, model and context size; Enter opens one in the right pane to talk to it. `C-q a` creates one in a form (name, ACA, model, worktree, permissions and a prompt), and `i` opens its info tab, with what `agent get` shows. On an agent, `r` renames it, `g` starts it again once it has ended, `R` starts a new session after a confirmation, and `x` removes it. TIDE has no transcript screen: that is for reading and grepping with the CLI.
+
+## How it behaves
+
+- **Where it starts.** In the working directory if that is in the project, else in the project's clone; `--worktree` starts it in a worktree of its own ([Worktrees and landing](/wdx/docs/guides/worktrees/)). It runs through your login shell, which finds the AI CLI's program.
+- **What runs it.** `--aca` picks the AI CLI, which must be installed and enabled (`aca.<id>.enabled`); by default the first that is, as `agent acas` lists them. `--model` takes a model as that CLI's own model flag does; without it, your own settings for that CLI decide. `--permissions full`, the default, lets it do anything without asking, with network access and no sandbox; `ask` leaves that to your settings. Both are kept for every later start.
+- **Activity** is read from its screen: `working`, `idle`, `waiting`, or `yes/no` and `decision` when wdx can read the question (Claude Code for now), with the question and its options in `agent get`. `unknown` means the screen cannot be read yet. **Context** is how much of its context window the conversation fills, colored by `context.threshold.warning` and `context.threshold.critical`.
+- **States** are a terminal's: `running`, `exited`, `stopped` by closing the project, `failed`, `lost`, and `removed` for a parent kept for its children ([Child agents](/wdx/docs/guides/child-agents/)).
+- **Starting again.** `agent start` brings back an agent that ended in the same session, so its conversation is there, in the directory it last worked in. Opening a project starts the agents closing it stopped, the same way.
+- **A new session.** `agent restart` stops the ACA and starts a new session under the same id, whose first message tells it to read `agent transcript --brief`, its history in brief. An agent that is busy, or has text in its input box, needs `--force`, which can leave work half done.
+- **The transcript** is wdx's own copy of the conversation. It only grows, across compactions and clears, and stays after the ACA deletes its own, until the agent is removed and for 7 days after. It is what was said and done, not what the screen showed. `--path` prints its file, for grep.
+- **Names** are generated unless `--name` gives one, unique in a project among agents and terminals; `agent rename` changes one while it runs.
+- **Removing** a running agent asks first, as it interrupts what it does; `--stop-running` or `--cancel` answers in advance. What the ACA keeps of its session stays on disk.
+- **Giving it a task later** is `wdx agent send`, in [Messages and sending](/wdx/docs/guides/messages/).
+
+## Commands
+
+<Commands />

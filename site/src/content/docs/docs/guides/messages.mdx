@@ -1,0 +1,66 @@
+---
+title: Messages and sending
+description: Give an agent a task or type a command into a terminal from a script, kept until it arrives.
+commands: [agent send, terminal send, message list, message resend, message discard]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+`wdx agent send` gives a running agent a message, and `wdx terminal send` types one into a terminal's shell. They are how a script, or another agent, reaches an agent: a person attaches and types. wdx keeps each message until the agent's holder says it typed it, so a message is not lost to a daemon restart, and one that could no longer go where it was meant to waits for you to resend or discard it.
+
+## Try it
+
+Send an agent a task:
+
+```console
+$ wdx agent send --name docs-writer --prompt "write the README"
+queued agent docs-writer in app
+  worktree docs
+  dir      /home/you/code/app/.worktrees/docs
+  aca      claude_code
+  id       agent-5e3cccd5
+```
+
+It goes in once the agent can take it. Until then it is listed; this agent has a question open:
+
+```console
+$ wdx message list
+ID            TO           STATE    TEXT
+msg-d3d3c65c  docs-writer  pending  write the README
+```
+
+`--instant` puts a message before the others, for what cannot wait:
+
+```sh
+wdx agent send --name docs-writer --prompt "stop: the spec changed, read it again" --instant
+```
+
+Type a command into a terminal:
+
+```console
+$ wdx terminal send --name server --prompt "make serve"
+queued terminal server in app
+  dir    /home/you/code/app
+  shell  /usr/bin/zsh
+  id     term-d69a3fb4
+```
+
+## In TIDE
+
+There is nothing to send in TIDE: there you type into the agent or terminal itself. An agent's row and its info tab say when a message of its is held (`1 held`); resending or discarding it is done with the CLI for now.
+
+## How it behaves
+
+- **In order, when it can.** Messages go in the order sent. One to an agent waits while text is in its input box, a question is open or its screen cannot be read. During a turn it goes in for the agent to take up at its next step (Claude Code, Codex), or after the turn (Cursor, Antigravity).
+- **It does not wait** for the message to go in, or for a reply. The answer is `queued`.
+- **`--instant`** goes before the other messages and waits as they do. Claude Code takes it at once, Codex at its next step; an ACA that cannot take a message during its turn has the turn interrupted first.
+- **Kept until it arrives.** Every message is stored before it goes to the holder. One still queued when the agent ends goes on when the agent starts again in the same session, or is restarted with `agent restart`.
+- **Held.** When what a message was meant for is gone, as when a holder died and the agent starts in a new conversation, or a shell starts anew, the message is `held`: an old instruction must not arrive out of nowhere. `message resend` sends it into whatever conversation the agent is in now, and `message discard` drops it.
+- **It may come twice.** A holder that typed a message and died before it could say so has it sent again: losing one is worse.
+- **A leading `!`** is given to the model as `\!`, never run as a shell command by the ACA.
+- **A terminal's message** is typed into whatever runs in its shell, followed by Enter.
+
+## Commands
+
+<Commands />

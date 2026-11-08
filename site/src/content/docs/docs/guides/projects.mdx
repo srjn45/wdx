@@ -1,0 +1,85 @@
+---
+title: Projects
+description: Register a repository with wdx, clone one or start a new one, and close and reopen it with everything in it.
+commands: [project open, project create, project list, project get, project close, project remove]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A project is a git repository wdx knows, with all of its checkouts: the clone and every worktree. Terminals, agents, docs and plans belong to a project, and a command finds its project by itself when you run it inside one. See [Concepts](/wdx/docs/start/concepts/#projects) for how it fits with the rest.
+
+## Try it
+
+Open a repository you already have:
+
+```console
+$ cd ~/code/app
+$ wdx project open --local .
+registered project app (proj-22ca285c)
+  origin:    (none)
+  worktrees: /home/you/code/app
+```
+
+`--git <url>` clones one into `~/.wdx/projects/<name>` instead, and `wdx project create` starts an empty one:
+
+```console
+$ wdx project create --name notes
+created project notes (proj-b8e8812a)
+  origin:    (none)
+  worktrees: /home/you/.wdx/projects/notes
+```
+
+See them all, and one in full:
+
+```console
+$ wdx project list
+NAME   ID             STATE  ORIGIN  WORKTREES
+app    proj-22ca285c  open   -       1
+notes  proj-b8e8812a  open   -       1
+$ wdx project get --name app
+project app (proj-22ca285c)
+  state:     open
+  origin:    (none)
+  created:   2026-11-08 01:47:41
+  updated:   2026-11-08 01:47:41
+  worktrees: /home/you/code/app
+  terminals: (none)
+  agents:    (none)
+```
+
+Close a project to stop everything in it, and open it again to bring it all back:
+
+```console
+$ wdx project close --name app --stop-running
+closed project app (proj-22ca285c)
+  origin:    (none)
+  worktrees: /home/you/code/app
+             /home/you/code/app/.worktrees/docs
+  stopped terminal server (term-d69a3fb4)
+  stopped agent readme (agent-e38aeb90)
+$ wdx project open --name app
+opened project app (proj-22ca285c)
+  origin:    (none)
+  worktrees: /home/you/code/app
+             /home/you/code/app/.worktrees/docs
+  started terminal server (term-d69a3fb4)
+  started agent readme (agent-e38aeb90)
+```
+
+## In TIDE
+
+TIDE shows one project at a time. `C-q p o` opens one, with the same choices as `wdx project open` (create, a local repository, a clone, or a closed project); `C-q p s` and `Alt+Shift+←/→` switch between those open; `C-q p c` closes the one shown, and `C-q p x` removes it after a confirmation. There is no screen for `project get`: the agents, worktrees and terminals on screen are the project.
+
+## How it behaves
+
+- **Which project.** Inside a project's checkout, commands use that project. Elsewhere, add `--project-name <name>` (or `--project-id`), or for the `project` commands themselves, `--name`.
+- **Names** come from the repository's directory or URL unless `--name` gives one, and are unique. A worktree or another clone of a repository wdx knows joins that repository's project rather than making a new one.
+- **Closing** stops the project's terminals and agents, and touches nothing on disk. **Opening** it again starts them: terminals with fresh shells, agents in the same conversation.
+- **Removing** deletes the project from wdx with its terminals, agents and records. Its files stay on disk.
+- **Questions and their flags.** Closing or removing a project with something running asks first, since stopping ends the programs in it; `--stop-running` or `--cancel` answers in advance. If none of a project's checkouts is left on disk, opening it asks whether to clone it again or remove it: `--reclone` or `--remove`. `project create` on a name that is taken asks whether to open that one: `--open` or `--cancel`. With `--json` or no terminal, nothing is asked and the flag is required.
+- **What is checked.** A path that is not in a git repository is `not_git_repo`; a name taken is `name_taken`; every error code a command can return is in its [reference](/wdx/docs/reference/cli/project/).
+
+## Commands
+
+<Commands />

@@ -1,0 +1,72 @@
+---
+title: Terminals
+description: Shells that outlive the window, the CLI and the daemon, to attach to from anywhere and read back.
+commands: [terminal create, terminal attach, terminal list, terminal get, terminal history, terminal start, terminal remove]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A terminal is a shell in a pseudo-terminal, owned by a holder: a small process of its own that keeps the shell, its screen and its history. Nothing you close takes it down, not the window, not the CLI, not the daemon. It is for what should keep running: a server, a long test run, a REPL. An [agent](/wdx/docs/guides/agents/) is a terminal that runs an AI CLI. See [Concepts](/wdx/docs/start/concepts/#terminals-and-holders).
+
+## Try it
+
+Create one in the project you are in, and attach to it:
+
+```console
+$ cd ~/code/app
+$ wdx terminal create --name server
+created terminal server in app
+  dir    /home/you/code/app
+  shell  /usr/bin/zsh
+  id     term-d69a3fb4
+$ wdx terminal attach --name server
+```
+
+It takes the whole window, as tmux does. `C-\ d` detaches and leaves it running; `C-\ [` and `C-\ ]` scroll through its history; `C-\ ?` lists the keys. Attach again from any window, or from several at once.
+
+See what you have, and read what scrolled off its screen without attaching:
+
+```console
+$ wdx terminal list
+NAME    STATE    DIR                 ID
+server  running  /home/you/code/app  term-d69a3fb4
+$ wdx terminal history --name server --tail 3
+77
+78
+79
+```
+
+A shell that ended, or whose holder was killed, starts again under the same name:
+
+```console
+$ wdx terminal get --name server
+terminal server in app
+  state    lost
+  dir      /home/you/code/app
+  ...
+$ wdx terminal start --name server
+started terminal server in app
+  dir    /home/you/code/app
+  shell  /usr/bin/zsh
+  id     term-d69a3fb4
+```
+
+## In TIDE
+
+The pane along the bottom of TIDE's window holds the project's terminals, one tab each. `C-\` shows or hides it, focusing it when it opens, and what you type then goes to the shell. `C-q t` creates a terminal, `C-q g` starts the one shown again once it has ended, and `C-q x` removes it. Scroll back with the mouse wheel or PageUp. TIDE has no screen for `terminal get`, nor for `history`, which is for scripts: scrolling back is the same history.
+
+## How it behaves
+
+- **Where it runs.** In the working directory if that is in the project, else in the project's clone. The shell is the `terminal.shell` setting, your login shell by default.
+- **Names** are generated, such as `swift-falcon`, unless `--name` gives one. They have letters, numbers and `-` only, and are unique in a project among terminals and agents.
+- **It outlives wdx.** Restarting or updating the daemon leaves every shell running; the daemon finds its holders again when it starts.
+- **States.** `running`; `exited` when the shell ended by itself, with its exit code; `stopped` when closing the project stopped it, to start again when the project opens; `failed` when it could not start, with why; `lost` when its holder went with no one stopping it, as after a reboot or a `kill -9`. Every state stays listed until the terminal is removed.
+- **Starting again** keeps the id, name and directory, with a fresh shell: what ran in the old one is gone. Its history is kept.
+- **History** is kept on disk for the terminal's whole life, across restarts of its shell, up to `terminal.history_lines` lines. `--tail`, or `--from` and `--count`, pick the lines; colors are kept on a terminal and stripped with `--plain`.
+- **Removing** a terminal with its shell running asks first, since that ends what runs there; `--stop-running` or `--cancel` answers in advance, and with `--json` one is required.
+- **Typing into one from a script** is `wdx terminal send`, in [Messages and sending](/wdx/docs/guides/messages/).
+
+## Commands
+
+<Commands />

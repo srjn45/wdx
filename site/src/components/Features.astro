@@ -1,13 +1,17 @@
 ---
-// The close-ups are cut from the demo's scenes by the page's script.
+// The close-ups are cut from the demo's scenes by the page's script. A feature
+// with a guide links to it.
+const guides = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/docs/guides`;
 ---
 <section class="sec band" id="features"><div class="wrap">
   <div class="sec-head"><span class="eyebrow">Features</span><h2>Built for a day of running agents in parallel.</h2></div>
   <div class="spot"><div class="copy"><span class="eyebrow">Agents</span><h3>Know at a glance who needs you.</h3><p>wdx reads each agent's screen, so TIDE can mark every row working, waiting or idle, whichever AI CLI it runs. A question from an agent turns its row amber until you answer.</p>
-    <ul><li>Agents run in the daemon: close TIDE, or the laptop lid, and they keep going</li><li>Child agents, restarts that resume the same session, and the context size on every row</li><li>Answer, steer or send to an agent from TIDE, the CLI or a script</li></ul></div>
+    <ul><li>Agents run in the daemon: close TIDE, or the laptop lid, and they keep going</li><li>Child agents, restarts that resume the same session, and the context size on every row</li><li>Answer, steer or send to an agent from TIDE, the CLI or a script</li></ul>
+    <a class="more" href={`${guides}/agents/`}>The agents guide →</a></div>
     <div class="crop" id="crop-agents"></div></div>
   <div class="spot flip"><div class="copy"><span class="eyebrow">Worktrees</span><h3>A branch per agent, and a diff before anything lands.</h3><p>Give an agent a worktree and it works on a branch of its own. TIDE shows what each one has committed and what it has not, file by file, then lands it on main after your landing check, or opens a PR.</p>
-    <ul><li>Rebase onto main when asked; conflicts go to an agent you pick</li><li>git is read from events, never on a timer, and never writes your index</li></ul></div>
+    <ul><li>Rebase onto main when asked; conflicts go to an agent you pick</li><li>git is read from events, never on a timer, and never writes your index</li></ul>
+    <a class="more" href={`${guides}/worktrees/`}>The worktrees guide →</a></div>
     <div class="crop" id="crop-diff"></div></div>
   <div class="spot"><div class="copy"><span class="eyebrow">Plans</span><h3>Split a feature into tasks, and let wdx run them.</h3><p>A plan is a DAG of tasks. wdx starts an agent for each task that is ready, each in a worktree of the plan's, and lands every finished task on the plan's branch. Plans of plans land as stacked PRs.</p>
     <ul><li>Drawn the way <code>git log --graph</code> draws commits</li><li>A task that fails waits for you to retry, land or skip it</li></ul></div>
@@ -15,7 +19,7 @@
   <div class="cards">
     <div class="card"><span class="g">doc</span><h3>Docs with revisions</h3><p>Designs live in wdx with a status, wip to approved, so people and agents read the same thing.</p></div>
     <div class="card"><span class="g">--json</span><h3>For scripts and AIs</h3><p>Every command returns one JSON object with stable error codes, and never prompts.</p></div>
-    <div class="card"><span class="g">$_</span><h3>Terminals that stay</h3><p>Shells in PTYs that outlive the daemon, with their scrollback, attachable from anywhere.</p></div>
+    <div class="card"><span class="g">$_</span><h3>Terminals that stay</h3><p>Shells in PTYs that outlive the daemon, with their scrollback, attachable from anywhere.</p><a class="more" href={`${guides}/terminals/`}>The terminals guide →</a></div>
     <div class="card"><span class="g">◔</span><h3>Observable</h3><p>Every run logged with a debug id, metrics in Grafana with one command.</p></div>
   </div>
 </div></section>

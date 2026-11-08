@@ -26,6 +26,17 @@ export default defineConfig({
           items: ['docs/start/what-is-wdx', 'docs/start/install', 'docs/start/quickstart', 'docs/start/concepts'],
         },
         {
+          label: 'Guides',
+          items: [
+            'docs/guides/projects',
+            'docs/guides/terminals',
+            'docs/guides/agents',
+            'docs/guides/child-agents',
+            'docs/guides/messages',
+            'docs/guides/worktrees',
+          ],
+        },
+        {
           label: 'Reference',
           collapsed: true,
           items: [

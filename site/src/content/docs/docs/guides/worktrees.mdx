@@ -1,0 +1,93 @@
+---
+title: Worktrees and landing
+description: Give each agent a checkout and branch of its own, read what it changed, and land it on main with no merge commit, or through a PR.
+commands: [agent create, worktree list, worktree diff, worktree comments, worktree rebase, project landing, worktree land, worktree remove]
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A worktree is a git checkout of its own, on a branch of its own. An agent given one works there, never in the files another agent is editing. wdx shows what each worktree has committed and what it has not, and lands it: it rebases the branch onto its base, runs the project's check, and moves the base forward, with no merge commit. Or it opens a PR. See [Concepts](/wdx/docs/start/concepts/#worktrees).
+
+## Try it
+
+Start an agent in a new worktree. It is made in `.worktrees/<name>`, on a new branch of that name:
+
+```console
+$ wdx agent create --name fix-readme --worktree fix-readme
+created agent fix-readme in app
+  worktree fix-readme (new)
+  dir      /home/you/code/app/.worktrees/fix-readme
+  aca      claude_code
+  id       agent-e38aeb90
+```
+
+Once it has worked a while, see where every worktree stands: commits ahead of its base, and files changed but not committed:
+
+```console
+$ wdx worktree list
+NAME        BRANCH      AHEAD  CHANGED  PATH
+main        main        -      0        /home/you/code/app
+docs        docs        0      0        /home/you/code/app/.worktrees/docs
+fix-readme  fix-readme  1      1        /home/you/code/app/.worktrees/fix-readme
+```
+
+Read what it committed, as a PR would show it, and what it has not:
+
+```console
+$ wdx worktree diff --name fix-readme
+diff --git a/README.md b/README.md
+index e2bd1550b11947a1bcbec6a139dc428f93a47d33..b954ba7d5c4338cfd3f7375bf27424b5665e5d77 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,3 @@
+ # app
++
++A tiny app.
+$ wdx worktree diff --name fix-readme --uncommitted
+diff --git a/NOTES.md b/NOTES.md
+new file mode 100644
+...
+```
+
+Say once how the project lands: the check to run first, or none.
+
+```console
+$ wdx project landing --name app --check "make test"
+method: rebase
+check: make test
+push: false
+```
+
+Land it, then remove it with its branch:
+
+```console
+$ wdx worktree land --name fix-readme
+landed worktree fix-readme on main
+$ wdx worktree remove --name fix-readme
+removed worktree fix-readme
+branch fix-readme deleted
+told: fix-readme
+```
+
+The agent that ran there was told the worktree is gone, and to go on from the clone.
+
+## In TIDE
+
+The Worktrees section of the left pane lists them, kept up to date as files change, each with its uncommitted files; Enter on a file shows its changes side by side, and Enter on a worktree opens its tab with what it committed. There you write comments on lines (`c`) and send them to an agent as a review (`s`), mark files you have looked at as verified (`v`), ask an agent to commit (`C`), rebase (`R`) and land (`L`), which shows what will land first and offers to remove the worktree after. `C-q x` on a worktree that landed removes it.
+
+## How it behaves
+
+- **Making one.** `agent create --worktree <name>` uses the worktree of that name, `main` for the clone, or creates it in `<project>/.worktrees/<name>` on a new branch from the checkout the agent would otherwise start in. `.worktrees` is kept out of git's status. Removing the agent never removes its worktree, which may hold work not landed.
+- **Reading never locks.** `worktree list`, `diff` and `comments` only read, so they run beside any git command, an agent's included.
+- **The base** is the default branch, or for a stacked plan the plan below's branch.
+- **Landing by rebase** rebases the worktree if its base moved on, undoing that on a conflict; runs the project's check in a terminal named `land-<worktree>`, which stays if the check fails; and moves the base forward to the commit checked, pushing it if the project says `--push`. On any failure the base stays where it was. Uncommitted files refuse it (`not_committed`), as nothing is stashed. Landing waits for the end, and leaving does not stop it.
+- **Landing by PR** (`--method pr`, or the project's method) runs the check, pushes the branch and opens a PR with `gh`, or adds to the one open. It never rebases or forces.
+- **Not said yet.** Landing fails with `land_not_configured` until `project landing` has been given `--check` or `--no-check` once.
+- **Rebasing on its own** is `worktree rebase`: no check, and the base does not move. A conflict leaves everything as it was and lists the files, for an agent to deal with.
+- **Removing** takes only a worktree with nothing ahead of its base and nothing uncommitted, so no commit can be lost, and its branch if git says it is merged. Agents running there are told where to go on. A worktree removed with git instead is listed as missing until `worktree remove` drops its entry.
+- **Comments** are written in TIDE, and `worktree comments` lists them, each saying whether it was sent.
+
+## Commands
+
+<Commands />
