@@ -60,10 +60,37 @@ func TestUsageLabel(t *testing.T) {
 		{"claude_code", "five_hour", "Session (5 h)"},
 		{"claude_code", "seven_day", "Week"},
 		{"claude_code", "two_hour", "two_hour"},
+		{"codex", "300m", "Session (5 h)"},
+		{"codex", "10080m", "Week"},
+		{"codex", "43200m", "Month"},
 		{"codex", "weekly", "weekly"},
+		{"antigravity", "5h", "Session (5 h)"},
+		{"antigravity", "weekly", "Week"},
+		{"antigravity", "monthly", "monthly"},
+		{"cursor", "month", "Month"},
+		{"cursor", "weekly", "weekly"},
 	} {
 		if got := UsageLabel(tc.aca, tc.window); got != tc.want {
 			t.Errorf("UsageLabel(%s, %s) = %q, want %q", tc.aca, tc.window, got, tc.want)
+		}
+	}
+}
+
+func TestUsageBucketLabel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ aca, bucket, want string }{
+		{"antigravity", "gemini", "Gemini models"},
+		{"antigravity", "3p", "Claude and GPT models"},
+		{"antigravity", "gemini-argon-wtu", "Gemini 4 Argon"},
+		{"antigravity", "gemini-new", "gemini-new"},
+		{"cursor", "auto", "Auto"},
+		{"cursor", "api", "API"},
+		{"cursor", "", ""},
+		{"codex", "codex_bengalfox", "codex_bengalfox"},
+		{"claude_code", "Fable", "Fable"},
+	} {
+		if got := UsageBucketLabel(tc.aca, tc.bucket); got != tc.want {
+			t.Errorf("UsageBucketLabel(%s, %s) = %q, want %q", tc.aca, tc.bucket, got, tc.want)
 		}
 	}
 }

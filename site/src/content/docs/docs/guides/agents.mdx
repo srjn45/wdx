@@ -104,10 +104,14 @@ How much of the AI CLI's limits is used <Since v="0.5.0" />, as its agents last 
 
 ```console
 $ wdx usage
-claude_code      available
-  WINDOW         USED  RESETS         AS OF
-  Session (5 h)  54%   in 2 h 10 min  16:11
-  Week           51%   Nov 12 10:00   16:11
+claude_code                 available
+  WINDOW                    USED  RESETS         AS OF
+  Session (5 h)             54%   in 2 h 10 min  16:11
+  Week                      51%   Nov 12 10:00   16:11
+antigravity Gemini models   available
+  WINDOW                    USED  RESETS         AS OF
+  Session (5 h)             12%   in 4 h 2 min   16:09
+  Week                      30%   Nov 13 08:00   16:09
 ```
 
 ## In TIDE
@@ -126,7 +130,9 @@ The Agents section of the left pane lists the project's agents, children under t
 - **Names** are generated unless `--name` gives one, unique in a project among agents and terminals; `agent rename` changes one while it runs.
 - **Removing** a running agent asks first, as it interrupts what it does; `--stop-running` or `--cancel` answers in advance. What the ACA keeps of its session stays on disk.
 - **Giving it a task later** is `wdx agent send`, in [Messages and sending](/wdx/docs/guides/messages/).
-- **Usage** <Since v="0.5.0" /> is read from what the AI CLI tells its agents, Claude Code's status line for now, with nothing asked of it: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own.
+- **Usage** <Since v="0.5.0" /> is read from what the AI CLI tells its agents, with nothing typed into them: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own.
+- **Where each AI CLI tells it** <Since v="0.5.0" />. Claude Code and Antigravity in the status line wdx gives every agent, the file it already reads for the context size; Codex in its session file, beside each answer's token count; Cursor nowhere on disk, so the daemon asks Cursor's API what its own `/usage` screen asks, while a Cursor agent works and at most every 5 minutes, with the login Cursor's CLI keeps, which wdx reads at each call and never stores (on Linux; on macOS that login is in the keychain, which wdx does not read). Cursor is the one place wdx goes on the network for an AI CLI.
+- **Buckets** <Since v="0.5.0" />. Some limits apply to a group of models only, shown as a block of their own under its name: Antigravity's `Gemini models`, `Claude and GPT models` and `Gemini 4 Argon`, each with a session and a week; Cursor's `Auto` and `API` beside its included allowance, by the billing month, in whole percents, without on-demand spend; Codex's other buckets by the names it gives. A window or bucket wdx does not know yet shows its key as the AI CLI gives it. Codex may stop at 99% and refuse every prompt: wdx shows that window limited too.
 
 ## Commands
 

@@ -128,13 +128,18 @@ func TestStatsRows(t *testing.T) {
 	usage[1].UsedPercent, usage[1].Limited = 100, true
 	fable := usage[1]
 	fable.Bucket, fable.UsedPercent, fable.Limited = "Fable", 35, false
-	usage = append(usage, fable)
+	// A bucket and a window wdx knows show by their labels.
+	gemini := fable
+	gemini.Aca, gemini.Bucket, gemini.Window = "antigravity", "gemini", "5h"
+	usage = append(usage, fable, gemini)
 	m.Update(usageListed{usage: usage, acas: []api.Aca{{Id: "claude_code"}}})
 	wantText(t, m,
-		"claude_code:        limited, resets "+now.Add(72*time.Hour).Local().Format("Jan 2 15:04"),
-		"  Week:             100% ▰▰▰▰▰▰▰▰▰▰  limited, resets ",
-		"claude_code Fable:  available",
-		"  Week:             35% ▰▰▰▰▱▱▱▱▱▱  resets ",
+		"claude_code:                limited, resets "+now.Add(72*time.Hour).Local().Format("Jan 2 15:04"),
+		"  Week:                     100% ▰▰▰▰▰▰▰▰▰▰  limited, resets ",
+		"claude_code Fable:          available",
+		"  Week:                     35% ▰▰▰▰▱▱▱▱▱▱  resets ",
+		"antigravity Gemini models:  available",
+		"  Session (5 h):            35% ▰▰▰▰▱▱▱▱▱▱  resets ",
 	)
 	if strings.Contains(text(m), "nothing observed yet") {
 		t.Error("an ACA that told something is shown as silent")

@@ -115,7 +115,7 @@ func (m *Model) statsRows() []valueRow {
 		told[b.Aca] = true
 		heading := valueRow{key: b.Aca, values: []string{api.AvailabilityText(b, now)}, gap: i > 0, paint: m.st.Success}
 		if b.Bucket != "" {
-			heading.key = b.Aca + " " + b.Bucket
+			heading.key = b.Aca + " " + api.UsageBucketLabel(b.Aca, b.Bucket)
 		}
 		if !b.Available {
 			heading.paint = m.st.Failure

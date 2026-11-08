@@ -13,15 +13,20 @@ sidebar:
 ```
 ┬─[● swift-falcon(-)]─[stats(-)]─────────────────────────[⤢]─┐
 
-   claude_code:       available
-     Session (5 h):     54% ▰▰▰▰▰▱▱▱▱▱  resets in 2 h 10 min
-     Week:              51% ▰▰▰▰▰▱▱▱▱▱  resets Nov 12 10:00
-     as of:             16:11
+   claude_code:                available
+     Session (5 h):            54% ▰▰▰▰▰▱▱▱▱▱  resets in 2 h 10 min
+     Week:                     51% ▰▰▰▰▰▱▱▱▱▱  resets Nov 12 10:00
+     as of:                    16:11
 
-   codex:             nothing observed yet
+   antigravity Gemini models:  available
+     Session (5 h):            12% ▰▱▱▱▱▱▱▱▱▱  resets in 4 h 2 min
+     Week:                     30% ▰▰▰▱▱▱▱▱▱▱  resets Nov 13 08:00
+     as of:                    16:09
+
+   codex:                      nothing observed yet
 ```
 
-One block per AI CLI: its line says `available`, or `limited, resets …` in red, then a row per window of its limits with the percentage used, a bar and when it resets, and as of when its agents last told. A window used 100% or more is limited, and the AI CLI can be used only while none of its windows is: a session limit reached closes it until that window resets, even with the week half left, and the other way round.
+One block per AI CLI, and one per bucket of models it limits apart, named after the AI CLI: its line says `available`, or `limited, resets …` in red, then a row per window of its limits with the percentage used, a bar and when it resets, and as of when its agents last told. A window used 100% or more is limited, and the AI CLI can be used only while none of its windows is: a session limit reached closes it until that window resets, even with the week half left, and the other way round.
 
 ## Keys
 
@@ -33,7 +38,8 @@ One block per AI CLI: its line says `available`, or `limited, resets …` in red
 
 ## How it behaves
 
-- **Where the numbers come from.** The AI CLI tells its agents: Claude Code writes its limits to the status line wdx gives every agent, with each answer. wdx reads the file it already keeps for the context size, asks nothing of the AI CLI and types nothing into an agent. Codex, Cursor and Antigravity do not tell it yet.
+- **Where the numbers come from.** The AI CLI tells its agents: Claude Code writes its limits to the status line wdx gives every agent, with each answer. wdx reads the file it already keeps for the context size, asks nothing of the AI CLI and types nothing into an agent.
+- **Every AI CLI** <Since v="0.5.0" />. Antigravity tells its limits in the same status line, a session and a week for each group of models, `Gemini models`, `Claude and GPT models` and `Gemini 4 Argon`, about once a minute while it works; Codex in its session file with each answer, its 5-hour session and week, and limited even at 99% once it refuses a prompt; Cursor only through its API, which the daemon asks with Cursor's own login while a Cursor agent works, at most every 5 minutes, giving the billing month of the included allowance, `Auto` and `API`, in whole percents. More in [Agents](/wdx/docs/guides/agents/).
 - **One account, many agents.** Usage is the account's, so every agent of one AI CLI draws on the same numbers; the tab shows them once, as of the latest answer of any of its agents. An idle AI CLI's numbers are as old as that answer.
 - **Current without a key.** The tab reads again on each change of the project shown, and the time left to a reset counts down by the minute while the tab shows.
 - **Only the fact.** Nothing pauses, resumes or switches model when a limit is reached; the person decides. A window a plan does not have is simply not there, and an account without limits shows `nothing observed yet`.

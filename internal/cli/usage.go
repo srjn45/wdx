@@ -66,7 +66,7 @@ func (l usageList) Text(w io.Writer, st style.Style) {
 		}
 		name := st.Name(b.Aca)
 		if b.Bucket != "" {
-			name = st.Name(b.Aca) + " " + b.Bucket
+			name = st.Name(b.Aca) + " " + api.UsageBucketLabel(b.Aca, b.Bucket)
 		}
 		table.Row(name, availability)
 		table.Row(st.Heading("  WINDOW"), st.Heading("USED"), st.Heading("RESETS"), st.Heading("AS OF"))

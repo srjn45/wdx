@@ -50,6 +50,16 @@ func UsageBuckets(rows []UsageWindow) []UsageBucket {
 // any other window shows its key as given, so a new one appears unnamed, not hidden.
 var usageLabels = map[string]map[string]string{
 	"claude_code": {"five_hour": "Session (5 h)", "seven_day": "Week", "spend_limit": "Spend"},
+	"codex":       {"300m": "Session (5 h)", "10080m": "Week", "43200m": "Month"},
+	"antigravity": {"5h": "Session (5 h)", "weekly": "Week"},
+	"cursor":      {"month": "Month"},
+}
+
+// usageBucketLabels is what a person reads for the buckets wdx knows, by ACA and
+// bucket; any other bucket shows its name as given, as the windows do.
+var usageBucketLabels = map[string]map[string]string{
+	"antigravity": {"gemini": "Gemini models", "3p": "Claude and GPT models", "gemini-argon-wtu": "Gemini 4 Argon"},
+	"cursor":      {"auto": "Auto", "api": "API"},
 }
 
 // UsageLabel is what a person reads for the window of aca: its label when wdx knows
@@ -59,6 +69,15 @@ func UsageLabel(aca, window string) string {
 		return label
 	}
 	return window
+}
+
+// UsageBucketLabel is what a person reads for the bucket of aca: its label when wdx
+// knows the bucket, its name as given otherwise, "" for the one every model draws on.
+func UsageBucketLabel(aca, bucket string) string {
+	if label, ok := usageBucketLabels[aca][bucket]; ok {
+		return label
+	}
+	return bucket
 }
 
 // ResetText says when t comes, as of now, in the local time: in 2 h 10 min under a
