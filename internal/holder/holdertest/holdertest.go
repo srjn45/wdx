@@ -73,7 +73,7 @@ func RunIfHolder() {
 // checks, or at its deadline, not because a process was held back.
 func Limits(t *testing.T) holder.Limits {
 	limit := Patience(t)
-	return holder.Limits{Ready: limit, Dial: limit, Write: limit}
+	return holder.Limits{Ready: limit, Dial: limit, Write: limit, Look: limit}
 }
 
 // Patience is such a limit for any other wait on a process; 0, wdx's own

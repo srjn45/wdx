@@ -255,9 +255,9 @@ func (s *Supervisor) CreateAgent(ctx context.Context, projectID, name, dir strin
 	return s.createRunning(ctx, Terminal{Kind: KindAgent, ProjectID: projectID, Name: name, Dir: dir}, linked, nil)
 }
 
-// lookEditorTimeout bounds looking for the editor through the login shell, which
-// reads the user's profile and rc.
-const lookEditorTimeout = 10 * time.Second
+// lookTimeout bounds looking for a program through the login shell, which reads
+// the user's profile and rc, unless the Look limit says otherwise.
+const lookTimeout = 10 * time.Second
 
 // OpenEditor returns the editor running in the project on path, relative to dir,
 // or starts the one set on it and returns it with created true. One not found
@@ -296,9 +296,9 @@ func (s *Supervisor) OpenEditor(ctx context.Context, projectID, dir, path string
 	return t, err == nil, err
 }
 
-// lookPath is holder.LookPath for at most lookEditorTimeout.
+// lookPath is holder.LookPath for at most the Look limit, or lookTimeout.
 func (s *Supervisor) lookPath(ctx context.Context, shell, dir, program string) error {
-	look, cancel := context.WithTimeout(ctx, lookEditorTimeout)
+	look, cancel := context.WithTimeout(ctx, cmp.Or(s.opts.Limits.Look, lookTimeout))
 	defer cancel()
 	return holder.LookPath(look, shell, dir, s.opts.Env, program)
 }

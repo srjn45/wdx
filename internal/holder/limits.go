@@ -21,8 +21,10 @@ const (
 
 // Limits are those waits, when not the defaults: a test lengthens them so that
 // a loaded machine slows it rather than fails it, or shortens the one it tests.
+// Look is for those who bound LookPath, which reads the user's profile and rc;
+// each has a default of its own.
 type Limits struct {
-	Ready, Dial, Write time.Duration
+	Ready, Dial, Write, Look time.Duration
 }
 
 func (l Limits) orDefaults() Limits {
