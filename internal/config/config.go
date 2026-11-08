@@ -27,7 +27,7 @@ import (
 type Config struct {
 	Home             string
 	NoInput          bool
-	Color            ColorMode
+	Color            style.ColorMode
 	LogLevel         slog.Level
 	LogRetentionDays int
 	OtelEndpoint     string
@@ -64,26 +64,6 @@ type Config struct {
 	From map[string]string
 }
 
-// ColorMode is when text output is colored.
-type ColorMode string
-
-const (
-	ColorAuto   ColorMode = "auto" // when writing to a terminal
-	ColorAlways ColorMode = "always"
-	ColorNever  ColorMode = "never"
-)
-
-// ColorModes is every ColorMode.
-var ColorModes = []ColorMode{ColorAuto, ColorAlways, ColorNever}
-
-// ParseColorMode returns the mode named v.
-func ParseColorMode(v string) (ColorMode, error) {
-	if m := ColorMode(strings.ToLower(v)); slices.Contains(ColorModes, m) {
-		return m, nil
-	}
-	return "", fmt.Errorf("%q is not one of auto, always, never", v)
-}
-
 var logLevels = []string{"debug", "info", "warn", "error"}
 
 // UpdateChannels are the release channels wdx update follows: stable
@@ -91,8 +71,8 @@ var logLevels = []string{"debug", "info", "warn", "error"}
 var UpdateChannels = []string{"stable", "dev"}
 
 func colorChoices() []string {
-	choices := make([]string, 0, len(ColorModes))
-	for _, m := range ColorModes {
+	choices := make([]string, 0, len(style.ColorModes))
+	for _, m := range style.ColorModes {
 		choices = append(choices, string(m))
 	}
 	return choices
@@ -140,7 +120,7 @@ var ownSettings = []settings.Row[Config]{
 		Default:     "auto",
 		Choices:     colorChoices(),
 		Set: func(c *Config, v string) (err error) {
-			c.Color, err = ParseColorMode(v)
+			c.Color, err = style.ParseColorMode(v)
 			return err
 		},
 		Get: func(c Config) string { return string(c.Color) },

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/observe"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -101,7 +102,7 @@ func TestObserveStartAndStop(t *testing.T) {
 	f := newFakeRuntime(t, "docker")
 
 	v, exit := wdxJSONWith(t, home, f.env, "observe", "status")
-	if exit != api.ExitOK || *v.Running || *v.Runtime != "docker" || v.Stack != nil {
+	if exit != clikit.ExitOK || *v.Running || *v.Runtime != "docker" || v.Stack != nil {
 		t.Fatalf("want not running under docker, got %+v", v)
 	}
 
@@ -115,7 +116,7 @@ func TestObserveStartAndStop(t *testing.T) {
 		OTLPEndpoint: fmt.Sprintf("http://localhost:%d", f.ports.OTLP),
 		Logs:         identity.LogsDir(home),
 	}
-	if exit != api.ExitOK || v.Result != "started" || *v.Stack != want || v.DataRemoved != nil {
+	if exit != clikit.ExitOK || v.Result != "started" || *v.Stack != want || v.DataRemoved != nil {
 		t.Fatalf("want started, got %+v", v)
 	}
 	run := f.read(t, "run")
@@ -146,7 +147,7 @@ func TestObserveStartAndStop(t *testing.T) {
 		t.Fatalf("want the image pulled once, got %d times", n)
 	}
 
-	if v, exit = wdxJSONWith(t, home, f.env, "observe", "stop"); exit != api.ExitOK || v.Result != "stopped" || v.Stack != nil || v.DataRemoved != nil {
+	if v, exit = wdxJSONWith(t, home, f.env, "observe", "stop"); exit != clikit.ExitOK || v.Result != "stopped" || v.Stack != nil || v.DataRemoved != nil {
 		t.Fatalf("want stopped, got %+v", v)
 	}
 	if v, _ = wdxJSONWith(t, home, f.env, "observe", "stop"); v.Result != "not_running" {
@@ -171,11 +172,11 @@ func TestObservePodman(t *testing.T) {
 	f.write(t, "logs", identity.LogsDir(home))
 
 	v, exit := wdxJSONWith(t, home, f.env, "observe", "status")
-	if exit != api.ExitOK || *v.Running || v.Stack.Status != "exited" {
+	if exit != clikit.ExitOK || *v.Running || v.Stack.Status != "exited" {
 		t.Fatalf("want a stopped container, got %+v", v)
 	}
 	v, exit = wdxJSONWith(t, home, f.env, "observe", "start")
-	if exit != api.ExitOK || v.Result != "started" || v.Stack.Runtime != "podman" || v.Stack.Status != "running" {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Stack.Runtime != "podman" || v.Stack.Status != "running" {
 		t.Fatalf("want started under podman, got %+v", v)
 	}
 	calls := f.read(t, "calls")
@@ -195,11 +196,11 @@ func TestObserveRuntimeMissing(t *testing.T) {
 	}
 	for _, args := range [][]string{{"observe", "start"}, {"observe", "stop"}} {
 		v, exit := wdxJSONWith(t, home, none, args...)
-		wantError(t, v, exit, api.ErrorCodeRuntimeMissing, api.ExitSystem)
+		wantError(t, v, exit, api.ErrorCodeRuntimeMissing, clikit.ExitSystem)
 		wantHint(t, v, "wdx deps install --name docker, or --name podman")
 	}
 	v, exit := wdxJSONWith(t, home, none, "observe", "status")
-	if exit != api.ExitOK || *v.Running || v.Runtime != nil || v.Stack != nil {
+	if exit != clikit.ExitOK || *v.Running || v.Runtime != nil || v.Stack != nil {
 		t.Fatalf("want not running without a runtime, got %+v", v)
 	}
 }
@@ -220,7 +221,7 @@ func TestObservePortInUse(t *testing.T) {
 		f.env(env)
 		env.ObservePortCheck = nil // this is what is tested: the real one
 	}, "observe", "start")
-	wantError(t, v, exit, api.ErrorCodePortInUse, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePortInUse, clikit.ExitRejected)
 	if port, _ := v.Details["port"].(float64); int(port) != taken {
 		t.Fatalf("want the port in details, got %+v", v.Details)
 	}
@@ -242,7 +243,7 @@ func TestObserveRuntimeFailed(t *testing.T) {
 		f.write(t, "fail", tc.output+"\n")
 		for _, args := range [][]string{{"observe", "start"}, {"observe", "stop"}, {"observe", "status"}} {
 			v, exit := wdxJSONWith(t, home, f.env, args...)
-			wantError(t, v, exit, api.ErrorCodeRuntimeFailed, api.ExitSystem)
+			wantError(t, v, exit, api.ErrorCodeRuntimeFailed, clikit.ExitSystem)
 			if !strings.Contains(v.Detail, tc.output) || v.Details["output"] != tc.output {
 				t.Fatalf("%s %v: want the runtime's output, got %+v", tc.runtime, args, v)
 			}
@@ -257,7 +258,7 @@ func TestObserveStackStopsWhileStarting(t *testing.T) {
 	f := newFakeRuntime(t, "docker")
 	f.write(t, "crash", "otelcol: invalid configuration\n")
 	v, exit := wdxJSONWith(t, home, f.env, "observe", "start")
-	wantError(t, v, exit, api.ErrorCodeRuntimeFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeRuntimeFailed, clikit.ExitSystem)
 	if !strings.Contains(v.Detail, "the container stopped while starting") || v.Details["output"] != "otelcol: invalid configuration" {
 		t.Fatalf("want the container's last output, got %+v", v)
 	}
@@ -268,7 +269,7 @@ func TestObserveText(t *testing.T) {
 	home := shortHome(t)
 	f := newFakeRuntime(t, "docker")
 	out := wdxWith(t, home, f.env, "observe", "start")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, fmt.Sprintf("observability stack started: open http://localhost:%d\n", f.ports.Grafana)) || !strings.Contains(out.stderr, "pulling "+observe.Image) {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, fmt.Sprintf("observability stack started: open http://localhost:%d\n", f.ports.Grafana)) || !strings.Contains(out.stderr, "pulling "+observe.Image) {
 		t.Fatalf("unexpected start: %+v", out)
 	}
 	if out = wdxWith(t, home, f.env, "observe", "status"); !strings.HasPrefix(out.stdout, "observability stack running") || !strings.Contains(out.stdout, "  logs:    "+identity.LogsDir(home)) {

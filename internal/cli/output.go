@@ -3,37 +3,19 @@ package cli
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-
-	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/settings"
-	"github.com/srjn45/wdx/internal/style"
 )
-
-// result is what a command prints on success: the daemon's body as JSON, or
-// text styled by st.
-type result interface {
-	text(w io.Writer, st style.Style)
-}
 
 func deref(s *string) string {
 	if s == nil {
 		return ""
 	}
 	return *s
-}
-
-// label is name on the first line of a list and blank on the others.
-func label(i int, name string) string {
-	if i > 0 {
-		return ""
-	}
-	return name
 }
 
 // The results of the commands that do not go through the API, whose
@@ -60,81 +42,56 @@ const (
 	reloadNotApplied = "not_applied"
 )
 
-// printResult writes r to stdout as JSON or as text.
-func printResult(cmd *cobra.Command, r result) error {
-	invocationOf(cmd).response = r
-	if jsonMode(cmd) {
-		return writeJSON(cmd.OutOrStdout(), r)
-	}
-	r.text(cmd.OutOrStdout(), stdoutStyle(cmd))
-	return nil
-}
-
-func writeJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
-}
-
-func jsonMode(cmd *cobra.Command) bool {
-	on, _ := cmd.Flags().GetBool("json")
-	return on
-}
-
-// usageError is a command line that cannot run as given.
-type usageError struct {
-	err error
-}
-
-func (e *usageError) Error() string { return e.err.Error() }
-func (e *usageError) Unwrap() error { return e.err }
-
-// hinted adds a hint telling the user what to do about err.
-type hinted struct {
-	err  error
-	hint string
-}
-
-func (e *hinted) Error() string { return e.err.Error() }
-func (e *hinted) Unwrap() error { return e.err }
-
-// problem returns err as the problem a command reports, and the exit code.
-// The daemon's problems pass through; the CLI adds its hints.
-func problem(err error) (api.Problem, int) {
-	var p api.Problem
-	if e, ok := errors.AsType[*client.ProblemError](err); ok {
-		p = e.Problem
-	} else if _, ok := errors.AsType[*usageError](err); ok {
-		p = api.NewProblem(api.ErrorCodeUsage, err.Error())
-	} else if dp, ok := daemonProblem(err); ok {
-		p = dp
-	} else if tp, ok := tideProblem(err); ok {
-		p = tp
-	} else if op, ok := observeProblem(err); ok {
-		p = op
-	} else if ap, ok := attachProblem(err); ok {
-		p = ap
-	} else if e, ok := errors.AsType[*settings.Error](err); ok {
-		p = settingsProblem(e)
-	} else if ip, ok := depsProblem(err); ok {
-		p = ip
-	} else if up, ok := updateProblem(err); ok {
-		p = up
-	} else if unavailable(err) {
-		p = api.NewProblem(api.ErrorCodeDaemonUnavailable, err.Error())
-		hint := "run " + identity.Name + " daemon start"
-		p.Hint = &hint
-	} else {
-		p = api.NewProblem(api.ErrorCodeInternal, err.Error())
-	}
-	if h, ok := errors.AsType[*hinted](err); ok {
-		p.Hint = &h.hint
+// problem returns err as the problem wdx reports, when it is one of wdx's
+// own errors: the daemon's problems pass through, and the CLI adds its hints.
+// A settings error is left to the framework, in the order wdx has always
+// mapped them.
+func problem(err error) (clikit.Problem, bool) {
+	p, ok := apiProblem(err)
+	if !ok {
+		return clikit.Problem{}, false
 	}
 	if dep, ok := missingDependency(p); ok && p.Hint == nil {
 		hint := "run " + identity.Name + " deps install --name " + dep
 		p.Hint = &hint
 	}
-	return p, api.Codes[p.Code].Exit
+	q := toProblem(p)
+	q.Lines = problemLines(p, err)
+	return q, true
+}
+
+func apiProblem(err error) (api.Problem, bool) {
+	if e, ok := errors.AsType[*client.ProblemError](err); ok {
+		return e.Problem, true
+	}
+	for _, mapper := range []func(error) (api.Problem, bool){daemonProblem, tideProblem, observeProblem, attachProblem} {
+		if p, ok := mapper(err); ok {
+			return p, true
+		}
+	}
+	if _, ok := errors.AsType[*settings.Error](err); ok {
+		return api.Problem{}, false
+	}
+	for _, mapper := range []func(error) (api.Problem, bool){depsProblem, updateProblem} {
+		if p, ok := mapper(err); ok {
+			return p, true
+		}
+	}
+	if unavailable(err) {
+		p := api.NewProblem(api.ErrorCodeDaemonUnavailable, err.Error())
+		hint := "run " + identity.Name + " daemon start"
+		p.Hint = &hint
+		return p, true
+	}
+	return api.Problem{}, false
+}
+
+// toProblem is p as the framework reports it.
+func toProblem(p api.Problem) clikit.Problem {
+	return clikit.Problem{
+		Code: string(p.Code), DebugId: p.DebugId, Detail: p.Detail, Details: p.Details,
+		Hint: p.Hint, Status: p.Status, Title: p.Title, Type: p.Type,
+	}
 }
 
 // missingDependency returns the dependency a dependency_missing problem
@@ -178,14 +135,6 @@ func detailProject(p api.Problem, key string) (api.Project, bool) {
 func unavailable(err error) bool {
 	_, ok := errors.AsType[*client.UnavailableError](err)
 	return ok
-}
-
-// fieldPrinter returns a func that writes an indented line of a name,
-// padded to width, and its value.
-func fieldPrinter(w io.Writer, st style.Style, width int) func(name, value string) {
-	return func(name, value string) {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-*s", width, name)), value)
-	}
 }
 
 func ptr[T any](v T) *T {

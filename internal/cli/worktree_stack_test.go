@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
 )
@@ -16,7 +17,7 @@ import (
 func stackedOn(t *testing.T, home, dir, parent, name string) string {
 	t.Helper()
 	v, exit := wdxJSONWith(t, home, in(dir), "plan", "status", "--name", parent)
-	if exit != api.ExitOK || v.Definition == nil || v.Definition.Plans == nil {
+	if exit != clikit.ExitOK || v.Definition == nil || v.Definition.Plans == nil {
 		t.Fatalf("status of %s: exit %d, %+v", parent, exit, v)
 	}
 	for _, c := range *v.Definition.Plans {
@@ -41,13 +42,13 @@ func TestWorktreeRebaseStacked(t *testing.T) {
 	gittest.Git(t, repo, "init", "-q", "--bare", origin)
 	gittest.Git(t, repo, "remote", "add", "origin", origin)
 	gittest.Git(t, repo, "push", "-q", "origin", "main")
-	if v, exit := wdxJSON(t, home, "project", "landing", "--name", "app", "--no-check"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "landing", "--name", "app", "--no-check"); exit != clikit.ExitOK {
 		t.Fatalf("landing: exit %d, %+v", exit, v)
 	}
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: s\n    prompt: p\n")
 	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: u\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\npr: true\nstacked: true\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n")
-	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big"); exit != clikit.ExitOK {
 		t.Fatalf("run: exit %d, %+v", exit, v)
 	}
 	if !eventually(t, func() bool {
@@ -72,13 +73,13 @@ func TestWorktreeRebaseStacked(t *testing.T) {
 	commitFile(t, sso, "fix", "review\n")
 	gittest.Git(t, sso, "push", "-q", "origin", "plan/sso")
 	v, exit := wdxRebase(t, home, repo, "ui-1")
-	if exit != api.ExitOK || v.Result != api.ResultRebased || v.Base != "plan/sso" || !v.Pushed {
+	if exit != clikit.ExitOK || v.Result != api.ResultRebased || v.Base != "plan/sso" || !v.Pushed {
 		t.Fatalf("not merged: exit %d, %+v", exit, v)
 	}
 	if revParse(t, ui, "HEAD^") != revParse(t, repo, "plan/sso") {
 		t.Error("not merged: ui does not sit on sso's fix")
 	}
-	if v, exit := wdxRebase(t, home, repo, "ui-1"); exit != api.ExitOK || v.Result != api.ResultUpToDate {
+	if v, exit := wdxRebase(t, home, repo, "ui-1"); exit != clikit.ExitOK || v.Result != api.ResultUpToDate {
 		t.Errorf("again: exit %d, %+v", exit, v)
 	}
 
@@ -90,14 +91,14 @@ func TestWorktreeRebaseStacked(t *testing.T) {
 	gittest.Git(t, other, "push", "-q", "origin", "main")
 	fake.SetMergedOf(t, "plan/sso", revParse(t, repo, "plan/sso"), revParse(t, other, "HEAD"))
 	v, exit = wdxRebase(t, home, repo, "ui-1")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeBaseNotPulled || v.Hint == nil || *v.Hint != "pull main: sso's PR is merged on GitHub" {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeBaseNotPulled || v.Hint == nil || *v.Hint != "pull main: sso's PR is merged on GitHub" {
 		t.Fatalf("not pulled: exit %d, %+v", exit, v)
 	}
 
 	// Pulled: only ui's commit goes onto main, and its PR with it.
 	gittest.Git(t, repo, "pull", "-q", "--ff-only", "origin", "main")
 	v, exit = wdxRebase(t, home, repo, "ui-1")
-	if exit != api.ExitOK || v.Result != api.ResultRebased || v.Base != "main" || !v.Pushed {
+	if exit != clikit.ExitOK || v.Result != api.ResultRebased || v.Base != "main" || !v.Pushed {
 		t.Fatalf("merged: exit %d, %+v", exit, v)
 	}
 	if revParse(t, ui, "HEAD^") != revParse(t, repo, "main") {
@@ -112,7 +113,7 @@ func TestWorktreeRebaseStacked(t *testing.T) {
 	if w := worktreeOf(t, home, repo, "ui-1"); w.Base == nil || *w.Base != "main" || w.Ahead == nil || *w.Ahead != 1 {
 		t.Errorf("ui's worktree is not measured against main: %+v", w)
 	}
-	if v, exit := wdxRebase(t, home, repo, "ui-1"); exit != api.ExitOK || v.Result != api.ResultUpToDate || v.Base != "main" {
+	if v, exit := wdxRebase(t, home, repo, "ui-1"); exit != clikit.ExitOK || v.Result != api.ResultUpToDate || v.Base != "main" {
 		t.Errorf("again on main: exit %d, %+v", exit, v)
 	}
 }
@@ -122,7 +123,7 @@ func worktreeOf(t *testing.T, home, dir, name string) api.WorktreeStatus {
 	t.Helper()
 	v, exit := wdxWorktree(t, home, dir, "list")
 	i := slices.IndexFunc(v.Worktrees, func(s api.WorktreeStatus) bool { return s.Name == name })
-	if exit != api.ExitOK || i < 0 {
+	if exit != clikit.ExitOK || i < 0 {
 		t.Fatalf("no worktree %s: exit %d, %+v", name, exit, v)
 	}
 	return v.Worktrees[i]

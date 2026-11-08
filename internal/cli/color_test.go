@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
-	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 const esc = "\x1b["
@@ -15,11 +16,11 @@ func TestColorAlways(t *testing.T) {
 	home := newHome(t)
 	newProject(t, home, "app")
 	out := wdx(t, home, "project", "list", "--color", "always")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "\x1b[1mapp\x1b[0m") || !strings.Contains(out.stdout, "\x1b[1;32mopen\x1b[0m") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\x1b[1mapp\x1b[0m") || !strings.Contains(out.stdout, "\x1b[1;32mopen\x1b[0m") {
 		t.Fatalf("want colored text, got %q", out.stdout)
 	}
 	out = wdx(t, home, "project", "get", "--name", "nope", "--color", "always")
-	if out.exit != api.ExitRejected || !strings.HasPrefix(out.stderr, "\x1b[1;31mwdx:\x1b[0m project not found") || !strings.Contains(out.stderr, "\x1b[1;31m[not_found]\x1b[0m") {
+	if out.exit != clikit.ExitRejected || !strings.HasPrefix(out.stderr, "\x1b[1;31mwdx:\x1b[0m project not found") || !strings.Contains(out.stderr, "\x1b[1;31m[not_found]\x1b[0m") {
 		t.Fatalf("want a colored error, got %q", out.stderr)
 	}
 }
@@ -43,25 +44,25 @@ func TestColorSources(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	for _, tc := range []struct {
-		setting config.ColorMode
+		setting style.ColorMode
 		noColor bool
 		args    []string
 		want    bool
 	}{
 		// The test's streams are not terminals.
-		{config.ColorAuto, false, nil, false},
-		{config.ColorAlways, false, nil, true},
-		{config.ColorAlways, true, nil, true},
-		{config.ColorAuto, true, []string{"--color", "always"}, true},
-		{config.ColorAlways, false, []string{"--color", "never"}, false},
-		{config.ColorNever, false, []string{"--color", "auto"}, false},
+		{style.ColorAuto, false, nil, false},
+		{style.ColorAlways, false, nil, true},
+		{style.ColorAlways, true, nil, true},
+		{style.ColorAuto, true, []string{"--color", "always"}, true},
+		{style.ColorAlways, false, []string{"--color", "never"}, false},
+		{style.ColorNever, false, []string{"--color", "auto"}, false},
 	} {
 		args := append([]string{"version"}, tc.args...)
 		out := wdxWith(t, home, func(env *Env) {
 			env.Config.Color = tc.setting
 			env.NoColor = tc.noColor
 		}, args...)
-		if got := strings.Contains(out.stdout, esc); out.exit != api.ExitOK || got != tc.want {
+		if got := strings.Contains(out.stdout, esc); out.exit != clikit.ExitOK || got != tc.want {
 			t.Errorf("color %s, NoColor %v, %v: want colored %v, got %q", tc.setting, tc.noColor, tc.args, tc.want, out.stdout)
 		}
 	}
@@ -70,7 +71,7 @@ func TestColorSources(t *testing.T) {
 func TestColorInvalid(t *testing.T) {
 	t.Parallel()
 	v, exit := wdxJSON(t, t.TempDir(), "version", "--color", "purple")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	if !strings.Contains(v.Detail, `"purple" is not one of auto, always, never`) {
 		t.Fatalf("unexpected error %+v", v)
 	}
@@ -85,7 +86,7 @@ func TestUnknownCommandSuggestion(t *testing.T) {
 		"project zzzzzz": "see 'wdx project --help'",
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), strings.Fields(args)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 		if v.Hint == nil || *v.Hint != hint {
 			t.Errorf("%s: want hint %q, got %+v", args, hint, v)
 		}

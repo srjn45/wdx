@@ -68,7 +68,7 @@ func TestDailyFileRollsOverAtMidnight(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
 	c := &clock{t: day("2026-10-27 23:59:59")}
-	f := NewDailyFile(dir, 7, c.now)
+	f := NewDailyFile(dir, "wdx", 7, c.now)
 	defer f.Close()
 
 	fmt.Fprintln(f, "one")
@@ -91,7 +91,7 @@ func TestDailyFileAppends(t *testing.T) {
 	dir := t.TempDir()
 	c := &clock{t: day("2026-10-27 10:00:00")}
 	for _, line := range []string{"one", "two"} {
-		f := NewDailyFile(dir, 7, c.now)
+		f := NewDailyFile(dir, "wdx", 7, c.now)
 		fmt.Fprintln(f, line)
 		f.Close()
 	}
@@ -118,7 +118,7 @@ func TestDailyFileDeletesOldFiles(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "wdx-2026-01-02.log"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	f := NewDailyFile(dir, 7, (&clock{t: day("2026-10-27 10:00:00")}).now)
+	f := NewDailyFile(dir, "wdx", 7, (&clock{t: day("2026-10-27 10:00:00")}).now)
 	fmt.Fprintln(f, "x")
 	f.Close()
 
@@ -142,7 +142,7 @@ func TestDailyFileDiscardsWhenUnwritable(t *testing.T) {
 	if err := os.WriteFile(dir, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := NewDailyFile(filepath.Join(dir, "logs"), 7, time.Now)
+	f := NewDailyFile(filepath.Join(dir, "logs"), "wdx", 7, time.Now)
 	if n, err := f.Write([]byte("x\n")); n != 2 || err != nil {
 		t.Fatalf("want the write discarded, got %d, %v", n, err)
 	}
@@ -159,7 +159,7 @@ func TestConcurrentWriters(t *testing.T) {
 	const writers, lines = 4, 50
 	var wg sync.WaitGroup
 	for range 2 {
-		f := NewDailyFile(dir, 7, time.Now)
+		f := NewDailyFile(dir, "wdx", 7, time.Now)
 		defer f.Close()
 		log := New(f, slog.LevelInfo)
 		for w := range writers {
@@ -254,13 +254,13 @@ func TestSetRetentionDays(t *testing.T) {
 	today := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	var mu sync.Mutex
 	now := today
-	f := NewDailyFile(dir, 7, func() time.Time {
+	f := NewDailyFile(dir, "wdx", 7, func() time.Time {
 		mu.Lock()
 		defer mu.Unlock()
 		return now
 	})
 	defer f.Close()
-	old := filepath.Join(dir, filePrefix+today.AddDate(0, 0, -3).Format(time.DateOnly)+fileSuffix)
+	old := filepath.Join(dir, "wdx-"+today.AddDate(0, 0, -3).Format(time.DateOnly)+fileSuffix)
 	if err := os.WriteFile(old, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}

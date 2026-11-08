@@ -65,7 +65,7 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	dbtest.Seed(t, identity.DBPath(home))
 	td := &testDaemon{home: home, socket: socketPath(t)}
 	logtest.OnFailure(t, home) // registered first, so it runs once the daemon stopped
-	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
+	logs := logging.NewDailyFile(identity.LogsDir(home), identity.Name, 7, time.Now)
 	ctx, cancel := context.WithCancel(context.Background())
 	exe, err := os.Executable()
 	if err != nil {

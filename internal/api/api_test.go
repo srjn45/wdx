@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/srjn45/wdx/internal/clikit"
 )
 
 func TestGeneratedCodeIsCurrent(t *testing.T) {
@@ -54,7 +56,7 @@ func TestEveryCodeDescribed(t *testing.T) {
 	}
 	for _, code := range enum {
 		info, ok := Codes[ErrorCode(code.(string))]
-		if !ok || info.Description == "" || info.Status < 400 || info.Exit < ExitRejected || info.Exit > ExitSystem {
+		if !ok || info.Description == "" || info.Status < 400 || info.Exit < clikit.ExitRejected || info.Exit > clikit.ExitSystem {
 			t.Errorf("code %s: incomplete %+v", code, info)
 		}
 	}

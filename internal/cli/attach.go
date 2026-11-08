@@ -18,7 +18,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/srjn45/wdx/internal/api"
-	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -316,7 +315,7 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 func viewStyle(cmd *cobra.Command) style.Style {
 	env := invocationOf(cmd).env
 	mode := colorMode(cmd, env)
-	return style.New(mode == config.ColorAlways || mode == config.ColorAuto && !env.NoColor)
+	return style.New(mode == style.ColorAlways || mode == style.ColorAuto && !env.NoColor)
 }
 
 // waitRecorded returns the target once the daemon has recorded the exit the

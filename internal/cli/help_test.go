@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -9,61 +8,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
-
-// TestExamples checks every example is a command line its command accepts:
-// it names the command, and its flags parse and follow the command's rules.
-func TestExamples(t *testing.T) {
-	t.Parallel()
-	var check func(cmd *cobra.Command)
-	check = func(cmd *cobra.Command) {
-		for _, e := range parseExamples(cmd.Example) {
-			c, err := checkCommandLine(e.Command)
-			switch {
-			case err != nil:
-				t.Errorf("%s: example %q: %v", cmd.CommandPath(), e.Command, err)
-			case c.CommandPath() != cmd.CommandPath():
-				t.Errorf("%s: example %q runs %v", cmd.CommandPath(), e.Command, c.CommandPath())
-			}
-		}
-		for _, sub := range cmd.Commands() {
-			if sub.IsAvailableCommand() {
-				check(sub)
-			}
-		}
-	}
-	check(newRoot(config.Default()))
-}
-
-// checkCommandLine returns the command line names, and an error unless it is one
-// that command accepts: free of shell quoting, with flags that parse and follow
-// its rules.
-func checkCommandLine(line string) (*cobra.Command, error) {
-	if strings.ContainsAny(line, `'"\`) {
-		return nil, errors.New("it quotes; keep command lines free of shell quoting")
-	}
-	args := strings.Fields(line)
-	// A fresh tree, since parsing sets the flags.
-	c, rest, err := newRoot(config.Default()).Find(args[1:])
-	if err != nil {
-		return nil, err
-	}
-	for _, validate := range []func() error{
-		func() error { return c.ParseFlags(rest) },
-		func() error { return c.ValidateArgs(c.Flags().Args()) },
-		c.ValidateRequiredFlags,
-		c.ValidateFlagGroups,
-		func() error { return checkJSONRequires(c) },
-	} {
-		if err := validate(); err != nil {
-			return c, err
-		}
-	}
-	return c, nil
-}
 
 // TestAgentsTopicCommands checks every command line of wdx help agents, the lines
 // indented by four spaces, names a command and is one it accepts, as TestExamples
@@ -97,7 +47,7 @@ func TestHelpTopicJSON(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"json", "settings", "logs", "agents", "plans"} {
 		v, exit := wdxJSON(t, t.TempDir(), "help", name)
-		if exit != api.ExitOK || v.Topic == nil || v.Topic.Name != name || v.Topic.Text == "" || (v.Topic.Settings != nil) != (name == "settings") {
+		if exit != clikit.ExitOK || v.Topic == nil || v.Topic.Name != name || v.Topic.Text == "" || (v.Topic.Settings != nil) != (name == "settings") {
 			t.Fatalf("%s: unexpected topic %+v", name, v.Topic)
 		}
 	}
@@ -124,7 +74,7 @@ func TestHelpUnknown(t *testing.T) {
 		"help project zzzzzz": "see 'wdx --help'",
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), strings.Fields(args)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 		if v.Hint == nil || *v.Hint != hint {
 			t.Errorf("%s: want hint %q, got %+v", args, hint, v)
 		}
@@ -146,40 +96,7 @@ func TestHelpColor(t *testing.T) {
 	}
 }
 
-func TestRuleLines(t *testing.T) {
+func TestExamples(t *testing.T) {
 	t.Parallel()
-	git := "git"
-	for _, tc := range []struct {
-		rules []flagRule
-		want  []string
-	}{
-		{nil, nil},
-		{
-			[]flagRule{{Rule: "required", Flags: []string{"name"}}, {Rule: "exclusive", Flags: []string{"open", "cancel"}}, {Rule: "one_required_with_json", Flags: []string{"open", "cancel"}}},
-			[]string{"--name is required", "at most one of --open, --cancel", "with --json: one of --open, --cancel"},
-		},
-		{
-			[]flagRule{{Rule: "one_required", Flags: []string{"id", "name"}}, {Rule: "exclusive", Flags: []string{"id", "name"}}},
-			[]string{"exactly one of --id, --name"},
-		},
-		{
-			[]flagRule{
-				{Rule: "one_required", Flags: []string{"local", "git"}},
-				{Rule: "exclusive", Flags: []string{"local", "git"}},
-				{Rule: "exclusive", Flags: []string{"reclone", "remove"}},
-				{Rule: "exclusive", Flags: []string{"local", "reclone"}},
-				{Rule: "exclusive", Flags: []string{"local", "remove"}},
-				{Rule: "one_required_with_json", Flags: []string{"reclone", "remove"}, When: &git},
-			},
-			[]string{"exactly one of --local, --git", "--reclone: not with --local, --remove", "--remove: not with --local, --reclone", "with --json and --git: one of --reclone, --remove"},
-		},
-		{
-			[]flagRule{{Rule: "one_required", Flags: []string{"a", "b"}}, {Rule: "together", Flags: []string{"c", "d"}}},
-			[]string{"at least one of --a, --b", "all or none of --c, --d"},
-		},
-	} {
-		if got := ruleLines(style.New(false), tc.rules); !slices.Equal(got, tc.want) {
-			t.Errorf("%+v:\ngot  %q\nwant %q", tc.rules, got, tc.want)
-		}
-	}
+	clikittest.CheckExamples(t, func() *cobra.Command { return newRoot(config.Default()) })
 }

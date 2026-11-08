@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 )
 
 // referenceDir is where the pages go, relative to the repository's root. sitegen
@@ -304,7 +305,7 @@ func cliIndex(root command, tops []command) string {
 	b.WriteString(flagTable(root.Flags))
 	b.WriteString("\n## Exit codes\n\n| Exit | Meaning |\n|---|---|\n")
 	fmt.Fprintf(&b, "| %d | ok |\n| %d | rejected: a conflict, not found or cancelled |\n| %d | usage: the command line or a setting is invalid |\n| %d | system: an unexpected failure |\n",
-		api.ExitOK, api.ExitRejected, api.ExitUsage, api.ExitSystem)
+		clikit.ExitOK, clikit.ExitRejected, clikit.ExitUsage, clikit.ExitSystem)
 	b.WriteString("\nEach command lists the error codes it can return; [Errors and exit codes](/wdx/docs/reference/errors/) lists them all. With `--json`, see [JSON output](/wdx/docs/reference/json/).\n")
 	return b.String()
 }

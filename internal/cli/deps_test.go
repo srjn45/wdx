@@ -13,6 +13,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/deps"
 )
 
@@ -52,7 +53,7 @@ func TestDepsList(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	v, exit := wdxJSONWith(t, home, ubuntu, "deps", "list")
-	if exit != api.ExitOK || v.System == nil || v.System.OS != "linux" || *v.System.Distribution != "ubuntu" || *v.System.PackageManager != "apt" || *v.System.Session != "wayland" {
+	if exit != clikit.ExitOK || v.System == nil || v.System.OS != "linux" || *v.System.Distribution != "ubuntu" || *v.System.PackageManager != "apt" || *v.System.Session != "wayland" {
 		t.Fatalf("exit %d, system %+v", exit, v.System)
 	}
 	want := []struct{ name, status, program string }{
@@ -192,7 +193,7 @@ func TestDepsInstall(t *testing.T) {
 	m := newMachine("git")
 	m.noPassword = true
 	v, exit := wdxJSONWith(t, home, m.env, "deps", "install", "--name", "clipboard", "--yes")
-	if exit != api.ExitOK || v.Result != "installed" {
+	if exit != clikit.ExitOK || v.Result != "installed" {
 		t.Fatalf("exit %d, %+v", exit, v)
 	}
 	// Without a terminal sudo must not ask.
@@ -203,7 +204,7 @@ func TestDepsInstall(t *testing.T) {
 	// Ready: nothing runs.
 	m.ran = nil
 	v, exit = wdxJSONWith(t, home, m.env, "deps", "install", "--name", "clipboard", "--yes")
-	if exit != api.ExitOK || v.Result != "ready" || len(m.ran) != 0 {
+	if exit != clikit.ExitOK || v.Result != "ready" || len(m.ran) != 0 {
 		t.Fatalf("exit %d, %+v, ran %q", exit, v, m.ran)
 	}
 }
@@ -213,7 +214,7 @@ func TestDepsInstallPrompt(t *testing.T) {
 	home := newHome(t)
 	m := newMachine()
 	out := wdxWith(t, home, func(env *Env) { m.env(env); answering(t, "y")(env) }, "deps", "install", "--name", "git")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "git installed") || !strings.Contains(out.stderr, "run them? [y/N]") || !strings.Contains(out.stderr, "sudo apt-get install -y git") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "git installed") || !strings.Contains(out.stderr, "run them? [y/N]") || !strings.Contains(out.stderr, "sudo apt-get install -y git") {
 		t.Fatalf("%+v", out)
 	}
 	// On a terminal sudo asks for the password itself.
@@ -224,13 +225,13 @@ func TestDepsInstallPrompt(t *testing.T) {
 	// --yes on a terminal runs them without asking; sudo still may.
 	m = newMachine()
 	out = wdxWith(t, home, func(env *Env) { m.env(env); answering(t)(env) }, "deps", "install", "--name", "git", "--yes")
-	if out.exit != api.ExitOK || strings.Contains(out.stderr, "run them?") || len(m.ran) != 2 || m.ran[1] != "sudo apt-get install -y git" {
+	if out.exit != clikit.ExitOK || strings.Contains(out.stderr, "run them?") || len(m.ran) != 2 || m.ran[1] != "sudo apt-get install -y git" {
 		t.Fatalf("--yes: %+v, ran %q", out, m.ran)
 	}
 
 	m = newMachine()
 	out = wdxWith(t, home, func(env *Env) { m.env(env); answering(t, "n")(env) }, "deps", "install", "--name", "docker")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "[cancelled]") || !strings.Contains(out.stderr, "install it yourself: sudo apt-get update && sudo apt-get install -y docker.io && sudo usermod -aG docker") || len(m.ran) != 0 {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "[cancelled]") || !strings.Contains(out.stderr, "install it yourself: sudo apt-get update && sudo apt-get install -y docker.io && sudo usermod -aG docker") || len(m.ran) != 0 {
 		t.Fatalf("no: %+v, ran %q", out, m.ran)
 	}
 }
@@ -242,7 +243,7 @@ func TestDepsInstallFails(t *testing.T) {
 	// sudo needs a password and there is no terminal: the commands are given.
 	m := newMachine()
 	v, exit := wdxJSONWith(t, home, m.env, "deps", "install", "--name", "git", "--yes")
-	wantError(t, v, exit, api.ErrorCodePrivilegesRequired, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePrivilegesRequired, clikit.ExitRejected)
 	if v.Hint == nil || *v.Hint != "install it yourself: sudo apt-get update && sudo apt-get install -y git" || v.Details["install"] == nil || len(m.ran) != 0 {
 		t.Fatalf("%+v, ran %q", v, m.ran)
 	}
@@ -251,7 +252,7 @@ func TestDepsInstallFails(t *testing.T) {
 	m = newMachine()
 	m.noPassword, m.fails = true, "install -y podman"
 	v, exit = wdxJSONWith(t, home, m.env, "deps", "install", "--name", "podman", "--yes")
-	wantError(t, v, exit, api.ErrorCodeInstallFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeInstallFailed, clikit.ExitSystem)
 	if !strings.Contains(v.Detail, "sudo -n apt-get install -y podman failed: exit status 100") || !strings.Contains(fmt.Sprint(v.Details["output"]), "Unable to locate package podman") || v.Hint == nil {
 		t.Fatalf("%+v", v)
 	}
@@ -260,7 +261,7 @@ func TestDepsInstallFails(t *testing.T) {
 	m = newMachine()
 	m.distrib = "fedora"
 	v, exit = wdxJSONWith(t, home, m.env, "deps", "install", "--name", "git", "--yes")
-	wantError(t, v, exit, api.ErrorCodeUnsupportedSystem, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeUnsupportedSystem, clikit.ExitRejected)
 	if v.Hint == nil || !strings.Contains(*v.Hint, "package manager") {
 		t.Fatalf("%+v", v)
 	}
@@ -268,7 +269,7 @@ func TestDepsInstallFails(t *testing.T) {
 	// --json needs --yes; a name must be one wdx knows.
 	for _, args := range [][]string{{"--name", "git"}, {"--name", "micro", "--yes"}} {
 		v, exit = wdxJSONWith(t, home, newMachine().env, append([]string{"deps", "install"}, args...)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 }
 
@@ -276,8 +277,8 @@ func TestDependencyMissingHint(t *testing.T) {
 	t.Parallel()
 	missing := api.NewProblem(api.ErrorCodeDependencyMissing, "git is not installed")
 	missing.Details = &map[string]any{"dependency": "git"}
-	p, exit := problem(&client.ProblemError{Problem: missing})
-	if exit != api.ExitSystem || p.Hint == nil || *p.Hint != "run wdx deps install --name git" {
-		t.Fatalf("exit %d, %+v", exit, p)
+	p, ok := problem(&client.ProblemError{Problem: missing})
+	if !ok || p.Code != string(api.ErrorCodeDependencyMissing) || p.Hint == nil || *p.Hint != "run wdx deps install --name git" {
+		t.Fatalf("mapped %v, %+v", ok, p)
 	}
 }

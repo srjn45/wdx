@@ -2,18 +2,13 @@ package cli
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -27,6 +22,8 @@ import (
 	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db/dbtest"
@@ -163,7 +160,7 @@ func newHomeOf(t *testing.T, script string, acas []aca.AiCodingAgent) string {
 	if err := runtest.WriteExecutable(shell, script); err != nil {
 		t.Fatal(err)
 	}
-	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
+	logs := logging.NewDailyFile(identity.LogsDir(home), identity.Name, 7, time.Now)
 	log := logging.New(logs, slog.LevelDebug).With("process", "daemon")
 	ctx, stop := context.WithCancel(context.Background())
 	d, err := daemon.Listen(ctx, daemon.Options{
@@ -257,237 +254,6 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	wantLogged(t, home, args, out)
 	return out
 }
-
-type logLine struct {
-	Time     string          `json:"time"`
-	Level    string          `json:"level"`
-	Msg      string          `json:"msg"`
-	DebugID  string          `json:"debug_id"`
-	Process  string          `json:"process"`
-	Pid      int             `json:"pid"`
-	Args     json.RawMessage `json:"args"` // a command's arguments, or SQL's
-	Path     string          `json:"path"`
-	Exit     *int            `json:"exit"`
-	Code     string          `json:"code"`
-	Response json.RawMessage `json:"response"`
-}
-
-// logsRead holds, by home, the log lines parsed so far: every run of wdx in a
-// test reads its home's logs, which parsed whole each time cost more the longer
-// the test.
-var logsRead sync.Map
-
-// logFile is what has been parsed of one log file.
-type logFile struct {
-	read  int64
-	lines []logLine
-}
-
-// homeLogs is what has been parsed of a home's log files, by path.
-type homeLogs struct {
-	mu    sync.Mutex
-	files map[string]*logFile
-}
-
-// logLines reads the lines logged in home, checking each as it first comes.
-func logLines(t *testing.T, home string, args []string) []logLine {
-	t.Helper()
-	files, err := filepath.Glob(filepath.Join(home, "logs", "wdx-*.log"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("%v: no log file in %s", args, home)
-	}
-	cached, known := logsRead.LoadOrStore(home, &homeLogs{files: map[string]*logFile{}})
-	if !known {
-		t.Cleanup(func() { logsRead.Delete(home) })
-	}
-	logs := cached.(*homeLogs)
-	logs.mu.Lock()
-	defer logs.mu.Unlock()
-	var lines []logLine
-	for _, path := range files {
-		f := logs.files[path]
-		if f == nil {
-			f = &logFile{}
-			logs.files[path] = f
-		}
-		f.readMore(t, path, args)
-		lines = append(lines, f.lines...)
-	}
-	return lines
-}
-
-// readMore parses the lines added whole to the log file at path since the
-// last read. A line still being written is left for the next read: a read can
-// see part of a write, as when the line crosses a page.
-func (f *logFile) readMore(t *testing.T, path string, args []string) {
-	t.Helper()
-	file, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	if _, err := file.Seek(f.read, io.SeekStart); err != nil {
-		t.Fatal(err)
-	}
-	b, err := io.ReadAll(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b = b[:bytes.LastIndexByte(b, '\n')+1]
-	f.read += int64(len(b))
-	for raw := range strings.Lines(string(b)) {
-		var l logLine
-		if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Time == "" || l.Level == "" || l.Msg == "" || l.DebugID == "" || l.Process == "" {
-			t.Fatalf("%v: bad log line %q: %v", args, raw, err)
-		}
-		f.lines = append(f.lines, l)
-	}
-}
-
-// runLogged returns the CLI's lines of the run id, how many requests the CLI
-// says it made and had answered, how many it gave up on, and how many the daemon
-// says it served under it.
-func runLogged(lines []logLine, id string) (run []logLine, called, abandoned, served int) {
-	for _, l := range lines {
-		// A view's version check logs at debug level on both sides, where a
-		// cli's log level may not reach while the daemon's does.
-		if l.DebugID != id || l.Level == "DEBUG" && l.Path == "/v1/version" {
-			continue
-		}
-		switch {
-		case l.Process == "cli":
-			run = append(run, l)
-			switch l.Msg {
-			case "daemon called":
-				called++
-			case "daemon unreachable":
-				abandoned++
-			}
-		case l.Msg == "request returned":
-			served++
-		}
-	}
-	return run, called, abandoned, served
-}
-
-// wantLogged checks that the run that produced out is logged in home from the
-// command line it received to the response it returned, with the daemon's
-// lines for its requests under the same debug id, and that every line in the
-// log is a JSON object tagged with a debug id and a process.
-func wantLogged(t *testing.T, home string, args []string, out output) {
-	t.Helper()
-	if info, err := os.Stat(home); err != nil || !info.IsDir() {
-		return // nowhere to log: the run must still work, which its test checks
-	}
-	lines := logLines(t, home, args)
-	// Runs of the same command line in one home are sequential, so the last
-	// one received is this one; a daemon started in the home runs others.
-	pid := cmp.Or(out.pid, os.Getpid())
-	var id string
-	for _, l := range lines {
-		if l.Msg != "command received" || l.Pid != pid {
-			continue
-		}
-		var received []string
-		if json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, argsLogged(args)) {
-			id = l.DebugID
-		}
-	}
-	var run []logLine
-	var called, abandoned, served int
-	// A daemon learns that a client has left, as tide leaves its stream, only
-	// after the client has gone, and logs that request's end then. A request the
-	// client gave up on, as tide does on the view it sends as it quits once a
-	// second has gone, the daemon may have served or never received.
-	logged := func() bool { return served >= called && served <= called+abandoned }
-	eventually(t, func() bool {
-		run, called, abandoned, served = runLogged(logLines(t, home, args), id)
-		return logged()
-	})
-	if len(run) == 0 {
-		t.Fatalf("%v: nothing logged under %q", args, id)
-	}
-	first, last := run[0], run[len(run)-1]
-	if first.Msg != "command received" || last.Msg != "command returned" {
-		t.Fatalf("%v: want the run logged from received to returned, got %q to %q", args, first.Msg, last.Msg)
-	}
-	if !logged() {
-		t.Fatalf("%v: the daemon logged %d requests under %s, the cli %d answered and %d given up on", args, served, id, called, abandoned)
-	}
-	if last.Exit == nil || *last.Exit != out.exit || (last.Level == "ERROR") != (out.exit != api.ExitOK) {
-		t.Fatalf("%v: logged exit %v at %s, want exit %d", args, last.Exit, last.Level, out.exit)
-	}
-	if string(last.Response) == "null" || len(last.Response) == 0 {
-		t.Fatalf("%v: no response logged", args)
-	}
-	if strings.Contains(string(last.Response), `\u001b`) {
-		t.Fatalf("%v: want the response logged without color, got %s", args, last.Response)
-	}
-	var printed struct {
-		Code string `json:"code"`
-	}
-	_ = json.Unmarshal(last.Response, &printed) // a completion logs text, without a code
-	if last.Code != printed.Code {
-		t.Fatalf("%v: logged code %q, want the response's %q", args, last.Code, printed.Code)
-	}
-	if slices.Contains(args, "--json") {
-		var logged, printed any
-		if err := json.Unmarshal([]byte(out.stdout), &printed); err != nil {
-			t.Fatalf("%v: stdout is not one JSON object: %s", args, out.stdout)
-		}
-		_ = json.Unmarshal(last.Response, &logged) // compared to stdout, checked to be JSON
-		if (slices.Contains(args, "worktree") || slices.Contains(args, "message")) && out.exit == api.ExitOK {
-			// A file's contents and comments are measured, not logged.
-			if b, err := json.Marshal(api.WorktreeResponseLogged([]byte(out.stdout))); err == nil {
-				_ = json.Unmarshal(b, &printed)
-			}
-		}
-		if obj, ok := printed.(map[string]any); ok {
-			if obj["agent"] != nil || obj["agents"] != nil || obj["project"] != nil {
-				// A prompt's text is the agent's: its kind and options are counted, not logged.
-				if b, err := json.Marshal(api.AgentResponseLogged([]byte(out.stdout))); err == nil {
-					printed = nil
-					_ = json.Unmarshal(b, &printed)
-					obj, _ = printed.(map[string]any)
-				}
-			}
-			if h, ok := obj["history"].(map[string]any); ok {
-				h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged
-			}
-			if r, ok := obj["transcript"].(map[string]any); ok {
-				r["lines"] = float64(len(r["lines"].([]any))) // a conversation is counted, not logged
-			}
-			if content, ok := obj["content"].(string); ok && obj["doc"] != nil {
-				delete(obj, "content") // a doc is measured, not logged
-				obj["content_bytes"] = float64(len(content))
-			}
-			if obj["plan"] != nil && (obj["content"] != nil || obj["definition"] != nil) {
-				// A plan's text is measured, not logged.
-				if b, err := json.Marshal(api.PlanResponseLogged([]byte(out.stdout))); err == nil {
-					printed = nil
-					_ = json.Unmarshal(b, &printed)
-				}
-			}
-			if obj["task"] != nil && obj["definition"] == nil {
-				// A task's prompt and summary are measured, not logged.
-				if b, err := json.Marshal(api.PlanTaskResponseLogged([]byte(out.stdout))); err == nil {
-					printed = nil
-					_ = json.Unmarshal(b, &printed)
-				}
-			}
-		}
-		if !reflect.DeepEqual(logged, printed) {
-			t.Fatalf("%v: logged response differs from stdout:\n%s\n%s", args, last.Response, out.stdout)
-		}
-		if out.exit != api.ExitOK && !strings.Contains(out.stdout, `"debug_id": "`+id+`"`) {
-			t.Fatalf("%v: want debug_id %s in the error, got %s", args, id, out.stdout)
-		}
-	} else if out.exit != api.ExitOK && !strings.HasSuffix(escapes.ReplaceAllString(out.stderr, ""), "\n  debug_id: "+id+"\n") {
-		t.Fatalf("%v: want debug_id %s on the last line of the error, got %q", args, id, out.stderr)
-	}
-}
-
-var escapes = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 type jsonProject struct {
 	ID        string  `json:"id"`
@@ -688,52 +454,12 @@ func eventually(t *testing.T, ok func() bool) bool { return waittest.Until(t, ok
 func wdxJSONWith(t *testing.T, home string, adjust func(*Env), args ...string) (jsonOutput, int) {
 	t.Helper()
 	out := wdxWith(t, home, adjust, append(args, "--json")...)
-	if out.stderr != "" {
-		t.Fatalf("%v: want empty stderr, got %q", args, out.stderr)
-	}
 	var v jsonOutput
-	dec := json.NewDecoder(strings.NewReader(out.stdout))
-	if err := dec.Decode(&v); err != nil {
+	if err := json.Unmarshal(clikittest.JSON(t, args, out.kit(), codes), &v); err != nil {
 		t.Fatalf("%v: stdout is not JSON: %v\n%s", args, err, out.stdout)
-	}
-	if dec.More() {
-		t.Fatalf("%v: want one JSON object, got more:\n%s", args, out.stdout)
-	}
-	if failed := out.exit != api.ExitOK; failed != (v.Code != "") {
-		t.Fatalf("%v: exit %d and code %q disagree", args, out.exit, v.Code)
-	}
-	if v.Code != "" {
-		info := api.Codes[api.ErrorCode(v.Code)]
-		if v.Type != "urn:wdx:error:"+v.Code || v.Title != info.Description || v.Status != info.Status || v.Detail == "" || info.Exit != out.exit {
-			t.Fatalf("%v: not the problem of %s: %s", args, v.Code, out.stdout)
-		}
 	}
 	wantDeclared(t, args, v)
 	return v, out.exit
-}
-
-// wantDeclared checks that the help of the command args ran lists the result
-// and error codes it returned.
-func wantDeclared(t *testing.T, args []string, v jsonOutput) {
-	t.Helper()
-	cmd, _, err := newRoot(config.Default()).Find(args)
-	if err != nil {
-		return
-	}
-	help := newCommandView(cmd)
-	var codes []string
-	for _, e := range help.Errors {
-		codes = append(codes, e.Code)
-	}
-	if v.Result != "" && !slices.Contains(help.Results, v.Result) {
-		t.Fatalf("%v: result %q is not in the help of %s", args, v.Result, help.Path)
-	}
-	if v.Code != "" && !slices.Contains(codes, v.Code) {
-		t.Fatalf("%v: error %q is not in the help of %s", args, v.Code, help.Path)
-	}
-	if v.Conflict != nil && !slices.Contains(codes, v.Conflict.Code) {
-		t.Fatalf("%v: conflict %q is not in the help of %s", args, v.Conflict.Code, help.Path)
-	}
 }
 
 func wantError(t *testing.T, v jsonOutput, exit int, code api.ErrorCode, wantExit int) {
@@ -747,7 +473,7 @@ func wantError(t *testing.T, v jsonOutput, exit int, code api.ErrorCode, wantExi
 func newProject(t *testing.T, home, name string) string {
 	t.Helper()
 	v, exit := wdxJSON(t, home, "project", "create", "--name", name, "--cancel")
-	if exit != api.ExitOK {
+	if exit != clikit.ExitOK {
 		t.Fatalf("create %s: %+v", name, v)
 	}
 	return v.Project.ID
@@ -757,7 +483,7 @@ func TestVersion(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	v, exit := wdxJSON(t, home, "version")
-	if exit != api.ExitOK || v.CLI.Name != "wdx" || v.CLI.Version != identity.Version || v.Daemon == nil || v.Daemon.Version != identity.Version {
+	if exit != clikit.ExitOK || v.CLI.Name != "wdx" || v.CLI.Version != identity.Version || v.Daemon == nil || v.Daemon.Version != identity.Version {
 		t.Fatalf("unexpected version: %+v", v)
 	}
 	if out := wdx(t, home, "version"); out.stdout != "wdx dev (none)\ndaemon dev (none)\n" {
@@ -769,7 +495,7 @@ func TestVersionWithoutDaemon(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	v, exit := wdxJSON(t, home, "version")
-	if exit != api.ExitOK || v.CLI.Name != "wdx" || v.Daemon != nil {
+	if exit != clikit.ExitOK || v.CLI.Name != "wdx" || v.Daemon != nil {
 		t.Fatalf("unexpected version: %+v", v)
 	}
 	if out := wdx(t, home, "version"); !strings.HasSuffix(out.stdout, "\ndaemon not running\n") {
@@ -799,13 +525,13 @@ func TestUsageErrors(t *testing.T) {
 		{"project", "get", "app"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 		wantHint(t, v, "--help'")
 	}
 	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
 	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
 	out := wdx(t, t.TempDir(), "project", "bogus")
-	if out.exit != api.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "\n  hint: see 'wdx project --help'\n") {
+	if out.exit != clikit.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "\n  hint: see 'wdx project --help'\n") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
@@ -822,11 +548,11 @@ func TestDaemonUnavailable(t *testing.T) {
 		{"project", "remove", "--name", "app", "--cancel"},
 	} {
 		v, exit := wdxJSON(t, home, args...)
-		wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
+		wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, clikit.ExitSystem)
 		wantHint(t, v, "run wdx daemon start")
 	}
 	out := wdx(t, home, "project", "list")
-	if out.exit != api.ExitSystem || !strings.HasPrefix(out.stderr, "wdx: the daemon is not answering on "+identity.SocketPath(home)+": connect: ") {
+	if out.exit != clikit.ExitSystem || !strings.HasPrefix(out.stderr, "wdx: the daemon is not answering on "+identity.SocketPath(home)+": connect: ") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 }
@@ -838,7 +564,7 @@ func TestNoHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, clikit.ExitSystem)
 }
 
 func wantHint(t *testing.T, v jsonOutput, hint string) {
@@ -936,7 +662,7 @@ func TestHelp(t *testing.T) {
 		{[]string{"help", "plans"}, []string{"wdx plan run --name sso", "plan.parallel", "wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
-		if out.exit != api.ExitOK || out.stderr != "" {
+		if out.exit != clikit.ExitOK || out.stderr != "" {
 			t.Fatalf("%v: unexpected %+v", tc.args, out)
 		}
 		for _, s := range tc.want {
@@ -959,7 +685,7 @@ func TestHelpJSON(t *testing.T) {
 	walk = func(path []string) {
 		v, exit := wdxJSON(t, t.TempDir(), append(path, "--help")...)
 		c := v.Command
-		if exit != api.ExitOK || c == nil || c.Path != strings.Join(append([]string{"wdx"}, path...), " ") {
+		if exit != clikit.ExitOK || c == nil || c.Path != strings.Join(append([]string{"wdx"}, path...), " ") {
 			t.Fatalf("%v: unexpected help %+v", path, v)
 		}
 		if n := len(c.Errors); n < 2 || c.Errors[n-2].Code != string(api.ErrorCodeUsage) || c.Errors[n-1].Code != string(api.ErrorCodeInternal) {
@@ -997,21 +723,6 @@ func TestHelpJSON(t *testing.T) {
 	}
 }
 
-func TestPanicIsInternalError(t *testing.T) {
-	t.Parallel()
-	cmd := &cobra.Command{Use: "boom", RunE: func(*cobra.Command, []string) error { panic("kaboom") }}
-	cmd.SetContext(context.Background())
-	wrapRun(cmd)
-	err := cmd.RunE(cmd, nil)
-	var p *panicError
-	if !errors.As(err, &p) || p.Error() != "panic: kaboom" || !strings.Contains(string(p.stack), "TestPanicIsInternalError") {
-		t.Fatalf("want a panicError with its stack, got %v", err)
-	}
-	if p, exit := problem(err); p.Code != api.ErrorCodeInternal || exit != api.ExitSystem {
-		t.Fatalf("want internal, got %s", p.Code)
-	}
-}
-
 func TestConfigError(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
@@ -1025,8 +736,8 @@ func TestConfigError(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdout: &stdout, Stderr: &stderr}
-	if exit := ConfigError([]string{"project", "list", "--json"}, env, err); exit != api.ExitUsage {
-		t.Fatalf("want exit %d, got %d", api.ExitUsage, exit)
+	if exit := ConfigError([]string{"project", "list", "--json"}, env, err); exit != clikit.ExitUsage {
+		t.Fatalf("want exit %d, got %d", clikit.ExitUsage, exit)
 	}
 	var v struct {
 		Code    string `json:"code"`
@@ -1050,34 +761,5 @@ func TestConfigError(t *testing.T) {
 		path + `:3: log.retention_days: "0" is not a whole number of at least 1  [usage]` + "\n  hint: fix or remove them\n"
 	if stderr.String() != want || stdout.Len() != 0 {
 		t.Fatalf("got %q, want %q", stderr.String(), want)
-	}
-}
-
-func TestLogLinesLeaveALineBeingWritten(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "wdx.log")
-	line := `{"time":"2026-11-06T11:06:24Z","level":"INFO","msg":"m","debug_id":"dbg-1","process":"daemon"}` + "\n"
-	half := len(line) / 2
-	if err := os.WriteFile(path, []byte(line+line[:half]), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var f logFile
-	f.readMore(t, path, nil)
-	if len(f.lines) != 1 {
-		t.Fatalf("read %d lines with the second half written, want 1", len(f.lines))
-	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := file.WriteString(line[half:]); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	f.readMore(t, path, nil)
-	if len(f.lines) != 2 {
-		t.Fatalf("read %d lines once the second was whole, want 2", len(f.lines))
 	}
 }

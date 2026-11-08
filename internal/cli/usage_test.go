@@ -7,7 +7,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
-	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 )
 
@@ -16,11 +16,11 @@ func TestUsageNoneTold(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	v, exit := wdxJSON(t, home, "usage")
-	if exit != api.ExitOK || v.Usage == nil || len(v.Usage) != 0 {
+	if exit != clikit.ExitOK || v.Usage == nil || len(v.Usage) != 0 {
 		t.Fatalf("exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "usage")
-	if out.exit != api.ExitOK || out.stdout != "no usage told yet: no AI coding agent has answered, or its plan has no limits\n" {
+	if out.exit != clikit.ExitOK || out.stdout != "no usage told yet: no AI coding agent has answered, or its plan has no limits\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -44,7 +44,7 @@ func TestUsage(t *testing.T) {
 	if !eventually(t, func() bool {
 		var exit int
 		v, exit = wdxJSON(t, home, "usage")
-		return exit == api.ExitOK && len(v.Usage) == 2
+		return exit == clikit.ExitOK && len(v.Usage) == 2
 	}) {
 		t.Fatalf("usage not listed: %+v", v)
 	}
@@ -56,7 +56,7 @@ func TestUsage(t *testing.T) {
 	}
 	out := wdx(t, home, "usage")
 	lines := strings.Split(strings.TrimSuffix(out.stdout, "\n"), "\n")
-	if out.exit != api.ExitOK || len(lines) != 4 || !strings.HasPrefix(lines[0], "claude_code") || !strings.Contains(lines[0], "limited, resets ") || !strings.HasPrefix(lines[1], "  WINDOW") || !strings.HasPrefix(lines[2], "  Session (5 h)") || !strings.Contains(lines[2], "54%") || !strings.Contains(lines[3], "100% limited") {
+	if out.exit != clikit.ExitOK || len(lines) != 4 || !strings.HasPrefix(lines[0], "claude_code") || !strings.Contains(lines[0], "limited, resets ") || !strings.HasPrefix(lines[1], "  WINDOW") || !strings.HasPrefix(lines[2], "  Session (5 h)") || !strings.Contains(lines[2], "54%") || !strings.Contains(lines[3], "100% limited") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }

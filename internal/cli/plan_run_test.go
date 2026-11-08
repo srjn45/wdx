@@ -9,6 +9,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -39,7 +40,7 @@ func planRepo(t *testing.T, home, conf string) string {
 	}
 	gittest.Git(t, repo, "add", ".")
 	gittest.Git(t, repo, "commit", "-qm", "the tasks' script")
-	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != clikit.ExitOK {
 		t.Fatalf("open: exit %d, %+v", exit, v)
 	}
 	return repo
@@ -84,7 +85,7 @@ func TestPlanRunsThroughItsAgents(t *testing.T) {
 	repo := planRepo(t, home, "")
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "1")
-	if exit != api.ExitOK || v.Result != "started" || v.Plan.State != api.PlanStateRunning {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Plan.State != api.PlanStateRunning {
 		t.Fatalf("run: exit %d, %+v", exit, v)
 	}
 	v = waitTasks(t, home, repo, "sso", "a:done b:done")
@@ -98,12 +99,12 @@ func TestPlanRunsThroughItsAgents(t *testing.T) {
 		t.Errorf("status: %+v, %+v", v.Run, v.Plan)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "b")
-	if exit != api.ExitOK || v.Task == nil || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Task.Agent != nil || v.Plan.Name != "sso" {
+	if exit != clikit.ExitOK || v.Task == nil || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Task.Agent != nil || v.Plan.Name != "sso" {
 		t.Errorf("task get: exit %d, %+v", exit, v.Task)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "nowhere")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
-	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "list"); exit != api.ExitOK || len(v.Agents) != 0 {
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "list"); exit != clikit.ExitOK || len(v.Agents) != 0 {
 		t.Errorf("agents left: exit %d, %+v", exit, v.Agents)
 	}
 }
@@ -117,36 +118,36 @@ func TestPlanRun(t *testing.T) {
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "0")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "parent", "--parallel", "2")
-	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "child")
-	wantError(t, v, exit, api.ErrorCodePlanInUse, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanInUse, clikit.ExitRejected)
 	wantHint(t, v, "a plan a plan of plans lists runs with it: run the plan of plans")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "nowhere")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	gittest.Git(t, repo, "branch", "plan/taken")
 	newPlan(t, home, repo, "taken", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "taken")
-	wantError(t, v, exit, api.ErrorCodeBranchExists, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeBranchExists, clikit.ExitRejected)
 	wantHint(t, v, "remove or rename the branch, or rename the plan")
 
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso")
-	if exit != api.ExitOK || v.Result != "started" {
+	if exit != clikit.ExitOK || v.Result != "started" {
 		t.Fatalf("run: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso")
-	wantError(t, v, exit, api.ErrorCodePlanStarted, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanStarted, clikit.ExitRejected)
 	wantHint(t, v, "a plan runs once: copy it to run it again")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "update", "--name", "sso", "--path", writeDocFile(t, "x.yaml", planYAML), "--base", "1")
-	wantError(t, v, exit, api.ErrorCodePlanStarted, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanStarted, clikit.ExitRejected)
 
-	if v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("close: exit %d, %+v", exit, v)
 	}
 	newPlan(t, home, repo, "later", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "later")
-	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 }
 
 func TestPlanTaskDone(t *testing.T) {
@@ -159,53 +160,53 @@ func TestPlanTaskDone(t *testing.T) {
 		return wdxJSONWith(t, home, in(repo), append([]string{"plan", "task", "done"}, args...)...)
 	}
 	v, exit := done("--plan", "sso", "--task", "a", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodePlanNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanNotRunning, clikit.ExitRejected)
 	v, exit = done("--plan", "sso", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = done("--plan", "sso", "--task", "a", "--agent-id", "agent-x", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = done("--plan", "sso", "--agent-id", "agent-x", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = done("--plan", "sso", "--task", "a", "--summary", " ")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	if !strings.Contains(v.Detail, "--summary is blank") {
 		t.Errorf("a blank summary: %q", v.Detail)
 	}
 	helper := newAgent(t, home, repo, "helper")
 	v, exit = done("--agent-id", helper.Id, "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
-	if _, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso"); exit != api.ExitOK {
+	if _, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso"); exit != clikit.ExitOK {
 		t.Fatal("not started")
 	}
 	s := waitTasks(t, home, repo, "sso", "a:running b:pending")
 	slot := *(*s.Definition.Tasks)[0].SlotPath
 	waitCommitted(t, repo, "a")
 	v, exit = done("--plan", "sso", "--task", "b", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeTaskState, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeTaskState, clikit.ExitRejected)
 	if err := os.WriteFile(filepath.Join(slot, "loose.txt"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	v, exit = done("--plan", "sso", "--task", "a", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeNotCommitted, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotCommitted, clikit.ExitRejected)
 	wantHint(t, v, "commit your work on the task's branch first")
 	if err := os.Remove(filepath.Join(slot, "loose.txt")); err != nil {
 		t.Fatal(err)
 	}
 	gittest.Git(t, slot, "switch", "-q", "--detach")
 	v, exit = done("--plan", "sso", "--task", "a", "--summary", "s")
-	wantError(t, v, exit, api.ErrorCodeWrongBranch, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeWrongBranch, clikit.ExitRejected)
 	wantHint(t, v, "switch the worktree back to the task's branch, with its commits")
 	gittest.Git(t, slot, "switch", "-q", "task/sso/a")
 
 	v, exit = done("--agent-id", (*s.Definition.Tasks)[0].Agent.Id, "--summary", "did a")
-	if exit != api.ExitOK || v.Result != "landing" || v.Task.Id != "a" || v.Task.State != api.PlanTaskStateLanding {
+	if exit != clikit.ExitOK || v.Result != "landing" || v.Task.Id != "a" || v.Task.State != api.PlanTaskStateLanding {
 		t.Fatalf("by its agent: exit %d, %+v", exit, v)
 	}
 	waitTasks(t, home, repo, "sso", "a:done b:running")
 	waitCommitted(t, repo, "b")
 	v, exit = done("--plan", "sso", "--task", "b", "--summary", "did b")
-	if exit != api.ExitOK || v.Result != "landing" || v.Task.Id != "b" {
+	if exit != clikit.ExitOK || v.Result != "landing" || v.Task.Id != "b" {
 		t.Fatalf("by a person: exit %d, %+v", exit, v)
 	}
 	waitTasks(t, home, repo, "sso", "a:done b:done")
@@ -219,7 +220,7 @@ func TestPlanRunText(t *testing.T) {
 	repo := planRepo(t, home, "a manual\nb manual\n")
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: Add the table.\n  - id: b\n    after: [a]\n    prompt: p\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "2")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
 		t.Errorf("run: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:running b:pending")
@@ -235,7 +236,7 @@ func TestPlanRunText(t *testing.T) {
 		t.Errorf("task get: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "did a")
-	if out.exit != api.ExitOK || out.stdout != "task a of sso done: landing on plan/sso\n" {
+	if out.exit != clikit.ExitOK || out.stdout != "task a of sso done: landing on plan/sso\n" {
 		t.Errorf("task done: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:done b:running")
@@ -259,7 +260,7 @@ func TestPlanOfPlansRun(t *testing.T) {
 	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: b\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n")
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big")
-	if exit != api.ExitOK || v.Result != "started" || v.Plan.PlansDone == nil || *v.Plan.PlansDone != 0 || v.Plan.TasksDone != nil {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Plan.PlansDone == nil || *v.Plan.PlansDone != 0 || v.Plan.TasksDone != nil {
 		t.Fatalf("run: exit %d, %+v", exit, v)
 	}
 	waitTasks(t, home, repo, "sso", "a:running")
@@ -274,10 +275,10 @@ func TestPlanOfPlansRun(t *testing.T) {
 		t.Errorf("list: %+v", out)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
-	wantError(t, v, exit, api.ErrorCodePlanNotFinished, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanNotFinished, clikit.ExitRejected)
 	wantHint(t, v, "run it once sso is done: wdx plan status --name big")
 	waitCommitted(t, repo, "a")
-	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "s"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "s"); exit != clikit.ExitOK {
 		t.Fatalf("task done: exit %d, %+v", exit, v)
 	}
 	if !eventually(t, func() bool {
@@ -287,7 +288,7 @@ func TestPlanOfPlansRun(t *testing.T) {
 		t.Errorf("ui waiting for the person:\n%s", out.stdout)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
-	wantError(t, v, exit, api.ErrorCodePlanNotLanded, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePlanNotLanded, clikit.ExitRejected)
 	wantHint(t, v, "land the worktree on plan/sso first (wdx worktree land), or pull main once its PR is merged")
 }
 
@@ -298,7 +299,7 @@ func TestPlanOfPlansRunText(t *testing.T) {
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "big")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.stdout, "sso") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.stdout, "sso") {
 		t.Errorf("run: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:running")

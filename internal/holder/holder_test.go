@@ -64,7 +64,7 @@ func runHolder(args []string) int {
 	}
 	o.watchTimes.rules.Still, _ = time.ParseDuration(os.Getenv(stillVar)) //nolint:forbidigo // as the home above
 	// It logs where a holder wdx starts does: the home's log files.
-	logs := logging.NewDailyFile(identity.LogsDir(home), 7, time.Now)
+	logs := logging.NewDailyFile(identity.LogsDir(home), identity.Name, 7, time.Now)
 	defer logs.Close()
 	log := logging.New(logs, slog.LevelDebug).With("process", "holder", "terminal_id", o.ID)
 	if Run(logging.NewContext(context.Background(), log), o) != nil {

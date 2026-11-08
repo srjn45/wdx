@@ -6,11 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/srjn45/wdx/internal/identity"
 )
-
-var filePrefix = identity.Name + "-"
 
 const fileSuffix = ".log"
 
@@ -22,6 +18,7 @@ const fileSuffix = ".log"
 // next day: logging never fails what is being logged.
 type DailyFile struct {
 	dir           string
+	prefix        string
 	retentionDays int
 	now           func() time.Time
 
@@ -30,10 +27,11 @@ type DailyFile struct {
 	file *os.File
 }
 
-// NewDailyFile returns a DailyFile writing to dir that keeps the files of the
-// last retentionDays days besides today's. now tells the day.
-func NewDailyFile(dir string, retentionDays int, now func() time.Time) *DailyFile {
-	return &DailyFile{dir: dir, retentionDays: retentionDays, now: now}
+// NewDailyFile returns a DailyFile writing to the files <name>-<date>.log in
+// dir that keeps those of the last retentionDays days besides today's. now
+// tells the day.
+func NewDailyFile(dir, name string, retentionDays int, now func() time.Time) *DailyFile {
+	return &DailyFile{dir: dir, prefix: name + "-", retentionDays: retentionDays, now: now}
 }
 
 // SetRetentionDays changes the days kept from the next file opened on.
@@ -76,7 +74,7 @@ func (d *DailyFile) open(day string) {
 	if err := os.MkdirAll(d.dir, 0o700); err != nil {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(d.dir, filePrefix+day+fileSuffix), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(filepath.Join(d.dir, d.prefix+day+fileSuffix), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {
 		return
 	}
@@ -93,7 +91,7 @@ func (d *DailyFile) deleteOld() {
 	}
 	cutoff := d.now().AddDate(0, 0, -d.retentionDays).Format(time.DateOnly)
 	for _, e := range entries {
-		day, ok := strings.CutPrefix(e.Name(), filePrefix)
+		day, ok := strings.CutPrefix(e.Name(), d.prefix)
 		day, isLog := strings.CutSuffix(day, fileSuffix)
 		if !ok || !isLog || !e.Type().IsRegular() {
 			continue

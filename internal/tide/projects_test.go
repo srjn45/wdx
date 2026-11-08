@@ -71,7 +71,7 @@ func newTestHome(t *testing.T) testHome {
 // logger writes to h's log files, as wdx's processes do, labelled process.
 func (h testHome) logger(t *testing.T, process string) *slog.Logger {
 	t.Helper()
-	logs := logging.NewDailyFile(identity.LogsDir(h.home), 7, time.Now)
+	logs := logging.NewDailyFile(identity.LogsDir(h.home), identity.Name, 7, time.Now)
 	t.Cleanup(func() { logs.Close() })
 	return logging.New(logs, slog.LevelDebug).With("process", process)
 }

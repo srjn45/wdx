@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/style"
+
 	"github.com/srjn45/wdx/internal/settings"
 )
 
@@ -55,7 +57,7 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("got %+v, want %+v", c, want)
 	}
 	d := Default()
-	if !strings.HasSuffix(d.Home, "/.wdx") || d.NoInput || d.Color != ColorAuto || d.LogLevel != slog.LevelInfo || d.LogRetentionDays != 7 {
+	if !strings.HasSuffix(d.Home, "/.wdx") || d.NoInput || d.Color != style.ColorAuto || d.LogLevel != slog.LevelInfo || d.LogRetentionDays != 7 {
 		t.Fatalf("unexpected defaults %+v", d)
 	}
 	for _, s := range Settings() {
@@ -74,7 +76,7 @@ func TestFileSettings(t *testing.T) {
 	}
 	path := filepath.Join(home, "config.yaml")
 	want := Config{
-		Home: home, NoInput: true, Color: ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
+		Home: home, NoInput: true, Color: style.ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
 		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", TideTheme: "slate", DocsGitPath: "docs/wdx", PlanParallel: 5, ContextWarning: 1000, ContextCritical: 2000, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
 		ACAEnabled: map[string]bool{"claude_code": false, "antigravity": true, "cursor": true, "codex": true},

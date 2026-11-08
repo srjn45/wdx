@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/runtest"
 )
 
@@ -29,7 +30,7 @@ func newProjectDir(t *testing.T, home, name string) string {
 func newTerminal(t *testing.T, home, dir, name string) api.Terminal {
 	t.Helper()
 	v, exit := wdxJSONWith(t, home, in(dir), "terminal", "create", "--name", name)
-	if exit != api.ExitOK || v.Result != "created" || v.Terminal == nil || v.Terminal.State != api.TerminalStateRunning {
+	if exit != clikit.ExitOK || v.Result != "created" || v.Terminal == nil || v.Terminal.State != api.TerminalStateRunning {
 		t.Fatalf("create terminal %s: exit %d, %+v", name, exit, v)
 	}
 	return *v.Terminal
@@ -50,36 +51,36 @@ func TestTerminalCreate(t *testing.T) {
 	newProject(t, home, "lib")
 
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "create")
-	if exit != api.ExitOK || v.Terminal.ProjectName != "app" || v.Terminal.Dir != app || v.Terminal.Pid == nil || v.Terminal.Name == "" {
+	if exit != clikit.ExitOK || v.Terminal.ProjectName != "app" || v.Terminal.Dir != app || v.Terminal.Pid == nil || v.Terminal.Name == "" {
 		t.Fatalf("unexpected create: exit %d, %+v", exit, v.Terminal)
 	}
 	// A project flag wins over the working directory.
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "create", "--project-name", "lib", "--name", "build")
-	if exit != api.ExitOK || v.Terminal.ProjectName != "lib" || v.Terminal.Dir == app {
+	if exit != clikit.ExitOK || v.Terminal.ProjectName != "lib" || v.Terminal.Dir == app {
 		t.Fatalf("want build in lib's clone path, got exit %d, %+v", exit, v.Terminal)
 	}
 
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "create", "--project-name", "lib", "--name", "BUILD")
-	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, clikit.ExitRejected)
 	wantHint(t, v, "choose another --name")
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "create", "--name", "a:b")
-	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "terminal", "create")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id")
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "create", "--project-id", "proj-00000000")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	if v.Hint != nil {
 		t.Fatalf("want no hint when a project flag is given, got %q", *v.Hint)
 	}
 	v, exit = wdxJSONWith(t, home, in(filepath.Join(app, "missing")), "terminal", "create")
-	wantError(t, v, exit, api.ErrorCodeStartFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeStartFailed, clikit.ExitSystem)
 	if failed, _ := v.Details["terminal"].(map[string]any); failed["state"] != "failed" {
 		t.Fatalf("want the failed terminal in details, got %v", v.Details)
 	}
 
 	out := wdxWith(t, home, in(app), "terminal", "create", "--name", "server")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "created terminal server in app\n  dir    "+app+"\n  shell  ") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created terminal server in app\n  dir    "+app+"\n  shell  ") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -90,7 +91,7 @@ func TestTerminalCreateInClosedProject(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--cancel")
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "create")
-	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 	wantHint(t, v, "open the project first with wdx project open")
 }
 
@@ -114,16 +115,16 @@ func TestTerminalList(t *testing.T) {
 		{t.TempDir(), []string{"--all"}, []string{"app/a", "app/b", "lib/c"}},
 	} {
 		v, exit := wdxJSONWith(t, home, in(tc.dir), append([]string{"terminal", "list"}, tc.args...)...)
-		if got := terminalNames(v.Terminals); exit != api.ExitOK || !slices.Equal(got, tc.want) {
+		if got := terminalNames(v.Terminals); exit != clikit.ExitOK || !slices.Equal(got, tc.want) {
 			t.Errorf("%v: want %v, got exit %d, %v", tc.args, tc.want, exit, got)
 		}
 	}
 	v, exit := wdxJSONWith(t, home, in(t.TempDir()), "terminal", "list")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id, or --all")
 
 	out := wdxWith(t, home, in(app), "terminal", "list")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "NAME  STATE    DIR") || !strings.Contains(out.stdout, "\na     running  "+app) {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "NAME  STATE    DIR") || !strings.Contains(out.stdout, "\na     running  "+app) {
 		t.Fatalf("unexpected text: %q", out.stdout)
 	}
 	if out := wdxWith(t, home, in(app), "terminal", "list", "--all"); !strings.HasPrefix(out.stdout, "PROJECT  NAME") {
@@ -140,22 +141,22 @@ func TestTerminalGet(t *testing.T) {
 
 	for _, args := range [][]string{{"--id", term.Id}, {"--name", "BUILD", "--project-name", "app"}} {
 		v, exit := wdxJSON(t, home, append([]string{"terminal", "get"}, args...)...)
-		if exit != api.ExitOK || v.Result != "" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
+		if exit != clikit.ExitOK || v.Result != "" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
 			t.Fatalf("get %v: unexpected exit %d, %+v", args, exit, v)
 		}
 	}
 	v, exit := wdxJSONWith(t, home, in(filepath.Join(app, "sub")), "terminal", "get", "--name", "build")
-	if exit != api.ExitOK || v.Terminal.Id != term.Id {
+	if exit != clikit.ExitOK || v.Terminal.Id != term.Id {
 		t.Fatalf("want build from its project's dir, got exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSON(t, home, "terminal", "get", "--name", "build", "--project-name", "lib")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "terminal", "get", "--name", "build")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id")
 
 	out := wdx(t, home, "terminal", "get", "--id", term.Id)
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "terminal build in app\n  state    running\n  dir      "+app+"\n") ||
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "terminal build in app\n  state    running\n  dir      "+app+"\n") ||
 		!strings.Contains(out.stdout, "\n  id       "+term.Id+"\n") {
 		t.Fatalf("unexpected text: %q", out.stdout)
 	}
@@ -169,7 +170,7 @@ func TestProjectGetTerminals(t *testing.T) {
 	newTerminal(t, home, app, "a")
 
 	v, exit := wdxJSON(t, home, "project", "get", "--name", "app")
-	if exit != api.ExitOK || v.Project.Terminals == nil || !slices.Equal(terminalNames(*v.Project.Terminals), []string{"app/a", "app/b"}) {
+	if exit != clikit.ExitOK || v.Project.Terminals == nil || !slices.Equal(terminalNames(*v.Project.Terminals), []string{"app/a", "app/b"}) {
 		t.Fatalf("want terminals a and b, got exit %d, %+v", exit, v.Project)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
@@ -189,16 +190,16 @@ func TestTerminalStart(t *testing.T) {
 	}
 
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "start", "--name", "build")
-	if exit != api.ExitOK || v.Result != "started" || v.Terminal.State != api.TerminalStateRunning {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Terminal.State != api.TerminalStateRunning {
 		t.Fatalf("want build started, got exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSON(t, home, "terminal", "start", "--id", v.Terminal.Id)
-	wantError(t, v, exit, api.ErrorCodeTerminalRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeTerminalRunning, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "terminal", "start", "--name", "build")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id")
 	v, exit = wdxJSON(t, home, "terminal", "start", "--name", "nope", "--project-name", "app")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 }
 
@@ -209,30 +210,30 @@ func TestTerminalRemove(t *testing.T) {
 	term := newTerminal(t, home, app, "build")
 
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "remove", "--name", "build")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "remove", "--name", "build", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeTerminalRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeTerminalRunning, clikit.ExitRejected)
 	wantHint(t, v, "pass --stop-running to stop it")
 	// Without --json and a terminal to ask on, the answer must be given.
 	out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "build")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 
 	v, exit = wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--project-name", "app", "--stop-running")
-	if exit != api.ExitOK || v.Result != "removed" || v.Terminal.Id != term.Id {
+	if exit != clikit.ExitOK || v.Result != "removed" || v.Terminal.Id != term.Id {
 		t.Fatalf("want build removed, got exit %d, %+v", exit, v)
 	}
 	if runtest.Alive(*term.Pid) {
 		t.Fatalf("want shell %d gone", *term.Pid)
 	}
 	v, exit = wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--cancel")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	// One that is not running needs no answer.
 	newTerminal(t, home, app, "idle")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "idle"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "removed terminal idle from app\n  dir    "+app+"\n") {
+	if out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "idle"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed terminal idle from app\n  dir    "+app+"\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -244,24 +245,24 @@ func TestProjectCloseAndRemoveWithTerminals(t *testing.T) {
 	term := newTerminal(t, home, app, "build")
 
 	v, exit := wdxJSON(t, home, "project", "close", "--name", "app")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSON(t, home, "project", "close", "--name", "app", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeProjectInUse, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectInUse, clikit.ExitRejected)
 	wantHint(t, v, "pass --stop-running to stop them")
 
 	v, exit = wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if exit != api.ExitOK || v.Result != "closed" || len(v.Stopped) != 1 || v.Stopped[0].Id != term.Id || v.Stopped[0].State != api.TerminalStateStopped {
+	if exit != clikit.ExitOK || v.Result != "closed" || len(v.Stopped) != 1 || v.Stopped[0].Id != term.Id || v.Stopped[0].State != api.TerminalStateStopped {
 		t.Fatalf("want app closed with build stopped, got exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSON(t, home, "project", "open", "--local", app)
-	if exit != api.ExitOK || v.Result != "opened" || len(v.Started) != 1 || v.Started[0].State != api.TerminalStateRunning {
+	if exit != clikit.ExitOK || v.Result != "opened" || len(v.Started) != 1 || v.Started[0].State != api.TerminalStateRunning {
 		t.Fatalf("want app opened with build started, got exit %d, %+v", exit, v)
 	}
 
 	v, exit = wdxJSON(t, home, "project", "remove", "--name", "app", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeProjectInUse, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectInUse, clikit.ExitRejected)
 	out := wdx(t, home, "project", "remove", "--name", "app", "--stop-running")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "\n  stopped terminal build ("+term.Id+")\n") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\n  stopped terminal build ("+term.Id+")\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "terminal", "list", "--all"); len(v.Terminals) != 0 {
@@ -305,7 +306,7 @@ func TestCompleteTerminals(t *testing.T) {
 func TestHolderHidden(t *testing.T) {
 	t.Parallel()
 	out := wdx(t, t.TempDir(), "--help")
-	if out.exit != api.ExitOK || strings.Contains(out.stdout, "holder") || !strings.Contains(out.stdout, "terminal") {
+	if out.exit != clikit.ExitOK || strings.Contains(out.stdout, "holder") || !strings.Contains(out.stdout, "terminal") {
 		t.Fatalf("want terminal listed and holder hidden: %s", out.stdout)
 	}
 }
@@ -319,11 +320,11 @@ func TestTerminalSend(t *testing.T) {
 	const secret = "the-secret-prompt"
 
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "send", "--name", "build", "--prompt", secret)
-	if exit != api.ExitOK || v.Result != "queued" || v.Terminal.Id != term.Id {
+	if exit != clikit.ExitOK || v.Result != "queued" || v.Terminal.Id != term.Id {
 		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "terminal", "send", "--id", term.Id, "--prompt=ls -la")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "queued terminal build in app\n") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "queued terminal build in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	got := filepath.Join(app, "got")
@@ -342,15 +343,15 @@ func TestTerminalSend(t *testing.T) {
 		t.Fatal("the shell did not exit")
 	}
 	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", secret)
-	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, clikit.ExitRejected)
 	wantHint(t, v, "start its shell with wdx terminal start, or open its project")
 
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "send", "--name", "nope", "--prompt", secret)
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", "")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSON(t, home, "terminal", "send", "--id", term.Id)
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
 	files, err := filepath.Glob(filepath.Join(home, "logs", "*.log"))
 	if err != nil || len(files) == 0 {
@@ -373,7 +374,7 @@ func TestTerminalSendTooLarge(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	term := newTerminal(t, home, app, "build")
 	v, exit := wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", strings.Repeat("x", 1<<20))
-	wantError(t, v, exit, api.ErrorCodeSendFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeSendFailed, clikit.ExitSystem)
 }
 
 // TestTerminalSendDropped leaves messages queued when the shell ends: they are
@@ -389,11 +390,11 @@ func TestTerminalSendDropped(t *testing.T) {
 	}
 	// Too much for a program that does not read, so the next stays queued.
 	for _, prompt := range []string{strings.Repeat("x", 512<<10), "next"} {
-		if v, exit := wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", prompt); exit != api.ExitOK {
+		if v, exit := wdxJSON(t, home, "terminal", "send", "--id", term.Id, "--prompt", prompt); exit != clikit.ExitOK {
 			t.Fatalf("want it queued, got exit %d, %+v", exit, v)
 		}
 	}
-	if v, exit := wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "terminal", "remove", "--id", term.Id, "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("want it removed, got exit %d, %+v", exit, v)
 	}
 	if !eventually(t, func() bool {

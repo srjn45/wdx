@@ -13,6 +13,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -24,7 +25,7 @@ import (
 func newAgent(t *testing.T, home, dir, name string) api.Agent {
 	t.Helper()
 	v, exit := wdxJSONWith(t, home, in(dir), "agent", "create", "--name", name)
-	if exit != api.ExitOK || v.Result != "created" || v.Agent == nil || v.Agent.State != api.AgentStateRunning {
+	if exit != clikit.ExitOK || v.Result != "created" || v.Agent == nil || v.Agent.State != api.AgentStateRunning {
 		t.Fatalf("create agent %s: exit %d, %+v", name, exit, v)
 	}
 	return *v.Agent
@@ -35,7 +36,7 @@ func newAgent(t *testing.T, home, dir, name string) api.Agent {
 func newExitedAgent(t *testing.T, home, dir, name string) api.Agent {
 	t.Helper()
 	v, exit := wdxJSONWith(t, home, in(dir), "agent", "create", "--name", name)
-	if exit != api.ExitOK || v.Result != "created" || v.Agent == nil {
+	if exit != clikit.ExitOK || v.Result != "created" || v.Agent == nil {
 		t.Fatalf("create agent %s: exit %d, %+v", name, exit, v)
 	}
 	return waitAgent(t, home, v.Agent.Id, api.AgentStateExited)
@@ -55,7 +56,7 @@ func waitAgent(t *testing.T, home, id string, want api.AgentState) api.Agent {
 	var got api.Agent
 	waittest.For(t, "agent "+string(want), func() bool {
 		v, exit := wdxJSON(t, home, "agent", "get", "--id", id)
-		if exit != api.ExitOK {
+		if exit != clikit.ExitOK {
 			return false
 		}
 		got = *v.Agent
@@ -71,7 +72,7 @@ func TestAgentCreate(t *testing.T) {
 	newProject(t, home, "lib")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create")
-	if exit != api.ExitOK || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.Pid == nil || v.Agent.Name == "" ||
+	if exit != clikit.ExitOK || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.Pid == nil || v.Agent.Name == "" ||
 		v.Agent.Aca != "claude_code" || v.Agent.SessionId == "" {
 		t.Fatalf("unexpected create: exit %d, %+v", exit, v.Agent)
 	}
@@ -79,23 +80,23 @@ func TestAgentCreate(t *testing.T) {
 		t.Fatalf("sessions = %q", got)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--project-name", "lib", "--name", "helper")
-	if exit != api.ExitOK || v.Agent.ProjectName != "lib" || v.Agent.Dir == app || v.Agent.Name != "helper" {
+	if exit != clikit.ExitOK || v.Agent.ProjectName != "lib" || v.Agent.Dir == app || v.Agent.Name != "helper" {
 		t.Fatalf("want helper in lib's clone path, got exit %d, %+v", exit, v.Agent)
 	}
 
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--project-name", "lib", "--name", "HELPER")
-	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, clikit.ExitRejected)
 	wantHint(t, v, "choose another --name")
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "create", "--project-name", "lib", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--project-name", "lib", "--name", "a:b")
-	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "agent", "create")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id")
 
 	out := wdxWith(t, home, in(app), "agent", "create", "--name", "texty")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "created agent texty in app\n  dir  "+app+"\n  aca  claude_code\n  id   agent-") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created agent texty in app\n  dir  "+app+"\n  aca  claude_code\n  id   agent-") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -106,29 +107,29 @@ func TestAgentCreateModelAndPermissions(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "default")
-	if exit != api.ExitOK || v.Agent.RequestedModel != nil || v.Agent.Permissions != api.AgentPermissionsFull {
+	if exit != clikit.ExitOK || v.Agent.RequestedModel != nil || v.Agent.Permissions != api.AgentPermissionsFull {
 		t.Fatalf("by default: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--name", "asked", "--model", "sonnet", "--permissions", "ask")
-	if exit != api.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
+	if exit != clikit.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
 		t.Fatalf("asked: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "get", "--name", "asked")
-	if exit != api.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
+	if exit != clikit.ExitOK || v.Agent.RequestedModel == nil || *v.Agent.RequestedModel != "sonnet" || v.Agent.Permissions != api.AgentPermissionsAsk {
 		t.Fatalf("read back: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
 	}
 	out := wdxWith(t, home, in(app), "agent", "get", "--name", "asked")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "  model       asked for sonnet\n  permissions ask\n") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "  model       asked for sonnet\n  permissions ask\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--model", "opus 4")
-	wantError(t, v, exit, api.ErrorCodeInvalidArgument, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidArgument, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--model", "")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	for _, mode := range []string{"some", ""} {
 		v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--permissions", mode)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 }
 
@@ -136,11 +137,11 @@ func TestAgentModels(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	v, exit := wdxJSON(t, home, "agent", "models")
-	if exit != api.ExitOK || v.Aca != "claude_code" || len(v.Models) != 4 || v.Models[0].Id != "fable" || v.Models[0].Default {
+	if exit != clikit.ExitOK || v.Aca != "claude_code" || len(v.Models) != 4 || v.Models[0].Id != "fable" || v.Models[0].Default {
 		t.Fatalf("exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "agent", "models")
-	if out.exit != api.ExitOK || out.stdout != "models of claude_code\nID      NAME\nfable   Fable\nopus    Opus\nsonnet  Sonnet\nhaiku   Haiku\nwith no --model, your own setting for it\n" {
+	if out.exit != clikit.ExitOK || out.stdout != "models of claude_code\nID      NAME\nfable   Fable\nopus    Opus\nsonnet  Sonnet\nhaiku   Haiku\nwith no --model, your own setting for it\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if got := complete(t, home, "agent", "create", "--model", ""); !slices.Equal(got, []string{"fable\tFable", "opus\tOpus", "sonnet\tSonnet", "haiku\tHaiku"}) {
@@ -154,7 +155,7 @@ func TestAgentCreateInClosedProject(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--project-name", "app")
-	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 	wantHint(t, v, "project open")
 }
 
@@ -168,27 +169,27 @@ func TestAgentList(t *testing.T) {
 	newTerminal(t, home, app, "shell")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "list")
-	if exit != api.ExitOK || len(v.Agents) != 1 || v.Agents[0].Id != a.Id {
+	if exit != clikit.ExitOK || len(v.Agents) != 1 || v.Agents[0].Id != a.Id {
 		t.Fatalf("unexpected list: exit %d, %+v", exit, v.Agents)
 	}
 	v, exit = wdxJSON(t, home, "agent", "list", "--all")
-	if exit != api.ExitOK || len(v.Agents) != 2 {
+	if exit != clikit.ExitOK || len(v.Agents) != 2 {
 		t.Fatalf("unexpected list: exit %d, %+v", exit, v.Agents)
 	}
 	v, exit = wdxJSON(t, home, "agent", "list", "--project-name", "lib")
-	if exit != api.ExitOK || len(v.Agents) != 1 || v.Agents[0].Name != "other" {
+	if exit != clikit.ExitOK || len(v.Agents) != 1 || v.Agents[0].Name != "other" {
 		t.Fatalf("unexpected list: exit %d, %+v", exit, v.Agents)
 	}
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "agent", "list")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id, or --all")
 
 	out := wdxWith(t, home, in(app), "agent", "list")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "NAME") || !strings.Contains(out.stdout, "helper") || !strings.Contains(out.stdout, "claude_code") || strings.Contains(out.stdout, "shell") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "NAME") || !strings.Contains(out.stdout, "helper") || !strings.Contains(out.stdout, "claude_code") || strings.Contains(out.stdout, "shell") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	empty := newProjectDir(t, home, "empty")
-	if out := wdxWith(t, home, in(empty), "agent", "list"); out.exit != api.ExitOK || out.stdout != "no agents\n" {
+	if out := wdxWith(t, home, in(empty), "agent", "list"); out.exit != clikit.ExitOK || out.stdout != "no agents\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -200,25 +201,25 @@ func TestAgentGet(t *testing.T) {
 	a := newAgent(t, home, app, "helper")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "get", "--name", "HELPER")
-	if exit != api.ExitOK || v.Agent.Id != a.Id {
+	if exit != clikit.ExitOK || v.Agent.Id != a.Id {
 		t.Fatalf("unexpected get: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSON(t, home, "agent", "get", "--id", a.Id)
-	if exit != api.ExitOK || v.Agent.Id != a.Id {
+	if exit != clikit.ExitOK || v.Agent.Id != a.Id {
 		t.Fatalf("unexpected get: exit %d, %+v", exit, v)
 	}
 	if v.Agent.Activity == nil || *v.Agent.Activity != api.AgentActivityUnknown || v.Agent.Draft == nil || *v.Agent.Draft {
 		t.Fatalf("unexpected status: %+v", v.Agent)
 	}
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "agent", "get", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "agent", "get", "--id", "agent-nothing")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "agent", "get", "--name", "nope", "--project-name", "app")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	out := wdxWith(t, home, in(app), "agent", "get", "--name", "helper")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "agent helper in app\n") || !strings.Contains(out.stdout, a.SessionId) ||
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "agent helper in app\n") || !strings.Contains(out.stdout, a.SessionId) ||
 		!strings.Contains(out.stdout, "activity") || !strings.Contains(out.stdout, "unknown") || strings.Contains(out.stdout, "draft") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
@@ -305,22 +306,22 @@ func TestAgentStart(t *testing.T) {
 	}
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "start", "--name", "helper")
-	if exit != api.ExitOK || v.Result != "started" || v.Agent.State != api.AgentStateRunning || v.Agent.SessionId != a.SessionId {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Agent.State != api.AgentStateRunning || v.Agent.SessionId != a.SessionId {
 		t.Fatalf("want helper started, got exit %d, %+v", exit, v)
 	}
 	if got := launches(t, home); !slices.Equal(got, []string{a.SessionId, a.SessionId}) {
 		t.Fatalf("sessions = %q", got)
 	}
 	v, exit = wdxJSON(t, home, "agent", "start", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeAgentRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentRunning, clikit.ExitRejected)
 	wantHint(t, v, "agent attach")
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "agent", "start", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "names are unique within a project: run it in the agent's project, or pass --project-name or --project-id")
 
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
 	v, exit = wdxJSON(t, home, "agent", "start", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 }
 
 func TestAgentRename(t *testing.T) {
@@ -331,28 +332,28 @@ func TestAgentRename(t *testing.T) {
 	newAgent(t, home, app, "other")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "rename", "--name", "helper", "--new-name", "aide")
-	if exit != api.ExitOK || v.Result != "renamed" || v.Agent.Name != "aide" || v.Agent.Id != a.Id || v.Agent.SessionId != a.SessionId {
+	if exit != clikit.ExitOK || v.Result != "renamed" || v.Agent.Name != "aide" || v.Agent.Id != a.Id || v.Agent.SessionId != a.SessionId {
 		t.Fatalf("want aide, got exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "Other")
-	wantError(t, v, exit, api.ErrorCodeNameTaken, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNameTaken, clikit.ExitRejected)
 	wantHint(t, v, "choose another --new-name")
 	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "no_way")
-	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, clikit.ExitRejected)
 	wantHint(t, v, "choose another --new-name")
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "rename", "--name", "helper", "--new-name", "again")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
-	if out := wdx(t, home, "agent", "rename", "--id", a.Id, "--new-name", "aide-2"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "renamed agent aide-2 in app\n") {
+	if out := wdx(t, home, "agent", "rename", "--id", a.Id, "--new-name", "aide-2"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "renamed agent aide-2 in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 
 	wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", a.Id, "--name", "child")
 	wdxJSON(t, home, "agent", "remove", "--id", a.Id, "--stop-running")
 	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id, "--new-name", "ghost")
-	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, clikit.ExitRejected)
 }
 
 func TestAgentStartFails(t *testing.T) {
@@ -371,7 +372,7 @@ func TestAgentStartFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit := wdxJSON(t, home, "agent", "start", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeStartFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeStartFailed, clikit.ExitSystem)
 	wantHint(t, v, "agent start")
 }
 
@@ -382,29 +383,29 @@ func TestAgentRemove(t *testing.T) {
 	a := newAgent(t, home, app, "helper")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "helper", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeAgentRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentRunning, clikit.ExitRejected)
 	wantHint(t, v, "pass --stop-running to stop it")
 	out := wdxWith(t, home, in(app), "agent", "remove", "--name", "helper")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 
 	v, exit = wdxJSON(t, home, "agent", "remove", "--id", a.Id, "--project-name", "app", "--stop-running")
-	if exit != api.ExitOK || v.Result != "removed" || v.Agent.Id != a.Id {
+	if exit != clikit.ExitOK || v.Result != "removed" || v.Agent.Id != a.Id {
 		t.Fatalf("want helper removed, got exit %d, %+v", exit, v)
 	}
 	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want process %d gone", *a.Pid)
 	}
 	v, exit = wdxJSON(t, home, "agent", "remove", "--id", a.Id, "--cancel")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	// One that is not running needs no answer.
 	newAgent(t, home, app, "idle")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if out := wdxWith(t, home, in(app), "agent", "remove", "--name", "idle"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "removed agent idle from app\n") {
+	if out := wdxWith(t, home, in(app), "agent", "remove", "--name", "idle"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed agent idle from app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -416,11 +417,11 @@ func TestAgentRemoveAnswers(t *testing.T) {
 	newAgent(t, home, app, "helper")
 
 	out := wdxWith(t, home, func(env *Env) { in(app)(env); answering(t, "n")(env) }, "agent", "remove", "--name", "helper")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "stopping an agent interrupts what it is doing") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "stopping an agent interrupts what it is doing") {
 		t.Fatalf("unexpected answer no: %+v", out)
 	}
 	out = wdxWith(t, home, func(env *Env) { in(app)(env); answering(t, "y")(env) }, "agent", "remove", "--name", "helper")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "removed agent helper from app\n") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed agent helper from app\n") {
 		t.Fatalf("unexpected answer yes: %+v", out)
 	}
 }
@@ -449,7 +450,7 @@ func TestTerminalCommandsDoNotSeeAgents(t *testing.T) {
 		{"terminal", "attach", "--name", "helper", "--project-name", "app"},
 	} {
 		v, exit := wdxJSON(t, home, args...)
-		wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+		wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	}
 	if got := waitAgent(t, home, a.Id, api.AgentStateRunning); *got.Pid != *a.Pid {
 		t.Fatalf("the agent was touched: %+v, was %+v", got, a)
@@ -469,7 +470,7 @@ func TestProjectGetAgents(t *testing.T) {
 		t.Fatalf("project terminals: %+v", v.Project.Terminals)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "agents:") || !strings.Contains(out.stdout, "helper") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "agents:") || !strings.Contains(out.stdout, "helper") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -481,23 +482,23 @@ func TestProjectCloseAndRemoveWithAgents(t *testing.T) {
 	a := newAgent(t, home, app, "helper")
 
 	v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeProjectInUse, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectInUse, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if exit != api.ExitOK || v.Result != "closed" || len(v.StoppedAgents) != 1 || v.StoppedAgents[0].Id != a.Id || v.StoppedAgents[0].State != api.AgentStateStopped {
+	if exit != clikit.ExitOK || v.Result != "closed" || len(v.StoppedAgents) != 1 || v.StoppedAgents[0].Id != a.Id || v.StoppedAgents[0].State != api.AgentStateStopped {
 		t.Fatalf("want app closed with helper stopped, got exit %d, %+v", exit, v)
 	}
 	if runtest.Alive(*a.Pid) {
 		t.Fatalf("want process %d gone", *a.Pid)
 	}
 	v, exit = wdxJSON(t, home, "project", "open", "--local", app)
-	if exit != api.ExitOK || v.Result != "opened" || len(v.StartedAgents) != 1 || v.StartedAgents[0].State != api.AgentStateRunning {
+	if exit != clikit.ExitOK || v.Result != "opened" || len(v.StartedAgents) != 1 || v.StartedAgents[0].State != api.AgentStateRunning {
 		t.Fatalf("want app opened with helper started, got exit %d, %+v", exit, v)
 	}
 	if got := launches(t, home); !slices.Equal(got, []string{a.SessionId, a.SessionId}) {
 		t.Fatalf("sessions = %q", got)
 	}
 	out := wdx(t, home, "project", "remove", "--name", "app", "--stop-running")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "\n  stopped agent helper ("+a.Id+")\n") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\n  stopped agent helper ("+a.Id+")\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "agent", "list", "--all"); len(v.Agents) != 0 {
@@ -531,7 +532,7 @@ func TestAgentAttachNotRunning(t *testing.T) {
 	newAgent(t, home, app, "helper")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "attach", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, clikit.ExitRejected)
 	wantHint(t, v, "agent start")
 }
 
@@ -540,7 +541,7 @@ func TestAgentAttachNotFound(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "attach", "--name", "web")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 }
 
 // agentAttach runs wdx agent attach in a terminal of its own, on an agent
@@ -576,7 +577,7 @@ func TestAgentAttach(t *testing.T) {
 	a.waitScreen("d detach")
 	a.input("d")
 	v, exit := a.wait()
-	if exit != api.ExitOK || v.Result != "detached" || v.Agent == nil || v.Agent.Id != agent.Id || v.Agent.State != api.AgentStateRunning || v.Terminal != nil {
+	if exit != clikit.ExitOK || v.Result != "detached" || v.Agent == nil || v.Agent.Id != agent.Id || v.Agent.State != api.AgentStateRunning || v.Terminal != nil {
 		t.Fatalf("want detached with the agent running, got exit %d, %+v", exit, v)
 	}
 
@@ -585,7 +586,7 @@ func TestAgentAttach(t *testing.T) {
 	b.waitScreen("hello")
 	b.input("exit 3\r")
 	v, exit = b.wait()
-	if exit != api.ExitOK || v.Result != "exited" || v.Agent.State != api.AgentStateExited || v.Agent.ExitCode == nil || *v.Agent.ExitCode != 3 {
+	if exit != clikit.ExitOK || v.Result != "exited" || v.Agent.State != api.AgentStateExited || v.Agent.ExitCode == nil || *v.Agent.ExitCode != 3 {
 		t.Fatalf("want exited with code 3, got exit %d, %+v", exit, v)
 	}
 }
@@ -601,7 +602,7 @@ func TestAgentAttachText(t *testing.T) {
 	a.waitScreen("d detach")
 	a.input("d")
 	out := a.waitText()
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "detached from agent helper in app\n") || !strings.Contains(out.stdout, agent.Id) || strings.Contains(out.stdout, agent.TerminalId) {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "detached from agent helper in app\n") || !strings.Contains(out.stdout, agent.Id) || strings.Contains(out.stdout, agent.TerminalId) {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -614,27 +615,27 @@ func TestAgentCreateChild(t *testing.T) {
 	parent := newAgent(t, home, app, "parent")
 
 	v, exit := wdxJSONWith(t, home, in(lib), "agent", "create", "--parent-id", parent.Id, "--name", "by-id")
-	if exit != api.ExitOK || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
+	if exit != clikit.ExitOK || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
 		t.Fatalf("by id: exit %d, %+v", exit, v.Agent)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "PARENT", "--name", "by-name")
-	if exit != api.ExitOK || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
+	if exit != clikit.ExitOK || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
 		t.Fatalf("by name: exit %d, %+v", exit, v.Agent)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "by-name", "--name", "deep")
-	if exit != api.ExitOK {
+	if exit != clikit.ExitOK {
 		t.Fatalf("deep: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", "agent-none")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(lib), "agent", "create", "--parent-name", "parent")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--parent-id", parent.Id, "--parent-name", "parent")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
 	// The list nests the children, in JSON and as a tree in text.
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "list")
-	if exit != api.ExitOK || len(v.Agents) != 1 || v.Agents[0].Children == nil || len(*v.Agents[0].Children) != 2 {
+	if exit != clikit.ExitOK || len(v.Agents) != 1 || v.Agents[0].Children == nil || len(*v.Agents[0].Children) != 2 {
 		t.Fatalf("list: exit %d, %+v", exit, v.Agents)
 	}
 	out := wdxWith(t, home, in(app), "agent", "list")
@@ -648,7 +649,7 @@ func TestAgentCreateChild(t *testing.T) {
 		t.Errorf("get: %s", out.stdout)
 	}
 	out = wdxWith(t, home, in(app), "agent", "create", "--parent-id", parent.Id, "--name", "text")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "parent "+parent.Id) {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "parent "+parent.Id) {
 		t.Errorf("create: %+v", out)
 	}
 	out = wdxWith(t, home, in(app), "project", "get", "--name", "app")
@@ -662,16 +663,16 @@ func TestAgentRemoveParent(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	parent := newAgent(t, home, app, "parent")
-	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != clikit.ExitOK {
 		t.Fatalf("create: exit %d, %+v", exit, v)
 	}
 
 	out := wdxWith(t, home, in(app), "agent", "remove", "--name", "parent", "--stop-running")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "until its children are gone") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "until its children are gone") {
 		t.Fatalf("remove: %+v", out)
 	}
 	got, exit := wdxJSON(t, home, "agent", "get", "--id", parent.Id)
-	if exit != api.ExitOK || got.Agent.State != api.AgentStateRemoved || got.Agent.RemovedAt == nil {
+	if exit != clikit.ExitOK || got.Agent.State != api.AgentStateRemoved || got.Agent.RemovedAt == nil {
 		t.Fatalf("get: exit %d, %+v", exit, got.Agent)
 	}
 	out = wdxWith(t, home, in(app), "agent", "get", "--name", "parent")
@@ -685,11 +686,11 @@ func TestAgentRemoveParent(t *testing.T) {
 		{"agent", "create", "--parent-name", "parent"},
 	} {
 		v, exit := wdxJSONWith(t, home, in(app), args...)
-		wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+		wantError(t, v, exit, api.ErrorCodeAgentRemoved, clikit.ExitRejected)
 		wantHint(t, v, "it goes when its last child is removed")
 	}
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "attach", "--name", "parent")
-	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, clikit.ExitRejected)
 
 	// A parent cannot be a tombstone: completions leave it out.
 	out = wdxWith(t, home, in(app), "__complete", "agent", "create", "--parent-name", "")
@@ -697,11 +698,11 @@ func TestAgentRemoveParent(t *testing.T) {
 		t.Fatalf("completions: %q", out.stdout)
 	}
 
-	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "child", "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "child", "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("remove child: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "list")
-	if exit != api.ExitOK || len(v.Agents) != 0 {
+	if exit != clikit.ExitOK || len(v.Agents) != 0 {
 		t.Fatalf("list: exit %d, %+v", exit, v.Agents)
 	}
 }
@@ -710,7 +711,7 @@ func TestAgentCreateWorktree(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := gittest.Repo(t, "app")
-	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != clikit.ExitOK {
 		t.Fatalf("open: exit %d, %+v", exit, v)
 	}
 	path := filepath.Join(repo, ".worktrees", "fix")
@@ -723,27 +724,27 @@ func TestAgentCreateWorktree(t *testing.T) {
 
 	// A new name creates it; a child with no flag stays in its parent's.
 	v, exit := wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "in-fix", "--parent-name", "parent", "--worktree", "fix")
-	if exit != api.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated == nil || !*v.WorktreeCreated {
+	if exit != clikit.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated == nil || !*v.WorktreeCreated {
 		t.Fatalf("new: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "kid", "--parent-name", "in-fix")
-	if exit != api.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated != nil {
+	if exit != clikit.ExitOK || v.Agent.Dir != path || *v.Agent.Worktree != "fix" || v.WorktreeCreated != nil {
 		t.Fatalf("child: exit %d, %+v", exit, v)
 	}
 	// Run inside it, with no flag, an agent stays there.
 	v, exit = wdxJSONWith(t, home, in(path), "agent", "create", "--name", "here")
-	if exit != api.ExitOK || *v.Agent.Worktree != "fix" {
+	if exit != clikit.ExitOK || *v.Agent.Worktree != "fix" {
 		t.Fatalf("here: exit %d, %+v", exit, v)
 	}
 	// main is the clone, from anywhere in the project.
 	v, exit = wdxJSONWith(t, home, in(path), "agent", "create", "--name", "back", "--worktree", "main")
-	if exit != api.ExitOK || v.Agent.Dir != repo || *v.Agent.Worktree != "main" {
+	if exit != clikit.ExitOK || v.Agent.Dir != repo || *v.Agent.Worktree != "main" {
 		t.Fatalf("main: exit %d, %+v", exit, v)
 	}
 
 	// Text says what happened.
 	out := wdxWith(t, home, in(repo), "agent", "create", "--name", "txt", "--worktree", "text-one")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "text-one (new)") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "text-one (new)") {
 		t.Fatalf("text: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "agent", "get", "--name", "txt")
@@ -753,18 +754,18 @@ func TestAgentCreateWorktree(t *testing.T) {
 
 	gittest.Git(t, repo, "branch", "taken")
 	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "taken")
-	wantError(t, v, exit, api.ErrorCodeBranchExists, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeBranchExists, clikit.ExitRejected)
 	wantHint(t, v, "a new worktree gets a new branch")
 	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "a/b")
-	wantError(t, v, exit, api.ErrorCodeInvalidName, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidName, clikit.ExitRejected)
 	if err := os.MkdirAll(filepath.Join(repo, ".worktrees", "plain"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "agent", "create", "--worktree", "plain")
-	wantError(t, v, exit, api.ErrorCodePathExists, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodePathExists, clikit.ExitRejected)
 
 	// Removing the agent leaves the worktree.
-	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "remove", "--name", "here", "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "remove", "--name", "here", "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("remove: exit %d, %+v", exit, v)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -779,7 +780,7 @@ func TestAgentCreateWorktreeNoCommit(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--worktree", "fix")
-	wantError(t, v, exit, api.ErrorCodeWorktreeFailed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeWorktreeFailed, clikit.ExitRejected)
 }
 
 // claudeAtRest is a run file for the test ACA: a program drawing Claude Code's
@@ -800,11 +801,11 @@ func TestAgentSend(t *testing.T) {
 	const secret = "the-secret-prompt"
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "send", "--name", "helper", "--prompt", secret)
-	if exit != api.ExitOK || v.Result != "queued" || v.Agent.Id != a.Id {
+	if exit != clikit.ExitOK || v.Result != "queued" || v.Agent.Id != a.Id {
 		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "agent", "send", "--id", a.Id, "--instant", "--prompt=line one\nline two")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "queued agent helper in app\n") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "queued agent helper in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	// Its parser and its way of delivering, not typing. The second is instant, so is
@@ -821,13 +822,13 @@ func TestAgentSend(t *testing.T) {
 	}
 
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "send", "--name", "nope", "--prompt", secret)
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", "")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	v, exit = wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", strings.Repeat("x", 1<<20))
-	wantError(t, v, exit, api.ErrorCodeSendFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeSendFailed, clikit.ExitSystem)
 
 	files, err := filepath.Glob(filepath.Join(home, "logs", "*.log"))
 	if err != nil || len(files) == 0 {
@@ -853,7 +854,7 @@ func TestAgentSendNotRunning(t *testing.T) {
 	}
 	a := newExitedAgent(t, home, app, "helper")
 	v, exit := wdxJSON(t, home, "agent", "send", "--id", a.Id, "--prompt", "hello")
-	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentNotRunning, clikit.ExitRejected)
 	wantHint(t, v, "start it with wdx agent start, or open its project")
 }
 
@@ -862,14 +863,14 @@ func TestAgentSendRemoved(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	parent := newAgent(t, home, app, "parent")
-	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--parent-name", "parent", "--name", "child"); exit != clikit.ExitOK {
 		t.Fatalf("create: exit %d, %+v", exit, v)
 	}
-	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("remove: exit %d, %+v", exit, v)
 	}
 	v, exit := wdxJSON(t, home, "agent", "send", "--id", parent.Id, "--prompt", "hello")
-	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, clikit.ExitRejected)
 }
 
 func TestAgentTranscript(t *testing.T) {
@@ -883,30 +884,30 @@ func TestAgentTranscript(t *testing.T) {
 	}
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper")
-	if exit != api.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.Next != 3 || !slices.Equal(v.Transcript.Lines, []string{"# Session s", "", "hello"}) {
+	if exit != clikit.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.Next != 3 || !slices.Equal(v.Transcript.Lines, []string{"# Session s", "", "hello"}) {
 		t.Fatalf("want every line, got exit %d, %+v", exit, v.Transcript)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--tail", "1")
-	if exit != api.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
+	if exit != clikit.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
 		t.Fatalf("want the last line, got exit %d, %+v", exit, v.Transcript)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--from", "2", "--count", "1")
-	if exit != api.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
+	if exit != clikit.ExitOK || v.Transcript.From != 2 || !slices.Equal(v.Transcript.Lines, []string{"hello"}) {
 		t.Fatalf("want line 2, got exit %d, %+v", exit, v.Transcript)
 	}
 	for _, flags := range [][]string{{"--tail", "2", "--from", "3"}, {"--tail", "2", "--count", "3"}, {"--path", "--tail", "2"}, {"--tail", "0"}} {
 		v, exit = wdxJSONWith(t, home, in(app), append([]string{"agent", "transcript", "--name", "helper"}, flags...)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "transcript", "--name", "nobody")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	out := wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--tail", "1")
-	if out.exit != api.ExitOK || out.stdout != "hello\n" {
+	if out.exit != clikit.ExitOK || out.stdout != "hello\n" {
 		t.Fatalf("text: %+v", out)
 	}
 	out = wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--path")
-	if out.exit != api.ExitOK || out.stdout != file+"\n" {
+	if out.exit != clikit.ExitOK || out.stdout != file+"\n" {
 		t.Fatalf("path: %+v", out)
 	}
 }
@@ -917,11 +918,11 @@ func TestAgentCreateWithAPrompt(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "empty", "--prompt", " ")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	wantHint(t, v, "agent create --help")
 
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "create", "--name", "worker", "--prompt", secret)
-	if exit != api.ExitOK || v.Result != "created" {
+	if exit != clikit.ExitOK || v.Result != "created" {
 		t.Fatalf("create: %d, %+v", exit, v)
 	}
 	out := wdxWith(t, home, in(app), "message", "list")
@@ -950,29 +951,29 @@ func TestAgentRestart(t *testing.T) {
 	a := newAgent(t, home, app, "helper")
 
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "restart", "--name", "helper")
-	wantError(t, v, exit, api.ErrorCodeAgentBusy, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentBusy, clikit.ExitRejected)
 	wantHint(t, v, "--force")
 
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "restart", "--name", "helper", "--force")
-	if exit != api.ExitOK || v.Result != "restarted" || v.Agent.Id != a.Id || v.Agent.State != api.AgentStateRunning || v.Agent.SessionId == a.SessionId {
+	if exit != clikit.ExitOK || v.Result != "restarted" || v.Agent.Id != a.Id || v.Agent.State != api.AgentStateRunning || v.Agent.SessionId == a.SessionId {
 		t.Fatalf("want helper restarted, got exit %d, %+v", exit, v)
 	}
 	if got := launches(t, home); !slices.Equal(got, []string{a.SessionId, v.Agent.SessionId}) {
 		t.Fatalf("sessions = %q", got)
 	}
 	v, exit = wdxJSON(t, home, "agent", "restart", "--id", "agent-nothing")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "agent", "restart")
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
 	out := wdxWith(t, home, in(app), "agent", "restart", "--name", "helper", "--force")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "restarted agent helper") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "restarted agent helper") {
 		t.Fatalf("text: %+v", out)
 	}
 
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
 	v, exit = wdxJSON(t, home, "agent", "restart", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeProjectClosed, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 }
 
 // An agent that is not running needs no --force, and one that does not start says so.
@@ -989,7 +990,7 @@ func TestAgentRestartOfOneThatEnded(t *testing.T) {
 	}
 	a := newExitedAgent(t, home, dir, "helper")
 	v, exit := wdxJSON(t, home, "agent", "restart", "--id", a.Id)
-	if exit != api.ExitOK || v.Result != "restarted" || v.Agent.SessionId == a.SessionId {
+	if exit != clikit.ExitOK || v.Result != "restarted" || v.Agent.SessionId == a.SessionId {
 		t.Fatalf("want it restarted, got exit %d, %+v", exit, v)
 	}
 	waitAgent(t, home, a.Id, api.AgentStateExited)
@@ -997,7 +998,7 @@ func TestAgentRestartOfOneThatEnded(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit = wdxJSON(t, home, "agent", "restart", "--id", a.Id)
-	wantError(t, v, exit, api.ErrorCodeStartFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeStartFailed, clikit.ExitSystem)
 }
 
 func TestAgentRestartOfATombstone(t *testing.T) {
@@ -1005,14 +1006,14 @@ func TestAgentRestartOfATombstone(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	parent := newAgent(t, home, app, "parent")
-	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "child", "--parent-name", "parent"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--name", "child", "--parent-name", "parent"); exit != clikit.ExitOK {
 		t.Fatalf("child: %d, %+v", exit, v)
 	}
-	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "agent", "remove", "--id", parent.Id, "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("remove: %d, %+v", exit, v)
 	}
 	v, exit := wdxJSON(t, home, "agent", "restart", "--id", parent.Id, "--force")
-	wantError(t, v, exit, api.ErrorCodeAgentRemoved, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAgentRemoved, clikit.ExitRejected)
 }
 
 func TestAgentTranscriptBrief(t *testing.T) {
@@ -1021,7 +1022,7 @@ func TestAgentTranscriptBrief(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	a := newAgent(t, home, app, "helper")
 	v, exit := wdxJSON(t, home, "agent", "transcript", "--id", a.Id, "--brief")
-	if exit != api.ExitOK || len(v.Transcript.Lines) != 0 {
+	if exit != clikit.ExitOK || len(v.Transcript.Lines) != 0 {
 		t.Fatalf("nothing said yet: exit %d, %+v", exit, v.Transcript)
 	}
 	file := filepath.Join(identity.AgentDir(home, a.Id), aca.TranscriptFile)
@@ -1031,17 +1032,17 @@ func TestAgentTranscriptBrief(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit = wdxJSON(t, home, "agent", "transcript", "--id", a.Id, "--brief")
-	if exit != api.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.From != 2 || v.Transcript.Next != 20 || !slices.Contains(v.Transcript.Lines, "the request") || !slices.Contains(v.Transcript.Lines, "- Bash ls (line 8)") || slices.Contains(v.Transcript.Lines, "the output") {
+	if exit != clikit.ExitOK || v.Result != "" || v.Transcript.Path != file || v.Transcript.From != 2 || v.Transcript.Next != 20 || !slices.Contains(v.Transcript.Lines, "the request") || !slices.Contains(v.Transcript.Lines, "- Bash ls (line 8)") || slices.Contains(v.Transcript.Lines, "the output") {
 		t.Fatalf("exit %d, %+v", exit, v.Transcript)
 	}
 	for _, flags := range [][]string{{"--tail", "2"}, {"--from", "3"}, {"--count", "3"}, {"--path"}} {
 		v, exit = wdxJSON(t, home, append([]string{"agent", "transcript", "--id", a.Id, "--brief"}, flags...)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 	v, exit = wdxJSON(t, home, "agent", "transcript", "--id", "agent-nothing", "--brief")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	out := wdxWith(t, home, in(app), "agent", "transcript", "--id", a.Id, "--brief")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "This is the conversation so far in brief") || !strings.Contains(out.stdout, "the request\n") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "This is the conversation so far in brief") || !strings.Contains(out.stdout, "the request\n") {
 		t.Fatalf("text: %+v", out)
 	}
 }

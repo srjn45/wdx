@@ -1,85 +1,29 @@
 package cli
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"fmt"
-	"io"
-	"runtime"
-	"slices"
-	"strings"
-	"sync"
 	"time"
-	"weak"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/srjn45/wdx/internal/api"
-	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
-	"github.com/srjn45/wdx/internal/style"
 )
 
 // completionTimeout bounds how long a tab completion waits for the daemon:
 // one that is slow offers nothing rather than hang the shell.
 const completionTimeout = 500 * time.Millisecond
 
-// isCompletion reports whether args are a shell asking for completions.
-func isCompletion(args []string) bool {
-	return len(args) > 0 && (args[0] == cobra.ShellCompRequestCmd || args[0] == cobra.ShellCompNoDescRequestCmd)
-}
-
-// flagCompletions holds what each flag of the trees built completes with, until a
-// run that completes gives it to cobra (registerCompletions). cobra keeps every flag
-// it is given for the life of the process, which in a process that runs many
-// commands, as the tests do, keeps every tree built. A flag's entry goes with it.
-var flagCompletions sync.Map // weak.Pointer[pflag.Flag] -> cobra.CompletionFunc
-
-// completeFlag says what the flag of cmd completes with.
-func completeFlag(cmd *cobra.Command, name string, complete cobra.CompletionFunc) {
-	flag := cmd.Flag(name)
-	if flag == nil {
-		panic(fmt.Sprintf("%s has no flag --%s to complete", cmd.CommandPath(), name))
-	}
-	key := weak.Make(flag)
-	flagCompletions.Store(key, complete)
-	runtime.AddCleanup(flag, func(key weak.Pointer[pflag.Flag]) { flagCompletions.Delete(key) }, key)
-}
-
-// flagCompletion is what the flag of cmd, its own or inherited, completes with.
-func flagCompletion(cmd *cobra.Command, name string) (cobra.CompletionFunc, bool) {
-	flag := cmd.Flag(name)
-	if flag == nil {
-		return nil, false
-	}
-	complete, ok := flagCompletions.Load(weak.Make(flag))
-	if !ok {
-		return nil, false
-	}
-	return complete.(cobra.CompletionFunc), true
-}
-
-// registerCompletions gives cobra what every flag of the tree completes with.
-func registerCompletions(cmd *cobra.Command) {
-	cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
-		if complete, ok := flagCompletion(cmd, f.Name); ok {
-			_ = cmd.RegisterFlagCompletionFunc(f.Name, complete)
-		}
-	})
-	for _, sub := range cmd.Commands() {
-		registerCompletions(sub)
-	}
-}
-
 // completeProjects completes --id or --name, as key says, with the projects
 // in state, every project when state is empty. It offers nothing when the
 // daemon does not answer.
 func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 		defer cancel()
 		list, err := clientOf(cmd).ListProjects(ctx, state)
 		if err != nil {
@@ -104,14 +48,14 @@ func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 // answer.
 func completeTerminals(key string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")
 		scope.name, _ = cmd.Flags().GetString("project-name")
 		var dir string
 		if !scope.given() {
-			dir = invocationOf(cmd).env.WorkDir
+			dir = envOf(cmd).WorkDir
 		}
 		list, err := clientOf(cmd).ListTerminals(ctx, scope.ref(), dir)
 		if err != nil {
@@ -145,14 +89,14 @@ func completeParents(key string) cobra.CompletionFunc {
 
 func completeAgentsWhere(key string, keep func(api.Agent) bool) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")
 		scope.name, _ = cmd.Flags().GetString("project-name")
 		var dir string
 		if !scope.given() {
-			dir = invocationOf(cmd).env.WorkDir
+			dir = envOf(cmd).WorkDir
 		}
 		list, err := clientOf(cmd).ListAgents(ctx, scope.ref(), dir)
 		if err != nil {
@@ -174,153 +118,18 @@ func completeAgentsWhere(key string, keep func(api.Agent) bool) cobra.Completion
 	}
 }
 
-// completeDirs completes a flag with directories.
-func completeDirs(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	return nil, cobra.ShellCompDirectiveFilterDirs
-}
-
-// completeFiles completes a flag with the shell's own file completion.
-func completeFiles(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	return nil, cobra.ShellCompDirectiveDefault
-}
-
-// completeColor completes --color with its modes.
-func completeColor(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	var modes []cobra.Completion
-	for _, m := range config.ColorModes {
-		modes = append(modes, string(m))
-	}
-	return modes, cobra.ShellCompDirectiveNoFileComp
-}
-
-// completeSettings completes --name with the settings, those of the config
-// file only when fileOnly: the table lists them, so no daemon is asked.
-func completeSettings(fileOnly bool) cobra.CompletionFunc {
-	return func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		var completions []cobra.Completion
-		for _, s := range config.Settings() {
-			if !fileOnly || s.EnvVar == "" {
-				completions = append(completions, cobra.CompletionWithDesc(s.Key, s.Description))
-			}
-		}
-		return completions, cobra.ShellCompDirectiveNoFileComp
-	}
-}
-
-// completeHelp completes wdx help with the subcommands of the command named
-// so far, and at the root with the topics too, in place of a command of the
-// same name.
-func completeHelp(cmd *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	found, rest, err := cmd.Root().Find(args)
-	if err != nil || len(rest) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	var completions []cobra.Completion
-	for _, sub := range found.Commands() {
-		// wdx help settings shows the topic, which names the command.
-		if _, topic := findTopic(sub.Name()); topic && !found.HasParent() {
-			continue
-		}
-		if sub.IsAvailableCommand() {
-			completions = append(completions, cobra.CompletionWithDesc(sub.Name(), sub.Short))
-		}
-	}
-	if !found.HasParent() {
-		for _, t := range topics {
-			completions = append(completions, cobra.CompletionWithDesc(t.name, t.summary))
-		}
-	}
-	return completions, cobra.ShellCompDirectiveNoFileComp
-}
-
-// setCompletions makes every command in the tree offer no files where it
-// completes nothing else: no command takes a file as an argument.
-func setCompletions(cmd *cobra.Command) {
-	if cmd.ValidArgsFunction == nil {
-		cmd.ValidArgsFunction = cobra.NoFileCompletions
-	}
-	for _, sub := range cmd.Commands() {
-		setCompletions(sub)
-	}
-}
-
-// shells are the shells wdx completes in.
-var shells = []struct {
-	name, load string
-	generate   func(root *cobra.Command, w io.Writer) error
-}{
-	{
-		"bash",
-		"Load it in this shell with source <(" + identity.Name + " completion bash), or for every\n" +
-			"shell save it as ~/.local/share/bash-completion/completions/" + identity.Name + "; the\n" +
-			"bash-completion package must be installed. The installer does the latter.",
-		func(root *cobra.Command, w io.Writer) error { return root.GenBashCompletionV2(w, true) },
-	},
-	{
-		"zsh",
-		"Save it as _" + identity.Name + " in a directory of your fpath, such as\n" +
-			"~/.zsh/completions with fpath=(~/.zsh/completions $fpath) before compinit\n" +
-			"in ~/.zshrc. The installer does it.",
-		func(root *cobra.Command, w io.Writer) error { return root.GenZshCompletion(w) },
-	},
-	{
-		"fish",
-		"Save it as ~/.config/fish/completions/" + identity.Name + ".fish. The installer does it.",
-		func(root *cobra.Command, w io.Writer) error { return root.GenFishCompletion(w, true) },
-	},
-}
-
 func newCompletionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "completion",
-		Short: "Print the script that completes " + identity.Name + " commands in a shell",
-		Long: "The script asks " + identity.Name + " for the candidates on every Tab, so it completes\n" +
-			"new commands and flags as soon as " + identity.Name + " is updated. Project and\n" +
-			"terminal names and ids come from the daemon; nothing is offered when it is\n" +
-			"not running.",
-		Args: noArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
-	}
-	for _, sh := range shells {
-		cmd.AddCommand(&cobra.Command{
-			Use:     sh.name,
-			Short:   "Print the " + sh.name + " completion script",
-			Long:    sh.load,
-			Example: examples("Print the script", identity.Name+" completion "+sh.name),
-			Args:    cobra.NoArgs,
-			Annotations: map[string]string{
-				outputNote: "The script, and nothing else.\n" + `With --json: {"shell": "` + sh.name + `", "script": "..."}`,
-			},
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				var script bytes.Buffer
-				if err := sh.generate(cmd.Root(), &script); err != nil {
-					return err
-				}
-				return printResult(cmd, completionScript{Shell: sh.name, Script: script.String()})
-			},
-		})
-	}
+	cmd := clikit.NewCompletionCmd(identity.Name)
+	cmd.Long = "The script asks " + identity.Name + " for the candidates on every Tab, so it completes\n" +
+		"new commands and flags as soon as " + identity.Name + " is updated. Project and\n" +
+		"terminal names and ids come from the daemon; nothing is offered when it is\n" +
+		"not running."
 	return cmd
-}
-
-type completionScript struct {
-	Shell  string `json:"shell"`
-	Script string `json:"script"`
-}
-
-func (s completionScript) text(w io.Writer, _ style.Style) {
-	fmt.Fprint(w, s.Script)
-}
-
-// completionResponse is what a shell asking for completions was given: the
-// lines cobra printed, the candidates and then the directive.
-func completionResponse(printed string) []string {
-	return slices.DeleteFunc(strings.Split(printed, "\n"), func(line string) bool { return line == "" })
 }
 
 // completeACAs offers the AI coding agents new agents can run, as the daemon says.
 func completeACAs(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 	defer cancel()
 	list, err := clientOf(cmd).ListAcas(ctx)
 	if err != nil {
@@ -337,7 +146,7 @@ func completeACAs(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion,
 // completeModels offers the models of the AI coding agent --aca names, or of the
 // default, each with its name.
 func completeModels(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 	defer cancel()
 	acaID, _ := cmd.Flags().GetString("aca")
 	id, err := chosenACA(ctx, clientOf(cmd), acaID)

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -66,7 +67,7 @@ func TestWorktreeList(t *testing.T) {
 		args []string
 	}{{app, nil}, {t.TempDir(), []string{"--project-name", "app"}}} {
 		v, exit := wdxWorktree(t, home, tc.dir, append([]string{"list"}, tc.args...)...)
-		if exit != api.ExitOK || len(v.Worktrees) != 2 {
+		if exit != clikit.ExitOK || len(v.Worktrees) != 2 {
 			t.Fatalf("%v: exit %d, %+v", tc.args, exit, v)
 		}
 		w := v.Worktrees[slices.IndexFunc(v.Worktrees, func(s api.WorktreeStatus) bool { return s.Name == "work" })]
@@ -76,7 +77,7 @@ func TestWorktreeList(t *testing.T) {
 	}
 
 	out := wdxWith(t, home, in(app), "worktree", "list")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "NAME") || !strings.Contains(out.stdout, "work") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "NAME") || !strings.Contains(out.stdout, "work") {
 		t.Errorf("text: %+v", out)
 	}
 }
@@ -85,7 +86,7 @@ func TestWorktreeListOutsideAProject(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	v, exit := wdxJSONWith(t, home, in(t.TempDir()), "worktree", "list")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id")
 }
 
@@ -95,19 +96,19 @@ func TestWorktreeDiff(t *testing.T) {
 	app, _ := worktreeProject(t, home)
 
 	v, exit := wdxWorktree(t, home, app, "diff", "--name", "work")
-	if exit != api.ExitOK || !strings.Contains(v.Patch, "+committed") || strings.Contains(v.Patch, "+two") {
+	if exit != clikit.ExitOK || !strings.Contains(v.Patch, "+committed") || strings.Contains(v.Patch, "+two") {
 		t.Errorf("committed: exit %d, %q", exit, v.Patch)
 	}
 	v, exit = wdxWorktree(t, home, app, "diff", "--name", "work", "--path", "file")
-	if exit != api.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
+	if exit != clikit.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
 		t.Errorf("uncommitted: exit %d, %q", exit, v.Patch)
 	}
 	v, exit = wdxWorktree(t, home, app, "diff", "--name", "work", "--uncommitted")
-	if exit != api.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
+	if exit != clikit.ExitOK || !strings.Contains(v.Patch, "+two") || strings.Contains(v.Patch, "+committed") {
 		t.Errorf("all uncommitted: exit %d, %q", exit, v.Patch)
 	}
 	out := wdxWith(t, home, in(app), "worktree", "diff", "--name", "work")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "+committed") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "+committed") {
 		t.Errorf("text: %+v", out)
 	}
 }
@@ -118,11 +119,11 @@ func TestWorktreeDiffRefused(t *testing.T) {
 	app, _ := worktreeProject(t, home)
 
 	v, exit := wdxJSONWith(t, home, in(app), "worktree", "diff", "--name", "nope")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "worktree", "diff", "--name", "work", "--path", "../outside")
-	wantError(t, v, exit, api.ErrorCodeInvalidPath, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeInvalidPath, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "worktree", "diff", "--name", "work")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 }
 
 func TestWorktreeComments(t *testing.T) {
@@ -130,11 +131,11 @@ func TestWorktreeComments(t *testing.T) {
 	home := newHome(t)
 	app, _ := worktreeProject(t, home)
 	v, exit := wdxWorktree(t, home, app, "comments", "--name", "work")
-	if exit != api.ExitOK || !strings.Contains(wdxWith(t, home, in(app), "worktree", "comments", "--name", "work").stdout, "no comments") {
+	if exit != clikit.ExitOK || !strings.Contains(wdxWith(t, home, in(app), "worktree", "comments", "--name", "work").stdout, "no comments") {
 		t.Errorf("none: exit %d, %+v", exit, v)
 	}
 	e, exit := wdxJSONWith(t, home, in(app), "worktree", "comments", "--name", "nope")
-	wantError(t, e, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, e, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 }
 
 func TestMessageCommands(t *testing.T) {
@@ -143,14 +144,14 @@ func TestMessageCommands(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	send := func() {
 		t.Helper()
-		if out := wdxWith(t, home, in(app), "agent", "send", "--name", "helper", "--prompt", "a secret text"); out.exit != api.ExitOK {
+		if out := wdxWith(t, home, in(app), "agent", "send", "--name", "helper", "--prompt", "a secret text"); out.exit != clikit.ExitOK {
 			t.Fatalf("send: %+v", out)
 		}
 	}
-	if out := wdxWith(t, home, in(app), "agent", "create", "--name", "helper"); out.exit != api.ExitOK {
+	if out := wdxWith(t, home, in(app), "agent", "create", "--name", "helper"); out.exit != clikit.ExitOK {
 		t.Fatalf("create: %+v", out)
 	}
-	if out := wdxWith(t, home, in(app), "message", "list"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "no messages waiting") {
+	if out := wdxWith(t, home, in(app), "message", "list"); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "no messages waiting") {
 		t.Errorf("none: %+v", out)
 	}
 	send()
@@ -164,24 +165,24 @@ func TestMessageCommands(t *testing.T) {
 		t.Errorf("text: %+v", out)
 	}
 	v, exit := wdxJSONWith(t, home, in(app), "message", "resend", "--id", id)
-	if exit != api.ExitOK || v.Result != "queued" {
+	if exit != clikit.ExitOK || v.Result != "queued" {
 		t.Errorf("resend: %d, %+v", exit, v)
 	}
-	if out := wdxWith(t, home, in(app), "message", "resend", "--id", id); out.exit != api.ExitOK || !strings.Contains(out.stdout, "queued for helper") {
+	if out := wdxWith(t, home, in(app), "message", "resend", "--id", id); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "queued for helper") {
 		t.Errorf("resend text: %+v", out)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "message", "discard", "--id", id)
-	if exit != api.ExitOK || v.Result != "removed" {
+	if exit != clikit.ExitOK || v.Result != "removed" {
 		t.Errorf("discard: %d, %+v", exit, v)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "message", "discard", "--id", id)
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(app), "message", "resend", "--id", "msg-nope")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	v, exit = wdxJSONWith(t, home, in(t.TempDir()), "message", "list")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	send()
-	if out := wdxWith(t, home, in(app), "message", "discard", "--id", "msg-nope"); out.exit != api.ExitRejected {
+	if out := wdxWith(t, home, in(app), "message", "discard", "--id", "msg-nope"); out.exit != clikit.ExitRejected {
 		t.Errorf("text failure: %+v", out)
 	}
 }
@@ -193,25 +194,25 @@ func TestWorktreeRemove(t *testing.T) {
 
 	// With a file changed and a commit ahead, nothing goes.
 	v, exit := wdxWorktree(t, home, app, "remove", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeNotLanded {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeWorktreeNotLanded {
 		t.Fatalf("not landed: exit %d, %+v", exit, v)
 	}
 	if _, err := os.Stat(work); err != nil {
 		t.Fatal(err)
 	}
 	v, exit = wdxWorktree(t, home, app, "remove", "--name", "main")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
 		t.Fatalf("the clone: exit %d, %+v", exit, v)
 	}
 	v, exit = wdxWorktree(t, home, app, "remove", "--name", "nope")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeNotFound {
 		t.Fatalf("unknown: exit %d, %+v", exit, v)
 	}
 
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 	gittest.Git(t, app, "merge", "-q", "--ff-only", "work")
 	out := wdxWith(t, home, in(app), "worktree", "remove", "--name", "work")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "removed worktree work") || !strings.Contains(out.stdout, "branch work deleted") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "removed worktree work") || !strings.Contains(out.stdout, "branch work deleted") {
 		t.Fatalf("removed: %+v", out)
 	}
 	if _, err := os.Stat(work); !os.IsNotExist(err) {
@@ -226,22 +227,22 @@ func TestWorktreeRemoveForgetsWhatWdxMade(t *testing.T) {
 	home := newHome(t)
 	repo := gittest.Repo(t, "app")
 	gittest.Git(t, repo, "branch", "-M", "main")
-	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != clikit.ExitOK {
 		t.Fatalf("open: exit %d, %+v", exit, v)
 	}
-	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "fixer", "--worktree", "fix"); exit != api.ExitOK {
+	if v, exit := wdxJSONWith(t, home, in(repo), "agent", "create", "--name", "fixer", "--worktree", "fix"); exit != clikit.ExitOK {
 		t.Fatalf("agent: exit %d, %+v", exit, v)
 	}
 	out := wdxWith(t, home, in(repo), "worktree", "remove", "--name", "fix", "--json")
 	var r api.WorktreeRemoved
-	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != clikit.ExitOK {
 		t.Fatalf("remove: %+v, %v", out, err)
 	}
 	if r.Result != api.ResultRemoved || len(r.Notified) != 1 || r.Notified[0] != "fixer" {
 		t.Errorf("answer: %+v", r)
 	}
 	v, exit := wdxWorktree(t, home, repo, "list")
-	if exit != api.ExitOK || len(v.Worktrees) != 1 || v.Worktrees[0].Name != "main" {
+	if exit != clikit.ExitOK || len(v.Worktrees) != 1 || v.Worktrees[0].Name != "main" {
 		t.Errorf("list: exit %d, %+v", exit, v.Worktrees)
 	}
 }
@@ -253,43 +254,43 @@ func TestWorktreeLand(t *testing.T) {
 
 	// Nothing is said yet of how it lands.
 	v, exit := wdxWorktree(t, home, app, "land", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeLandNotConfigured || v.Hint == nil || !strings.Contains(*v.Hint, "project landing") {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeLandNotConfigured || v.Hint == nil || !strings.Contains(*v.Hint, "project landing") {
 		t.Fatalf("not configured: exit %d, %+v", exit, v)
 	}
 	shown := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--json")
 	var s api.ProjectLanding
-	if err := json.Unmarshal([]byte(shown.stdout), &s); err != nil || shown.exit != api.ExitOK || s.Configured {
+	if err := json.Unmarshal([]byte(shown.stdout), &s); err != nil || shown.exit != clikit.ExitOK || s.Configured {
 		t.Fatalf("shown: %+v, %v", shown, err)
 	}
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--push"); out.exit != api.ExitUsage {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--push"); out.exit != clikit.ExitUsage {
 		t.Fatalf("--push alone: %+v", out)
 	}
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "check: none") {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "check: none") {
 		t.Fatalf("set: %+v", out)
 	}
 
 	// With a file changed, it does not start.
 	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotCommitted {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeNotCommitted {
 		t.Fatalf("not committed: exit %d, %+v", exit, v)
 	}
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 
 	// A check that fails stops it, with the code and what to read.
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "exit 4", "--json"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "exit 4") {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "exit 4", "--json"); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "exit 4") {
 		t.Fatalf("set: %+v", out)
 	}
 	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeCheckFailed || v.Hint == nil || !strings.Contains(*v.Hint, "land-work") {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeCheckFailed || v.Hint == nil || !strings.Contains(*v.Hint, "land-work") {
 		t.Fatalf("check failed: exit %d, %+v", exit, v)
 	}
 
 	// It lands, and says so.
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "true"); out.exit != api.ExitOK {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--check", "true"); out.exit != clikit.ExitOK {
 		t.Fatalf("set: %+v", out)
 	}
 	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "landed worktree work on main") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "landed worktree work on main") {
 		t.Fatalf("land: %+v", out)
 	}
 	if _, err := os.Stat(filepath.Join(app, "landing")); err != nil {
@@ -298,7 +299,7 @@ func TestWorktreeLand(t *testing.T) {
 
 	// Nothing is left, and the JSON of landing was a result.
 	v, exit = wdxWorktree(t, home, app, "land", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeNothingToLand {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeNothingToLand {
 		t.Fatalf("again: exit %d, %+v", exit, v)
 	}
 }
@@ -311,19 +312,19 @@ func TestWorktreeLandByPR(t *testing.T) {
 	gittest.Git(t, app, "init", "-q", "--bare", filepath.Join(home, "origin.git"))
 	gittest.Git(t, app, "remote", "add", "origin", filepath.Join(home, "origin.git"))
 
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--method", "pr"); out.exit != api.ExitUsage {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--method", "pr"); out.exit != clikit.ExitUsage {
 		t.Fatalf("--method alone: %+v", out)
 	}
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "squash"); out.exit != api.ExitUsage {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "squash"); out.exit != clikit.ExitUsage {
 		t.Fatalf("an unknown method: %+v", out)
 	}
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "pr"); out.exit != api.ExitOK || !strings.Contains(out.stdout, "method: pr") {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check", "--method", "pr"); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "method: pr") {
 		t.Fatalf("set: %+v", out)
 	}
 
 	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--json")
 	var r worktreeLanded
-	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != clikit.ExitOK {
 		t.Fatalf("land: %+v, %v", out, err)
 	}
 	if r.Result != api.ResultPrOpened || r.PullRequest == nil || r.PullRequest.Number != 12 || r.PullRequest.Url == "" {
@@ -342,11 +343,11 @@ func TestWorktreeLandByPR(t *testing.T) {
 	fake := ghtest.In(home)
 	fake.Set(t, "MERGED", head)
 	v, exit := wdxWorktree(t, home, app, "land", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodePrFailed {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodePrFailed {
 		t.Fatalf("merged: exit %d, %+v", exit, v)
 	}
 	removed := wdxWith(t, home, in(app), "worktree", "remove", "--name", "work")
-	if removed.exit != api.ExitOK {
+	if removed.exit != clikit.ExitOK {
 		t.Fatalf("remove: %+v", removed)
 	}
 }
@@ -359,14 +360,14 @@ func TestWorktreeLandMethodOnce(t *testing.T) {
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 	gittest.Git(t, app, "init", "-q", "--bare", filepath.Join(home, "origin.git"))
 	gittest.Git(t, app, "remote", "add", "origin", filepath.Join(home, "origin.git"))
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != clikit.ExitOK {
 		t.Fatalf("set: %+v", out)
 	}
-	if out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--method", "nope"); out.exit != api.ExitUsage {
+	if out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--method", "nope"); out.exit != clikit.ExitUsage {
 		t.Fatalf("an unknown method: %+v", out)
 	}
 	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--method", "pr")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "PR #12 open: worktree work onto main") || !strings.Contains(out.stdout, "/pull/12") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "PR #12 open: worktree work onto main") || !strings.Contains(out.stdout, "/pull/12") {
 		t.Fatalf("land: %+v", out)
 	}
 	shown := wdxWith(t, home, in(app), "project", "landing", "--name", "app")
@@ -380,12 +381,12 @@ func TestWorktreeLandJSON(t *testing.T) {
 	home := newHome(t)
 	app, work := worktreeProject(t, home)
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != clikit.ExitOK {
 		t.Fatalf("set: %+v", out)
 	}
 	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--json")
 	var r worktreeLanded
-	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != api.ExitOK {
+	if err := json.Unmarshal([]byte(out.stdout), &r); err != nil || out.exit != clikit.ExitOK {
 		t.Fatalf("land: %+v, %v", out, err)
 	}
 	if r.Result != api.ResultLanded || r.Worktree != "work" || r.Base != "main" || r.Commit == nil {
@@ -445,7 +446,7 @@ func TestWorktreeRebase(t *testing.T) {
 
 	// Nothing is stashed: an agent is to commit first.
 	v, exit := wdxRebase(t, home, app, "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeNotCommitted || v.Hint == nil || !strings.Contains(*v.Hint, "agent send") {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeNotCommitted || v.Hint == nil || !strings.Contains(*v.Hint, "agent send") {
 		t.Fatalf("not committed: exit %d, %+v", exit, v)
 	}
 	if files := detailFiles(t, v.Problem, "files"); !slices.Equal(files, []string{"file"}) {
@@ -454,7 +455,7 @@ func TestWorktreeRebase(t *testing.T) {
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 
 	v, exit = wdxRebase(t, home, app, "work")
-	if exit != api.ExitOK || v.Result != api.ResultUpToDate || v.Base != "main" || v.HeadBefore != v.HeadAfter || v.Pushed {
+	if exit != clikit.ExitOK || v.Result != api.ResultUpToDate || v.Base != "main" || v.HeadBefore != v.HeadAfter || v.Pushed {
 		t.Fatalf("up to date: exit %d, %+v", exit, v)
 	}
 
@@ -466,7 +467,7 @@ func TestWorktreeRebase(t *testing.T) {
 	gittest.Git(t, work, "push", "-q", "origin", "work")
 	commitIn(app, "later", "on main\n")
 	v, exit = wdxRebase(t, home, app, "work")
-	if exit != api.ExitOK || v.Result != api.ResultRebased || v.HeadBefore == v.HeadAfter || !v.Pushed {
+	if exit != clikit.ExitOK || v.Result != api.ResultRebased || v.HeadBefore == v.HeadAfter || !v.Pushed {
 		t.Fatalf("rebased: exit %d, %+v", exit, v)
 	}
 	if got := revParse(t, origin, "work"); got != v.HeadAfter {
@@ -480,7 +481,7 @@ func TestWorktreeRebase(t *testing.T) {
 	gittest.Git(t, other, "push", "-q", "origin", "work")
 	commitIn(app, "again", "on main\n")
 	v, exit = wdxRebase(t, home, app, "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodePushFailed || v.Hint == nil || !strings.Contains(*v.Hint, "rebase is kept") {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodePushFailed || v.Hint == nil || !strings.Contains(*v.Hint, "rebase is kept") {
 		t.Fatalf("push refused: exit %d, %+v", exit, v)
 	}
 
@@ -489,7 +490,7 @@ func TestWorktreeRebase(t *testing.T) {
 	commitIn(app, "file", "ours\n")
 	before := revParse(t, work, "HEAD")
 	out := wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "rebase_failed") || !strings.Contains(out.stderr, "agent send") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "rebase_failed") || !strings.Contains(out.stderr, "agent send") {
 		t.Fatalf("conflict: %+v", out)
 	}
 	v, _ = wdxRebase(t, home, app, "work")
@@ -504,18 +505,18 @@ func TestWorktreeRebase(t *testing.T) {
 	if err := exec.Command("git", "-C", work, "rebase", "main").Run(); err == nil {
 		t.Fatal("want the rebase to stop")
 	}
-	if v, exit = wdxRebase(t, home, app, "work"); exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeBusy {
+	if v, exit = wdxRebase(t, home, app, "work"); exit != clikit.ExitRejected || v.Code != api.ErrorCodeWorktreeBusy {
 		t.Errorf("busy: exit %d, %+v", exit, v)
 	}
 	gittest.Git(t, work, "rebase", "--abort")
 	gittest.Git(t, work, "switch", "-q", "--detach")
-	if v, exit = wdxRebase(t, home, app, "work"); exit != api.ExitRejected || v.Code != api.ErrorCodeDetachedHead {
+	if v, exit = wdxRebase(t, home, app, "work"); exit != clikit.ExitRejected || v.Code != api.ErrorCodeDetachedHead {
 		t.Errorf("detached: exit %d, %+v", exit, v)
 	}
-	if v, exit = wdxRebase(t, home, app, "main"); exit != api.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
+	if v, exit = wdxRebase(t, home, app, "main"); exit != clikit.ExitRejected || v.Code != api.ErrorCodeWorktreeIsClone {
 		t.Errorf("the clone: exit %d, %+v", exit, v)
 	}
-	if v, exit = wdxRebase(t, home, app, "nope"); exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+	if v, exit = wdxRebase(t, home, app, "nope"); exit != clikit.ExitRejected || v.Code != api.ErrorCodeNotFound {
 		t.Errorf("unknown: exit %d, %+v", exit, v)
 	}
 }
@@ -526,12 +527,12 @@ func TestWorktreeRebaseText(t *testing.T) {
 	app, work := worktreeProject(t, home)
 	gittest.Git(t, work, "checkout", "-q", "--", "file")
 	out := wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "up to date: worktree work already sits on main") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "up to date: worktree work already sits on main") {
 		t.Errorf("up to date: %+v", out)
 	}
 	gittest.Git(t, app, "commit", "-q", "--allow-empty", "-m", "later")
 	out = wdxWith(t, home, in(app), "worktree", "rebase", "--name", "work")
-	if out.exit != api.ExitOK || !strings.Contains(out.stdout, "rebased worktree work onto main") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "rebased worktree work onto main") {
 		t.Errorf("rebased: %+v", out)
 	}
 }
@@ -546,7 +547,7 @@ func waitWorking(t *testing.T, home, id string) {
 	t.Helper()
 	waittest.For(t, "agent "+id+" working", func() bool {
 		v, exit := wdxJSON(t, home, "agent", "get", "--id", id)
-		return exit == api.ExitOK && v.Agent.Activity != nil && *v.Agent.Activity == api.AgentActivityWorking
+		return exit == clikit.ExitOK && v.Agent.Activity != nil && *v.Agent.Activity == api.AgentActivityWorking
 	})
 }
 
@@ -563,10 +564,10 @@ func askingAgentHome(t *testing.T, names ...string) (home, app string, ids []str
 	if err := os.WriteFile(filepath.Join(work, "run"), []byte(claudeWorking), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != api.ExitOK {
+	if out := wdxWith(t, home, in(app), "project", "landing", "--name", "app", "--no-check"); out.exit != clikit.ExitOK {
 		t.Fatalf("set: %+v", out)
 	}
-	if v, exit := wdxJSON(t, home, "project", "open", "--local", work); exit != api.ExitOK {
+	if v, exit := wdxJSON(t, home, "project", "open", "--local", work); exit != clikit.ExitOK {
 		t.Fatalf("open the worktree: exit %d, %+v", exit, v)
 	}
 	for _, name := range names {
@@ -585,7 +586,7 @@ func TestWorktreeAskingAgentAnotherWorking(t *testing.T) {
 	home, app, ids := askingAgentHome(t, "self", "other")
 	for _, command := range []string{"rebase", "land"} {
 		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", ids[0])
-		if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
+		if exit != clikit.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
 			t.Errorf("%s with another working: exit %d, %+v", command, exit, v)
 		}
 	}
@@ -598,7 +599,7 @@ func TestWorktreeAskingAgentUnknown(t *testing.T) {
 	home, app, _ := askingAgentHome(t)
 	for _, command := range []string{"rebase", "land"} {
 		v, exit := wdxWorktree(t, home, app, command, "--name", "work", "--agent-id", "agent-nope")
-		if exit != api.ExitRejected || v.Code != api.ErrorCodeNotFound {
+		if exit != clikit.ExitRejected || v.Code != api.ErrorCodeNotFound {
 			t.Errorf("%s by an unknown agent: exit %d, %+v", command, exit, v)
 		}
 	}
@@ -610,16 +611,16 @@ func TestWorktreeAskingAgentItself(t *testing.T) {
 	t.Parallel()
 	home, app, ids := askingAgentHome(t, "self")
 	v, exit := wdxWorktree(t, home, app, "rebase", "--name", "work")
-	if exit != api.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
+	if exit != clikit.ExitRejected || v.Code != api.ErrorCodeAgentWorking {
 		t.Errorf("rebase not saying who asks: exit %d, %+v", exit, v)
 	}
 	r, exit := wdxRebase(t, home, app, "work", "--agent-id", ids[0])
-	if exit != api.ExitOK || r.Result != api.ResultUpToDate {
+	if exit != clikit.ExitOK || r.Result != api.ResultUpToDate {
 		t.Errorf("rebase by the agent working there: exit %d, %+v", exit, r)
 	}
 	out := wdxWith(t, home, in(app), "worktree", "land", "--name", "work", "--agent-id", ids[0], "--json")
 	var landed worktreeLanded
-	if err := json.Unmarshal([]byte(out.stdout), &landed); err != nil || out.exit != api.ExitOK || landed.Result != api.ResultLanded {
+	if err := json.Unmarshal([]byte(out.stdout), &landed); err != nil || out.exit != clikit.ExitOK || landed.Result != api.ResultLanded {
 		t.Errorf("land by the agent working there: %+v, %v", out, err)
 	}
 }

@@ -2,15 +2,11 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"regexp"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -19,32 +15,14 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/deps"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
-	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/observe"
 	"github.com/srjn45/wdx/internal/service"
-	"github.com/srjn45/wdx/internal/settings"
 	"github.com/srjn45/wdx/internal/style"
-)
-
-// Command annotations. Lists are space-separated.
-const (
-	// failurePrefix starts each error message in text mode, such as "not created".
-	failurePrefix = "failurePrefix"
-	// outputNote tells what the command prints on success.
-	outputNote = "output"
-	// resultList holds the results the command can return.
-	resultList = "results"
-	// errorList holds the error codes the command can return besides usage
-	// and internal.
-	errorList = "errors"
-	// jsonRequires holds flags one of which --json requires, after
-	// "<flag>,<flag>:" when only together with one of those, each "<flag>!<other>"
-	// when not also with other.
-	jsonRequires = "jsonRequires"
 )
 
 // Env is everything a command takes from the process it runs in.
@@ -94,6 +72,8 @@ type Env struct {
 	Deps deps.Probe
 	// Timeouts are how long commands wait; tests shorten or lengthen them.
 	Timeouts Timeouts
+
+	client *client.Client // the run's, made by clientOf
 }
 
 // Timeouts bound how long commands wait for the daemon; a zero field takes
@@ -152,192 +132,83 @@ func ShellEnv(environ []string) []string {
 
 // Run executes the command line args and returns the process exit code.
 func Run(ctx context.Context, args []string, env Env) int {
-	start := time.Now()
-	debugID := logging.NewDebugID()
-	logFile, log := newLogger(env.Config, debugID, args)
-	defer logFile.Close()
-	// A shell asks on every Tab: worth logging only when debugging.
-	completion := isCompletion(args)
-	var printed bytes.Buffer
-	if completion {
-		log = logging.Quiet(log)
-		env.Stdout = io.MultiWriter(env.Stdout, &printed)
-	}
-	logReceived(log, args, env)
-
-	root := newRoot(env.Config)
-	if completion {
-		registerCompletions(root)
-	}
-	root.SetArgs(args)
-	root.SetIn(env.Stdin)
-	root.SetOut(env.Stdout)
-	root.SetErr(env.Stderr)
-	wrapRun(root)
-	inv := &invocation{env: env, debugID: debugID, quiet: completion}
-	root.SetContext(logging.NewContext(context.WithValue(ctx, invocationKey{}, inv), log))
-	cmd, err := root.ExecuteC()
-	if completion {
-		inv.response = completionResponse(printed.String())
-	}
-	if err == nil {
-		logReturned(log, cmd, start, api.ExitOK, "", inv.response, nil)
-		return api.ExitOK
-	}
-	// Cobra returns usage errors (bad flags or arguments) before RunE starts.
-	if !inv.started {
-		err = &usageError{err}
-	}
-
-	p, exit := problem(err)
-	p.DebugId = debugID
-	if p.Code == api.ErrorCodeUsage {
-		p.Hint = withHelpHint(p.Hint, cmd)
-	}
-	logReturned(log, cmd, start, exit, p.Code, p, err)
-	asJSON := wantsJSON(cmd, args)
-	printError(env, asJSON, style.New(!asJSON && colorOn(cmd, env, env.Stderr)), p, cmd.Annotations[failurePrefix], problemLines(p, err))
-	return exit
+	return clikit.Run(context.WithValue(ctx, envKey{}, &env), args, frameworkEnv(env, args), func() *cobra.Command { return newRoot(env.Config) })
 }
 
 // ConfigError reports the settings that failed to load, before any command
 // runs, and returns the exit code.
 func ConfigError(args []string, env Env, err error) int {
-	p := api.NewProblem(api.ErrorCodeUsage, err.Error())
-	hint := "fix or remove them"
-	p.Hint = &hint
-	if e, ok := errors.AsType[*settings.Error](err); ok {
-		p = settingsProblem(e)
-	}
-	asJSON := slices.Contains(args, "--json")
-	// The color setting may be among those that failed.
-	st := style.New(!asJSON && !env.NoColor && isTerminal(env.Stderr))
-	printError(env, asJSON, st, p, "", nil)
-	return api.Codes[api.ErrorCodeUsage].Exit
+	return clikit.ConfigError(args, frameworkEnv(env, args), err)
 }
 
-// printError writes p to stdout as JSON, or to stderr as text: what failed on
-// the first line, then the hint and the debug id. Text given lines prints the
-// first in place of p's detail and the others under it, as a list of problems.
-func printError(env Env, asJSON bool, st style.Style, p api.Problem, prefix string, lines []string) {
-	if asJSON {
-		_ = writeJSON(env.Stdout, p)
-		return
+// RewritesSettings is true when args run a command that writes the config
+// file and err names only keys no setting has: such a command moves them out
+// of the way, so it runs on the settings that loaded.
+func RewritesSettings(args []string, err error) bool {
+	return clikit.RewritesSettings(newRoot(config.Default()), args, err)
+}
+
+// frameworkEnv is what the framework takes of env for the run of args.
+func frameworkEnv(env Env, args []string) clikit.Env {
+	var values []clikit.SettingValue
+	for _, s := range config.Settings() {
+		values = append(values, clikit.SettingValue{Key: s.Key, Value: env.Config.Value(s.Key), From: env.Config.From[s.Key]})
 	}
-	msg := p.Detail
-	if len(lines) > 0 {
-		msg = lines[0]
-	}
-	if prefix != "" {
-		msg = prefix + ": " + msg
-	}
-	fmt.Fprintf(env.Stderr, "%s %s  %s\n", st.Failure(identity.Name+":"), msg, st.Failure("["+string(p.Code)+"]"))
-	for _, line := range lines[min(1, len(lines)):] {
-		fmt.Fprintf(env.Stderr, "  %s\n", line)
-	}
-	if p.Hint != nil {
-		fmt.Fprintf(env.Stderr, "  %s %s\n", st.Hint("hint:"), hintText(st, *p.Hint))
-	}
-	if p.DebugId != "" {
-		fmt.Fprintf(env.Stderr, "  %s\n", st.Muted("debug_id: "+p.DebugId))
+	return clikit.Env{
+		Stdin: env.Stdin, Stdout: env.Stdout, Stderr: env.Stderr,
+		Program: clikit.Program{Name: identity.Name, Version: identity.Version, Commit: identity.Commit},
+		Logs: clikit.Logs{
+			Dir:           identity.LogsDir(env.Config.Home),
+			Level:         env.Config.LogLevel,
+			RetentionDays: env.Config.LogRetentionDays,
+			Process:       processOf(args),
+		},
+		Settings: values,
+		NoColor:  env.NoColor,
+		WorkDir:  env.WorkDir,
+		Codes: func(code string) (clikit.CodeInfo, bool) {
+			info, ok := api.Codes[api.ErrorCode(code)]
+			return info, ok
+		},
+		Problem: problem,
 	}
 }
 
-var commandOrFlag = regexp.MustCompile(identity.Name + `( [a-z][a-z-]*)*|--[a-z][a-z-]*`)
+// processOf names the process in the log: a holder, which the daemon starts as
+// wdx holder and which outlives it, or a command someone ran.
+func processOf(args []string) string {
+	if len(args) > 0 && args[0] == "holder" {
+		return "holder"
+	}
+	return "cli"
+}
 
-// hintText styles the command lines and flags in hint.
-func hintText(st style.Style, hint string) string {
-	return commandOrFlag.ReplaceAllStringFunc(hint, func(m string) string {
-		if strings.HasPrefix(m, "--") {
-			return st.Flag(m)
+type envKey struct{}
+
+// envOf returns the Env of the run cmd is part of.
+func envOf(cmd *cobra.Command) *Env {
+	if ctx := cmd.Context(); ctx != nil {
+		if env, ok := ctx.Value(envKey{}).(*Env); ok {
+			return env
 		}
-		return st.Command(m)
-	})
-}
-
-// colorOn reports whether cmd colors the text it writes to w: never with
-// --json, else as --color or the color setting says.
-func colorOn(cmd *cobra.Command, env Env, w io.Writer) bool {
-	if jsonMode(cmd) {
-		return false
 	}
-	switch colorMode(cmd, env) {
-	case config.ColorAlways:
-		return true
-	case config.ColorNever:
-		return false
-	}
-	return !env.NoColor && isTerminal(w)
-}
-
-// colorMode is --color when given, else the color setting.
-func colorMode(cmd *cobra.Command, env Env) config.ColorMode {
-	if f := cmd.Flags().Lookup("color"); f != nil && f.Changed {
-		return config.ColorMode(f.Value.String())
-	}
-	return env.Config.Color
-}
-
-// stdoutStyle styles what cmd prints to stdout.
-func stdoutStyle(cmd *cobra.Command) style.Style {
-	return style.New(colorOn(cmd, invocationOf(cmd).env, cmd.OutOrStdout()))
-}
-
-// stderrStyle styles what cmd prints to stderr.
-func stderrStyle(cmd *cobra.Command) style.Style {
-	return style.New(colorOn(cmd, invocationOf(cmd).env, cmd.ErrOrStderr()))
-}
-
-// colorFlag is the value of --color.
-type colorFlag struct {
-	mode *config.ColorMode
-}
-
-func (f colorFlag) String() string { return string(*f.mode) }
-func (f colorFlag) Type() string   { return "string" }
-
-func (f colorFlag) Set(v string) (err error) {
-	m, err := config.ParseColorMode(v)
-	if err != nil {
-		return err
-	}
-	*f.mode = m
-	return nil
-}
-
-// invocation is what Run learns from the command it executes, and what the
-// command takes from Run.
-type invocation struct {
-	env      Env
-	debugID  string
-	started  bool // RunE was reached, so the command line was valid
-	quiet    bool // the shell asks for completions; the daemon logs at debug
-	response any  // what the command printed
-	client   *client.Client
-}
-
-type invocationKey struct{}
-
-func invocationOf(cmd *cobra.Command) *invocation {
-	if inv, ok := cmd.Context().Value(invocationKey{}).(*invocation); ok {
-		return inv
-	}
-	return &invocation{}
+	return &Env{}
 }
 
 // clientOf returns the client of the daemon serving the configured home. A
 // daemon of another version gets a warning on stderr, once.
 func clientOf(cmd *cobra.Command) *client.Client {
-	inv := invocationOf(cmd)
-	if inv.client == nil {
-		inv.client = client.New(client.Options{
-			Socket:          identity.SocketPath(inv.env.Config.Home),
-			DebugID:         inv.debugID,
-			Quiet:           inv.quiet,
+	env := envOf(cmd)
+	if env.client == nil {
+		inv := clikit.InvocationOf(cmd)
+		env.client = client.New(client.Options{
+			Socket:          identity.SocketPath(env.Config.Home),
+			DebugID:         inv.DebugID,
+			Quiet:           inv.Quiet,
 			VersionMismatch: func(daemonVersion string) { warnVersion(cmd, daemonVersion) },
 		})
 	}
-	return inv.client
+	return env.client
 }
 
 // warnVersion warns on stderr that the daemon is of another version.
@@ -347,122 +218,15 @@ func warnVersion(cmd *cobra.Command, daemonVersion string) {
 		identity.Name, st.Warning("warning:"), daemonVersion, identity.Name, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
 
-// wrapRun makes every RunE in the tree log its start, check the flags --json
-// requires and turn a panic into an error.
-func wrapRun(cmd *cobra.Command) {
-	if run := cmd.RunE; run != nil {
-		cmd.RunE = func(cmd *cobra.Command, args []string) (err error) {
-			logStarted(cmd, args)
-			if err := checkJSONRequires(cmd); err != nil {
-				return err
-			}
-			invocationOf(cmd).started = true
-			defer func() {
-				if r := recover(); r != nil {
-					err = &panicError{value: r, stack: debug.Stack()}
-				}
-			}()
-			return run(cmd, args)
-		}
-	}
-	for _, sub := range cmd.Commands() {
-		wrapRun(sub)
-	}
-}
-
-// panicError is a panic recovered while a command ran.
-type panicError struct {
-	value any
-	stack []byte
-}
-
-func (e *panicError) Error() string { return fmt.Sprintf("panic: %v", e.value) }
-
-// checkJSONRequires fails when --json is given without one of the flags that
-// answer the command's prompts.
-func checkJSONRequires(cmd *cobra.Command) error {
-	if !jsonMode(cmd) {
-		return nil
-	}
-	for _, rule := range jsonRules(cmd) {
-		if rule.When != nil && !cmd.Flags().Changed(*rule.When) || rule.Unless != nil && cmd.Flags().Changed(*rule.Unless) {
-			continue
-		}
-		if slices.ContainsFunc(rule.Flags, cmd.Flags().Changed) {
-			continue
-		}
-		flags := "--" + strings.Join(rule.Flags, " or --")
-		given := "--json"
-		if rule.When != nil {
-			given += " with --" + *rule.When
-		}
-		return &hinted{&usageError{fmt.Errorf("%s requires %s", given, flags)}, "pass " + flags}
-	}
-	return nil
-}
-
-func withHelpHint(hint *string, cmd *cobra.Command) *string {
-	if cmd.Name() == "help" && cmd.HasParent() {
-		cmd = cmd.Parent()
-	}
-	h := fmt.Sprintf("see '%s --help'", cmd.CommandPath())
-	if hint != nil {
-		h = *hint + "; " + h
-	}
-	return &h
-}
-
-// wantsJSON reports whether --json was given; args are checked too, since a
-// usage error may stop cobra before it parses the flag.
-func wantsJSON(cmd *cobra.Command, args []string) bool {
-	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
-		return f.Value.String() == "true"
-	}
-	return slices.Contains(args, "--json")
-}
-
 func newRoot(cfg config.Config) *cobra.Command {
-	root := &cobra.Command{
-		Use:           identity.Name,
-		Short:         "Manage AI coding agents across CLIs",
-		Long:          "Every command but daemon, observe, setting and update is served by the daemon; " + identity.Name + " daemon start runs it.",
-		Args:          noArgs,
-		RunE:          func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.CompletionOptions.DisableDefaultCmd = true
-	root.PersistentFlags().Bool("no-input", cfg.NoInput, "never prompt; fail where a question would be asked")
-	root.PersistentFlags().Bool("json", false, "print the result as one JSON object; never prompts")
-	color := cfg.Color
-	root.PersistentFlags().Var(colorFlag{&color}, "color", "color text output in this `mode`: auto, always or never")
-	completeFlag(root, "color", completeColor)
-	root.AddCommand(newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newPlanCmd(), newUsageCmd())
-	setHelp(root)
-	root.InitDefaultHelpCmd()
-	setCompletions(root)
-	return root
-}
-
-// noArgs rejects arguments: a command with subcommands takes none, so an
-// argument is a mistyped subcommand, and the closest one is suggested.
-func noArgs(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return nil
-	}
-	err := &usageError{fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())}
-	if s := suggestions(cmd, args[0]); len(s) > 0 {
-		return &hinted{err, "did you mean " + cmd.CommandPath() + " " + s[0]}
-	}
-	return err
-}
-
-// suggestions returns the subcommands of cmd that name may be a typo of.
-func suggestions(cmd *cobra.Command, name string) []string {
-	if cmd.SuggestionsMinimumDistance <= 0 {
-		cmd.SuggestionsMinimumDistance = 2
-	}
-	return cmd.SuggestionsFor(name)
+	return clikit.NewRoot(clikit.Root{
+		Use:     identity.Name,
+		Short:   "Manage AI coding agents across CLIs",
+		Long:    "Every command but daemon, observe, setting and update is served by the daemon; " + identity.Name + " daemon start runs it.",
+		NoInput: cfg.NoInput,
+		Color:   cfg.Color,
+		Topics:  topics,
+	}, newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newPlanCmd(), newUsageCmd())
 }
 
 func newVersionCmd() *cobra.Command {
@@ -505,25 +269,9 @@ func (r versionResponse) text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "daemon %s %s\n", st.Name(r.Daemon.Version), st.Muted("("+r.Daemon.Commit+")"))
 }
 
-// absolute makes path absolute against the working directory, which the
-// daemon does not share; "" stays "".
-func absolute(cmd *cobra.Command, path string) (string, error) {
-	switch {
-	case path == "":
-		return "", nil
-	case filepath.IsAbs(path):
-		return filepath.Clean(path), nil
-	}
-	dir := invocationOf(cmd).env.WorkDir
-	if dir == "" {
-		return "", errors.New("the working directory is unknown; give an absolute path")
-	}
-	return filepath.Join(dir, path), nil
-}
-
 // workDir is the directory the command runs in.
 func workDir(cmd *cobra.Command) (string, error) {
-	if dir := invocationOf(cmd).env.WorkDir; dir != "" {
+	if dir := envOf(cmd).WorkDir; dir != "" {
 		return dir, nil
 	}
 	return "", errors.New("the working directory is unknown; pass --project-id or --project-name")

@@ -117,7 +117,7 @@ func runForeground(cmd *cobra.Command) error {
 	cfg := invocationOf(cmd).env.Config
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	logs := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
+	logs := logging.NewDailyFile(identity.LogsDir(cfg.Home), identity.Name, cfg.LogRetentionDays, time.Now)
 	defer logs.Close()
 	var level slog.LevelVar
 	level.Set(cfg.LogLevel)

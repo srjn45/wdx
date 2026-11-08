@@ -8,37 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/srjn45/wdx/internal/api"
-	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 )
-
-// TestCompletionsLeftToCompletingRuns: cobra keeps every flag given a completion
-// for the life of the process, so a run that does not complete gives it none.
-func TestCompletionsLeftToCompletingRuns(t *testing.T) {
-	t.Parallel()
-	root := newRoot(config.Default())
-	cmd, _, err := root.Find([]string{"project", "open"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := flagCompletion(cmd, "name"); !ok {
-		t.Fatal("--name completes nothing")
-	}
-	if _, ok := cmd.GetFlagCompletionFunc("name"); ok {
-		t.Fatal("cobra was given --name's completion")
-	}
-	registerCompletions(root)
-	if _, ok := cmd.GetFlagCompletionFunc("name"); !ok {
-		t.Fatal("cobra was not given --name's completion")
-	}
-}
 
 func TestCompletionScripts(t *testing.T) {
 	t.Parallel()
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		out := wdx(t, t.TempDir(), "completion", shell, "--color", "always")
-		if out.exit != api.ExitOK || !strings.Contains(out.stdout, "__complete") || strings.Contains(out.stdout, esc) {
+		if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "__complete") || strings.Contains(out.stdout, esc) {
 			t.Fatalf("%s: want an uncolored script, got exit %d:\n%.300s", shell, out.exit, out.stdout)
 		}
 		var v completionScript
@@ -55,7 +33,7 @@ func complete(t *testing.T, home string, args ...string) []string {
 	t.Helper()
 	out := wdx(t, home, append([]string{"__complete"}, args...)...)
 	lines := strings.Split(strings.TrimSuffix(out.stdout, "\n"), "\n")
-	if out.exit != api.ExitOK || len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1], ":") {
+	if out.exit != clikit.ExitOK || len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1], ":") {
 		t.Fatalf("%v: unexpected completion %+v", args, out)
 	}
 	return lines[:len(lines)-1]
@@ -66,7 +44,7 @@ func TestCompleteProjects(t *testing.T) {
 	home := newHome(t)
 	appID := newProject(t, home, "app")
 	betaID := newProject(t, home, "beta")
-	if _, exit := wdxJSON(t, home, "project", "close", "--name", "beta", "--cancel"); exit != api.ExitOK {
+	if _, exit := wdxJSON(t, home, "project", "close", "--name", "beta", "--cancel"); exit != clikit.ExitOK {
 		t.Fatal("close beta")
 	}
 	for _, tc := range []struct {

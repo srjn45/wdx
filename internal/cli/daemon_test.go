@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/service"
@@ -31,12 +32,12 @@ func TestDaemonLifecycle(t *testing.T) {
 	})
 
 	v, exit := wdxJSON(t, home, "daemon", "status")
-	if exit != api.ExitOK || v.Running == nil || *v.Running || v.Pid != nil || v.Daemon != nil {
+	if exit != clikit.ExitOK || v.Running == nil || *v.Running || v.Pid != nil || v.Daemon != nil {
 		t.Fatalf("want not running, got %+v", v)
 	}
 
 	v, exit = wdxJSON(t, home, "daemon", "start")
-	if exit != api.ExitOK || v.Result != "started" || v.Daemon == nil || v.Daemon.Pid == os.Getpid() || v.Daemon.Home != home || v.Daemon.Socket != identity.SocketPath(home) {
+	if exit != clikit.ExitOK || v.Result != "started" || v.Daemon == nil || v.Daemon.Pid == os.Getpid() || v.Daemon.Home != home || v.Daemon.Socket != identity.SocketPath(home) {
 		t.Fatalf("want started in its own process, got %+v", v)
 	}
 	first := v.Daemon.Pid
@@ -49,7 +50,7 @@ func TestDaemonLifecycle(t *testing.T) {
 	newProject(t, home, "app")
 
 	v, exit = wdxJSON(t, home, "daemon", "restart")
-	if exit != api.ExitOK || v.Result != "restarted" || v.Daemon.Pid == first {
+	if exit != clikit.ExitOK || v.Result != "restarted" || v.Daemon.Pid == first {
 		t.Fatalf("want restarted in a new process, got %+v", v)
 	}
 	if v, _ = wdxJSON(t, home, "project", "get", "--name", "app"); v.Project == nil {
@@ -58,7 +59,7 @@ func TestDaemonLifecycle(t *testing.T) {
 	second := v.Daemon
 
 	v, exit = wdxJSON(t, home, "daemon", "stop")
-	if exit != api.ExitOK || v.Result != "stopped" {
+	if exit != clikit.ExitOK || v.Result != "stopped" {
 		t.Fatalf("want stopped, got %+v", v)
 	}
 	if pid, err := daemon.Running(home); err != nil || pid != 0 {
@@ -69,7 +70,7 @@ func TestDaemonLifecycle(t *testing.T) {
 	}
 
 	out := wdx(t, home, "daemon", "start")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if out = wdx(t, home, "daemon", "status"); !strings.HasPrefix(out.stdout, "daemon running (pid ") || !strings.Contains(out.stdout, "  socket:  "+identity.SocketPath(home)) {
@@ -91,7 +92,7 @@ func TestDaemonStartFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit := wdxJSON(t, home, "daemon", "start")
-	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeDaemonUnavailable, clikit.ExitSystem)
 	if !strings.Contains(v.Detail, "colour: unknown setting") {
 		t.Fatalf("want the daemon's own error in the detail, got %q", v.Detail)
 	}
@@ -120,13 +121,13 @@ func TestDaemonForeground(t *testing.T) {
 	newProject(t, home, "app")
 
 	v, exit := wdxJSON(t, home, "daemon", "start", "--foreground")
-	wantError(t, v, exit, api.ErrorCodeAlreadyRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAlreadyRunning, clikit.ExitRejected)
 	if pid, _ := v.Details["pid"].(float64); int(pid) != os.Getpid() {
 		t.Fatalf("want the running daemon's pid in details, got %+v", v.Details)
 	}
 
 	stop()
-	if exit := <-done; exit != api.ExitOK {
+	if exit := <-done; exit != clikit.ExitOK {
 		t.Fatalf("want exit 0, got %d: %s", exit, stdout.String())
 	}
 	var r struct {
@@ -165,16 +166,16 @@ func TestDaemonAsService(t *testing.T) {
 	if v := status(); v["running"] != false || v["manager"] != "fake" {
 		t.Fatalf("want stopped under fake, got %v", v)
 	}
-	if out := wdxService(t, home, svc, "daemon", "start"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+	if out := wdxService(t, home, svc, "daemon", "start"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
 		t.Fatalf("want started, got %+v", out)
 	}
 	if v := status(); v["running"] != true || v["daemon"] == nil {
 		t.Fatalf("want running, got %v", v)
 	}
-	if out := wdxService(t, home, svc, "daemon", "restart"); out.exit != api.ExitOK {
+	if out := wdxService(t, home, svc, "daemon", "restart"); out.exit != clikit.ExitOK {
 		t.Fatalf("want restarted, got %+v", out)
 	}
-	if out := wdxService(t, home, svc, "daemon", "stop"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
+	if out := wdxService(t, home, svc, "daemon", "stop"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
 		t.Fatalf("want stopped, got %+v", out)
 	}
 	if b, err := os.ReadFile(ran); err != nil || string(b) != "start\nstop\nstart\nstop\n" {
@@ -188,7 +189,7 @@ func TestDaemonServiceFails(t *testing.T) {
 	svc := &service.Manager{Name: "fake", Start: []string{"sh", "-c", "echo unit wdx.service not found >&2; exit 5"}}
 	out := wdxService(t, home, svc, "daemon", "start", "--json")
 	var v map[string]any
-	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != api.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
+	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != clikit.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
 		t.Fatalf("want the service manager's failure, got %+v", out)
 	}
 }

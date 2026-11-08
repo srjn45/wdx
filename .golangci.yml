@@ -44,6 +44,43 @@ linters:
               desc: the cli calls the daemon's API, which stops processes
             - pkg: github.com/srjn45/wdx/internal/fswatch
               desc: the cli calls the daemon's API; the daemon watches the files
+        # The command framework knows no program: its name, codes, settings
+        # and errors come in through clikit.Env.
+        clikit-knows-no-program:
+          files: ["**/internal/clikit/**"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/identity
+              desc: clikit knows no program; take its name from clikit.Env
+            - pkg: github.com/srjn45/wdx/internal/api
+              desc: clikit knows no program; take its codes and problems from clikit.Env
+            - pkg: github.com/srjn45/wdx/internal/config
+              desc: clikit knows no program; take its settings from clikit.Env
+            - pkg: github.com/srjn45/wdx/internal/client
+              desc: clikit knows no program; it calls no server
+            - pkg: github.com/srjn45/wdx/internal/daemon
+              desc: clikit knows no program; it runs no server
+            - pkg: github.com/srjn45/wdx/internal/project
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/git$
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/gh$
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/terminal
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/agent
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/worktree
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/doc
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/plan
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/tidestate
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/proc
+              desc: clikit knows no program, nor its domain
+            - pkg: github.com/srjn45/wdx/internal/fswatch
+              desc: clikit knows no program, nor its domain
         # The holder stays free of ACA code: it is given a parser, by the cli.
         holder-without-aca:
           files: ["**/internal/holder/*.go", "!$test"]
@@ -124,10 +161,18 @@ linters:
           deny:
             - pkg: github.com/srjn45/wdx/internal/config
               desc: only cmd and cli hold the Config; pass packages the values they need
-            - pkg: github.com/srjn45/wdx/internal/settings
-              desc: only the cli and config read settings; the daemon and the domain are handed the values they need
             - pkg: github.com/srjn45/wdx/internal/cli$
               desc: only cmd/wdx runs the cli
+        settings-in-cli-only:
+          files:
+            - "$all"
+            - "!**/cmd/wdx/**"
+            - "!**/internal/cli/**"
+            - "!**/internal/config/**"
+            - "!**/internal/clikit/**"
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/settings
+              desc: only the cli, config and clikit read settings; the daemon and the domain are handed the values they need
     errcheck:
       # Errors these return have nothing left to handle: a rollback after
       # the commit, a response the client stopped reading, a completion or

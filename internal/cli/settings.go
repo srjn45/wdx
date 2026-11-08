@@ -358,22 +358,6 @@ func (r settingSetResult) text(w io.Writer, st style.Style) {
 	}
 }
 
-// RewritesSettings is true when args run a command that writes the config
-// file and err names only keys no setting has: such a command moves them out
-// of the way, so it runs on the settings that loaded.
-func RewritesSettings(args []string, err error) bool {
-	e, ok := errors.AsType[*settings.Error](err)
-	if !ok || !e.OnlyUnknown() {
-		return false
-	}
-	cmd, _, err := newRoot(config.Default()).Find(args)
-	if err != nil {
-		return false
-	}
-	path := cmd.CommandPath()
-	return path == identity.Name+" setting write" || path == identity.Name+" setting set"
-}
-
 // settingsResult is what settings write did.
 type settingsResult struct {
 	Result   string         `json:"result"`
@@ -399,17 +383,4 @@ func (r settingsResult) text(w io.Writer, st style.Style) {
 	if len(s.Dropped) > 0 {
 		fmt.Fprintf(w, "  %s %s %s\n", st.Muted("dropped:"), strings.Join(s.Dropped, ", "), st.Muted("(commented at the end)"))
 	}
-}
-
-// settingsProblem is the problem of settings that failed to load or to be
-// written anew.
-func settingsProblem(e *settings.Error) api.Problem {
-	p := api.NewProblem(api.ErrorCodeUsage, e.Error())
-	hint := "fix or remove them"
-	if e.OnlyUnknown() {
-		hint = "run " + identity.Name + " setting write, which comments them out at the end of the file"
-	}
-	p.Hint = &hint
-	p.Details = &map[string]any{"settings": e.Problems}
-	return p
 }

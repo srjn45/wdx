@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 )
 
@@ -25,7 +26,7 @@ func TestCodesignOffMacOS(t *testing.T) {
 	writeFile(t, binary, "")
 
 	v, exit := wdxJSON(t, home, "codesign", "--path", binary)
-	if exit != api.ExitUsage || v.Code != string(api.ErrorCodeUsage) || !strings.Contains(v.Detail, "macOS only") {
+	if exit != clikit.ExitUsage || v.Code != string(api.ErrorCodeUsage) || !strings.Contains(v.Detail, "macOS only") {
 		t.Fatalf("want usage, macOS only, got exit %d, %+v", exit, v)
 	}
 	if _, err := os.Stat(identity.CodesignDir(home)); !errors.Is(err, os.ErrNotExist) {
@@ -33,7 +34,7 @@ func TestCodesignOffMacOS(t *testing.T) {
 	}
 
 	out := wdx(t, home, "codesign", "--path", binary)
-	if out.exit != api.ExitUsage || !strings.Contains(out.stderr, "wdx: not signed: signing is for macOS only") {
+	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "wdx: not signed: signing is for macOS only") {
 		t.Fatalf("want the text error, got exit %d, %q", out.exit, out.stderr)
 	}
 }

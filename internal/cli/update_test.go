@@ -27,6 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
@@ -271,7 +272,7 @@ func (in installation) wantProjects(t *testing.T, names ...string) {
 
 func (in installation) newProject(t *testing.T, name string) {
 	t.Helper()
-	if v, exit := in.run(t, "project", "create", "--name", name, "--cancel"); exit != api.ExitOK {
+	if v, exit := in.run(t, "project", "create", "--name", name, "--cancel"); exit != clikit.ExitOK {
 		t.Fatalf("create %s: %+v", name, v)
 	}
 }
@@ -282,7 +283,7 @@ func TestUpdateCheck(t *testing.T) {
 	in := install(t, base)
 
 	v, exit := in.json(t, "update")
-	if exit != api.ExitOK || v.Result != "" || v.Update == nil || v.Update.Current != identity.Version || v.Update.Latest != releaseVersion || *v.Update.Channel != "stable" || !v.Update.Available {
+	if exit != clikit.ExitOK || v.Result != "" || v.Update == nil || v.Update.Current != identity.Version || v.Update.Latest != releaseVersion || *v.Update.Channel != "stable" || !v.Update.Available {
 		t.Fatalf("want %s available, got %+v", releaseVersion, v.Update)
 	}
 	if v, _ = in.json(t, "update", "--channel", "dev"); v.Update.Latest != "0.3.0-dev.1" || *v.Update.Channel != "dev" {
@@ -292,11 +293,11 @@ func TestUpdateCheck(t *testing.T) {
 		t.Fatalf("want the release asked for, got %+v", v.Update)
 	}
 	v, exit = in.json(t, "update", "--version", "9.9.9")
-	wantError(t, v, exit, api.ErrorCodeDownloadFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeDownloadFailed, clikit.ExitSystem)
 	wantHint(t, v, "update.base_url")
 
 	out := wdxWith(t, in.home, in.env, "update")
-	if out.exit != api.ExitOK || out.stdout != "update available: wdx dev -> 0.2.0 (stable channel)\n  run wdx update --apply\n" {
+	if out.exit != clikit.ExitOK || out.stdout != "update available: wdx dev -> 0.2.0 (stable channel)\n  run wdx update --apply\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -313,7 +314,7 @@ func TestUpdateUsage(t *testing.T) {
 		{"update", "--rollback", "--discard-changes", "--cancel"},
 	} {
 		v, exit := wdxJSON(t, t.TempDir(), args...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 }
 
@@ -323,14 +324,14 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary, "0.1.0": wdxBinary})
 	in := install(t, base)
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 	settings := readFile(t, identity.ConfigPath(in.home))
 
 	v, exit := in.json(t, "update", "--apply")
-	if exit != api.ExitOK || v.Result != "updated" || v.Update.From != identity.Version || v.Update.To != releaseVersion ||
+	if exit != clikit.ExitOK || v.Result != "updated" || v.Update.From != identity.Version || v.Update.To != releaseVersion ||
 		*v.Update.Channel != "stable" || v.Update.SchemaFrom != db.Known() || v.Update.SchemaTo != db.Known() || v.Update.DataRestored != nil {
 		t.Fatalf("want updated to %s, got exit %d, %+v", releaseVersion, exit, v.Update)
 	}
@@ -350,16 +351,16 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		t.Fatalf("want the database backed up, got %v", err)
 	}
 
-	if v, exit := in.run(t, "update", "--apply"); exit != api.ExitOK || v.Result != "up_to_date" || v.Update.To != releaseVersion {
+	if v, exit := in.run(t, "update", "--apply"); exit != clikit.ExitOK || v.Result != "up_to_date" || v.Update.To != releaseVersion {
 		t.Fatalf("want up to date, got exit %d, %+v", exit, v)
 	}
-	if v, exit := in.run(t, "update", "--apply", "--version", "0.1.0"); exit != api.ExitRejected || v.Code != string(api.ErrorCodeOlderVersion) {
+	if v, exit := in.run(t, "update", "--apply", "--version", "0.1.0"); exit != clikit.ExitRejected || v.Code != string(api.ErrorCodeOlderVersion) {
 		t.Fatalf("want an older version refused, got exit %d, %+v", exit, v)
 	}
 	in.newProject(t, "after")
 
 	v, exit = in.run(t, "update", "--rollback", "--cancel")
-	if exit != api.ExitOK || v.Result != "rolled_back" || v.Update.To != identity.Version || v.Update.Channel != nil || *v.Update.DataRestored {
+	if exit != clikit.ExitOK || v.Result != "rolled_back" || v.Update.To != identity.Version || v.Update.Channel != nil || *v.Update.DataRestored {
 		t.Fatalf("want rolled back keeping the database, got exit %d, %+v", exit, v.Update)
 	}
 	if v.Warnings == nil || len(v.Warnings) != 0 {
@@ -376,7 +377,7 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	}
 
 	v, exit = in.run(t, "update", "--rollback", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, clikit.ExitRejected)
 }
 
 // TestUpdateRollbackRestores rolls back across a migration that breaks the
@@ -386,7 +387,7 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	in, breaking := updatedAcrossBreaking(t)
 
 	v, exit := in.run(t, "update", "--rollback", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeRestoreRequired, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeRestoreRequired, clikit.ExitRejected)
 	wantHint(t, v, "--discard-changes")
 	if known, _ := v.Details["known"].(float64); int(known) != db.Known() {
 		t.Fatalf("want the schema the previous version knows in details, got %+v", v.Details)
@@ -394,12 +395,12 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	in.wantInstalled(t, releaseBinary)
 
 	out := in.runText(t, "update", "--rollback")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "hint: pass --discard-changes") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --discard-changes") {
 		t.Fatalf("want the restore refused without a terminal, got %+v", out)
 	}
 
 	v, exit = in.run(t, "update", "--rollback", "--discard-changes")
-	if exit != api.ExitOK || v.Result != "rolled_back" || !*v.Update.DataRestored || v.Update.SchemaFrom != breaking || v.Update.SchemaTo != db.Known() {
+	if exit != clikit.ExitOK || v.Result != "rolled_back" || !*v.Update.DataRestored || v.Update.SchemaFrom != breaking || v.Update.SchemaTo != db.Known() {
 		t.Fatalf("want rolled back restoring the database, got exit %d, %+v", exit, v.Update)
 	}
 	in.wantInstalled(t, wdxBinary)
@@ -413,7 +414,7 @@ func TestUpdateRollbackPromptYes(t *testing.T) {
 	in, _ := updatedAcrossBreaking(t)
 
 	out := in.runTyped(t, typed(t, "y"), "update", "--rollback")
-	if out.exit != api.ExitOK || !strings.Contains(out.stderr, "restore the backup? [y/N]: ") {
+	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "restore the backup? [y/N]: ") {
 		t.Fatalf("want rolled back, got %+v", out)
 	}
 	in.wantInstalled(t, wdxBinary)
@@ -431,7 +432,7 @@ func TestUpdatePreflightLimit(t *testing.T) {
 		in.env(env)
 		env.Timeouts.UpdatePreflight = time.Nanosecond
 	}, "update", "--apply")
-	if exit != api.ExitSystem || !strings.Contains(v.Detail, "does not run") {
+	if exit != clikit.ExitSystem || !strings.Contains(v.Detail, "does not run") {
 		t.Fatalf("want the new binary refused, got %d: %+v", exit, v)
 	}
 	in.wantInstalled(t, wdxBinary)
@@ -443,7 +444,7 @@ func TestUpdateRollbackPromptNo(t *testing.T) {
 	in, _ := updatedAcrossBreaking(t)
 
 	out := in.runTyped(t, typed(t, ""), "update", "--rollback")
-	if out.exit != api.ExitRejected || !strings.Contains(out.stderr, "[restore_required]") {
+	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "[restore_required]") {
 		t.Fatalf("want the rollback refused, got %+v", out)
 	}
 	in.wantInstalled(t, releaseBinary)
@@ -456,11 +457,11 @@ func updatedAcrossBreaking(t *testing.T) (installation, int) {
 	t.Helper()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
-	if _, exit := in.json(t, "update", "--apply"); exit != api.ExitOK {
+	if _, exit := in.json(t, "update", "--apply"); exit != clikit.ExitOK {
 		t.Fatal("the update failed")
 	}
 	in.newProject(t, "after")
@@ -524,7 +525,7 @@ func TestUpdateUndoneInstall(t *testing.T) {
 // and serve. readable runs once the update has, before the checks.
 func (in installation) wantUndone(t *testing.T, step string, readable ...func()) {
 	t.Helper()
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
@@ -534,7 +535,7 @@ func (in installation) wantUndone(t *testing.T, step string, readable ...func())
 	for _, f := range readable {
 		f()
 	}
-	wantError(t, v, exit, api.ErrorCodeUpdateFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeUpdateFailed, clikit.ExitSystem)
 	if v.Details["step"] != step || v.Details["undone"] != true || v.Details["version"] != identity.Version {
 		t.Fatalf("want the %s undone, got %+v", step, v.Details)
 	}
@@ -559,7 +560,7 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 	}
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	prev := identity.PreviousDir(in.home)
@@ -575,13 +576,13 @@ func TestUpdateKeepsPrevious(t *testing.T) {
 	})
 
 	v, exit := in.json(t, "update", "--apply")
-	if exit != api.ExitOK || v.Result != "updated" || len(v.Warnings) != 1 || !strings.Contains(v.Warnings[0], prev+".old") {
+	if exit != clikit.ExitOK || v.Result != "updated" || len(v.Warnings) != 1 || !strings.Contains(v.Warnings[0], prev+".old") {
 		t.Fatalf("want updated with a warning, got exit %d, %+v, %q", exit, v.Update, v.Warnings)
 	}
 	if got := readFile(t, filepath.Join(prev, "previous.json")); !strings.Contains(got, `"version":"`+identity.Version+`"`) {
 		t.Fatalf("want the replaced version kept, got %s", got)
 	}
-	if v, exit := in.run(t, "update", "--rollback", "--cancel"); exit != api.ExitOK || v.Result != "rolled_back" {
+	if v, exit := in.run(t, "update", "--rollback", "--cancel"); exit != clikit.ExitOK || v.Result != "rolled_back" {
 		t.Fatalf("want a rollback, got exit %d, %+v", exit, v)
 	}
 	in.wantDaemon(t, identity.Version)
@@ -594,7 +595,7 @@ func TestUpdateInterrupted(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	download := filepath.Join(in.home, "update-123")
@@ -664,7 +665,7 @@ func TestUpdateRollbackAfterReinstall(t *testing.T) {
 	t.Parallel()
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
-	if v, exit := in.json(t, "update", "--apply"); exit != api.ExitOK || v.Result != "updated" {
+	if v, exit := in.json(t, "update", "--apply"); exit != clikit.ExitOK || v.Result != "updated" {
 		t.Fatalf("want updated, got exit %d, %+v", exit, v)
 	}
 	// Renamed into place, as install.sh does: the daemon runs the other.
@@ -674,7 +675,7 @@ func TestUpdateRollbackAfterReinstall(t *testing.T) {
 	}
 
 	v, exit := in.json(t, "update", "--rollback", "--cancel")
-	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNoPreviousVersion, clikit.ExitRejected)
 	wantHint(t, v, "another install")
 	in.wantInstalled(t, wdxBinary)
 	if _, err := os.Stat(identity.PreviousDir(in.home)); err != nil {
@@ -692,13 +693,13 @@ func TestUpdateUndoneStopsItsDaemon(t *testing.T) {
 *) echo "broken release"`))
 	base, _ := publish(t, "0.3.0", "0.3.0", map[string]string{"0.3.0": wrong})
 	in := install(t, base)
-	if v, exit := in.json(t, "daemon", "start"); exit != api.ExitOK {
+	if v, exit := in.json(t, "daemon", "start"); exit != clikit.ExitOK {
 		t.Fatalf("the daemon did not start: %s: %s", v.Code, v.Detail)
 	}
 	newProject(t, in.home, "before")
 
 	v, exit := in.json(t, "update", "--apply")
-	wantError(t, v, exit, api.ErrorCodeUpdateFailed, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeUpdateFailed, clikit.ExitSystem)
 	if v.Details["step"] != "start" || v.Details["undone"] != true || v.Details["version"] != identity.Version {
 		t.Fatalf("want the start undone, got %+v", v.Details)
 	}
@@ -731,7 +732,7 @@ func TestDaemonStartGivesUp(t *testing.T) {
 		env.Executable = mute
 		env.Timeouts.StartExpired = expired
 	}, "daemon", "start", "--json")
-	if out.exit != api.ExitSystem {
+	if out.exit != clikit.ExitSystem {
 		t.Fatalf("want start to fail, got %+v", out)
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(readFile(t, pidFile)))
@@ -753,7 +754,7 @@ func TestUpdateSettingsInvalid(t *testing.T) {
 	settings := readFile(t, identity.ConfigPath(in.home))
 
 	v, exit := in.json(t, "update", "--apply")
-	wantError(t, v, exit, api.ErrorCodeSettingsInvalid, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeSettingsInvalid, clikit.ExitRejected)
 	if v.Details["version"] != "0.3.0" || v.Details["settings"] == nil {
 		t.Fatalf("want the release and its problems, got %+v", v.Details)
 	}
@@ -774,7 +775,7 @@ func TestUpdateChecksumMismatch(t *testing.T) {
 	in := install(t, base)
 
 	v, exit := in.json(t, "update", "--apply")
-	wantError(t, v, exit, api.ErrorCodeChecksumMismatch, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeChecksumMismatch, clikit.ExitSystem)
 	in.wantInstalled(t, wdxBinary)
 }
 
@@ -793,7 +794,7 @@ func TestUpdateRunning(t *testing.T) {
 
 	for _, args := range [][]string{{"--apply"}, {"--rollback", "--cancel"}} {
 		v, exit := in.json(t, append([]string{"update"}, args...)...)
-		wantError(t, v, exit, api.ErrorCodeUpdateRunning, api.ExitRejected)
+		wantError(t, v, exit, api.ErrorCodeUpdateRunning, clikit.ExitRejected)
 	}
 	in.wantInstalled(t, wdxBinary)
 }
@@ -803,11 +804,11 @@ func TestUpdateText(t *testing.T) {
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
 	out := wdxWith(t, in.home, in.env, "update", "--apply")
-	if out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "updated wdx dev -> 0.2.0\n") ||
+	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "updated wdx dev -> 0.2.0\n") ||
 		!strings.Contains(out.stderr, "==> downloading wdx 0.2.0\n") || !strings.Contains(out.stderr, "==> starting the daemon\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
-	if out = in.runText(t, "update", "--rollback"); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "rolled back wdx 0.2.0 -> dev\n") || !strings.Contains(out.stdout, "database: kept") {
+	if out = in.runText(t, "update", "--rollback"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "rolled back wdx 0.2.0 -> dev\n") || !strings.Contains(out.stdout, "database: kept") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }

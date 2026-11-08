@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
@@ -285,7 +286,7 @@ func TestTerminalAttachSignal(t *testing.T) {
 				t.Fatal(err)
 			}
 			v, exit := a.wait()
-			if exit != api.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.State != api.TerminalStateRunning {
+			if exit != clikit.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.State != api.TerminalStateRunning {
 				t.Fatalf("want detached with the terminal running, got exit %d, %+v", exit, v)
 			}
 			a.wantGivenBack("hello")
@@ -314,7 +315,7 @@ func TestTerminalAttach(t *testing.T) {
 	a.wantBar(ansi.Yellow)
 	a.input("d")
 	v, exit := a.wait()
-	if exit != api.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
+	if exit != clikit.ExitOK || v.Result != "detached" || v.Terminal == nil || v.Terminal.Id != term.Id || v.Terminal.State != api.TerminalStateRunning {
 		t.Fatalf("want detached with the terminal running, got exit %d, %+v", exit, v)
 	}
 	a.wantGivenBack("hello")
@@ -333,7 +334,7 @@ func TestTerminalAttachAgain(t *testing.T) {
 	a.waitScreen("hello")
 	a.input("\x1c")
 	a.input("d")
-	if _, exit := a.wait(); exit != api.ExitOK {
+	if _, exit := a.wait(); exit != clikit.ExitOK {
 		t.Fatalf("got exit %d", exit)
 	}
 
@@ -341,7 +342,7 @@ func TestTerminalAttachAgain(t *testing.T) {
 	b.waitScreen("hello")
 	b.input("\x1c")
 	b.input("d")
-	if v, exit := b.wait(); exit != api.ExitOK || v.Result != "detached" {
+	if v, exit := b.wait(); exit != clikit.ExitOK || v.Result != "detached" {
 		t.Fatalf("want detached, got exit %d, %+v", exit, v)
 	}
 }
@@ -360,7 +361,7 @@ func TestTerminalAttachExited(t *testing.T) {
 	a.waitScreen("hello")
 	a.input("exit 3\r")
 	v, exit := a.wait()
-	if exit != api.ExitOK || v.Result != "exited" || v.Terminal.State != api.TerminalStateExited || v.Terminal.ExitCode == nil || *v.Terminal.ExitCode != 3 {
+	if exit != clikit.ExitOK || v.Result != "exited" || v.Terminal.State != api.TerminalStateExited || v.Terminal.ExitCode == nil || *v.Terminal.ExitCode != 3 {
 		t.Fatalf("want exited with code 3, got exit %d, %+v", exit, v)
 	}
 	a.wantGivenBack("hello")
@@ -375,7 +376,7 @@ func TestTerminalAttachNotRunning(t *testing.T) {
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
 	v, exit := a.wait()
-	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeTerminalNotRunning, clikit.ExitRejected)
 	wantHint(t, v, "terminal start")
 }
 
@@ -390,7 +391,7 @@ func TestTerminalAttachExitedText(t *testing.T) {
 	a := startAttach(t, home, app, "--name", "api")
 	a.waitScreen("for keys") // attached: the view is up
 	a.input("exit 3\r")
-	if out := a.waitText(); out.exit != api.ExitOK || out.stdout != "terminal api in app exited with code 3\n" {
+	if out := a.waitText(); out.exit != clikit.ExitOK || out.stdout != "terminal api in app exited with code 3\n" {
 		t.Fatalf("want exited with code 3, got %+v", out)
 	}
 }
@@ -413,7 +414,7 @@ func TestTerminalAttachTitle(t *testing.T) {
 	})
 	a.input("\x1c")
 	a.input("d")
-	if _, exit := a.wait(); exit != api.ExitOK {
+	if _, exit := a.wait(); exit != clikit.ExitOK {
 		t.Fatalf("got exit %d", exit)
 	}
 	// Attach has written all it writes, which this test may not have read yet.
@@ -458,7 +459,7 @@ func TestTerminalAttachKeys(t *testing.T) {
 	a.waitFor("the status line hidden", func(text string) bool { return !strings.Contains(text, "for keys") })
 	a.input("\x1c")
 	a.input("d")
-	if v, exit := a.wait(); exit != api.ExitOK || v.Result != "detached" {
+	if v, exit := a.wait(); exit != clikit.ExitOK || v.Result != "detached" {
 		t.Fatalf("want detached, got exit %d, %+v", exit, v)
 	}
 
@@ -468,7 +469,7 @@ func TestTerminalAttachKeys(t *testing.T) {
 	b.input("\x1c") // no longer the prefix: the shell gets it
 	b.input("\x1d")
 	b.input("d")
-	if out := b.waitText(); out.exit != api.ExitOK || !strings.HasPrefix(out.stdout, "detached from terminal api in app\n") {
+	if out := b.waitText(); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "detached from terminal api in app\n") {
 		t.Fatalf("want detached by ctrl-] d, got exit %d, %q", out.exit, out.stdout)
 	}
 }
@@ -502,7 +503,7 @@ func TestTerminalAttachScroll(t *testing.T) {
 	a.waitScreen("live")
 	a.input("\x1c")
 	a.input("d")
-	if _, exit := a.wait(); exit != api.ExitOK {
+	if _, exit := a.wait(); exit != clikit.ExitOK {
 		t.Fatalf("got exit %d", exit)
 	}
 }
@@ -514,7 +515,7 @@ func waitHistory(t *testing.T, home, dir, name string, lines int64) {
 	if !eventually(t, func() bool {
 		var exit int
 		v, exit = wdxJSONWith(t, home, in(dir), "terminal", "history", "--name", name, "--tail", "1")
-		return exit == api.ExitOK && v.History.Next >= lines
+		return exit == clikit.ExitOK && v.History.Next >= lines
 	}) {
 		t.Fatalf("history of %s stays at %+v", name, v.History)
 	}
@@ -542,7 +543,7 @@ func TestTerminalAttachConnectionLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, exit := a.wait()
-	wantError(t, v, exit, api.ErrorCodeConnectionLost, api.ExitSystem)
+	wantError(t, v, exit, api.ErrorCodeConnectionLost, clikit.ExitSystem)
 	wantHint(t, v, "attach again")
 	a.wantGivenBack("$ $")
 }
@@ -554,7 +555,7 @@ func TestTerminalAttachNoTerminal(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	newTerminal(t, home, app, "api")
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api") // TTY is nil
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 }
 
 func TestTerminalAttachNotFound(t *testing.T) {
@@ -562,7 +563,7 @@ func TestTerminalAttachNotFound(t *testing.T) {
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "web")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 }
 
 // TestTerminalAttachPrefixKeyInvalid refuses a prefix key that is no key,
@@ -573,7 +574,7 @@ func TestTerminalAttachPrefixKeyInvalid(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	for _, key := range []string{"ctrl-1", "ctrl-i", "ctrl-m"} {
 		v, exit := wdxJSONWith(t, home, in(app), "terminal", "attach", "--name", "api", "--prefix-key", key)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 }
 
@@ -584,7 +585,7 @@ func TestTerminalAttachTooSmall(t *testing.T) {
 	newTerminal(t, home, app, "api")
 	small := startAttachSized(t, home, app, 8, 2, "--name", "api", "--json")
 	v, exit := small.wait()
-	wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 }
 
 // TestTerminalAttachUnsupported attaches to a terminal whose holder speaks
@@ -627,7 +628,7 @@ func TestTerminalAttachUnsupported(t *testing.T) {
 
 	a := startAttach(t, home, app, "--name", "api", "--json")
 	v, exit := a.wait()
-	wantError(t, v, exit, api.ErrorCodeAttachUnsupported, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeAttachUnsupported, clikit.ExitRejected)
 	wantHint(t, v, "to restart its shell")
 }
 
@@ -652,23 +653,23 @@ func TestTerminalHistory(t *testing.T) {
 	waitHistory(t, home, app, "api", 77)
 
 	v, exit := wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "api")
-	if exit != api.ExitOK || v.Result != "" || v.History.From != 0 || v.History.First != 0 || int64(len(v.History.Lines)) != v.History.Next {
+	if exit != clikit.ExitOK || v.Result != "" || v.History.From != 0 || v.History.First != 0 || int64(len(v.History.Lines)) != v.History.Next {
 		t.Fatalf("want every line, got exit %d, %+v", exit, v.History)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "api", "--from", "1", "--count", "2")
-	if exit != api.ExitOK || v.History.From != 1 || !slices.Equal(v.History.Lines, []string{"1", "2"}) {
+	if exit != clikit.ExitOK || v.History.From != 1 || !slices.Equal(v.History.Lines, []string{"1", "2"}) {
 		t.Fatalf("want lines 1 and 2, got exit %d, %+v", exit, v.History)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "api", "--count", "2")
-	if exit != api.ExitOK || v.History.From != 0 || len(v.History.Lines) != 2 {
+	if exit != clikit.ExitOK || v.History.From != 0 || len(v.History.Lines) != 2 {
 		t.Fatalf("want the 2 oldest lines, got exit %d, %+v", exit, v.History)
 	}
 	for _, flags := range [][]string{{"--tail", "2", "--from", "3"}, {"--tail", "2", "--count", "3"}} {
 		v, exit = wdxJSONWith(t, home, in(app), append([]string{"terminal", "history", "--name", "api"}, flags...)...)
-		wantError(t, v, exit, api.ErrorCodeUsage, api.ExitUsage)
+		wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "terminal", "history", "--name", "web")
-	wantError(t, v, exit, api.ErrorCodeNotFound, api.ExitRejected)
+	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	// Text keeps the lines' colors only when the output gets color.
 	for _, tc := range []struct {
@@ -680,7 +681,7 @@ func TestTerminalHistory(t *testing.T) {
 		{[]string{"--color", "always", "--plain"}, "red\n1\n"},
 	} {
 		out := wdxWith(t, home, in(app), append([]string{"terminal", "history", "--name", "api", "--from", "0", "--count", "2"}, tc.args...)...)
-		if out.exit != api.ExitOK || out.stdout != tc.want {
+		if out.exit != clikit.ExitOK || out.stdout != tc.want {
 			t.Fatalf("%v: got exit %d, %q, want %q", tc.args, out.exit, out.stdout, tc.want)
 		}
 	}
@@ -696,7 +697,7 @@ func TestTerminalAttachVersion(t *testing.T) {
 	a := startInTerminal(t, home, app, 80, 24, []string{"terminal", "attach", "--name", "api"})
 	a.waitScreen("C-\\ ? for keys  [wdx " + identity.Version + "]")
 	a.input("\x1c" + "d")
-	if out := a.waitText(); out.exit != api.ExitOK {
+	if out := a.waitText(); out.exit != clikit.ExitOK {
 		t.Fatalf("got %+v", out)
 	}
 	// It asks all the time, so it must not fill the logs.
