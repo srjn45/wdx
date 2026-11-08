@@ -214,7 +214,7 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 			if stack != nil {
 				attrs = append(attrs, "stack", string(stack))
 			}
-			log.Log(context.Background(), level, "request returned", append(attrs, "response", jsonValue(rec.body.Bytes()))...)
+			log.Log(context.Background(), level, "request returned", append(attrs, "response", responseLogged(operation, rec.body.Bytes()))...)
 		}()
 		next.ServeHTTP(rec, r)
 	})
@@ -235,6 +235,15 @@ func requestLogged(operation string, b []byte) any {
 		r["value_bytes"] = len(value)
 	}
 	return r
+}
+
+// responseLogged is a response's body as logged: an invite's or a reset's
+// link is a secret, so it is measured, never logged.
+func responseLogged(operation string, b []byte) any {
+	if operation == "createInvite" || operation == "createUserReset" {
+		return hubapi.LinkResponseLogged(b)
+	}
+	return jsonValue(b)
 }
 
 // jsonValue logs b as nested JSON when it is JSON, else as a string.

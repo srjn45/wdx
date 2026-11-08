@@ -155,10 +155,10 @@ func newRoot() *cobra.Command {
 	return clikit.NewRoot(clikit.Root{
 		Use:    name,
 		Short:  "Serve the hub that connects wdx machines",
-		Long:   name + " serve runs the hub; backup and version ask it over its socket, and setting changes the config file it reads.",
+		Long:   name + " serve runs the hub; user, audit, backup and version ask it over its socket, and setting changes the config file it reads.",
 		Color:  style.ColorAuto,
 		Topics: topics,
-	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd())
+	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd(), newUserCmd(), newAuditCmd())
 }
 
 func newVersionCmd() *cobra.Command {

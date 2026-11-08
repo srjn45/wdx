@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/srjn45/wdx/internal/hub/account"
+	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hubapi"
 )
 
@@ -37,6 +41,24 @@ type InvalidPathError struct {
 }
 
 func (e *InvalidPathError) Error() string { return e.Path + ": " + e.Reason }
+
+// userError is a failure of an act on the user named username.
+type userError struct {
+	username string
+	err      error
+}
+
+func (e *userError) Error() string { return e.err.Error() + ": " + e.username }
+func (e *userError) Unwrap() error { return e.err }
+
+// AuditBrokenError is an audit chain with a row whose hash does not match.
+type AuditBrokenError struct {
+	Broken audit.Broken
+}
+
+func (e *AuditBrokenError) Error() string {
+	return fmt.Sprintf("the audit chain is broken at row %d, of %s", e.Broken.ID, e.Broken.At.Format(time.RFC3339))
+}
 
 // problemOf returns err as the problem the API reports.
 func problemOf(ctx context.Context, err error) hubapi.Problem {
@@ -71,6 +93,18 @@ func classify(err error) (hubapi.ErrorCode, map[string]any) {
 	}
 	if e, ok := errors.AsType[*InvalidPathError](err); ok {
 		return hubapi.ErrorCodeInvalidArgument, map[string]any{"argument": "path", "path": e.Path}
+	}
+	if errors.Is(err, account.ErrNotFound) {
+		if e, ok := errors.AsType[*userError](err); ok {
+			return hubapi.ErrorCodeNotFound, map[string]any{"username": e.username}
+		}
+		return hubapi.ErrorCodeNotFound, nil
+	}
+	if e, ok := errors.AsType[*account.InvalidError](err); ok {
+		return hubapi.ErrorCodeInvalidArgument, map[string]any{"argument": e.Field}
+	}
+	if e, ok := errors.AsType[*AuditBrokenError](err); ok {
+		return hubapi.ErrorCodeAuditBroken, map[string]any{"id": e.Broken.ID, "at": e.Broken.At.Format(time.RFC3339Nano)}
 	}
 	return hubapi.ErrorCodeInternal, nil
 }

@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
@@ -25,6 +26,8 @@ import (
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAlreadyRunning  ErrorCode = "already_running"
+	ErrorCodeAuditBroken     ErrorCode = "audit_broken"
+	ErrorCodeCancelled       ErrorCode = "cancelled"
 	ErrorCodeHubUnavailable  ErrorCode = "hub_unavailable"
 	ErrorCodeInternal        ErrorCode = "internal"
 	ErrorCodeInvalidArgument ErrorCode = "invalid_argument"
@@ -39,6 +42,10 @@ const (
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCodeAlreadyRunning:
+		return true
+	case ErrorCodeAuditBroken:
+		return true
+	case ErrorCodeCancelled:
 		return true
 	case ErrorCodeHubUnavailable:
 		return true
@@ -64,7 +71,12 @@ func (e ErrorCode) Valid() bool {
 // Defines values for Result.
 const (
 	ResultBackedUp  Result = "backed_up"
+	ResultDisabled  Result = "disabled"
+	ResultEnabled   Result = "enabled"
+	ResultInvited   Result = "invited"
 	ResultReloaded  Result = "reloaded"
+	ResultRemoved   Result = "removed"
+	ResultReset     Result = "reset"
 	ResultUnchanged Result = "unchanged"
 	ResultUpdated   Result = "updated"
 )
@@ -74,7 +86,17 @@ func (e Result) Valid() bool {
 	switch e {
 	case ResultBackedUp:
 		return true
+	case ResultDisabled:
+		return true
+	case ResultEnabled:
+		return true
+	case ResultInvited:
+		return true
 	case ResultReloaded:
+		return true
+	case ResultRemoved:
+		return true
+	case ResultReset:
 		return true
 	case ResultUnchanged:
 		return true
@@ -83,6 +105,20 @@ func (e Result) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Audit defines model for Audit.
+type Audit struct {
+	// Head The last row's hash, in hex; null for an empty chain.
+	Head *string `json:"head"`
+
+	// Rows How many rows the chain has.
+	Rows int `json:"rows"`
+}
+
+// AuditEnvelope defines model for AuditEnvelope.
+type AuditEnvelope struct {
+	Audit Audit `json:"audit"`
 }
 
 // Backup defines model for Backup.
@@ -99,9 +135,38 @@ type BackupResult struct {
 	Result Result `json:"result"`
 }
 
-// ErrorCode Stable error code; never changed or reused. already_running and
-// hub_unavailable are reported by the CLI, never by the hub.
+// CreateInvite defines model for CreateInvite.
+type CreateInvite struct {
+	// ExpiresSeconds How long the invite works, in seconds, at most 30 days; 24 hours when left out.
+	ExpiresSeconds *int64 `json:"expires_seconds,omitempty"`
+}
+
+// CreateReset defines model for CreateReset.
+type CreateReset struct {
+	// SecondFactor Also remove the user's authenticator and recovery codes; false when left out.
+	SecondFactor *bool `json:"second_factor,omitempty"`
+}
+
+// ErrorCode Stable error code; never changed or reused. already_running,
+// hub_unavailable and cancelled are reported by the CLI, never by the
+// hub.
 type ErrorCode string
+
+// Invite defines model for Invite.
+type Invite struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Link <public_url>/signup?invite=<token>: a secret, for the person invited only.
+	Link string `json:"link"`
+}
+
+// InviteResult defines model for InviteResult.
+type InviteResult struct {
+	Invite Invite `json:"invite"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
 
 // NotApplied The keys of the settings the config file changes that the running hub
 // applies only at its next start, such as listen.web and public_url;
@@ -110,8 +175,9 @@ type NotApplied = []string
 
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
-	// Code Stable error code; never changed or reused. already_running and
-	// hub_unavailable are reported by the CLI, never by the hub.
+	// Code Stable error code; never changed or reused. already_running,
+	// hub_unavailable and cancelled are reported by the CLI, never by the
+	// hub.
 	Code ErrorCode `json:"code"`
 
 	// DebugId Finds the request's log lines.
@@ -140,6 +206,23 @@ type ReloadResult struct {
 	// applies only at its next start, such as listen.web and public_url;
 	// empty when it applied them all.
 	NotApplied NotApplied `json:"not_applied"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
+// Reset defines model for Reset.
+type Reset struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Link <public_url>/reset?token=<token>: a secret, for the user only.
+	Link         string `json:"link"`
+	SecondFactor bool   `json:"second_factor"`
+}
+
+// ResetResult defines model for ResetResult.
+type ResetResult struct {
+	Reset Reset `json:"reset"`
 
 	// Result The most significant thing that happened.
 	Result Result `json:"result"`
@@ -189,6 +272,58 @@ type UpdateSetting struct {
 	Value string `json:"value"`
 }
 
+// UpdateUser defines model for UpdateUser.
+type UpdateUser struct {
+	// Disabled True disables the user, false enables them.
+	Disabled bool `json:"disabled"`
+}
+
+// User defines model for User.
+type User struct {
+	CreatedAt time.Time `json:"created_at"`
+	Disabled  bool      `json:"disabled"`
+
+	// LastLoginAt Null when they never logged in.
+	LastLoginAt *time.Time `json:"last_login_at"`
+
+	// SecondFactor Their second factor: totp, or null while none is enrolled.
+	SecondFactor *string `json:"second_factor"`
+	Username     string  `json:"username"`
+}
+
+// UserDetail defines model for UserDetail.
+type UserDetail struct {
+	CreatedAt time.Time `json:"created_at"`
+	Disabled  bool      `json:"disabled"`
+
+	// LastLoginAt Null when they never logged in.
+	LastLoginAt *time.Time `json:"last_login_at"`
+
+	// SecondFactor Their second factor: totp, or null while none is enrolled.
+	SecondFactor *string `json:"second_factor"`
+
+	// Sessions Their browser sessions that have not ended.
+	Sessions int    `json:"sessions"`
+	Username string `json:"username"`
+}
+
+// UserEnvelope defines model for UserEnvelope.
+type UserEnvelope struct {
+	User UserDetail `json:"user"`
+}
+
+// UserList defines model for UserList.
+type UserList struct {
+	Users []User `json:"users"`
+}
+
+// UserResult defines model for UserResult.
+type UserResult struct {
+	// Result The most significant thing that happened.
+	Result Result     `json:"result"`
+	User   UserDetail `json:"user"`
+}
+
 // Version defines model for Version.
 type Version struct {
 	// ApiVersion The info.version of the hub's API.
@@ -198,11 +333,23 @@ type Version struct {
 	Version    string `json:"version"`
 }
 
+// Username defines model for Username.
+type Username = string
+
 // BackupJSONRequestBody defines body for Backup for application/json ContentType.
 type BackupJSONRequestBody = Backup
 
+// CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
+type CreateInviteJSONRequestBody = CreateInvite
+
 // UpdateSettingJSONRequestBody defines body for UpdateSetting for application/json ContentType.
 type UpdateSettingJSONRequestBody = UpdateSetting
+
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UpdateUser
+
+// CreateUserResetJSONRequestBody defines body for CreateUserReset for application/json ContentType.
+type CreateUserResetJSONRequestBody = CreateReset
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -283,6 +430,14 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/admin/version (the `GetAdminVersion` operationId).
 	GetAdminVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyAudit Walk the audit chain, checking every row's hash
+	//
+	// Errors: audit_broken, with the first row whose hash does not match in
+	// its details.
+	//
+	// Corresponds with GET /v1/audit/verification (the `VerifyAudit` operationId).
+	VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BackupWithBody Copy the database, consistent, while the hub runs
 	//
 	// The copy is written on the hub's filesystem, at a path that must not
@@ -306,6 +461,30 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/backup (the `Backup` operationId).
 	Backup(ctx context.Context, body BackupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateInviteWithBody Make an invite, a link that lets one person sign up
+	//
+	// The link holds the invite's token: whoever has it can make an account
+	// until it expires or is used. The hub logs its length, never the link.
+	//
+	// Errors: invalid_argument for a life of 0 or more than 30 days.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+	CreateInviteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateInvite Make an invite, a link that lets one person sign up
+	//
+	// The link holds the invite's token: whoever has it can make an account
+	// until it expires or is used. The hub logs its length, never the link.
+	//
+	// Errors: invalid_argument for a life of 0 or more than 30 days.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+	CreateInvite(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNodeVersion Version of the hub, to a node
 	//
@@ -356,6 +535,80 @@ type ClientInterface interface {
 	// Corresponds with PATCH /v1/settings/{setting} (the `UpdateSetting` operationId).
 	UpdateSetting(ctx context.Context, setting string, body UpdateSettingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListUsers Every user not removed, by username
+	//
+	// Corresponds with GET /v1/users (the `ListUsers` operationId).
+	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveUser Remove a user, keeping their username taken
+	//
+	// The user's password, second factor, recovery codes, browser sessions,
+	// resets and invite are deleted; the username is never given again.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
+	RemoveUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUser One user, with their browser sessions counted
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
+	GetUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateUserWithBody Disable a user, or enable them again
+	//
+	// Disabling ends every browser session of the user, and refuses their
+	// logins until they are enabled.
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+	UpdateUserWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateUser Disable a user, or enable them again
+	//
+	// Disabling ends every browser session of the user, and refuses their
+	// logins until they are enabled.
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+	UpdateUser(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateUserResetWithBody Make a password reset, a link that sets a user's password
+	//
+	// The link works for 24 hours and voids an earlier one not used. With
+	// second_factor, using it also removes the user's authenticator and
+	// recovery codes, so that their next login enrols a new one. The hub
+	// logs the link's length, never the link.
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateUserReset Make a password reset, a link that sets a user's password
+	//
+	// The link works for 24 hours and voids an earlier one not used. With
+	// second_factor, using it also removes the user's authenticator and
+	// recovery codes, so that their next login enrols a new one. The hub
+	// logs the link's length, never the link.
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+	CreateUserReset(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetVersion Version of the hub
 	//
 	// Corresponds with GET /v1/version (the `GetVersion` operationId).
@@ -367,6 +620,24 @@ type ClientInterface interface {
 // Corresponds with GET /v1/admin/version (the `GetAdminVersion` operationId).
 func (c *Client) GetAdminVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAdminVersionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyAudit Walk the audit chain, checking every row's hash
+//
+// Errors: audit_broken, with the first row whose hash does not match in
+// its details.
+//
+// Corresponds with GET /v1/audit/verification (the `VerifyAudit` operationId).
+func (c *Client) VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyAuditRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +682,50 @@ func (c *Client) BackupWithBody(ctx context.Context, contentType string, body io
 // Corresponds with POST /v1/backup (the `Backup` operationId).
 func (c *Client) Backup(ctx context.Context, body BackupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBackupRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateInviteWithBody Make an invite, a link that lets one person sign up
+//
+// The link holds the invite's token: whoever has it can make an account
+// until it expires or is used. The hub logs its length, never the link.
+//
+// Errors: invalid_argument for a life of 0 or more than 30 days.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+func (c *Client) CreateInviteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateInviteRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateInvite Make an invite, a link that lets one person sign up
+//
+// The link holds the invite's token: whoever has it can make an account
+// until it expires or is used. The hub logs its length, never the link.
+//
+// Errors: invalid_argument for a life of 0 or more than 30 days.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+func (c *Client) CreateInvite(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateInviteRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -520,6 +835,150 @@ func (c *Client) UpdateSetting(ctx context.Context, setting string, body UpdateS
 	return c.Client.Do(req)
 }
 
+// ListUsers Every user not removed, by username
+//
+// Corresponds with GET /v1/users (the `ListUsers` operationId).
+func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveUser Remove a user, keeping their username taken
+//
+// The user's password, second factor, recovery codes, browser sessions,
+// resets and invite are deleted; the username is never given again.
+//
+// Errors: not_found.
+//
+// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
+func (c *Client) RemoveUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveUserRequest(c.Server, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUser One user, with their browser sessions counted
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
+func (c *Client) GetUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserRequest(c.Server, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateUserWithBody Disable a user, or enable them again
+//
+// Disabling ends every browser session of the user, and refuses their
+// logins until they are enabled.
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+func (c *Client) UpdateUserWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateUserRequestWithBody(c.Server, username, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateUser Disable a user, or enable them again
+//
+// Disabling ends every browser session of the user, and refuses their
+// logins until they are enabled.
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+func (c *Client) UpdateUser(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateUserRequest(c.Server, username, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateUserResetWithBody Make a password reset, a link that sets a user's password
+//
+// The link works for 24 hours and voids an earlier one not used. With
+// second_factor, using it also removes the user's authenticator and
+// recovery codes, so that their next login enrols a new one. The hub
+// logs the link's length, never the link.
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+func (c *Client) CreateUserResetWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserResetRequestWithBody(c.Server, username, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateUserReset Make a password reset, a link that sets a user's password
+//
+// The link works for 24 hours and voids an earlier one not used. With
+// second_factor, using it also removes the user's authenticator and
+// recovery codes, so that their next login enrols a new one. The hub
+// logs the link's length, never the link.
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+func (c *Client) CreateUserReset(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserResetRequest(c.Server, username, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetVersion Version of the hub
 //
 // Corresponds with GET /v1/version (the `GetVersion` operationId).
@@ -562,6 +1021,33 @@ func NewGetAdminVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewVerifyAuditRequest constructs an http.Request for the VerifyAudit method
+func NewVerifyAuditRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/audit/verification")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewBackupRequest calls the generic Backup builder with application/json body
 func NewBackupRequest(server string, body BackupJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -583,6 +1069,46 @@ func NewBackupRequestWithBody(server string, contentType string, body io.Reader)
 	}
 
 	operationPath := fmt.Sprintf("/v1/backup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateInviteRequest calls the generic CreateInvite builder with application/json body
+func NewCreateInviteRequest(server string, body CreateInviteJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateInviteRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateInviteRequestWithBody constructs an http.Request for the CreateInvite method, with any body, and a specified content type
+func NewCreateInviteRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/invites")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -730,6 +1256,195 @@ func NewUpdateSettingRequestWithBody(server string, setting string, contentType 
 	return req, nil
 }
 
+// NewListUsersRequest constructs an http.Request for the ListUsers method
+func NewListUsersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveUserRequest constructs an http.Request for the RemoveUser method
+func NewRemoveUserRequest(server string, username Username) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetUserRequest constructs an http.Request for the GetUser method
+func NewGetUserRequest(server string, username Username) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateUserRequest calls the generic UpdateUser builder with application/json body
+func NewUpdateUserRequest(server string, username Username, body UpdateUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateUserRequestWithBody(server, username, "application/json", bodyReader)
+}
+
+// NewUpdateUserRequestWithBody constructs an http.Request for the UpdateUser method, with any body, and a specified content type
+func NewUpdateUserRequestWithBody(server string, username Username, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateUserResetRequest calls the generic CreateUserReset builder with application/json body
+func NewCreateUserResetRequest(server string, username Username, body CreateUserResetJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateUserResetRequestWithBody(server, username, "application/json", bodyReader)
+}
+
+// NewCreateUserResetRequestWithBody constructs an http.Request for the CreateUserReset method, with any body, and a specified content type
+func NewCreateUserResetRequestWithBody(server string, username Username, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/users/%s/resets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetVersionRequest constructs an http.Request for the GetVersion method
 func NewGetVersionRequest(server string) (*http.Request, error) {
 	var err error
@@ -808,6 +1523,16 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/admin/version (the `GetAdminVersion` operationId).
 	GetAdminVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAdminVersionResponse, error)
 
+	// VerifyAuditWithResponse Walk the audit chain, checking every row's hash
+	//
+	// Errors: audit_broken, with the first row whose hash does not match in
+	// its details.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/audit/verification (the `VerifyAudit` operationId).
+	VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error)
+
 	// BackupWithBodyWithResponse Copy the database, consistent, while the hub runs
 	//
 	// The copy is written on the hub's filesystem, at a path that must not
@@ -831,6 +1556,30 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/backup (the `Backup` operationId).
 	BackupWithResponse(ctx context.Context, body BackupJSONRequestBody, reqEditors ...RequestEditorFn) (*BackupResponse, error)
+
+	// CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
+	//
+	// The link holds the invite's token: whoever has it can make an account
+	// until it expires or is used. The hub logs its length, never the link.
+	//
+	// Errors: invalid_argument for a life of 0 or more than 30 days.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+	CreateInviteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateInviteResponse, error)
+
+	// CreateInviteWithResponse Make an invite, a link that lets one person sign up
+	//
+	// The link holds the invite's token: whoever has it can make an account
+	// until it expires or is used. The hub logs its length, never the link.
+	//
+	// Errors: invalid_argument for a life of 0 or more than 30 days.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+	CreateInviteWithResponse(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateInviteResponse, error)
 
 	// GetNodeVersionWithResponse Version of the hub, to a node
 	//
@@ -886,6 +1635,86 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /v1/settings/{setting} (the `UpdateSetting` operationId).
 	UpdateSettingWithResponse(ctx context.Context, setting string, body UpdateSettingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSettingResponse, error)
+
+	// ListUsersWithResponse Every user not removed, by username
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/users (the `ListUsers` operationId).
+	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// RemoveUserWithResponse Remove a user, keeping their username taken
+	//
+	// The user's password, second factor, recovery codes, browser sessions,
+	// resets and invite are deleted; the username is never given again.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
+	RemoveUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error)
+
+	// GetUserWithResponse One user, with their browser sessions counted
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
+	GetUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*GetUserResponse, error)
+
+	// UpdateUserWithBodyWithResponse Disable a user, or enable them again
+	//
+	// Disabling ends every browser session of the user, and refuses their
+	// logins until they are enabled.
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+	UpdateUserWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
+
+	// UpdateUserWithResponse Disable a user, or enable them again
+	//
+	// Disabling ends every browser session of the user, and refuses their
+	// logins until they are enabled.
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+	UpdateUserWithResponse(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
+
+	// CreateUserResetWithBodyWithResponse Make a password reset, a link that sets a user's password
+	//
+	// The link works for 24 hours and voids an earlier one not used. With
+	// second_factor, using it also removes the user's authenticator and
+	// recovery codes, so that their next login enrols a new one. The hub
+	// logs the link's length, never the link.
+	//
+	// Errors: not_found.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
+
+	// CreateUserResetWithResponse Make a password reset, a link that sets a user's password
+	//
+	// The link works for 24 hours and voids an earlier one not used. With
+	// second_factor, using it also removes the user's authenticator and
+	// recovery codes, so that their next login enrols a new one. The hub
+	// logs the link's length, never the link.
+	//
+	// Errors: not_found.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithResponse(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
 
 	// GetVersionWithResponse Version of the hub
 	//
@@ -943,6 +1772,54 @@ func (r GetAdminVersionResponse) ContentType() string {
 	return ""
 }
 
+type VerifyAuditResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyAuditResponse) GetJSON200() *AuditEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r VerifyAuditResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyAuditResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyAuditResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyAuditResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type BackupResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -985,6 +1862,54 @@ func (r BackupResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r BackupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateInviteResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *InviteResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateInviteResponse) GetJSON201() *InviteResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateInviteResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateInviteResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateInviteResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateInviteResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateInviteResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1183,6 +2108,246 @@ func (r UpdateSettingResponse) ContentType() string {
 	return ""
 }
 
+type ListUsersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UserList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListUsersResponse) GetJSON200() *UserList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListUsersResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListUsersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUsersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUsersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListUsersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UserResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveUserResponse) GetJSON200() *UserResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveUserResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UserEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUserResponse) GetJSON200() *UserEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetUserResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UserResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateUserResponse) GetJSON200() *UserResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateUserResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateUserResetResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ResetResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateUserResetResponse) GetJSON201() *ResetResult {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateUserResetResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateUserResetResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateUserResetResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateUserResetResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateUserResetResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1244,6 +2409,22 @@ func (c *ClientWithResponses) GetAdminVersionWithResponse(ctx context.Context, r
 	return ParseGetAdminVersionResponse(rsp)
 }
 
+// VerifyAuditWithResponse Walk the audit chain, checking every row's hash
+//
+// Errors: audit_broken, with the first row whose hash does not match in
+// its details.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/audit/verification (the `VerifyAudit` operationId).
+func (c *ClientWithResponses) VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error) {
+	rsp, err := c.VerifyAudit(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyAuditResponse(rsp)
+}
+
 // BackupWithBodyWithResponse Copy the database, consistent, while the hub runs
 //
 // The copy is written on the hub's filesystem, at a path that must not
@@ -1278,6 +2459,42 @@ func (c *ClientWithResponses) BackupWithResponse(ctx context.Context, body Backu
 		return nil, err
 	}
 	return ParseBackupResponse(rsp)
+}
+
+// CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
+//
+// The link holds the invite's token: whoever has it can make an account
+// until it expires or is used. The hub logs its length, never the link.
+//
+// Errors: invalid_argument for a life of 0 or more than 30 days.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+func (c *ClientWithResponses) CreateInviteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateInviteResponse, error) {
+	rsp, err := c.CreateInviteWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateInviteResponse(rsp)
+}
+
+// CreateInviteWithResponse Make an invite, a link that lets one person sign up
+//
+// The link holds the invite's token: whoever has it can make an account
+// until it expires or is used. The hub logs its length, never the link.
+//
+// Errors: invalid_argument for a life of 0 or more than 30 days.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
+func (c *ClientWithResponses) CreateInviteWithResponse(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateInviteResponse, error) {
+	rsp, err := c.CreateInvite(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateInviteResponse(rsp)
 }
 
 // GetNodeVersionWithResponse Version of the hub, to a node
@@ -1365,6 +2582,128 @@ func (c *ClientWithResponses) UpdateSettingWithResponse(ctx context.Context, set
 	return ParseUpdateSettingResponse(rsp)
 }
 
+// ListUsersWithResponse Every user not removed, by username
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/users (the `ListUsers` operationId).
+func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error) {
+	rsp, err := c.ListUsers(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUsersResponse(rsp)
+}
+
+// RemoveUserWithResponse Remove a user, keeping their username taken
+//
+// The user's password, second factor, recovery codes, browser sessions,
+// resets and invite are deleted; the username is never given again.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
+func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error) {
+	rsp, err := c.RemoveUser(ctx, username, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveUserResponse(rsp)
+}
+
+// GetUserWithResponse One user, with their browser sessions counted
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
+func (c *ClientWithResponses) GetUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*GetUserResponse, error) {
+	rsp, err := c.GetUser(ctx, username, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUserResponse(rsp)
+}
+
+// UpdateUserWithBodyWithResponse Disable a user, or enable them again
+//
+// Disabling ends every browser session of the user, and refuses their
+// logins until they are enabled.
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
+	rsp, err := c.UpdateUserWithBody(ctx, username, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateUserResponse(rsp)
+}
+
+// UpdateUserWithResponse Disable a user, or enable them again
+//
+// Disabling ends every browser session of the user, and refuses their
+// logins until they are enabled.
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
+func (c *ClientWithResponses) UpdateUserWithResponse(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
+	rsp, err := c.UpdateUser(ctx, username, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateUserResponse(rsp)
+}
+
+// CreateUserResetWithBodyWithResponse Make a password reset, a link that sets a user's password
+//
+// The link works for 24 hours and voids an earlier one not used. With
+// second_factor, using it also removes the user's authenticator and
+// recovery codes, so that their next login enrols a new one. The hub
+// logs the link's length, never the link.
+//
+// Errors: not_found.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+func (c *ClientWithResponses) CreateUserResetWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
+	rsp, err := c.CreateUserResetWithBody(ctx, username, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateUserResetResponse(rsp)
+}
+
+// CreateUserResetWithResponse Make a password reset, a link that sets a user's password
+//
+// The link works for 24 hours and voids an earlier one not used. With
+// second_factor, using it also removes the user's authenticator and
+// recovery codes, so that their next login enrols a new one. The hub
+// logs the link's length, never the link.
+//
+// Errors: not_found.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
+func (c *ClientWithResponses) CreateUserResetWithResponse(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
+	rsp, err := c.CreateUserReset(ctx, username, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateUserResetResponse(rsp)
+}
+
 // GetVersionWithResponse Version of the hub
 //
 // Returns a wrapper object for the known response body format(s).
@@ -1411,6 +2750,39 @@ func ParseGetAdminVersionResponse(rsp *http.Response) (*GetAdminVersionResponse,
 	return response, nil
 }
 
+// ParseVerifyAuditResponse parses an HTTP response from a VerifyAuditWithResponse call
+func ParseVerifyAuditResponse(rsp *http.Response) (*VerifyAuditResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyAuditResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseBackupResponse parses an HTTP response from a BackupWithResponse call
 func ParseBackupResponse(rsp *http.Response) (*BackupResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1427,6 +2799,39 @@ func ParseBackupResponse(rsp *http.Response) (*BackupResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest BackupResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateInviteResponse parses an HTTP response from a CreateInviteWithResponse call
+func ParseCreateInviteResponse(rsp *http.Response) (*CreateInviteResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateInviteResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest InviteResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1576,6 +2981,171 @@ func ParseUpdateSettingResponse(rsp *http.Response) (*UpdateSettingResponse, err
 	return response, nil
 }
 
+// ParseListUsersResponse parses an HTTP response from a ListUsersWithResponse call
+func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUsersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveUserResponse parses an HTTP response from a RemoveUserWithResponse call
+func ParseRemoveUserResponse(rsp *http.Response) (*RemoveUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetUserResponse parses an HTTP response from a GetUserWithResponse call
+func ParseGetUserResponse(rsp *http.Response) (*GetUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateUserResponse parses an HTTP response from a UpdateUserWithResponse call
+func ParseUpdateUserResponse(rsp *http.Response) (*UpdateUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateUserResetResponse parses an HTTP response from a CreateUserResetWithResponse call
+func ParseCreateUserResetResponse(rsp *http.Response) (*CreateUserResetResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateUserResetResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ResetResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetVersionResponse parses an HTTP response from a GetVersionWithResponse call
 func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1614,9 +3184,15 @@ type ServerInterface interface {
 	// GetAdminVersion Version of the hub, to its commands
 	// (GET /v1/admin/version)
 	GetAdminVersion(w http.ResponseWriter, r *http.Request)
+	// VerifyAudit Walk the audit chain, checking every row's hash
+	// (GET /v1/audit/verification)
+	VerifyAudit(w http.ResponseWriter, r *http.Request)
 	// Backup Copy the database, consistent, while the hub runs
 	// (POST /v1/backup)
 	Backup(w http.ResponseWriter, r *http.Request)
+	// CreateInvite Make an invite, a link that lets one person sign up
+	// (POST /v1/invites)
+	CreateInvite(w http.ResponseWriter, r *http.Request)
 	// GetNodeVersion Version of the hub, to a node
 	// (GET /v1/node/version)
 	GetNodeVersion(w http.ResponseWriter, r *http.Request)
@@ -1629,6 +3205,21 @@ type ServerInterface interface {
 	// UpdateSetting Change a setting and apply it at once
 	// (PATCH /v1/settings/{setting})
 	UpdateSetting(w http.ResponseWriter, r *http.Request, setting string)
+	// ListUsers Every user not removed, by username
+	// (GET /v1/users)
+	ListUsers(w http.ResponseWriter, r *http.Request)
+	// RemoveUser Remove a user, keeping their username taken
+	// (DELETE /v1/users/{username})
+	RemoveUser(w http.ResponseWriter, r *http.Request, username Username)
+	// GetUser One user, with their browser sessions counted
+	// (GET /v1/users/{username})
+	GetUser(w http.ResponseWriter, r *http.Request, username Username)
+	// UpdateUser Disable a user, or enable them again
+	// (PATCH /v1/users/{username})
+	UpdateUser(w http.ResponseWriter, r *http.Request, username Username)
+	// CreateUserReset Make a password reset, a link that sets a user's password
+	// (POST /v1/users/{username}/resets)
+	CreateUserReset(w http.ResponseWriter, r *http.Request, username Username)
 	// GetVersion Version of the hub
 	// (GET /v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -1657,11 +3248,39 @@ func (siw *ServerInterfaceWrapper) GetAdminVersion(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// VerifyAudit operation middleware
+func (siw *ServerInterfaceWrapper) VerifyAudit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyAudit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Backup operation middleware
 func (siw *ServerInterfaceWrapper) Backup(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Backup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvite operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvite(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1730,6 +3349,124 @@ func (siw *ServerInterfaceWrapper) UpdateSetting(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSetting(w, r, setting)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveUser operation middleware
+func (siw *ServerInterfaceWrapper) RemoveUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveUser(w, r, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUser operation middleware
+func (siw *ServerInterfaceWrapper) GetUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUser(w, r, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUser(w, r, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateUserReset operation middleware
+func (siw *ServerInterfaceWrapper) CreateUserReset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUserReset(w, r, username)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1880,6 +3617,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/settings/{setting}", wrapper.UpdateSetting)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/reload", wrapper.Reload)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/backup", wrapper.Backup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/invites", wrapper.CreateInvite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/users", wrapper.ListUsers)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/users/{username}", wrapper.RemoveUser)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/users/{username}", wrapper.GetUser)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/users/{username}", wrapper.UpdateUser)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/users/{username}/resets", wrapper.CreateUserReset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/audit/verification", wrapper.VerifyAudit)
 
 	return m
 }
@@ -1926,6 +3670,44 @@ func (response GetAdminVersiondefaultApplicationProblemPlusJSONResponse) VisitGe
 	return err
 }
 
+type VerifyAuditRequestObject struct {
+}
+
+type VerifyAuditResponseObject interface {
+	VisitVerifyAuditResponse(w http.ResponseWriter) error
+}
+
+type VerifyAudit200JSONResponse AuditEnvelope
+
+func (response VerifyAudit200JSONResponse) VisitVerifyAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyAuditdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response VerifyAuditdefaultApplicationProblemPlusJSONResponse) VisitVerifyAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BackupRequestObject struct {
 	Body *BackupJSONRequestBody
 }
@@ -1954,6 +3736,45 @@ type BackupdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response BackupdefaultApplicationProblemPlusJSONResponse) VisitBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInviteRequestObject struct {
+	Body *CreateInviteJSONRequestBody
+}
+
+type CreateInviteResponseObject interface {
+	VisitCreateInviteResponse(w http.ResponseWriter) error
+}
+
+type CreateInvite201JSONResponse InviteResult
+
+func (response CreateInvite201JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvitedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateInvitedefaultApplicationProblemPlusJSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2119,6 +3940,202 @@ func (response UpdateSettingdefaultApplicationProblemPlusJSONResponse) VisitUpda
 	return err
 }
 
+type ListUsersRequestObject struct {
+}
+
+type ListUsersResponseObject interface {
+	VisitListUsersResponse(w http.ResponseWriter) error
+}
+
+type ListUsers200JSONResponse UserList
+
+func (response ListUsers200JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsersdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListUsersdefaultApplicationProblemPlusJSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveUserRequestObject struct {
+	Username Username `json:"username"`
+}
+
+type RemoveUserResponseObject interface {
+	VisitRemoveUserResponse(w http.ResponseWriter) error
+}
+
+type RemoveUser200JSONResponse UserResult
+
+func (response RemoveUser200JSONResponse) VisitRemoveUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveUserdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RemoveUserdefaultApplicationProblemPlusJSONResponse) VisitRemoveUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserRequestObject struct {
+	Username Username `json:"username"`
+}
+
+type GetUserResponseObject interface {
+	VisitGetUserResponse(w http.ResponseWriter) error
+}
+
+type GetUser200JSONResponse UserEnvelope
+
+func (response GetUser200JSONResponse) VisitGetUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetUserdefaultApplicationProblemPlusJSONResponse) VisitGetUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUserRequestObject struct {
+	Username Username `json:"username"`
+	Body     *UpdateUserJSONRequestBody
+}
+
+type UpdateUserResponseObject interface {
+	VisitUpdateUserResponse(w http.ResponseWriter) error
+}
+
+type UpdateUser200JSONResponse UserResult
+
+func (response UpdateUser200JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUserdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response UpdateUserdefaultApplicationProblemPlusJSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUserResetRequestObject struct {
+	Username Username `json:"username"`
+	Body     *CreateUserResetJSONRequestBody
+}
+
+type CreateUserResetResponseObject interface {
+	VisitCreateUserResetResponse(w http.ResponseWriter) error
+}
+
+type CreateUserReset201JSONResponse ResetResult
+
+func (response CreateUserReset201JSONResponse) VisitCreateUserResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUserResetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateUserResetdefaultApplicationProblemPlusJSONResponse) VisitCreateUserResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -2162,9 +4179,15 @@ type StrictServerInterface interface {
 	// GetAdminVersion Version of the hub, to its commands
 	// (GET /v1/admin/version)
 	GetAdminVersion(ctx context.Context, request GetAdminVersionRequestObject) (GetAdminVersionResponseObject, error)
+	// VerifyAudit Walk the audit chain, checking every row's hash
+	// (GET /v1/audit/verification)
+	VerifyAudit(ctx context.Context, request VerifyAuditRequestObject) (VerifyAuditResponseObject, error)
 	// Backup Copy the database, consistent, while the hub runs
 	// (POST /v1/backup)
 	Backup(ctx context.Context, request BackupRequestObject) (BackupResponseObject, error)
+	// CreateInvite Make an invite, a link that lets one person sign up
+	// (POST /v1/invites)
+	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
 	// GetNodeVersion Version of the hub, to a node
 	// (GET /v1/node/version)
 	GetNodeVersion(ctx context.Context, request GetNodeVersionRequestObject) (GetNodeVersionResponseObject, error)
@@ -2177,6 +4200,21 @@ type StrictServerInterface interface {
 	// UpdateSetting Change a setting and apply it at once
 	// (PATCH /v1/settings/{setting})
 	UpdateSetting(ctx context.Context, request UpdateSettingRequestObject) (UpdateSettingResponseObject, error)
+	// ListUsers Every user not removed, by username
+	// (GET /v1/users)
+	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
+	// RemoveUser Remove a user, keeping their username taken
+	// (DELETE /v1/users/{username})
+	RemoveUser(ctx context.Context, request RemoveUserRequestObject) (RemoveUserResponseObject, error)
+	// GetUser One user, with their browser sessions counted
+	// (GET /v1/users/{username})
+	GetUser(ctx context.Context, request GetUserRequestObject) (GetUserResponseObject, error)
+	// UpdateUser Disable a user, or enable them again
+	// (PATCH /v1/users/{username})
+	UpdateUser(ctx context.Context, request UpdateUserRequestObject) (UpdateUserResponseObject, error)
+	// CreateUserReset Make a password reset, a link that sets a user's password
+	// (POST /v1/users/{username}/resets)
+	CreateUserReset(ctx context.Context, request CreateUserResetRequestObject) (CreateUserResetResponseObject, error)
 	// GetVersion Version of the hub
 	// (GET /v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -2245,6 +4283,30 @@ func (sh *strictHandler) GetAdminVersion(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// VerifyAudit operation middleware
+func (sh *strictHandler) VerifyAudit(w http.ResponseWriter, r *http.Request) {
+	var request VerifyAuditRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyAudit(ctx, request.(VerifyAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyAuditResponseObject); ok {
+		if err := validResponse.VisitVerifyAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Backup operation middleware
 func (sh *strictHandler) Backup(w http.ResponseWriter, r *http.Request) {
 	var request BackupRequestObject
@@ -2269,6 +4331,37 @@ func (sh *strictHandler) Backup(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(BackupResponseObject); ok {
 		if err := validResponse.VisitBackupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInvite operation middleware
+func (sh *strictHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
+	var request CreateInviteRequestObject
+
+	var body CreateInviteJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInvite(ctx, request.(CreateInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInviteResponseObject); ok {
+		if err := validResponse.VisitCreateInviteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2381,6 +4474,148 @@ func (sh *strictHandler) UpdateSetting(w http.ResponseWriter, r *http.Request, s
 	}
 }
 
+// ListUsers operation middleware
+func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	var request ListUsersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUsers(ctx, request.(ListUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListUsersResponseObject); ok {
+		if err := validResponse.VisitListUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveUser operation middleware
+func (sh *strictHandler) RemoveUser(w http.ResponseWriter, r *http.Request, username Username) {
+	var request RemoveUserRequestObject
+
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveUser(ctx, request.(RemoveUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveUserResponseObject); ok {
+		if err := validResponse.VisitRemoveUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUser operation middleware
+func (sh *strictHandler) GetUser(w http.ResponseWriter, r *http.Request, username Username) {
+	var request GetUserRequestObject
+
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUser(ctx, request.(GetUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserResponseObject); ok {
+		if err := validResponse.VisitGetUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateUser operation middleware
+func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, username Username) {
+	var request UpdateUserRequestObject
+
+	request.Username = username
+
+	var body UpdateUserJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateUser(ctx, request.(UpdateUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateUserResponseObject); ok {
+		if err := validResponse.VisitUpdateUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateUserReset operation middleware
+func (sh *strictHandler) CreateUserReset(w http.ResponseWriter, r *http.Request, username Username) {
+	var request CreateUserResetRequestObject
+
+	request.Username = username
+
+	var body CreateUserResetJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateUserReset(ctx, request.(CreateUserResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateUserReset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateUserResetResponseObject); ok {
+		if err := validResponse.VisitCreateUserResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetVersion operation middleware
 func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	var request GetVersionRequestObject
@@ -2410,47 +4645,70 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

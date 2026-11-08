@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
@@ -53,6 +54,10 @@ func testConfig(t *testing.T) hubconfig.Config {
 	cfg.Home = runtest.Dir(t) // it holds the socket
 	cfg.PublicURL = "http://localhost:8080"
 	cfg.ListenWeb, cfg.ListenNodes = "127.0.0.1:0", "127.0.0.1:0"
+	cfg.MasterKey = make([]byte, hubconfig.MasterKeySize)
+	if _, err := rand.Read(cfg.MasterKey); err != nil {
+		t.Fatal(err)
+	}
 	return cfg
 }
 
@@ -61,7 +66,7 @@ func testConfig(t *testing.T) hubconfig.Config {
 // logged from received to returned.
 func start(t *testing.T, adjust func(*Options)) *testHub {
 	t.Helper()
-	o := Options{Config: testConfig(t)}
+	o := Options{Config: testConfig(t), Argon2: account.Argon2{Memory: 8, Time: 1, Threads: 1}}
 	if adjust != nil {
 		adjust(&o)
 	}

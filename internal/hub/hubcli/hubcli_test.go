@@ -22,6 +22,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/clikit/clikittest"
+	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/server"
@@ -101,6 +102,13 @@ func load(t *testing.T, home string) hubconfig.Config {
 // ends, logging to the home's logs as the commands do.
 func newHub(t *testing.T) string {
 	t.Helper()
+	home, _ := newHubServer(t)
+	return home
+}
+
+// newHubServer is newHub, with the hub.
+func newHubServer(t *testing.T) (string, *server.Server) {
+	t.Helper()
 	home := newHome(t)
 	sqlitetest.Seed(t, hubconfig.DBPath(home), hubdb.Open)
 	logs := logging.NewDailyFile(hubconfig.LogsDir(home), name, 7, time.Now)
@@ -111,6 +119,7 @@ func newHub(t *testing.T) string {
 		Log:      logging.New(logs, slog.LevelDebug).With("process", "hub"),
 		Reload:   func() (hubconfig.Config, error) { return hubconfig.Load(getenv) },
 		Settings: settingStore{getenv: getenv},
+		Argon2:   account.Argon2{Memory: 8, Time: 1, Threads: 1},
 	})
 	if err != nil {
 		stop()
@@ -125,7 +134,7 @@ func newHub(t *testing.T) string {
 		}
 		logs.Close()
 	})
-	return home
+	return home, s
 }
 
 // testEnv is the Env of a run against home.
@@ -138,12 +147,35 @@ func testEnv(t *testing.T, home string, stdout, stderr io.Writer) Env {
 // the hub's lines for its requests, from received to returned.
 func hub(t *testing.T, home string, args ...string) clikittest.Output {
 	t.Helper()
+	return hubWith(t, home, nil, args...)
+}
+
+// hubWith is hub in an environment adjust changes when not nil.
+func hubWith(t *testing.T, home string, adjust func(*Env), args ...string) clikittest.Output {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
-	exit := Run(context.Background(), args, testEnv(t, home, &stdout, &stderr))
+	env := testEnv(t, home, &stdout, &stderr)
+	if adjust != nil {
+		adjust(&env)
+	}
+	exit := Run(context.Background(), args, env)
 	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
 	logs := clikittest.Logged{Dir: hubconfig.LogsDir(home), Called: "hub called", Abandoned: "hub unreachable", Served: "request returned"}
-	clikittest.WantLogged(t, logs, args, out, nil)
+	clikittest.WantLogged(t, logs, args, out, measureLinks)
 	return out
+}
+
+// measureLinks changes printed into what is logged of it: an invite's or a
+// reset's link measured.
+func measureLinks(printed map[string]any) {
+	for _, key := range []string{"invite", "reset"} {
+		if m, ok := printed[key].(map[string]any); ok {
+			if link, ok := m["link"].(string); ok {
+				delete(m, "link")
+				m["link_bytes"] = float64(len(link))
+			}
+		}
+	}
 }
 
 func codes(code string) (clikit.CodeInfo, bool) {

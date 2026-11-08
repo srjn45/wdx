@@ -24,6 +24,8 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/srjn45/wdx/internal/hub/account"
+	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
@@ -35,6 +37,11 @@ import (
 // DefaultShutdownTimeout is how long requests in flight get to finish once
 // the hub is asked to stop, unless Options say otherwise.
 const DefaultShutdownTimeout = 30 * time.Second
+
+// DefaultHousekeepingInterval is how often the hub deletes what has expired
+// and logs the head of its audit chain, besides at startup, unless Options
+// say otherwise.
+const DefaultHousekeepingInterval = time.Hour
 
 // Options configure a hub.
 type Options struct {
@@ -52,8 +59,15 @@ type Options struct {
 	// asked to stop, before the change among them is cancelled;
 	// DefaultShutdownTimeout when 0.
 	ShutdownTimeout time.Duration
-	// Now is the certificate authority's clock; time.Now when nil.
+	// Now is the clock of the certificate authority and the accounts;
+	// time.Now when nil.
 	Now func() time.Time
+	// Argon2 hashes the passwords; OWASP's when zero. Tests lower it.
+	Argon2 account.Argon2
+	// HousekeepingInterval is how often the hub deletes what has expired and
+	// logs the head of its audit chain, besides at startup;
+	// DefaultHousekeepingInterval when 0.
+	HousekeepingInterval time.Duration
 }
 
 // SettingStore is the settings as the commands keep them: the server does not
@@ -123,6 +137,7 @@ type Server struct {
 	lock      *os.File
 	db        *sql.DB
 	ca        *ca.CA
+	accounts  *account.Store
 	listeners map[endpoint]net.Listener
 	started   time.Time
 
@@ -149,6 +164,7 @@ type Server struct {
 // start, and listens on the three endpoints.
 func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
+	opts.HousekeepingInterval = cmp.Or(opts.HousekeepingInterval, DefaultHousekeepingInterval)
 	cfg := opts.Config
 	s := &Server{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), listeners: map[endpoint]net.Listener{}}
 	s.abort, s.abortChanges = context.WithCancel(context.Background())
@@ -166,6 +182,9 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		return nil, err
 	}
 	if s.db, err = hubdb.Open(ctx, hubconfig.DBPath(cfg.Home)); err != nil {
+		return nil, err
+	}
+	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2}); err != nil {
 		return nil, err
 	}
 	var caOpts []ca.Option
@@ -251,6 +270,9 @@ func (s *Server) Addresses() Addresses {
 // CA is the hub's certificate authority.
 func (s *Server) CA() *ca.CA { return s.ca }
 
+// Accounts is the hub's store of accounts.
+func (s *Server) Accounts() *account.Store { return s.accounts }
+
 func metricsOf(cfg hubconfig.Config) telemetry.Options {
 	return telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval, Service: hubconfig.Name}
 }
@@ -334,6 +356,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		servers[e] = srv
 		go func() { served <- srv.Serve(ln) }()
 	}
+	housekeeping, stopHousekeeping := context.WithCancel(logging.NewContext(context.Background(), s.log))
+	housekept := make(chan struct{})
+	go func() {
+		defer close(housekept)
+		s.housekeep(housekeeping)
+	}()
 
 	var err error
 	select {
@@ -356,9 +384,37 @@ func (s *Server) Serve(ctx context.Context) error {
 			}
 		}
 	}
+	stopHousekeeping()
+	<-housekept
 	s.close()
 	s.log.Info("hub stopped", "uptime_ms", time.Since(s.started).Milliseconds())
 	return err
+}
+
+// housekeep deletes what has expired and logs the head of the audit chain,
+// at once and then every HousekeepingInterval, until ctx is done. The head
+// logged lets a chain rewritten whole be caught against a copy of the log the
+// hub does not hold.
+func (s *Server) housekeep(ctx context.Context) {
+	tick := time.NewTicker(s.opts.HousekeepingInterval)
+	defer tick.Stop()
+	for {
+		if _, err := s.accounts.DeleteExpired(ctx); err != nil && ctx.Err() == nil {
+			s.log.Error("expired not deleted", "err", err)
+		}
+		if head, err := audit.Head(ctx, s.db); err != nil {
+			if ctx.Err() == nil {
+				s.log.Error("audit chain head not read", "err", err)
+			}
+		} else {
+			s.log.Info("audit chain head", "rows", head.Rows, "head", head.Head)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // shutdown stops the servers, letting the requests in flight finish until

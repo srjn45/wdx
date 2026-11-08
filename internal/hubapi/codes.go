@@ -17,6 +17,8 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeReloadFailed:    codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the hub cannot use the config file and keeps the settings it has"),
 	ErrorCodeAlreadyRunning:  codeInfo(http.StatusConflict, clikit.ExitRejected, "a hub already serves this home"),
 	ErrorCodeHubUnavailable:  codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "the hub is not running or not answering"),
+	ErrorCodeAuditBroken:     codeInfo(http.StatusConflict, clikit.ExitRejected, "a row of the audit chain does not match its hash: the chain was changed"),
+	ErrorCodeCancelled:       codeInfo(http.StatusConflict, clikit.ExitRejected, "the question was answered no"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

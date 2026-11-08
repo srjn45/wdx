@@ -134,3 +134,59 @@ func (c *client) backup(ctx context.Context, path string) (hubapi.BackupResult, 
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
 }
+
+func (c *client) createInvite(ctx context.Context, expiresSeconds *int64) (hubapi.InviteResult, error) {
+	r, err := c.api.CreateInviteWithResponse(ctx, hubapi.CreateInvite{ExpiresSeconds: expiresSeconds})
+	if err != nil {
+		return hubapi.InviteResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+func (c *client) users(ctx context.Context) (hubapi.UserList, error) {
+	r, err := c.api.ListUsersWithResponse(ctx)
+	if err != nil {
+		return hubapi.UserList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *client) user(ctx context.Context, username string) (hubapi.UserEnvelope, error) {
+	r, err := c.api.GetUserWithResponse(ctx, username)
+	if err != nil {
+		return hubapi.UserEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *client) updateUser(ctx context.Context, username string, disabled bool) (hubapi.UserResult, error) {
+	r, err := c.api.UpdateUserWithResponse(ctx, username, hubapi.UpdateUser{Disabled: disabled})
+	if err != nil {
+		return hubapi.UserResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *client) createReset(ctx context.Context, username string, secondFactor bool) (hubapi.ResetResult, error) {
+	r, err := c.api.CreateUserResetWithResponse(ctx, username, hubapi.CreateReset{SecondFactor: &secondFactor})
+	if err != nil {
+		return hubapi.ResetResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+func (c *client) removeUser(ctx context.Context, username string) (hubapi.UserResult, error) {
+	r, err := c.api.RemoveUserWithResponse(ctx, username)
+	if err != nil {
+		return hubapi.UserResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+func (c *client) verifyAudit(ctx context.Context) (hubapi.AuditEnvelope, error) {
+	r, err := c.api.VerifyAuditWithResponse(ctx)
+	if err != nil {
+		return hubapi.AuditEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

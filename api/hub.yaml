@@ -137,7 +137,147 @@ paths:
               schema: { $ref: "#/components/schemas/BackupResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/invites:
+    post:
+      operationId: createInvite
+      tags: [admin]
+      summary: Make an invite, a link that lets one person sign up
+      description: |
+        The link holds the invite's token: whoever has it can make an account
+        until it expires or is used. The hub logs its length, never the link.
+
+        Errors: invalid_argument for a life of 0 or more than 30 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInvite" }
+      responses:
+        "201":
+          description: The invite was made, with result invited.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InviteResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/users:
+    get:
+      operationId: listUsers
+      tags: [admin]
+      summary: Every user not removed, by username
+      responses:
+        "200":
+          description: The users.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/users/{username}:
+    parameters:
+      - $ref: "#/components/parameters/Username"
+    get:
+      operationId: getUser
+      tags: [admin]
+      summary: One user, with their browser sessions counted
+      description: "Errors: not_found."
+      responses:
+        "200":
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateUser
+      tags: [admin]
+      summary: Disable a user, or enable them again
+      description: |
+        Disabling ends every browser session of the user, and refuses their
+        logins until they are enabled.
+
+        Errors: not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUser" }
+      responses:
+        "200":
+          description: The user, with result disabled, enabled, or unchanged when they were so already.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResult" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: removeUser
+      tags: [admin]
+      summary: Remove a user, keeping their username taken
+      description: |
+        The user's password, second factor, recovery codes, browser sessions,
+        resets and invite are deleted; the username is never given again.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The user, as they were, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/users/{username}/resets:
+    parameters:
+      - $ref: "#/components/parameters/Username"
+    post:
+      operationId: createUserReset
+      tags: [admin]
+      summary: Make a password reset, a link that sets a user's password
+      description: |
+        The link works for 24 hours and voids an earlier one not used. With
+        second_factor, using it also removes the user's authenticator and
+        recovery codes, so that their next login enrols a new one. The hub
+        logs the link's length, never the link.
+
+        Errors: not_found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReset" }
+      responses:
+        "201":
+          description: The reset was made, with result reset.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResetResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/audit/verification:
+    get:
+      operationId: verifyAudit
+      tags: [admin]
+      summary: Walk the audit chain, checking every row's hash
+      description: |
+        Errors: audit_broken, with the first row whose hash does not match in
+        its details.
+      responses:
+        "200":
+          description: Every row matches.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
+  parameters:
+    Username:
+      name: username
+      in: path
+      required: true
+      description: The user's username, whatever its case.
+      schema: { type: string }
+
   responses:
     Version:
       description: The name, version and commit the hub was built from, and the version of this API.
@@ -228,16 +368,123 @@ components:
         result: { $ref: "#/components/schemas/Result" }
         path: { type: string }
 
+    CreateInvite:
+      type: object
+      additionalProperties: false
+      properties:
+        expires_seconds:
+          type: integer
+          format: int64
+          description: How long the invite works, in seconds, at most 30 days; 24 hours when left out.
+
+    Invite:
+      type: object
+      required: [link, expires_at]
+      properties:
+        link: { type: string, description: "<public_url>/signup?invite=<token>: a secret, for the person invited only." }
+        expires_at: { type: string, format: date-time }
+
+    InviteResult:
+      type: object
+      required: [result, invite]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        invite: { $ref: "#/components/schemas/Invite" }
+
+    CreateReset:
+      type: object
+      additionalProperties: false
+      properties:
+        second_factor: { type: boolean, description: "Also remove the user's authenticator and recovery codes; false when left out." }
+
+    Reset:
+      type: object
+      required: [link, expires_at, second_factor]
+      properties:
+        link: { type: string, description: "<public_url>/reset?token=<token>: a secret, for the user only." }
+        expires_at: { type: string, format: date-time }
+        second_factor: { type: boolean }
+
+    ResetResult:
+      type: object
+      required: [result, reset]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        reset: { $ref: "#/components/schemas/Reset" }
+
+    User:
+      type: object
+      required: [username, created_at, last_login_at, disabled, second_factor]
+      properties:
+        username: { type: string }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time, nullable: true, description: "Null when they never logged in." }
+        disabled: { type: boolean }
+        second_factor:
+          type: string
+          nullable: true
+          description: "Their second factor: totp, or null while none is enrolled."
+
+    UserDetail:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [sessions]
+          properties:
+            sessions: { type: integer, description: "Their browser sessions that have not ended." }
+
+    UserList:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+
+    UserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: "#/components/schemas/UserDetail" }
+
+    UpdateUser:
+      type: object
+      required: [disabled]
+      additionalProperties: false
+      properties:
+        disabled: { type: boolean, description: "True disables the user, false enables them." }
+
+    UserResult:
+      type: object
+      required: [result, user]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        user: { $ref: "#/components/schemas/UserDetail" }
+
+    Audit:
+      type: object
+      required: [rows, head]
+      properties:
+        rows: { type: integer, description: "How many rows the chain has." }
+        head: { type: string, nullable: true, description: "The last row's hash, in hex; null for an empty chain." }
+
+    AuditEnvelope:
+      type: object
+      required: [audit]
+      properties:
+        audit: { $ref: "#/components/schemas/Audit" }
+
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [updated, unchanged, reloaded, backed_up]
+      enum: [updated, unchanged, reloaded, backed_up, invited, disabled, enabled, reset, removed]
 
     ErrorCode:
       type: string
       description: |
-        Stable error code; never changed or reused. already_running and
-        hub_unavailable are reported by the CLI, never by the hub.
+        Stable error code; never changed or reused. already_running,
+        hub_unavailable and cancelled are reported by the CLI, never by the
+        hub.
       enum:
         - usage
         - internal
@@ -248,6 +495,8 @@ components:
         - reload_failed
         - already_running
         - hub_unavailable
+        - audit_broken
+        - cancelled
 
     Problem:
       type: object
