@@ -3,6 +3,7 @@ package tide
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,10 +24,24 @@ const (
 // on a file.
 var diffOnlyKeys = []string{"[", "]", "{", "}", "tab", commitKey, landKey, rebaseKey, commentKey, editKey, deleteKey, reviewKey, verifyKey}
 
-// sourceKeys are what ? shows on a file.
-var sourceKeys = []barKey{
+// sourceKeys are what ? shows on a file, rendered or not, or on a doc, which
+// tide never edits.
+func (v *diffView) sourceKeys() []barKey {
+	keys := slices.DeleteFunc(slices.Clone(fileKeys), func(k barKey) bool {
+		return (v.doc && k.keys == editFileKey) || (v.showsRendered() && k.keys == lineKey)
+	})
+	if v.markdown {
+		keys = append(keys, barKey{sourceKey, "show the source, or render it again", 0})
+	}
+	return keys
+}
+
+const lineKey = ": and a number"
+
+// fileKeys are what ? shows on a file shown as source.
+var fileKeys = []barKey{
 	{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
-	{"g G", "the first or last line", 0}, {": and a number", "go to that line of the file", 0},
+	{"g G", "the first or last line", 0}, {lineKey, "go to that line of the file", 0},
 	{"/ and text", "search; capitals make it exact", 0}, {"n N", "the next or last match", 0},
 	{"Esc", "end the search", 0}, {editFileKey, "edit it in the editor the editor setting names", 0},
 	{"C-q -", "close the tab", 0}, {"Alt+←", "the tab before", 0},
@@ -51,6 +66,7 @@ func (v *diffView) setSource(c api.WorktreeFileContent) {
 	default:
 		v.lineOf = sourceLines(*c.Content)
 	}
+	v.takeMarkdown(int(c.Size))
 }
 
 // sourceLines are the lines of text, without their ends.

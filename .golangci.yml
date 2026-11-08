@@ -57,6 +57,13 @@ linters:
           deny:
             - pkg: github.com/charmbracelet/x/vt
               desc: only internal/screen uses the vt, so its fork is one replace
+        glamour-in-tide-only:
+          files:
+            - "$all"
+            - "!**/internal/tide/**"
+          deny:
+            - pkg: charm.land/glamour
+              desc: only tide renders Markdown; the wdx doc TIDE_MARKDOWN
         # Dependencies point down: only the cli runs the daemon and calls
         # it through the client; tide is a client too, with its own rule.
         daemon-and-client-in-cli-only:

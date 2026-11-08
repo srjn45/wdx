@@ -50,6 +50,7 @@ Reading and editing a project's files without leaving tide: step 4 of the order 
 ## The file tab
 
 - One tab per worktree and file, read-only, in the text view diffs use, with `/` search inside the file and line numbers.
+- A Markdown file (`.md`, `.markdown`) shows rendered by glamour, without line numbers, and `m` switches it to its source and back (the wdx doc TIDE_MARKDOWN).
 - Syntax highlighting is a must. Nothing is installed per language: Chroma's definitions, about 300 of them, are compiled into wdx. Its colours go through `internal/style`, so `color: never` shows none. A language it does not know shows as plain text.
 - Binary files and very large ones say so rather than show. How large is decided when built.
 - The file is read again on the same events as the tree, when its tab comes to show, and when its editor exits.

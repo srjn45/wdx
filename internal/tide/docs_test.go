@@ -270,10 +270,16 @@ func TestDocLive(t *testing.T) {
 	m.layout.setFocus(project)
 	m.moveToDoc(0)
 	p.keys("enter")
-	p.until(t, "the doc's text", func(m *Model) bool { return strings.Contains(text(m), "1 # One") })
+	rendered := func(heading string) func(m *Model) bool {
+		return func(m *Model) bool {
+			v := m.shownDiff()
+			return v != nil && v.showsRendered() && strings.Contains(strings.Join(v.rendered, "\n"), heading)
+		}
+	}
+	p.until(t, "the doc rendered", rendered("One"))
 
 	if _, err := c.UpdateDocContent(ctx, "auth", app, "", 1, "# Two\n"); err != nil {
 		t.Fatal(err)
 	}
-	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "1 # Two") })
+	p.until(t, "revision 2 rendered", rendered("Two"))
 }

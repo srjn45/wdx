@@ -197,6 +197,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.keepCursorShown()
 	values := m.valuesSync()
 	diff := m.diffSync()
+	markdown := m.markdownSync()
 	plan := m.planSync()
 	worktrees := m.worktreesSync()
 	code := m.codeSync()
@@ -205,7 +206,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	tabs := m.tabsSync()
 	view := m.viewSync()
 	m.syncSize()
-	return m, tea.Batch(cmd, values, diff, plan, worktrees, code, filter, attach, tabs, view)
+	return m, tea.Batch(cmd, values, diff, markdown, plan, worktrees, code, filter, attach, tabs, view)
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -335,6 +336,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.planGoalLoadedMsg(msg)
 	case diffLoaded:
 		return m, m.diffLoaded(msg)
+	case markdownRendered:
+		m.markdownDone(msg)
 	case fileHighlighted:
 		m.fileHighlighted(msg)
 	case editorOpened:

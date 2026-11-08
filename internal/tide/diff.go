@@ -76,6 +76,16 @@ func diffTabOf(tab string) (worktree, file string) {
 
 // diffTitle is what the tab strip calls a diff's tab, which says what it shows now.
 func (m *Model) diffTitle(tab string) string {
+	title := m.textTitle(tab)
+	if l := m.list(); l != nil {
+		if v := l.diffs[m.diffViewOf(tab)]; v != nil && v.tooLargeToRender {
+			title += " too large to render"
+		}
+	}
+	return title
+}
+
+func (m *Model) textTitle(tab string) string {
 	worktree, file := diffTabOf(tab)
 	switch {
 	case isDocTab(tab):
@@ -146,6 +156,13 @@ type diffView struct {
 	colors  [][]colorSpan // the colours of lineOf by line, once worked out
 	reading int           // which different text of the file lineOf is, for what colours belong to
 	cutOff  bool          // the daemon left out the rest
+
+	markdown         bool      // lineOf is Markdown, shown rendered unless showSource
+	tooLargeToRender bool      // lineOf is Markdown too large to render, shown as source
+	showSource       bool      // m switched the Markdown to its source
+	rendered         []string  // glamour's lines for lineOf, of renderedFor
+	renderedFor      renderKey // what rendered was rendered for
+	renderingFor     renderKey // what a rendering on its way is for; zero when none is
 
 	width     int // of what lines was drawn for, 0 before
 	lines     []string
@@ -516,6 +533,8 @@ func (v *diffView) prepare(width int, st style.Style) {
 		}
 	}()
 	switch {
+	case v.lineOf != nil && v.showsRendered():
+		v.prepareRendered(st)
 	case v.lineOf != nil:
 		v.prepareSource(width, st)
 	case v.split != nil:
@@ -759,9 +778,16 @@ func (v *diffView) barKeys(file bool, extra []barKey) []barKey {
 	} else if !v.source {
 		keys = append(keys, barKey{"[ ]", "change", 5})
 	}
-	if file {
+	if v.markdown {
+		label := "source"
+		if v.showSource {
+			label = "rendered"
+		}
+		keys = append(keys, barKey{sourceKey, label, 3})
+	}
+	if file && !v.showsRendered() {
 		keys = append(keys, barKey{":", "line", 3})
-	} else {
+	} else if !file {
 		keys = append(keys, barKey{"{ }", "file", 3})
 	}
 	keys = append(keys, barKey{"/", "search", 4})
@@ -804,11 +830,8 @@ func (m *Model) worktreeBarKeys(tab string) []barKey {
 
 // allKeys are what ? shows.
 func (v *diffView) allKeys(file bool, extra []barKey) []barKey {
-	if v.doc {
-		return docKeys
-	}
 	if v.source {
-		return sourceKeys
+		return v.sourceKeys()
 	}
 	keys := []barKey{
 		{"↑ ↓", "the line above or below", 0}, {"PgUp PgDn", "a page up or down", 0}, {"b Space", "a page up or down", 0},
@@ -891,6 +914,9 @@ func dropLeast(keys []barKey) []barKey {
 func (v *diffView) position(file bool) string {
 	if len(v.lines) == 0 {
 		return ""
+	}
+	if v.showsRendered() {
+		return fmt.Sprintf("line %d of %d", v.cursor+1, len(v.lines))
 	}
 	if v.source {
 		return fmt.Sprintf("line %d of %d", v.lineNumber(), len(v.lineOf))
@@ -1188,7 +1214,10 @@ func (m *Model) diffKey(msg tea.Msg) tea.Cmd {
 		v.previous(v.files)
 	case name == "}" && file == "":
 		v.next(v.files)
-	case name == ":" && file != "":
+	case name == sourceKey && v.markdown:
+		v.switchSource()
+		m.log.Info("markdown shown", "tab", l.active, "source", v.showSource)
+	case name == ":" && file != "" && !v.showsRendered():
 		v.prompt, v.typed = ":", ""
 	case name == "/":
 		v.prompt, v.typed = "/", ""

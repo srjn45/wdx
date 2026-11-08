@@ -21,9 +21,6 @@ const (
 	docHint      = "↑↓ select  Enter open  m move  / filter  Alt+arrows move  C-q menu"
 )
 
-// docKeys are what ? shows on a doc: a file's keys, but editing.
-var docKeys = slices.DeleteFunc(slices.Clone(sourceKeys), func(k barKey) bool { return k.keys == editFileKey })
-
 // docTab is the tab of the doc with id, which a rename keeps.
 func docTab(id string) string { return docTabPrefix + id }
 
@@ -224,9 +221,10 @@ func (v *diffView) setDoc(c api.DocContent) {
 	v.file = docFile(c.Doc)
 	if c.Content == "" {
 		v.message = "an empty doc"
-		return
+	} else {
+		v.lineOf = sourceLines(c.Content)
 	}
-	v.lineOf = sourceLines(c.Content)
+	v.takeMarkdown(len(c.Content))
 }
 
 // docRowShows reports whether tab is the row's doc's, or the row is a folded

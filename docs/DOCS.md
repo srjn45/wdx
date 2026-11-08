@@ -146,7 +146,7 @@ Each command takes `--project-id <id> | --project-name <name>`, or the project o
 
 - A Docs section in the left pane, letter `d` in `tide.section_order`, whose default becomes `awcd` so that Docs comes after what is there now. A value already set leaves Docs after the letters it names.
 - A row per doc: name, status (`approved` as success, `rejected` as failure, `wip` and `review` muted), labels muted. The left pane's `/` filter matches a doc's name or labels.
-- `Enter` opens a `doc: auth-rfc` tab in the file tab's read-only view: highlighted by `format`, line numbers, `/` search. Its title shows the revision and status. It is read again when the stream says the doc changed.
+- `Enter` opens a `doc: auth-rfc` tab in the file tab's read-only view: highlighted by `format`, line numbers, `/` search. A doc of format `md` shows rendered, and `m` switches it to its source and back (the wdx doc TIDE_MARKDOWN). Its title shows the revision and status. It is read again when the stream says the doc changed.
 - Nothing else in tide changes a doc.
 
 Approved on 2026-11-03, as built:
