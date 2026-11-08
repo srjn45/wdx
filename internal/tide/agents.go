@@ -342,7 +342,7 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 // agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
-	if l.created == settingsTab || isTextTab(l.created) {
+	if l.created == settingsTab || l.created == statsTab || isTextTab(l.created) {
 		l.openTab(l.created)
 		l.created, l.createdKeepsCursor = "", false
 	}
@@ -1502,6 +1502,9 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 	case !following:
 	case m.settingsShown():
 		m.drawSettings(buf, area, st)
+		return
+	case m.statsShown():
+		m.drawStats(buf, area, st)
 		return
 	case m.editShown():
 		e, _ := m.tabEditor(m.list().active)

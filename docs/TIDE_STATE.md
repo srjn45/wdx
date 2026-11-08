@@ -38,7 +38,7 @@ Table `tide_tabs`, in the migration `0017_tide_tabs.sql`: one row per open tab p
 |---|---|
 | `project_id` | the project, `ON DELETE CASCADE` |
 | `position` | its place in the strip, from 0; the key is (`project_id`, `position`) |
-| `kind` | `agent`, `info`, `settings`, `file`, `diff`, `pr`, `doc`, `plan` (added by migration 0021, docs/PLANS.md) |
+| `kind` | `agent`, `info`, `settings`, `file`, `diff`, `pr`, `doc`, `plan` (added by migration 0021, docs/PLANS.md), `stats` (added by migration 0029, docs/TIDE_STATS.md) |
 | `agent_id` | for `agent` and `info`: `REFERENCES agents (id) ON DELETE CASCADE` |
 | `doc_id` | for `doc`, and for `plan` the plan's id, as plans are kept as docs: `REFERENCES docs (id) ON DELETE CASCADE` |
 | `worktree` | for `file`, `diff` and `pr`: the worktree's name, `main` for the clone, as the worktree API and tide name it. Not a foreign key, since git lists checkouts wdx never registered, as `verified_files` and `review_comments` say |
@@ -69,7 +69,7 @@ An editor's tab is not a row: editors are terminals, and their tabs follow the t
 
 ## Step 3b: tide keeps its tabs through the daemon
 
-Today a project's tabs live in its `agentList` (`internal/tide/agents.go`), as strings: an agent's id, `info:` and an id, `settings`, `doc:` and an id, `file:`, `diff:` or `pr:` and a worktree and a file. tide follows only the stream of the project shown, and reads its tabs from that stream's events.
+Today a project's tabs live in its `agentList` (`internal/tide/agents.go`), as strings: an agent's id, `info:` and an id, `settings`, `stats`, `doc:` and an id, `file:`, `diff:` or `pr:` and a worktree and a file. tide follows only the stream of the project shown, and reads its tabs from that stream's events.
 
 **tide writes**
 - Every change to a project's tabs (one opened, closed or moved, or the list's first fill) sends the whole list with `replaceTabs`, in the background. An empty list is sent as `[]`.

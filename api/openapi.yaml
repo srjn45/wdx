@@ -2804,7 +2804,7 @@ components:
         A tab tide has open. Each kind has the fields it names and null for the
         others: agent and info an agent_id, doc a doc_id, plan the plan's id
         in doc_id, file and diff a worktree and a path, pr a worktree;
-        settings none.
+        settings and stats none.
       required: [kind, agent_id, doc_id, worktree, path]
       properties:
         kind: { $ref: "#/components/schemas/TabKind" }
@@ -2831,8 +2831,8 @@ components:
       description: |
         What a tab shows: an agent's terminal, what wdx knows of it, the
         settings, a worktree's file, that file's diff, what a worktree changed,
-        a doc, a plan.
-      enum: [agent, info, settings, file, diff, pr, doc, plan]
+        a doc, a plan, the stats of the AI coding agents.
+      enum: [agent, info, settings, file, diff, pr, doc, plan, stats]
 
     View:
       type: object

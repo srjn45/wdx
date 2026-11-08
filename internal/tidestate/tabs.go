@@ -28,6 +28,7 @@ const (
 	KindPR       Kind = "pr"       // what a worktree changed
 	KindDoc      Kind = "doc"      // a doc
 	KindPlan     Kind = "plan"     // a plan, its id in DocID as plans are kept as docs
+	KindStats    Kind = "stats"    // the stats of the AI coding agents
 )
 
 // Tab is a tab tide has open. A field its kind does not take is "".
@@ -193,7 +194,7 @@ func check(t Tab) error {
 	switch t.Kind {
 	case KindAgent, KindInfo:
 		agent = true
-	case KindSettings:
+	case KindSettings, KindStats:
 	case KindFile, KindDiff:
 		worktree, path = true, true
 	case KindPR:

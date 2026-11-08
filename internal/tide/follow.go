@@ -143,6 +143,9 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	m.worktreesChanged()
 	m.docsChanged()
 	m.plansChanged()
+	if m.statsShown() {
+		return tea.Batch(m.next(), m.listUsage()) // a changed row of usage is one event among others
+	}
 	return m.next()
 }
 

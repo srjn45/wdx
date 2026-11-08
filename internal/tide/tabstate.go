@@ -30,6 +30,8 @@ func apiTab(tab string) (api.Tab, bool) {
 		return api.Tab{}, false
 	case tab == settingsTab:
 		return api.Tab{Kind: api.TabKindSettings}, true
+	case tab == statsTab:
+		return api.Tab{Kind: api.TabKindStats}, true
 	case isInfoTab(tab):
 		return api.Tab{Kind: api.TabKindInfo, AgentId: text(tabAgent(tab))}, true
 	case isDocTab(tab):
@@ -68,6 +70,8 @@ func tideTab(t api.Tab) (string, bool) {
 		return infoTab(agentID), agentID != ""
 	case api.TabKindSettings:
 		return settingsTab, true
+	case api.TabKindStats:
+		return statsTab, true
 	case api.TabKindDoc:
 		return docTab(value(t.DocId)), t.DocId != nil
 	case api.TabKindPlan:

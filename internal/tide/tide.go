@@ -101,6 +101,14 @@ type Model struct {
 	values      valuePane     // the agent info or the settings shown, if any
 	settings    []api.Setting // what the daemon last said, while a settings tab reads them
 	settingsErr string        // why it could not read them
+	// usage and usageAcas are what the daemon last said while a stats tab reads
+	// them, usageRead once it has answered, usageErr why it could not; statsTiming
+	// whether the minute timer runs.
+	usage       []api.UsageWindow
+	usageAcas   []api.Aca
+	usageRead   bool
+	usageErr    string
+	statsTiming bool
 
 	commit    *commitBox  // what C asks the agent, or s sends it, while it does
 	comment   *commentBox // the comment c or e asks for, while it does
@@ -328,6 +336,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingsListed(msg)
 	case settingSaved:
 		m.settingSaved(msg)
+	case usageListed:
+		return m, m.usageListed(msg)
+	case statsMinute:
+		return m, m.statsMinuteMsg()
 	case planLoaded:
 		m.planLoadedMsg(msg)
 	case planMinute:

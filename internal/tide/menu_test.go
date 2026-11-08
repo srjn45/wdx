@@ -53,6 +53,7 @@ func menuPlaces(t *testing.T) []struct {
 	agentTab, _ := tabsModel(2)
 	agentTab.layout.setFocus(agent)
 	settings := settingsModel()
+	stats := statsModel(nil)
 
 	terminalTab, _ := newModel(80, 24)
 	terminalTab.layout.setFocus(terminal)
@@ -68,14 +69,15 @@ func menuPlaces(t *testing.T) []struct {
 		want []string
 	}{
 		{"no project", noProject, []string{"global: p q"}},
-		{"an agent in the list", agents, []string{"a-parent (agent): o x c i r R -", "list: / f z", "global: p s q"}},
-		{"a worktree's file", worktreeFile, []string{"a (file): o v", "list: / f z", "global: p s q"}},
-		{"a file in Code", codeFile, []string{"dir/a.go (file): o e n N r x", "list: / f z", "global: p s q"}},
-		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f z", "global: p s q"}},
-		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f z", "global: p s q"}},
-		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s q"}},
-		{"the settings tab", settings, []string{"settings: -", "global: p q"}},
-		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s q"}},
+		{"an agent in the list", agents, []string{"a-parent (agent): o x c i r R -", "list: / f z", "global: p s S q"}},
+		{"a worktree's file", worktreeFile, []string{"a (file): o v", "list: / f z", "global: p s S q"}},
+		{"a file in Code", codeFile, []string{"dir/a.go (file): o e n N r x", "list: / f z", "global: p s S q"}},
+		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f z", "global: p s S q"}},
+		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f z", "global: p s S q"}},
+		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s S q"}},
+		{"the settings tab", settings, []string{"settings: -", "global: p S q"}},
+		{"the stats tab", stats, []string{"stats: -", "global: p s q"}},
+		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s S q"}},
 		{"the Project submenu", projectMenu, []string{"Project: o s c x"}},
 	}
 }

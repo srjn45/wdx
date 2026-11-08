@@ -55,7 +55,7 @@ func TestReplaceTabs(t *testing.T) {
 	waitEvent(t, events, "no tabs", func(e event) bool { return tabsAre(e) })
 	d := td.createDoc(t, "app", api.CreateDoc{Name: "auth", Content: optional("text")})
 	pr := "main"
-	tabs := []api.Tab{docTab(d.Id), {Kind: api.TabKindPr, Worktree: &pr}, settingsTab(), fileTab("main", "a/b.go")}
+	tabs := []api.Tab{docTab(d.Id), {Kind: api.TabKindPr, Worktree: &pr}, settingsTab(), {Kind: api.TabKindStats}, fileTab("main", "a/b.go")}
 	r := td.replaceTabs(t, "app", tabs...)
 	if r.JSON200 == nil || r.JSON200.Result != api.ResultUpdated || r.JSON200.TabsRevision <= 0 {
 		t.Fatalf("replace: %s", r.Body)

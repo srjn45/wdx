@@ -323,6 +323,13 @@ func (m *Model) globalPart() menuPart {
 			return nil
 		}})
 	}
+	if m.statsOffered() {
+		items = append(items, menuItem{statsKey, "stats", "stats", func() tea.Cmd {
+			m.switcher, m.opening = nil, nil
+			m.openStats()
+			return nil
+		}})
+	}
 	items = append(items, menuItem{quitKey, "quit", "quit", func() tea.Cmd {
 		m.log.Info("tide quit")
 		quit := m.flushViews() // before the stream goes, with what it shows

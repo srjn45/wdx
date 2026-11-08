@@ -80,7 +80,7 @@ type agentTab struct {
 // marked reports whether it shows a mark: an agent its state, and a tab whose file
 // or worktree is gone that it is. A plan has no state.
 func (t agentTab) marked() bool {
-	return t.missing || t.tab != settingsTab && !isTextTab(t.tab) && !isPlanTab(t.tab)
+	return t.missing || t.tab != settingsTab && t.tab != statsTab && !isTextTab(t.tab) && !isPlanTab(t.tab)
 }
 
 // title is what the strip calls it.
@@ -88,8 +88,8 @@ func (t agentTab) title() string {
 	switch {
 	case isTextTab(t.tab), isPlanTab(t.tab):
 		return t.diff
-	case t.tab == settingsTab:
-		return settingsTab
+	case t.tab == settingsTab, t.tab == statsTab:
+		return t.tab
 	case isInfoTab(t.tab):
 		return infoLabel + t.agent.Name
 	}
@@ -116,7 +116,7 @@ func (m *Model) openTabs() []agentTab {
 			tabs = append(tabs, agentTab{tab: tab, diff: m.diffTitle(tab), missing: l.missingTabs[tab]})
 		} else if isPlanTab(tab) {
 			tabs = append(tabs, agentTab{tab: tab, diff: m.planTitle(tab)})
-		} else if tab == settingsTab {
+		} else if tab == settingsTab || tab == statsTab {
 			tabs = append(tabs, agentTab{tab: tab})
 		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
 			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})

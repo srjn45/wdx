@@ -24,10 +24,10 @@ Rules:
 ## Global
 
 ```
-a new agent · t new terminal · p project… · s settings · q quit
+a new agent · t new terminal · p project… · s settings · S stats · q quit
 ```
 
-- `a` and `t` while a project is shown; `s` while a project is shown and the focus is not already on its settings tab, as today.
+- `a` and `t` while a project is shown; `s` while a project is shown and the focus is not already on its settings tab, as today; `S` the same for the stats tab (docs/TIDE_STATS.md).
 - `p` opens the **Project** submenu, a popup of the same shape, in place of the menu: `o` open, `s` switch, `c` close. `Esc` closes it. It is the one submenu: global has five lines, and a submenu costs a key and a popup on every use, so one is added only when a group grows.
 - With no project shown, global alone: `p`, whose submenu then has `o` and `s`, and `q`.
 
@@ -39,7 +39,7 @@ Lines in parentheses show only when they apply.
 ```
 ample-deer (agent)   x remove · c new child · i info · r rename · R new session · (g start again)
 list                 / filter · f refresh
-global               a new agent · t new terminal · p project… · s settings · q quit
+global               a new agent · t new terminal · p project… · s settings · S stats · q quit
 ```
 
 **Left pane, Worktrees, cursor on a worktree or a file**
