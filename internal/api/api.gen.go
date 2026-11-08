@@ -179,86 +179,95 @@ func (e DocStatus) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeAcaUnavailable     ErrorCode = "aca_unavailable"
-	ErrorCodeAcaUnsupported     ErrorCode = "aca_unsupported"
-	ErrorCodeAgentBusy          ErrorCode = "agent_busy"
-	ErrorCodeAgentNotRunning    ErrorCode = "agent_not_running"
-	ErrorCodeAgentRemoved       ErrorCode = "agent_removed"
-	ErrorCodeAgentRunning       ErrorCode = "agent_running"
-	ErrorCodeAgentWorking       ErrorCode = "agent_working"
-	ErrorCodeAlreadyRunning     ErrorCode = "already_running"
-	ErrorCodeAttachUnsupported  ErrorCode = "attach_unsupported"
-	ErrorCodeBaseMoved          ErrorCode = "base_moved"
-	ErrorCodeBaseNotPulled      ErrorCode = "base_not_pulled"
-	ErrorCodeBranchExists       ErrorCode = "branch_exists"
-	ErrorCodeCancelled          ErrorCode = "cancelled"
-	ErrorCodeCheckFailed        ErrorCode = "check_failed"
-	ErrorCodeCheckoutMissing    ErrorCode = "checkout_missing"
-	ErrorCodeChecksumMismatch   ErrorCode = "checksum_mismatch"
-	ErrorCodeCloneFailed        ErrorCode = "clone_failed"
-	ErrorCodeConnectionLost     ErrorCode = "connection_lost"
-	ErrorCodeDaemonUnavailable  ErrorCode = "daemon_unavailable"
-	ErrorCodeDependencyMissing  ErrorCode = "dependency_missing"
-	ErrorCodeDetachedHead       ErrorCode = "detached_head"
-	ErrorCodeDocChanged         ErrorCode = "doc_changed"
-	ErrorCodeDownloadFailed     ErrorCode = "download_failed"
-	ErrorCodeEditorRunning      ErrorCode = "editor_running"
-	ErrorCodeFastForwardFailed  ErrorCode = "fast_forward_failed"
-	ErrorCodeInstallFailed      ErrorCode = "install_failed"
-	ErrorCodeInternal           ErrorCode = "internal"
-	ErrorCodeInvalidArgument    ErrorCode = "invalid_argument"
-	ErrorCodeInvalidName        ErrorCode = "invalid_name"
-	ErrorCodeInvalidPath        ErrorCode = "invalid_path"
-	ErrorCodeInvalidPlan        ErrorCode = "invalid_plan"
-	ErrorCodeInvalidSetting     ErrorCode = "invalid_setting"
-	ErrorCodeLandNotConfigured  ErrorCode = "land_not_configured"
-	ErrorCodeLandingRunning     ErrorCode = "landing_running"
-	ErrorCodeNameTaken          ErrorCode = "name_taken"
-	ErrorCodeNoLocalBase        ErrorCode = "no_local_base"
-	ErrorCodeNoPreviousVersion  ErrorCode = "no_previous_version"
-	ErrorCodeNotCommitted       ErrorCode = "not_committed"
-	ErrorCodeNotFound           ErrorCode = "not_found"
-	ErrorCodeNotGitRepo         ErrorCode = "not_git_repo"
-	ErrorCodeNothingToLand      ErrorCode = "nothing_to_land"
-	ErrorCodeOlderVersion       ErrorCode = "older_version"
-	ErrorCodePathExists         ErrorCode = "path_exists"
-	ErrorCodePlanChanged        ErrorCode = "plan_changed"
-	ErrorCodePlanInUse          ErrorCode = "plan_in_use"
-	ErrorCodePlanNotFinished    ErrorCode = "plan_not_finished"
-	ErrorCodePlanNotLanded      ErrorCode = "plan_not_landed"
-	ErrorCodePlanNotRunning     ErrorCode = "plan_not_running"
-	ErrorCodePlanStarted        ErrorCode = "plan_started"
-	ErrorCodePortInUse          ErrorCode = "port_in_use"
-	ErrorCodePrFailed           ErrorCode = "pr_failed"
-	ErrorCodePrivilegesRequired ErrorCode = "privileges_required"
-	ErrorCodeProjectClosed      ErrorCode = "project_closed"
-	ErrorCodeProjectInUse       ErrorCode = "project_in_use"
-	ErrorCodeProjectMismatch    ErrorCode = "project_mismatch"
-	ErrorCodePushFailed         ErrorCode = "push_failed"
-	ErrorCodeRebaseFailed       ErrorCode = "rebase_failed"
-	ErrorCodeReloadFailed       ErrorCode = "reload_failed"
-	ErrorCodeRepoExists         ErrorCode = "repo_exists"
-	ErrorCodeRestoreRequired    ErrorCode = "restore_required"
-	ErrorCodeRuntimeFailed      ErrorCode = "runtime_failed"
-	ErrorCodeRuntimeMissing     ErrorCode = "runtime_missing"
-	ErrorCodeSendFailed         ErrorCode = "send_failed"
-	ErrorCodeSettingsInvalid    ErrorCode = "settings_invalid"
-	ErrorCodeStartFailed        ErrorCode = "start_failed"
-	ErrorCodeTaskState          ErrorCode = "task_state"
-	ErrorCodeTerminalNotRunning ErrorCode = "terminal_not_running"
-	ErrorCodeTerminalRunning    ErrorCode = "terminal_running"
-	ErrorCodeTideRunning        ErrorCode = "tide_running"
-	ErrorCodeUnsupportedSystem  ErrorCode = "unsupported_system"
-	ErrorCodeUpdateFailed       ErrorCode = "update_failed"
-	ErrorCodeUpdateRunning      ErrorCode = "update_running"
-	ErrorCodeUsage              ErrorCode = "usage"
-	ErrorCodeWorktreeBusy       ErrorCode = "worktree_busy"
-	ErrorCodeWorktreeFailed     ErrorCode = "worktree_failed"
-	ErrorCodeWorktreeInPlan     ErrorCode = "worktree_in_plan"
-	ErrorCodeWorktreeIsClone    ErrorCode = "worktree_is_clone"
-	ErrorCodeWorktreeNotLanded  ErrorCode = "worktree_not_landed"
-	ErrorCodeWorktreeNotRemoved ErrorCode = "worktree_not_removed"
-	ErrorCodeWrongBranch        ErrorCode = "wrong_branch"
+	ErrorCodeAcaUnavailable        ErrorCode = "aca_unavailable"
+	ErrorCodeAcaUnsupported        ErrorCode = "aca_unsupported"
+	ErrorCodeAgentBusy             ErrorCode = "agent_busy"
+	ErrorCodeAgentNotRunning       ErrorCode = "agent_not_running"
+	ErrorCodeAgentRemoved          ErrorCode = "agent_removed"
+	ErrorCodeAgentRunning          ErrorCode = "agent_running"
+	ErrorCodeAgentWorking          ErrorCode = "agent_working"
+	ErrorCodeAlreadyLoggedIn       ErrorCode = "already_logged_in"
+	ErrorCodeAlreadyRunning        ErrorCode = "already_running"
+	ErrorCodeAttachUnsupported     ErrorCode = "attach_unsupported"
+	ErrorCodeBaseMoved             ErrorCode = "base_moved"
+	ErrorCodeBaseNotPulled         ErrorCode = "base_not_pulled"
+	ErrorCodeBranchExists          ErrorCode = "branch_exists"
+	ErrorCodeCancelled             ErrorCode = "cancelled"
+	ErrorCodeCheckFailed           ErrorCode = "check_failed"
+	ErrorCodeCheckoutMissing       ErrorCode = "checkout_missing"
+	ErrorCodeChecksumMismatch      ErrorCode = "checksum_mismatch"
+	ErrorCodeCloneFailed           ErrorCode = "clone_failed"
+	ErrorCodeConnectionLost        ErrorCode = "connection_lost"
+	ErrorCodeDaemonUnavailable     ErrorCode = "daemon_unavailable"
+	ErrorCodeDependencyMissing     ErrorCode = "dependency_missing"
+	ErrorCodeDetachedHead          ErrorCode = "detached_head"
+	ErrorCodeDocChanged            ErrorCode = "doc_changed"
+	ErrorCodeDownloadFailed        ErrorCode = "download_failed"
+	ErrorCodeEditorRunning         ErrorCode = "editor_running"
+	ErrorCodeFastForwardFailed     ErrorCode = "fast_forward_failed"
+	ErrorCodeHubUnreachable        ErrorCode = "hub_unreachable"
+	ErrorCodeHubVersionUnsupported ErrorCode = "hub_version_unsupported"
+	ErrorCodeInstallFailed         ErrorCode = "install_failed"
+	ErrorCodeInternal              ErrorCode = "internal"
+	ErrorCodeInvalidArgument       ErrorCode = "invalid_argument"
+	ErrorCodeInvalidName           ErrorCode = "invalid_name"
+	ErrorCodeInvalidPath           ErrorCode = "invalid_path"
+	ErrorCodeInvalidPlan           ErrorCode = "invalid_plan"
+	ErrorCodeInvalidSetting        ErrorCode = "invalid_setting"
+	ErrorCodeLandNotConfigured     ErrorCode = "land_not_configured"
+	ErrorCodeLandingRunning        ErrorCode = "landing_running"
+	ErrorCodeLoginCancelled        ErrorCode = "login_cancelled"
+	ErrorCodeLoginDenied           ErrorCode = "login_denied"
+	ErrorCodeLoginExpired          ErrorCode = "login_expired"
+	ErrorCodeNameTaken             ErrorCode = "name_taken"
+	ErrorCodeNoLocalBase           ErrorCode = "no_local_base"
+	ErrorCodeNoPreviousVersion     ErrorCode = "no_previous_version"
+	ErrorCodeNodeIsThis            ErrorCode = "node_is_this"
+	ErrorCodeNodeNotFound          ErrorCode = "node_not_found"
+	ErrorCodeNotCommitted          ErrorCode = "not_committed"
+	ErrorCodeNotFound              ErrorCode = "not_found"
+	ErrorCodeNotGitRepo            ErrorCode = "not_git_repo"
+	ErrorCodeNotLoggedIn           ErrorCode = "not_logged_in"
+	ErrorCodeNothingToLand         ErrorCode = "nothing_to_land"
+	ErrorCodeOlderVersion          ErrorCode = "older_version"
+	ErrorCodePathExists            ErrorCode = "path_exists"
+	ErrorCodePlanChanged           ErrorCode = "plan_changed"
+	ErrorCodePlanInUse             ErrorCode = "plan_in_use"
+	ErrorCodePlanNotFinished       ErrorCode = "plan_not_finished"
+	ErrorCodePlanNotLanded         ErrorCode = "plan_not_landed"
+	ErrorCodePlanNotRunning        ErrorCode = "plan_not_running"
+	ErrorCodePlanStarted           ErrorCode = "plan_started"
+	ErrorCodePortInUse             ErrorCode = "port_in_use"
+	ErrorCodePrFailed              ErrorCode = "pr_failed"
+	ErrorCodePrivilegesRequired    ErrorCode = "privileges_required"
+	ErrorCodeProjectClosed         ErrorCode = "project_closed"
+	ErrorCodeProjectInUse          ErrorCode = "project_in_use"
+	ErrorCodeProjectMismatch       ErrorCode = "project_mismatch"
+	ErrorCodePushFailed            ErrorCode = "push_failed"
+	ErrorCodeRebaseFailed          ErrorCode = "rebase_failed"
+	ErrorCodeReloadFailed          ErrorCode = "reload_failed"
+	ErrorCodeRepoExists            ErrorCode = "repo_exists"
+	ErrorCodeRestoreRequired       ErrorCode = "restore_required"
+	ErrorCodeRuntimeFailed         ErrorCode = "runtime_failed"
+	ErrorCodeRuntimeMissing        ErrorCode = "runtime_missing"
+	ErrorCodeSendFailed            ErrorCode = "send_failed"
+	ErrorCodeSettingsInvalid       ErrorCode = "settings_invalid"
+	ErrorCodeStartFailed           ErrorCode = "start_failed"
+	ErrorCodeTaskState             ErrorCode = "task_state"
+	ErrorCodeTerminalNotRunning    ErrorCode = "terminal_not_running"
+	ErrorCodeTerminalRunning       ErrorCode = "terminal_running"
+	ErrorCodeTideRunning           ErrorCode = "tide_running"
+	ErrorCodeUnsupportedSystem     ErrorCode = "unsupported_system"
+	ErrorCodeUpdateFailed          ErrorCode = "update_failed"
+	ErrorCodeUpdateRunning         ErrorCode = "update_running"
+	ErrorCodeUsage                 ErrorCode = "usage"
+	ErrorCodeWorktreeBusy          ErrorCode = "worktree_busy"
+	ErrorCodeWorktreeFailed        ErrorCode = "worktree_failed"
+	ErrorCodeWorktreeInPlan        ErrorCode = "worktree_in_plan"
+	ErrorCodeWorktreeIsClone       ErrorCode = "worktree_is_clone"
+	ErrorCodeWorktreeNotLanded     ErrorCode = "worktree_not_landed"
+	ErrorCodeWorktreeNotRemoved    ErrorCode = "worktree_not_removed"
+	ErrorCodeWrongBranch           ErrorCode = "wrong_branch"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -277,6 +286,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeAgentRunning:
 		return true
 	case ErrorCodeAgentWorking:
+		return true
+	case ErrorCodeAlreadyLoggedIn:
 		return true
 	case ErrorCodeAlreadyRunning:
 		return true
@@ -314,6 +325,10 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeFastForwardFailed:
 		return true
+	case ErrorCodeHubUnreachable:
+		return true
+	case ErrorCodeHubVersionUnsupported:
+		return true
 	case ErrorCodeInstallFailed:
 		return true
 	case ErrorCodeInternal:
@@ -332,17 +347,29 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeLandingRunning:
 		return true
+	case ErrorCodeLoginCancelled:
+		return true
+	case ErrorCodeLoginDenied:
+		return true
+	case ErrorCodeLoginExpired:
+		return true
 	case ErrorCodeNameTaken:
 		return true
 	case ErrorCodeNoLocalBase:
 		return true
 	case ErrorCodeNoPreviousVersion:
 		return true
+	case ErrorCodeNodeIsThis:
+		return true
+	case ErrorCodeNodeNotFound:
+		return true
 	case ErrorCodeNotCommitted:
 		return true
 	case ErrorCodeNotFound:
 		return true
 	case ErrorCodeNotGitRepo:
+		return true
+	case ErrorCodeNotLoggedIn:
 		return true
 	case ErrorCodeNothingToLand:
 		return true
@@ -438,6 +465,75 @@ const (
 func (e GitSourceType) Valid() bool {
 	switch e {
 	case GitSourceTypeGit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HubConnection.
+const (
+	HubConnectionConnected  HubConnection = "connected"
+	HubConnectionConnecting HubConnection = "connecting"
+	HubConnectionDisabled   HubConnection = "disabled"
+	HubConnectionLoggedOut  HubConnection = "logged_out"
+	HubConnectionOffline    HubConnection = "offline"
+	HubConnectionRevoked    HubConnection = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the HubConnection enum.
+func (e HubConnection) Valid() bool {
+	switch e {
+	case HubConnectionConnected:
+		return true
+	case HubConnectionConnecting:
+		return true
+	case HubConnectionDisabled:
+		return true
+	case HubConnectionLoggedOut:
+		return true
+	case HubConnectionOffline:
+		return true
+	case HubConnectionRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HubLoginEventPhase.
+const (
+	HubLoginEventPhaseFailed   HubLoginEventPhase = "failed"
+	HubLoginEventPhaseLoggedIn HubLoginEventPhase = "logged_in"
+	HubLoginEventPhasePending  HubLoginEventPhase = "pending"
+)
+
+// Valid indicates whether the value is a known member of the HubLoginEventPhase enum.
+func (e HubLoginEventPhase) Valid() bool {
+	switch e {
+	case HubLoginEventPhaseFailed:
+		return true
+	case HubLoginEventPhaseLoggedIn:
+		return true
+	case HubLoginEventPhasePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HubLoginFlow.
+const (
+	HubLoginFlowBrowser HubLoginFlow = "browser"
+	HubLoginFlowDevice  HubLoginFlow = "device"
+)
+
+// Valid indicates whether the value is a known member of the HubLoginFlow enum.
+func (e HubLoginFlow) Valid() bool {
+	switch e {
+	case HubLoginFlowBrowser:
+		return true
+	case HubLoginFlowDevice:
 		return true
 	default:
 		return false
@@ -668,6 +764,8 @@ const (
 	ResultExited     Result = "exited"
 	ResultLanded     Result = "landed"
 	ResultLanding    Result = "landing"
+	ResultLoggedIn   Result = "logged_in"
+	ResultLoggedOut  Result = "logged_out"
 	ResultOpened     Result = "opened"
 	ResultPaused     Result = "paused"
 	ResultPrOpened   Result = "pr_opened"
@@ -709,6 +807,10 @@ func (e Result) Valid() bool {
 	case ResultLanded:
 		return true
 	case ResultLanding:
+		return true
+	case ResultLoggedIn:
+		return true
+	case ResultLoggedOut:
 		return true
 	case ResultOpened:
 		return true
@@ -1552,6 +1654,186 @@ type GitSource struct {
 
 // GitSourceType defines model for GitSource.Type.
 type GitSourceType string
+
+// HubConnection The control connection to the hub: offline is lost or refused and
+// tried again; revoked (another node removed this one) and disabled
+// (the hub's admin disabled the account) are for good, until logout.
+type HubConnection string
+
+// HubEnvelope defines model for HubEnvelope.
+type HubEnvelope struct {
+	Hub HubStatus `json:"hub"`
+}
+
+// HubLogin defines model for HubLogin.
+type HubLogin struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Flow browser approves in a browser on this machine, which comes back to the CLI's callback; device by a code typed on the hub's device page, in any browser.
+	Flow HubLoginFlow `json:"flow"`
+
+	// Id The daemon's id of the login, which its stream and cancel name.
+	Id string `json:"id"`
+
+	// LoginUrl For browser, the approval page to open.
+	LoginUrl *string `json:"login_url,omitempty"`
+
+	// UserCode For device, the code to type: a secret, never logged.
+	UserCode *string `json:"user_code,omitempty"`
+
+	// VerificationUrl For device, the page to type the code on.
+	VerificationUrl *string `json:"verification_url,omitempty"`
+}
+
+// HubLoginCode defines model for HubLoginCode.
+type HubLoginCode struct {
+	// Code The authorization code: a secret, measured in the log.
+	Code *string `json:"code,omitempty"`
+
+	// Error The error the hub sent instead of a code, as access_denied.
+	Error *string `json:"error,omitempty"`
+	State string  `json:"state"`
+}
+
+// HubLoginEnvelope defines model for HubLoginEnvelope.
+type HubLoginEnvelope struct {
+	Login HubLogin `json:"login"`
+}
+
+// HubLoginEvent defines model for HubLoginEvent.
+type HubLoginEvent struct {
+	// Hub Once logged_in, the status.
+	Hub   *HubStatus         `json:"hub,omitempty"`
+	Phase HubLoginEventPhase `json:"phase"`
+
+	// Problem Once failed, why.
+	Problem *Problem `json:"problem,omitempty"`
+}
+
+// HubLoginEventPhase defines model for HubLoginEvent.Phase.
+type HubLoginEventPhase string
+
+// HubLoginFlow browser approves in a browser on this machine, which comes back to the CLI's callback; device by a code typed on the hub's device page, in any browser.
+type HubLoginFlow string
+
+// HubLoginStart defines model for HubLoginStart.
+type HubLoginStart struct {
+	// Callback For browser, where the hub sends the browser back to, http://127.0.0.1:<port>/<path>.
+	Callback *string `json:"callback,omitempty"`
+
+	// Flow browser approves in a browser on this machine, which comes back to the CLI's callback; device by a code typed on the hub's device page, in any browser.
+	Flow HubLoginFlow `json:"flow"`
+
+	// Name This node's name in the account.
+	Name string `json:"name"`
+
+	// Url The hub's web endpoint: https://<host>[:<port>], or http to localhost or 127.0.0.1.
+	Url string `json:"url"`
+}
+
+// HubLogoutResult defines model for HubLogoutResult.
+type HubLogoutResult struct {
+	Hub HubStatus `json:"hub"`
+
+	// HubTold Whether the hub heard and revoked this node.
+	HubTold bool `json:"hub_told"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
+// HubNode defines model for HubNode.
+type HubNode struct {
+	CreatedAt time.Time `json:"created_at"`
+	Id        string    `json:"id"`
+
+	// LastSeenAt Null when it never connected.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name       string     `json:"name"`
+
+	// Online Whether it has a control connection to the hub now.
+	Online bool   `json:"online"`
+	Os     string `json:"os"`
+
+	// This Whether it is this machine.
+	This bool `json:"this"`
+
+	// Version The wdx version it last connected with.
+	Version string `json:"version"`
+}
+
+// HubNodeDetail defines model for HubNodeDetail.
+type HubNodeDetail struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Fingerprint SHA256: and its key's SHA-256 in base64 without padding.
+	Fingerprint string `json:"fingerprint"`
+	Id          string `json:"id"`
+
+	// LastSeenAt Null when it never connected.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name       string     `json:"name"`
+
+	// Online Whether it has a control connection to the hub now.
+	Online bool   `json:"online"`
+	Os     string `json:"os"`
+
+	// This Whether it is this machine.
+	This bool `json:"this"`
+
+	// Version The wdx version it last connected with.
+	Version string `json:"version"`
+}
+
+// HubNodeEnvelope defines model for HubNodeEnvelope.
+type HubNodeEnvelope struct {
+	Node HubNodeDetail `json:"node"`
+}
+
+// HubNodeList defines model for HubNodeList.
+type HubNodeList struct {
+	Nodes []HubNode `json:"nodes"`
+}
+
+// HubNodeRef defines model for HubNodeRef.
+type HubNodeRef struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// HubNodeResult defines model for HubNodeResult.
+type HubNodeResult struct {
+	Node HubNode `json:"node"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
+// HubStatus defines model for HubStatus.
+type HubStatus struct {
+	// Behind When in_range is false, the side to update, node or hub.
+	Behind *string `json:"behind"`
+
+	// Connection The control connection to the hub: offline is lost or refused and
+	// tried again; revoked (another node removed this one) and disabled
+	// (the hub's admin disabled the account) are for good, until logout.
+	Connection HubConnection `json:"connection"`
+
+	// HubVersion The hub's version, as it last said; null until it did.
+	HubVersion *string `json:"hub_version"`
+
+	// InRange Whether the hub serves the API this wdx speaks; null until it said.
+	InRange *bool `json:"in_range"`
+
+	// Node This node; null when logged out.
+	Node *HubNodeRef `json:"node"`
+
+	// Url The hub's web endpoint; null when logged out.
+	Url *string `json:"url"`
+
+	// User The account's username; null when logged out.
+	User *string `json:"user"`
+}
 
 // LocalSource defines model for LocalSource.
 type LocalSource struct {
@@ -2729,6 +3011,9 @@ type AskingAgent = string
 // DocRef defines model for DocRef.
 type DocRef = string
 
+// HubLoginID defines model for HubLoginID.
+type HubLoginID = string
+
 // PlanRef defines model for PlanRef.
 type PlanRef = string
 
@@ -2931,6 +3216,18 @@ type ListDocRevisionsParams struct {
 
 	// Dir An absolute path in one of the project's worktrees; excludes project.
 	Dir *TerminalDir `form:"dir,omitempty" json:"dir,omitempty"`
+}
+
+// CancelHubLoginParams defines parameters for CancelHubLogin.
+type CancelHubLoginParams struct {
+	// Login The login's id, as startHubLogin gave it.
+	Login HubLoginID `form:"login" json:"login"`
+}
+
+// StreamHubLoginParams defines parameters for StreamHubLogin.
+type StreamHubLoginParams struct {
+	// Login The login's id, as startHubLogin gave it.
+	Login HubLoginID `form:"login" json:"login"`
 }
 
 // ListMessagesParams defines parameters for ListMessages.
@@ -3422,6 +3719,12 @@ type UpdateDocContentJSONRequestBody = DocContentChange
 
 // OpenEditorJSONRequestBody defines body for OpenEditor for application/json ContentType.
 type OpenEditorJSONRequestBody = OpenEditor
+
+// StartHubLoginJSONRequestBody defines body for StartHubLogin for application/json ContentType.
+type StartHubLoginJSONRequestBody = HubLoginStart
+
+// SendHubLoginCodeJSONRequestBody defines body for SendHubLoginCode for application/json ContentType.
+type SendHubLoginCodeJSONRequestBody = HubLoginCode
 
 // CreatePlanJSONRequestBody defines body for CreatePlan for application/json ContentType.
 type CreatePlanJSONRequestBody = CreatePlan
@@ -4232,6 +4535,149 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
 	OpenEditor(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetHub This node's login to a hub and its connection
+	//
+	// Read from what the daemon holds: it never waits on the hub. Not being
+	// logged in is a state, logged_out, not an error.
+	//
+	// Corresponds with GET /v1/hub (the `GetHub` operationId).
+	GetHub(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelHubLogin Cancel a login pending
+	//
+	// Its stream ends with login_cancelled. A login that ended already is
+	// left as it is.
+	//
+	// Errors: not_found (the daemon has no such login).
+	//
+	// Corresponds with DELETE /v1/hub/login (the `CancelHubLogin` operationId).
+	CancelHubLogin(ctx context.Context, params *CancelHubLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StreamHubLogin Follow a login, sent every time its state changes
+	//
+	// Server-sent events (text/event-stream), as streamProject sends.
+	// Each event is "event: login" with a HubLoginEvent as its data: the
+	// login's state now, pending, then logged_in with the hub's status or
+	// failed with a problem (login_denied, login_expired, login_cancelled,
+	// name_taken, hub_unreachable, internal), which ends the stream. A
+	// login another replaced, or the daemon no longer has, is failed with
+	// login_cancelled at once. The stream also ends, with login_cancelled,
+	// when the daemon stops.
+	//
+	// Corresponds with GET /v1/hub/login (the `StreamHubLogin` operationId).
+	StreamHubLogin(ctx context.Context, params *StreamHubLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartHubLoginWithBody Start making this machine a node of an account on a hub
+	//
+	// The daemon makes the node's key and, for the browser flow, the PKCE
+	// verifier, which never leave it, and asks the hub to start the
+	// login. A login pending is replaced, its stream ending with
+	// login_cancelled. The login lives in the daemon's memory until it is
+	// approved, refused, expired or cancelled, or the daemon stops;
+	// streamHubLogin follows it.
+	//
+	// The answer's user_code is a secret, never logged.
+	//
+	// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+	// invalid_argument (a url that is not https, or plain http to a host
+	// other than localhost and 127.0.0.1; a browser login without a
+	// callback), name_taken.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+	StartHubLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartHubLogin Start making this machine a node of an account on a hub
+	//
+	// The daemon makes the node's key and, for the browser flow, the PKCE
+	// verifier, which never leave it, and asks the hub to start the
+	// login. A login pending is replaced, its stream ending with
+	// login_cancelled. The login lives in the daemon's memory until it is
+	// approved, refused, expired or cancelled, or the daemon stops;
+	// streamHubLogin follows it.
+	//
+	// The answer's user_code is a secret, never logged.
+	//
+	// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+	// invalid_argument (a url that is not https, or plain http to a host
+	// other than localhost and 127.0.0.1; a browser login without a
+	// callback), name_taken.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+	StartHubLogin(ctx context.Context, body StartHubLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendHubLoginCodeWithBody Finish a browser login with what its callback received
+	//
+	// The authorization code, or the error, and the state the hub sent
+	// the browser back to the CLI's callback with. The daemon exchanges
+	// the code for the node's credentials, with its PKCE verifier, before
+	// answering. The code is a secret, measured in the log, never logged.
+	//
+	// Errors: invalid_argument (the state is not the login's, or the
+	// login is a device login), not_found (no browser login is pending).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+	SendHubLoginCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendHubLoginCode Finish a browser login with what its callback received
+	//
+	// The authorization code, or the error, and the state the hub sent
+	// the browser back to the CLI's callback with. The daemon exchanges
+	// the code for the node's credentials, with its PKCE verifier, before
+	// answering. The code is a secret, measured in the log, never logged.
+	//
+	// Errors: invalid_argument (the state is not the login's, or the
+	// login is a device login), not_found (no browser login is pending).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+	SendHubLoginCode(ctx context.Context, body SendHubLoginCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LogoutHub Leave the hub
+	//
+	// Asks the hub to revoke this node, waiting a few seconds at most,
+	// then closes the control connection and deletes <home>/hub/ whether
+	// the hub heard or not; hub_told says whether it did. The hub is the
+	// status as it was.
+	//
+	// Errors: not_logged_in.
+	//
+	// Corresponds with POST /v1/hub/logout (the `LogoutHub` operationId).
+	LogoutHub(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListHubNodes The nodes of the account, from the hub
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, not_logged_in
+	// (also when the hub cut this node off).
+	//
+	// Corresponds with GET /v1/hub/nodes (the `ListHubNodes` operationId).
+	ListHubNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveHubNode Revoke another node of the account
+	//
+	// The hub cuts its connection at once and renews no certificate for
+	// it. This node is refused: leaving is logoutHub.
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, node_is_this,
+	// node_not_found, not_logged_in.
+	//
+	// Corresponds with DELETE /v1/hub/nodes/{node} (the `RemoveHubNode` operationId).
+	RemoveHubNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetHubNode A node of the account, from the hub
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, node_not_found,
+	// not_logged_in.
+	//
+	// Corresponds with GET /v1/hub/nodes/{node} (the `GetHubNode` operationId).
+	GetHubNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListMessages List a project's messages still waiting, oldest first
 	//
@@ -6237,6 +6683,259 @@ func (c *Client) OpenEditorWithBody(ctx context.Context, contentType string, bod
 // Corresponds with POST /v1/editors (the `OpenEditor` operationId).
 func (c *Client) OpenEditor(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewOpenEditorRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHub This node's login to a hub and its connection
+//
+// Read from what the daemon holds: it never waits on the hub. Not being
+// logged in is a state, logged_out, not an error.
+//
+// Corresponds with GET /v1/hub (the `GetHub` operationId).
+func (c *Client) GetHub(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHubRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CancelHubLogin Cancel a login pending
+//
+// Its stream ends with login_cancelled. A login that ended already is
+// left as it is.
+//
+// Errors: not_found (the daemon has no such login).
+//
+// Corresponds with DELETE /v1/hub/login (the `CancelHubLogin` operationId).
+func (c *Client) CancelHubLogin(ctx context.Context, params *CancelHubLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelHubLoginRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StreamHubLogin Follow a login, sent every time its state changes
+//
+// Server-sent events (text/event-stream), as streamProject sends.
+// Each event is "event: login" with a HubLoginEvent as its data: the
+// login's state now, pending, then logged_in with the hub's status or
+// failed with a problem (login_denied, login_expired, login_cancelled,
+// name_taken, hub_unreachable, internal), which ends the stream. A
+// login another replaced, or the daemon no longer has, is failed with
+// login_cancelled at once. The stream also ends, with login_cancelled,
+// when the daemon stops.
+//
+// Corresponds with GET /v1/hub/login (the `StreamHubLogin` operationId).
+func (c *Client) StreamHubLogin(ctx context.Context, params *StreamHubLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamHubLoginRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartHubLoginWithBody Start making this machine a node of an account on a hub
+//
+// The daemon makes the node's key and, for the browser flow, the PKCE
+// verifier, which never leave it, and asks the hub to start the
+// login. A login pending is replaced, its stream ending with
+// login_cancelled. The login lives in the daemon's memory until it is
+// approved, refused, expired or cancelled, or the daemon stops;
+// streamHubLogin follows it.
+//
+// The answer's user_code is a secret, never logged.
+//
+// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+// invalid_argument (a url that is not https, or plain http to a host
+// other than localhost and 127.0.0.1; a browser login without a
+// callback), name_taken.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+func (c *Client) StartHubLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartHubLoginRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartHubLogin Start making this machine a node of an account on a hub
+//
+// The daemon makes the node's key and, for the browser flow, the PKCE
+// verifier, which never leave it, and asks the hub to start the
+// login. A login pending is replaced, its stream ending with
+// login_cancelled. The login lives in the daemon's memory until it is
+// approved, refused, expired or cancelled, or the daemon stops;
+// streamHubLogin follows it.
+//
+// The answer's user_code is a secret, never logged.
+//
+// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+// invalid_argument (a url that is not https, or plain http to a host
+// other than localhost and 127.0.0.1; a browser login without a
+// callback), name_taken.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+func (c *Client) StartHubLogin(ctx context.Context, body StartHubLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartHubLoginRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendHubLoginCodeWithBody Finish a browser login with what its callback received
+//
+// The authorization code, or the error, and the state the hub sent
+// the browser back to the CLI's callback with. The daemon exchanges
+// the code for the node's credentials, with its PKCE verifier, before
+// answering. The code is a secret, measured in the log, never logged.
+//
+// Errors: invalid_argument (the state is not the login's, or the
+// login is a device login), not_found (no browser login is pending).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+func (c *Client) SendHubLoginCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendHubLoginCodeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendHubLoginCode Finish a browser login with what its callback received
+//
+// The authorization code, or the error, and the state the hub sent
+// the browser back to the CLI's callback with. The daemon exchanges
+// the code for the node's credentials, with its PKCE verifier, before
+// answering. The code is a secret, measured in the log, never logged.
+//
+// Errors: invalid_argument (the state is not the login's, or the
+// login is a device login), not_found (no browser login is pending).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+func (c *Client) SendHubLoginCode(ctx context.Context, body SendHubLoginCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendHubLoginCodeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LogoutHub Leave the hub
+//
+// Asks the hub to revoke this node, waiting a few seconds at most,
+// then closes the control connection and deletes <home>/hub/ whether
+// the hub heard or not; hub_told says whether it did. The hub is the
+// status as it was.
+//
+// Errors: not_logged_in.
+//
+// Corresponds with POST /v1/hub/logout (the `LogoutHub` operationId).
+func (c *Client) LogoutHub(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutHubRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListHubNodes The nodes of the account, from the hub
+//
+// Errors: hub_unreachable, hub_version_unsupported, not_logged_in
+// (also when the hub cut this node off).
+//
+// Corresponds with GET /v1/hub/nodes (the `ListHubNodes` operationId).
+func (c *Client) ListHubNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListHubNodesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveHubNode Revoke another node of the account
+//
+// The hub cuts its connection at once and renews no certificate for
+// it. This node is refused: leaving is logoutHub.
+//
+// Errors: hub_unreachable, hub_version_unsupported, node_is_this,
+// node_not_found, not_logged_in.
+//
+// Corresponds with DELETE /v1/hub/nodes/{node} (the `RemoveHubNode` operationId).
+func (c *Client) RemoveHubNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveHubNodeRequest(c.Server, node)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHubNode A node of the account, from the hub
+//
+// Errors: hub_unreachable, hub_version_unsupported, node_not_found,
+// not_logged_in.
+//
+// Corresponds with GET /v1/hub/nodes/{node} (the `GetHubNode` operationId).
+func (c *Client) GetHubNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHubNodeRequest(c.Server, node)
 	if err != nil {
 		return nil, err
 	}
@@ -9838,6 +10537,335 @@ func NewOpenEditorRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetHubRequest constructs an http.Request for the GetHub method
+func NewGetHubRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCancelHubLoginRequest constructs an http.Request for the CancelHubLogin method
+func NewCancelHubLoginRequest(server string, params *CancelHubLoginParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "login", params.Login, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStreamHubLoginRequest constructs an http.Request for the StreamHubLogin method
+func NewStreamHubLoginRequest(server string, params *StreamHubLoginParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "login", params.Login, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStartHubLoginRequest calls the generic StartHubLogin builder with application/json body
+func NewStartHubLoginRequest(server string, body StartHubLoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartHubLoginRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewStartHubLoginRequestWithBody constructs an http.Request for the StartHubLogin method, with any body, and a specified content type
+func NewStartHubLoginRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSendHubLoginCodeRequest calls the generic SendHubLoginCode builder with application/json body
+func NewSendHubLoginCodeRequest(server string, body SendHubLoginCodeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendHubLoginCodeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSendHubLoginCodeRequestWithBody constructs an http.Request for the SendHubLoginCode method, with any body, and a specified content type
+func NewSendHubLoginCodeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/login/code")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLogoutHubRequest constructs an http.Request for the LogoutHub method
+func NewLogoutHubRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/logout")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListHubNodesRequest constructs an http.Request for the ListHubNodes method
+func NewListHubNodesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/nodes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveHubNodeRequest constructs an http.Request for the RemoveHubNode method
+func NewRemoveHubNodeRequest(server string, node string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "node", node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetHubNodeRequest constructs an http.Request for the GetHubNode method
+func NewGetHubNodeRequest(server string, node string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "node", node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hub/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -14824,6 +15852,163 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/editors (the `OpenEditor` operationId).
 	OpenEditorWithResponse(ctx context.Context, body OpenEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*OpenEditorResponse, error)
 
+	// GetHubWithResponse This node's login to a hub and its connection
+	//
+	// Read from what the daemon holds: it never waits on the hub. Not being
+	// logged in is a state, logged_out, not an error.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/hub (the `GetHub` operationId).
+	GetHubWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHubResponse, error)
+
+	// CancelHubLoginWithResponse Cancel a login pending
+	//
+	// Its stream ends with login_cancelled. A login that ended already is
+	// left as it is.
+	//
+	// Errors: not_found (the daemon has no such login).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/hub/login (the `CancelHubLogin` operationId).
+	CancelHubLoginWithResponse(ctx context.Context, params *CancelHubLoginParams, reqEditors ...RequestEditorFn) (*CancelHubLoginResponse, error)
+
+	// StreamHubLoginWithResponse Follow a login, sent every time its state changes
+	//
+	// Server-sent events (text/event-stream), as streamProject sends.
+	// Each event is "event: login" with a HubLoginEvent as its data: the
+	// login's state now, pending, then logged_in with the hub's status or
+	// failed with a problem (login_denied, login_expired, login_cancelled,
+	// name_taken, hub_unreachable, internal), which ends the stream. A
+	// login another replaced, or the daemon no longer has, is failed with
+	// login_cancelled at once. The stream also ends, with login_cancelled,
+	// when the daemon stops.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/hub/login (the `StreamHubLogin` operationId).
+	StreamHubLoginWithResponse(ctx context.Context, params *StreamHubLoginParams, reqEditors ...RequestEditorFn) (*StreamHubLoginResponse, error)
+
+	// StartHubLoginWithBodyWithResponse Start making this machine a node of an account on a hub
+	//
+	// The daemon makes the node's key and, for the browser flow, the PKCE
+	// verifier, which never leave it, and asks the hub to start the
+	// login. A login pending is replaced, its stream ending with
+	// login_cancelled. The login lives in the daemon's memory until it is
+	// approved, refused, expired or cancelled, or the daemon stops;
+	// streamHubLogin follows it.
+	//
+	// The answer's user_code is a secret, never logged.
+	//
+	// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+	// invalid_argument (a url that is not https, or plain http to a host
+	// other than localhost and 127.0.0.1; a browser login without a
+	// callback), name_taken.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+	StartHubLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartHubLoginResponse, error)
+
+	// StartHubLoginWithResponse Start making this machine a node of an account on a hub
+	//
+	// The daemon makes the node's key and, for the browser flow, the PKCE
+	// verifier, which never leave it, and asks the hub to start the
+	// login. A login pending is replaced, its stream ending with
+	// login_cancelled. The login lives in the daemon's memory until it is
+	// approved, refused, expired or cancelled, or the daemon stops;
+	// streamHubLogin follows it.
+	//
+	// The answer's user_code is a secret, never logged.
+	//
+	// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+	// invalid_argument (a url that is not https, or plain http to a host
+	// other than localhost and 127.0.0.1; a browser login without a
+	// callback), name_taken.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+	StartHubLoginWithResponse(ctx context.Context, body StartHubLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*StartHubLoginResponse, error)
+
+	// SendHubLoginCodeWithBodyWithResponse Finish a browser login with what its callback received
+	//
+	// The authorization code, or the error, and the state the hub sent
+	// the browser back to the CLI's callback with. The daemon exchanges
+	// the code for the node's credentials, with its PKCE verifier, before
+	// answering. The code is a secret, measured in the log, never logged.
+	//
+	// Errors: invalid_argument (the state is not the login's, or the
+	// login is a device login), not_found (no browser login is pending).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+	SendHubLoginCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendHubLoginCodeResponse, error)
+
+	// SendHubLoginCodeWithResponse Finish a browser login with what its callback received
+	//
+	// The authorization code, or the error, and the state the hub sent
+	// the browser back to the CLI's callback with. The daemon exchanges
+	// the code for the node's credentials, with its PKCE verifier, before
+	// answering. The code is a secret, measured in the log, never logged.
+	//
+	// Errors: invalid_argument (the state is not the login's, or the
+	// login is a device login), not_found (no browser login is pending).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+	SendHubLoginCodeWithResponse(ctx context.Context, body SendHubLoginCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*SendHubLoginCodeResponse, error)
+
+	// LogoutHubWithResponse Leave the hub
+	//
+	// Asks the hub to revoke this node, waiting a few seconds at most,
+	// then closes the control connection and deletes <home>/hub/ whether
+	// the hub heard or not; hub_told says whether it did. The hub is the
+	// status as it was.
+	//
+	// Errors: not_logged_in.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hub/logout (the `LogoutHub` operationId).
+	LogoutHubWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutHubResponse, error)
+
+	// ListHubNodesWithResponse The nodes of the account, from the hub
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, not_logged_in
+	// (also when the hub cut this node off).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/hub/nodes (the `ListHubNodes` operationId).
+	ListHubNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListHubNodesResponse, error)
+
+	// RemoveHubNodeWithResponse Revoke another node of the account
+	//
+	// The hub cuts its connection at once and renews no certificate for
+	// it. This node is refused: leaving is logoutHub.
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, node_is_this,
+	// node_not_found, not_logged_in.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/hub/nodes/{node} (the `RemoveHubNode` operationId).
+	RemoveHubNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*RemoveHubNodeResponse, error)
+
+	// GetHubNodeWithResponse A node of the account, from the hub
+	//
+	// Errors: hub_unreachable, hub_version_unsupported, node_not_found,
+	// not_logged_in.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/hub/nodes/{node} (the `GetHubNode` operationId).
+	GetHubNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*GetHubNodeResponse, error)
+
 	// ListMessagesWithResponse List a project's messages still waiting, oldest first
 	//
 	// The messages of the project named by project, or of the project whose
@@ -17176,6 +18361,431 @@ func (r OpenEditorResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r OpenEditorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHubResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHubResponse) GetJSON200() *HubEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetHubResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHubResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHubResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHubResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHubResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CancelHubLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubLoginEvent
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelHubLoginResponse) GetJSON200() *HubLoginEvent {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CancelHubLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelHubLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelHubLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelHubLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelHubLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StreamHubLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StreamHubLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StreamHubLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StreamHubLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StreamHubLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StreamHubLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StartHubLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *HubLoginEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r StartHubLoginResponse) GetJSON201() *HubLoginEnvelope {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StartHubLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StartHubLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartHubLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartHubLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartHubLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendHubLoginCodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubLoginEvent
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SendHubLoginCodeResponse) GetJSON200() *HubLoginEvent {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SendHubLoginCodeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SendHubLoginCodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendHubLoginCodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendHubLoginCodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendHubLoginCodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type LogoutHubResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubLogoutResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LogoutHubResponse) GetJSON200() *HubLogoutResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LogoutHubResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LogoutHubResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LogoutHubResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LogoutHubResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LogoutHubResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListHubNodesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubNodeList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListHubNodesResponse) GetJSON200() *HubNodeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListHubNodesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListHubNodesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListHubNodesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListHubNodesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListHubNodesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveHubNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubNodeResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveHubNodeResponse) GetJSON200() *HubNodeResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveHubNodeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveHubNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveHubNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveHubNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveHubNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHubNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HubNodeEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHubNodeResponse) GetJSON200() *HubNodeEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetHubNodeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHubNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHubNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHubNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHubNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -21034,6 +22644,229 @@ func (c *ClientWithResponses) OpenEditorWithResponse(ctx context.Context, body O
 	return ParseOpenEditorResponse(rsp)
 }
 
+// GetHubWithResponse This node's login to a hub and its connection
+//
+// Read from what the daemon holds: it never waits on the hub. Not being
+// logged in is a state, logged_out, not an error.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/hub (the `GetHub` operationId).
+func (c *ClientWithResponses) GetHubWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHubResponse, error) {
+	rsp, err := c.GetHub(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHubResponse(rsp)
+}
+
+// CancelHubLoginWithResponse Cancel a login pending
+//
+// Its stream ends with login_cancelled. A login that ended already is
+// left as it is.
+//
+// Errors: not_found (the daemon has no such login).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/hub/login (the `CancelHubLogin` operationId).
+func (c *ClientWithResponses) CancelHubLoginWithResponse(ctx context.Context, params *CancelHubLoginParams, reqEditors ...RequestEditorFn) (*CancelHubLoginResponse, error) {
+	rsp, err := c.CancelHubLogin(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelHubLoginResponse(rsp)
+}
+
+// StreamHubLoginWithResponse Follow a login, sent every time its state changes
+//
+// Server-sent events (text/event-stream), as streamProject sends.
+// Each event is "event: login" with a HubLoginEvent as its data: the
+// login's state now, pending, then logged_in with the hub's status or
+// failed with a problem (login_denied, login_expired, login_cancelled,
+// name_taken, hub_unreachable, internal), which ends the stream. A
+// login another replaced, or the daemon no longer has, is failed with
+// login_cancelled at once. The stream also ends, with login_cancelled,
+// when the daemon stops.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/hub/login (the `StreamHubLogin` operationId).
+func (c *ClientWithResponses) StreamHubLoginWithResponse(ctx context.Context, params *StreamHubLoginParams, reqEditors ...RequestEditorFn) (*StreamHubLoginResponse, error) {
+	rsp, err := c.StreamHubLogin(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStreamHubLoginResponse(rsp)
+}
+
+// StartHubLoginWithBodyWithResponse Start making this machine a node of an account on a hub
+//
+// The daemon makes the node's key and, for the browser flow, the PKCE
+// verifier, which never leave it, and asks the hub to start the
+// login. A login pending is replaced, its stream ending with
+// login_cancelled. The login lives in the daemon's memory until it is
+// approved, refused, expired or cancelled, or the daemon stops;
+// streamHubLogin follows it.
+//
+// The answer's user_code is a secret, never logged.
+//
+// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+// invalid_argument (a url that is not https, or plain http to a host
+// other than localhost and 127.0.0.1; a browser login without a
+// callback), name_taken.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+func (c *ClientWithResponses) StartHubLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartHubLoginResponse, error) {
+	rsp, err := c.StartHubLoginWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartHubLoginResponse(rsp)
+}
+
+// StartHubLoginWithResponse Start making this machine a node of an account on a hub
+//
+// The daemon makes the node's key and, for the browser flow, the PKCE
+// verifier, which never leave it, and asks the hub to start the
+// login. A login pending is replaced, its stream ending with
+// login_cancelled. The login lives in the daemon's memory until it is
+// approved, refused, expired or cancelled, or the daemon stops;
+// streamHubLogin follows it.
+//
+// The answer's user_code is a secret, never logged.
+//
+// Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+// invalid_argument (a url that is not https, or plain http to a host
+// other than localhost and 127.0.0.1; a browser login without a
+// callback), name_taken.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hub/login (the `StartHubLogin` operationId).
+func (c *ClientWithResponses) StartHubLoginWithResponse(ctx context.Context, body StartHubLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*StartHubLoginResponse, error) {
+	rsp, err := c.StartHubLogin(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartHubLoginResponse(rsp)
+}
+
+// SendHubLoginCodeWithBodyWithResponse Finish a browser login with what its callback received
+//
+// The authorization code, or the error, and the state the hub sent
+// the browser back to the CLI's callback with. The daemon exchanges
+// the code for the node's credentials, with its PKCE verifier, before
+// answering. The code is a secret, measured in the log, never logged.
+//
+// Errors: invalid_argument (the state is not the login's, or the
+// login is a device login), not_found (no browser login is pending).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+func (c *ClientWithResponses) SendHubLoginCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendHubLoginCodeResponse, error) {
+	rsp, err := c.SendHubLoginCodeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendHubLoginCodeResponse(rsp)
+}
+
+// SendHubLoginCodeWithResponse Finish a browser login with what its callback received
+//
+// The authorization code, or the error, and the state the hub sent
+// the browser back to the CLI's callback with. The daemon exchanges
+// the code for the node's credentials, with its PKCE verifier, before
+// answering. The code is a secret, measured in the log, never logged.
+//
+// Errors: invalid_argument (the state is not the login's, or the
+// login is a device login), not_found (no browser login is pending).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hub/login/code (the `SendHubLoginCode` operationId).
+func (c *ClientWithResponses) SendHubLoginCodeWithResponse(ctx context.Context, body SendHubLoginCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*SendHubLoginCodeResponse, error) {
+	rsp, err := c.SendHubLoginCode(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendHubLoginCodeResponse(rsp)
+}
+
+// LogoutHubWithResponse Leave the hub
+//
+// Asks the hub to revoke this node, waiting a few seconds at most,
+// then closes the control connection and deletes <home>/hub/ whether
+// the hub heard or not; hub_told says whether it did. The hub is the
+// status as it was.
+//
+// Errors: not_logged_in.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hub/logout (the `LogoutHub` operationId).
+func (c *ClientWithResponses) LogoutHubWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutHubResponse, error) {
+	rsp, err := c.LogoutHub(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLogoutHubResponse(rsp)
+}
+
+// ListHubNodesWithResponse The nodes of the account, from the hub
+//
+// Errors: hub_unreachable, hub_version_unsupported, not_logged_in
+// (also when the hub cut this node off).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/hub/nodes (the `ListHubNodes` operationId).
+func (c *ClientWithResponses) ListHubNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListHubNodesResponse, error) {
+	rsp, err := c.ListHubNodes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListHubNodesResponse(rsp)
+}
+
+// RemoveHubNodeWithResponse Revoke another node of the account
+//
+// The hub cuts its connection at once and renews no certificate for
+// it. This node is refused: leaving is logoutHub.
+//
+// Errors: hub_unreachable, hub_version_unsupported, node_is_this,
+// node_not_found, not_logged_in.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/hub/nodes/{node} (the `RemoveHubNode` operationId).
+func (c *ClientWithResponses) RemoveHubNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*RemoveHubNodeResponse, error) {
+	rsp, err := c.RemoveHubNode(ctx, node, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveHubNodeResponse(rsp)
+}
+
+// GetHubNodeWithResponse A node of the account, from the hub
+//
+// Errors: hub_unreachable, hub_version_unsupported, node_not_found,
+// not_logged_in.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/hub/nodes/{node} (the `GetHubNode` operationId).
+func (c *ClientWithResponses) GetHubNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*GetHubNodeResponse, error) {
+	rsp, err := c.GetHubNode(ctx, node, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHubNodeResponse(rsp)
+}
+
 // ListMessagesWithResponse List a project's messages still waiting, oldest first
 //
 // The messages of the project named by project, or of the project whose
@@ -23568,6 +25401,296 @@ func ParseOpenEditorResponse(rsp *http.Response) (*OpenEditorResponse, error) {
 	return response, nil
 }
 
+// ParseGetHubResponse parses an HTTP response from a GetHubWithResponse call
+func ParseGetHubResponse(rsp *http.Response) (*GetHubResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHubResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelHubLoginResponse parses an HTTP response from a CancelHubLoginWithResponse call
+func ParseCancelHubLoginResponse(rsp *http.Response) (*CancelHubLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelHubLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubLoginEvent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStreamHubLoginResponse parses an HTTP response from a StreamHubLoginWithResponse call
+func ParseStreamHubLoginResponse(rsp *http.Response) (*StreamHubLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StreamHubLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartHubLoginResponse parses an HTTP response from a StartHubLoginWithResponse call
+func ParseStartHubLoginResponse(rsp *http.Response) (*StartHubLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartHubLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest HubLoginEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSendHubLoginCodeResponse parses an HTTP response from a SendHubLoginCodeWithResponse call
+func ParseSendHubLoginCodeResponse(rsp *http.Response) (*SendHubLoginCodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendHubLoginCodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubLoginEvent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLogoutHubResponse parses an HTTP response from a LogoutHubWithResponse call
+func ParseLogoutHubResponse(rsp *http.Response) (*LogoutHubResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LogoutHubResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubLogoutResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListHubNodesResponse parses an HTTP response from a ListHubNodesWithResponse call
+func ParseListHubNodesResponse(rsp *http.Response) (*ListHubNodesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListHubNodesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubNodeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveHubNodeResponse parses an HTTP response from a RemoveHubNodeWithResponse call
+func ParseRemoveHubNodeResponse(rsp *http.Response) (*RemoveHubNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveHubNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubNodeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHubNodeResponse parses an HTTP response from a GetHubNodeWithResponse call
+func ParseGetHubNodeResponse(rsp *http.Response) (*GetHubNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHubNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HubNodeEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListMessagesResponse parses an HTTP response from a ListMessagesWithResponse call
 func ParseListMessagesResponse(rsp *http.Response) (*ListMessagesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -25772,6 +27895,33 @@ type ServerInterface interface {
 	// OpenEditor Start the editor the editor setting names on a file of a worktree
 	// (POST /v1/editors)
 	OpenEditor(w http.ResponseWriter, r *http.Request)
+	// GetHub This node's login to a hub and its connection
+	// (GET /v1/hub)
+	GetHub(w http.ResponseWriter, r *http.Request)
+	// CancelHubLogin Cancel a login pending
+	// (DELETE /v1/hub/login)
+	CancelHubLogin(w http.ResponseWriter, r *http.Request, params CancelHubLoginParams)
+	// StreamHubLogin Follow a login, sent every time its state changes
+	// (GET /v1/hub/login)
+	StreamHubLogin(w http.ResponseWriter, r *http.Request, params StreamHubLoginParams)
+	// StartHubLogin Start making this machine a node of an account on a hub
+	// (POST /v1/hub/login)
+	StartHubLogin(w http.ResponseWriter, r *http.Request)
+	// SendHubLoginCode Finish a browser login with what its callback received
+	// (POST /v1/hub/login/code)
+	SendHubLoginCode(w http.ResponseWriter, r *http.Request)
+	// LogoutHub Leave the hub
+	// (POST /v1/hub/logout)
+	LogoutHub(w http.ResponseWriter, r *http.Request)
+	// ListHubNodes The nodes of the account, from the hub
+	// (GET /v1/hub/nodes)
+	ListHubNodes(w http.ResponseWriter, r *http.Request)
+	// RemoveHubNode Revoke another node of the account
+	// (DELETE /v1/hub/nodes/{node})
+	RemoveHubNode(w http.ResponseWriter, r *http.Request, node string)
+	// GetHubNode A node of the account, from the hub
+	// (GET /v1/hub/nodes/{node})
+	GetHubNode(w http.ResponseWriter, r *http.Request, node string)
 	// ListMessages List a project's messages still waiting, oldest first
 	// (GET /v1/messages)
 	ListMessages(w http.ResponseWriter, r *http.Request, params ListMessagesParams)
@@ -27056,6 +29206,194 @@ func (siw *ServerInterfaceWrapper) OpenEditor(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenEditor(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHub operation middleware
+func (siw *ServerInterfaceWrapper) GetHub(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHub(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelHubLogin operation middleware
+func (siw *ServerInterfaceWrapper) CancelHubLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CancelHubLoginParams
+
+	// ------------- Required query parameter "login" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "login", r.URL.Query(), &params.Login, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "login"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "login", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelHubLogin(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamHubLogin operation middleware
+func (siw *ServerInterfaceWrapper) StreamHubLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamHubLoginParams
+
+	// ------------- Required query parameter "login" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "login", r.URL.Query(), &params.Login, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "login"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "login", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamHubLogin(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartHubLogin operation middleware
+func (siw *ServerInterfaceWrapper) StartHubLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartHubLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendHubLoginCode operation middleware
+func (siw *ServerInterfaceWrapper) SendHubLoginCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendHubLoginCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LogoutHub operation middleware
+func (siw *ServerInterfaceWrapper) LogoutHub(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogoutHub(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHubNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListHubNodes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHubNodes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveHubNode operation middleware
+func (siw *ServerInterfaceWrapper) RemoveHubNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node" -------------
+	var node string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node", r.PathValue("node"), &node, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveHubNode(w, r, node)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHubNode operation middleware
+func (siw *ServerInterfaceWrapper) GetHubNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node" -------------
+	var node string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node", r.PathValue("node"), &node, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHubNode(w, r, node)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -30379,6 +32717,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/land", wrapper.LandPlanTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/skip", wrapper.SkipPlanTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/plans/{plan}/tasks/{task}/done", wrapper.FinishPlanTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/hub", wrapper.GetHub)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/hub/login", wrapper.CancelHubLogin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/hub/login", wrapper.StreamHubLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hub/login", wrapper.StartHubLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hub/login/code", wrapper.SendHubLoginCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hub/logout", wrapper.LogoutHub)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/hub/nodes", wrapper.ListHubNodes)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/hub/nodes/{node}", wrapper.RemoveHubNode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/hub/nodes/{node}", wrapper.GetHubNode)
 
 	return m
 }
@@ -31300,6 +33647,383 @@ type OpenEditordefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response OpenEditordefaultApplicationProblemPlusJSONResponse) VisitOpenEditorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHubRequestObject struct {
+}
+
+type GetHubResponseObject interface {
+	VisitGetHubResponse(w http.ResponseWriter) error
+}
+
+type GetHub200JSONResponse HubEnvelope
+
+func (response GetHub200JSONResponse) VisitGetHubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHubdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetHubdefaultApplicationProblemPlusJSONResponse) VisitGetHubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelHubLoginRequestObject struct {
+	Params CancelHubLoginParams
+}
+
+type CancelHubLoginResponseObject interface {
+	VisitCancelHubLoginResponse(w http.ResponseWriter) error
+}
+
+type CancelHubLogin200JSONResponse HubLoginEvent
+
+func (response CancelHubLogin200JSONResponse) VisitCancelHubLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelHubLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CancelHubLogindefaultApplicationProblemPlusJSONResponse) VisitCancelHubLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamHubLoginRequestObject struct {
+	Params StreamHubLoginParams
+}
+
+type StreamHubLoginResponseObject interface {
+	VisitStreamHubLoginResponse(w http.ResponseWriter) error
+}
+
+type StreamHubLogin200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response StreamHubLogin200TexteventStreamResponse) VisitStreamHubLoginResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type StreamHubLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StreamHubLogindefaultApplicationProblemPlusJSONResponse) VisitStreamHubLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartHubLoginRequestObject struct {
+	Body *StartHubLoginJSONRequestBody
+}
+
+type StartHubLoginResponseObject interface {
+	VisitStartHubLoginResponse(w http.ResponseWriter) error
+}
+
+type StartHubLogin201JSONResponse HubLoginEnvelope
+
+func (response StartHubLogin201JSONResponse) VisitStartHubLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartHubLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StartHubLogindefaultApplicationProblemPlusJSONResponse) VisitStartHubLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendHubLoginCodeRequestObject struct {
+	Body *SendHubLoginCodeJSONRequestBody
+}
+
+type SendHubLoginCodeResponseObject interface {
+	VisitSendHubLoginCodeResponse(w http.ResponseWriter) error
+}
+
+type SendHubLoginCode200JSONResponse HubLoginEvent
+
+func (response SendHubLoginCode200JSONResponse) VisitSendHubLoginCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendHubLoginCodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SendHubLoginCodedefaultApplicationProblemPlusJSONResponse) VisitSendHubLoginCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutHubRequestObject struct {
+}
+
+type LogoutHubResponseObject interface {
+	VisitLogoutHubResponse(w http.ResponseWriter) error
+}
+
+type LogoutHub200JSONResponse HubLogoutResult
+
+func (response LogoutHub200JSONResponse) VisitLogoutHubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutHubdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response LogoutHubdefaultApplicationProblemPlusJSONResponse) VisitLogoutHubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHubNodesRequestObject struct {
+}
+
+type ListHubNodesResponseObject interface {
+	VisitListHubNodesResponse(w http.ResponseWriter) error
+}
+
+type ListHubNodes200JSONResponse HubNodeList
+
+func (response ListHubNodes200JSONResponse) VisitListHubNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHubNodesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListHubNodesdefaultApplicationProblemPlusJSONResponse) VisitListHubNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveHubNodeRequestObject struct {
+	Node string `json:"node"`
+}
+
+type RemoveHubNodeResponseObject interface {
+	VisitRemoveHubNodeResponse(w http.ResponseWriter) error
+}
+
+type RemoveHubNode200JSONResponse HubNodeResult
+
+func (response RemoveHubNode200JSONResponse) VisitRemoveHubNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveHubNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RemoveHubNodedefaultApplicationProblemPlusJSONResponse) VisitRemoveHubNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHubNodeRequestObject struct {
+	Node string `json:"node"`
+}
+
+type GetHubNodeResponseObject interface {
+	VisitGetHubNodeResponse(w http.ResponseWriter) error
+}
+
+type GetHubNode200JSONResponse HubNodeEnvelope
+
+func (response GetHubNode200JSONResponse) VisitGetHubNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHubNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetHubNodedefaultApplicationProblemPlusJSONResponse) VisitGetHubNodeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -34003,6 +36727,33 @@ type StrictServerInterface interface {
 	// OpenEditor Start the editor the editor setting names on a file of a worktree
 	// (POST /v1/editors)
 	OpenEditor(ctx context.Context, request OpenEditorRequestObject) (OpenEditorResponseObject, error)
+	// GetHub This node's login to a hub and its connection
+	// (GET /v1/hub)
+	GetHub(ctx context.Context, request GetHubRequestObject) (GetHubResponseObject, error)
+	// CancelHubLogin Cancel a login pending
+	// (DELETE /v1/hub/login)
+	CancelHubLogin(ctx context.Context, request CancelHubLoginRequestObject) (CancelHubLoginResponseObject, error)
+	// StreamHubLogin Follow a login, sent every time its state changes
+	// (GET /v1/hub/login)
+	StreamHubLogin(ctx context.Context, request StreamHubLoginRequestObject) (StreamHubLoginResponseObject, error)
+	// StartHubLogin Start making this machine a node of an account on a hub
+	// (POST /v1/hub/login)
+	StartHubLogin(ctx context.Context, request StartHubLoginRequestObject) (StartHubLoginResponseObject, error)
+	// SendHubLoginCode Finish a browser login with what its callback received
+	// (POST /v1/hub/login/code)
+	SendHubLoginCode(ctx context.Context, request SendHubLoginCodeRequestObject) (SendHubLoginCodeResponseObject, error)
+	// LogoutHub Leave the hub
+	// (POST /v1/hub/logout)
+	LogoutHub(ctx context.Context, request LogoutHubRequestObject) (LogoutHubResponseObject, error)
+	// ListHubNodes The nodes of the account, from the hub
+	// (GET /v1/hub/nodes)
+	ListHubNodes(ctx context.Context, request ListHubNodesRequestObject) (ListHubNodesResponseObject, error)
+	// RemoveHubNode Revoke another node of the account
+	// (DELETE /v1/hub/nodes/{node})
+	RemoveHubNode(ctx context.Context, request RemoveHubNodeRequestObject) (RemoveHubNodeResponseObject, error)
+	// GetHubNode A node of the account, from the hub
+	// (GET /v1/hub/nodes/{node})
+	GetHubNode(ctx context.Context, request GetHubNodeRequestObject) (GetHubNodeResponseObject, error)
 	// ListMessages List a project's messages still waiting, oldest first
 	// (GET /v1/messages)
 	ListMessages(ctx context.Context, request ListMessagesRequestObject) (ListMessagesResponseObject, error)
@@ -34895,6 +37646,244 @@ func (sh *strictHandler) OpenEditor(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OpenEditorResponseObject); ok {
 		if err := validResponse.VisitOpenEditorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHub operation middleware
+func (sh *strictHandler) GetHub(w http.ResponseWriter, r *http.Request) {
+	var request GetHubRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHub(ctx, request.(GetHubRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHub")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHubResponseObject); ok {
+		if err := validResponse.VisitGetHubResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelHubLogin operation middleware
+func (sh *strictHandler) CancelHubLogin(w http.ResponseWriter, r *http.Request, params CancelHubLoginParams) {
+	var request CancelHubLoginRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelHubLogin(ctx, request.(CancelHubLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelHubLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelHubLoginResponseObject); ok {
+		if err := validResponse.VisitCancelHubLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamHubLogin operation middleware
+func (sh *strictHandler) StreamHubLogin(w http.ResponseWriter, r *http.Request, params StreamHubLoginParams) {
+	var request StreamHubLoginRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamHubLogin(ctx, request.(StreamHubLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamHubLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamHubLoginResponseObject); ok {
+		if err := validResponse.VisitStreamHubLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartHubLogin operation middleware
+func (sh *strictHandler) StartHubLogin(w http.ResponseWriter, r *http.Request) {
+	var request StartHubLoginRequestObject
+
+	var body StartHubLoginJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartHubLogin(ctx, request.(StartHubLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartHubLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartHubLoginResponseObject); ok {
+		if err := validResponse.VisitStartHubLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendHubLoginCode operation middleware
+func (sh *strictHandler) SendHubLoginCode(w http.ResponseWriter, r *http.Request) {
+	var request SendHubLoginCodeRequestObject
+
+	var body SendHubLoginCodeJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendHubLoginCode(ctx, request.(SendHubLoginCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendHubLoginCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendHubLoginCodeResponseObject); ok {
+		if err := validResponse.VisitSendHubLoginCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LogoutHub operation middleware
+func (sh *strictHandler) LogoutHub(w http.ResponseWriter, r *http.Request) {
+	var request LogoutHubRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogoutHub(ctx, request.(LogoutHubRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogoutHub")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutHubResponseObject); ok {
+		if err := validResponse.VisitLogoutHubResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListHubNodes operation middleware
+func (sh *strictHandler) ListHubNodes(w http.ResponseWriter, r *http.Request) {
+	var request ListHubNodesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListHubNodes(ctx, request.(ListHubNodesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListHubNodes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListHubNodesResponseObject); ok {
+		if err := validResponse.VisitListHubNodesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveHubNode operation middleware
+func (sh *strictHandler) RemoveHubNode(w http.ResponseWriter, r *http.Request, node string) {
+	var request RemoveHubNodeRequestObject
+
+	request.Node = node
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveHubNode(ctx, request.(RemoveHubNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveHubNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveHubNodeResponseObject); ok {
+		if err := validResponse.VisitRemoveHubNodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHubNode operation middleware
+func (sh *strictHandler) GetHubNode(w http.ResponseWriter, r *http.Request, node string) {
+	var request GetHubNodeRequestObject
+
+	request.Node = node
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHubNode(ctx, request.(GetHubNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHubNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHubNodeResponseObject); ok {
+		if err := validResponse.VisitGetHubNodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -36782,459 +39771,502 @@ func (sh *strictHandler) SendWorktreeReview(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7L17kxs5kif4VWB5d5Yl21BK6tnZ2820s7VsqWpaN1XdtZJqyvaWbTQwAiQxGQTYAURS3LL67mdwdzwi",
-	"iAgGM0mVqqf/kZhkBJ4Ohz9//stVqTdbrYSy5ur2l6stb/hGWNHAX/croewHsXSfK2HKRm6t1Orq9mp2",
-	"Javb2RXjqmJ2LRh3T14bJquCccOkYrK6hS9fvuF/WPxT+Z+rgumGSWuY4hsxU9+U3IiXUhmhjLTyUbxg",
-	"Vq+EXYuG7aRds22j/12U1r1VyaZgRqpSwMuG8UbMVKvk31rBtKr38IZUjPu3bmbqqriSbqhbbtdXxZV7",
-	"8er2CsZ0VVw14m+tbER1dWubVhRXplyLDXcT3Uj1vVAru766fVNc2f3WvWZsI9Xq6tdfi6t78yDVCpbm",
-	"cF0++bVgHB4r2G4tyzWThiltWalbZUXllminG/eAWyq3gO5P2whxy7jCFmaqaZVyj7jfS73ZuMWWhvF6",
-	"x/eGbWT10raNumF/UYLZNbfYC/Wvl/AercdM4QjmS92qKlmdv7Wi2feWZy6rq1NW5J0uJxFJpcs+iVS6",
-	"/MoIpNLls8jjx5qrSauxrbn6+pfDjfJ564EdZJfkUyTQa5wnO5wmrEO6eG5NOqvmmgjLdjMwD+zmWVP5",
-	"aPX2A57Jw7m4H2FfrWg2UvHawGDhQBk8nrwRzFjeWHeodcP8+ZbKWMErd2QbsWyNVKubgfNprN7O6b3O",
-	"Ga3Ekre1vbpd8tqIMPqF1rXgCob/iQb2TjaHw79XjC+MrlsrmFs5t7RaiR4buTaBUZk7Jj6XdVsJE4ho",
-	"YNCVbE7iJ36gRDpT6GaASJIxVrIZGl+kjdPHOOmoe5LoH3f3/Vd23v1Qn3VQfiYa+eopzQ/0a6Y0P8ZB",
-	"DurXKQxww6ViS92g4FBrJQaYon/zGZv9q3vVbLUyAkTGHxu9qMXGfSy1siQk8e22liV3g361xSf+078b",
-	"N4Nfkp7+z8ZN8er/eBVl0lf4q3nl24UeD9fADV8Yy5Zc1qK6gYWjV0GQLaGDbaO3orEShxpYZn9Rf17j",
-	"MSsbwa0ASc/xasOkZbu1UGwlH4UCUavkbmn7zLa4klV+r+7fs1JXjun3JOay5m0l5qWuRNJiQgZxg/7X",
-	"Fchnfvh/DU/rBRCXk1FL/r009nDOvMQFkVZszLE1d6v2a2idNw3fHwwFGhwYwg+6EvUT1l2CJLtzV6Y9",
-	"XDPciu4+bFxP03fiZxCWrcH32LLmK2b5gzAFnOhk36/NQdt+T/wpyjbO2VY0RivWCF6ZiTsK7R3dWFjV",
-	"wd2dTnbZKcFkT6IQ3OQJZHIVWs9OzOtTE2b0M6hUfbKQSBkTTlNxxUsrH6XdD5KGI8BKewWuFl5Wu2Pa",
-	"kehOGsFUW9c37Cf1oPROIUE6mjJlI4RiJVdO41sIIIFwuW8bXQpj2I4blAVFxRZ7xtmu+sys1kzXFbOa",
-	"Gb53Ixeq3bj1I23RsfGqdkSy49LiFy0OwK2qGxFf1MIz8YN5l2tZV41QI4qrIfKvWKsqOIyFGyDeLCB4",
-	"2LWQDfNN3TEjrHuilsbCLpqCrQR+hOO0EvZHL6uoGqY1jbiAJA4oq8CL5TNeLHX9l+XV7f+a0NJbeuvX",
-	"v/YvkD/pHVu2dQ0bRI0ziZTkvupTWs2NZVbX1R3QAGuVle5ltubEQfiKg1RTCsZZI2Cj2UKspDKMMyV2",
-	"zAhjpFY37L11dLA3+LTrzotgTChkHd1tdQuAOzTnsAZL3Wzcp6uKW/HSSmAih1vfNo3T7aucTPbzWjTC",
-	"z/Xt9+9xiobLCu483TwIvKb40iKD3uhHUTGprHa0S3IE/MAraEnUy+zy6MYfFVZpgWYRIvaj5Ds6djxO",
-	"pmBK72ATtGLiUTR71oiat6pcZ1lB1fDlyF3E2brdcMVqsbQMCQOPuVTb1rKF/lww5bohQf+zPcYxhiea",
-	"3FpCVeP7e3StRNPozGr9BbQBtwEoKt2x3XoPmyEr3Au3ipN2Q3yWFljsWC/uIdfLmz/816AOGbly5O0k",
-	"VCf4P8i69lwQfxrpXiorVqJx/a9FnbnbfxDG8JUw0Ly0qHk7bglf0HbeEhNb69rxuEoCeasqCB17tnNU",
-	"tRFc4YvSsBUJ0ocjQRkjf5kOXsjwqzd7eE7z9p6O3lrv3PmyBTNtuXa//4nLh5b9880/FzCgSpptzfdH",
-	"qA0O7UIsNR6Rtbt11u66cnNh96xcc7US3cO41rvYK1eMt1ZvuJUlW/K6XvDyofD2TCOEmkQrXlQ6+GHL",
-	"gSsFu+OIRdVxIt67nojFkKRo9ZbV4lHUk8bU6Tovy30CWY5EJvfIs/pzfB24/rSr78fkeff6ZJ3C0wRt",
-	"OJHt8QNF2ul8gJz9z8N72ejN9tRr+Ud86fBW9pIYNw8mTMgwL7qBioBCULioSfRyFOy+oM0CPqQ0w+G5",
-	"91Ai89cQ0XJsDPgASXNT5TUrnDD4Hq7vz/FKBzbohk6mDRqA3ubOza/F1d9a0YrMPjsRZcPVnm08ewOW",
-	"ZjVbabyFHauAs76WTgBhcK89/S5KyKIRcNnTbXRwTSp/MOm5qyJ/Y8klLTZnVm8WxgJd3gKXOn54SMEX",
-	"1XyEq6I6h734zQKRFeUANxCiFRgwNw+icsyUCGVJMvqhtkQq2aRjTpLdfLoJoOZWOJ6PLwaXkWUrx5O1",
-	"wjkASfpZgYB5R+ybtGF0E6lH0RiwtLhVKGvBG5HX9aitZ0kZxnIrJnGzj/Ckk+a5eZj0xif3oHuB5OH5",
-	"oCrvrnGTHle/htxaXq7dWleS1+bOsYEgXoPxkZel2DpxzmbXqN1WiaSdpX0gNSvw3sYNgfWeJpYHE1yW",
-	"VkA2GDSMwrxxck3O6tflf0rAHT+BhkdsE8kV0bsQDq/y3A3b3c2C7ALJkSnIhpuqKyTqFam9EqjI01+i",
-	"0IdbyEv2gad6eeyQl3Sv5qhf4p2bCrperO6oYB0q6RyrRI7vsNFBA8jbqNl27SBWPwhl8kSCv3m9xOuv",
-	"Su86VCiV/S//OSu97qSq9O6w7ffeQHYdW8VnC/BaQ7cpjeV05SBWwgWZG9CxC6hHjbQSYdiDa/mtehS1",
-	"3oqMUcnbmiZYH/p2LPh2sM8Bs9zKh1c8x+6RG8mILY30IOi/qqTbU/CohXGRo7A7VKmM5bnAhn/RbCkb",
-	"Y1E8cpvTNO3WdoI/bNsoFq55dOvkjbJRUsyQs6MzJ9jIRxGbv/PXervYSGuRxR5znaTrRV0OrtePXek8",
-	"Z9OlwAy24XtWabiVdesjPW7RhATSquPCSjO+3Tb6kddkN1PCOgYGV45B77DSzHBVLfTnO/dmMHsPnqTF",
-	"3ssiIMi45WmNaK4NM8I68TXovT0Dohuc45PmIVmCeA2lonjGYG+5rAct3XthXnXEa77Qrb1Nw1YK+GMp",
-	"6+ik8kEvZstLdASmrMSiUcfAvTVJ7HqQKiMe7IWZKw2DUsap9JUbLsP96ToeD+WyR95IDvZMJyyyeEkU",
-	"7q/a0QPtMKNr1zatsbQSd6wSpTQkiHEGdw78FRwPjliIODSM2LjBuN/1TqW7h9MA3wA2md3ETVtbmXG4",
-	"xoHs1tqI0BdvBCvXonxY6M/CFMw4MdlNZkniU8kVWwhmZfnQkSGTk0xtHfb6LYjc+DPIuAuYMJof4ALR",
-	"TSWaIhwjcH23m4Vo3GrikQgjvzYg7AxsFLTIDfu03wpm9EZYkPncCXsLNOoIktm1NB3j88EC9g3Nfsvy",
-	"jKqWPu4K95Eb9k6zvW7ZjitgYSCNiuq/Z6VvUYvSigElQapKfPaUiYuI56ltDFqjtDoQ70DvnabT4ZYe",
-	"6Vvw0hMmUc5Cf3Z949txE++Y2GztnixsQIYvcX7E+dzo3G64B1AXA0WUTkpuU9Kx9nbFSlsP+d1y/sK1",
-	"4BXqfNKuYZv+yM06sqa3IMoBdyrYPTBn93JgTmCz7pCi5Yuu3AN2lomsqncvAd/yk0pIrvBsN56xhGj8",
-	"YQ87OXivfRCGnK1PF4L8hT0fMCr/DCZk46+AHffWQWWjzyh6byHoidc1GoPBqgbmdXdIg4Eiq441YTJj",
-	"o6Ypg3qqt1tRzUnBGBCg/a/+vOFA4WT7cK3Ce3F86JYT5iF2yz0DnbjhG1l1fThgZYqulS5d8orcKHYt",
-	"NskaJDcgWKE9YU1nXF5RmpOakpl30wrsCB7xYaY4Mm9idaP2TR3ZozTQLCVv2rHimOT80RsShkICoikO",
-	"QmDloyjQbDckL3kP7s1M+Z27hQfJ6C8NWwj3OClsd540b3PNQQAtdHtHPg33GAP9zkll3uNFxHDrNHCD",
-	"BGJiEK4nFWnvyP9ye+B7uWO1NrY/1BWx0JlSeqGrPUubItXy9tDAVrAHsbXBBWeC23am3O0PLg0IBfOS",
-	"hl8qp7CGMEOc8FU4T06Ng9FfFVdusFG7HRYuP5HZJxNfhYGwTqNPaNCJu4ldboi5dpkaRKuOdeJkzyxn",
-	"sYPDc78MBUz0dQwMlrVdKbtH6Z8arrCPQ6a8bPRmwBJEktGSJOnGWBRApIL/zURlH54dlmdMwRzJGRu0",
-	"PcN+4M1DRQLpdBakyI4xOBU3D/cQTmPXOK1OsZ109wJ/EBPnAwFt2W7cfc5IbKq42MDNvQFzoHBsWbvr",
-	"3pHWqhHbCXuLkXOwQzQ7v5oTtnrYGGE75HDcKBofP7CMxJ9yI3qrt/sf6XycYBFYAgvKW4fwt7s0nB2u",
-	"FL5wV/8N+ygE3SWu4xNiqD6B6rjdB6+bOdZSby2g2ewqxNiuExdiMLhKVgMq5FBI0l2ixifHGWwv4Ap3",
-	"orJQjs1h1AWE1pT0AbT+zdPjJe67wbc+boJJlS4zrNBwiNi4/yV7GVvylLVGxNAM6JtMGdw6dfz6MCoP",
-	"7rhkyUhBPskrk6eze7YSSjQg7PDK0Yh8FC+VbpUbvgDze+z4BK/ymB/balpjt/jgxYYIq1yKQxIR7hOF",
-	"fNi3+w4kjyQOPPEH9BaMFBSGo3uKu/oUl27quB7062ataEWPNO7Qqja2B9Ez/azw7d6RdOIW6rwdb0uI",
-	"7j6+fAMmTnARc/MQ7Hd4+MmvG6OLILIIzTA77r4KYVTkwN6TpQ9PrRGqCmf26ODGvU5hxlbjLjCpiqAU",
-	"HNrnkP1xe8Crpw6ox7wd2xrm3e90eSLnTgLRQ+zx1VUxZHuGNJxHNJi9yceMXTKv4ejmpTeyn82rg+nE",
-	"u/edLrOz8NJV2s6mOmgILnonS4nPVii3KukWDzUO9r6uz+O4yJjl0ccnsr1A9sYkz3d71JfzTpcf8cET",
-	"JZQnSGodMh/Qf/7n/Q/f/x2Q9Ini5IQXfwMayhFEEXZxhDTiUE+gjvzKfKABwF1idNuUTinbpYFCFtJr",
-	"ttpIq5u9m5so4ZNu2E8fvmcZIelgdbWal1ota4nD9sYGvRVOXy65KkWdNR1oNQdRQq3m4KnQbaeBRkCg",
-	"Q7A/ZNvAaR07qR/xqf6u0MvDu+ETAU/cjgmiOVhH16Ku8xK67/iEc3CauIudYWwDRvMvIXgbnH7wrBPh",
-	"nFQ0VSD6yoS0iWLHOzAeHGrupd5spM3ebGs9ECI5HDvZCbpMDBxGlw8i38uEAK6Ddx5FY8ijNYkd+ecL",
-	"P10fFANTDMPrDCa7iCi19VbwCXkMQ/YIMPmgufTT+3ffhiBQkF25Ya/W7eKVVNJKXt+xVyFSyuot+2ZX",
-	"fWZrUW9ZpUvz4qi0NC4eQXebKnWKqW4kRGx1INQ2Sk+9i0w3FPpwulQ1GM/71HBfLyQPWBMhqHGiFc/I",
-	"/51hV3/cWxGcMhQk6Tud2vCpUtqEkD+u9uRfXqDf+kmhf08MsiPyD30EWglzTTaGFnY4Wm3gpL6NkuSg",
-	"iHkoQeIJP7LOxwkn6F7UGTi7l5P2u8/QCcojrMaYbBWn/RY28sT7fMGNODIf8N9jvsXOcQheuRssO7GN",
-	"VHLjRJw3OaIeFfTBsA0pZk6ZPW4phYEfXZp8YJvjlpPD2mjzR4PaoMGBIQw5sqfT3dZthW7N/FSukDMV",
-	"YBs+t4YHaqUdpjQ4tpPbvOf0ZG/2kGPVzX9wyeJBe/7Ni36bzvNP5uiSEiWecqxpHDnmdmQd8lTsD+hJ",
-	"pByW9hhJx9YHBvcxEONQBmKlS3DrrhohKgj8ASLz3mVPeRuylTua6+QOyy2xQbG7Kq4wZg18t434dwwn",
-	"yalNbmh7NXjsvOPNGwhCKsfhUYkqo/fySWV1Pr4DvciDDj0gHsclIqLOSqM/DyylTo7jVegHzJSniUsn",
-	"h5g8SHCJZ4fsRnpNA4dgBRwXBRSC2OiG7P3/7mcBpnpLwf8nhn1g82PLF0ZAOd2ndDDEgcg16nuP2xhX",
-	"J0f731bSYjRRnrLyU7g2jPprRM0tBAnrDoRaoMScSLtq+ICHXeBwiqvEwoXf+djaa8PKtZalMMNdTEqI",
-	"8ap7zIkZS3H5lCAIeZcik+rg/BRXlPTCylpC8j1kvwjDrKYBTzb9kyLuRJEMmEx+8n13dCfRI0ndoO3z",
-	"m+HXbJhEhliQCAQ0tthEZme7b6nX7HCbRjdvsxnRHy1fOCXRPcHQCYxp46Q2YFBZa0R1Q9EK81bxRy7B",
-	"gFHMFK/B6ePBvwpmZSXiX02r3L3trWUF2+rGzqWat0bEXzFqx7WGKTnaxhaQWuatMu12C3pmMVOlVkqU",
-	"bg7zWhsLYdvu2wo5sWNeqE6wbyq9U7XmFXXiTmUjjNWNmPt1fIF5+cuZAq4ntsY7vdk3aASkF7eNfJS1",
-	"WAmTvtugIdINbaYWe6DIt9+/9wn49A2uXjeqqYVUiAJEigbRrQIYIuldc8sfiHlt9Vx8lsZCLhBZHf3C",
-	"0psraefuQWjzkdey8gqa/5Oo3P/Jm1W7QehJ90vswOt3G2k23JbuHThl8xBh5Z8oa206X+DupjlVCTKc",
-	"5Y2NbYQnki2HeFJVxYeQKOKv9Hdg5ouGqzIZeogyjMFgXFXQRanVUq7aJmk3QpjgAxvM48C/nT49t3ru",
-	"GoBv5rUueT0n7cR97Z6IYwt9L1qzh11zj8aRwL7FP+HHkJ7Kjdv7ZsebZPbb1qzTRY+fKwF8tJqvBU95",
-	"2Vyaubc/h+/c5NxwRdX/Ni7kwekL39FsDs8iqmjpWXQDO2AU7t0uo8BAvpQ3uNlF5pD8HifcPcp+OU27",
-	"SckULBHzaCBERpD0S1+ERpSeBxUsvtZnEkCWmMsyp9ODl31nQP5c0aPBi4C/Jgs3N3tjxQZeAVaT7vEB",
-	"l4Hd3gpVCVXukwVDpp/MrdLlnFg3BGFX6cQDD8B4QPdf8jD8GRYf/iLjKcUOzn1W467RajXHY+cf7VJN",
-	"+GoplTRrQTmVPcrBb1IiiSSsOqPsUC8cGvfNtoV1zWkJ30G/P9Zc+QDPE4wmpt1seDOEwrTjhlV4uoKx",
-	"FtKrupAe0gaBBBAOl2LHKMoRvz0lS8yPKHe7/4u0H4Mr6YRZYkPRabWSNruUbZMJq3rr+Av76cP3xy05",
-	"8Cs2kxv+946hPmkCeYH8vu8Z5mzlpNPgKszH2fYWA9h8Zjnyc4OR5CaXZDv2ovasFZutNSOQCo73BUyA",
-	"NRA/A1gjjL6+YfcL/SjYGx+0tOaPkNgmmN3JcgAS5ikGlgFDfJKTeZh/NRw/mYCO6sanSg0BAeRi7x0b",
-	"BBsDYBBALgDf37G1qCsKSUoQdQIGRwKpExF1aHGzcDqeEqg74MC1fBTIjSnzu1UgUTSbATbUU6Ayv3+2",
-	"x31esjpIUA9Z6xDv67ciSTz39HXUDkUk+k6akjcVWgz6hqjn6ycjPeetXx5QZLLxyx+1Y+aB0PDIkIY0",
-	"u008zhOHch7dzvebG/Kfxe4S3DMax2JcaC/kQqo7Nmtfv/6ncq03Aj6JV6QEmGOhF32Gq8RuIrvNLcJf",
-	"tkJFu82z4x3OFF80esMXkw1K3WaeZF46ewzRkamd0ZpzipjUt+bkSMVHsPXu46ZcyyloQv7BIXfqeGyH",
-	"t4XVgj/i5Q7ulyVE0LuR9YArCAQqmsm+ktCEG3aPmeZ6Cf+bTvkAaARzAqgoBMgmPq0SzlKMbYA3XpwS",
-	"hnAEtW040jAO140OHRUTkrkO+3FtDHcT5w+5yO/u/8XnI4eueBgP6A7j5u6B8QT7OvQ5B51kWJz0zKu3",
-	"P40AZaYzNECoQcDQw2GeDJTix+ehYScsW0+VgnEDbjHQpTsnb9eyrm6oSWb4/mCpMcolZKEXl1r7/wjR",
-	"KrXOaSrvrWFNq9J7EP034Ajtof1xte+m46dE1rSK6Ud8Jw2bQ/q0bg91U0nFm+kwvY5KPtY6i9Q7yRsC",
-	"DaToYKPKGlgAcK7ZYw4E/sTzA41PO98buLHdeq7JTHH0ZD9/ZGS5Oj42t5tkhtcNA6tssHqd2nvAmu6x",
-	"iKnz9Tfq7ySuyit2SIgdmuhtg7+eOvdCnwmHu7LoiD7+rD83WCuw6IyktbRDwki4BIIaf5qfechLeSzJ",
-	"2lhePohqrkeStD3SCBg9Q3oixD1EnE9sh7LZwhPSFglQ6IIbyFCCKw6bI5IFpO0PHsLaMq1IxPexxfh0",
-	"ESBLnBxF+fkeCec8yIhPZn0TL5QzM7QnMq9BgeR9QoEJZ7kNDAVpAck1ohh7WYotWgv7wuvap0f2txAa",
-	"JoQIIpfon6Ts00gz9ETTKjMB2wIRDOGYHeEbkRskR2DwPD8p+lIsQYPAo3WM5t7Fp0lsnPLWRWM3wQ01",
-	"ZRQfWjUEvJAJ9eysDPYxtO7vOkuYhToL89NLf9GhSGw0ZUBqH3yx5Y0RGMjjk64OdtPYhss+NOBR7rvS",
-	"mG0yVVt6f7pmdGwP8MqZILUP8LSjQwqy0uQhebTY8RH16AaWsuhsRTzBuJyD1NLofNzXvaIqCY2o2hKR",
-	"u7R+YLrFRHeuEPvKhxgp2+yvqbKC0+MxtzfyRUSmnXS3+9RqpVmt1Uo0STNoZ6zzXhkYxDD8ieOisDNB",
-	"XRyAFH6UAxgJOGVcF4zcG5jnuDSH44xM1/U3tEF5c3c4I5MJ66ihe5xOkoJY/RoJTuMCpLFGu3+lXdMJ",
-	"oETNO5Y6kkljJ/g0Jag+C6KEmRsqq2UOiaWWeP1PYMGJ3X18I6DNcXs5FsIciNkeOjyAkoAnIXd8eraG",
-	"UHsmJneCzIZCc3KXnlZ4Jj3eGf47EqJKqHYgr6DsQnY/H+VFYGjgUhPXAVnywMIHwgj8ZdZO3AHDyvHZ",
-	"F5mpdxfkcCWO3jeniQfncMNAj4M01apcZiOdm6ZVebl1HDhqOH3jUBFZNnqT5X4UqDFSXQdFeApyciN+",
-	"hX4dKPkIfp1h74KP8HgWXvuWN7yuh/FbjI1qBsSZAihLGXWButY7JM0b39bE4hK8NaKaN4KbvIC1JzM8",
-	"Plj42kE1QL65X+5YNxKO7Og8QArCMcLXU5me8FEADV9D0+gb8Oj6sSBAgNEPmCpbgWJIdFI7BeUwKO+v",
-	"k0oYTBKdZdQ/piW4nZwDeqpq2o+RIU2nu6Md6ZvC9mLkkie7Hjx6StND5x1siycEiSdOr45zMW+RoMbf",
-	"IAzLQBLD+wBNO6hlH4OGAjEKwF067GnZCMGehBsKIw/B1IOQc3EbB9gS3T4yAMjXcinuSP8OmDMIY2U9",
-	"yjtao4EQ0tPhEfeT+DSgEYiXA4EhBunlojjSMLLJxqzAr55ozJoEhOpHFgBRMb7UJsn/I0H7HpcJctZb",
-	"u21DeXZoBiViX4/rgO+l9lsUIOCtSVYoj7pgxnJCOKP4Wnd/QhxtxDRVkwaEbz3PwePaaxsxdSe+o8fP",
-	"dTMO+5UIxinLO+bDfMgD4iW18aLP4gm4wV+wYItf42CaHA/UhLJMABDhKwZW8qA2okSj4jR4KjSXzZd6",
-	"9MzrJWmUSlu2FxaNgrphlHV0B6DtGMQG/DeCUXsMrYKlzg2eBHk8OS2qYxUMxUhCSG8ytUjz6UE94C2e",
-	"RaUUF7fkCTdqZGQjKHWAnRuurmhIrWTVK62VkDHoM2Bej3ee6W9LrIXqLp5wI3ixDMPkTaSq49L7aeEL",
-	"gx6isfX6LnKnQ8GVh6lmnW7e7ZDCJvsrE8P+BUVc97I2YL9jEDpyWU8gk2ROP/whRfzUbMcpxZuiNW5I",
-	"vxuVViLjGZRY/GqTxJKqfiFoVaXK32GMaRRR6O7z2SvRTxqzIUB0OUxlTJZ5yMhzryjlixtGD7F3aLFh",
-	"33z47i37b//5n//vFznjcHWUS8dsM7D/L9pVNn3wO6kqQyGFgC5/bVitVxE1OONLGKn3sXPMAS1WYMdw",
-	"F89IK2Y4ThBJ9pD/PPK6dedfPer60fEFX4uSCpwBnwR97yjCWKSstVR2qGaAZpUOTucTwd9ypRXGyxO4",
-	"rYVIaDMar9l9u23U7a76fAvEdBuCwKaVi6fgeV9iwERQAyowQLWtYI3ixiVElT2rMdpxqNzRWBQkFZum",
-	"K9l73kKlaZnAgNojlafPX2D6CcF/HgtjbM6QuN4ppu1ojlxVz55OFmDDpy6ZsaRnE0woXZDZZw8p5t7m",
-	"QwimRxzqRq4kmE6OHk7dbNdciWoYUkElQcY+wdNQnkMlzcPYvDPFrEaCFMPWkw/7Unufd1RMFfexx4Ns",
-	"9KOTCg8Ondtnzyug62Xm1g0oOq3cIkHAiMHCRZ4sIKeJQky5wYgkpzngzKDA68JNthF842eI5TpjqB4I",
-	"xO6lydP+mV6OqFRDFT6m+7J8m9MUGAqLomOX6C+h3xMDlXBthnHwk+D5CbSKsuhiqCIiXxgMtYb6x1tA",
-	"HEkZW0F/ywZ90NPpkS+yJYn4wsxT++6RNkyEjzksUwfzo+n1mx5Z2u9Jjj0MGwFtYQBjH2ogQdgPxdeQ",
-	"OPyUaO0k6ftQCuW1ER1rgBH21vfGlBBVrwhrwmE3wq71QNwjhAmqytwyqsjjttnpSaBmur2HkEL244dU",
-	"EQiq1LbJCvTb1qzHIHnASAb6MEWRGeZewbAiPDT5qTzLQdbJqqdF8dogjfk4gfwEB/W8ZKKbDNjhUXoZ",
-	"2lY0KhlmuFvaECmAfk8LhSFV4S2V3HrT/em7eyS+6+iC5iMMKDFrepABXb9k0DkabuDbHxnZhzEcpYpb",
-	"7qSfzqV1Hep3u/tbZWJORgPw82M8ojoMGSVSqOAjCwdat5O+xwIKoohHj7GFKHmL2MZ7CCeMETMkAp58",
-	"VWc95yffaacXOEPggFH/gwlsMPVtNqLmrSrXVMjPEqadwLJ/jQDIi7MIasFAOaIYkjp4+YEOKn2+ttWR",
-	"pfR1vdIicOloqZkzLRyWr5uwcOce1rFlmk9SKyeOypt+Kx3LoGGJ+zNomqfXAAyWZwoenziLUAAQBctA",
-	"Mr4GIH79xaoADgbXELcZYczB/NoHag/BDjkLaHqJnQVw8oI2gifpxc9SOEvddkK3h9AtJ2lf1NppKtgH",
-	"gNA5jydgOvjAB6yb+ZSKW0tN2fb9mgVUlMaCqOLvhI2sqlr48+tWaiCEPzdEmvpASJSRKyWXsoSyvms8",
-	"/twd3e1WKGSq/qT4gptufVbSWIKxgFTrCmq5CuW/MfRcAEsMKEAecSqtvYgISPDxb61o6TsoAxX3HqEy",
-	"AtRQgPKh6qUe2iqMwuxVGZ7shWy4TcXGU2ilRthGdrAdY2YT9J78gXI4Dm9u9bzq4vzFU/JB2Gb/RBCh",
-	"ZSNyutpHvEQACRk5LRBLCPGiso6lbmsnDzKa7WSaadUTSrQ8PfyuE3GHs/A3BcAE8M8IGP2H1+Po0bm5",
-	"fCQMrYxKCGiX+dGSm8ZqVq61dprYRqtVEXzCWLqNs6X8LCqn7fd8xvS72lPVpYZCrJ4XRRLqx2RzZJI5",
-	"ZH53Ugu2nbdedLECwKIHwaDBMSVXVEXaaPdcyZV7biHAVuihaA9tAvmqnz97oQFXGhCHDPR3m2Y6xdL6",
-	"4BWqobolpVNBAftFnffPPYh9PtW40taKij2IfXS91Xp1U4tHka82AgM8rhW6Hv3Dcae6+xIqbHraS7bl",
-	"r8O0m1fFPY7cZFXcn4RjwlRoeGRI53K5m3g6Jw19SO7z7WSHHIBtKun2wgmuhPGy4dstdb+Sdqj3iI1W",
-	"EKTXwIMpClkBYDQDD0a4nV8DF93/GUQ/HD9UBxITahKmLY0/mQ7u2LNxxr/+1a3gXpXvyAX4tcDiTIgG",
-	"Hwpe66ASISy1VFYXrI+KEwcD0DLe1DIFlec3r7g1CF3ziS9yKQaWL7pehRv2LS/X7EGqKqB2L6WowZQN",
-	"I8dsjmBKB/RciAMytySVwHTUUjOu8Ju5rAqAfAfgd/iLcq9CTKGsZkqq8HNg/pVcLpMgNp+Pz+26YNs0",
-	"vO1upjwLg4ecfkGBiDN1mG1Gw5qkWeGgJj3q1m2Cs+Rf3WO/OnrCQKhcNmEjzFYrI8wtAs6hhLegFIEd",
-	"j9ZNr6Tvqs+Y4C3NDK5pVLWV3rFvKl2aV26n5x8/3X/69mZTvbhh97jOli+uDV3zfkfDgkNaKP4Ge6Eb",
-	"t+6WL8B5GFyJTNob9n6ldCMqiFSaKYrNweXP+JhHIawOj2Uax3imaqDhLOYwpE49erD1RaSsQDfFJGwp",
-	"TxVDebph62/DsUrc1QXSyK76zB6Uow/QGQnb2p+LIjkuYcMxUBtBw9wGF74cWqAA0r2KmYLjW1B8fRHM",
-	"lmagWLTpIlb7kE/HGhJEXIjwhCge1z16OAoqdENJ0NBJVstCx+O5AgEX08Wqi3tNk8jCiU7TTnPD2Ai4",
-	"naZ31YF/ec2rgr0OBWDU3rGImmPmL69mClHJ3b2wFDvRgFYA14cVde34LnpamIHAJ49ugKWtsd+ZAvXC",
-	"3f3wEEQVI51MSA1yUxxy9j1/+/oxZq7B7EInKRLPNwlm5aWoKaXlEgvg5QA472NSvCdhIAe6emZsPQTn",
-	"5RJ9a/Je+nDgHSa7+bIfMN5JnFp8lnZeZgsMxF7QYnTH3vzhv4ZAQSNXivukI1ylBwlo+4v9kfyjhKJO",
-	"hokbAoqBEVybHnTV5HE8FwsMuj+GaExsGp4dQrP5MukYB+VCjkIpEUiOFV8SQsmdTb+20WSN1SIj4fpj",
-	"Mmy77mU0hHM5xl2G44rSFK1pfriBOiaj/f9JGqctHXYPsQn5Q4DmLk9nuq6EsWC/YQ9iOxWLLm87Omwe",
-	"q8xD61LF2O8JPRCWehY1z/3kI7NDtlvViB04szpRu8KUfIsRy4j3YOy+Jv2oluoYPOBBVUsCdB6cN1RQ",
-	"Ep9pzr4g1E7WNVgen1J4jCxTCrGgcWf9+kwgjmEaXUfqmUKintj64/PNjI0lbyjrRHw+0209cHzGlyjB",
-	"bz/FnB6S8wZK+TttaL8Vd+xb5eQyn74uj9snDgNaXE9jUzibZP1chhWF4SmcayDVBliwVKvbFNRdGrYQ",
-	"gAOKDPrOx43jUyhXSMN4LR/F3UyhJJL+CMzcyRzSGlEv77zv/DY42ZOU/ZnynnVp70h46ozHcRFotiNJ",
-	"3bFaGwsPzlQc+cqJ0WCN0Qtd7Vlsu6t5+Zl3koSCF85HiST5QVCMJadv/RRLZ5+lWDukoYsdqOEHxbmP",
-	"p4EM5rjhOKlC8+goN1Kl3745sBRV1TzWLp7OzYeQk/2M8fe0+vk7XZ5Q+Ly7csFqaD1kSz4VB01GT5rQ",
-	"yXWHfx3cl0luxu50g80U161gwXGoG7bQiIXQ97X7HfD21SXfyHp/bVJKc2MZw0gIW3VKTXrI0rt+ygad",
-	"4E5FaMPUp/pstyltTzRjn1L55inxJ473hNo/h4K/k7VQ6Pc4J+6FjmyWlM30bA6imkL2j7GCA2ZFI5at",
-	"48cTYBCHy/fhCiXu5RNWKPgU82QGP6dAx6CreZs2zNKJefDpOGvEzrJTGK6c0XqJZZLABA39LFWld0dl",
-	"pnYQVCtt5TDxrhxAX+uZGsGDkEcwaqGafx4ICX5ztLHRlajxcO5gKGwjrGgwQwZMm2/vyfvhLu7uHrlb",
-	"GK0x0Iw7/TtDdbAP6+DLjbRjmVzJGKRhgPzTbm/hw3wrmhLLYLI3r187Ot/oIRe8XhjRjJYl8POyuq5I",
-	"gJxmsmqEEdaMN0xTwEfTOAnf60o+iogU8TRbQ7ooh2N57YTlN69fw73BoeIR5C1tuUF3CuxFvtjRLhBk",
-	"xn0Av10b9iD2KX3gjKSNMQZL+Sjma902x8+ro/TQbSDb3hTTpY+k1N3r3Bn7NypNl4lL32ykPc0E9hgb",
-	"myCdxecL31t2hFJkjv8jfTs92xq8JbEkBZxf+HPXaCvg8EKGG3zXCN5P0fEj6nNT2akx0x33udSkKbMd",
-	"H2bQkwbH+3PiGLtYOKt37WXMmMKIfNZ6ZH4hT/Fp2as5Ux8BjBwpZ+XX5q3ebLJoxU7Jys7LhycOujPB",
-	"tSYaDHYiXx03TgxVN+wjpF2i0GjyzPxJtVtknQ01HXarTt1fD795yDb/1morhi1rCTAdTD1rg5aVGFlI",
-	"pXfIz7FB7wOHdZWdlCkFteF1nY/uHqgQZwji2Zv5gnixJn0tVHIDIPY9qNsqhxhmPFazr/z21yy6rNjl",
-	"TgOkDsjlMsD4kbFPd7pqVVpzNn7+6yT7N3ldCfcUlp0G5PexQIqPlu8YhnvaUXoLT59yoDCJfLB4ODms",
-	"F7VeMFn5S3jLbblmtdYPonIykuF7lNe4CUGOu17W3c3Y0TkS7+PPwZialZyJQVKfRrGeVp69+2MbDzsy",
-	"YUe/reR0Btnrf3Ifg9blMnLoKYlsnqEfJp/i9xPGkteXqIHTM9bDiI6oTaGDY0OErf+OyHYKruRJ90C0",
-	"/XQb+SEEh7B7xqvKfXjnWKSw3RyCH66Kq/ur4updnrJFI5cyizyOpTjZhjcPWNnCP0uRTh6oK3gEmZGq",
-	"FBMEAw865qFjwiDGlvqdXC4zWipU0R6OD0uYQR6V9x6An7oQCZO85wsobJRbN7gspQ/uxucKih2o9whr",
-	"ZzXJJUM56s1KzPMj/nMa9w6Azm4XGPlr8PoMKesnQQICE89z/VbBDsGge1W6MIdFGgZ7kYchalpV8nxq",
-	"qcZk2Vu6QiTa1xZiJcGMlF+fNMhscnFBSuNO1rYg+vFTD7uaDnmMKPPHfqMrWK2smv7nBE4aTysQzNM1",
-	"8XMwGapBNg0i+HR+VLD/zlplG6hWUrCf3Onwedl5XlVc/fer4uqnr5dnUXmldKsnMjJHM2+h94yDfyR5",
-	"A+VRSomhXK0BQ7YdwQ0nWeyO8kh9q2CeSa6PnOXpJJV6+hENqvOUYM3OKg7Vthnize+pqh3780/fMywc",
-	"7Wjhp0/fvfyvA9pf7CLvFU7ta9gtBPI6rsablTgpcn7wXB5ard0v7hQt9nZy7IXVeg6DysR7PYqG/YH9",
-	"IP94Rn7rVf9QPCcy1zASmuPRnQ5azGnpEJh2gPOlVK6sj+s+yVFoONlDuKL465sToqjhmI2HUJ8UKjDl",
-	"HORFo6FDEPT5pwonE8UElETQOg8GgxA8VIshESJRrEZZ21cqYRDFP0OY+IE3D8N6xOhVeN45TL7KPghv",
-	"rj5rSEJE5+CbJIPoyQW6P5zzQI5A/KZL829uDfeDpdfOZWKhhFEskeYlnAnGll+PDN8cjhxO7bySQ1Ad",
-	"fp+kgIhpALyTmJpC+Q5rXVdOXcEUCI9cyJmpuVkzTLaRDROqOrGuDLfrE8MqRnjGPRbABtq9JR7meWYt",
-	"DYi0a72DmPwNROv/q9japHAbcrRGcMQPtmzRCP5gzsxrIKE1bslURvM9V4PIDXUEfptiTfE4ccfjqL+w",
-	"/JiGFvs5HVuTbCTEfYCVo/vL91IED7SPeCCndM2NvWH3LMAksIqLjYY0p5WwJluEzev6GXtsJQacvT6I",
-	"zb07B2N8gS4cwp0u2JIbO1/qZsebKny5beLH1qznEWYcIRboi4kofd6LmQd6kxZPBKDqkZaBOsiD0jt1",
-	"zrITB8UmTmMgE3GqJ43YG6VG1iTSEXgZtAomnRNWf8gJ2Nb1nHIA4WKu6wmZzf4k/NjW9Qd6+de/5jC1",
-	"f/wQq3ywxd79jRggGCXWOmFyKzKbS2h584Hclnugx7SAya1HZATovjoIBNPUKsBQzItGAz6o99bdPGAS",
-	"xF4LP7PFvj9njIkLm9WBC8Q4TziL+BGBnghXET8ROlkKrBKQVCgcNGf9mFglxvOk4Na9A1aVrC0z1t1x",
-	"Vgc02dOyLmWVuqcwGyMBAY8VKJLaE77kAHINOihhpzrU0SPjUd6d9RA8HdR2CCh34DIedxGkxynPXFZr",
-	"TKwB3QuSfhFetBfWf4ynIFvNBqi5rYWCU1nPsRkA6AJDaTWO1NU29YRoFF/tyj0daQZmNLZ0Hwjx51C1",
-	"nVBgD9O0oQGoyZ1dFjeE+Ug5qM7SanXL4AVKrwSGHbGIhjvA54/1gNdAXu0NnCwfuwH6LM7ctdIHj43o",
-	"d8+FkH2uWEbnP12VziaEqY6TRcAj7ZEFLMGcrJijBGLjrS7temqlBurgQeTyRN6HTSAb7cptKiBCOU0I",
-	"RwUV4hsiqMMS45NGobQdsH9DxhKESpKs6oEHndJFuIGarfTJwtGgAeJ0iNETAB9hkxqu0JlWnAw7OQzj",
-	"eAbjdNEnty55JNt0OOtx6n7MBuTxYzWWrGZGoJPDasxsCaH7srpNoE4mGFFUNpjoo7uhiPtZYl6ANnA8",
-	"xnJ1zNuP8x5SSyfV1Yv19JLggKFcfHoEmEA+EPU85Wc99sKkeIKPwbt2kAqTO+/fQ8qkhdrAeJEYxqsq",
-	"9Uk41gOqFsRjQiGjLW+s5PVRtI1kKXhe+nhLfZLVCc4rKGHkZcsOZFqP+Ss+VIgLs22g/I1pG6chuGvO",
-	"2NsMYw0oZmBO1MrfjAkKm6aK5MkLlOFuwW/p8XLoBvHHCXJCrhEoHn/xyEo1V2whar3rxWA3YEZSQrrP",
-	"0+4dsc4ClPj1D2tuqWY7rT/sObqm/BOEW6OeszUDlYljYMKfvr1/B7XaCHlysikhf2jf04bDeYXMPMfv",
-	"9sIWThProNWdjLQ9GA6UxHXNl94aOmR9SEmy41kG/VUsLUVkLPaheuzJo4xxRrmct2MjBDEnca94MJKn",
-	"j2loKHlWgcRB9ZlI6N2LaWJXYpM8zZQRrJN/zVgihhGgrEncgZTsmZee836MQ0yjgokaEeJR1XMs2IPL",
-	"IqIWFeynfHO5pKNsIPFIneYMu6T9J6uxumn8+KHLUrAuJrIV9h51U/MgyM8Y8lFaIxpwapisuagZqj2Q",
-	"u/rw4WdwtlY1eS27aQWhi/AEuQdrHgQUrhR2h4ySqgqDA9htBE5wndzGcgHoCsVqJnYt1A1L3Q9AObsh",
-	"vM983kdHQI1mllj8kSYaFDIfBkUXTUECR4onjBzmkCuOSjZufAA6lc8k+/F9MKpXn8lKXjBMqGH6kbIS",
-	"flLyMzMaEsawwv1a+wr3r3bV5xv3281MzdS9r0rINnyP0jBnP1efX74Ti3b18n0F+rto2DfVYvUStufN",
-	"H9hafGaVXElrXjghes0fxUyBCIFm+1qDB6dVlaCypbK6oxqICBTHRLnWlGEqq7Q84kztEPDU3QjQwg27",
-	"hyF9r1cvvxePovZj0ksGJfIC+F/SPYCJ+blxSw8ChmpB+bVQUdQw8bkUW/BPcUTGsHzhaHBbC7fy5m6m",
-	"nPgLebCEBSsNIx8dLCJUgkTJarjIpOdXBsBU2QwMgLOrOyijMFNOduWuPzocvrygISRb1gjbNk48MtJ9",
-	"CzmKhF5oRaN4Tdh1WP7wKpKHI5oks+n26vENpNxtheJbeXV79U83r2/+6SpxCL56fPOKlxw+r/L5iI6J",
-	"OMmRY+lYbrAahFbiGvADVg3fQEFWsG3bdaPbFeYo1NpJkYAbMFMxMbZpFQZVCOXWB8zHoI+X/AZJWFZI",
-	"wDf+CUo3DX5vKCU1U27mGhNYENI/4K8UPswtYPdKg/ktmCEA2hAmKTteOFPgB3bXrxsF+zYNwFACdmUB",
-	"/Li6Yb5oTlgUcHyC63mmQCq2mBGNrtF/es2MKLWqiOTW5Ca9A7cMUi3kAIsKZWrF7t/PVKd0gWPVsTuO",
-	"HBAuBpTrqTAPkEUgr/fV1e2V6+nebTCobIjc6Hb5D69fJ952uAi321qW8OarfzeYSIfX31HVsuRgZQaO",
-	"djQn1tz00KNzTYexxtIzaXHsbLsRgNzgMWrxDvA0/uoXXvJfX2FO7SDB35scZiAEFBS+DC6Q3y2eA2gO",
-	"8nw9ic1UQmPXhrJvAYT7hv1FiR5pBsqUCUFiXMJMOeq7S6pp46tF8ixBcDpR4RoR7UJu9hKNaYbvE951",
-	"64hpDoe1QFrrThTok9hJpYUJYgKKYTNFRUtveLNqN5D1W/I798+8VfyRSxAjCnCodMlWN6ySBg50MVPc",
-	"dI6iW98R+v0BN+2yRAydDFGyE3yRdM5Fv5TcndkD5GkedwFTvkFEnZZwDky6rHlbibmvWyvdC2l8zi2l",
-	"9kYJCQW/uFrjkT9/9ScrVMxZCTtecagDqgz2N+D9oVKgbvrP7Nztk6C+rnVdgf7hH0YWu03KQerWMrQe",
-	"3KX1MWcqRKfcMHAG6i3KCEGkyNbJLbwsA1gOAAaMQTj4s7kORXI7Z0yqR17Lao76SzhxgxSOi3iw3znS",
-	"io8EYKJY1mryK+9kAwrM5c7TyqcnDVwL57sMXC9+99xeYi3QSFlk6rVwnTvadwdLZ12ORECBJANdgLEK",
-	"AC/0IYWGcAVEQSIKJbjnBkW8Rtywn9GdAvdIJRvk9O4DVlgHQTZ0DUpxt5jmtUGNGW0S2JwnU/JwIjnO",
-	"lCYlGQZ/iwpYdwLw3nWAgEqHG8bin4H5uLsGgrpwxEDvP6cFWGEQaRPcshSwOV03AkC5nakZmARmV97p",
-	"QzaBKIi7LWMbbss1aRFgr4Nv9ZLxyB6uDS0MYmJQ1Uh6EeU4uHFMN8REqplCuTPUQdPakgp1ExzZr/AZ",
-	"1zL+5u44KnuSGjc50luoVzFTYPHTyySpABxfMLudNIQQQzKxB+SJHUNLTkJ1alYtDMJb+2KNqJ0g0PV9",
-	"go6MibAUx+AtCjPlL3mKkDJFAC4FCD8vkC6hlD0AdtEmw22F+lT/upLkRLOatbFYJzzuGkexYesYD1X+",
-	"kqiDVhQRGAIdzQMUulxopz41iM4IUgww8plCzF8EcWX3JFhhDeC1tMJseSkwCduxsEbXrFzzhpdW4IWB",
-	"hQed/soV+8Pr15ghUODxQ4btpZq7EKcI59DXrHePQsQI6YOwNLzkUSKDGfVWyFdd27QGipQkoryqZspr",
-	"Od94Yf3FneNeXj6MoJJk9kIpMtGCvZw2U05Qo8wNvHFwefIyW05Em6kgozGqMApRME5nc/ylL+Z1my95",
-	"EQXERnCjFfvGjSUrBb5AKH16nFTJAixUMxWVrx331rGlbtCUoYKw6vR9L6VSsSqDRmUK5IFqqqBQG3yA",
-	"IvhmqptLTyaMMBVAekuv9IOpI6Q6GYEK4gFz8RlLWPcJKn4Dt5GTJDoiAt+IOZgzi1RAdz+GJn3cJoFO",
-	"zVQ6nyKcfR+imJE1EombRD9h7B8pO/os1/7bpIdfuxa4YLXsSBxvzitxBI/jsMxBRItOSM8ozyGH4NwD",
-	"Dn68UXNcM6qmILi8+gX+/xVlklrkPMyB7HOIYmhCQBwLYEpInfQrXhwI8xi+dHy7aQWyE3jJy7J0bUA6",
-	"mNWbhbFwJyMnR+SzQPe+0rTxCMiyBlU4PEDJhXi9K8cfICbgLpZ4TDrx9d5MHEtvZnSH+YNH9piczv4g",
-	"xDaUmaSykzD8fUBw6Z7w7oHurGBxikiPM/TH7DSZ/qPV2w+EPHd5AX38uHgUk8yx8at/hmPzDoN//LFx",
-	"LWZVyWO61cE2rISNrO6SqxgQIcbYzjmWynMA0CCchGw8YuFpREZ7vzxFY3yGkjmQFPceAWhLYUzhzydy",
-	"C5RbKbkHHEFBqAemJTcb4izgjFAe1N5Dz7lDf//y/ysYf/m/C/b65X+DZmdXL2dXN+zPWC2ogYy8v7XI",
-	"+pwSwKMutNHRrAgCciwxG1iVk3p1gQK4YzolNwI8CMR+nIiLjmTUa5zWQswI/H73CdcLBexmymcvj3Cm",
-	"jiTBBgUJqLYzzKUSSNsLCQMpLO8kYeD1bywMhMzx5x9VTP1LuFr2un+VAJIPmaNXwvbwyAuvTdfk6OWW",
-	"mbLRKGAvlylC1EyZshHTzFN3zAm/uCJYD6VhUP8WdIFFI8XSX8FOO18S9jzYHdBLBeHpOWLzvNgjqk8w",
-	"bZZaPYrGoKtMKuy/8D6SENcHxSGl18SJjdyS0oxBBdaptLQ1IdjJu5uB7NHSs0FsdIPhKaSQg8/OaqdM",
-	"8rpmxGggnoZ9Aj0aML5M2JA0lzexiHBbuHWrPJY/hQnCrK6JJXzrtX/XZoFrj/yHS/L6gSH3b62ANSRL",
-	"LrRxldpuD13hpxQuSHGBXccD3RJKf+z1IM8+IFC9zgH95sMWYDmpGg8GmrnPr4OVwP15x968fv26l8U5",
-	"cdS+oHNi6PbYxK7Ro/DEWRA5TiuX1geEcWOUQ6tsd8gYABKST3PjpGSRJw7zkpLjULWFAT5LJTDOYedV",
-	"GL2dVBpbe474OxKI8jcBZUT64sVfrzCXtZw7tcXkrYNLbxvrmMSdRthj2iGKRMwUhKLKKnj8k5gzi8dt",
-	"pxHHRqUBYcZKzIRrfFgZ1CYA5vop8Dji81QeTMZrxN9SnxqucHYQ0yrF8oZR4QyqYbgXNsFchKwBb1lP",
-	"ZlRgITEcHrhyMShrLWoUcWfKfXSyoF+DnCLbracIgbU+lQ3mjEmdII2CSIyuNan8T3Nq3NwxMsmDvRL4",
-	"Emj5i9bsvVURF9LbCLCMg2WyqslGwBUFZUm1bS1b6M9DGrprtfA2aygxn/QxarUL267EbqbiYg7Y8tgE",
-	"Ux67z8RVwEiC7L06IEi3y4eTA0Ogabdb3Vhv4Di0pe7INNw1GmIYHAhQaF52W2SOGBoPOkyWd0A16El2",
-	"RXAszSNkfVzAnMRG/OiS+sGHtItfSUP4yhQCSlM/x/1FhfKDeRAid/o0530FHgQ6XHFBBB5SJYzAMPjf",
-	"4e3xKQrfbOUYAx1/qRx70csM5K1fJ2LCbqlmilLoDUOdh3GoQnTLsEAkBqlCuSJ0uEJ6RuBi4DjC8kMQ",
-	"LaC3aIxv0M9HTcZq85AZzN6jou++WPNH4b4tIcEwetvI+wY2UWBeyAbxrvpbK1pRxZhffAUTrQ14wG5n",
-	"SlpcFp8JHx90dLohjybcmYGMdEMXoIHrhkLTCAQOXE3+RnsRXVnAvhAqBTpM8plWQomG11FJ4qoq+sOR",
-	"BkIkOHPzRG8hxDLCelvRNO0WQf0wXG2m7uNl3LkVYBmhYaorFPi+UFWf7fuFzvD927QNcFRqpusqeD3p",
-	"gkXH3EyF8x7URD+8MLIlSi5vABDs0EjjWG6wGU9mzsmscrzY/XxJRgxt+8pgvwtLDR6bc3Dl/+FaYjxs",
-	"NB6TIP+MGW9+zwL7dx0zijt7WHmrYBHyBMOzjR0U2zCqaoK3NSuhJbGEKKKBHwoE5EyIQVe6AmaKQbOp",
-	"VJZKTYcBhujy9u5nYsC+hi033vdNvjFHCDGkdIovOCuRTXMjHfHuZplCVzz7qo7n5aSmPH0IxCNJYdHo",
-	"Ihw6uzaoeIO211312al/vHxot14ISY2STjJvtAkZblteQhoBqrmkchUzBWEsIYUlUnRwr6mKLSBs3rJ2",
-	"CwiD3JKuesN+UrV8EDPVs6AWKFHIJAY4ep3hzoOLHrKQIMzCKdMQIxKeJ4nGrPVOVKQgsUP9CN2oSvuV",
-	"gNxC3cwUJlIGuyxkQSRaT1BYMkcnUWZ+O1t01PL/YY7+hzn6H+bo36k5uneWf1NzdIdJcAPK5u/RNo2B",
-	"hcnNeMBB3+ETF9xX6mEgF2PRyhqlJowfWOsNJslhMuS5kjQowtKI5hERw6ShHoJggY+8akStMT92wMYR",
-	"EuB86K7XMdwFS1kFWGTXTcNbfbAYHPs5RPCWWi3lCtl5MF1CalqRxoTire2+gETGgEMBBuLkrsZhezGT",
-	"vU9E/B2XGH6LcdiUFA/x0starta2oDx+TmHpJVdYC3IjVWuFyZsVXX+Xp54P0M+44BoypSD/GPo6l/Of",
-	"V906mWjscxvruoGEx02kIF2OZ9C4B86aP4OaEElNKIuivk9ZBViJt8B8dCA7GAIF5z36wpJJI5SlhjUA",
-	"wouYPIqB5G89DK8hexyl4+QCEw6jZg/0JRDyhhJq3rkV/dLpNIcSBKwi427/0MbkRDa3fnesEVsIPPXQ",
-	"M7ji/w+fta9f/+G/0F+LoduYKiWn93HApziCXtSH7cvRG+5iOnCIWh8aTSz8MI2xJ8WYLykYvNPlWAKS",
-	"o+jzpR8lOTpwVBb7I7lG79Xx4+xBdLtZRskxnqnBcxzD3DqRcAWbXc1nVzEgrmDczhQkLENRUgqK62Ye",
-	"daPcbtg9Q+HadembR3UCuvAZ0G+wyCn4C2+YPw6O104YzT+/xgxb99sfXoMQVdc3LGEjUJsiJOz9+afv",
-	"Q88zhQUbYKDe9ls65UNU7JskW6RqwENasFrvROMm504kqxGceqZmV6/c8LBmCzK9plVuxfGXDa9wi4C1",
-	"M9twCfYjMDRh2y8KCnz2B6k3+QJnTmvwyn0RUPAO01IkGtmBv3LkGklhUZQAHP0RnoJjhEA4qJOicSmW",
-	"/bdaT+S/47GG7BvUxan7niW+0uWLabw7lJy/aHqCa/8LJye80+W4LFLp8uKJCbA13LJGPErwb7/piCCv",
-	"zF6VL61+uaIier8J33Kkhd90ixJE/gr5gsrXYz1ITLwDhWxhdN1aGAYmo9ORZk5px47TNjxuxezq5mZ2",
-	"hb5As9/UUj2gYOVUZGU1u1lBAqfpJvBgdEkHGMln4IGKTegyeNaAi1S6vDbeGBQ2RMaamtywfsYhwWMg",
-	"6/VJiE6XeOnYwd1MYUmWbh4ipthVn1klMZTDdSBCwIWvQRkSAUHUY+ZBApwk+w4RsqrPVKoYMdr0kkWB",
-	"0DH0FfDAJuaF4G0QxcBbdrOrPr+EtxD3xIMeQLs37M+x0omxfEXZaLHkScqm/L7NaV2fIiY6Ynfc8ZP+",
-	"F3kpv9pH6uNL+9SchLVXIxznZ1/ql6itZ73fq/I8nOdnoLW+cJQQbYGniidnh2LkG7HVRkKwcIdJ/VLp",
-	"cjRN6kiQsyeJgawdf/dcbmem5dwc3AcXyLjBTnCxkQGZAN1Y6q0UIU/qqUk57Bvr7zZ0qwZGl9gZnEL0",
-	"YnBbVsLinhy10IfGd4R8hoIiGOVt2wyqL/69icbjL23ffKdLX8xtWHYIbh8/GTRG2nMlHkEfQI5Q1OOg",
-	"k4Ilvo2YvHy6tRMOyG+cmPRnql3zQLUziKwgFlKIipxhTg+CGzaa2DEyCVMkW3elVtW8Jq0HPOPuCNM3",
-	"d5Tvjn7mpFIoHoSZQv8Vu58plPKlosz4kUazOsNMJZmW2JaX0ztn0HvZuSLfGUNWNVOYKoRBMa3yIJ6d",
-	"AmVUSf6r0iZw2JfTJn4K7X/5+/1EbYJ2sLOBZ1EtMMGNkzxLJ8AbkHQTLYkNZVcxaTMX+qtkXb5mhtHm",
-	"NSIN8Xxie5sgCsugjR8K+kW4nRai1Bth3BklNgMv/yf2JrB0Wsyd3Bb97SRsDfeubs0cn7wLjYu/tbz2",
-	"ChQNAdma0h2+NlPRX+CZl+8qkAs6IfzcHKeIzRagNsxDndsQ75M9v7fkJqcg2CIaxWfUGyKHoKZiY2sA",
-	"tuI4b8pmOh2fw4Ic+MbbUJ7zEuwjdkAlb//DchGvJuBZ8dQL8ANux+OpkctAfxi9hbgDFvB4D5lKEGsH",
-	"vStPVRbIyfAhdHDpfcJ+xuzZYbJnE/iuE8Wg8PyD8DV9/IOf4dcs6BFhJHU1hsPQ8SHE8sFIZp9qE3O3",
-	"vXE8rXbXgz2dKXDlRngMCK/0FarRuLvSStz6qtMgcvqaeFiThv1F1eBjmykYjvY1d2+96IheRR9wKXtB",
-	"eFgxC3y6aBzuYYxdG19NBI0/Za2NL4vlzXtwbZPw2EHNMpTwdTNTybIFJFTCOs2CwSbh34GFi61QlVDl",
-	"Ppp0AtOntnu3SHjjro+lE2LSwZRYQyJFtPolkGShyDUu612SMH/Xi8e864Sz3g3fHW7RqbbKZW6Nv8QO",
-	"vvB9gb2OXxm0V/0QB0psi4VNezTq2Mc5ze0nDDUE/F/I+I7xqwkdJx8pPMDXJfLnGwudhaI6/mLz8YCj",
-	"oQIhaPBy4QLej4XxYhNwBY44630eyskO+4DKP/1i8K9cHP+SJjV2YfutuogTOgaPgpy04xIRtJ2C5m/x",
-	"A8p69Qt9GsehAqlA7K6TyiMrDA92usZCgD2g4cte1Pw4ZpI0JW8qn4Ry+Z15hx2KalieOrvdFbtMkk06",
-	"m5ORoTKwvZtkhZ4H3Xu4624G+SzCywxkKDZiJKUqYSpJ0lQRxLT06YG0VqG+IJmN30G0hpfKbfqIVR6y",
-	"1OaOaieV3F3bmMnhfYJM6V3gEduaq/GrB574UmFqw9FkkJLSlGsJuRWNQD+nEwApFT386AHwnn+F/QiL",
-	"89sHnElDqSB+irgnVush54d/suP8CGQHVVYylVUueXO6tRy7NmFKF7kzcbEW+2DGnAAZ/RuFcXUjpjDa",
-	"6r/9czFTFL6FCGbduAmcXhevzMf48T26ACL4hpvJTbDFkDGTyrz9z/sfvmff7KrPbC3qLTb84tbD9G6p",
-	"Mor0im4jMNmHAQpGKSjmkQ5azVWvtAA1YG4YxkogiAZXGIcMWp1XMEqNyd9mpkIoVyN2DbG4tYCx3vlY",
-	"rFhyZXPD7rEMnV7iBGYKTaMQdAa/SBvqFxEeJSrKTvBFFmm9yfsOQToQe8PXXsL9pgC0YEXNhaSB+o24",
-	"wpCIGOKgrp/jUUmXuMChpQ6WWImvq1q7r06K13In9qIBW9DBF47Ycn2OX96wrBeP2YIN6gRtFZFUwP9X",
-	"tSVIsck9/eoX998RKR5b7h4CIviYWEDi7y38PJdq3hpRJJn3iBHfpyD48oZ9iH7HXi+CPyJqwUwRW7J0",
-	"g/cKMIRjGoBhm1Z18RLTAXa1+RECn3bpdybd7WDwTOCChzNxwVtyWiTJIZleIpQEexmMJdmfJ5IEe3lG",
-	"KAlty3/UWBI3/SPBJLjE+VCSsKOVWEol3VvncTYEIWAgvATdgRQwCJ0Lc7aQEzxKv3HMSShH7WVP10Rd",
-	"C9DLFtqup8aLfOi46nIhG5YqoXeFugIEQgzb5HWNqxsllVBvwiY1I5pWQdENGml8DGosoIkfm7jtJEEW",
-	"A4IPS+WeKJ/5O8J327kxsGwvs3oF9f4JFwhUwihQEyYaSWnMC2kCU9vMgKTmC6zA7AoACHYDAnwaMmz7",
-	"pDhfsdjN2LV+G27uo/crjKx71STFCUbu1zsAJypjJ+kVWeCinXgh+sneYuRuwEKJhnwnf2OyITSfWFtm",
-	"KlQ0mdAbBEy7N73bywBy80yRjhAcZY00wtxhKWkPX0eAe/6RJa/r80QezdSJknF31/pLMllmwNN6QTn6",
-	"p9jBF/YaPUWOvlScgQdlRus0dQzsA0EgeeC+2rMBtvZV8YkC/XEwXpvNSt6vyK5yejzTF76NskYNukO8",
-	"bSh3iUiMH/ePxPh9AB1zPFtazx1vQWbwteOj1xw3RlIxYJ/xbGyvYOG4dA5/SyXNWlTsG9ragkWmFDkW",
-	"cstSRHxGKJOPMO8eDUhvt133s+tlprKMYPA807L89krA4dkKpsFzH657bBgsSgjFHxcbh+G0PpBarPfH",
-	"R9tp9hBhA7/rMxTW4DbNzjcBLjcpMuCYDJVzZysNRIhReWCROqik5q6nta7hcbgUIbuf6aaSijf75Jyh",
-	"vpcKPCjCYevxbJ546rxMEA/dwcYfFwTGThE28zUeokjZZw+ohZYTBLrAv/wwAPbSY1C2CoOABs7PU4Nq",
-	"v/ABykXVvj20cVGqfDQ69kJSEws1qoUxqrbw6F1p0C07iLntB9jeAd6GDVhYOBBzLKTWN+OujUnRs3io",
-	"DqNnh+6e4QBalomfTdSJEEDbt37HQqZOBqr1DvgC4C93EiAA3yPavcGUj0oVlPDNWetmKqo7NMWzWOuG",
-	"Qnw7Zu8uBnJnlU+Wzf++w4G/JkE95A3iaR6JCM6YwqeFCfcY5Vbiiv7+BI23ffOJGxSui18uMs4m6Ijk",
-	"Fbx1D/CNmCn0CznOFJThu77x4hotudL0jhjPWfKjyQgcizzY89/bgPGcaFuhgWsDjyC4oOqIO2m9B6hI",
-	"6euuNkHY+crdZXq7v6SzzDf/1bnK3MS/ALwBaPUIdNcVBNIUgg4YW44ZgLj1u1Y6EoU3r7bjA+G2JgET",
-	"AdKljUWhwUUNkCFYNjE8KLphD3orlPna1AcY7NeoPdAqnvvS/NE1m2gO2LGhKsveZQCwpGhwJUD8jGUV",
-	"gEG5ynuVXyHo/O/6hOAUxo6IjyFkHzzO9PDpgCvQL3AJ1b2bVt32cgh+y/NRHI4lFxrZbr7KA0O7dQF7",
-	"sGsXZJOgYQ+R/CUzyXBN/m5Tyegqvlwu2ZdkLFnqaNXvkxv+AJYLBH4GUdrN51Ufd4gRYLiV217o7rXx",
-	"bveZohaC4cF4F3HRQ4W/Sy2hEGLpMamVr+QBRf+hAgg3D6FME1tpkN+CsN9VDqj6lbu3yGYa/ALQDCUh",
-	"eT8EZuYhphv8Lg1wWIBcAHZKWXdlN0K4U+idfZNdMYpRoSWhUjM7vkfkKMBQenGYq+xYfUfhCkVuQlmU",
-	"FopSvTisH591SR40GOIZJ7qYX3StJOwbmTqYJ1w+/apTg8Ja06oLakYfqPWv1KQS3MUXqqHwoVUdpyec",
-	"Gyf25S87+OnVL+6/X1+5I/E85nY4a9fytWGyCjCTNY8hVd00E/fsM3JMfntRk1w6Gf+PjUsRazcg+4Ky",
-	"hdHlo1IbCDlrIIKC9hhLG9WVN0zDDmIQToRxlpaK8YeUCb1aZStNu45J9KT6LTTMGLuOziYatsWxvsiB",
-	"LQQEN8c8ei346BndzNQSgOYckwtvvBiL/0OWbTEe1DFILMxIEYCHkRjueQDIEMDFpOnE8cAIKJUosLVI",
-	"plS40ooel3NPBBF7pnaNVqs5cf3udKk/2klqObjEHZeP8e/UAEQpvcgxS7zX3Bn7FE/HuXnmd91OfgPW",
-	"6fodZ59uHQt/wrrsk748SxoV3ydqdSorEC36kkkKi2hsRWO0CtIHjYvHmh9eJ5eWjnvugE/gzaCi/4M3",
-	"n5c3N2LBqeCnVh58NN2YAgVDdLaJ8gG5anSxZ5zpfbaqYhUgb3jxQiIxjHFeOmoxGOJ1brKULxnNAinL",
-	"yma3cVV1GM1XcN4vdMy/RwznZJnwrJOLFaISk+NdCV4TNBFEJvs6vNJOOLmNsFj1/x9H98kWPNtIH1bj",
-	"efJWqCoAo2D4DAYcJTdxzEpwh6lbldobthu4sButN3Thk6CRRDvfsPc+fAdz3MigCGIYEMQO6pW58xWr",
-	"IDfCrAnfuyscrOA2gf55LDsXqtNhXiGqmRAUAGrmS/zCzb7zhfJaKAyGMw8Qxri1YrO1mBKbLMLTTJND",
-	"jCZWEEzO0pPlqryp0jb7C8s/Hzp9fMXiT9dSCqfifEpjdi8TvjiB15kHuf0Hq3sGqwtg3O8TplFQZX3M",
-	"Iqai7lgxeCgSkGmVRPvduQaUtgVl6S4bQbhNPtPWLdx5OQPx5yJPVmMn3q3B1yyH+D06h7rxILeOaY+u",
-	"FQ3BaxI7r+kbUvVjwWgyrvsLJ39gW/X3ELAeZjHm2APALx+2/uQ48xD6/iMYOmdqOH5MfcXR4HHFzu5c",
-	"+7jWO7ARpVgUUOrIB333bxCkCjNYdg5e9A8dSeIE7DzfIl4SWFnAijsy+kf4EQEFIwAre7jCkZhc4IjG",
-	"+JFCTC6a0IldjeJl0CKcDTLDNxgdd1i8LrhlHFsCd8HRIkhGt00pbtyVy7ayfKCqEGu+3QplbmfqpZOF",
-	"bylaCJCpN1u7ZytpkwIBTocm0ZjbNcq+h06sbwA4ghbAzBRjVtNra+2fCkT4AmRTvQW+AcVxweGDUNe+",
-	"VAEacQzW1WWIF9kbGgTLSSt5Lf+3AGllW/NSxIp+MRUTE9CYRwzpVBPJNO000nmp1bKWpWUzQB6cXWEo",
-	"DszODS6EKihjBe8W6KaIaHwf5e/Zlf9idnXnGom3R/dx0HhcMxh4CJh2VG/3Jat1yetbXDxMJA7L4RMW",
-	"sGjKz8GRB4uNZQZrrQRMAFDwHpTeqbSFf9dkKaGpQY8raZP+wsFGhYNbphu5kmg5xlKFUMTfatfNIAkc",
-	"khBKXNKwVsG44Pr4y1ZgqXgaq+99w5sHtCJthSoAgcQjiWD1EggZr7VaiWamKD2eNqjmjhWTPcnGypGq",
-	"8gkjHqxTBsNDAYwVcp4g69XvKPmRQoUp+nuODc2uiBSVDgPzxWGAwgiPc+5/nKnZVSNgFWdXtFshEJ26",
-	"wIST2VXIPAFoUnBlhslQpnGafOUtrFjZHbfPOxDRoXmXEmS/CgxUo/dUeaReDIw7aKYHcaLRvTqeL4pi",
-	"wkrauaPQAsiaPMNFwFmNABL090aaDbdgSBRbTc+PwKuQtHRRhBUvkX1hNRe7HZZaUr4bjjU3hBtaBHxa",
-	"vGwy5Hp2aNHjQ+4MlOJc3VavpLGiQUkL6O/MQDERshc44cFVhLXCD8StV7/Qp1G4GKwDFbhUIzCFRbcl",
-	"eDgWrSXIXxFKxyBeMlR88sjDaGK/NlCu17OElQ6moc0Ni3VygVFRClSXNUByaYY9eDOb44ghfo5Q3nxv",
-	"wfW6mSmsMY5V0D0uVMI3ga3OrvIglkWv7xEomHB+T1OsPlq9/YCTuPoSQuREOBkPbHZxRBmiZyh77wR2",
-	"DK+E+3wh3L1pEMPwKKRMBB7NQsIk7PWyC3ysNHl3aWdXWwCrtE6oU90k0MLJe812zZUjUPdXvFf9Pe/v",
-	"d2bEmWoARUw7x1+Qi5lg2cXjRac+yjiOVaTCTYo5mUo0T4j682S7HANWeetRzYFVxTBdGhPCo4dwjBjX",
-	"FsZYUFAaDpYQ02PluwyX8qwG2K/jVyYU6pjOrXJcyclegS0VkUcFWS6IePg1DZZYmBdUURIN7suuJOrX",
-	"5c6X91GhVmARCyb6azbVA2AlJ4iuM+VlV+8xG2TA44JrMVNwKHxeExgbYc25u5SOSIAnMXLKAbyoIPZT",
-	"p4+vTRA75E8+kQfzQ0jqOJNM49qMV0ARZJqgZ0CSD6WHdfjNiHjzSjwCoxmK4P4omkfRvDRQOQceZd9Y",
-	"8dniey+NbQTfvEALuYHj4lXfspaOTytIksHALBQt4M2QmuwvNMPitZNUb7ibKUS6RPMUJfJ6/yMFQCUJ",
-	"N0GSxAyEmQpQvkHohDbwqLnDEaXlgoA/u0+KCvAywjO7taZSaJU7WS+6JaENg6XarXUtvMcVA8v4TFWi",
-	"thzs05yWx4miNS9FrPwJrosb9paiwGAmAcgJMEkXAvtA0RVPtDvyYV1nV/AxpFrMrnywTe/ORVBjwypu",
-	"+c1M/dzPYAJGRtMOjdI3B41+oO+VUJUvmuSIA7c+aRJTqVE5cb3LipYEYZ982SVpKZoPWmG8NppB0yHR",
-	"Ko0bhGUAbKrE4ibissDra+4Wxz9AlaGEgerSFMiwnyms2MorqjWCKS6mLSFaCQcjUdnCGOROmAwHNK5N",
-	"WuoVxmv0RuAda/ge3tnHvG9pMXpGaVBPoOaBlRuCzpoEFY8DG5Squ4f6X4XY5heCtVsnP1Zwa+Aq46kf",
-	"MgKH1e4Ygp+AjXzAVLp8uu+AzPJi2p2DcHw/hecz4e8QBiDhwslxp7B5CfXcfBznM0W4YcZNQT6DnBvN",
-	"lnLVNnBY3cHjNQhYVHwHeJW9DfAqWMZR2ulEFzn29zSYL2DVp56GSACrh5xls/+U7nSMQY4c5vnieTtJ",
-	"Q8ud9+zSn18A63aC4thvJIdN3PksGMN5CgdYAD47QhLDJ9byxVPgFCaQzKf37769NozXFDAFRuW1YG+/",
-	"fx/zZIwb/DdQCc49P//46f7Ttzeb6gXcszPltA2sXxOwYLpsFLmce6zwkZm6AawCGas9OoFN9ZThKOXV",
-	"8gFgVkCI4DUKUb4k1q76DA4fQk5wy+V4uZeMEpumtEbUy45kcW08+y95A/hpYDqbqXsfVxqiQJjVm4Wx",
-	"pMWhmb0zUx8/t6Br3t3gYF5biJJvCLdeNMJPz66FQuUUpG8UQ1FsRel3DH+BfcNdV9eGPUhVxYAwCJJj",
-	"SynqimBdDYFSLJjdSUCM91ODgGsnuibOt+6U0rSBfPAYyKGfHIlehpO4pn8b/uF6Pha6srgc3/iASxtp",
-	"yp0+kEVRfVORo4xxj0cpdsOlRp7JAH75daaibWPHDTO8HwoyURT4NzfOC+4mtD+wj26NzrNlnOJVYa+w",
-	"UiC4Xj0nWwgjK4HMH/j6RUSBfyWWBVzZY8qkykY03Un0yb+3HnY3Rj4RCG3E5dXux4cD/o78M0mwxMwj",
-	"3jT7k8RC4iV9ejg/S4mk8OWYietznJk4Irw4MzmROIfZSpRcni2ZDEShDRg/c5U1g9eemCM682fKsbCu",
-	"6XLcVd0xZEb3c55Yoa1Bh8ebr8OceD4jokr9SL6uRIhygCB4qFonFRXDwuAQCB+eQkevGgER/Reip3tl",
-	"dqIJQMO3iaUJbG8REn8pVYW4Wf4GBEaJwpzSXlzcdYxGZJ3qsMYb9pNygivF7fAKPR0zhSFZTiB1sqYR",
-	"9aMwRaf2QsgzhSi/SnxmtS4fTmGlsJY/J1aWo2Ua/FyuEbfsjvG6DrDvdMl7QR9h8zFI55iJJ2fhSQPC",
-	"uyP5E38UbLVmhu9Ba8JwuG1b14yuAnBmq4pZrf2VA24hhGS0rtvUApjd3YEhu27mvptTLVN/yFdyA9se",
-	"wDsbquV7NknDzThvjkvZeryhyd6fVqLz2u9RKJZG1Jon+SfemIrGIiy1GqEpARErC8/y0Xd4wbuW+hgL",
-	"5IxaP5krQSMlcpeNu/5qcY6Nwqpb1F0RkbIfed0GW2m6iLndefULffo1wx0HJ3dtWKUhW/xB7AsyRRtW",
-	"69VNLR5FPZDiQW+PZnnkqk/mXcYg2eBcjQeYLFBLyMyeysTB1lP5LiS8dyi74g8YAycehUpLgMMJ95WR",
-	"nZ7knUe1AKSQXSOtdY0rJ2cZHQuuJtXIfTCOU/o7d0BgyX2pWCq2rOVqbQtmpCoF+GjczVdyhQivG6la",
-	"O4CmGAgjkTyGjhou484tCq7fAsOFvWBPxy/C17qpD3tgP3b2+TIeWN/HFxa2qdtxkal7JptJpV6AmCIW",
-	"Z+X0m3OIV4QzHIpYg4cf9lHag9oIQRYerSAaJeYzVxFd5kL+vfIozfRS1kMFQEPU2hcvAnrJwDDf0dit",
-	"FPbsbPkFkQrihjOMw51QkPNnChAOlJKqYmng2AHtBGlypgLtUJEp7dimxdKTO0lBPj6ayawFVI6ADGKp",
-	"3Gs35KANg5C2+wBSoPuAwf0p0q0XgSItmwLLakjVM2NEfQWI957GAqbRaAuDCvSx5F5cDUolS5ICIIah",
-	"sT7JLKbs+ld6ebr0dfboTAmdDsjcPZyodBTDkdGePi8aGh06+cKour7fI+Zceury6LqBBEK+fKT+Qz7/",
-	"6hf/8UgVytDscLgv5BcgKfoq36G8y+SI33hSITRnWuZfv7/hIN+EFL/SKN9p9OQ9T3m6ukScrw3n62mV",
-	"IbNBvR3OcOEFPRbWG5jkWYJw48Z0kayfKnd8YdzMHIN4Rajug7Lhn6g0FAXS1VIJisA1ZaOxDsty2bmo",
-	"ro37TQhAcm83C0i8gKjB1yFRIXm2lktRMF422pg0iBXVrJkCzuGr5mwtxQ6FnaUJzGFkVDgQQxQbVuoW",
-	"MopQbWyVpfHD7wjNDONjWhV+hF3T1R3c/thCzZ2ExGXNqK97fGchlrpBs52uKyesuN9xsB5e0xIiXAil",
-	"Gz9Yd9jP7nAyUJOykWJJcc2ODMnqViQ1KUNK4NgJpb2dYu0rtXoUjYFmHPXDEApvc0T3MFRo5RW6GgHr",
-	"WhgjtbqFKfg1BPTZAMdF5IAhmyRIoOC3EcZNxKCajPsveLmeKat1zUpe1xSbCMsN2jsFpya06iU7VOuT",
-	"/aDQOaQHTtsHs7oG1f6Gffu5rNuKqKUg+sE6LLLGlc0ZBaGNcWNgFlbDU+IyWRA3ujsm/ECg44Fu3SAn",
-	"Vr59nal8ezCk7+NBoYBfLJFKh4QkfffnHXvz+nXm3EwZNSxqZ9gb/pnq875+/fr1kXq92YWEYwr7mgwC",
-	"KxOoCrexO2QM0EA9dGCcbg5PH+aXEC3oLB+7EJFznUVdVIL8gQkvDzVC/n4uSCOeAvT3pWcwpJJ/ipw0",
-	"lH5x/EWqhf7smU26gVQWhmI79lvQAGZKejg+lOPdSdo2wjgF4VtlRXPnmOuG70MpcJ8KEl+i0A8AgyCV",
-	"94b9BeK5ZF2zv7WiTW1n2BGEYhO2TsHWoq5mCkvjrtsNV7cQJ/YDXRWAdi1URX/DKCtpSt74r0hV9yvS",
-	"VdYbhL1eC1qFkB/g2uyr5UnIf14vv01bAoxYzQASjCop++dmatMaqkccKmLRtejHGYa4hOR59ob9IP84",
-	"TY1Kxp7oVAleUD7sU1UXVvB987QxXzxY6xkaPlLqOZjo/3AtMR72ORR9RrTTRJ4+qum/Atr5/TKq7xBZ",
-	"2J8pOJnis4TTEFGYduCQMvaOsl3cgmFIKGbmqcU+gWcwSZwDZkiGYI9E0fgKzXeHMEgjNrppphJ440uq",
-	"5k85WWfEXf8IW8cR9tFbn7o0hpZnEBcdDQlViVh1x8pK/FbBkFmdTVbi7zbmEcKlIe47+p07AVtrvVMg",
-	"Rp4tfPGYo3Ysejndin+EG14w3DDSRTiXYN0YPJP3VH3k/j0rNcHRCmXJdAMo/ZQFkCSwUoo5JHnuqs+s",
-	"0uVM/fTx/l++fXHrrmO9Y1vRsPu3924BVAXYahVbtOWDgFLaG12JmqLnycChF0Y0j7AVM6VVvU8wWLGN",
-	"ayfU7oM4iK1RMJWn4fu390DVIcvgJxATyL7BS1Bmr02BwHpkh7k2t+Rypaj9pfvJNaVR+p6pDS/XUglW",
-	"NXwXENAN5RzcsHs/TajM9Ob16//L3b0bjdC8tdzgtQwlX7hfB2kYf+Sy5otaUDajShYZW3Sy/A37FoDE",
-	"MEOMhrbmZqZgg0IK4x3ukfKlML3NAfr3dRQoZDPrGIbFuiS/hA7GHLRoimv0zhRssR+goHPlkG1axIDI",
-	"HQB3T3lq8QsoDexvOFmPojESp5+FAFwJ+2/0yCU5EXUxsKLo2KShkkFns5GdwBZ3lS5aWaN56hzLS4Py",
-	"+jL2ExauE9s8GGARAR/OHGARjJwb5jVJtGUxuGvB8rWSlim9C7CBGN6E2Bx9nDjtTtVO1Zoj/ShEf5km",
-	"qA5CcboDORJfekSH8G+eoHb4Vy4eqeE7GmMEsUbuuSI1PFABBVSvQulfFHK7Ad4I00CJwn2qffWL/zjq",
-	"LoYsdZBUMZgbBSq+djRGPB4KP7sz6X9tVVI2AVU1J/M6sbsDsehDpAISOwDX1AA2eW2YULbZg/kKcZgR",
-	"RHmmwKBltY7ggBvRQMH3e7zSgyYNLYKVHyHiBXzEipt0kVEeijtZrrF2e8O+JcCZw2ZCBkGsQQC59u7t",
-	"mWox4C4F1DpsAkLgOeXo88abpkytLcXj1lB2jQBzwGgG1TBvAzXNpZonuLJjVetPOL3FYfuR88ylmZek",
-	"8fivXAM1d9pT70vvss6K0u6nn2PM98WPJwFH5E7oz75kwMU87ti5E2Y9BwdDA67a6fbxOKflKazwydxz",
-	"hGW88mGxz63OeeTOeOu7+QKkQn2NMXQ/67Pxc54mVIRQY6mI0YMjBYRIjCkl1+XXTzpD9r7jdeKn0wmG",
-	"XPV270Laea8XDNH60vFpvUEcc/oROZ2nHhewMWoRtTPvZ+esksslKqMGy1oiBgjWnxU7JsfFj8BLXv1C",
-	"n0YlkqczFmwxRzCHnGVwOUHPwJbOG5Xl2w/ruBf2+Qc9k7pRdk7KZQp0nIOB5FNFzslBRCXtb8I/nIh5",
-	"grFvnBjPWEGAUgzQgfGZJNI8YY4daMcQBgWDHwQ3bYgNQ39nsxKgRsTyGjW3ovHFkkIhYdA0MPlmpgjm",
-	"w9ywnxNgilj9kr5A429A8OooJ1iM15ZrDApHxPYE+rTTIPhfVqIqsO4l/gF3cqtswzFnCSRJnApMax60",
-	"I9SZVFuj8+c9WLh4YyWvmZetKf0QcUqg4iFq5FPrZgxS+krYeL6Wyy+uiR+E7ECtil1+33AfhoJykg18",
-	"LizY888zLObA/etOwTkOJVA379VxDauF6WQyqTCG1AdG9B8/kEldon0p4ADy3qI/86IZVRWgzuwo0rVu",
-	"2Err6jZYEEjFZ5zZhps1hgGuJNYkX7hbCNPICQIPJjXDQwgBmma/Wehalk5IwdKheGGjlOJXocZsa905",
-	"W4jg6n2qd52zdpeGao6USkuV3O9kLY6FWr63huFZbkTNrXwU3kDnV3EwFxlv9qde5F/iiLgFwHsld1De",
-	"XUCSwhxRhC0K9ibEk6zrAINJob/xYA2Gw98zYu+ohXkkXngdUJYllnkXFV1FnCnh/uzX4TBQMEFpAp90",
-	"m4dRqFS9xZeiyFIAe0dzkSJABOi6YkrThAnbPUUIQDitUm8E4+6uOaM1F+Dpr74Q/ZghHgu85RzEExpD",
-	"mSfCfvutz9zzZIGVK6UbLEZsfheaeV6wXnVqdN8i741Uj/ipVXTRBpbqs/KU2DHEWOUmLtUIc/XVNxV9",
-	"D9cS3VScYrcVfrEV6q5bIqTPmRMklqls2jXTY9OXlP1dFx8E5lJ+WT//NFaMYzuT4RP92biJukn4cO94",
-	"EdRf+H04zRQE5sNKUGBav2F96o3R/0O02E2aDAGoEDMAo49AFVr1yK0goBfSH9YkSjiGQC68WAGyQbCb",
-	"m5W0Q1RaYHRr/71OTaq7qYawL0TJv60JbJyS354/GdPXQTskaMh7iTLEUUn4VbIQA+IGdOIJfIElRR09",
-	"aM1q7nRllN8ZtUTC/v/78S9/ZijaEe3OFOKrQY6SIiedEFUCvQY/uTM0IhqEszGB1Kna40y5OUxjxIlu",
-	"CttKy/Obq6heJLj+exfOqcEREeuMaiweoGVHoYWwBghUoFoYF1dHx01UH9HOwxIzDyB9BOkPIJKMZX/6",
-	"9v5dkOXRioRswh8ZPAf+vCamixBwyKYYgmbqEpYgt/lfhzXoP8pR+xLmIohAOyQ0PHOkKXpdmCI4ID3s",
-	"8mfuUTRyKUV1Ge9Oq6D9/YEc9AX29QfePIzxT2QlG948nEcq+cQfvHR9bZhfV+iA8R3ff/Vq6NfIAbJR",
-	"5ves5gtR+8wzisvlHZOLt1oCYkwltpC9phUEnOPdBoHmvRI24WIgdDNHkUQitwRT+NlianVP0KKkcgAp",
-	"dLeE056hPvkDFQbd8f0zb4mBo3RZleLfoNPfUjk+fo7Pd4Z/gMOKZBA446j6UPOn5KR+LaEff9yzRqBv",
-	"AhKx3EfD5DJ69txhQCwUrQosWtMDX1qL8qGYKSxxG95b6mbHm8pzCgoNJhhBTFptzRrPhuxE2M4UFMwx",
-	"+ob9cc9+/FCEajmhWFvhX0akAK7KdShUjS4WtFdVFYSyB13L/Q4cAHwZCJ+AIy4fVo07frdsdkXlUWZX",
-	"/ucYDgSZZbY1WNNnrXdsyaEs1UojIIH7yp1+DMELMImVQBfQHGsrUQm5kDW25MYdf1ix8OW2iR9bs553",
-	"8tygsQAMBdWgktw42AEMrcRy/+B/ORrOWABso49dTIpdWG6giLMR9fJozKMv0jcY8whh8HPXCtgbkTkL",
-	"Ve5jWTr3brkW1XwteNWLIpgpNzCIaoz1bgpf1CbaMZWeQwnuOdI3Ph/cxqmdh+6KudUQPHmY49cPxly0",
-	"Zj8tNjNrseeqSsItR71Qf9I7d4RqzE2RBvAE7yJiZkjLcvTYxX0YupQ3wq51100rVLu5uv1fV0hXbkzN",
-	"1V+fEmJyb9yeQsjv1RDQ7nkjvbmqhrOl3oc8xgsnN/qKSokCrVVw/I7fILTov9s7BPGygOUYK7aOxfjl",
-	"oDXQO3UbMMeLmGflXgluMccZb2bqfawFiI0SoufWnU6oUhYsX57xU8S6oaAUv+o37H6maGCIkgQIaBAn",
-	"l1bwb1UF+r3jnyAxxlATboh/3vqWIrarZ3nooOqGefvmzQ3DitEdv75rC0q7S7QShoxIwMc2a4FO95Rb",
-	"hcrQfeaKvjZ27xdDK6ry71qDS7Ii7GiodxeX9BHKKZqZikk7jUjxk2jltKr3t50LCNafOiFkugLNKvQK",
-	"IvA+J34+uYQG4ufv3VKBKOG+ujaJ9wKTGmAksiMh+EQe1+xC1HrnVv/BzNRq7SYFKadAKNTkjx9Q+oFE",
-	"hlv6vwD6wugoWjq65eGycTsD/IQ6LTAcwveLgEYhhAoi0bWXUHpvIiqSe+zHD9eU0bGi8oOQM6HvaEwA",
-	"J+xIbNvWWB7Bprf6TAHlOpLyD3QvbFiM3krjd/6o0tBmipay9yw3aFburNHwRDEzAnq4NuEYG+bdRbsb",
-	"9mfNVmsMEulLB2OyxMFEjwsX0YPpNbFpYkNfSJip5JAUrMcuzitBYOPDMsTzbulLJHwA2xm4olM+v+Mm",
-	"qUh5HrcnRvulNzPVuZhyNz9KsTO/78vZQ5pI45F9iGP5fFRAIEKHFaQpQ9kFSOdFDD+lqfg3aHP8AW8u",
-	"m+ReQNWzgxSq7iFNgG4K+irUmj0hcLiDojNoK3FPxT14vBxEQK+T/18DNE4CsR3/sQHgIMd2fI4OvOea",
-	"m5hXiYjTcmptVAAlJ+ybapCXL4PXFubBnAk9TzAXcSZRLSAAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

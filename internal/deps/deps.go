@@ -45,6 +45,7 @@ var Dependencies = []Dependency{
 	{Name: "clipboard", Features: []string{"tide copy"}},
 	{Name: "container", Features: []string{"observe"}},
 	{Name: "gh", Features: []string{"landing by PR"}},
+	{Name: "browser", Features: []string{"hub login"}},
 	{Name: "vi", Features: []string{"tide edit"}},
 	{Name: "vim", Features: []string{"tide edit"}},
 	{Name: "nvim", Features: []string{"tide edit"}},
@@ -175,6 +176,8 @@ func CheckOne(ctx context.Context, p Probe, d Dependency) Check {
 		c = checkContainer(ctx, p, "docker", "podman")
 	case "gh":
 		c = checkGH(ctx, p)
+	case "browser":
+		c = checkBrowser(p)
 	case "vi", "vim", "nvim", "nano", "hx", "emacs":
 		c = checkEditor(p, d.Name)
 	}
@@ -276,6 +279,30 @@ func checkShell(ctx context.Context, p Probe, program string) Check {
 		return Check{Status: Missing, Detail: program + " is not found through the login shell"}
 	}
 	return Check{Status: Ready, Program: program}
+}
+
+// BrowserOpener is the program that opens a link in the browser on goos.
+func BrowserOpener(goos string) string {
+	if goos == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
+}
+
+// checkBrowser says whether a link can be opened in a browser: the opener is
+// there and, on Linux, a graphical session to open it in. Without one, wdx
+// hub login has a code typed instead.
+func checkBrowser(p Probe) Check {
+	opener := BrowserOpener(p.GOOS)
+	name, path, ok := find(p, opener)
+	if !ok {
+		return Check{Status: Missing, Detail: opener + " is not installed, so wdx hub login has a code typed instead"}
+	}
+	c := Check{Status: Ready, Program: name, Path: path}
+	if p.GOOS == "linux" && p.Session == "" {
+		c.Status, c.Detail = NotReady, "no graphical session to open a browser in, so wdx hub login has a code typed instead"
+	}
+	return c
 }
 
 // ClipboardTools are the programs that can set the clipboard in session

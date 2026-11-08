@@ -230,14 +230,36 @@ linters:
         hub-in-wdx-hub-only:
           files:
             - "$all"
+            - "!$test"
             - "!**/cmd/wdx-hub/**"
             - "!**/internal/hub/**"
             - "!**/internal/hublink/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/hub/
               desc: only wdx-hub uses the hub
+        # wdx's tests may serve a hub, through hubtest alone.
+        hubtest-in-wdx-tests:
+          files:
+            - "$test"
+            - "!**/cmd/wdx-hub/**"
+            - "!**/internal/hub/**"
+          list-mode: lax
+          allow:
+            - github.com/srjn45/wdx/internal/hub/hubtest
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/hub/
+              desc: wdx's tests serve a hub through internal/hub/hubtest alone
+        # The daemon serves the hub's nodes, as hublink gives them.
+        hubapi-in-hub-and-link:
+          files:
+            - "$all"
+            - "!**/cmd/wdx-hub/**"
+            - "!**/internal/hub/**"
+            - "!**/internal/hublink/**"
+            - "!**/internal/daemon/*.go"
+          deny:
             - pkg: github.com/srjn45/wdx/internal/hubapi
-              desc: only wdx-hub and hublink use the hub's API
+              desc: only wdx-hub, hublink and the daemon serving its routes use the hub's API
         # hublink speaks to the hub through its API alone.
         hublink-not-hub:
           files: ["**/internal/hublink/*.go", "!$test"]

@@ -31,7 +31,7 @@ On Ubuntu and Debian with apt, on macOS with brew. When installing needs root, t
 
 | Flag | Default | Description |
 |---|---|---|
-| `--name <dependency>` |  | dependency to install: git, clipboard, docker, podman, gh, vi, vim, nvim, nano, hx, emacs |
+| `--name <dependency>` |  | dependency to install: git, clipboard, docker, podman, gh, browser, vi, vim, nvim, nano, hx, emacs |
 | `--yes` |  | run the commands that need root without asking |
 
 - `--name` is required

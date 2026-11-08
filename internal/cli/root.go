@@ -70,6 +70,9 @@ type Env struct {
 	// Deps is how the deps commands look at the machine; main sets the
 	// session, and the parts left nil take the real ones.
 	Deps deps.Probe
+	// OpenBrowser opens link in the browser with the opener program, as wdx
+	// hub login does; nil runs the program. Tests replace it.
+	OpenBrowser func(ctx context.Context, program, link string) error
 	// Timeouts are how long commands wait; tests shorten or lengthen them.
 	Timeouts Timeouts
 
@@ -226,7 +229,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 		NoInput: cfg.NoInput,
 		Color:   cfg.Color,
 		Topics:  topics,
-	}, newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newPlanCmd(), newUsageCmd())
+	}, newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newHubCmd(), newPlanCmd(), newUsageCmd())
 }
 
 func newVersionCmd() *cobra.Command {

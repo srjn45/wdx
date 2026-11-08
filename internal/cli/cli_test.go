@@ -150,6 +150,12 @@ func newHomeWithACAs(t *testing.T, acas ...aca.AiCodingAgent) string {
 // the test ACA when nil.
 func newHomeOf(t *testing.T, script string, acas []aca.AiCodingAgent) string {
 	t.Helper()
+	return newHomeOpts(t, script, acas, func(*daemon.Options) {})
+}
+
+// newHomeOpts is newHomeOf whose daemon's options adjust changes.
+func newHomeOpts(t *testing.T, script string, acas []aca.AiCodingAgent, adjust func(*daemon.Options)) string {
+	t.Helper()
 	home := shortHome(t)
 	if acas == nil {
 		acas = []aca.AiCodingAgent{&acatest.ACA{Launches: launchesPath(home)}}
@@ -162,13 +168,15 @@ func newHomeOf(t *testing.T, script string, acas []aca.AiCodingAgent) string {
 	logs := logging.NewDailyFile(identity.LogsDir(home), identity.Name, 7, time.Now)
 	log := logging.New(logs, slog.LevelDebug).With("process", "daemon")
 	ctx, stop := context.WithCancel(context.Background())
-	d, err := daemon.Listen(ctx, daemon.Options{
+	opts := daemon.Options{
 		Home: home, Log: log, GH: ghtest.New(t, home).Program,
 		Executable: wdxBinary, ShellEnv: []string{"PATH=/usr/bin:/bin"}, TerminalShell: shell,
 		TerminalHistoryLines: 100_000,
 		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),
 		ACAs: acas, LookProgram: acatest.LookProgram, SettingStore: settingStore{home: home},
-	})
+	}
+	adjust(&opts)
+	d, err := daemon.Listen(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,6 +242,15 @@ func wdxService(t *testing.T, home string, svc *service.Manager, args ...string)
 // wdxWith runs args in an environment that adjust changes.
 func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) clikittest.Output {
 	t.Helper()
+	out := runWdx(context.Background(), t, home, adjust, args...)
+	wantLogged(t, home, args, out)
+	return out
+}
+
+// runWdx runs args in an environment that adjust changes, until ctx ends,
+// checking nothing, so that a goroutine may: the caller checks the run with
+// wantLogged. Its stderr is what adjust sets, else kept in the output.
+func runWdx(ctx context.Context, t *testing.T, home string, adjust func(*Env), args ...string) clikittest.Output {
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
 	// A machine slowed down by other tests slows a run rather than fails it.
@@ -242,9 +259,11 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) cliki
 	env.Timeouts.Start, env.Timeouts.AttachExit, env.Timeouts.UpdatePreflight = limit, limit, limit
 	env.Timeouts.Holder = holdertest.Limits(t)
 	adjust(&env)
-	exit := Run(context.Background(), args, env)
+	exit := Run(ctx, args, env)
 	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
-	wantLogged(t, home, args, out)
+	if s, ok := env.Stderr.(fmt.Stringer); ok {
+		out.Stderr = s.String()
+	}
 	return out
 }
 

@@ -1,0 +1,51 @@
+---
+title: Hub
+description: Make your machines nodes of your account on a hub, see which are online, and remove one you lost.
+commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove]
+since: 0.5.0
+---
+import Commands from '../../../../components/Commands.astro';
+
+## What it is
+
+A hub is a server, `wdx-hub`, that keeps accounts. Logging in makes this machine one of your account's **nodes**: wdx makes a key on it, the hub's certificate authority gives it a certificate, and the daemon keeps a connection to the hub from then on, so the hub knows which of your nodes are online. `wdx hub node list` shows them all, and `wdx hub node remove` cuts one off at once.
+
+The daemon never waits on the hub: with no hub, or with the hub down, everything else works exactly as before.
+
+## Try it
+
+```console
+$ wdx hub login --url https://hub.example.com
+opening https://hub.example.com/nodes/approve?login=nl-1a2b3c4d in your browser; if none opens, open it yourself
+waiting for the login to be approved, until 3:42PM; Ctrl-C cancels it
+logged in to https://hub.example.com as alice; this machine is node desk
+
+$ wdx hub status
+connected to https://hub.example.com as alice, node desk
+hub version: 0.5.0
+
+$ wdx hub node list
+NAME         ONLINE  LAST SEEN            VERSION  OS            ID
+desk (this)  yes     2026-11-08 15:33:10  0.5.0    linux/amd64   node-1a2b3c4d
+laptop       no      2026-11-07 19:02:44  0.5.0    darwin/arm64  node-5e6f7a8b
+```
+
+Over SSH, or anywhere no browser can open, log in with a code typed on the hub's page from any device:
+
+```console
+$ wdx hub login --url https://hub.example.com --no-browser
+open https://hub.example.com/device and type the code WDX-4F7K-9QPA
+```
+
+## How it behaves
+
+- **Logging in** opens the hub's page in the browser, where you log in, pass your second factor and approve the machine, renaming it there if your account has a node of that name. The browser comes back to wdx on `127.0.0.1` only, so a link sent elsewhere is of no use to anyone. Without a browser to open (`xdg-open` in a graphical session on Linux, `open` on macOS; see [Dependencies](/wdx/docs/guides/dependencies/)), or with `--no-browser`, the page and a code are printed instead. The link and the code go to stderr, with `--json` too, so that a script or an AI can hand them to you. The node's name is the hostname unless `--name` gives one. It waits until you approve or deny, at most 10 minutes; Ctrl-C cancels it, as does starting another login.
+- **The hub's address** is `https://`, or plain `http://` to `localhost` and `127.0.0.1` only. TLS is always verified, and there is no flag to skip it.
+- **The connection** is `connected`, `connecting`, or `offline` while the hub cannot be reached, which the daemon tries again and again, waiting longer each time up to 5 minutes. `revoked` (another node removed this one) and `disabled` (the hub's admin disabled your account) are for good: run `wdx hub logout`. `wdx hub status` says which, with what to do; not being logged in is a state, not an error.
+- **Removing a node** cuts it off at once: the hub closes its connection and renews no certificate for it. You are asked first; `--yes` answers, and `--json` needs it. This machine cannot remove itself: `wdx hub logout` does.
+- **Logging out** asks the hub to revoke this node, then deletes the key, the certificate and the login from `~/.wdx/hub/`, whether the hub heard or not: without its key, the node is of no use. When the hub could not be told, remove the node from another one. Projects, agents and docs stay.
+- **Nothing secret is logged:** not the node's key, nor the login's codes, by wdx or by the hub.
+
+## Commands
+
+<Commands />

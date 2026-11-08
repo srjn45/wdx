@@ -152,6 +152,6 @@ func (st *projectStream) next() (event string, data []byte, err error) {
 	return "project", data, err
 }
 
-// streamOperation is the operation whose response is a stream, which the
+// streamOperations are the operations whose response is a stream, which the
 // log describes rather than holds.
-const streamOperation = "streamProject"
+var streamOperations = map[string]bool{"streamProject": true, "streamHubLogin": true}

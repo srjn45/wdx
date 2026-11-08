@@ -218,16 +218,17 @@ func (h *Hub) AddUser(username string) User {
 	return user
 }
 
-// Code is a code of u's authenticator at the hub's time, which then moves on
-// to the next 30-second step, so that the next code is another: each is
-// accepted once.
+// Code is a code of u's authenticator once the hub's time moved on to the
+// next 30-second step, so that each code is another: each is accepted once.
+// The time moves first, so that the hub checks the code at the step it was
+// made at or the next, which a step crossed meanwhile in real time makes.
 func (h *Hub) Code(u User) string {
 	h.t.Helper()
+	h.Clock.Advance(30 * time.Second)
 	c, err := totp.GenerateCodeCustom(u.Key, h.Clock.Now(), totp.ValidateOpts{Period: 30, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1})
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.Clock.Advance(30 * time.Second)
 	h.Secret(c)
 	return c
 }

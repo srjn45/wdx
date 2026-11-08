@@ -10,6 +10,7 @@ import (
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 const prPlan = "goal: g\npr: true\ntasks:\n  - id: a\n    prompt: p\n"
@@ -110,9 +111,9 @@ func TestPlanPRNotStarted(t *testing.T) {
 	td.createPlan(t, "app", "auth", prPlan)
 	td.runPlan(t, "auth", 0)
 	td.finishTask(t, repo, "auth", "a")
-	td.waitPlan(t, "auth", "the plan done, its PR not started", func(c api.PlanContent) bool {
-		return c.Plan.State == api.PlanStateDone && td.logged(t, "plan's PR landing not started: the plan stays done")
-	})
+	td.waitPlan(t, "auth", "the plan done", func(c api.PlanContent) bool { return c.Plan.State == api.PlanStateDone })
+	// Logged once the plan is done, with no event after it.
+	waittest.For(t, "its PR not started", func() bool { return td.logged(t, "plan's PR landing not started: the plan stays done") })
 	if calls := fake.Calls(t); len(calls) != 0 {
 		t.Errorf("gh was asked %q", calls)
 	}

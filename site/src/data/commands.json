@@ -119,6 +119,30 @@
     "summary": "Write a doc's content as a new revision",
     "href": "/wdx/docs/reference/cli/doc/#wdx-doc-update"
   },
+  "hub login": {
+    "summary": "Make this machine a node of your account on a hub",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-login"
+  },
+  "hub logout": {
+    "summary": "Leave the hub: this machine is no longer a node of the account",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-logout"
+  },
+  "hub node get": {
+    "summary": "Show a node of your account, with its key's fingerprint",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-node-get"
+  },
+  "hub node list": {
+    "summary": "List the nodes of your account, and which are online",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-node-list"
+  },
+  "hub node remove": {
+    "summary": "Remove another node from your account, cutting it off at once",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-node-remove"
+  },
+  "hub status": {
+    "summary": "Show this machine's login to a hub and its connection",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-status"
+  },
   "message discard": {
     "summary": "Discard a message still waiting",
     "href": "/wdx/docs/reference/cli/message/#wdx-message-discard"

@@ -4,6 +4,7 @@ description: The programs wdx needs besides itself, what each optional one turns
 commands: [deps list, deps install]
 ---
 import Commands from '../../../../components/Commands.astro';
+import Since from '../../../../components/Since.astro';
 
 ## What it is
 
@@ -17,6 +18,7 @@ git           mandatory  ready  git 2.53.0     projects, terminals
 clipboard     optional   ready  wl-copy        tide copy
 container     optional   ready  docker 29.9.3  observe
 gh            optional   ready  gh 2.46.0      landing by PR
+browser       optional   ready  xdg-open       hub login
 vi            optional   ready  vi             tide edit
 vim           optional   ready  vim            tide edit
 nvim          optional   ready  nvim           tide edit
@@ -39,7 +41,7 @@ wdx deps install --name gh
 ## How it behaves
 
 - **States.** `ready`; `missing`; `too_old` (git before 2.31); or `not_ready`, installed but not usable, as docker whose daemon does not answer, with why below the table.
-- **What each enables.** git is needed for anything. The clipboard tool lets TIDE copy (`wl-copy` on Wayland, `xclip` or `xsel` on X11, `pbcopy` on macOS); docker or podman runs [Observability](/wdx/docs/guides/observability/); `gh` lands worktrees by PR; an editor edits files in TIDE (the `editor` setting picks one); each AI CLI lets agents run it.
+- **What each enables.** git is needed for anything. The clipboard tool lets TIDE copy (`wl-copy` on Wayland, `xclip` or `xsel` on X11, `pbcopy` on macOS); docker or podman runs [Observability](/wdx/docs/guides/observability/); `gh` lands worktrees by PR; the browser opener (`xdg-open` on Linux, in a graphical session, `open` on macOS) opens the hub's page for [`wdx hub login`](/wdx/docs/guides/hub/), which has a code typed instead without it <Since v="0.5.0" />; an editor edits files in TIDE (the `editor` setting picks one); each AI CLI lets agents run it.
 - **Installing** uses apt on Ubuntu and Debian and brew on macOS. When that needs root, the commands are shown and you are asked before `sudo` runs them; `--yes` answers in advance. A dependency already ready is left as it is, and every failure says how to install it yourself.
 - **AI CLIs** are installed their own way, as each one's docs say; `deps list` shows whether wdx finds them. `wdx agent acas` lists those agents can run.
 - **Found as your login shell finds them,** since agents run through it: a program on your `PATH` in a terminal is found.

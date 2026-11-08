@@ -7,7 +7,7 @@ import (
 
 // Installable are the names wdx deps install takes: a dependency, or for
 // container the program that provides it.
-var Installable = []string{"git", "clipboard", "docker", "podman", "gh", "vi", "vim", "nvim", "nano", "hx", "emacs"}
+var Installable = []string{"git", "clipboard", "docker", "podman", "gh", "browser", "vi", "vim", "nvim", "nano", "hx", "emacs"}
 
 // editorPackages are the packages of each editor on apt and brew; "" is one
 // macOS comes with.
@@ -115,6 +115,13 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 	if p, ok := editorPackages[name]; ok && sys.OS == "darwin" && p.brew == "" {
 		return Plan{}, nil // macOS comes with it
 	}
+	if name == "browser" && sys.OS == "darwin" {
+		return Plan{}, nil // open comes with macOS
+	}
+	if name == "browser" && sys.OS == "linux" && sys.Session == "" {
+		return unsupported("no graphical session to open a browser in",
+			"wdx hub login has a code typed on the hub's page instead, in a browser on any device")
+	}
 	switch sys.PackageManager {
 	case "apt":
 		switch name {
@@ -134,6 +141,8 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 			return Plan{Commands: apt("podman")}, nil
 		case "gh":
 			return Plan{Commands: apt("gh")}, nil
+		case "browser":
+			return Plan{Commands: apt("xdg-utils")}, nil
 		}
 		if p, ok := editorPackages[name]; ok {
 			return Plan{Commands: apt(p.apt)}, nil
@@ -172,6 +181,7 @@ func PlanFor(name string, sys System, user string) (Plan, error) {
 		"docker":    "Docker: https://docs.docker.com/engine/install/",
 		"podman":    "Podman: https://podman.io/docs/installation",
 		"gh":        "GitHub CLI: https://cli.github.com",
+		"browser":   "xdg-utils, which has xdg-open",
 	}[name]
 	if _, ok := editorPackages[name]; ok {
 		what = name

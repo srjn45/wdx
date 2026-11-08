@@ -19,6 +19,7 @@ Every command but daemon, observe, setting and update is served by the daemon; w
 | [`wdx daemon`](/wdx/docs/reference/cli/daemon/) | Start, stop and inspect the daemon |
 | [`wdx deps`](/wdx/docs/reference/cli/deps/) | Show and install the programs wdx needs besides itself |
 | [`wdx doc`](/wdx/docs/reference/cli/doc/) | Manage docs: a project's text, kept by wdx outside its repository |
+| [`wdx hub`](/wdx/docs/reference/cli/hub/) | Make this machine a node of an account on a hub, and see the account's nodes |
 | [`wdx message`](/wdx/docs/reference/cli/message/) | See the messages still waiting to reach a terminal or agent |
 | [`wdx observe`](/wdx/docs/reference/cli/observe/) | Run Grafana with the logs and metrics |
 | [`wdx plan`](/wdx/docs/reference/cli/plan/) | Manage plans: the work of a feature broken into tasks for agents |

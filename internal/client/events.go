@@ -70,27 +70,36 @@ func (c *Client) follow(ctx context.Context, ref string, params *api.StreamProje
 // Next waits for the next event. It returns io.EOF once the stream has
 // ended: after a removed event, or when the daemon ended it.
 func (s *ProjectStream) Next() (ProjectEvent, error) {
-	var event string
-	var data strings.Builder
-	for s.scanner.Scan() {
-		line := s.scanner.Text()
+	event, data, err := nextEvent(s.scanner)
+	if err != nil {
+		return ProjectEvent{}, err
+	}
+	return decodeEvent(event, data)
+}
+
+// nextEvent reads a stream's next server-sent event: its name and data. It
+// returns io.EOF once the stream has ended.
+func nextEvent(scanner *bufio.Scanner) (event, data string, err error) {
+	var b strings.Builder
+	for scanner.Scan() {
+		line := scanner.Text()
 		switch {
 		case line == "" && event != "":
-			return decodeEvent(event, data.String())
+			return event, b.String(), nil
 		case strings.HasPrefix(line, "event:"):
 			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		case strings.HasPrefix(line, "data:"):
-			if data.Len() > 0 {
-				data.WriteByte('\n')
+			if b.Len() > 0 {
+				b.WriteByte('\n')
 			}
-			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			b.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 		// Comments and fields this stream does not use are skipped.
 	}
-	if err := s.scanner.Err(); err != nil {
-		return ProjectEvent{}, err
+	if err := scanner.Err(); err != nil {
+		return "", "", err
 	}
-	return ProjectEvent{}, io.EOF
+	return "", "", io.EOF
 }
 
 func decodeEvent(event, data string) (ProjectEvent, error) {

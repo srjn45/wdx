@@ -408,7 +408,10 @@ func TestBrowserLoginExpired(t *testing.T) {
 	n := newNode(t, h, clock)
 	g := n.startBrowser("desktop")
 	clock.waitingFor(t, "the login's life", func(d time.Duration) bool { return d > 9*time.Minute })
-	clock.Advance(g.ExpiresAt.Sub(clock.Now()))
+	// Past the expiry: the hub's clock goes on in real time, so the wait,
+	// asked for a moment after the link read the time, ends a moment after
+	// it.
+	clock.Advance(g.ExpiresAt.Sub(clock.Now()) + time.Second)
 	wantProblem(t, waitLogin(t, g), ProblemExpired)
 }
 

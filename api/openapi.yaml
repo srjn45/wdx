@@ -2189,8 +2189,203 @@ paths:
               schema: { $ref: "#/components/schemas/PlanTaskResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/hub:
+    get:
+      operationId: getHub
+      tags: [hub]
+      summary: This node's login to a hub and its connection
+      description: |
+        Read from what the daemon holds: it never waits on the hub. Not being
+        logged in is a state, logged_out, not an error.
+      responses:
+        "200":
+          description: The status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/login:
+    post:
+      operationId: startHubLogin
+      tags: [hub]
+      summary: Start making this machine a node of an account on a hub
+      description: |
+        The daemon makes the node's key and, for the browser flow, the PKCE
+        verifier, which never leave it, and asks the hub to start the
+        login. A login pending is replaced, its stream ending with
+        login_cancelled. The login lives in the daemon's memory until it is
+        approved, refused, expired or cancelled, or the daemon stops;
+        streamHubLogin follows it.
+
+        The answer's user_code is a secret, never logged.
+
+        Errors: already_logged_in, hub_unreachable, hub_version_unsupported,
+        invalid_argument (a url that is not https, or plain http to a host
+        other than localhost and 127.0.0.1; a browser login without a
+        callback), name_taken.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubLoginStart" }
+      responses:
+        "201":
+          description: The login, pending.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubLoginEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: streamHubLogin
+      tags: [hub]
+      summary: Follow a login, sent every time its state changes
+      description: |
+        Server-sent events (text/event-stream), as streamProject sends.
+        Each event is "event: login" with a HubLoginEvent as its data: the
+        login's state now, pending, then logged_in with the hub's status or
+        failed with a problem (login_denied, login_expired, login_cancelled,
+        name_taken, hub_unreachable, internal), which ends the stream. A
+        login another replaced, or the daemon no longer has, is failed with
+        login_cancelled at once. The stream also ends, with login_cancelled,
+        when the daemon stops.
+      parameters:
+        - $ref: "#/components/parameters/HubLoginID"
+      responses:
+        "200":
+          description: The stream of the login's events.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: cancelHubLogin
+      tags: [hub]
+      summary: Cancel a login pending
+      description: |
+        Its stream ends with login_cancelled. A login that ended already is
+        left as it is.
+
+        Errors: not_found (the daemon has no such login).
+      parameters:
+        - $ref: "#/components/parameters/HubLoginID"
+      responses:
+        "200":
+          description: The login's state once cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubLoginEvent" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/login/code:
+    post:
+      operationId: sendHubLoginCode
+      tags: [hub]
+      summary: Finish a browser login with what its callback received
+      description: |
+        The authorization code, or the error, and the state the hub sent
+        the browser back to the CLI's callback with. The daemon exchanges
+        the code for the node's credentials, with its PKCE verifier, before
+        answering. The code is a secret, measured in the log, never logged.
+
+        Errors: invalid_argument (the state is not the login's, or the
+        login is a device login), not_found (no browser login is pending).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubLoginCode" }
+      responses:
+        "200":
+          description: The login's state once the code was used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubLoginEvent" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/logout:
+    post:
+      operationId: logoutHub
+      tags: [hub]
+      summary: Leave the hub
+      description: |
+        Asks the hub to revoke this node, waiting a few seconds at most,
+        then closes the control connection and deletes <home>/hub/ whether
+        the hub heard or not; hub_told says whether it did. The hub is the
+        status as it was.
+
+        Errors: not_logged_in.
+      responses:
+        "200":
+          description: The result logged_out.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubLogoutResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/nodes:
+    get:
+      operationId: listHubNodes
+      tags: [hub]
+      summary: The nodes of the account, from the hub
+      description: |
+        Errors: hub_unreachable, hub_version_unsupported, not_logged_in
+        (also when the hub cut this node off).
+      responses:
+        "200":
+          description: The nodes, by name.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubNodeList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/nodes/{node}:
+    parameters:
+      - name: node
+        in: path
+        required: true
+        description: The node's name, whatever its case, or "id:" and its id.
+        schema: { type: string, minLength: 1 }
+    get:
+      operationId: getHubNode
+      tags: [hub]
+      summary: A node of the account, from the hub
+      description: |
+        Errors: hub_unreachable, hub_version_unsupported, node_not_found,
+        not_logged_in.
+      responses:
+        "200":
+          description: The node, with its key's fingerprint.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubNodeEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: removeHubNode
+      tags: [hub]
+      summary: Revoke another node of the account
+      description: |
+        The hub cuts its connection at once and renews no certificate for
+        it. This node is refused: leaving is logoutHub.
+
+        Errors: hub_unreachable, hub_version_unsupported, node_is_this,
+        node_not_found, not_logged_in.
+      responses:
+        "200":
+          description: The node as it was, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubNodeResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
+    HubLoginID:
+      name: login
+      in: query
+      required: true
+      description: The login's id, as startHubLogin gave it.
+      schema: { type: string, minLength: 1 }
     WorktreeRef:
       name: worktree
       in: path
@@ -2360,7 +2555,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out]
 
     Worktree:
       type: object
@@ -3803,6 +3998,150 @@ components:
           items: { type: string }
           description: The other plans whose folder changed with this one's, as a plan of plans and its plans share one, empty when none; set by createPlan, updatePlanContent and updatePlan only.
 
+    HubConnection:
+      type: string
+      description: |
+        The control connection to the hub: offline is lost or refused and
+        tried again; revoked (another node removed this one) and disabled
+        (the hub's admin disabled the account) are for good, until logout.
+      enum: [connected, connecting, offline, logged_out, revoked, disabled]
+
+    HubNodeRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    HubStatus:
+      type: object
+      required: [url, user, node, connection, hub_version, in_range, behind]
+      properties:
+        url: { type: string, nullable: true, description: "The hub's web endpoint; null when logged out." }
+        user: { type: string, nullable: true, description: "The account's username; null when logged out." }
+        node:
+          allOf: [{ $ref: "#/components/schemas/HubNodeRef" }]
+          nullable: true
+          description: This node; null when logged out.
+        connection: { $ref: "#/components/schemas/HubConnection" }
+        hub_version: { type: string, nullable: true, description: "The hub's version, as it last said; null until it did." }
+        in_range: { type: boolean, nullable: true, description: "Whether the hub serves the API this wdx speaks; null until it said." }
+        behind:
+          type: string
+          nullable: true
+          description: When in_range is false, the side to update, node or hub.
+
+    HubEnvelope:
+      type: object
+      required: [hub]
+      properties:
+        hub: { $ref: "#/components/schemas/HubStatus" }
+
+    HubLoginFlow:
+      type: string
+      description: browser approves in a browser on this machine, which comes back to the CLI's callback; device by a code typed on the hub's device page, in any browser.
+      enum: [browser, device]
+
+    HubLoginStart:
+      type: object
+      required: [url, name, flow]
+      properties:
+        url: { type: string, minLength: 1, description: "The hub's web endpoint: https://<host>[:<port>], or http to localhost or 127.0.0.1." }
+        name: { type: string, minLength: 1, description: "This node's name in the account." }
+        flow: { $ref: "#/components/schemas/HubLoginFlow" }
+        callback:
+          type: string
+          description: For browser, where the hub sends the browser back to, http://127.0.0.1:<port>/<path>.
+
+    HubLogin:
+      type: object
+      required: [id, flow, expires_at]
+      properties:
+        id: { type: string, description: "The daemon's id of the login, which its stream and cancel name." }
+        flow: { $ref: "#/components/schemas/HubLoginFlow" }
+        expires_at: { type: string, format: date-time }
+        login_url: { type: string, description: "For browser, the approval page to open." }
+        verification_url: { type: string, description: "For device, the page to type the code on." }
+        user_code: { type: string, description: "For device, the code to type: a secret, never logged." }
+
+    HubLoginEnvelope:
+      type: object
+      required: [login]
+      properties:
+        login: { $ref: "#/components/schemas/HubLogin" }
+
+    HubLoginEvent:
+      type: object
+      required: [phase]
+      properties:
+        phase:
+          type: string
+          enum: [pending, logged_in, failed]
+        hub:
+          allOf: [{ $ref: "#/components/schemas/HubStatus" }]
+          description: Once logged_in, the status.
+        problem:
+          allOf: [{ $ref: "#/components/schemas/Problem" }]
+          description: Once failed, why.
+
+    HubLoginCode:
+      type: object
+      required: [state]
+      properties:
+        code: { type: string, description: "The authorization code: a secret, measured in the log." }
+        state: { type: string, minLength: 1 }
+        error: { type: string, description: "The error the hub sent instead of a code, as access_denied." }
+
+    HubLogoutResult:
+      type: object
+      required: [result, hub_told, hub]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        hub_told: { type: boolean, description: "Whether the hub heard and revoked this node." }
+        hub: { $ref: "#/components/schemas/HubStatus" }
+
+    HubNode:
+      type: object
+      required: [id, name, this, online, last_seen_at, version, os, created_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        this: { type: boolean, description: "Whether it is this machine." }
+        online: { type: boolean, description: "Whether it has a control connection to the hub now." }
+        last_seen_at: { type: string, format: date-time, nullable: true, description: "Null when it never connected." }
+        version: { type: string, description: "The wdx version it last connected with." }
+        os: { type: string }
+        created_at: { type: string, format: date-time }
+
+    HubNodeDetail:
+      allOf:
+        - $ref: "#/components/schemas/HubNode"
+        - type: object
+          required: [fingerprint]
+          properties:
+            fingerprint: { type: string, description: "SHA256: and its key's SHA-256 in base64 without padding." }
+
+    HubNodeList:
+      type: object
+      required: [nodes]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/HubNode" }
+
+    HubNodeEnvelope:
+      type: object
+      required: [node]
+      properties:
+        node: { $ref: "#/components/schemas/HubNodeDetail" }
+
+    HubNodeResult:
+      type: object
+      required: [result, node]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        node: { $ref: "#/components/schemas/HubNode" }
+
     ErrorCode:
       type: string
       description: |
@@ -3894,6 +4233,15 @@ components:
         - worktree_in_plan
         - plan_not_landed
         - base_not_pulled
+        - already_logged_in
+        - not_logged_in
+        - login_denied
+        - login_expired
+        - login_cancelled
+        - hub_unreachable
+        - hub_version_unsupported
+        - node_not_found
+        - node_is_this
 
     Problem:
       type: object

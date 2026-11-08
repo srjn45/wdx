@@ -37,6 +37,7 @@ export default defineConfig({
             'docs/guides/docs',
             'docs/guides/plans',
             'docs/guides/running-plans',
+            'docs/guides/hub',
           ],
         },
         {

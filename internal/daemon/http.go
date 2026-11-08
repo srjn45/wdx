@@ -30,7 +30,7 @@ import (
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -84,7 +84,14 @@ func isViewPath(path string) bool {
 	return path == tideViewPath || strings.HasPrefix(path, projectsPath) && ok && project != "" && rest == viewPathEnd
 }
 
+// isHubPath reports whether path is one of the hub's routes, which go to the
+// hub through the link and touch nothing else.
+func isHubPath(path string) bool {
+	return path == hubPath || strings.HasPrefix(path, hubPath+"/")
+}
+
 const (
+	hubPath         = "/v1/hub"
 	tideViewPath    = "/v1/tide/view"
 	projectsPath    = "/v1/projects/"
 	viewPathEnd     = "view"
@@ -107,9 +114,10 @@ func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 		defer cancel()
 		defer context.AfterFunc(d.abort, cancel)()
 		r = r.WithContext(ctx)
-		// A reload, a setting, a refresh or a view touches nothing the changes
-		// use, and should not wait minutes for a clone to end.
-		if r.URL.Path != reloadPath && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
+		// A reload, a setting, a refresh, a view or the hub touches nothing the
+		// changes use, and should not wait minutes for a clone to end; nor
+		// should a change wait on the hub.
+		if r.URL.Path != reloadPath && !isHubPath(r.URL.Path) && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			defer d.notices.notify() // the streams send what changed
@@ -163,7 +171,7 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 		w.Header().Set(api.DebugIDHeader, id)
 		w.Header().Set(api.VersionHeader, identity.Version)
 		// A stream's body is not kept: it never ends.
-		rec := &recorder{ResponseWriter: w, stream: operation == streamOperation}
+		rec := &recorder{ResponseWriter: w, stream: streamOperations[operation]}
 		defer func() {
 			var stack []byte
 			if v := recover(); v != nil {
@@ -200,6 +208,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = withTextMeasured(rec.body.Bytes(), "content")
 			case operation == "getPlan" && rec.status == http.StatusOK:
 				response = api.PlanResponseLogged(rec.body.Bytes())
+			case operation == "startHubLogin" && rec.status == http.StatusCreated:
+				response = api.HubLoginResponseLogged(rec.body.Bytes())
 			case operation == "finishPlanTask" && rec.status == http.StatusOK:
 				response = api.PlanTaskResponseLogged(rec.body.Bytes())
 			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
@@ -239,6 +249,8 @@ func requestLogged(operation string, b []byte) any {
 		return withTextMeasured(b, "content") // a plan's prompts can hold secrets
 	case "finishPlanTask":
 		return withTextMeasured(b, "summary") // an agent's output
+	case "sendHubLoginCode":
+		return api.HubLoginCodeLogged(b)
 	}
 	if operation != "sendTerminal" && operation != "sendAgent" {
 		return jsonValue(b)

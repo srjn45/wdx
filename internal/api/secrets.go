@@ -152,3 +152,35 @@ func agentLogged(a map[string]any) {
 		}
 	}
 }
+
+// HubLoginResponseLogged is a login started as logged, by the daemon: its
+// user_code is a secret, which is measured, never logged. b is the
+// response's JSON.
+func HubLoginResponseLogged(b []byte) any {
+	var v map[string]any
+	if json.Unmarshal(b, &v) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	if login, ok := v["login"].(map[string]any); ok {
+		if code, ok := login["user_code"].(string); ok {
+			delete(login, "user_code")
+			login["user_code_bytes"] = len(code)
+		}
+	}
+	return v
+}
+
+// HubLoginCodeLogged is what a login's callback received as logged, by the
+// daemon: the authorization code is a secret, which is measured, never
+// logged, even in a body too broken to read. b is the request's JSON.
+func HubLoginCodeLogged(b []byte) any {
+	var v map[string]any
+	if json.Unmarshal(b, &v) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	if code, ok := v["code"].(string); ok {
+		delete(v, "code")
+		v["code_bytes"] = len(code)
+	}
+	return v
+}

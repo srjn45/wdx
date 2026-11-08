@@ -61,6 +61,7 @@ func TestDepsList(t *testing.T) {
 		{"clipboard", "missing", ""},
 		{"container", "not_ready", "docker"},
 		{"gh", "missing", ""},
+		{"browser", "missing", ""},
 		{"vi", "missing", ""},
 		{"vim", "missing", ""},
 		{"nvim", "missing", ""},
@@ -93,6 +94,9 @@ func TestDepsList(t *testing.T) {
 	}
 	if d := v.Dependencies[1]; d.Detail == nil || *d.Detail != "wl-copy is not installed" {
 		t.Errorf("clipboard detail %v", d.Detail)
+	}
+	if d := v.Dependencies[4]; d.Features[0] != "hub login" || d.Detail == nil || *d.Detail != "xdg-open is not installed, so wdx hub login has a code typed instead" {
+		t.Errorf("browser: %+v", d)
 	}
 	if d := v.Dependencies[2]; d.Version == nil || *d.Version != "27.0.3" || d.Detail == nil || !strings.Contains(*d.Detail, "permission denied") {
 		t.Errorf("container: %+v", d)

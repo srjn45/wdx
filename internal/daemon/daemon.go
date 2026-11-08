@@ -29,6 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/fswatch"
 	"github.com/srjn45/wdx/internal/holder"
+	"github.com/srjn45/wdx/internal/hublink"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
@@ -120,6 +121,8 @@ type Options struct {
 	Reload func() (Settings, error)
 	// SettingStore lists and changes the settings for the API. Nil has none.
 	SettingStore SettingStore
+	// Hub are the waits of the link to the hub, which tests shorten.
+	Hub HubOptions
 }
 
 // SettingStore is the settings as the cli keeps them: the daemon may not read the
@@ -222,6 +225,11 @@ type Daemon struct {
 	// requestDuration is replaced with the exporter while requests record
 	// to it.
 	requestDuration atomic.Pointer[metric.Float64Histogram]
+
+	// hub is the node's link to the hub, which never waits on it; hubLogins
+	// the login it started last.
+	hub       *hublink.Link
+	hubLogins hubLogins
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -350,6 +358,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		},
 	})
 	d.agents = agent.NewManager(agents, d.terminals, d.backups)
+	// It lives until the daemon closes it, and connects in the background.
+	if d.hub, err = hublink.Open(context.WithoutCancel(logged), opts.Home, opts.Hub.link()); err != nil {
+		return nil, err
+	}
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
@@ -573,6 +585,9 @@ func (d *Daemon) cancelChanges() {
 func (d *Daemon) close() {
 	if d.listener != nil {
 		d.listener.Close()
+	}
+	if d.hub != nil {
+		d.hub.Close() // it ends the login pending, and the control connection
 	}
 	if d.runner != nil {
 		d.stopRunner()

@@ -6,6 +6,7 @@ import (
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/doc"
+	"github.com/srjn45/wdx/internal/hublink"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
@@ -38,6 +39,8 @@ type server struct {
 	runner       *plan.Runner
 	planParallel func() int
 	ghProgram    string // as Options.GH
+	hub          *hublink.Link
+	hubLogins    *hubLogins
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

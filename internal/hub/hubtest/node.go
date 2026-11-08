@@ -97,3 +97,28 @@ func (h *Hub) Admin() *hubapi.ClientWithResponses {
 	}
 	return c
 }
+
+// RemoveNode removes the node of n's account ref names, as n, the way wdx hub
+// node remove on n does.
+func (h *Hub) RemoveNode(n Node, ref string) {
+	h.t.Helper()
+	r, err := h.NodesClient(n).RemoveNodeWithResponse(context.Background(), ref)
+	if err != nil {
+		h.t.Fatalf("hubtest: remove node %s: %v", ref, err)
+	}
+	if r.JSON200 == nil {
+		h.t.Fatalf("hubtest: remove node %s: %d %s", ref, r.StatusCode(), r.Body)
+	}
+}
+
+// DisableUser disables username, as the hub's admin does.
+func (h *Hub) DisableUser(username string) {
+	h.t.Helper()
+	r, err := h.Admin().UpdateUserWithResponse(context.Background(), hubapi.Username(username), hubapi.UpdateUser{Disabled: true})
+	if err != nil {
+		h.t.Fatalf("hubtest: disable %s: %v", username, err)
+	}
+	if r.StatusCode() != http.StatusOK {
+		h.t.Fatalf("hubtest: disable %s: %d %s", username, r.StatusCode(), r.Body)
+	}
+}

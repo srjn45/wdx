@@ -43,6 +43,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*requestError](err); ok {
 		return api.ErrorCodeUsage, nil
 	}
+	if e, ok := errors.AsType[*hubError](err); ok {
+		return e.code, nil
+	}
 	if e, ok := errors.AsType[*agent.UnavailableError](err); ok {
 		return api.ErrorCodeAcaUnavailable, map[string]any{"aca": orNull(e.ACA), "reason": orNull(e.Reason), "program": orNull(e.Program)}
 	}
