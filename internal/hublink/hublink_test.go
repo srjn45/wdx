@@ -136,7 +136,13 @@ type node struct {
 // clock of clock unless nil, and its log in its home.
 func newNode(t *testing.T, h *hubtest.Hub, clock Clock) *node {
 	t.Helper()
-	n := &node{t: t, h: h, home: t.TempDir(), clock: clock}
+	return newNodeAt(t, h, t.TempDir(), clock)
+}
+
+// newNodeAt is newNode on home, which may hold a login already.
+func newNodeAt(t *testing.T, h *hubtest.Hub, home string, clock Clock) *node {
+	t.Helper()
+	n := &node{t: t, h: h, home: home, clock: clock}
 	n.log = filepath.Join(n.home, "hublink.log")
 	n.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond}
 	n.open()

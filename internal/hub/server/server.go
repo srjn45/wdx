@@ -33,6 +33,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hub/pages"
+	"github.com/srjn45/wdx/internal/hub/relay"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/telemetry"
@@ -76,6 +77,9 @@ type Options struct {
 	// connections; DefaultHelloTimeout, DefaultPingInterval and
 	// DefaultRenewInterval when 0.
 	HelloTimeout, PingInterval, RenewInterval time.Duration
+	// Streams limits the streams between nodes; the relay's defaults when
+	// zero.
+	Streams relay.Options
 }
 
 // SettingStore is the settings as the commands keep them: the server does not
@@ -148,6 +152,7 @@ type Server struct {
 	accounts *account.Store
 	nodes    *node.Store
 	docs     *docsync.Store
+	relay    *relay.Relay // the streams between nodes
 	pages    *pages.Pages // the sign-in pages, on the web endpoint
 	// nodesURL is where nodes reach the node endpoint, as they are told.
 	nodesURL string
@@ -221,6 +226,7 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		return nil, err
 	}
 	s.nodes = node.New(s.db, node.Options{Now: opts.Now})
+	s.relay = relay.New(opts.Streams)
 	if s.docs, err = docsync.New(s.db, docsync.Options{MasterKey: cfg.MasterKey, Now: opts.Now}); err != nil {
 		return nil, err
 	}

@@ -153,7 +153,10 @@ func (a *api) PollNodeLogin(ctx context.Context, req hubapi.PollNodeLoginRequest
 }
 
 func (s *Server) nodeOf(n node.Node) hubapi.Node {
-	r := hubapi.Node{Id: n.ID, Name: n.Name, Os: n.OS, Version: n.Version, CreatedAt: n.CreatedAt, Online: s.nodes.Registry().Online(n.ID)}
+	r := hubapi.Node{
+		Id: n.ID, Name: n.Name, Os: n.OS, Version: n.Version, CreatedAt: n.CreatedAt, Online: s.nodes.Registry().Online(n.ID),
+		RemoteAccess: n.RemoteAccess, CodeSetup: n.CodeSetup,
+	}
 	if !n.LastSeenAt.IsZero() {
 		r.LastSeenAt = &n.LastSeenAt
 	}
@@ -164,7 +167,7 @@ func (s *Server) accountNodeOf(n node.Node, this node.Node) hubapi.AccountNode {
 	r := s.nodeOf(n)
 	return hubapi.AccountNode{
 		Id: r.Id, Name: r.Name, Os: r.Os, Version: r.Version, CreatedAt: r.CreatedAt, LastSeenAt: r.LastSeenAt, Online: r.Online,
-		This: n.ID == this.ID,
+		RemoteAccess: r.RemoteAccess, CodeSetup: r.CodeSetup, This: n.ID == this.ID,
 	}
 }
 
@@ -190,7 +193,8 @@ func (a *api) GetNode(ctx context.Context, req hubapi.GetNodeRequestObject) (hub
 	}
 	r := a.server.accountNodeOf(n, this)
 	return hubapi.GetNode200JSONResponse{Node: hubapi.AccountNodeDetail{
-		Id: r.Id, Name: r.Name, Os: r.Os, Version: r.Version, CreatedAt: r.CreatedAt, LastSeenAt: r.LastSeenAt, Online: r.Online, This: r.This,
+		Id: r.Id, Name: r.Name, Os: r.Os, Version: r.Version, CreatedAt: r.CreatedAt, LastSeenAt: r.LastSeenAt, Online: r.Online,
+		RemoteAccess: r.RemoteAccess, CodeSetup: r.CodeSetup, This: r.This,
 		PublicKey: n.PublicKey, Fingerprint: node.Fingerprint(n.PublicKey),
 	}}, nil
 }

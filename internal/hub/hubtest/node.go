@@ -7,12 +7,22 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+
 	"github.com/srjn45/wdx/internal/hubapi"
+	"github.com/srjn45/wdx/internal/identity"
 )
 
 // Node is a machine made a node of an account by a device login, and what
@@ -146,4 +156,87 @@ func (h *Hub) PushDoc(n Node, id, repoKey, name, text string) {
 	if err != nil || r.JSON200 == nil || len(r.JSON200.Results) != 1 || r.JSON200.Results[0].Status != hubapi.DocChangeResultStatusApplied {
 		h.t.Fatalf("hubtest: push doc %s: %v %d %s", id, err, r.StatusCode(), r.Body)
 	}
+}
+
+// LogIn makes a machine a node of u named name, as NewNode does, and writes
+// its login into home as wdx hub login does, in <home>/hub/: a link, or a
+// daemon, opened on home after is logged in to the hub as that node. Several
+// homes logged in, of one user or of several, are as many machines.
+func (h *Hub) LogIn(home string, u User, name string) Node {
+	h.t.Helper()
+	t := h.t
+	n := h.NewNode(u, name)
+	der, err := x509.MarshalPKCS8PrivateKey(n.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	h.Secret(strings.Split(string(key), "\n")[1])
+	login, err := json.MarshalIndent(map[string]any{
+		"url": h.URL, "nodes_url": n.Credentials.NodesUrl, "user": n.Credentials.User,
+		"node": map[string]string{"id": n.ID, "name": n.Name},
+	}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := identity.HubDir(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// login.json last, as without it there is no login.
+	for _, f := range []struct {
+		name string
+		data []byte
+	}{
+		{"node.key", key},
+		{"node.crt", []byte(n.Credentials.Certificate)},
+		{"hub-ca.crt", []byte(n.Credentials.CaCertificate)},
+		{"login.json", append(login, '\n')},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, f.name), f.data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return n
+}
+
+// Connect opens n's control connection, as a node that says hello and then
+// nothing, reading what the hub sends until the connection closes: online,
+// it answers no stream asked of it. It closes when the test ends, or at the
+// close returned.
+func (h *Hub) Connect(n Node) (closeNow func()) {
+	h.t.Helper()
+	t := h.t
+	ctx, cancel := context.WithCancel(context.Background())
+	//nolint:bodyclose // the websocket closes it itself
+	conn, _, err := websocket.Dial(ctx, h.NodesURL+"/v1/control", &websocket.DialOptions{HTTPClient: h.NodeClient(n.Certificate)})
+	if err != nil {
+		cancel()
+		t.Fatalf("hubtest: connect %s: %v", n.Name, err)
+	}
+	if err := wsjson.Write(ctx, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: "1", WdxVersion: "0.5.0", Os: "linux/amd64"}); err != nil {
+		cancel()
+		t.Fatalf("hubtest: hello %s: %v", n.Name, err)
+	}
+	var welcome hubapi.ControlWelcome
+	if err := wsjson.Read(ctx, conn, &welcome); err != nil || welcome.Type != hubapi.ControlWelcomeTypeWelcome {
+		cancel()
+		t.Fatalf("hubtest: welcome %s: %v %+v", n.Name, err, welcome)
+	}
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		for {
+			if _, _, err := conn.Read(ctx); err != nil {
+				return
+			}
+		}
+	}()
+	closeNow = sync.OnceFunc(func() {
+		cancel()
+		_ = conn.CloseNow()
+		<-read
+	})
+	t.Cleanup(closeNow)
+	return closeNow
 }

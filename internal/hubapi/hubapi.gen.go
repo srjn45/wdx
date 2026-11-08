@@ -104,6 +104,36 @@ func (e ControlHelloType) Valid() bool {
 	}
 }
 
+// Defines values for ControlStateType.
+const (
+	ControlStateTypeState ControlStateType = "state"
+)
+
+// Valid indicates whether the value is a known member of the ControlStateType enum.
+func (e ControlStateType) Valid() bool {
+	switch e {
+	case ControlStateTypeState:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlStreamWaitingType.
+const (
+	ControlStreamWaitingTypeStreamWaiting ControlStreamWaitingType = "stream_waiting"
+)
+
+// Valid indicates whether the value is a known member of the ControlStreamWaitingType enum.
+func (e ControlStreamWaitingType) Valid() bool {
+	switch e {
+	case ControlStreamWaitingTypeStreamWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ControlWelcomeType.
 const (
 	ControlWelcomeTypeWelcome ControlWelcomeType = "welcome"
@@ -194,6 +224,8 @@ const (
 	ErrorCodeInvalidGrant          ErrorCode = "invalid_grant"
 	ErrorCodeInvalidSetting        ErrorCode = "invalid_setting"
 	ErrorCodeNameTaken             ErrorCode = "name_taken"
+	ErrorCodeNodeNotFound          ErrorCode = "node_not_found"
+	ErrorCodeNodeOffline           ErrorCode = "node_offline"
 	ErrorCodeNodeRevoked           ErrorCode = "node_revoked"
 	ErrorCodeNotFound              ErrorCode = "not_found"
 	ErrorCodePathExists            ErrorCode = "path_exists"
@@ -201,6 +233,7 @@ const (
 	ErrorCodeReloadFailed          ErrorCode = "reload_failed"
 	ErrorCodeRevisionGap           ErrorCode = "revision_gap"
 	ErrorCodeSlowDown              ErrorCode = "slow_down"
+	ErrorCodeTooManyStreams        ErrorCode = "too_many_streams"
 	ErrorCodeUsage                 ErrorCode = "usage"
 )
 
@@ -239,6 +272,10 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeNameTaken:
 		return true
+	case ErrorCodeNodeNotFound:
+		return true
+	case ErrorCodeNodeOffline:
+		return true
 	case ErrorCodeNodeRevoked:
 		return true
 	case ErrorCodeNotFound:
@@ -252,6 +289,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeRevisionGap:
 		return true
 	case ErrorCodeSlowDown:
+		return true
+	case ErrorCodeTooManyStreams:
 		return true
 	case ErrorCodeUsage:
 		return true
@@ -319,6 +358,8 @@ func (e Result) Valid() bool {
 
 // AccountNode defines model for AccountNode.
 type AccountNode struct {
+	// CodeSetup Whether it has an authenticator set up for sessions, as it last said.
+	CodeSetup bool      `json:"code_setup"`
 	CreatedAt time.Time `json:"created_at"`
 	Id        string    `json:"id"`
 
@@ -330,6 +371,9 @@ type AccountNode struct {
 	Online bool   `json:"online"`
 	Os     string `json:"os"`
 
+	// RemoteAccess Whether it allows sessions, as it last said; for display only, the node decides each session itself.
+	RemoteAccess bool `json:"remote_access"`
+
 	// This Whether it is the node asking.
 	This bool `json:"this"`
 
@@ -339,6 +383,8 @@ type AccountNode struct {
 
 // AccountNodeDetail defines model for AccountNodeDetail.
 type AccountNodeDetail struct {
+	// CodeSetup Whether it has an authenticator set up for sessions, as it last said.
+	CodeSetup bool      `json:"code_setup"`
 	CreatedAt time.Time `json:"created_at"`
 
 	// Fingerprint SHA256: and the key's SHA-256 in base64 without padding.
@@ -355,6 +401,9 @@ type AccountNodeDetail struct {
 
 	// PublicKey Its Ed25519 public key, in base64.
 	PublicKey []byte `json:"public_key"`
+
+	// RemoteAccess Whether it allows sessions, as it last said; for display only, the node decides each session itself.
+	RemoteAccess bool `json:"remote_access"`
 
 	// This Whether it is the node asking.
 	This bool `json:"this"`
@@ -457,6 +506,28 @@ type ControlHelloType string
 type ControlMessage struct {
 	Type string `json:"type"`
 }
+
+// ControlState What the node says of itself, at each connect and whenever it changes; the hub keeps it for display.
+type ControlState struct {
+	CodeSetup    bool             `json:"code_setup"`
+	RemoteAccess bool             `json:"remote_access"`
+	Type         ControlStateType `json:"type"`
+}
+
+// ControlStateType defines model for ControlState.Type.
+type ControlStateType string
+
+// ControlStreamWaiting Another node of the account asked for a stream to this one, which this one joins with GET /v1/streams/{id}.
+type ControlStreamWaiting struct {
+	Node NodeRef `json:"node"`
+
+	// Stream The stream's id.
+	Stream string                   `json:"stream"`
+	Type   ControlStreamWaitingType `json:"type"`
+}
+
+// ControlStreamWaitingType defines model for ControlStreamWaiting.Type.
+type ControlStreamWaitingType string
 
 // ControlWelcome The hub's answer to a hello it can serve.
 type ControlWelcome struct {
@@ -567,6 +638,8 @@ type InviteResult struct {
 
 // Node defines model for Node.
 type Node struct {
+	// CodeSetup Whether it has an authenticator set up for sessions, as it last said.
+	CodeSetup bool      `json:"code_setup"`
 	CreatedAt time.Time `json:"created_at"`
 	Id        string    `json:"id"`
 
@@ -577,6 +650,9 @@ type Node struct {
 	// Online Whether it has a control connection now.
 	Online bool   `json:"online"`
 	Os     string `json:"os"`
+
+	// RemoteAccess Whether it allows sessions, as it last said; for display only, the node decides each session itself.
+	RemoteAccess bool `json:"remote_access"`
 
 	// Version The wdx version it last connected with.
 	Version string `json:"version"`
@@ -631,6 +707,12 @@ type NodeRef struct {
 // applies only at its next start, such as listen.web and public_url;
 // empty when it applied them all.
 type NotApplied = []string
+
+// OpenStream defines model for OpenStream.
+type OpenStream struct {
+	// NodeId The id of the node to open the stream to.
+	NodeId string `json:"node_id"`
+}
 
 // PollNodeLogin defines model for PollNodeLogin.
 type PollNodeLogin struct {
@@ -750,6 +832,17 @@ type StartNodeLogin struct {
 	WdxVersion string `json:"wdx_version"`
 }
 
+// Stream defines model for Stream.
+type Stream struct {
+	Id   string  `json:"id"`
+	Node NodeRef `json:"node"`
+}
+
+// StreamEnvelope defines model for StreamEnvelope.
+type StreamEnvelope struct {
+	Stream Stream `json:"stream"`
+}
+
 // UpdateSetting defines model for UpdateSetting.
 type UpdateSetting struct {
 	// Value Its new value; empty for the settings that take that.
@@ -849,6 +942,9 @@ type PollNodeLoginJSONRequestBody = PollNodeLogin
 
 // UpdateSettingJSONRequestBody defines body for UpdateSetting for application/json ContentType.
 type UpdateSettingJSONRequestBody = UpdateSetting
+
+// OpenStreamJSONRequestBody defines body for OpenStream for application/json ContentType.
+type OpenStreamJSONRequestBody = OpenStream
 
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
 type UpdateUserJSONRequestBody = UpdateUser
@@ -976,8 +1072,10 @@ type ClientInterface interface {
 	// hub (hub_version_unsupported). The hub then sends
 	// ControlCertificate when two thirds of the node's certificate's life
 	// have passed, at the welcome and daily, which the node answers with
-	// ControlCertificateSaved once it wrote it, and ControlBye before it
-	// closes the connection. WebSocket pings keep it alive.
+	// ControlCertificateSaved once it wrote it, ControlStreamWaiting when
+	// another node asks for a stream to it, and ControlBye before it
+	// closes the connection. The node sends ControlState at each connect
+	// and whenever it changes. WebSocket pings keep it alive.
 	//
 	// Errors: node_revoked, account_disabled, as on every request of this
 	// endpoint.
@@ -1224,6 +1322,54 @@ type ClientInterface interface {
 	// Corresponds with PATCH /v1/settings/{setting} (the `UpdateSetting` operationId).
 	UpdateSetting(ctx context.Context, setting string, body UpdateSettingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// OpenStreamWithBody Ask for a stream to another node of the calling node's account
+	//
+	// The hub sends the node asked for a ControlStreamWaiting on its
+	// control connection, and answers with the stream's id, which both
+	// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+	// between them and cannot read them: what runs in a stream is the two
+	// nodes' own.
+	//
+	// Errors: node_not_found, a node the account does not have, or the
+	// caller; node_offline, a node without a control connection now;
+	// too_many_streams, an account with 32 streams open or waiting.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+	OpenStreamWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OpenStream Ask for a stream to another node of the calling node's account
+	//
+	// The hub sends the node asked for a ControlStreamWaiting on its
+	// control connection, and answers with the stream's id, which both
+	// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+	// between them and cannot read them: what runs in a stream is the two
+	// nodes' own.
+	//
+	// Errors: node_not_found, a node the account does not have, or the
+	// caller; node_offline, a node without a control connection now;
+	// too_many_streams, an account with 32 streams open or waiting.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+	OpenStream(ctx context.Context, body OpenStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// JoinStream Join a stream, as a WebSocket of binary messages
+	//
+	// Each of the stream's two nodes joins it once. The hub answers the
+	// first to join once the second did, both switched to a WebSocket,
+	// and copies binary messages both ways until either closes, which
+	// closes the other. A text message closes both.
+	//
+	// Errors: not_found, a stream unknown, expired, of two other nodes,
+	// or joined by this node already; node_offline, the other node not
+	// joined within 10 seconds of the stream asked for.
+	//
+	// Corresponds with GET /v1/streams/{id} (the `JoinStream` operationId).
+	JoinStream(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUsers Every user not removed, by username
 	//
 	// Corresponds with GET /v1/users (the `ListUsers` operationId).
@@ -1391,8 +1537,10 @@ func (c *Client) Backup(ctx context.Context, body BackupJSONRequestBody, reqEdit
 // hub (hub_version_unsupported). The hub then sends
 // ControlCertificate when two thirds of the node's certificate's life
 // have passed, at the welcome and daily, which the node answers with
-// ControlCertificateSaved once it wrote it, and ControlBye before it
-// closes the connection. WebSocket pings keep it alive.
+// ControlCertificateSaved once it wrote it, ControlStreamWaiting when
+// another node asks for a stream to it, and ControlBye before it
+// closes the connection. The node sends ControlState at each connect
+// and whenever it changes. WebSocket pings keep it alive.
 //
 // Errors: node_revoked, account_disabled, as on every request of this
 // endpoint.
@@ -1819,6 +1967,84 @@ func (c *Client) UpdateSettingWithBody(ctx context.Context, setting string, cont
 // Corresponds with PATCH /v1/settings/{setting} (the `UpdateSetting` operationId).
 func (c *Client) UpdateSetting(ctx context.Context, setting string, body UpdateSettingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSettingRequest(c.Server, setting, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OpenStreamWithBody Ask for a stream to another node of the calling node's account
+//
+// The hub sends the node asked for a ControlStreamWaiting on its
+// control connection, and answers with the stream's id, which both
+// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+// between them and cannot read them: what runs in a stream is the two
+// nodes' own.
+//
+// Errors: node_not_found, a node the account does not have, or the
+// caller; node_offline, a node without a control connection now;
+// too_many_streams, an account with 32 streams open or waiting.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+func (c *Client) OpenStreamWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOpenStreamRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OpenStream Ask for a stream to another node of the calling node's account
+//
+// The hub sends the node asked for a ControlStreamWaiting on its
+// control connection, and answers with the stream's id, which both
+// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+// between them and cannot read them: what runs in a stream is the two
+// nodes' own.
+//
+// Errors: node_not_found, a node the account does not have, or the
+// caller; node_offline, a node without a control connection now;
+// too_many_streams, an account with 32 streams open or waiting.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+func (c *Client) OpenStream(ctx context.Context, body OpenStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOpenStreamRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// JoinStream Join a stream, as a WebSocket of binary messages
+//
+// Each of the stream's two nodes joins it once. The hub answers the
+// first to join once the second did, both switched to a WebSocket,
+// and copies binary messages both ways until either closes, which
+// closes the other. A text message closes both.
+//
+// Errors: not_found, a stream unknown, expired, of two other nodes,
+// or joined by this node already; node_offline, the other node not
+// joined within 10 seconds of the stream asked for.
+//
+// Corresponds with GET /v1/streams/{id} (the `JoinStream` operationId).
+func (c *Client) JoinStream(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewJoinStreamRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -2533,6 +2759,80 @@ func NewUpdateSettingRequestWithBody(server string, setting string, contentType 
 	return req, nil
 }
 
+// NewOpenStreamRequest calls the generic OpenStream builder with application/json body
+func NewOpenStreamRequest(server string, body OpenStreamJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewOpenStreamRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewOpenStreamRequestWithBody constructs an http.Request for the OpenStream method, with any body, and a specified content type
+func NewOpenStreamRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/streams")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewJoinStreamRequest constructs an http.Request for the JoinStream method
+func NewJoinStreamRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/streams/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListUsersRequest constructs an http.Request for the ListUsers method
 func NewListUsersRequest(server string) (*http.Request, error) {
 	var err error
@@ -2843,8 +3143,10 @@ type ClientWithResponsesInterface interface {
 	// hub (hub_version_unsupported). The hub then sends
 	// ControlCertificate when two thirds of the node's certificate's life
 	// have passed, at the welcome and daily, which the node answers with
-	// ControlCertificateSaved once it wrote it, and ControlBye before it
-	// closes the connection. WebSocket pings keep it alive.
+	// ControlCertificateSaved once it wrote it, ControlStreamWaiting when
+	// another node asks for a stream to it, and ControlBye before it
+	// closes the connection. The node sends ControlState at each connect
+	// and whenever it changes. WebSocket pings keep it alive.
 	//
 	// Errors: node_revoked, account_disabled, as on every request of this
 	// endpoint.
@@ -3104,6 +3406,56 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /v1/settings/{setting} (the `UpdateSetting` operationId).
 	UpdateSettingWithResponse(ctx context.Context, setting string, body UpdateSettingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSettingResponse, error)
+
+	// OpenStreamWithBodyWithResponse Ask for a stream to another node of the calling node's account
+	//
+	// The hub sends the node asked for a ControlStreamWaiting on its
+	// control connection, and answers with the stream's id, which both
+	// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+	// between them and cannot read them: what runs in a stream is the two
+	// nodes' own.
+	//
+	// Errors: node_not_found, a node the account does not have, or the
+	// caller; node_offline, a node without a control connection now;
+	// too_many_streams, an account with 32 streams open or waiting.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+	OpenStreamWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OpenStreamResponse, error)
+
+	// OpenStreamWithResponse Ask for a stream to another node of the calling node's account
+	//
+	// The hub sends the node asked for a ControlStreamWaiting on its
+	// control connection, and answers with the stream's id, which both
+	// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+	// between them and cannot read them: what runs in a stream is the two
+	// nodes' own.
+	//
+	// Errors: node_not_found, a node the account does not have, or the
+	// caller; node_offline, a node without a control connection now;
+	// too_many_streams, an account with 32 streams open or waiting.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+	OpenStreamWithResponse(ctx context.Context, body OpenStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*OpenStreamResponse, error)
+
+	// JoinStreamWithResponse Join a stream, as a WebSocket of binary messages
+	//
+	// Each of the stream's two nodes joins it once. The hub answers the
+	// first to join once the second did, both switched to a WebSocket,
+	// and copies binary messages both ways until either closes, which
+	// closes the other. A text message closes both.
+	//
+	// Errors: not_found, a stream unknown, expired, of two other nodes,
+	// or joined by this node already; node_offline, the other node not
+	// joined within 10 seconds of the stream asked for.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/streams/{id} (the `JoinStream` operationId).
+	JoinStreamWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*JoinStreamResponse, error)
 
 	// ListUsersWithResponse Every user not removed, by username
 	//
@@ -3955,6 +4307,95 @@ func (r UpdateSettingResponse) ContentType() string {
 	return ""
 }
 
+type OpenStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *StreamEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r OpenStreamResponse) GetJSON201() *StreamEnvelope {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r OpenStreamResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r OpenStreamResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OpenStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OpenStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OpenStreamResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type JoinStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r JoinStreamResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r JoinStreamResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r JoinStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r JoinStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r JoinStreamResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUsersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4317,8 +4758,10 @@ func (c *ClientWithResponses) BackupWithResponse(ctx context.Context, body Backu
 // hub (hub_version_unsupported). The hub then sends
 // ControlCertificate when two thirds of the node's certificate's life
 // have passed, at the welcome and daily, which the node answers with
-// ControlCertificateSaved once it wrote it, and ControlBye before it
-// closes the connection. WebSocket pings keep it alive.
+// ControlCertificateSaved once it wrote it, ControlStreamWaiting when
+// another node asks for a stream to it, and ControlBye before it
+// closes the connection. The node sends ControlState at each connect
+// and whenever it changes. WebSocket pings keep it alive.
 //
 // Errors: node_revoked, account_disabled, as on every request of this
 // endpoint.
@@ -4691,6 +5134,74 @@ func (c *ClientWithResponses) UpdateSettingWithResponse(ctx context.Context, set
 		return nil, err
 	}
 	return ParseUpdateSettingResponse(rsp)
+}
+
+// OpenStreamWithBodyWithResponse Ask for a stream to another node of the calling node's account
+//
+// The hub sends the node asked for a ControlStreamWaiting on its
+// control connection, and answers with the stream's id, which both
+// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+// between them and cannot read them: what runs in a stream is the two
+// nodes' own.
+//
+// Errors: node_not_found, a node the account does not have, or the
+// caller; node_offline, a node without a control connection now;
+// too_many_streams, an account with 32 streams open or waiting.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+func (c *ClientWithResponses) OpenStreamWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OpenStreamResponse, error) {
+	rsp, err := c.OpenStreamWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOpenStreamResponse(rsp)
+}
+
+// OpenStreamWithResponse Ask for a stream to another node of the calling node's account
+//
+// The hub sends the node asked for a ControlStreamWaiting on its
+// control connection, and answers with the stream's id, which both
+// nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+// between them and cannot read them: what runs in a stream is the two
+// nodes' own.
+//
+// Errors: node_not_found, a node the account does not have, or the
+// caller; node_offline, a node without a control connection now;
+// too_many_streams, an account with 32 streams open or waiting.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/streams (the `OpenStream` operationId).
+func (c *ClientWithResponses) OpenStreamWithResponse(ctx context.Context, body OpenStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*OpenStreamResponse, error) {
+	rsp, err := c.OpenStream(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOpenStreamResponse(rsp)
+}
+
+// JoinStreamWithResponse Join a stream, as a WebSocket of binary messages
+//
+// Each of the stream's two nodes joins it once. The hub answers the
+// first to join once the second did, both switched to a WebSocket,
+// and copies binary messages both ways until either closes, which
+// closes the other. A text message closes both.
+//
+// Errors: not_found, a stream unknown, expired, of two other nodes,
+// or joined by this node already; node_offline, the other node not
+// joined within 10 seconds of the stream asked for.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/streams/{id} (the `JoinStream` operationId).
+func (c *ClientWithResponses) JoinStreamWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*JoinStreamResponse, error) {
+	rsp, err := c.JoinStream(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseJoinStreamResponse(rsp)
 }
 
 // ListUsersWithResponse Every user not removed, by username
@@ -5353,6 +5864,68 @@ func ParseUpdateSettingResponse(rsp *http.Response) (*UpdateSettingResponse, err
 	return response, nil
 }
 
+// ParseOpenStreamResponse parses an HTTP response from a OpenStreamWithResponse call
+func ParseOpenStreamResponse(rsp *http.Response) (*OpenStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OpenStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest StreamEnvelope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseJoinStreamResponse parses an HTTP response from a JoinStreamWithResponse call
+func ParseJoinStreamResponse(rsp *http.Response) (*JoinStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &JoinStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 101:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListUsersResponse parses an HTTP response from a ListUsersWithResponse call
 func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5601,6 +6174,12 @@ type ServerInterface interface {
 	// UpdateSetting Change a setting and apply it at once
 	// (PATCH /v1/settings/{setting})
 	UpdateSetting(w http.ResponseWriter, r *http.Request, setting string)
+	// OpenStream Ask for a stream to another node of the calling node's account
+	// (POST /v1/streams)
+	OpenStream(w http.ResponseWriter, r *http.Request)
+	// JoinStream Join a stream, as a WebSocket of binary messages
+	// (GET /v1/streams/{id})
+	JoinStream(w http.ResponseWriter, r *http.Request, id string)
 	// ListUsers Every user not removed, by username
 	// (GET /v1/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -5890,6 +6469,46 @@ func (siw *ServerInterfaceWrapper) UpdateSetting(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// OpenStream operation middleware
+func (siw *ServerInterfaceWrapper) OpenStream(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenStream(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinStream operation middleware
+func (siw *ServerInterfaceWrapper) JoinStream(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinStream(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -6160,6 +6779,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins/exchange", wrapper.ExchangeNodeLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins/token", wrapper.PollNodeLogin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/control", wrapper.OpenControl)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/streams", wrapper.OpenStream)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/streams/{id}", wrapper.JoinStream)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes", wrapper.ListNodes)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.RemoveNode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.GetNode)
@@ -6784,6 +7405,78 @@ func (response UpdateSettingdefaultApplicationProblemPlusJSONResponse) VisitUpda
 	return err
 }
 
+type OpenStreamRequestObject struct {
+	Body *OpenStreamJSONRequestBody
+}
+
+type OpenStreamResponseObject interface {
+	VisitOpenStreamResponse(w http.ResponseWriter) error
+}
+
+type OpenStream201JSONResponse StreamEnvelope
+
+func (response OpenStream201JSONResponse) VisitOpenStreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenStreamdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response OpenStreamdefaultApplicationProblemPlusJSONResponse) VisitOpenStreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type JoinStreamRequestObject struct {
+	Id string `json:"id"`
+}
+
+type JoinStreamResponseObject interface {
+	VisitJoinStreamResponse(w http.ResponseWriter) error
+}
+
+type JoinStream101Response struct {
+}
+
+func (response JoinStream101Response) VisitJoinStreamResponse(w http.ResponseWriter) error {
+	w.WriteHeader(101)
+	return nil
+}
+
+type JoinStreamdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response JoinStreamdefaultApplicationProblemPlusJSONResponse) VisitJoinStreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -7068,6 +7761,12 @@ type StrictServerInterface interface {
 	// UpdateSetting Change a setting and apply it at once
 	// (PATCH /v1/settings/{setting})
 	UpdateSetting(ctx context.Context, request UpdateSettingRequestObject) (UpdateSettingResponseObject, error)
+	// OpenStream Ask for a stream to another node of the calling node's account
+	// (POST /v1/streams)
+	OpenStream(ctx context.Context, request OpenStreamRequestObject) (OpenStreamResponseObject, error)
+	// JoinStream Join a stream, as a WebSocket of binary messages
+	// (GET /v1/streams/{id})
+	JoinStream(ctx context.Context, request JoinStreamRequestObject) (JoinStreamResponseObject, error)
 	// ListUsers Every user not removed, by username
 	// (GET /v1/users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -7566,6 +8265,63 @@ func (sh *strictHandler) UpdateSetting(w http.ResponseWriter, r *http.Request, s
 	}
 }
 
+// OpenStream operation middleware
+func (sh *strictHandler) OpenStream(w http.ResponseWriter, r *http.Request) {
+	var request OpenStreamRequestObject
+
+	var body OpenStreamJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenStream(ctx, request.(OpenStreamRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenStream")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenStreamResponseObject); ok {
+		if err := validResponse.VisitOpenStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// JoinStream operation middleware
+func (sh *strictHandler) JoinStream(w http.ResponseWriter, r *http.Request, id string) {
+	var request JoinStreamRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.JoinStream(ctx, request.(JoinStreamRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "JoinStream")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(JoinStreamResponseObject); ok {
+		if err := validResponse.VisitJoinStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListUsers operation middleware
 func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	var request ListUsersRequestObject
@@ -7737,125 +8493,138 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"5H1tj9s48udXIXwH9C5OcSeZTHa3G4c/ejIZTG6ecpOZzQHrQYOWyha3ZVJLUu32Dvq7H6qKlChLst2T",
-	"7twC9yodWyKLxWLVr57o32e52dRGg/ZudvH7rJZWbsCDpf/96sBquQH8uwCXW1V7ZfTsYvZLCaJxYM8c",
-	"/YMPZWJbSg+3YIXyTuTSwXyWzRQ+XktfzrIZjzWLb8yymYV/NcpCMbvwtoFs5vISNhLn87san3XeKr2e",
-	"3d/f48OuNtoB0fbemmUFG/wzN9qD9vinrOtK5RKpPK/5if/xT4ck/56M/d8trGYXs/923i3+nL9153Fc",
-	"mnG4aCQYnBcrqSoo5rP7bPZ3sE7xFBOUPIyCON4EBczrW35ISF2I3Gw2ygtfgiibpdhKJ5aNqrxYWbPJ",
-	"6BH8Lr5iVsKXyomr9+/mM5wjTIx0XeW5abT/0RS06bKqflrNLv5xmGB6+j77fVZbU4P1incIJxlKzscS",
-	"fEkyIpQjurQpQEh3o/QaBSZs/NKYCqSe8cZHKfkHj/pb+5hZ/hNyP7v/7T5Lif8avFTV6UtI1z1cyUrp",
-	"NdjaKt7a/oI+fHv18svXFy2bb2B35sSHb6+evfzytVBaLKWD16/EVvnSNF7Usij6S40yns3qZlmp/PoG",
-	"dsN53nkn3hYvv/zyxd8EP4dTZd0MOOLK2I30yL6dh+EMe7xMpst6izzK37f6FipTk5D0eaWD6JzI7bBR",
-	"+5TRKEMqejR8r5wfn5/+UB427gGU4OhhOmmt3I3S5I4R9TO4pvKfzJYZq7sw1KGXwoT7xIaXswOcbAo1",
-	"QmgJshjX95V0XlizPXOilK4kySvh7lLopqrEylghtYBN7XciL6XSKI/4lVxWEPX7QOKt2Y4oiW/NVmyk",
-	"3uF0rCRoRJw3OTdKe1iDHa4dx8x4JZMrn5ZgGRlzcK/oof2Z+dWxOb+S+U1T0/BFoXCZsnqfTLuSlYNs",
-	"jxIymwPmXC2dqRoPAr9mbQ4iN/UuE0ZHK3DmxEpV4HbOw+ZSaONLpddiI3diCfiQJeu8Ufp70Guc5sVR",
-	"bYHUTK9tSvLjIoZb/yjyPUnVG6O9NdVXOxgzQrvWXOaVcRCEzGgNOT5zKSzcmhsoSK0XyqEQF2IDUpOk",
-	"r40pkH/9pVqQwdKDbjZMJo0yy2ZxjFk2c2XjvdLr68JsdUJ7xxr+oBtmuYOR5/YtI36bRSIOsOQNUrxC",
-	"cDLCmiuhYSvy7pEoYahIMlo8wrsb2A3Xnx8a+J0W79/+MGr24K5WFty1JGlobVghPTzzagOzE1iUzn0q",
-	"q9J3elScxrwP8hYmdCVhmq01HliwEnZuS+NA0GQ7REGI59yQl4/Mk2tHxJ7KmdN48S1UlZlmAOkg67zY",
-	"gHNyDVE95fy2+AjLDya/AT9cvazV9W2Hq4fjK70y8x6ipdM838lN1aHKDgoj+hqVPeNGldM+K0ta6thZ",
-	"3RZ3KaknsTddXn8EIugAy39gVo6pNOkFel+7lr+R7aV0mfBGeKgqsS1VXjL6HrI9rvqERRyg8SNUuZny",
-	"Gtk2Se22YJEoKYi1SFEutXBgb+Hx5OEsuDkj+1Y2ywP7lp2E2BjxrcYEZhuYcOqJS8nZF5BJDPfGgvTw",
-	"Tt8q1rgPwBbxhDvIjS4mMFhl9JpYqWgKsTX2xhHwC69lQnqxMc6LL56LQu7cpXj5SpSmsU5sS9CigpUX",
-	"pvE950Rp//rVOI6bWOLP4MA/cIVM4vVK5t7YEUNXOSMsbMwt6+gQzpCNL0F7VJqEaAthITfhXBXgLgVN",
-	"NlzdiN86WMzXJn9TSr0+vll9Wn/ShID1mqyxFIXJMyE79/nMIRVLc4dnXSg/R/iiYoBgoTfgZSG9FLm0",
-	"lqFPYfIzJ9ov6DX0yGlddeNKKLLAnkIYXe0WGu2+KuYLPTT87aIOnZZ29b8gX+6zNFzSX29LPU58QfTG",
-	"j86c8HDnxfrfqq6Rxtb/vWxl8aX4QX0ljM5BNLqW+Q0UJzjH2SwnWSseZHMLk18rQgEHsTTOXhVgR1VN",
-	"nGnkqxulixP4+h0+dp/NKrmEqu/+Tpi26OTGqNwoQK/NeCwCNW5tDYr1mRP4nFPe2B3CQqHN9jKKmED5",
-	"cajnlR/VwnFbHyQDLYoAjTKbiRfsfhJ0LUw+5iNmMwf/Gl9JODrs2upmswSbCchLAwVKF4o9uxsnKbFs",
-	"5rz0zTjvm7p4oITtWQtcRCt0WTx4vx3SNVOOWf6gIN9ba419Q6GJ37IRd0p5QlsWVo2DIgQFSJlQJJRP",
-	"YD8c0O3Jg5gaLWwYl1wemvS4rWXuhaEy5sAJvHND5tnui5MCTfu7cSzYFMc/SN0ve5ijPUzZLCp24g4p",
-	"8VHw2g7lHmhc8+6th63/6MrjyBMr/y4oxLjmwuRojio57kl3YjsM3HoURQH4BNn2S6EpfcEUFMJYYQEF",
-	"ay5kZUEWu2vbaK30OltoxGuNlrdSkURzIF7qHKoKCiEtkFq0HgqxZIv75vt3WZiBP6FB2JzG1TQE7jMS",
-	"fKtlReDPX69Mowv6+FZWqriWdt1s0HJy/OMa7pTzLnnAAUUYaPcrIxEFKQ4+7K0kIM9kJfhMUyh/vbTm",
-	"BpC4dlkhhXPtJX9h0bGs1EZ5/s4UcN1FPCSHM6+TyEcCcq8b7ZqaOZQQvraSloUwzFj1b0qgXNegCybW",
-	"VWbLcROaAJy7LkCzGmBIW1z7QHc8DtdrWQel6Y25rqQlHuP/k+WMSs8dywKFm81a6YeeklHBQ5vTWx9J",
-	"H8nI0pqtQwGxplmXnrw2tHWyqpYyvxlPGtzkgFxVKzWKL/bPF9K0/9bYYevcik+PTFRK3wwZsWieP/8i",
-	"D1mIxlb0fzh3aq2b+r/Y5/if/BDtKX9/ISS6HxY8h6OQQTVYZ3RwUxivzo/aUiLqaKyD2TBlRFXLpEPa",
-	"L7Dy0YKeYdYxcmPqbk8Q/wCyZVQ73Erp/LUD0GGw/pb+2Jp95aM65ajqHgZPpz6aJZiEqEZXSsPBLCN6",
-	"RLKNiXQhXsSpY37bZEjoYPxhW9y1CVblOVfSLnwq+rS3vSoqWI4CdTP2PJO9HWh5MCUMbywU6NDKagTG",
-	"5PL6YNC2i9i8uUIs/P7tDxkdODxhwmjoYm2gi9oozWld2zi2fKMa6+iUwadNw6Zx8vbEtylQ+m+F2lk4",
-	"L23kdybIoggpdiDtKB0PDPFQAhD11IGYb+RCJkrva3dxfs76qzTOB/UVtJ6x4YNR0hoHdsJysFlNKi+O",
-	"S5ZmnU+D7oe990QgXeaUSJEp/KYy216Ogk0XGla4VTmMGtT27Q+8U0OJ5Jevxy0nf8nOIJuATv5qU1WO",
-	"dj7JSAaiTkpF/hG7tgpMOCZBHcfuA7i7ldXR9RldOLEEvwXQwm8Nr/FBy0s8KDoi4+IbxuGJZV1bcysr",
-	"Uct1cr5NDTqdm2k9ibModyfsaIuCgjXHcVwmXJOXQjrx8ev/8+zVN3/57tnf/vf7qz+4xwx4uCxnnBUp",
-	"QS0DUoJQvRudhUB6MHHSWkVf/SG69k4rCVVPHtPNy3pHJGXuyPISYZs6zKjchrBm3PZP2OFJOzY+p78K",
-	"nvuofruBnYsR/ODGtNnZlVpTWju4aPi5ZBUQ3Bk0VgvNkQHHRkp6iuBouPNsHzqJqpTzoOdbWJL71gHR",
-	"y4XmQoaIZEKsAafaCFlV7LWdHmN7b6rqjzoRexrxMO/Th8e4n5TN7YXDdfCEpRPhIcHFOU786edv3oi/",
-	"vfryL38eyfmeYEOT2BFK77JZh5Bpn4RvFOo731XZnTm06wLhjRu1kkVb5jWSDNuC9mJrOYWBoERt4MAo",
-	"ByIgfGiHonorqwZPvb411S0UnWAlsnvg+He7Uo5WltEqvBGFEXJpGh9iqEeV3CD+mBgBr3w1lT1sdfAG",
-	"pB5neMxy9d9urL7YFncXJEBdJRyOdRybhPwXE5YE58LeZtFhJR51m5UI0pic/0xhj+lqLH8tOyV02Hq3",
-	"6uoRa7K66ceJD9muz+x4W5z3v8jVPs3tRtsz5WxnwwTckdLOoT++P8Yks6Y22kZOHtku8I+3uzznBKlh",
-	"/KEuocSVU2tNBlzjaVSkuSS6sHUNmh3oNlLImQQEADoELNtoH/25pLzXdVO38YK9MiTQ8S+m+HCk+EOI",
-	"KA5dyNKoHNz4qoKG9EbkpTEOhNwYvc5au+rlDaB7vlJ3UKDKTBMH3fd6x0k/Y0N+Zn7Q+k5oyNYaF7CS",
-	"YSNGjEGyhpHvoVCexx6Yry4vzKlUbbywIAuqw96HMJlwsegBn1uSwRCxLm8YlMAxRuMcliEqcVrkZgOO",
-	"5mMEG1bKPjshJ1TOaFAzEc7wrbQKFzR6hCcrkQvj0dGmCuQWTpn1vIJbqEaHIgKPAxguRuaHu53q70vg",
-	"RtbKXrItY+cuyO54wXDEmCenMuJJOJbIaAc+QNL/YwOVRSJPXvOU0usSDseMG3n+fzigHgLhky5syBZv",
-	"23MRP18bcgjyxKNVLvi6CN1K7+uL8/MXL/8yfz5/Pn8xCNOEQE4tfXkgbvOHAgLTPTYhEIYPCMV57xD/",
-	"uRAvUK2+fiUq8B6sy0Sh1sq7TMwzcU3n/FnGHg8akq3ypZDhYTz79PSBkrhJYnA/JI3J1cU0lbR5qTzk",
-	"vrGQOli6uTuXm4K7EzbyLlZIvH41lcnIS1lVoMdq3Pp7jMz48PLL16J9Iy1VPXPi/Xdv3oqY4kgKRRpb",
-	"fXI3RsKPsaaML16K5c6Tb3B6d8aglvAwv8ajBmn8uF9YmCxn7Fz+SoAiMfMPOJatbh8aCg1btk2XoTcg",
-	"YsfEt5ds6Omv4w4DTza9hF9D6PQhLnZERcN9tg3E+m/XYt4sFIExhKLPNyf0LrXTjBIfyP70xE26miGQ",
-	"oOwBh5MOJ3B8CbsQ36rMek3FMJ+Qwol9OYNzpCydpIiXCIJOVfAcrOjjsfghwQ9dCG98nTFw5OrXCg+u",
-	"Ju0P2pqqGitNmQhinhb/Svobh3mblvP9loDeyrIDvUYoJg/tbiPRGra1Ub6+CqDopG3JxHInYsrhJLA0",
-	"3lmFC3aoliYlIqr6+Fx0hG6B6AFdjAvJAIOFabJktePdbcik6aagmI85xuaJfjZ6fWo7x3EpvnI6KA1b",
-	"fBiR8pBTZBzwoR8EKT+RVS2knORZ0nD75FXi3Fv7kGB4L1F8JC3HSiJJ8/Js/frvIQvuKYm0mmi9uHr/",
-	"Dte2Le6elc0y45L6gpsvLHQpSnchtrDM0lyFy4TRC93FxS9ZB/BD2+JOFBI2RruM8eSm8Y2sxC/ff8Dh",
-	"w2uay6Sp8FgWG6Xbt58xr81WU8+ypAJygwYGN+JXre6Eo4aQhY5Z0w0E9B1en+MDc/FW5mUEoka3+RdK",
-	"SMs1qigVKtfjaheaNAgxgxM1UhuqEWgT19yUQAkeWt2r56/mC73QV23X90buhAOEu+Jjcffsa1g262fv",
-	"ClGCLMCKPxXL9TOCwy9eihLuAiL/MwJ1VF1IAzedVWaN0zS6oMVLL1RxGULf3OTOBagMOVSRRsXFVrqF",
-	"DiaZRpiLK6Lne7N+9j064JEgsxIUJaUiiHRuqj6L40kfniLnPaN0yUqqqrHgBNzlUHtU/dIxdpNL3L26",
-	"AmS9u1xoqXeCWclBCOWEWmtjoSD2UfTfUUncdGIh+ieOi/IWFPVdzC4FyLxc6G6rUchcG152sW/Egm+s",
-	"FktwCj+lOjraiVhJxxmbEP6eBWnCs5IcwIvZC/J/atCyVrOL2Rfz5/MvQpEdaZjz2xfnJNPnySFfc4ix",
-	"pfFdMbvAD6/wwb+3h7t3fcHL58+ndGT7XHcTQC9kdfid7v6CbOaazUba3ewiqsxE52VclO3ak4jckWtH",
-	"lbVI+Ow3HIIW3BTKn6e5xWTVff3De30h0grCoCs4AmW5hzh0wZXSlaIwAWRspM9LoTR3GoRAP+9bn7dE",
-	"yo5bcMf5+igXMfT7hEeuY3hLbSGWmpV9XoKbP8JWfZTVDTv6OD03PmciLyG/QZ0Gcc7Qhj29bcu25bg2",
-	"ExiP2oap68Mq70FPNRBTm4/khmPSVpvGedyzhabS0+ScX4ikIhWd7n7FaijU70YKcVIZmprHtjsshG0n",
-	"OP+VKXaPtsmhMfu+b5tDefqeaL145FnbTMLoRR+0N1vZbk44R4yPRBvefwyZe4NTUbxYermUDjKRG+3I",
-	"nvsseE3RfthGH1AWodBuUkP8Wq+tLKDg3r+2BRQ10//68NOPHOcPnYsuI/UvpBYMfYKVWGgERBddJA9t",
-	"shNpVyqrmu7yEyQ82PeF7vcpkncYusBpfE5BilfPn79ow/kBN2iDJmOh9zAkR4Ky0CoindEpBEGTJJZQ",
-	"Kl1koZbGUu23+NNEQfSf5yJU3uEAmtfX0v2m100cSoN8qWzh9iJgSWHXmROVWsFCkw9VS+fIpnPWNzQr",
-	"crO7VNUulrd097MEbIQMGiOEeqE5vqp86HxWgf9dJ75YwspY/GahR/vu54lE1BQdugGoqQKjUrfQ0zNp",
-	"uXkm9qvNCa8YHfVlgDrh7puFjqBvTN+g/Q8075uXF6wD9hoJtgq1fxGrtZO+5k8/mmk55H7fdHIKQ8Ag",
-	"nsLC5O486dEYtwCEokNfIQfDqcgFd5HCpVJ4K7WTXC9rViTfZquztoGBuwhVERolud7+Qsg4aug2aIfG",
-	"WfIbbbYVFGtAB2EtFd9iFK+oUInCc6gjlgQLHBqP8PTKAxqRyjiP6JNaiSOK4KzpVuWAqJjpi4QxCHUg",
-	"qUXDoyr1C80gXJLuo3rSdKF8DDbSebDX+CW+7XDopSl25Lws9F+p31C13U+IbipgZUJIlOV2j9tENxIS",
-	"2W679/FNBmcFXCBS7zoZMiHTRrjOhHZdnRru/KXo9TtkCx0b5ugd7oukzOzGUKpEau6b5Be7xgicD/+H",
-	"nGaUH3RMaJhFUePcBHG0bQUspaN7R7h5JeOu1c4DalEf6iNSwXF4HvdyAB2yVqyCL1fRCrZlqPC6UShF",
-	"AMUoZqwbVybdTk8DJpIJTgIUzx9/5tixNgIqftIQ0UPdtjllMa9kbEHxNv0oauuqrqtdW6YXL6mRVYXH",
-	"M+gzlByanqaeVmZcveAOI9lK6RtRmipUkPE7ZyjgN6Av8ERSJJv7o8ll3MgbtGvRcqAi8KrCb0MFCgql",
-	"ojLrorPHlVk7EreKMjOxo8sHEnoWagL8oh1GljzHCbrTFzrox4Q3T/v8n0Z0e1cJfGY03GuxmUDD8QYC",
-	"6cRGFtAHw6G+5TEE94cgFTxkRtulb1i7VeA5xhTqgZ1aa0GeyQQYRkF+RhH/Q9K7NWJVma2bi14ddpiE",
-	"6q5FW/8bXbSNzEsq40CBXOhgREM+u7sZ4LJFvx2QxD+TELs3Cx3z6q3BQ/9uSTe27CfGA+dzRoUFoWXI",
-	"GA4QlQQIOuTNbRF3XcVuKDKUfqH3eHQeH+sMYC+HOxe96mziD/sC3AxBZa9I834ddMYlOFLv4qr79C00",
-	"dw/s00PKg4lJCmsDpoyV1bFSf77QbxVHFIP+ePFcbJRuPLiAWZSPLSpz8SFm5nkugg/SIxO5oZJ0tCwK",
-	"C86RVkkpQOK7FTOqyS14d5GG+eJOs6o6qJoykTZzjukg16/beBottFcc8pn10KA7ZUIX9ZqNHkPp0Hxo",
-	"kFAeZDzbpGrMKrFRiO3INnYaZwvLUX3TnqVjAaAiXOtCsH/PzpFVI+Hp7pkL0sf/J0841Fe0hnCz56a1",
-	"EJDNX2jzYODaaPQGdEZWFu1haOK9RJWWtATHl+N0A+TbFoGcUUh6zxscE2gYNPc+jUwPm4g/Mzbc7wKc",
-	"ulg2eJndk48h2nH16MgFgxOtxEgPdCwOGdJyishz4/ekvL+nZP+E9hYt+ktDHSxaHRXZQrN3bCylSMJT",
-	"Uu/Y8Vw2Xoy2rnM6rO1eHzlnrN6JDWf76FL1I6yjM2QcRw0FbWIH/lK082XUOoYO94pcWUackQeDaA9h",
-	"BSuVA4eu/peRSXyyuqb7S9Hrub8cHvZkVfGsL7QhJ6+4FKcc07rXOvM0R7TfnvP/0/G8cjdiG5ql291i",
-	"+4ZQu6uPlE78/M0b8dfXL/8anKhDJ/KU9Biu+z86OyZF6Jud8EvbkqbRFVbK0RLdk6ao9q5DPiA77jGj",
-	"kVMufTjQbZ3QEead/47/3LOqruBYO3gbJuZAXt5Q7pqCzpTqZb++d+tAiDBecg8gldE6sbIA4cJiDjnh",
-	"BOOgZUwjcTHUjywbn2NrD3vGfDErxzW20vU947ae7tP3/mcKtYdTcWz/43eoVjbhFsHNiDRkh/PI3T4M",
-	"diFokM+0BYfSwHETHoPJP2k4gb+jjEx/u+EfR4rJR36sgTCNKi7CUaKr/sZ/v0FHtp/62w2/hTPP3UnT",
-	"AK1tIGmdc+OhSiqF5Q0IWK0gbw/+ZYi8OQ8aQRvBrK6xLSa4uu7fufgYilv7DcVtG05DibF4PRPln1zX",
-	"YePaK0WoxrRFgL1rlsaVBq39CaW11/I4IaYtK7dgIWYe9jUGt5BlBGYZkBtHZZexr4OLcB5Hp8iiXw3e",
-	"JYQkhZD39MZegC1t3jmoSHr7k7UFzgdkYKhxcNUf4oRPuJFpu9KRfdyL3rPSUFSkVT2KPuISlzBd1sXl",
-	"QqXXkImauhCObNf57+Gv+/0fnRlVXOHhsxPazkbUVXoX2skai2q+8vJAVyMCCarKocZvSn8P2ZGxKxXP",
-	"jXQLzZIo4h0Fymfokeq0cXAbu7GJo6V07C7S/5Rb6FitIzVsKUmam80GtzNJXRJCQnG+gdqPhv7aTU2c",
-	"tqljwiumwkNeKuqG9gZ9PjfteSVCx3Rg02sxeRpXrt/G8plduX5X3+Gz29e6oZ2XjHDb0Nvxn1s3QzK9",
-	"lAVdBfAIdT8xNBNoSvSuak3s9HFuS9QnHaBf6Ykn5HhbPz/BbCLx8RQhNbzvN0Qk/R6HGHX+e3zwqMMT",
-	"Uuu1dG5rLOqXtKkl27uSOht0S2SoZhyEAjzlIVRYoOOGeoHnZpjT9nmgO2VWq0vGPpFWirESUFwrVFNk",
-	"nx/qK/3KF0M9qRQcPnTctcVV0DtCP0/oJ9Gd4jLMiQAyVIIp28qKiHdo7kvMJzlEn4PPxzyhhu48ehxP",
-	"iDkYA7FjbUHkDoWfaUmEeZSxezhjjKjukfP2x+8OgIGvKW5JZbm6cCGyvEdjWi6T4SFzKaELbVarLJRP",
-	"rZpQEadszArurStEqUmI8SCHOxxOP49N1yL5lPaX25E+r/E9VQmkx76rFgycnDDArDKoHo2N8GNIOEtP",
-	"pymMDVSEa6ZQ055uU/j2FjcCqB8k6IcLbDhTiE5h+zMPKKG3RhWOfv5L2kpRhzaDT66d+UhFo70ex0w0",
-	"jqr9vJDdDzG4g7/EgEatb/ecaW8AwxOCTj7Hrqmz04Ub4Y3u8ppUo+Dacp2zk+p4Dp4ors0JwheuUXmq",
-	"8pxwU83nzYqnF+xM/iqmAz9Rm0PfPV5lTguKeOB+gQ4egHCcEvg0fYZOyFL8p2YohtmX+/aTQYFy0gEI",
-	"YgvL5JpSb9rmv3nnM+OQ99nhcfbuO/UmbRCM/VzpFa7RX1TONaHpugsouqPz0d6FBsE4XegojD1MyZi8",
-	"0/e/3f/fAAAA//8=",
+	"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",
+	"Lw//NwAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -367,14 +367,69 @@ paths:
         hub (hub_version_unsupported). The hub then sends
         ControlCertificate when two thirds of the node's certificate's life
         have passed, at the welcome and daily, which the node answers with
-        ControlCertificateSaved once it wrote it, and ControlBye before it
-        closes the connection. WebSocket pings keep it alive.
+        ControlCertificateSaved once it wrote it, ControlStreamWaiting when
+        another node asks for a stream to it, and ControlBye before it
+        closes the connection. The node sends ControlState at each connect
+        and whenever it changes. WebSocket pings keep it alive.
 
         Errors: node_revoked, account_disabled, as on every request of this
         endpoint.
       responses:
         "101":
           description: Switched to the WebSocket.
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/streams:
+    post:
+      operationId: openStream
+      tags: [nodes]
+      summary: Ask for a stream to another node of the calling node's account
+      description: |
+        The hub sends the node asked for a ControlStreamWaiting on its
+        control connection, and answers with the stream's id, which both
+        nodes then join with GET /v1/streams/{id}. The hub copies the bytes
+        between them and cannot read them: what runs in a stream is the two
+        nodes' own.
+
+        Errors: node_not_found, a node the account does not have, or the
+        caller; node_offline, a node without a control connection now;
+        too_many_streams, an account with 32 streams open or waiting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OpenStream" }
+      responses:
+        "201":
+          description: The stream, waiting for both nodes to join it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/streams/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The stream's id, as POST /v1/streams answered it.
+        schema: { type: string }
+    get:
+      operationId: joinStream
+      tags: [nodes]
+      summary: Join a stream, as a WebSocket of binary messages
+      description: |
+        Each of the stream's two nodes joins it once. The hub answers the
+        first to join once the second did, both switched to a WebSocket,
+        and copies binary messages both ways until either closes, which
+        closes the other. A text message closes both.
+
+        Errors: not_found, a stream unknown, expired, of two other nodes,
+        or joined by this node already; node_offline, the other node not
+        joined within 10 seconds of the stream asked for.
+      responses:
+        "101":
+          description: Switched to the WebSocket, joined to the other node's.
         default: { $ref: "#/components/responses/Problem" }
 
   /v1/nodes:
@@ -664,7 +719,7 @@ components:
 
     Node:
       type: object
-      required: [id, name, os, version, created_at, last_seen_at, online]
+      required: [id, name, os, version, created_at, last_seen_at, online, remote_access, code_setup]
       properties:
         id: { type: string }
         name: { type: string }
@@ -673,6 +728,8 @@ components:
         created_at: { type: string, format: date-time }
         last_seen_at: { type: string, format: date-time, nullable: true, description: "Null when it never connected." }
         online: { type: boolean, description: "Whether it has a control connection now." }
+        remote_access: { type: boolean, description: "Whether it allows sessions, as it last said; for display only, the node decides each session itself." }
+        code_setup: { type: boolean, description: "Whether it has an authenticator set up for sessions, as it last said." }
 
     AccountNode:
       allOf:
@@ -757,12 +814,50 @@ components:
         type: { type: string, enum: [bye] }
         reason: { type: string, enum: [revoked, disabled, shutting_down] }
 
+    ControlStreamWaiting:
+      type: object
+      description: Another node of the account asked for a stream to this one, which this one joins with GET /v1/streams/{id}.
+      required: [type, stream, node]
+      properties:
+        type: { type: string, enum: [stream_waiting] }
+        stream: { type: string, description: "The stream's id." }
+        node: { $ref: "#/components/schemas/NodeRef" }
+
+    ControlState:
+      type: object
+      description: What the node says of itself, at each connect and whenever it changes; the hub keeps it for display.
+      required: [type, remote_access, code_setup]
+      properties:
+        type: { type: string, enum: [state] }
+        remote_access: { type: boolean }
+        code_setup: { type: boolean }
+
     ControlMessage:
       type: object
       description: What every control message has, to tell which it is.
       required: [type]
       properties:
         type: { type: string }
+
+    OpenStream:
+      type: object
+      required: [node_id]
+      additionalProperties: false
+      properties:
+        node_id: { type: string, minLength: 1, description: "The id of the node to open the stream to." }
+
+    Stream:
+      type: object
+      required: [id, node]
+      properties:
+        id: { type: string }
+        node: { $ref: "#/components/schemas/NodeRef" }
+
+    StreamEnvelope:
+      type: object
+      required: [stream]
+      properties:
+        stream: { $ref: "#/components/schemas/Stream" }
 
     DocChanges:
       type: object
@@ -928,6 +1023,9 @@ components:
         - revision_gap
         - doc_too_large
         - doc_name_taken
+        - node_not_found
+        - node_offline
+        - too_many_streams
 
     Problem:
       type: object

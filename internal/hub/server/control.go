@@ -37,6 +37,9 @@ const (
 	byeTimeout = 5 * time.Second
 	// controlReadLimit is the largest message a node may send.
 	controlReadLimit = 64 << 10
+	// controlQueue is how many messages may wait to be sent a node, such as
+	// streams asked for it; more are refused.
+	controlQueue = 32
 )
 
 // controlResponse upgrades the request to the node's control WebSocket and
@@ -71,7 +74,8 @@ func (c controlResponse) VisitOpenControlResponse(w http.ResponseWriter) error {
 
 var errStopping = errors.New("the hub is stopping")
 
-// beginControl counts a control connection in, unless the hub is stopping.
+// beginControl counts a control connection or a stream in, unless the hub
+// is stopping.
 func (s *Server) beginControl() bool {
 	s.controlsMu.Lock()
 	defer s.controlsMu.Unlock()
@@ -82,8 +86,8 @@ func (s *Server) beginControl() bool {
 	return true
 }
 
-// stopControls says goodbye to every control connection and waits for them
-// to end, as the hub stops.
+// stopControls says goodbye to every control connection, closes every
+// stream, and waits for them to end, as the hub stops.
 func (s *Server) stopControls() {
 	s.controlsMu.Lock()
 	s.stopNow()
@@ -132,7 +136,16 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	if err := s.nodes.Connected(life, n.ID, hello.WdxVersion, hello.Os); err != nil {
 		log.Error("node not marked connected", "err", err)
 	}
-	c := s.nodes.Registry().Add(n.ID, n.UserID, func(r node.Reason) { cancel(byeCause{r}) })
+	out := make(chan any, controlQueue)
+	send := func(v any) bool {
+		select {
+		case out <- v:
+			return true
+		default:
+			return false
+		}
+	}
+	c := s.nodes.Registry().Add(n.ID, n.UserID, func(r node.Reason) { cancel(byeCause{r}) }, send)
 	defer s.nodes.Registry().Remove(c)
 	defer func() {
 		if err := s.nodes.Seen(life, n.ID); err != nil {
@@ -171,7 +184,7 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	// Ended before the connection's life is, they end with it.
 	defer running.Wait()
 	defer end()
-	running.Go(func() { s.readControl(life, cancel, conn, saved) })
+	running.Go(func() { s.readControl(life, cancel, conn, n, saved) })
 	running.Go(func() { s.ping(life, cancel, conn, n) })
 	renewals := time.NewTicker(s.opts.RenewInterval)
 	defer renewals.Stop()
@@ -192,6 +205,10 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 			n.CertExpiresAt, sent = sent, time.Time{}
 		case <-renewals.C:
 			renew()
+		case v := <-out:
+			if err := wsjson.Write(life, conn, v); err != nil {
+				log.Info("control message not sent", "err", err)
+			}
 		}
 	}
 }
@@ -233,9 +250,9 @@ func (s *Server) renew(ctx context.Context, conn *websocket.Conn, n node.Node) (
 }
 
 // readControl reads the node's messages, handing on the expiry of each
-// certificate it saved, until the connection fails, which it cancels the
-// connection with.
-func (s *Server) readControl(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn, saved chan<- time.Time) {
+// certificate it saved and saving the state it says, until the connection
+// fails, which it cancels the connection with.
+func (s *Server) readControl(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn, n node.Node, saved chan<- time.Time) {
 	log := logging.FromContext(ctx)
 	for {
 		_, b, err := conn.Read(ctx)
@@ -259,6 +276,15 @@ func (s *Server) readControl(ctx context.Context, cancel context.CancelCauseFunc
 			case saved <- c.ExpiresAt:
 			case <-ctx.Done():
 				return
+			}
+		case string(hubapi.ControlStateTypeState):
+			var st hubapi.ControlState
+			if err := json.Unmarshal(b, &st); err != nil {
+				log.Info("control message ignored", "type", m.Type, "err", err)
+				continue
+			}
+			if err := s.nodes.SetState(ctx, n.ID, st.RemoteAccess, st.CodeSetup); err != nil {
+				log.Error("node state not saved", "err", err)
 			}
 		default:
 			// A later node may say what this hub does not know.

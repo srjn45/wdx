@@ -479,7 +479,7 @@ type conn struct {
 
 func (f *fixture) connect(n Node) conn {
 	closed := make(chan Reason, 1)
-	return conn{Conn: f.Registry().Add(n.ID, n.UserID, func(r Reason) { closed <- r }), closed: closed}
+	return conn{Conn: f.Registry().Add(n.ID, n.UserID, func(r Reason) { closed <- r }, nil), closed: closed}
 }
 
 // reason is the reason c was closed with, or empty when it was not.

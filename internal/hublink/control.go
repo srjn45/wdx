@@ -202,6 +202,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			if !pushing {
 				pushing = true
 				running.Go(func() { l.keepPushing(life, c, client) })
+				running.Go(func() { l.keepState(life, conn) })
 			}
 		case string(hubapi.ControlCertificateTypeCertificate):
 			var cm hubapi.ControlCertificate
@@ -210,6 +211,16 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 				continue
 			}
 			l.renew(life, conn, c, cm)
+		case string(hubapi.ControlStreamWaitingTypeStreamWaiting):
+			var sw hubapi.ControlStreamWaiting
+			if err := json.Unmarshal(b, &sw); err != nil {
+				log.Info("control message ignored", "type", m.Type, "err", err)
+				continue
+			}
+			// The stream outlives the control connection that told of it,
+			// and ends with the link.
+			answering := logging.NewContext(l.ctx, log)
+			l.finished.Go(func() { l.answer(answering, c, sw) })
 		case string(hubapi.ControlByeTypeBye):
 			var by hubapi.ControlBye
 			if err := json.Unmarshal(b, &by); err != nil {

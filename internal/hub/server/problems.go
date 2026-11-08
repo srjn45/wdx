@@ -11,6 +11,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/node"
+	"github.com/srjn45/wdx/internal/hub/relay"
 	"github.com/srjn45/wdx/internal/hubapi"
 )
 
@@ -139,6 +140,11 @@ var nodeCodes = map[error]hubapi.ErrorCode{
 	node.ErrRevoked:       hubapi.ErrorCodeNodeRevoked,
 	node.ErrDisabled:      hubapi.ErrorCodeAccountDisabled,
 	errStopping:           hubapi.ErrorCodeHubUnavailable,
+	errNodeNotFound:       hubapi.ErrorCodeNodeNotFound,
+	errNodeOffline:        hubapi.ErrorCodeNodeOffline,
+	relay.ErrNotFound:     hubapi.ErrorCodeNotFound,
+	relay.ErrPeerAbsent:   hubapi.ErrorCodeNodeOffline,
+	relay.ErrTooMany:      hubapi.ErrorCodeTooManyStreams,
 }
 
 // unwrapNode is the error of nodeCodes err is, or nil.

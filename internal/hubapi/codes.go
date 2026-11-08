@@ -34,6 +34,10 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeRevisionGap:  codeInfo(http.StatusConflict, clikit.ExitRejected, "the revision is not the doc's next on the hub: a bug in the node"),
 	ErrorCodeDocTooLarge:  codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the doc's content is more than a doc can hold"),
 	ErrorCodeDocNameTaken: codeInfo(http.StatusConflict, clikit.ExitRejected, "another of the user's docs in the repository has that name on the hub"),
+
+	ErrorCodeNodeNotFound:   codeInfo(http.StatusNotFound, clikit.ExitRejected, "the account has no such other node"),
+	ErrorCodeNodeOffline:    codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is not connected to the hub"),
+	ErrorCodeTooManyStreams: codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "the account has as many streams open as the hub allows"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

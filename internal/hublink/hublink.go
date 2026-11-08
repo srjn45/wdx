@@ -205,6 +205,11 @@ type Link struct {
 	pending  *Login
 	finished sync.WaitGroup // the logins' goroutines
 	kicked   chan struct{}  // the outbox has changes; see Kick
+	// state is the node's state as last given, nil until it is;
+	// stateChanged says it changed. See SendState.
+	state        *State
+	stateChanged chan struct{}
+	streams      chan Stream // see Streams
 }
 
 // Open reads <home>/hub/ and, when the node is logged in, starts keeping
@@ -212,7 +217,8 @@ type Link struct {
 // what is left of one is removed.
 func Open(ctx context.Context, home string, opts Options) (*Link, error) {
 	ctx, stop := context.WithCancel(ctx)
-	l := &Link{dir: identity.HubDir(home), opts: opts.withDefaults(), ctx: ctx, stop: stop, conn: LoggedOut, changed: make(chan struct{}), kicked: make(chan struct{}, 1)}
+	l := &Link{dir: identity.HubDir(home), opts: opts.withDefaults(), ctx: ctx, stop: stop, conn: LoggedOut, changed: make(chan struct{}), kicked: make(chan struct{}, 1),
+		stateChanged: make(chan struct{}, 1), streams: make(chan Stream)}
 	creds, err := readLogin(ctx, l.dir)
 	if err != nil {
 		// Kept as it is, for a person to look at; a login writes it anew.

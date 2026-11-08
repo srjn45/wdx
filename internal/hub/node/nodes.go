@@ -27,16 +27,19 @@ type Node struct {
 	// CertExpiresAt is when its certificate ends; zero until the login that
 	// made it is finished.
 	CertExpiresAt time.Time
+	// RemoteAccess and CodeSetup are what the node last said of itself, for
+	// display: whether it allows sessions, and has an authenticator for them.
+	RemoteAccess, CodeSetup bool
 }
 
-const nodeColumns = "id, user_id, name, public_key, os, version, created_at, last_seen_at, cert_expires_at"
+const nodeColumns = "id, user_id, name, public_key, os, version, created_at, last_seen_at, cert_expires_at, remote_access, code_setup"
 
 func scanNode(row interface{ Scan(...any) error }) (Node, error) {
 	var n Node
 	var pub []byte
 	var created int64
 	var seen, expires sql.NullInt64
-	if err := row.Scan(&n.ID, &n.UserID, &n.Name, &pub, &n.OS, &n.Version, &created, &seen, &expires); err != nil {
+	if err := row.Scan(&n.ID, &n.UserID, &n.Name, &pub, &n.OS, &n.Version, &created, &seen, &expires, &n.RemoteAccess, &n.CodeSetup); err != nil {
 		return Node{}, err
 	}
 	n.PublicKey = ed25519.PublicKey(pub)
@@ -64,7 +67,7 @@ func (s *Store) NameTaken(ctx context.Context, userID, name string) (bool, error
 func (s *Store) Authenticate(ctx context.Context, id string, pub ed25519.PublicKey) (Node, error) {
 	log := logging.FromContext(ctx)
 	var revoked, disabled, removed sql.NullInt64
-	row := s.db.QueryRowContext(ctx, "SELECT n.id, n.user_id, n.name, n.public_key, n.os, n.version, n.created_at, n.last_seen_at, n.cert_expires_at, "+
+	row := s.db.QueryRowContext(ctx, "SELECT n.id, n.user_id, n.name, n.public_key, n.os, n.version, n.created_at, n.last_seen_at, n.cert_expires_at, n.remote_access, n.code_setup, "+
 		"n.revoked_at, u.disabled_at, u.removed_at FROM nodes n JOIN users u ON u.id = n.user_id WHERE n.id = ?", id)
 	n, err := scanNode(withExtra{scan: row.Scan, extra: []any{&revoked, &disabled, &removed}})
 	switch {
@@ -184,6 +187,16 @@ func (s *Store) cutOff(ctx context.Context, reason Reason, match func(*Conn) boo
 // OS it said.
 func (s *Store) Connected(ctx context.Context, id, version, os string) error {
 	_, err := sqlite.Exec(ctx, s.db, "UPDATE nodes SET last_seen_at = ?, version = ?, os = ? WHERE id = ?", ms(s.now()), version, os, id)
+	return err
+}
+
+// SetState records what the node id says of itself: whether it allows
+// sessions, and has an authenticator set up for them.
+func (s *Store) SetState(ctx context.Context, id string, remoteAccess, codeSetup bool) error {
+	_, err := sqlite.Exec(ctx, s.db, "UPDATE nodes SET remote_access = ?, code_setup = ? WHERE id = ?", remoteAccess, codeSetup, id)
+	if err == nil {
+		logging.FromContext(ctx).Info("node state saved", "node_id", id, "remote_access", remoteAccess, "code_setup", codeSetup)
+	}
 	return err
 }
 

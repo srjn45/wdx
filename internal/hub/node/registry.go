@@ -19,8 +19,11 @@ const (
 type Conn struct {
 	NodeID, UserID string
 	// bye tells the connection to say goodbye with the reason and close;
-	// it must not block.
-	bye func(Reason)
+	// send hands it a message to send the node, reporting whether it took
+	// it. Neither may block.
+	bye  func(Reason)
+	send func(any) bool
+	seq  uint64 // the order connections were added in
 }
 
 // Registry is the open control connections, in memory, by node: what makes
@@ -28,16 +31,19 @@ type Conn struct {
 type Registry struct {
 	mu    sync.Mutex
 	conns map[string]map[*Conn]struct{} // by node id
+	seq   uint64
 }
 
 func newRegistry() *Registry { return &Registry{conns: map[string]map[*Conn]struct{}{}} }
 
 // Add registers a connection of node nodeID of userID, which bye closes with
-// a reason without blocking; the connection removes itself when it ends.
-func (r *Registry) Add(nodeID, userID string, bye func(Reason)) *Conn {
-	c := &Conn{NodeID: nodeID, UserID: userID, bye: bye}
+// a reason and send hands a message to send the node, neither blocking; the
+// connection removes itself when it ends.
+func (r *Registry) Add(nodeID, userID string, bye func(Reason), send func(any) bool) *Conn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.seq++
+	c := &Conn{NodeID: nodeID, UserID: userID, bye: bye, send: send, seq: r.seq}
 	if r.conns[nodeID] == nil {
 		r.conns[nodeID] = map[*Conn]struct{}{}
 	}
@@ -60,6 +66,21 @@ func (r *Registry) Online(nodeID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.conns[nodeID]) > 0
+}
+
+// Send hands v to the newest control connection of the node nodeID, to send
+// the node, reporting whether one took it: none does when the node has no
+// connection, or its connection has too much to send already.
+func (r *Registry) Send(nodeID string, v any) bool {
+	r.mu.Lock()
+	var newest *Conn
+	for c := range r.conns[nodeID] {
+		if newest == nil || c.seq > newest.seq {
+			newest = c
+		}
+	}
+	r.mu.Unlock()
+	return newest != nil && newest.send != nil && newest.send(v)
 }
 
 // CloseAll closes every connection with reason, as the hub does when it

@@ -322,3 +322,14 @@ func leaked(b []byte, secret string) bool {
 	}
 	return bytes.Contains(b, []byte(secret)) || strings.Contains(string(b), strings.ReplaceAll(secret, "-", ""))
 }
+
+// StreamExpiry makes the join timeout of each stream between nodes end when
+// after says, rather than 10 seconds after it was asked for.
+func StreamExpiry(after func(time.Duration) <-chan time.Time) Option {
+	return func(o *server.Options) { o.Streams.After = after }
+}
+
+// StreamsPerUser lets a user have n streams open or waiting, rather than 32.
+func StreamsPerUser(n int) Option {
+	return func(o *server.Options) { o.Streams.MaxPerUser = n }
+}
