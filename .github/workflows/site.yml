@@ -1,14 +1,15 @@
 # Builds the website under site/ and deploys it to GitHub Pages: tests and
-# build on every PR that touches it, then a deploy on every push to main and
-# after every release, so the page shows the newest version. The wdx doc SITE.
+# build on every PR that touches it or the README, which the site's tests
+# check, then a deploy on every push to main and after every release, so the
+# page shows the newest version. The wdx doc SITE.
 name: Site
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "README.md", ".github/workflows/site.yml"]
   pull_request:
-    paths: ["site/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "README.md", ".github/workflows/site.yml"]
   workflow_run:
     workflows: [Release]
     types: [completed]
