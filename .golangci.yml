@@ -124,6 +124,8 @@ linters:
           deny:
             - pkg: github.com/srjn45/wdx/internal/config
               desc: only cmd and cli hold the Config; pass packages the values they need
+            - pkg: github.com/srjn45/wdx/internal/settings
+              desc: only the cli and config read settings; the daemon and the domain are handed the values they need
             - pkg: github.com/srjn45/wdx/internal/cli$
               desc: only cmd/wdx runs the cli
     errcheck:
