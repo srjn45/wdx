@@ -103,6 +103,6 @@ func Start(ctx context.Context, o StartOptions) (Started, error) {
 	case m.Error != "":
 		return Started{}, errors.New(m.Error)
 	}
-	log.Info("holder ready", "terminal_id", o.ID, "holder_pid", cmd.Process.Pid, "pid", m.PID)
+	log.Info("holder ready", "terminal_id", o.ID, "holder_pid", cmd.Process.Pid, "shell_pid", m.PID)
 	return Started{HolderPID: cmd.Process.Pid, PID: m.PID}, nil
 }

@@ -20,10 +20,19 @@ import (
 )
 
 // newLogger returns the log file under the configured home and a logger
-// writing to it that tags every record with debugID.
-func newLogger(cfg config.Config, debugID string) (*logging.DailyFile, *slog.Logger) {
+// writing to it that tags every record with debugID and the process args run.
+func newLogger(cfg config.Config, debugID string, args []string) (*logging.DailyFile, *slog.Logger) {
 	file := logging.NewDailyFile(identity.LogsDir(cfg.Home), cfg.LogRetentionDays, time.Now)
-	return file, logging.New(file, cfg.LogLevel).With("debug_id", debugID, "pid", os.Getpid(), "process", "cli")
+	return file, logging.New(file, cfg.LogLevel).With("debug_id", debugID, "pid", os.Getpid(), "process", processOf(args))
+}
+
+// processOf names the process in the log: a holder, which the daemon starts as
+// wdx holder and which outlives it, or a command someone ran.
+func processOf(args []string) string {
+	if len(args) > 0 && args[0] == "holder" {
+		return "holder"
+	}
+	return "cli"
 }
 
 // logReceived logs the command line as given and what else decides how it

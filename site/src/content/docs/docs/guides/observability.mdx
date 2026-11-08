@@ -52,7 +52,7 @@ observability stack not running (container exited)
 
 ## How it behaves
 
-- **Logs** are JSON lines in daily files, `~/.wdx/logs/wdx-<date>.log`, shared by the CLI, the daemon and the holders, and kept `log.retention_days` days (7). `log.level` sets how much is logged; `debug` adds the SQL and git output. `wdx help logs` says the same.
+- **Logs** are JSON lines in daily files, `~/.wdx/logs/wdx-<date>.log`, shared by the CLI, the daemon and the holders, each line's `process` saying which (`cli`, `daemon` or `holder`), and kept `log.retention_days` days (7). `log.level` sets how much is logged; `debug` adds the SQL and git output. `wdx help logs` says the same.
 - **What is never logged:** your environment beyond wdx's own settings, prompt text, or what agents print. Credentials in URLs are redacted.
 - **The stack** is the `grafana/otel-lgtm` image under docker or podman, with Grafana on `127.0.0.1:3000` and the collector the daemon sends metrics to on `127.0.0.1:4318`, reading the log files. It runs until stopped, and its data stays across starts; `observe stop --purge` removes it.
 - **Metrics** go to `otel.endpoint`, by default that collector; set it empty to send none. A collector that is not there is logged once and slows nothing.

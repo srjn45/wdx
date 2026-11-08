@@ -52,7 +52,7 @@ func RunIfHolder() {
 	o.Ready = os.NewFile(3, "ready")
 	// It logs where a holder wdx starts does: the home's log files.
 	logs := logging.NewDailyFile(identity.LogsDir(o.Home), 7, time.Now)
-	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder", "terminal_id", o.ID)
+	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder")
 	if known, ok := aca.ByID(acaID); ok {
 		o.ParseScreen = known.ScreenParser().Parse
 		o.Deliver = known.Deliver

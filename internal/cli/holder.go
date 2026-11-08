@@ -30,7 +30,7 @@ func newHolderCmd() *cobra.Command {
 			// The daemon starts it with exactly the variables the shell gets.
 			o.Env = env.ShellEnv
 			o.Ready = os.NewFile(3, "ready")
-			ctx := logging.NewContext(cmd.Context(), logging.FromContext(cmd.Context()).With("terminal_id", o.ID))
+			ctx := cmd.Context()
 			if acaID != "" {
 				// A screen it cannot read must not stop the terminal: this binary
 				// may be older than the daemon that named the ACA.
@@ -42,7 +42,7 @@ func newHolderCmd() *cobra.Command {
 						o.Steer = known.Steer
 					}
 				} else {
-					logging.FromContext(ctx).Warn("screen not read: this holder does not know the aca", "aca", acaID)
+					logging.FromContext(ctx).Warn("screen not read: this holder does not know the aca", "terminal_id", o.ID, "aca", acaID)
 				}
 			}
 			return holder.Run(ctx, o)

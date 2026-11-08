@@ -254,7 +254,7 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		return nil, fmt.Errorf("start %s in %s: %w", o.Shell, o.Dir, err)
 	}
 	h.master = master
-	log.Info("shell started", "pid", cmd.Process.Pid, "shell", o.Shell, "command", o.Command, "dir", o.Dir, "socket", o.Socket)
+	log.Info("shell started", "shell_pid", cmd.Process.Pid, "shell", o.Shell, "command", o.Command, "dir", o.Dir, "socket", o.Socket)
 	return h, nil
 }
 

@@ -153,7 +153,7 @@ func ShellEnv(environ []string) []string {
 func Run(ctx context.Context, args []string, env Env) int {
 	start := time.Now()
 	debugID := logging.NewDebugID()
-	logFile, log := newLogger(env.Config, debugID)
+	logFile, log := newLogger(env.Config, debugID, args)
 	defer logFile.Close()
 	// A shell asks on every Tab: worth logging only when debugging.
 	completion := isCompletion(args)

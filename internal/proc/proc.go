@@ -105,10 +105,10 @@ func send(ctx context.Context, ps []Process, sig syscall.Signal, signalled map[i
 	log := logging.FromContext(ctx)
 	for _, p := range ps {
 		if err := syscall.Kill(p.PID, sig); err != nil {
-			log.Info("leftover process not signalled", "pid", p.PID, "name", p.Name, "signal", unix.SignalName(sig), "err", err)
+			log.Info("leftover process not signalled", "leftover_pid", p.PID, "name", p.Name, "signal", unix.SignalName(sig), "err", err)
 			continue
 		}
 		signalled[p.PID] = true
-		log.Info("leftover process stopped", "pid", p.PID, "name", p.Name, "signal", unix.SignalName(sig))
+		log.Info("leftover process stopped", "leftover_pid", p.PID, "name", p.Name, "signal", unix.SignalName(sig))
 	}
 }

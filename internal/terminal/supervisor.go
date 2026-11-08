@@ -939,7 +939,7 @@ func (s *Supervisor) waitStopped(ctx context.Context, t Terminal, w *watch, dead
 		return nil
 	case <-time.After(time.Until(deadline)):
 	}
-	log.Error("holder did not report the shell gone, killing both", "terminal_id", t.ID, "holder_pid", t.HolderPID, "pid", t.PID)
+	log.Error("holder did not report the shell gone, killing both", "terminal_id", t.ID, "holder_pid", t.HolderPID, "shell_pid", t.PID)
 	kill(t.HolderPID, t.PID)
 	w.current().Close()
 	<-w.done
@@ -977,7 +977,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			continue
 		}
 		hello := conn.Hello()
-		log.Info("holder adopted", "terminal_id", t.ID, "state", t.State, "pid", hello.PID, "holder_pid", hello.HolderPID, "exited", hello.Exited != nil)
+		log.Info("holder adopted", "terminal_id", t.ID, "state", t.State, "shell_pid", hello.PID, "holder_pid", hello.HolderPID, "exited", hello.Exited != nil)
 		s.recordStatus(ctx, t.Kind, t.ID, conn)
 		if t.State == StateStarting {
 			if _, err := s.store.running(ctx, t.ID, hello.PID, hello.HolderPID, time.Now()); err != nil {
