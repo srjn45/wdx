@@ -105,6 +105,8 @@ linters:
               desc: tide calls the daemon's API, never the domain
             - pkg: github.com/srjn45/wdx/internal/db$
               desc: tide calls the daemon's API, never the database
+            - pkg: github.com/srjn45/wdx/internal/sqlite$
+              desc: tide calls the daemon's API, never the database
             - pkg: github.com/srjn45/wdx/internal/proc
               desc: tide calls the daemon's API, which stops processes
         # The editors are data the settings, wdx deps, the daemon and tide share.
