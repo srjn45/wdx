@@ -1,11 +1,8 @@
 <p align="center">
-  <a href="https://srjn45.github.io/wdx/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wdx-wordmark-light.svg">
-      <img src="assets/brand/wdx-wordmark.svg" alt="wdx" height="72">
-    </picture>
-  </a>
+  <a href="https://srjn45.github.io/wdx/"><img src="assets/brand/wdx-tile.svg" alt="The wdx logo" width="120" height="120"></a>
 </p>
+
+<h1 align="center">wdx</h1>
 
 <p align="center"><b>Run a team of AI coding agents from one terminal.</b></p>
 
@@ -19,33 +16,39 @@
   <a href="https://github.com/srjn45/wdx/releases/latest"><img src="https://img.shields.io/github/v/release/srjn45/wdx?label=release" alt="Latest release"></a>
   <a href="https://github.com/srjn45/wdx/actions/workflows/ci.yml"><img src="https://github.com/srjn45/wdx/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/srjn45/wdx" alt="License: Apache-2.0"></a>
+  <a href="https://srjn45.github.io/wdx/docs/"><img src="https://img.shields.io/badge/docs-srjn45.github.io%2Fwdx-6fd3c1" alt="Documentation"></a>
 </p>
 
-wdx keeps Claude Code, Codex, Cursor and Antigravity agents running on your machine, each in its own terminal and often its own git worktree, long after the window you started them from has closed. TIDE, its Terminal IDE, shows all of them in one window, with their diffs, docs, plans and code.
+<p align="center">📖 Full documentation: <a href="https://srjn45.github.io/wdx/docs/"><b>srjn45.github.io/wdx</b></a></p>
+
+## What is wdx?
+
+wdx lets you run several AI coding agents (Claude Code, Codex, Cursor, Antigravity) on your own machine at the same time, and keep track of them all.
+
+- Each agent keeps running after you close your terminal.
+- Each agent can work on its own branch, in its own git worktree, so agents never edit the same files.
+- You can see which agents are working, which are done, and which are waiting for an answer from you.
+- When an agent is finished, you read its diff and merge its work with one command.
+
+All of this works from the command line, or from **TIDE**, wdx's terminal IDE, which shows your agents, their diffs, your docs and your code in one window:
 
 <p align="center"><img src="assets/readme/tide.png" alt="TIDE showing a project: its agents, worktrees, docs, plans and code on the left, an agent's conversation on the right, and a terminal below" width="880"></p>
 
-## Why wdx
-
-- **Agents that stay.** Each runs in a process of its own that outlives your terminal, the daemon, and updates of wdx itself.
-- **A branch per agent.** An agent in a worktree never edits the files another is editing; you read its diff, then land it with no merge commit, after your check passes.
-- **Know who needs you.** wdx reads each agent's screen: working, idle, or waiting for you, with the question it asks.
-- **Plans that run themselves.** Split a feature into tasks for agents, with the tasks each waits for; wdx starts them, lands each finished one, and asks you only when it must.
-- **For scripts and AIs too.** Every command takes `--json` and never prompts then, and `wdx help agents` teaches the agents wdx runs to use it.
-
 ## Install
 
-On Linux or macOS, amd64 or arm64:
+wdx runs on Linux and macOS (amd64 or arm64). Install it with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | sh
 ```
 
-It puts `wdx` in `~/.local/bin`, installs the shell completions and runs the daemon as a user service. [Install](https://srjn45.github.io/wdx/docs/start/install/) has the dependencies, the dev channel and uninstalling.
+This puts `wdx` in `~/.local/bin`, sets up shell completions, and starts the wdx daemon as a user service, so it runs whenever you are logged in.
+
+You also need **git 2.31 or later**, and at least one AI CLI installed and logged in, such as `claude` or `codex`. See [Install](https://srjn45.github.io/wdx/docs/start/install/) for the optional extras, updating, and uninstalling.
 
 ## Quick start
 
-In a repository you already have, with Claude Code and Codex installed:
+Open a repository you already have as a wdx project, start two agents, and look at them:
 
 ```sh
 wdx project open --local ~/code/api
@@ -56,43 +59,77 @@ wdx agent list
 wdx tide
 ```
 
-The [Quickstart](https://srjn45.github.io/wdx/docs/start/quickstart/) goes on from there: talking to an agent, its diff, and landing its work.
+What these do:
 
-## AI CLIs
+1. `wdx project open` registers the repository with wdx.
+2. The first `wdx agent create` starts a Claude Code agent in the repository itself.
+3. The second starts a Codex agent on a new branch, in the worktree `fix-auth`, so its changes stay apart from yours.
+4. `wdx agent list` shows each agent and what it is doing.
+5. `wdx tide` opens TIDE, where you can talk to the agents and read their diffs.
 
-wdx runs each the same way, as far as each allows; [the AI CLIs](https://srjn45.github.io/wdx/docs/acas/) compares them side by side.
-
-| AI CLI | Its program | |
-|---|---|---|
-| Claude Code | `claude` | [page](https://srjn45.github.io/wdx/docs/acas/claude-code/) |
-| Codex | `codex` | [page](https://srjn45.github.io/wdx/docs/acas/codex/) |
-| Cursor | `cursor-agent` | [page](https://srjn45.github.io/wdx/docs/acas/cursor/) |
-| Antigravity | `agy` | [page](https://srjn45.github.io/wdx/docs/acas/antigravity/) |
+The [Quickstart](https://srjn45.github.io/wdx/docs/start/quickstart/) goes further: talking to an agent, reading its diff, and merging its work. Every command also has `--help`, and `--json` for scripts.
 
 ## Documentation
 
-On [the website](https://srjn45.github.io/wdx/docs/):
+Everything else is on the website, **<https://srjn45.github.io/wdx/>**, built from [`site/`](site/) and published with GitHub Pages whenever it changes on `main` and after each release:
 
-- [Start](https://srjn45.github.io/wdx/docs/start/what-is-wdx/): what wdx is, installing it, the quickstart and its concepts.
-- [Guides](https://srjn45.github.io/wdx/docs/guides/projects/): a page per feature, from projects and agents to worktrees, docs and plans.
-- [TIDE](https://srjn45.github.io/wdx/docs/tide/layout/): the Terminal IDE, screen by screen, with its screens live.
-- [Scripting with --json](https://srjn45.github.io/wdx/docs/guides/scripting/) and [Working with AI agents](https://srjn45.github.io/wdx/docs/guides/ai-agents/).
-- [Running wdx](https://srjn45.github.io/wdx/docs/guides/daemon/): the daemon, settings, updating, dependencies, observability.
-- [Architecture](https://srjn45.github.io/wdx/docs/architecture/): how wdx works inside, each page around a diagram.
-- [Reference](https://srjn45.github.io/wdx/docs/reference/cli/): every command, setting and error code, generated from wdx itself.
+- [What is wdx](https://srjn45.github.io/wdx/docs/start/what-is-wdx/) and [its concepts](https://srjn45.github.io/wdx/docs/start/concepts/)
+- [Guides](https://srjn45.github.io/wdx/docs/guides/projects/), one per feature: projects, agents, worktrees, docs and plans
+- [TIDE](https://srjn45.github.io/wdx/docs/tide/layout/), the terminal IDE
+- [The AI CLIs](https://srjn45.github.io/wdx/docs/acas/): Claude Code, Codex, Cursor and Antigravity compared
+- [Scripting with --json](https://srjn45.github.io/wdx/docs/guides/scripting/) and [Working with AI agents](https://srjn45.github.io/wdx/docs/guides/ai-agents/)
+- [Running wdx](https://srjn45.github.io/wdx/docs/guides/daemon/): the daemon, settings and updates
+- [Architecture](https://srjn45.github.io/wdx/docs/architecture/): how wdx works inside
+- [Reference](https://srjn45.github.io/wdx/docs/reference/cli/): every command, setting and error code
+- [Roadmap](https://srjn45.github.io/wdx/docs/project/roadmap/) and [FAQ](https://srjn45.github.io/wdx/docs/project/faq/)
 
-Working on wdx itself: [`docs/`](docs/) has a file per part of it, and [`AGENTS.md`](AGENTS.md) the rules the code follows.
+## Building from source
 
-## Status
+You need Go (the version in [`go.mod`](go.mod)), git and make, on Linux or macOS.
 
-wdx has had stable releases since 0.4.0, with dev releases between them for those who want features early; the [changelog](https://srjn45.github.io/wdx/docs/reference/changelog/) says what each brought. It is the next generation of [warden](https://github.com/srjn45/warden), written anew; warden is deprecated.
+```sh
+git clone https://github.com/srjn45/wdx
+cd wdx
+make build          # builds bin/wdx
+```
 
-Coming next, on the [roadmap](https://srjn45.github.io/wdx/docs/project/roadmap/): each AI CLI's usage and limits, being built, and wdx hub, in design, to reach your agents from another machine and share docs and plans with a team.
+To try the wdx you built without touching your installed one, give it a home of its own:
+
+```sh
+export WDX_HOME=/tmp/wdx-dev
+bin/wdx daemon start
+bin/wdx project open --local .
+```
+
+## Running the tests
+
+```sh
+make test           # every test, with the race detector, as CI runs them
+make check          # linters, go vet, vulnerability check, notices, commit messages
+```
+
+`make check` downloads the linters it needs into `bin/` the first time. Tests use a real SQLite database, real git and real terminals, all in temporary directories, so they never touch your own `~/.wdx`.
+
+The website lives in [`site/`](site/) and needs Node 22.23 or later:
+
+```sh
+make site-dev       # serves the site at http://localhost:4321/wdx/ as you edit
+make site           # installs, tests and builds it, as CI does
+```
 
 ## Contributing
 
-Issues are welcome. Design comes before code here: [Contributing](https://srjn45.github.io/wdx/docs/project/contributing/) says how a change is made, built and tested.
+Issues and ideas are welcome. Design comes before code here: open an issue describing the problem first, agree on a design, then send a pull request for one agreed step, with its tests and docs. Run `make check && make test` before you push.
+
+- [Contributing](https://srjn45.github.io/wdx/docs/project/contributing/) explains how a change is made.
+- [`AGENTS.md`](AGENTS.md) has the rules the code follows, for people and AI agents alike.
+- [`docs/`](docs/) has a design file for each part of wdx.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, …); releases and the changelog are made from them.
+
+## Status
+
+wdx has had stable releases since 0.4.0, with dev releases in between for those who want new features early. The [changelog](https://srjn45.github.io/wdx/docs/reference/changelog/) lists what each release brought. wdx replaces [warden](https://github.com/srjn45/warden), which is now deprecated.
 
 ## License
 
-Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE). The licenses of Go and of the modules wdx is built with are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The licenses of the Go modules wdx is built with are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
