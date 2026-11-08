@@ -5,10 +5,12 @@
 package hubconfig
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -38,6 +40,20 @@ const (
 	TLSFiles = "files"
 )
 
+// The choices of registration.
+const (
+	// RegistrationClosed lets a person sign up only from an invite.
+	RegistrationClosed = "closed"
+	// RegistrationOpen lets anyone sign up, as well as from an invite.
+	RegistrationOpen = "open"
+)
+
+// MasterKeySize is the length of the master key: 32 bytes.
+const MasterKeySize = 32
+
+// MasterKeyHint says how to make a master key.
+const MasterKeyHint = "make one with: head -c 32 /dev/urandom | base64"
+
 // Config is every setting.
 type Config struct {
 	Home string
@@ -53,6 +69,13 @@ type Config struct {
 	LogRetentionDays int
 	OtelEndpoint     string
 	OtelInterval     time.Duration
+	// MasterKey seals the secrets the hub stores; nil when not set, and serve
+	// refuses to start.
+	MasterKey    []byte
+	Registration string // RegistrationClosed or RegistrationOpen
+	// TrustedProxies are the addresses whose X-Forwarded-For is believed, an
+	// address as a prefix of its full length.
+	TrustedProxies []netip.Prefix
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -71,6 +94,8 @@ func (c Config) PublicHost() string {
 var logLevels = []string{"debug", "info", "warn", "error"}
 
 var tlsChoices = []string{TLSOff, TLSFiles}
+
+var registrationChoices = []string{RegistrationClosed, RegistrationOpen}
 
 // localHosts are the hosts public_url may name with http.
 var localHosts = []string{"localhost", "127.0.0.1"}
@@ -210,6 +235,93 @@ var rows = []settings.Row[Config]{
 		},
 		Get: func(c Config) string { return strconv.Itoa(int(c.OtelInterval / time.Second)) },
 	},
+	{
+		Key: "master_key",
+		Description: "32 random bytes in base64 that seal the secrets the hub stores; serve needs it, and the secrets are lost " +
+			"with it (" + MasterKeyHint + ")",
+		// Required by serve alone, which says how to make one; the other
+		// commands, setting set among them, run without it.
+		Default: "",
+		Secret:  true,
+		Set:     setMasterKey,
+		Get: func(c Config) string {
+			if c.MasterKey == nil {
+				return ""
+			}
+			return base64.StdEncoding.EncodeToString(c.MasterKey)
+		},
+	},
+	{
+		Key:         "registration",
+		Description: "who may sign up: closed, only from an invite, or open, anyone",
+		Default:     RegistrationClosed,
+		Choices:     registrationChoices,
+		Set: func(c *Config, v string) error {
+			if !slices.Contains(registrationChoices, v) {
+				return fmt.Errorf("%q is not one of %s", v, strings.Join(registrationChoices, ", "))
+			}
+			c.Registration = v
+			return nil
+		},
+		Get: func(c Config) string { return c.Registration },
+	},
+	{
+		Key:         "trusted_proxies",
+		Description: "addresses or CIDR ranges, comma-separated, of the proxies whose X-Forwarded-For is believed",
+		Default:     "",
+		Set:         setTrustedProxies,
+		Get: func(c Config) string {
+			list := make([]string, len(c.TrustedProxies))
+			for i, p := range c.TrustedProxies {
+				list[i] = p.String()
+				if p.IsSingleIP() {
+					list[i] = p.Addr().String()
+				}
+			}
+			return strings.Join(list, ",")
+		},
+	},
+}
+
+// setMasterKey sets the master key from v, 32 bytes in base64, or none when
+// v is empty. Its errors never hold v, which may be the key mistyped.
+func setMasterKey(c *Config, v string) error {
+	if v == "" {
+		c.MasterKey = nil
+		return nil
+	}
+	key, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return errors.New("is not base64")
+	}
+	if len(key) != MasterKeySize {
+		return fmt.Errorf("is %d bytes, not %d", len(key), MasterKeySize)
+	}
+	c.MasterKey = key
+	return nil
+}
+
+// setTrustedProxies sets the trusted proxies from v, addresses and CIDR
+// ranges separated by commas.
+func setTrustedProxies(c *Config, v string) error {
+	var list []netip.Prefix
+	for item := range strings.SplitSeq(v, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if addr, err := netip.ParseAddr(item); err == nil {
+			list = append(list, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		prefix, err := netip.ParsePrefix(item)
+		if err != nil {
+			return fmt.Errorf("%q is not an address or a CIDR range", item)
+		}
+		list = append(list, prefix.Masked())
+	}
+	c.TrustedProxies = list
+	return nil
 }
 
 // checkPublicURL refuses an address that is not http or https with a host

@@ -46,6 +46,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	}
 	run := runOf(cmd)
 	cfg := run.env.Config
+	if cfg.MasterKey == nil {
+		return &clikit.Hinted{
+			Err:  &clikit.UsageError{Err: errors.New("master_key is not set: it seals the secrets the hub stores")},
+			Hint: hubconfig.MasterKeyHint,
+		}
+	}
 	if err := checkTLSFiles(cfg); err != nil {
 		return err
 	}

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,15 +54,24 @@ func TestMain(m *testing.M) {
 }
 
 // testFile is a test home's config file: a hub on ports the system chooses,
-// logging in detail. It sends no metrics, otel.endpoint being empty.
-const testFile = "public_url: http://localhost:8080\nlisten:\n  web: 127.0.0.1:0\n  nodes: 127.0.0.1:0\nlog:\n  level: debug\n"
+// logging in detail, with a master key made for the home. It sends no
+// metrics, otel.endpoint being empty.
+func testFile(t *testing.T) string {
+	t.Helper()
+	key := make([]byte, hubconfig.MasterKeySize)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	return "public_url: http://localhost:8080\nlisten:\n  web: 127.0.0.1:0\n  nodes: 127.0.0.1:0\nlog:\n  level: debug\n" +
+		"master_key: " + base64.StdEncoding.EncodeToString(key) + "\n"
+}
 
 // newHome returns a home with its config file and no hub serving it.
 func newHome(t *testing.T) string {
 	t.Helper()
 	home := runtest.Dir(t) // it holds the socket
 	logtest.OnFailure(t, home)
-	if err := os.WriteFile(hubconfig.ConfigPath(home), []byte(testFile), 0o600); err != nil {
+	if err := os.WriteFile(hubconfig.ConfigPath(home), []byte(testFile(t)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return home
@@ -555,6 +566,20 @@ func TestServeTLSFiles(t *testing.T) {
 	out := s.exit(t)
 	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "web.tls_cert is "+missing+", which cannot be read") {
 		t.Fatalf("want the files refused, got %+v", out)
+	}
+	if _, err := os.Stat(hubconfig.DBPath(home)); err == nil {
+		t.Fatal("want nothing started")
+	}
+}
+
+// serve refuses to start without the master key, saying how to make one.
+func TestServeWithoutMasterKey(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	s := serve(t, home, func(env *Env) { env.Config.MasterKey = nil })
+	out := s.exit(t)
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "master_key is not set") || !strings.Contains(out.Stderr, "hint: "+hubconfig.MasterKeyHint) {
+		t.Fatalf("want the key asked for, got %+v", out)
 	}
 	if _, err := os.Stat(hubconfig.DBPath(home)); err == nil {
 		t.Fatal("want nothing started")

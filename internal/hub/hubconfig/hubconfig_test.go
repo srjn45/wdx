@@ -1,9 +1,12 @@
 package hubconfig
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"maps"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -58,7 +61,7 @@ func TestDefaults(t *testing.T) {
 	}
 	want := Config{
 		Home: home, PublicURL: "http://localhost:8080", ListenWeb: ":8080", ListenNodes: ":8443", WebTLS: TLSOff,
-		LogLevel: slog.LevelInfo, LogRetentionDays: 7, OtelInterval: 15 * time.Second,
+		LogLevel: slog.LevelInfo, LogRetentionDays: 7, OtelInterval: 15 * time.Second, Registration: RegistrationClosed,
 	}
 	c.From = nil
 	if !reflect.DeepEqual(c, want) {
@@ -106,6 +109,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		"WDX_HUB_WEB_TLS": "off", "WDX_HUB_WEB_TLS_CERT": "/env/cert", "WDX_HUB_WEB_TLS_KEY": "/env/key",
 		"WDX_HUB_LOG_LEVEL": "warn", "WDX_HUB_LOG_RETENTION_DAYS": "9",
 		"WDX_HUB_OTEL_ENDPOINT": "https://env:4318", "WDX_HUB_OTEL_INTERVAL_SECONDS": "6",
+		"WDX_HUB_MASTER_KEY": testKey, "WDX_HUB_REGISTRATION": "open", "WDX_HUB_TRUSTED_PROXIES": "10.0.0.1",
 	}
 	maps.Copy(e, vars)
 	c, err := Load(e.getenv)
@@ -116,6 +120,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		Home: home, PublicURL: "https://env.example.com", ListenWeb: "127.0.0.1:3", ListenNodes: "127.0.0.1:4",
 		WebTLS: TLSOff, WebTLSCert: "/env/cert", WebTLSKey: "/env/key", LogLevel: slog.LevelWarn, LogRetentionDays: 9,
 		OtelEndpoint: "https://env:4318", OtelInterval: 6 * time.Second,
+		MasterKey: testKeyBytes, Registration: RegistrationOpen, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
 	}
 	from := c.From
 	c.From = nil
@@ -253,6 +258,80 @@ func TestMakeHome(t *testing.T) {
 	} {
 		if path != filepath.Join(home, name) {
 			t.Errorf("%s, want %s in home", path, name)
+		}
+	}
+}
+
+// testKeyBytes is a master key, 32 bytes, and testKey the same in base64.
+var testKeyBytes = bytes.Repeat([]byte{0x5a}, MasterKeySize)
+
+var testKey = base64.StdEncoding.EncodeToString(testKeyBytes)
+
+func TestMasterKey(t *testing.T) {
+	t.Parallel()
+	const url = "public_url: http://localhost\n"
+	home, e := homeWith(t, url+"master_key: "+testKey+"\n")
+	c, err := Load(e.getenv)
+	if err != nil || !bytes.Equal(c.MasterKey, testKeyBytes) {
+		t.Fatalf("want the key read, got %x, %v", c.MasterKey, err)
+	}
+	if got := c.Value("master_key"); got != testKey {
+		t.Errorf("Value = %q, want the key in base64", got)
+	}
+	if got := c.Shown("master_key"); got != "[secret]" {
+		t.Errorf("Shown = %q, want [secret]", got)
+	}
+	if c, err := Load(env{"WDX_HUB_HOME": home, "WDX_HUB_MASTER_KEY": ""}.getenv); err != nil || c.MasterKey == nil {
+		t.Errorf("an empty variable sets nothing, got %x, %v", c.MasterKey, err)
+	}
+	_, without := homeWith(t, url)
+	if c, err := Load(without.getenv); err != nil || c.MasterKey != nil {
+		t.Errorf("without a key, want none and no problem, got %x, %v", c.MasterKey, err)
+	}
+	short := base64.StdEncoding.EncodeToString(testKeyBytes[:16])
+	for value, reason := range map[string]string{short: "is 16 bytes, not 32", "not base64!": "is not base64"} {
+		if got := problems(t, url, env{"WDX_HUB_MASTER_KEY": value}); got["master_key"] != reason {
+			t.Errorf("%s: got %v, want %q", value, got, reason)
+		}
+	}
+}
+
+func TestRegistration(t *testing.T) {
+	t.Parallel()
+	const url = "public_url: http://localhost\n"
+	for _, v := range []string{RegistrationClosed, RegistrationOpen} {
+		_, e := homeWith(t, url+"registration: "+v+"\n")
+		if c, err := Load(e.getenv); err != nil || c.Registration != v {
+			t.Errorf("%s: got %q, %v", v, c.Registration, err)
+		}
+	}
+	if got := problems(t, url+"registration: invite\n", nil); got["registration"] == "" {
+		t.Errorf("want invite refused, got %v", got)
+	}
+}
+
+func TestTrustedProxies(t *testing.T) {
+	t.Parallel()
+	const url = "public_url: http://localhost\n"
+	_, e := homeWith(t, url)
+	e["WDX_HUB_TRUSTED_PROXIES"] = "10.0.0.1, 192.168.1.7/16,2001:db8::1,fd00::/8"
+	c, err := Load(e.getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.1/32"), netip.MustParsePrefix("192.168.0.0/16"),
+		netip.MustParsePrefix("2001:db8::1/128"), netip.MustParsePrefix("fd00::/8"),
+	}
+	if !slices.Equal(c.TrustedProxies, want) {
+		t.Fatalf("got %v, want %v", c.TrustedProxies, want)
+	}
+	if got := c.Value("trusted_proxies"); got != "10.0.0.1,192.168.0.0/16,2001:db8::1,fd00::/8" {
+		t.Errorf("Value = %q", got)
+	}
+	for _, bad := range []string{"10.0.0.300", "proxy.example.com", "10.0.0.0/33"} {
+		if got := problems(t, url, env{"WDX_HUB_TRUSTED_PROXIES": bad}); got["trusted_proxies"] == "" {
+			t.Errorf("%s: want it refused, got %v", bad, got)
 		}
 	}
 }

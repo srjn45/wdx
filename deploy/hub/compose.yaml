@@ -1,5 +1,6 @@
 # Runs wdx-hub on this machine, its home in the named volume hub-data:
 #
+#   export WDX_HUB_MASTER_KEY=$(head -c 32 /dev/urandom | base64) # once; keep it
 #   docker compose -f deploy/hub/compose.yaml up --build
 #
 # Every setting can be given here as WDX_HUB_<KEY>; wdx-hub help settings lists them.
@@ -13,6 +14,8 @@ services:
         COMMIT: ${COMMIT:-none}
     environment:
       WDX_HUB_PUBLIC_URL: http://localhost:8080
+      # The same key at every start: the secrets the hub sealed are lost with it.
+      WDX_HUB_MASTER_KEY: ${WDX_HUB_MASTER_KEY:?make one with: head -c 32 /dev/urandom | base64}
       WDX_HUB_LISTEN_WEB: ":8080"
       WDX_HUB_LISTEN_NODES: ":8443"
     ports:

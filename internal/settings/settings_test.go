@@ -363,3 +363,20 @@ func TestShown(t *testing.T) {
 		t.Errorf("count shown as %q", got)
 	}
 }
+
+// A secret setting that does not parse is reported without its value, which
+// may be the secret mistyped.
+func TestInvalidSecretNotShown(t *testing.T) {
+	t.Parallel()
+	table := optionalToken()
+	i := slices.IndexFunc(table.Rows, func(r Row[conf]) bool { return r.Key == "key" })
+	table.Rows[i].Set = func(*conf, string) error { return errors.New("is not 32 bytes") }
+	_, _, err := load(t, table, fileWith(t, "key: hunter2\n"), nil)
+	e, ok := errors.AsType[*Error](err)
+	if !ok || len(e.Problems) != 1 || e.Problems[0].Value == nil || *e.Problems[0].Value != "[secret]" {
+		t.Fatalf("want the key's problem with its value shown as [secret], got %v", err)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", e.Problems), "hunter2") {
+		t.Errorf("the secret is in the problem: %+v", e.Problems)
+	}
+}

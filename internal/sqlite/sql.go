@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/srjn45/wdx/internal/logging"
@@ -43,13 +44,24 @@ func Exec(ctx context.Context, e Execer, query string, args ...any) (int64, erro
 	return rows, err
 }
 
+// Secret is an argument Exec logs as its length alone: a hash, a token or a
+// sealed value, a string or bytes.
+type Secret[T string | []byte] struct{ V T }
+
+// Value is the secret as the database receives it.
+func (s Secret[T]) Value() (driver.Value, error) { return s.V, nil }
+
+func (s Secret[T]) logged() string { return fmt.Sprintf("[secret, %d bytes]", len(s.V)) }
+
 // values returns args as the database receives them: NULL for an invalid
-// sql.NullString rather than the struct.
+// sql.NullString rather than the struct, and a Secret's length alone.
 func values(args []any) []any {
 	out := make([]any, len(args))
 	for i, a := range args {
 		out[i] = a
-		if v, ok := a.(driver.Valuer); ok {
+		if s, ok := a.(interface{ logged() string }); ok {
+			out[i] = s.logged()
+		} else if v, ok := a.(driver.Valuer); ok {
 			out[i], _ = v.Value()
 		}
 	}

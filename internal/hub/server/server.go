@@ -108,7 +108,7 @@ func (e *AlreadyRunningError) Error() string {
 
 // atStart are the settings the hub applies only when it starts; a reload
 // applies the others at once.
-var atStart = []string{"public_url", "listen.web", "listen.nodes", "web.tls", "web.tls_cert", "web.tls_key"}
+var atStart = []string{"public_url", "listen.web", "listen.nodes", "web.tls", "web.tls_cert", "web.tls_key", "master_key", "trusted_proxies"}
 
 // Addresses are where the endpoints listen.
 type Addresses struct {

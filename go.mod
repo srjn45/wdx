@@ -13,6 +13,7 @@ require (
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/oapi-codegen/nethttp-middleware v1.3.1
 	github.com/oapi-codegen/runtime v1.8.0
+	github.com/pquerna/otp v1.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	go.opentelemetry.io/otel v1.47.0
@@ -22,6 +23,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
 	go.opentelemetry.io/proto/otlp v1.11.1
 	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/crypto v0.58.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	google.golang.org/protobuf v1.36.12
@@ -32,6 +34,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.4 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect

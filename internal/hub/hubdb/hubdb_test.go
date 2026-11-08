@@ -17,6 +17,7 @@ import (
 // are append-only: add the sum of a new one here, never change one.
 var committed = []string{
 	"2dd7fb8b56a1e9034e56639afd054ff676cad79ea236026a282943d01fdb6167", // 0001_schema_readers.sql
+	"6b205d67bcd817a5c21a700691a1cb31ce6387bb06738255924b3140d25faa43", // 0002_accounts.sql
 }
 
 func TestOpenMigrates(t *testing.T) {

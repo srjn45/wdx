@@ -112,7 +112,12 @@ func (t Table[C]) Resolve(sources []Source) (C, map[string]string, error) {
 			if source == "default" {
 				panic(fmt.Sprintf("settings: default of %s: %v", r.Key, err))
 			}
-			problems = append(problems, Problem{Key: r.Key, From: source, Value: &value, Reason: err.Error(), byEnv: byEnv})
+			shown := value
+			if r.Secret {
+				// The value may be the secret, mistyped.
+				shown = secretShown
+			}
+			problems = append(problems, Problem{Key: r.Key, From: source, Value: &shown, Reason: err.Error(), byEnv: byEnv})
 			continue
 		}
 		from[r.Key] = source
