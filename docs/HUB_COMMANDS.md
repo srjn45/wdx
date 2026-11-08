@@ -160,7 +160,7 @@ Agreed on 2026-11-03.
 
 ### `wdx-hub serve`
 
-Runs the hub in the foreground, as a container's entry point. It listens on two addresses: the sign-in pages and the hub's API (plain HTTP behind a proxy's HTTPS, as on Fly, or TLS itself), and the node endpoint, always TLS of the hub's own requiring the node's client certificate, which a proxy passes through untouched. Its first start creates its CA and its database.
+Runs the hub in the foreground, as a container's entry point. It listens on two addresses: the sign-in pages and the hub's API (plain HTTP behind a proxy's HTTPS, as on Fly, or TLS itself), and the node endpoint, always TLS of the hub's own requiring the node's client certificate, which a proxy passes through untouched. Its first start creates its CA and its database. It also serves the admin socket, and logs JSON lines to stdout, where a container's or a service's log is kept; so it refuses `--json` with `usage`, as `wdx tide` does (step 3, the wdx doc HUB_SKELETON).
 
 ### `wdx-hub user`
 
@@ -179,7 +179,7 @@ Runs the hub in the foreground, as a container's entry point. It listens on two 
 
 ### The hub's settings
 
-Each also from `WDX_HUB_<KEY>`.
+Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at startup with `usage`, but `setting set` and `write`, so that a new hub can be given one.
 
 | Setting | Default | |
 |---|---|---|

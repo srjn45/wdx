@@ -17,6 +17,15 @@ Both release targets need a clean working tree on `main`, not behind `origin/mai
 
 `.github/workflows/release.yml` publishes the GitHub Release of each `v*` tag pushed: it runs the jobs of `ci.yml` on the tag, then `scripts/publish.sh`, which checks that the tag is annotated and on `main`, builds the archives with the tag's own `scripts/dist.sh`, and uploads them with `checksums.txt` and the tag's `install.sh`. The tag's notes are the release's. A dev tag is a pre-release, so GitHub's latest release is always the newest stable one. Once it is public, `scripts/publish-latest.sh` writes the tag to `LATEST-dev` on the `channels` branch, which holds nothing else, and which only ever moves forward. A failed run leaves a draft at most; running it again replaces it, and on a release already published does only that last step. A tag pushed before releases were published is published by running the workflow by hand with that tag (`gh workflow run release.yml -f tag=v0.2.0-dev.20`), without the checks.
 
+Each release has two archives per platform (linux and macOS, amd64 and arm64), both listed in `checksums.txt`:
+
+```
+wdx_<version>_<os>_<arch>.tar.gz       wdx
+wdx-hub_<version>_<os>_<arch>.tar.gz   wdx-hub, the hub (docs/HUB_ARCH.md; deploy/hub runs it)
+```
+
+Both binaries carry the same version and commit, and each archive the same `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md`. `scripts/install.sh`, `make install` and `wdx update` install wdx only: the hub is run from its archive, its container image or its systemd unit (`deploy/hub/README.md`).
+
 `dist/` keeps every release built here: `make install` installs from it, and `update.base_url: file://<repo>/dist` makes `wdx update` read it instead of GitHub.
 
 The first `make` that needs git-cliff downloads the pinned version into `bin/` and checks it against the checksums in `scripts/fetch-release.sh`.

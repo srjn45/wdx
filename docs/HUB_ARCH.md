@@ -175,6 +175,8 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 
 ## The hub's API, `api/hub.yaml`
 
+Each operation has one tag, `web`, `nodes` or `admin`, saying which endpoint serves it; another endpoint answers it 404. One path has one operation, so what each endpoint serves alike has a path per endpoint: the version is `GET /v1/version` on the web endpoint, `GET /v1/node/version` on the node endpoint and `GET /v1/admin/version` on the socket (step 3, the wdx doc HUB_SKELETON).
+
 - Web endpoint: `POST /v1/node-logins` and `POST /v1/node-logins/token` (the device flow), `POST /v1/node-logins/exchange` (the authorization code for the node's credentials), and the sign-in pages' own routes.
 - Node endpoint, mTLS: `GET /v1/control` (the control WebSocket, which also carries certificate re-issuance), `GET /v1/streams/{id}` (a stream WebSocket), `POST /v1/streams` (ask for a stream to a node), `GET /v1/nodes`, `GET` and `DELETE /v1/nodes/{node}`, `POST /v1/docs/changes` (the outbox, in order).
 - Control messages are JSON objects with a `type`, described in the spec as schemas, so both sides are generated from one place.
@@ -186,7 +188,7 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 - **The node endpoint needs its TLS untouched,** since the hub must see the node's certificate. On Fly that is raw TCP, which a shared IPv4 does not carry: it needs a dedicated IPv4 (about $2 a month) or IPv6 only, which many home networks lack. The other way, authenticating nodes by a signature inside Fly's TLS, works on the shared address but is not mTLS. Open question to the human.
 - **Litestream** runs in the image as the supervisor, `litestream replicate -exec "wdx-hub serve"`, streaming `hub.db` to Tigris. Fly's daily volume snapshots are a second copy.
 - **Secrets** (`WDX_HUB_DOCS_KEY`, Tigris's credentials) are Fly secrets.
-- **Shipping:** `scripts/dist.sh` builds `cmd/wdx` alone today, and nothing builds or signs images. The MVP adds `wdx-hub` to the release archives beside `wdx`; the multi-arch image on GHCR, cosign and the SBOM come with the Fly deployment, after the first release. (Decided 2026-11-07.)
+- **Shipping:** `scripts/dist.sh` builds `wdx-hub` into release archives of its own beside `wdx`'s (step 3), and `deploy/hub` has the Dockerfile, but nothing builds or signs images in a release; the multi-arch image on GHCR, cosign and the SBOM come with the Fly deployment, after the first release. (Decided 2026-11-07.)
 - Self-hosted, the same image runs with a volume and the same settings; `web.tls` decides who terminates TLS on the web endpoint, and the node endpoint is always the hub's.
 
 ## The sign-in pages

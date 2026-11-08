@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/srjn45/wdx/internal/settings" //nolint:depguard // hubconfig is the hub's config on settings, as config is wdx's; the finish task adds it to the rule's exceptions
+	"github.com/srjn45/wdx/internal/settings"
 )
 
 // env is a fake environment.

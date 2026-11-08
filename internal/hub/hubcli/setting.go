@@ -14,7 +14,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/server"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
-	"github.com/srjn45/wdx/internal/settings" //nolint:depguard // hubcli is the hub's commands on settings, as cli is wdx's; the finish task adds it to the rule's exceptions
+	"github.com/srjn45/wdx/internal/settings"
 )
 
 // Results of the setting commands, and what the hub did with a setting set.

@@ -32,12 +32,15 @@ This file applies to every AI working on this repo (Claude, Codex, Cursor, Antig
 
 ## Project layout
 
-warden manages AI CLI agents in PTYs, plus projects, messaging, a TUI and later pipelines. The CLI is `wdx`.
+warden manages AI CLI agents in PTYs, plus projects, messaging, a TUI and later pipelines. The CLI is `wdx`. The hub, `wdx-hub`, is a second program in the same module, a server that later steps fill with accounts, pages and the nodes' links (docs/HUB_ARCH.md); it builds on the generic packages, never on wdx's own.
 
 ```
 api/openapi.yaml   the API contract; everything in internal/api is generated from it
+api/hub.yaml       the hub's API contract, generated into internal/hubapi; each operation's one tag, web, nodes or admin, says which endpoint serves it
 cmd/wdx/        entry point
+cmd/wdx-hub/    the hub's entry point: loads hubconfig and runs hubcli
 internal/api/   generated types, server interface and client, plus the error codes
+internal/hubapi/  the hub's generated types, strict server and client, plus its error codes and headers
 internal/clikit/  the framework every wdx program's commands run on, given the program's name, codes and settings through clikit.Env: --json with one object, Problem Details and exit codes, the help layout from the annotations, completions, prompts, the command received/started/returned log lines
 internal/clikit/clikittest/  checks a program's commands as the cli's tests do: every run logged from received to returned, every command's help complete, its examples parsed
 internal/cli/   wdx's commands on clikit: parse args, call the daemon, print; no business logic
@@ -46,6 +49,7 @@ internal/daemon/   serves the API over the Unix socket on top of the domain
 internal/settings/  the settings engine behind a program's table of rows: read from a config file and the environment, every problem with its line, written back from the table, one setting changed under a lock, with secrets shown as [secret]
 internal/config/   wdx's settings on internal/settings: its table of rows, loaded once at startup from their sources, and the config file written from them
 internal/sqlite/  opens SQLite databases and runs an application's numbered, append-only migrations with the breaks-older rule; backup and restore, random ids, logged statements; knows nothing of wdx's tables
+internal/sqlite/sqlitetest/  Seed puts a migrated database at a path, from a copy migrated once per test binary and Open; db/dbtest and the hub's tests use it
 internal/db/    wdx's one database on internal/sqlite: its embedded migrations, Open and Known
 internal/db/dbtest/  puts a migrated database where a test home's daemon or store opens one, so that each need not migrate its own
 internal/git/   thin wrapper over the git CLI
@@ -94,18 +98,24 @@ internal/aca/   what differs between the AI CLIs agents run, behind AiCodingAgen
 internal/fswatch/  one inotify instance for all the daemon watches, which hands each change to those who asked for its path, the kernel allowing a user few; the wdx doc WATCHERS
 internal/worktree/  reads what git knows of a project's checkouts, and keeps it up to date from events for the streams that ask, never on a timer and never writing to a repository or asking GitHub but for landing and removing a worktree, or reading its PR, when asked to; docs/TIDE_WORKTREES.md
 third_party/cancelreader/  a library's copy with a race fixed, which go.mod uses in its place; its README says what changed and when to drop it
+internal/hub/hubconfig/  the hub's settings on internal/settings (WDX_HUB_<KEY> over the file), its home's layout, and the hub's names: wdx-hub, WDX_HUB_, wdx-hub.sock
+internal/hub/hubdb/  the hub's one database (hub.db) on internal/sqlite: its embedded migrations, Open and Known
+internal/hub/ca/  the hub's certificate authority: made at the first start, it issues the node endpoint's certificate, and later each node's
+internal/hub/server/  serves api/hub.yaml on the web and node endpoints and the admin socket, with the daemon's request logging, validation and problem mapping
+internal/hub/hubcli/  wdx-hub's commands on clikit: serve, version, setting, backup
+deploy/hub/     runs wdx-hub in a container (Dockerfile, compose.yaml) or as a systemd service (wdx-hub.service); its README says how
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
 
-- Dependencies point one way: cmd -> cli -> client -> api, cli -> clikit, api -> clikit, clikit -> style/settings/logging, clikittest -> clikit/pty/waittest, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> codesign, cli -> update -> db, cli -> holder, cli -> aca, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/gh/holder -> pty/screen, terminal -> proc, agent -> aca/terminal/screen/holder, plan -> doc/git/worktree, worktree -> fswatch, agent -> fswatch, which uses nothing but fsnotify, aca -> screen, and cli/daemon -> telemetry; every package may use identity, and editor, which uses nothing; config, settings, db, sqlite, update, aca, agent, doc and codesign -> atomicfile; config -> settings, which uses only atomicfile and logging; db -> sqlite, and every package that may use db may use sqlite, which uses only atomicfile and logging; config -> aca, for a setting per ACA; config -> style, for tide's themes and the color mode. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal, and `codesign`, which the install script runs to sign the release it downloaded. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain nor fswatch, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, clikit uses no identity, api, config, client, daemon or domain package, only cmd, the cli, config and clikit use settings, only screen uses the vt, the holder never uses aca, editor uses nothing, neither the cli nor tide uses proc, tide uses neither db nor sqlite.
+- Dependencies point one way: cmd -> cli -> client -> api, cli -> clikit, api -> clikit, clikit -> style/settings/logging, clikittest -> clikit/pty/waittest, cli -> service, cli -> observe, cli -> style, cli -> deps, cli -> codesign, cli -> update -> db, cli -> holder, cli -> aca, cli -> termview -> holder/screen, cli -> tide -> client/style, and cli -> daemon -> domain -> db/git/gh/holder -> pty/screen, terminal -> proc, agent -> aca/terminal/screen/holder, plan -> doc/git/worktree, worktree -> fswatch, agent -> fswatch, which uses nothing but fsnotify, aca -> screen, and cli/daemon -> telemetry; every package may use identity, and editor, which uses nothing; config, settings, db, sqlite, update, aca, agent, doc and codesign -> atomicfile; config -> settings, which uses only atomicfile and logging; db -> sqlite, and every package that may use db may use sqlite, which uses only atomicfile and logging; config -> aca, for a setting per ACA; config -> style, for tide's themes and the color mode. The cli runs the daemon but never calls the domain: every command goes through the API, except `daemon`, `observe`, `setting` and `update`, which manage the daemon, the observability stack, the config file and the installed binary themselves, and the hidden `holder`, which the daemon runs for each terminal, and `codesign`, which the install script runs to sign the release it downloaded. Every package may use logging. depguard enforces the directions it can: the cli never reaches the domain nor fswatch, only the cli uses daemon, only the cli and tide use client, only cmd and cli use config, clikit uses no identity, api, config, client, daemon or domain package, only cmd, the cli, config and clikit, and the hub's hubcli and hubconfig, use settings, only screen uses the vt, the holder never uses aca, editor uses nothing, neither the cli nor tide uses proc, tide uses neither db nor sqlite. The hub: cmd/wdx-hub -> hubcli -> hubconfig/hubapi/clikit/style/settings, hubcli -> server only to run it, as cli -> daemon, server -> hubapi/hubconfig/hubdb/ca/sqlite/telemetry, hubapi -> clikit, hubconfig -> settings, hubdb -> sqlite, ca -> atomicfile; of identity the hub uses only Version and Commit, which the same ldflags set for both binaries. depguard keeps the hub apart: nothing under internal/hub or internal/hubapi uses the cli, daemon, client, config, db or a domain package, and only cmd/wdx-hub and internal/hub use internal/hub or internal/hubapi.
 - Name packages by what they provide, never by layer (no models/, services/, utils/).
 - Add interfaces only where a consumer needs them, not up front.
 - Tests use real dependencies (a temp SQLite DB, the real git binary), not mocks.
 
 ## Database
 
-- One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file.
-- Migrations live in `internal/db/migrations`, are numbered, and are append-only: never edit a committed migration.
+- One SQLite database (`~/.wdx/wdx.db`) holds every table. Never add another DB file. The hub's `hub.db`, in its own home, is the one other database: the hub is a program of its own, which may run where no wdx does.
+- Migrations live in `internal/db/migrations`, and the hub's in `internal/hub/hubdb/migrations`; they are numbered, and append-only: never edit a committed migration. Every rule of this section holds for both.
 - Prefer migrations that only add (a table, an index, a column that is nullable or has a default): the previous version keeps working on the database, so `wdx update --rollback` keeps the data. A migration that changes or removes what older binaries use starts with the line `-- breaks-older: true`; rolling back across it restores the database backup taken at the update.
 - Conventions: STRICT tables, INTEGER unix-millisecond timestamps, NULL for absent values, prefixed random ids (`proj-`, `wt-`), indexed foreign keys with ON DELETE CASCADE (`agents.parent_agent_id` uses SET NULL, and its migration says why), user-facing names `COLLATE NOCASE`, JSON in TEXT columns with a `json_valid` CHECK.
 
@@ -124,7 +134,7 @@ Every command serves both humans and scripts or AIs.
 
 - Only commands are positional; every input is a flag. An entity is named by `--id` or `--name`, exactly one of them.
 - Every prompt choice that makes sense without a human has a flag. Without that flag and without a terminal (or with `--no-input` / `no_input: true` in the config file), fail when the question comes up, with a hint naming the flags.
-- Every command supports `--json`, which never prompts, except `tide`, interactive by nature, which fails with a `usage` error: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else, the same the API returns:
+- Every command supports `--json`, which never prompts, except `tide`, interactive by nature, and `wdx-hub serve`, whose stdout is its log, which fail with a `usage` error: the flags that answer a command's prompts are required up front (a `usage` error otherwise). stdout then holds exactly one object and nothing else, the same the API returns:
   - success: the API's body, such as `{"result": "created", "project": {...}}`, with the key named after the entity and extras such as `dropped`;
   - failure: Problem Details, as the API returns them: `{"type": "urn:wdx:error:name_taken", "title": "...", "status": 409, "detail": "...", "code": "name_taken", "hint": "...", "details": {"project": {...}}, "debug_id": "dbg-..."}`. Errors only the CLI reports (`usage`, `daemon_unavailable`, `already_running`, `internal`) take the same shape.
 - `result` names the most significant thing that happened: `created`, `registered`, `cloned`, `opened`, `closed`, `removed`. Read-only commands have no `result`; they return the entity under its own key (`project`, or `projects` for a list).

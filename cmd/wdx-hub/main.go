@@ -11,11 +11,11 @@ import (
 func main() {
 	env := hubcli.Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
-		Getenv: os.Getenv, //nolint:forbidigo // main is the one reader of the environment; the finish task adds cmd/wdx-hub to the rule's exception
+		Getenv: os.Getenv,
 		// The conventions of terminals, not settings of wdx-hub: https://no-color.org
-		NoColor: os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb", //nolint:forbidigo // as above
+		NoColor: os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 	}
-	cfg, err := hubconfig.Load(os.Getenv) //nolint:forbidigo // as above
+	cfg, err := hubconfig.Load(os.Getenv)
 	if err != nil && !hubcli.RewritesSettings(os.Args[1:], err) {
 		os.Exit(hubcli.ConfigError(os.Args[1:], env, err))
 	}

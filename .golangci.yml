@@ -170,9 +170,64 @@ linters:
             - "!**/internal/cli/**"
             - "!**/internal/config/**"
             - "!**/internal/clikit/**"
+            - "!**/cmd/wdx-hub/**"
+            - "!**/internal/hub/hubcli/**"
+            - "!**/internal/hub/hubconfig/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/settings
-              desc: only cmd, the cli, config and clikit read settings; the daemon and the domain are handed the values they need
+              desc: only cmd, the cli, config and clikit, and the hub's hubcli and hubconfig, read settings; the daemon and the domain are handed the values they need
+        # The hub builds on the generic packages only (the wdx doc HUB_SKELETON),
+        # never on wdx's commands, daemon, settings, database or domain.
+        hub-not-wdx:
+          files: ["**/internal/hub/**", "**/internal/hubapi/**"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/cli$
+              desc: the hub builds on clikit, settings and sqlite, never on wdx's commands
+            - pkg: github.com/srjn45/wdx/internal/daemon$
+              desc: the hub builds on clikit, settings and sqlite, never on wdx's daemon
+            - pkg: github.com/srjn45/wdx/internal/client$
+              desc: the hub builds on clikit, settings and sqlite, never on wdx's client
+            - pkg: github.com/srjn45/wdx/internal/config$
+              desc: the hub builds on clikit, settings and sqlite, never on wdx's settings; the hub's are hubconfig
+            - pkg: github.com/srjn45/wdx/internal/db
+              desc: the hub builds on clikit, settings and sqlite, never on wdx's database; the hub's is hubdb
+            - pkg: github.com/srjn45/wdx/internal/project
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/git$
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/gh$
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/terminal
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/agent
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/worktree
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/doc
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/plan
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/tidestate
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/proc
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/fswatch
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/holder
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+            - pkg: github.com/srjn45/wdx/internal/aca
+              desc: the hub builds on clikit, settings and sqlite, never on a wdx domain package
+        # Only wdx-hub uses the hub, until hublink in step 5 takes hubapi.
+        hub-in-wdx-hub-only:
+          files:
+            - "$all"
+            - "!**/cmd/wdx-hub/**"
+            - "!**/internal/hub/**"
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/hub/
+              desc: only wdx-hub uses the hub
+            - pkg: github.com/srjn45/wdx/internal/hubapi
+              desc: only wdx-hub uses the hub's API, until hublink in step 5
     errcheck:
       # Errors these return have nothing left to handle: a rollback after
       # the commit, a response the client stopped reading, a completion or
@@ -213,7 +268,7 @@ linters:
     presets:
       - std-error-handling
     rules:
-      - path: ^cmd/wdx/main\.go$
+      - path: ^cmd/wdx(-hub)?/main\.go$
         linters: [forbidigo]
         text: only main (and tests )?reads? the
       # Tests and their helpers pass the test process's environment on to
