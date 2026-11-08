@@ -166,6 +166,39 @@ func TestOnlyUnknown(t *testing.T) {
 	}
 }
 
+func TestOnlyRewritable(t *testing.T) {
+	t.Parallel()
+	_, _, err := load(t, testTable(), fileWith(t, "old: 1\n"), nil)
+	if e, ok := errors.AsType[*Error](err); !ok || e.OnlyUnknown() || !e.OnlyRewritable() {
+		t.Fatalf("want an unknown key and the token missing, got %v", err)
+	}
+	if e, _ := loadErr(t, "old: 1\nmode: loud\n"); e.OnlyRewritable() {
+		t.Fatalf("want an invalid value among them, got %v", e)
+	}
+}
+
+// A rewrite checks the file with the sources given over it, as the settings
+// load: a required setting the environment gives is no problem.
+func TestRewriteOver(t *testing.T) {
+	t.Parallel()
+	path := fileWith(t, "mode: fast\n")
+	table := testTable()
+	if _, err := table.Rewrite(path, nil); err == nil || !strings.Contains(err.Error(), "token: required") {
+		t.Fatalf("want the token required, got %v", err)
+	}
+	table.AllFromEnv = true
+	r, err := table.Rewrite(path, nil, table.Env(env{"TEST_TOKEN": "t"}.getenv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(r.Content), "token: t") {
+		t.Fatalf("want the environment's value left out of the file:\n%s", r.Content)
+	}
+	if _, err := table.Set(path, filepath.Join(filepath.Dir(path), "config.lock"), "mode", "slow", table.Env(env{"TEST_TOKEN": "t"}.getenv)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRewriteSet(t *testing.T) {
 	t.Parallel()
 	path := fileWith(t, "mode: fast\n")

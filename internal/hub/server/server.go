@@ -205,9 +205,11 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    s.ca.Pool(),
 	})
-	if s.listeners[endpointAdmin], err = listenSocket(s.log, hubconfig.SocketPath(cfg.Home)); err != nil {
+	admin, err := listenSocket(s.log, hubconfig.SocketPath(cfg.Home))
+	if err != nil {
 		return nil, err
 	}
+	s.listeners[endpointAdmin] = admin
 	a := s.Addresses()
 	s.log.Info("hub listening",
 		"web", a.Web, "web_tls", cfg.WebTLS, "nodes", a.Nodes, "admin", a.Admin,

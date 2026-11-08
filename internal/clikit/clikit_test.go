@@ -17,6 +17,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/clikit/clikittest"
+	"github.com/srjn45/wdx/internal/settings"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -70,6 +71,32 @@ func TestProcessNamed(t *testing.T) {
 	}
 	if len(lines) != 3 {
 		t.Fatalf("want the run logged, got %v", lines)
+	}
+}
+
+// A run given a writer logs to it, as a server logs to its output, and to no
+// file.
+func TestLogsToWriter(t *testing.T) {
+	t.Parallel()
+	home := kitHome(t)
+	env := kitEnv(home)
+	var stdout, logs bytes.Buffer
+	env.Stdout, env.Stderr = &stdout, &bytes.Buffer{}
+	env.Logs.Writer = &logs
+	clikit.Run(context.Background(), []string{"thing", "list"}, env, newKit(errFailed))
+	var msgs []string
+	for line := range strings.Lines(logs.String()) {
+		var l struct{ Msg string }
+		if err := json.Unmarshal([]byte(line), &l); err != nil {
+			t.Fatalf("a line that is not JSON: %q", line)
+		}
+		msgs = append(msgs, l.Msg)
+	}
+	if !slices.Equal(msgs, []string{"command received", "command started", "command returned"}) {
+		t.Fatalf("want the run logged to the writer, got %v", msgs)
+	}
+	if _, err := os.Stat(logsDir(home)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want no log file, got %v", err)
 	}
 }
 
@@ -237,6 +264,7 @@ func TestRewritesSettings(t *testing.T) {
 		{[]string{"setting", "write"}, invalid, false},
 		{[]string{"thing", "list"}, unknown, false},
 		{[]string{"setting", "write"}, errors.New("other"), false},
+		{[]string{"setting", "write"}, &settings.Error{Problems: []settings.Problem{{Key: "name", Reason: "required"}}}, true},
 	} {
 		if got := clikit.RewritesSettings(newKit(errFailed)(), tc.args, tc.err); got != tc.want {
 			t.Errorf("%v, %v: got %v", tc.args, tc.err, got)

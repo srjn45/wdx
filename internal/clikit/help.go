@@ -694,8 +694,8 @@ func (r topicResponse) Text(w io.Writer, st style.Style) {
 }
 
 // SettingsTable is the table of settings a settings topic shows: each
-// setting's key, or the variable it is read from, its description and its
-// default.
+// setting's key, or the variable of one read from the environment only, its
+// description and its default.
 func SettingsTable(st style.Style, list []settings.Setting) string {
 	var b strings.Builder
 	var table style.Table
@@ -704,7 +704,11 @@ func SettingsTable(st style.Style, list []settings.Setting) string {
 		if !s.Required {
 			def = "default " + cmp.Or(s.Default, `""`)
 		}
-		table.Row("  "+st.Name(cmp.Or(s.EnvVar, s.Key)), s.Description+" "+st.Muted("("+def+")"))
+		name := s.Key
+		if s.EnvOnly {
+			name = s.EnvVar
+		}
+		table.Row("  "+st.Name(name), s.Description+" "+st.Muted("("+def+")"))
 	}
 	table.Write(&b)
 	return b.String()

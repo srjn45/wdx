@@ -105,7 +105,7 @@ func (t Table[C]) Resolve(sources []Source) (C, map[string]string, error) {
 			}
 		}
 		if !found {
-			problems = append(problems, Problem{Key: r.Key, Reason: "required"})
+			problems = append(problems, Problem{Key: r.Key, Reason: requiredSetting})
 			continue
 		}
 		if err := r.Set(&c, value); err != nil {
@@ -129,8 +129,12 @@ func (t Table[C]) Resolve(sources []Source) (C, map[string]string, error) {
 	return c, from, nil
 }
 
-// unknownSetting is the reason of a problem with a key no setting has.
-const unknownSetting = "unknown setting"
+// The reasons of a problem with a key no setting has, and of a required
+// setting no source sets.
+const (
+	unknownSetting  = "unknown setting"
+	requiredSetting = "required"
+)
 
 // Error lists every setting that is missing or invalid.
 type Error struct {
@@ -161,6 +165,13 @@ func (e *Error) OnlyUnknown() bool {
 	return !slices.ContainsFunc(e.Problems, func(p Problem) bool { return p.Reason != unknownSetting })
 }
 
+// OnlyRewritable is true when every problem is a key no setting has or a
+// required setting no source sets: a rewrite of the file moves the one out of
+// the way and can set the other.
+func (e *Error) OnlyRewritable() bool {
+	return !slices.ContainsFunc(e.Problems, func(p Problem) bool { return p.Reason != unknownSetting && p.Reason != requiredSetting })
+}
+
 func (e *Error) Error() string {
 	var msgs []string
 	for _, p := range e.Problems {
@@ -173,6 +184,7 @@ func (e *Error) Error() string {
 type Setting struct {
 	Key         string
 	EnvVar      string // the variable it is read from; "" for the config file only
+	EnvOnly     bool   // read from the environment only, never from the config file
 	Description string
 	Default     string // "" when required or empty
 	Required    bool
@@ -184,7 +196,7 @@ type Setting struct {
 func (t Table[C]) Describe() []Setting {
 	list := make([]Setting, 0, len(t.Rows))
 	for _, r := range t.Rows {
-		s := Setting{Key: r.Key, Description: r.Description, Default: r.Default, Required: r.Required, Secret: r.Secret, Choices: r.Choices}
+		s := Setting{Key: r.Key, Description: r.Description, Default: r.Default, Required: r.Required, Secret: r.Secret, Choices: r.Choices, EnvOnly: r.FromEnv}
 		if t.fromEnv(r) {
 			s.EnvVar = t.envVar(r.Key)
 		}

@@ -38,8 +38,8 @@ const (
 
 // What the daemon did with a setting set, besides resultNotRunning.
 const (
-	reloadApplied    = "applied"
-	reloadNotApplied = "not_applied"
+	reloadApplied    = clikit.ReloadApplied
+	reloadNotApplied = clikit.ReloadNotApplied
 )
 
 // problem returns err as the problem wdx reports, when it is one of wdx's

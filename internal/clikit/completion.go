@@ -90,7 +90,7 @@ func CompleteSettings(list []settings.Setting, fileOnly bool) cobra.CompletionFu
 	return func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		var completions []cobra.Completion
 		for _, s := range list {
-			if !fileOnly || s.EnvVar == "" {
+			if !fileOnly || !s.EnvOnly {
 				completions = append(completions, cobra.CompletionWithDesc(s.Key, s.Description))
 			}
 		}

@@ -43,10 +43,11 @@ type Rewritten struct {
 // the end under DroppedHeading with those an earlier rewrite put there. The
 // values of set, by key, replace those of the file. Comments of the file's own
 // are not kept. A missing file gives every setting commented. It fails with an
-// *Error when the file cannot be read or parsed, a value it sets is invalid or
-// set holds what cannot be set; keys the file has that no setting has are no
-// error.
-func (t Table[C]) Rewrite(path string, set map[string]string) (Rewritten, error) {
+// *Error when the file cannot be read or parsed, a value it sets is invalid,
+// set holds what cannot be set, or the settings do not resolve from the file
+// with the sources over layered over it, as the environment is when they
+// load; keys the file has that no setting has are no error.
+func (t Table[C]) Rewrite(path string, set map[string]string, over ...Source) (Rewritten, error) {
 	old, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Rewritten{}, &Error{Problems: []Problem{unreadable(path, err)}}
@@ -54,7 +55,7 @@ func (t Table[C]) Rewrite(path string, set map[string]string) (Rewritten, error)
 	r, problems := t.parseFile(path, old)
 	problems = slices.DeleteFunc(problems, func(p Problem) bool { return p.Reason == unknownSetting })
 	problems = append(problems, r.override(set)...)
-	if _, _, err := t.Resolve([]Source{r.values}); err != nil {
+	if _, _, err := t.Resolve(append([]Source{r.values}, over...)); err != nil {
 		if e, ok := errors.AsType[*Error](err); ok {
 			problems = append(problems, e.Problems...)
 		}
@@ -104,9 +105,9 @@ func (r *fileReader[C]) override(set map[string]string) []Problem {
 }
 
 // Set sets the setting key in the config file at path, which it writes anew
-// as Rewrite does, holding lockPath with Lock meanwhile. The file is left as
-// it was when Rewrite fails.
-func (t Table[C]) Set(path, lockPath, key, value string) (Rewritten, error) {
+// as Rewrite does, with over, holding lockPath with Lock meanwhile. The file
+// is left as it was when Rewrite fails.
+func (t Table[C]) Set(path, lockPath, key, value string, over ...Source) (Rewritten, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return Rewritten{}, err
 	}
@@ -115,7 +116,7 @@ func (t Table[C]) Set(path, lockPath, key, value string) (Rewritten, error) {
 		return Rewritten{}, err
 	}
 	defer unlock()
-	r, err := t.Rewrite(path, map[string]string{key: value})
+	r, err := t.Rewrite(path, map[string]string{key: value}, over...)
 	if err != nil {
 		return Rewritten{}, err
 	}

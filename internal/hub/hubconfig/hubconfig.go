@@ -317,14 +317,16 @@ func (c Config) Value(key string) string { return table.Value(c, key) }
 func (c Config) Shown(key string) string { return table.Shown(c, key) }
 
 // Rewrite returns the hub's config file at path written anew from its
-// settings, as settings.Table.Rewrite does.
-func Rewrite(path string, set map[string]string) (settings.Rewritten, error) {
-	return table.Rewrite(path, set)
+// settings, as settings.Table.Rewrite does, checked with the environment
+// getenv reads over it.
+func Rewrite(path string, set map[string]string, getenv func(string) string) (settings.Rewritten, error) {
+	return table.Rewrite(path, set, table.Env(getenv))
 }
 
-// Set sets the setting key in the config file of home, under its lock.
-func Set(home, key, value string) (settings.Rewritten, error) {
-	return table.Set(ConfigPath(home), ConfigLockPath(home), key, value)
+// Set sets the setting key in the config file of home, under its lock,
+// checked with the environment getenv reads over it.
+func Set(home, key, value string, getenv func(string) string) (settings.Rewritten, error) {
+	return table.Set(ConfigPath(home), ConfigLockPath(home), key, value, table.Env(getenv))
 }
 
 // Lock keeps others from rewriting the config file of home, which must exist,

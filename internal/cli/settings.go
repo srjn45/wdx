@@ -1,14 +1,11 @@
 package cli
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +16,6 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/settings"
-	"github.com/srjn45/wdx/internal/style"
 )
 
 func newSettingCmd() *cobra.Command {
@@ -51,7 +47,7 @@ func newSettingListCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := envOf(cmd).Config
-			list := settingList{Settings: []api.Setting{}}
+			list := clikit.SettingList{Settings: []clikit.SettingView{}}
 			for _, s := range config.Settings() {
 				list.Settings = append(list.Settings, viewOf(cfg, s))
 			}
@@ -78,7 +74,7 @@ func newSettingGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return clikit.PrintResult(cmd, settingEnvelope{viewOf(envOf(cmd).Config, s)})
+			return clikit.PrintResult(cmd, clikit.SettingEnvelope{Setting: viewOf(envOf(cmd).Config, s)})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`key` of the setting, such as log.level")
@@ -115,8 +111,8 @@ func newSettingSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if s.EnvVar != "" {
-				return &clikit.Hinted{Err: &clikit.UsageError{Err: fmt.Errorf("%s is read from %s, not the config file", s.Key, s.EnvVar)}, Hint: "set " + s.EnvVar + " in the environment"}
+			if s.EnvOnly {
+				return clikit.NotInFile(s)
 			}
 			home := envOf(cmd).Config.Home
 			r, err := config.Set(home, s.Key, value)
@@ -137,7 +133,7 @@ func newSettingSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return clikit.PrintResult(cmd, settingSetResult{Result: result, Setting: viewOf(cfg, s), Reload: reloadDaemon(cmd), DroppedSettings: r.Dropped})
+			return clikit.PrintResult(cmd, clikit.SettingSet{Result: result, Setting: viewOf(cfg, s), Reload: reloadDaemon(cmd), DroppedSettings: r.Dropped, Server: "the daemon"})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`key` of the setting, such as log.level")
@@ -223,7 +219,7 @@ func newSettingWriteCmd() *cobra.Command {
 				result = resultWritten
 			}
 			log.Info("settings "+result, "from", path, "path", dest, "added", r.Added, "dropped", r.Dropped)
-			return clikit.PrintResult(cmd, settingsResult{Result: result, Settings: settingsChange{Path: dest, Added: r.Added, Dropped: r.Dropped}})
+			return clikit.PrintResult(cmd, clikit.SettingsWritten{Result: result, Settings: clikit.SettingsChange{Path: dest, Added: r.Added, Dropped: r.Dropped}})
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "write it to `path` instead of the config file")
@@ -233,20 +229,12 @@ func newSettingWriteCmd() *cobra.Command {
 
 // findSetting returns the setting named key.
 func findSetting(key string) (settings.Setting, error) {
-	list := config.Settings()
-	if i := slices.IndexFunc(list, func(s settings.Setting) bool { return s.Key == key }); i >= 0 {
-		return list[i], nil
-	}
-	return settings.Setting{}, &clikit.Hinted{Err: &clikit.UsageError{Err: fmt.Errorf("no setting is named %q", key)}, Hint: "see every setting with " + identity.Name + " setting list"}
+	return clikit.FindSetting(identity.Name, config.Settings(), key)
 }
 
 // viewOf is s as the commands and the API show it.
-func viewOf(cfg config.Config, s settings.Setting) api.Setting {
-	v := api.Setting{Key: s.Key, Value: cfg.Value(s.Key), Default: s.Default, Description: s.Description, From: cfg.From[s.Key], Editable: s.EnvVar == ""}
-	if s.Choices != nil {
-		v.Choices = &s.Choices
-	}
-	return v
+func viewOf(cfg config.Config, s settings.Setting) clikit.SettingView {
+	return clikit.NewSettingView(s, cfg.Value(s.Key), cfg.From[s.Key])
 }
 
 // settingStore is the settings in the config file of a home, for the daemon.
@@ -259,7 +247,7 @@ func (s settingStore) List() ([]api.Setting, error) {
 	}
 	list := []api.Setting{}
 	for _, setting := range config.Settings() {
-		list = append(list, viewOf(cfg, setting))
+		list = append(list, api.Setting(viewOf(cfg, setting)))
 	}
 	return list, nil
 }
@@ -270,12 +258,12 @@ func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
 	if i < 0 {
 		return api.Setting{}, false, &daemon.UnknownSettingError{Key: key}
 	}
-	if list[i].EnvVar != "" {
-		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: fmt.Errorf("%s is read from %s, not the config file", key, list[i].EnvVar)}
+	if list[i].EnvOnly {
+		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: clikit.NotInFileError(list[i])}
 	}
 	r, err := config.Set(s.home, key, value)
 	if e, invalid := errors.AsType[*settings.Error](err); invalid {
-		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: settingRefusal(e, key)}
+		return api.Setting{}, false, &daemon.InvalidSettingError{Key: key, Err: clikit.SettingRefusal(e, key)}
 	}
 	if err != nil {
 		return api.Setting{}, false, err
@@ -284,104 +272,5 @@ func (s settingStore) Set(key, value string) (api.Setting, bool, error) {
 	if err != nil {
 		return api.Setting{}, false, err
 	}
-	return viewOf(cfg, list[i]), r.Changed, nil
-}
-
-// settingRefusal is why the setting key was refused: only that, when its own value
-// is what was wrong, for a row that already names it.
-func settingRefusal(e *settings.Error, key string) error {
-	for _, p := range e.Problems {
-		if p.Key == key && p.Value != nil {
-			return errors.New(p.Reason)
-		}
-	}
-	return e
-}
-
-// shown is a value as text shows it, where an empty one would not show.
-func shown(value string) string {
-	return cmp.Or(value, `""`)
-}
-
-type settingList struct {
-	Settings []api.Setting `json:"settings"`
-}
-
-func (l settingList) Text(w io.Writer, st style.Style) {
-	var table style.Table
-	for _, s := range l.Settings {
-		table.Row(st.Name(s.Key), shown(s.Value), st.Muted(s.From))
-	}
-	table.Write(w)
-}
-
-type settingEnvelope struct {
-	Setting api.Setting `json:"setting"`
-}
-
-func (e settingEnvelope) Text(w io.Writer, st style.Style) {
-	s := e.Setting
-	fmt.Fprintf(w, "%s %s\n", st.Name(s.Key), shown(s.Value))
-	field := clikit.FieldPrinter(w, st, len("description"))
-	field("description", s.Description)
-	field("default", shown(s.Default))
-	field("from", s.From)
-}
-
-// settingSetResult is what setting set did.
-type settingSetResult struct {
-	Result  string      `json:"result"`
-	Setting api.Setting `json:"setting"`
-	// Reload is what the daemon did: reloadApplied, resultNotRunning or
-	// reloadNotApplied.
-	Reload string `json:"reload"`
-	// DroppedSettings are the keys no setting has that the rewrite moved,
-	// commented, to the end of the file.
-	DroppedSettings []string `json:"dropped_settings"`
-}
-
-func (r settingSetResult) Text(w io.Writer, st style.Style) {
-	verb := "set"
-	if r.Result == resultUnchanged {
-		verb = "already set"
-	}
-	fmt.Fprintf(w, "%s %s to %s\n", st.Success(verb), st.Name(r.Setting.Key), shown(r.Setting.Value))
-	switch r.Reload {
-	case reloadApplied:
-		fmt.Fprintf(w, "  %s\n", st.Muted("the daemon applied it"))
-	case resultNotRunning:
-		fmt.Fprintf(w, "  %s\n", st.Muted("the daemon is not running; it reads it when it starts"))
-	default:
-		fmt.Fprintf(w, "  %s\n", st.Warning("saved, but the daemon has not applied it"))
-	}
-	if len(r.DroppedSettings) > 0 {
-		fmt.Fprintf(w, "  %s %s %s\n", st.Muted("dropped:"), strings.Join(r.DroppedSettings, ", "), st.Muted("(commented at the end)"))
-	}
-}
-
-// settingsResult is what settings write did.
-type settingsResult struct {
-	Result   string         `json:"result"`
-	Settings settingsChange `json:"settings"`
-}
-
-type settingsChange struct {
-	Path    string   `json:"path"`
-	Added   []string `json:"added"`
-	Dropped []string `json:"dropped"`
-}
-
-func (r settingsResult) Text(w io.Writer, st style.Style) {
-	s := r.Settings
-	if r.Result == resultUnchanged {
-		fmt.Fprintf(w, "%s: %s already lists every setting\n", st.Success("up to date"), st.Name(s.Path))
-	} else {
-		fmt.Fprintf(w, "%s %s\n", st.Success("wrote"), st.Name(s.Path))
-	}
-	if len(s.Added) > 0 {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted("added:  "), strings.Join(s.Added, ", "))
-	}
-	if len(s.Dropped) > 0 {
-		fmt.Fprintf(w, "  %s %s %s\n", st.Muted("dropped:"), strings.Join(s.Dropped, ", "), st.Muted("(commented at the end)"))
-	}
+	return api.Setting(viewOf(cfg, list[i])), r.Changed, nil
 }

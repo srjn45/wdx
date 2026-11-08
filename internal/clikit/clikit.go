@@ -33,7 +33,10 @@ type Program struct{ Name, Version, Commit string }
 
 // Logs is where a run's lines go: daily files <Program.Name>-<date>.log in Dir.
 type Logs struct {
-	Dir           string
+	Dir string
+	// Writer, when set, takes the lines in place of the files in Dir: a
+	// server's output, which the service manager running it keeps.
+	Writer        io.Writer
 	Level         slog.Leveler
 	RetentionDays int
 	// Process names the process on every line; cli when empty.
@@ -165,11 +168,12 @@ func ConfigError(args []string, env Env, err error) int {
 
 // RewritesSettings is true when args run a command of root that writes the
 // config file, setting write or setting set, and err names only keys no
-// setting has: such a command moves them out of the way, so it runs on the
-// settings that loaded.
+// setting has or required settings no source sets: such a command moves the
+// ones out of the way and can set the others, so it runs on the settings that
+// loaded.
 func RewritesSettings(root *cobra.Command, args []string, err error) bool {
 	e, ok := errors.AsType[*settings.Error](err)
-	if !ok || !e.OnlyUnknown() {
+	if !ok || !e.OnlyRewritable() {
 		return false
 	}
 	cmd, _, err := root.Find(args)

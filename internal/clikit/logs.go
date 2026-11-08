@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"slices"
@@ -17,12 +18,20 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// newLogger returns the run's log file and a logger writing to it that tags
-// every record with debugID and the process.
-func newLogger(env Env, debugID string) (*logging.DailyFile, *slog.Logger) {
-	file := logging.NewDailyFile(env.Logs.Dir, env.Program.Name, env.Logs.RetentionDays, time.Now)
-	return file, logging.New(file, env.Logs.Level).With("debug_id", debugID, "pid", os.Getpid(), "process", cmp.Or(env.Logs.Process, "cli"))
+// newLogger returns the run's log, a file unless Logs.Writer is set, and a
+// logger writing to it that tags every record with debugID and the process.
+func newLogger(env Env, debugID string) (io.Closer, *slog.Logger) {
+	var w io.WriteCloser = nopCloser{env.Logs.Writer}
+	if env.Logs.Writer == nil {
+		w = logging.NewDailyFile(env.Logs.Dir, env.Program.Name, env.Logs.RetentionDays, time.Now)
+	}
+	return w, logging.New(w, env.Logs.Level).With("debug_id", debugID, "pid", os.Getpid(), "process", cmp.Or(env.Logs.Process, "cli"))
 }
+
+// nopCloser is a writer the run does not own, left open when it ends.
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
 
 // logReceived logs the command line as given and what else decides how it
 // runs: every setting with where it came from.

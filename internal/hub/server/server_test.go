@@ -523,3 +523,20 @@ func TestAlreadyRunning(t *testing.T) {
 		t.Fatalf("want *AlreadyRunningError, got %v", err)
 	}
 }
+
+// A hub that cannot listen on its socket, as in a home whose path is too long
+// for one, fails to start and gives back what it took.
+func TestSocketCannotListen(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	cfg.Home = filepath.Join(t.TempDir(), strings.Repeat("h", 120))
+	_, err := Listen(context.Background(), Options{Config: cfg, Log: slog.New(slog.DiscardHandler)})
+	if err == nil {
+		t.Fatal("want the socket refused")
+	}
+	unlock, err := lock(hubconfig.LockPath(cfg.Home))
+	if err != nil {
+		t.Fatalf("want the lock given back, got %v", err)
+	}
+	unlock.Close()
+}

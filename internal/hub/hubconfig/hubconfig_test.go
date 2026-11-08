@@ -195,7 +195,7 @@ func TestWrittenFile(t *testing.T) {
 	t.Parallel()
 	home, e := homeWith(t, "public_url: https://hub.example.com\nold: 1\n")
 	path := ConfigPath(home)
-	r, err := Rewrite(path, nil)
+	r, err := Rewrite(path, nil, e.getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,10 +213,10 @@ func TestWrittenFile(t *testing.T) {
 	if err := WriteFile(path, r.Content); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Set(home, "web.tls", "files"); err == nil {
+	if _, err := Set(home, "web.tls", "files", e.getenv); err == nil {
 		t.Fatal("want web.tls files refused without its files")
 	}
-	if _, err := Set(home, "log.level", "debug"); err != nil {
+	if _, err := Set(home, "log.level", "debug", e.getenv); err != nil {
 		t.Fatal(err)
 	}
 	c, err := Load(e.getenv)

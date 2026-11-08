@@ -198,7 +198,8 @@ func TestEnvPrefix(t *testing.T) {
 	if err != nil || c.Level != "debug" || c.Name != "anon" || from["log.level"] != "OTHER_HUB_LOG_LEVEL" {
 		t.Fatalf("want variables named by the prefix, got %+v from %v, %v", c, from, err)
 	}
-	if s := table.Describe(); s[slices.IndexFunc(s, func(s Setting) bool { return s.Key == "log.level" })].EnvVar != "OTHER_HUB_LOG_LEVEL" {
+	// Read from its variable and the file both, so not from the environment only.
+	if s := table.Describe(); s[slices.IndexFunc(s, func(s Setting) bool { return s.Key == "log.level" })].EnvVar != "OTHER_HUB_LOG_LEVEL" || s[0].Key != "home" || !s[0].EnvOnly || s[1].EnvOnly {
 		t.Fatalf("described %+v", s)
 	}
 }
@@ -331,10 +332,10 @@ func TestDescribe(t *testing.T) {
 	for _, s := range got {
 		byKey[s.Key] = s
 	}
-	if s := byKey["home"]; s.EnvVar != "TEST_HOME" || s.Default != "/default/home" || s.Description != "the home" {
+	if s := byKey["home"]; s.EnvVar != "TEST_HOME" || !s.EnvOnly || s.Default != "/default/home" || s.Description != "the home" {
 		t.Errorf("home %+v", s)
 	}
-	if s := byKey["name"]; s.EnvVar != "" || s.Required || s.Secret || s.Choices != nil {
+	if s := byKey["name"]; s.EnvVar != "" || s.EnvOnly || s.Required || s.Secret || s.Choices != nil {
 		t.Errorf("name %+v", s)
 	}
 	if !byKey["token"].Required || !byKey["key"].Secret || !slices.Equal(byKey["mode"].Choices, modes) {
