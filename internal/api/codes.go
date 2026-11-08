@@ -98,6 +98,11 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeNodeNotFound:          codeInfo(http.StatusNotFound, clikit.ExitRejected, "the account has no node of this name or id"),
 	ErrorCodeNodeIsThis:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is this one: leaving is wdx hub logout"),
 	ErrorCodeNoRemote:              codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the project has no git remote, whose key the hub files its docs under"),
+	ErrorCodeCodeExists:            codeInfo(http.StatusConflict, clikit.ExitRejected, "an authenticator code is set up on this node already"),
+	ErrorCodeCodeNotSetUp:          codeInfo(http.StatusConflict, clikit.ExitRejected, "no authenticator code is set up on the node"),
+	ErrorCodeCodeWrong:             codeInfo(http.StatusForbidden, clikit.ExitRejected, "the code is wrong, used already, or came too soon after a wrong one"),
+	ErrorCodeRecoveryKeyWrong:      codeInfo(http.StatusForbidden, clikit.ExitRejected, "the recovery key is wrong, or came too soon after a wrong one"),
+	ErrorCodeAuditBroken:           codeInfo(http.StatusConflict, clikit.ExitRejected, "a row of the node's audit chain does not match its hash: the chain was changed"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

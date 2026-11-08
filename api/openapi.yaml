@@ -2423,6 +2423,108 @@ paths:
               schema: { $ref: "#/components/schemas/HubNodeResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/hub/code:
+    post:
+      operationId: startHubCode
+      tags: [hub]
+      summary: Start setting up this node's authenticator code
+      description: |
+        Makes a new TOTP secret, kept in the daemon's memory until
+        verifyHubCode takes a code of it, and returns it once: as text and
+        as the otpauth URL a QR code holds, labelled wdx: <user>@<node>. A
+        setup pending is replaced. Neither the secret nor the URL is ever
+        logged.
+
+        Errors: code_exists (a code is set up: replace says to replace it),
+        not_logged_in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubCodeStart" }
+      responses:
+        "201":
+          description: The secret, pending.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubCodePendingEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/code/verify:
+    post:
+      operationId: verifyHubCode
+      tags: [hub]
+      summary: Finish setting up the authenticator with a code from it
+      description: |
+        Checks the code against the secret pending, one 30-second step
+        either side of now, then writes code.secret, code.step and a new
+        recovery.hash in <home>/hub/, and returns the recovery key, once:
+        the old secret and recovery key stop working, and sessions open stay.
+        The code and the recovery key are measured in the log, never logged.
+
+        Results: set_up, or recovered after recoverHubCode.
+
+        Errors: code_wrong (the setup stays pending, for another code),
+        not_found (no setup is pending), not_logged_in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubCodeCheck" }
+      responses:
+        "201":
+          description: The code set up, with the recovery key.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubCodeSetUp" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/code/recover:
+    post:
+      operationId: recoverHubCode
+      tags: [hub]
+      summary: Start setting up a new authenticator with the recovery key
+      description: |
+        A right key starts a setup as startHubCode does, with replace;
+        verifyHubCode finishes it, with a new recovery key. A wrong one
+        makes the next try wait, from 1 second doubling to 5 minutes, and
+        a try before then is refused unread, as recovery_key_wrong too;
+        each wrong key is in the node's audit chain. The key is measured in
+        the log, never logged.
+
+        Errors: code_not_set_up, not_logged_in, recovery_key_wrong.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubCodeRecovery" }
+      responses:
+        "201":
+          description: The new secret, pending.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubCodePendingEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/audit/verification:
+    get:
+      operationId: verifyHubAudit
+      tags: [hub]
+      summary: Walk the node's audit chain, checking every row's hash
+      description: |
+        The chain of what matters about access to this node: its code,
+        remote access and the sessions into it. It works logged out.
+
+        Errors: audit_broken, with the first row whose hash does not match
+        in its details, as id and at.
+      responses:
+        "200":
+          description: Every row matches.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubAuditEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     HubLoginID:
@@ -2600,7 +2702,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out, changed]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out, changed, set_up, recovered]
 
     Worktree:
       type: object
@@ -4102,7 +4204,7 @@ components:
 
     HubStatus:
       type: object
-      required: [url, user, node, connection, hub_version, in_range, behind]
+      required: [url, user, node, connection, hub_version, in_range, behind, remote_access, code_setup]
       properties:
         url: { type: string, nullable: true, description: "The hub's web endpoint; null when logged out." }
         user: { type: string, nullable: true, description: "The account's username; null when logged out." }
@@ -4117,12 +4219,70 @@ components:
           type: string
           nullable: true
           description: When in_range is false, the side to update, node or hub.
+        remote_access:
+          type: string
+          enum: ["on", "off"]
+          description: Whether other nodes of the account may open sessions into this one, as the hub.remote_access setting says.
+        code_setup: { type: boolean, description: "Whether an authenticator code is set up here (wdx hub code setup); false when logged out." }
 
     HubEnvelope:
       type: object
       required: [hub]
       properties:
         hub: { $ref: "#/components/schemas/HubStatus" }
+
+    HubCodeStart:
+      type: object
+      properties:
+        replace: { type: boolean, default: false, description: "Replace the code set up: the old authenticator entry stops working once the new is verified." }
+
+    HubCodePending:
+      type: object
+      required: [secret, url, label, issuer]
+      properties:
+        secret: { type: string, description: "The TOTP secret, in base32, for an app that cannot scan; a secret, never logged." }
+        url: { type: string, description: "The otpauth URL the QR code holds; a secret, never logged." }
+        label: { type: string, description: "What the authenticator app names the entry: wdx: <user>@<node>." }
+        issuer: { type: string }
+
+    HubCodePendingEnvelope:
+      type: object
+      required: [code]
+      properties:
+        code: { $ref: "#/components/schemas/HubCodePending" }
+
+    HubCodeCheck:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, minLength: 1, description: "A code of the secret pending, as the app shows it." }
+
+    HubCodeSetUp:
+      type: object
+      required: [result, label, recovery_key]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        label: { type: string }
+        recovery_key: { type: string, description: "The only way to set up a new authenticator here, shown once: 20 characters in five groups of four; a secret, never logged." }
+
+    HubCodeRecovery:
+      type: object
+      required: [recovery_key]
+      properties:
+        recovery_key: { type: string, minLength: 1 }
+
+    HubAudit:
+      type: object
+      required: [rows, head]
+      properties:
+        rows: { type: integer, description: "How many rows the chain has." }
+        head: { type: string, nullable: true, description: "The last row's hash, in hex; null for an empty chain." }
+
+    HubAuditEnvelope:
+      type: object
+      required: [audit]
+      properties:
+        audit: { $ref: "#/components/schemas/HubAudit" }
 
     HubLoginFlow:
       type: string
@@ -4330,6 +4490,11 @@ components:
         - node_not_found
         - node_is_this
         - no_remote
+        - code_exists
+        - code_not_set_up
+        - code_wrong
+        - recovery_key_wrong
+        - audit_broken
 
     Problem:
       type: object

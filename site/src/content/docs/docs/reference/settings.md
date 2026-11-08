@@ -33,6 +33,8 @@ Read when wdx starts; an invalid one fails every command. The home is read from 
 | `context.threshold.critical` | `400000` | tokens in an agent's context from which TIDE and wdx agent show its size as critical, in red; a whole number above context.threshold.warning |
 | `docs.git_path` |  | directory of each project's repository, relative to its main checkout, that the daemon keeps the project's docs written into, read-only, on every change, as wdx doc sync-to-git does once; empty for none |
 | `plan.parallel` | `3` | the most tasks each plan runs at once, each an agent in a worktree of its own, unless wdx plan run `--parallel` says otherwise; from 1 to 20 |
+| `hub.remote_access` | `false` | whether your other nodes on the hub may open sessions into this one, each with a code from this node's authenticator (wdx hub code setup): true or false; false closes every session into it at once |
+| `hub.session_idle_timeout` | `1h` | how long a session into this node lasts unused before it is closed, a duration such as 30m or 2h, of at least 1m |
 | `aca.claude_code.enabled` | `true` | whether new agents may run claude\_code, when it is installed: true or false |
 | `aca.antigravity.enabled` | `true` | whether new agents may run antigravity, when it is installed: true or false |
 | `aca.cursor.enabled` | `true` | whether new agents may run cursor, when it is installed: true or false |

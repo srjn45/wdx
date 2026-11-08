@@ -123,6 +123,12 @@ type Options struct {
 	SettingStore SettingStore
 	// Hub are the waits of the link to the hub, which tests shorten.
 	Hub HubOptions
+	// HubRemoteAccess is hub.remote_access: whether other nodes of the
+	// account may open sessions into this one.
+	HubRemoteAccess bool
+	// HubSessionIdleTimeout is hub.session_idle_timeout: how long a session
+	// into this node lasts unused.
+	HubSessionIdleTimeout time.Duration
 }
 
 // SettingStore is the settings as the cli keeps them: the daemon may not read the
@@ -154,13 +160,15 @@ func (e *InvalidSettingError) Unwrap() error { return e.Err }
 
 // Settings are the settings the daemon can change while it runs.
 type Settings struct {
-	Metrics              telemetry.Options
-	TerminalShell        string
-	TerminalHistoryLines int64
-	Editor               string
-	DocsGitPath          string
-	PlanParallel         int
-	ACAEnabled           map[string]bool
+	Metrics               telemetry.Options
+	TerminalShell         string
+	TerminalHistoryLines  int64
+	Editor                string
+	DocsGitPath           string
+	PlanParallel          int
+	ACAEnabled            map[string]bool
+	HubRemoteAccess       bool
+	HubSessionIdleTimeout time.Duration
 }
 
 // ReloadError is settings that could not be read again; the daemon keeps the
@@ -231,6 +239,8 @@ type Daemon struct {
 	// the login it started last.
 	hub       *hublink.Link
 	hubLogins hubLogins
+	// access is the node's authenticator code and remote access.
+	access *hubAccess
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -367,6 +377,11 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		return nil, err
 	}
 	d.docs.OnChange(d.hub.Kick)
+	now := time.Now
+	if opts.Hub.Clock != nil {
+		now = opts.Hub.Clock.Now
+	}
+	d.access = newHubAccess(opts.Home, d.db, now, opts.HubRemoteAccess, opts.HubSessionIdleTimeout)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
@@ -450,6 +465,7 @@ func (d *Daemon) reload(ctx context.Context) error {
 	d.terminals.Reconfigure(s.TerminalShell, s.TerminalHistoryLines, s.Editor)
 	d.planParallel.Store(int64(cmp.Or(s.PlanParallel, DefaultPlanParallel)))
 	d.agents.ACAs().SetEnabled(s.ACAEnabled)
+	d.access.apply(ctx, s.HubRemoteAccess, s.HubSessionIdleTimeout)
 	if d.gitCopy.setPath(s.DocsGitPath) {
 		// Under the changes' lock, so that no doc's change syncs at the same time.
 		d.changes.Lock()
@@ -464,7 +480,8 @@ func (d *Daemon) reload(ctx context.Context) error {
 		d.opts.Metrics = s.Metrics
 		log.Info("metrics exporter replaced", "url", s.Metrics.Endpoint, "interval_ms", s.Metrics.Interval.Milliseconds())
 	}
-	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath, "plan_parallel", s.PlanParallel, "aca_enabled", s.ACAEnabled)
+	log.Info("settings reloaded", "terminal_shell", s.TerminalShell, "terminal_history_lines", s.TerminalHistoryLines, "editor", s.Editor, "docs_git_path", s.DocsGitPath, "plan_parallel", s.PlanParallel, "aca_enabled", s.ACAEnabled,
+		"hub_remote_access", s.HubRemoteAccess, "hub_session_idle_timeout_ms", s.HubSessionIdleTimeout.Milliseconds())
 	return nil
 }
 

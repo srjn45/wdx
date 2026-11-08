@@ -58,6 +58,11 @@ type Config struct {
 	// ACAEnabled says, by the id of each AI coding agent wdx knows, whether new
 	// agents may run it.
 	ACAEnabled map[string]bool
+	// HubRemoteAccess says whether other nodes of the account may open
+	// sessions into this one.
+	HubRemoteAccess bool
+	// HubSessionIdleTimeout is how long a session into this node lasts unused.
+	HubSessionIdleTimeout time.Duration
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -333,6 +338,45 @@ var ownSettings = []settings.Row[Config]{
 		},
 		Get: func(c Config) string { return strconv.Itoa(c.PlanParallel) },
 	},
+	{
+		Key:         "hub.remote_access",
+		Description: "whether your other nodes on the hub may open sessions into this one, each with a code from this node's authenticator (wdx hub code setup): true or false; false closes every session into it at once",
+		Default:     "false",
+		Choices:     []string{"true", "false"},
+		Set: func(c *Config, v string) (err error) {
+			if c.HubRemoteAccess, err = strconv.ParseBool(v); err != nil {
+				return fmt.Errorf("%q is not true or false", v)
+			}
+			return nil
+		},
+		Get: func(c Config) string { return strconv.FormatBool(c.HubRemoteAccess) },
+	},
+	{
+		Key:         "hub.session_idle_timeout",
+		Description: "how long a session into this node lasts unused before it is closed, a duration such as 30m or 2h, of at least 1m",
+		Default:     "1h",
+		Set: func(c *Config, v string) error {
+			d, err := time.ParseDuration(v)
+			if err != nil || d < time.Minute {
+				return fmt.Errorf("%q is not a duration of at least 1m, such as 30m or 2h", v)
+			}
+			c.HubSessionIdleTimeout = d
+			return nil
+		},
+		Get: func(c Config) string { return durationText(c.HubSessionIdleTimeout) },
+	},
+}
+
+// durationText is d as a setting shows it: 1h rather than 1h0m0s.
+func durationText(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // acaSettings are a setting for each AI coding agent wdx knows, made from its list,

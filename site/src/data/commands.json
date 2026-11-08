@@ -119,6 +119,18 @@
     "summary": "Write a doc's content as a new revision",
     "href": "/wdx/docs/reference/cli/doc/#wdx-doc-update"
   },
+  "hub audit verify": {
+    "summary": "Check that no row of the node's audit chain was changed, removed or inserted",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-audit-verify"
+  },
+  "hub code recover": {
+    "summary": "Set up a new authenticator entry with the recovery key, when the old is lost",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-code-recover"
+  },
+  "hub code setup": {
+    "summary": "Set up an authenticator entry for this node, and get its recovery key",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-code-setup"
+  },
   "hub login": {
     "summary": "Make this machine a node of your account on a hub",
     "href": "/wdx/docs/reference/cli/hub/#wdx-hub-login"

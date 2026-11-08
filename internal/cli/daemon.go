@@ -126,18 +126,20 @@ func runForeground(cmd *cobra.Command) error {
 
 	settings := daemonSettings(cfg)
 	d, err := daemon.Listen(ctx, daemon.Options{
-		GH:                   "gh",
-		Home:                 cfg.Home,
-		Log:                  log,
-		Metrics:              settings.Metrics,
-		ShellEnv:             envOf(cmd).ShellEnv,
-		TerminalShell:        settings.TerminalShell,
-		TerminalHistoryLines: settings.TerminalHistoryLines,
-		Editor:               settings.Editor,
-		DocsGitPath:          settings.DocsGitPath,
-		PlanParallel:         settings.PlanParallel,
-		ACAEnabled:           settings.ACAEnabled,
-		SettingStore:         settingStore{home: cfg.Home},
+		GH:                    "gh",
+		Home:                  cfg.Home,
+		Log:                   log,
+		Metrics:               settings.Metrics,
+		ShellEnv:              envOf(cmd).ShellEnv,
+		TerminalShell:         settings.TerminalShell,
+		TerminalHistoryLines:  settings.TerminalHistoryLines,
+		Editor:                settings.Editor,
+		DocsGitPath:           settings.DocsGitPath,
+		PlanParallel:          settings.PlanParallel,
+		ACAEnabled:            settings.ACAEnabled,
+		HubRemoteAccess:       settings.HubRemoteAccess,
+		HubSessionIdleTimeout: settings.HubSessionIdleTimeout,
+		SettingStore:          settingStore{home: cfg.Home},
 		Reload: func() (daemon.Settings, error) {
 			now, err := config.LoadHome(cfg.Home)
 			if err != nil {
@@ -167,13 +169,15 @@ func runForeground(cmd *cobra.Command) error {
 // daemonSettings are the settings of cfg the daemon applies itself.
 func daemonSettings(cfg config.Config) daemon.Settings {
 	return daemon.Settings{
-		Metrics:              telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
-		TerminalShell:        cfg.TerminalShell,
-		TerminalHistoryLines: cfg.TerminalHistoryLines,
-		Editor:               cfg.Editor,
-		DocsGitPath:          cfg.DocsGitPath,
-		PlanParallel:         cfg.PlanParallel,
-		ACAEnabled:           cfg.ACAEnabled,
+		Metrics:               telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval},
+		TerminalShell:         cfg.TerminalShell,
+		TerminalHistoryLines:  cfg.TerminalHistoryLines,
+		Editor:                cfg.Editor,
+		DocsGitPath:           cfg.DocsGitPath,
+		PlanParallel:          cfg.PlanParallel,
+		ACAEnabled:            cfg.ACAEnabled,
+		HubRemoteAccess:       cfg.HubRemoteAccess,
+		HubSessionIdleTimeout: cfg.HubSessionIdleTimeout,
 	}
 }
 

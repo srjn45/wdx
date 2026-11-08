@@ -42,6 +42,7 @@ type server struct {
 	ghProgram    string // as Options.GH
 	hub          *hublink.Link
 	hubLogins    *hubLogins
+	access       *hubAccess
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

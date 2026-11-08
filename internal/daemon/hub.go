@@ -76,8 +76,9 @@ func (h *hubLogins) last() *hublink.Login {
 
 // hubError is a failure of the hub's routes, with its code.
 type hubError struct {
-	code api.ErrorCode
-	err  error
+	code    api.ErrorCode
+	err     error
+	details map[string]any // nil for none
 }
 
 func (e *hubError) Error() string { return e.err.Error() }
@@ -117,8 +118,8 @@ func hubFailure(err error) error {
 	return &hubError{code: code, err: err}
 }
 
-func (s *server) GetHub(_ context.Context, _ api.GetHubRequestObject) (api.GetHubResponseObject, error) {
-	return api.GetHub200JSONResponse{Hub: hubStatusView(s.hub.Status())}, nil
+func (s *server) GetHub(ctx context.Context, _ api.GetHubRequestObject) (api.GetHubResponseObject, error) {
+	return api.GetHub200JSONResponse{Hub: s.hubStatusView(ctx, s.hub.Status())}, nil
 }
 
 func (s *server) StartHubLogin(ctx context.Context, req api.StartHubLoginRequestObject) (api.StartHubLoginResponseObject, error) {
@@ -214,7 +215,7 @@ func (st *hubLoginStream) VisitStreamHubLoginResponse(w http.ResponseWriter) err
 
 // event is the login's state as the API sends it.
 func (st *hubLoginStream) event(state hublink.LoginState) api.HubLoginEvent {
-	return loginEvent(st.ctx, state)
+	return st.s.loginEvent(st.ctx, state)
 }
 
 func (st *hubLoginStream) problem(code api.ErrorCode, detail string) *api.Problem {
@@ -224,10 +225,10 @@ func (st *hubLoginStream) problem(code api.ErrorCode, detail string) *api.Proble
 }
 
 // loginEvent is state as the API sends it.
-func loginEvent(ctx context.Context, state hublink.LoginState) api.HubLoginEvent {
+func (s *server) loginEvent(ctx context.Context, state hublink.LoginState) api.HubLoginEvent {
 	switch state.Phase {
 	case hublink.LoginLoggedIn:
-		v := hubStatusView(state.Status)
+		v := s.hubStatusView(ctx, state.Status)
 		return api.HubLoginEvent{Phase: api.HubLoginEventPhaseLoggedIn, Hub: &v}
 	case hublink.LoginFailed:
 		code := api.ErrorCodeInternal
@@ -248,7 +249,7 @@ func (s *server) CancelHubLogin(ctx context.Context, req api.CancelHubLoginReque
 		return nil, &hubError{code: api.ErrorCodeNotFound, err: errors.New("the daemon has no such login: another replaced it, or it stopped since")}
 	}
 	g.Cancel()
-	return api.CancelHubLogin200JSONResponse(loginEvent(ctx, g.State())), nil
+	return api.CancelHubLogin200JSONResponse(s.loginEvent(ctx, g.State())), nil
 }
 
 func (s *server) SendHubLoginCode(ctx context.Context, req api.SendHubLoginCodeRequestObject) (api.SendHubLoginCodeResponseObject, error) {
@@ -268,7 +269,7 @@ func (s *server) SendHubLoginCode(ctx context.Context, req api.SendHubLoginCodeR
 	case err != nil:
 		return nil, hubFailure(err)
 	}
-	return api.SendHubLoginCode200JSONResponse(loginEvent(ctx, g.State())), nil
+	return api.SendHubLoginCode200JSONResponse(s.loginEvent(ctx, g.State())), nil
 }
 
 func (s *server) LogoutHub(ctx context.Context, _ api.LogoutHubRequestObject) (api.LogoutHubResponseObject, error) {
@@ -277,7 +278,7 @@ func (s *server) LogoutHub(ctx context.Context, _ api.LogoutHubRequestObject) (a
 	if err != nil {
 		return nil, hubFailure(err)
 	}
-	return api.LogoutHub200JSONResponse{Result: api.ResultLoggedOut, HubTold: told, Hub: hubStatusView(before)}, nil
+	return api.LogoutHub200JSONResponse{Result: api.ResultLoggedOut, HubTold: told, Hub: s.hubStatusView(ctx, before)}, nil
 }
 
 func (s *server) ListHubNodes(ctx context.Context, _ api.ListHubNodesRequestObject) (api.ListHubNodesResponseObject, error) {
@@ -311,12 +312,17 @@ func (s *server) RemoveHubNode(ctx context.Context, req api.RemoveHubNodeRequest
 	return api.RemoveHubNode200JSONResponse{Result: api.ResultRemoved, Node: hubNodeView(n)}, nil
 }
 
-// hubStatusView is the link's status as the API gives it.
-func hubStatusView(s hublink.Status) api.HubStatus {
-	v := api.HubStatus{Connection: api.HubConnection(s.Connection), HubVersion: nonEmpty(s.HubVersion), InRange: s.InRange, Behind: nonEmpty(s.Behind)}
-	if s.LoggedIn() {
-		v.Url, v.User = &s.URL, &s.User
-		v.Node = &api.HubNodeRef{Id: s.Node.ID, Name: s.Node.Name}
+// hubStatusView is the link's status as the API gives it, with whether
+// sessions may come in.
+func (s *server) hubStatusView(ctx context.Context, h hublink.Status) api.HubStatus {
+	v := api.HubStatus{Connection: api.HubConnection(h.Connection), HubVersion: nonEmpty(h.HubVersion), InRange: h.InRange, Behind: nonEmpty(h.Behind), RemoteAccess: api.HubStatusRemoteAccessOff}
+	if s.access.remoteAccess.Load() {
+		v.RemoteAccess = api.HubStatusRemoteAccessOn
+	}
+	if h.LoggedIn() {
+		v.Url, v.User = &h.URL, &h.User
+		v.Node = &api.HubNodeRef{Id: h.Node.ID, Name: h.Node.Name}
+		v.CodeSetup = s.access.codeSetUp(ctx)
 	}
 	return v
 }

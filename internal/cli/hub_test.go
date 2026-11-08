@@ -21,6 +21,7 @@ import (
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/clikit/clikittest"
+	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/deps"
 	"github.com/srjn45/wdx/internal/hub/hubtest"
@@ -125,6 +126,9 @@ type hubHome struct {
 	mu    sync.Mutex
 	// secrets are what no line of the home's logs may hold.
 	secrets []string
+	// codes are the authenticator codes the test computed, which no line of
+	// the home's logs may hold either.
+	codes []string
 }
 
 // newHubHome serves a hub and a home whose daemon links to it. The hub is
@@ -135,8 +139,20 @@ func newHubHome(t *testing.T) *hubHome {
 	clock := newHubClock(h)
 	hh := &hubHome{t: t, hub: h, clock: clock}
 	t.Cleanup(hh.wantNoSecrets) // once the daemon stopped, as it is served after
+	t.Cleanup(hh.wantNoCodes)
 	hh.home = newHomeOpts(t, testShell, nil, func(o *daemon.Options) {
 		o.Hub = daemon.HubOptions{Clock: clock}
+		// The hub's settings are read again from the file, the others kept
+		// as the test gave them.
+		kept := daemon.Settings{Metrics: o.Metrics, TerminalShell: o.TerminalShell, TerminalHistoryLines: o.TerminalHistoryLines, Editor: o.Editor,
+			DocsGitPath: o.DocsGitPath, PlanParallel: o.PlanParallel, ACAEnabled: o.ACAEnabled}
+		home := o.Home
+		o.Reload = func() (daemon.Settings, error) {
+			cfg, err := config.LoadHome(home)
+			s := kept
+			s.HubRemoteAccess, s.HubSessionIdleTimeout = cfg.HubRemoteAccess, cfg.HubSessionIdleTimeout
+			return s, err
+		}
 	})
 	return hh
 }

@@ -1,7 +1,7 @@
 ---
 title: Hub
-description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, and push a project's docs to it.
-commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync]
+description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, push a project's docs to it, and set up the code that lets your other nodes into one.
+commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync, hub code setup, hub code recover, hub audit verify]
 since: 0.5.0
 ---
 import Commands from '../../../../components/Commands.astro';
@@ -23,6 +23,8 @@ logged in to https://hub.example.com as alice; this machine is node desk
 $ wdx hub status
 connected to https://hub.example.com as alice, node desk
 hub version: 0.5.0
+remote access off, no code set up
+  hint: run wdx hub code setup to allow remote access
 
 $ wdx hub node list
 NAME         ONLINE  LAST SEEN            VERSION  OS            ID
@@ -63,6 +65,34 @@ sync on, 0 changes waiting, last pushed 2 minutes ago, repository github.com/acm
 - **Logged out or offline,** changes wait, in order, and go up once the node is connected. `wdx project sync` says how many wait, and hints `not logged in` when the node is not.
 - **A doc the hub refuses** is listed with the hub's code, and its later changes wait while other docs go on. `doc_name_taken` means another of your nodes made a doc of that name in the repository: rename yours with `wdx doc rename`, which sends it again.
 - **`--off`** stops sending and drops what waits; what reached the hub stays there. So does what a removed project sent.
+
+## Remote access
+
+Your other nodes will open sessions into this one through the hub, end to end encrypted, so that the hub passes bytes it cannot read. A session needs a code from this node's own authenticator, typed at that moment: neither a hacked hub nor a hacked account opens the machine. This node allows none until you set up its code and turn `hub.remote_access` on; nothing runs through a session yet.
+
+```console
+$ wdx hub code setup
+scan this with your authenticator app, to add the entry wdx: alice@desk:
+
+  (a QR code)
+
+or type the secret in it: JBSWY3DPEHPK3PXP4QZA6TRG5MLYWXKE
+
+code from the app: 492133
+set up the authenticator code of this node, as the entry wdx: alice@desk
+recovery key: 7K2M-QX9D-4RTV-HN8P-C3WB
+warning: write this down: it is the only way to set up a new authenticator here
+
+$ wdx setting set --name hub.remote_access --value true
+```
+
+- **Each node has an entry of its own,** set up while at it: only this node checks its code, and a secret shared by several would have to travel between them.
+- **Interactive only:** `wdx hub code setup` and `wdx hub code recover` have no `--json` and need a terminal, so that the secret is never printed where an AI's transcript would keep it. The QR code is drawn for a dark terminal; an app that cannot scan it takes the secret as text. You type a code back to prove the entry works, three tries at most.
+- **The recovery key** is shown once, and only its hash is kept. `wdx hub code recover` asks for it, hidden as you type it, and sets up a new entry with a new key; the old one is spent. A wrong key makes the next try wait, from 1 second doubling to 5 minutes.
+- **Replacing the entry,** with `wdx hub code setup --replace`, asks first: the old entry stops working, and sessions open stay.
+- **The files** are `code.secret`, `code.step` and `recovery.hash` in `~/.wdx/hub/`, which only you may read, and `wdx hub logout` deletes them with the rest. `code.step` keeps a code from being used twice, also across a restart.
+- **`hub.remote_access`,** `false` by default, says whether sessions may come in; turning it off closes every session into the node at once. `hub.session_idle_timeout`, `1h` by default, closes one left unused. `wdx hub status` shows both, with what is missing.
+- **The node's audit chain** records what matters about access to it, each row's hash chained to the one before: the code set up, replaced or recovered, each wrong recovery key, remote access turned on or off. `wdx hub audit verify` walks it and fails with `audit_broken`, naming the first row that does not match, when one was changed, removed or inserted.
 
 ## Commands
 

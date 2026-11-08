@@ -184,3 +184,42 @@ func HubLoginCodeLogged(b []byte) any {
 	}
 	return v
 }
+
+// HubCodeResponseLogged is a response of the authenticator's setup as logged,
+// by the daemon and the cli: the secret, the URL that holds it and the
+// recovery key are measured, never logged, even in a body too broken to
+// read. b is the response's JSON.
+func HubCodeResponseLogged(b []byte) any {
+	var v map[string]any
+	if json.Unmarshal(b, &v) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	if code, ok := v["code"].(map[string]any); ok {
+		measureOut(code, "secret", "url")
+	}
+	measureOut(v, "recovery_key")
+	return v
+}
+
+// HubCodeRequestLogged is a request of the authenticator's setup as logged,
+// by the daemon: a code and a recovery key are measured, never logged, even
+// in a body too broken to read. b is the request's JSON.
+func HubCodeRequestLogged(b []byte) any {
+	var v map[string]any
+	if json.Unmarshal(b, &v) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	measureOut(v, "code", "recovery_key")
+	return v
+}
+
+// measureOut replaces each text of v under keys with its length, under the
+// key and "_bytes".
+func measureOut(v map[string]any, keys ...string) {
+	for _, key := range keys {
+		if text, ok := v[key].(string); ok {
+			delete(v, key)
+			v[key+"_bytes"] = len(text)
+		}
+	}
+}

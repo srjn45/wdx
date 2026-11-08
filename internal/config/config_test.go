@@ -69,7 +69,7 @@ func TestDefaults(t *testing.T) {
 
 func TestFileSettings(t *testing.T) {
 	t.Parallel()
-	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\naca:\n  claude_code:\n    enabled: false\ncontext:\n  threshold:\n    warning: 1000\n    critical: 2000\n")
+	home, e := homeWith(t, "# mine\nlog:\n  level: DEBUG\n  retention_days: 30\nno_input: true\notel:\n  endpoint: http://localhost:4318\n  interval_seconds: 5\ncolor: Always\nterminal:\n  shell: /bin/zsh\n  history_lines: 500\n  history_tail: 50\neditor: vi\ntide:\n  section_order: cwa\ndocs:\n  git_path: docs/wdx\nplan:\n  parallel: 5\naca:\n  claude_code:\n    enabled: false\ncontext:\n  threshold:\n    warning: 1000\n    critical: 2000\nhub:\n  remote_access: true\n  session_idle_timeout: 30m\n")
 	c, err := Load(e.getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +79,11 @@ func TestFileSettings(t *testing.T) {
 		Home: home, NoInput: true, Color: style.ColorAlways, LogLevel: slog.LevelDebug, LogRetentionDays: 30,
 		OtelEndpoint: "http://localhost:4318", OtelInterval: 5 * time.Second, TerminalShell: "/bin/zsh",
 		TerminalHistoryLines: 500, TerminalHistoryTail: 50, Editor: "vi", TideSectionOrder: "cwa", TideTheme: "slate", DocsGitPath: "docs/wdx", PlanParallel: 5, ContextWarning: 1000, ContextCritical: 2000, UpdateChannel: "stable", UpdateBaseURL: "https://github.com/srjn45/wdx/releases/download",
-		ACAEnabled: map[string]bool{"claude_code": false, "antigravity": true, "cursor": true, "codex": true},
+		ACAEnabled:      map[string]bool{"claude_code": false, "antigravity": true, "cursor": true, "codex": true},
+		HubRemoteAccess: true, HubSessionIdleTimeout: 30 * time.Minute,
 		From: map[string]string{
+			"hub.remote_access":          path + ":29",
+			"hub.session_idle_timeout":   path + ":30",
 			"tide.theme":                 "default",
 			"aca.claude_code.enabled":    path + ":23",
 			"aca.antigravity.enabled":    "default",
@@ -253,7 +256,7 @@ func TestChoicesAreAccepted(t *testing.T) {
 		"no_input": {"true", "false"}, "color": {"auto", "always", "never"},
 		"log.level": {"debug", "info", "warn", "error"}, "update.channel": {"stable", "dev"}, "editor": {"vi", "vim", "nvim", "nano", "hx", "emacs"},
 		"aca.claude_code.enabled": {"true", "false"}, "aca.antigravity.enabled": {"true", "false"}, "aca.cursor.enabled": {"true", "false"}, "aca.codex.enabled": {"true", "false"},
-		"tide.theme": {"slate"},
+		"tide.theme": {"slate"}, "hub.remote_access": {"true", "false"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("choices %v", got)
@@ -313,6 +316,28 @@ func TestContextThresholds(t *testing.T) {
 		cfgErr, _ := loadErr(t, tc.content)
 		if len(cfgErr.Problems) != 1 || cfgErr.Problems[0].Key != tc.key || !strings.Contains(cfgErr.Problems[0].Reason, tc.why) {
 			t.Errorf("%q: %+v, want %s %q", tc.content, cfgErr.Problems, tc.key, tc.why)
+		}
+	}
+}
+
+func TestSessionIdleTimeout(t *testing.T) {
+	t.Parallel()
+	if d := Default(); d.HubSessionIdleTimeout != time.Hour || d.HubRemoteAccess {
+		t.Fatalf("defaults %v, %v; want 1h and off", d.HubSessionIdleTimeout, d.HubRemoteAccess)
+	}
+	for v, want := range map[string]string{"1h": "1h", "90m": "1h30m", "2h": "2h", "1m": "1m", "45m30s": "45m30s"} {
+		_, e := homeWith(t, "hub:\n  session_idle_timeout: "+v+"\n")
+		c, err := Load(e.getenv)
+		if err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		if got := durationText(c.HubSessionIdleTimeout); got != want {
+			t.Errorf("%s shown as %q, want %q", v, got, want)
+		}
+	}
+	for _, v := range []string{"30s", "an hour", "0", "-1h"} {
+		if p, _ := loadErr(t, "hub:\n  session_idle_timeout: "+v+"\n"); len(p.Problems) != 1 || p.Problems[0].Key != "hub.session_idle_timeout" {
+			t.Errorf("%s: problems %+v, want the setting refused", v, p.Problems)
 		}
 	}
 }

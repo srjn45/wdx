@@ -43,6 +43,7 @@ var committed = []string{
 	"369a8ccc3ab58f2313f9c5ab04f35ff0b3b39b83b6ade52a306f2ef31def1996", // 0028_aca_usage.sql
 	"04908370e521dc17fb1befb67644a4827965e0063411512d8884fa915ff33bd1", // 0029_stats_tab.sql
 	"eaa0d3453ac2173cc41f644ee266ab314f4a4aaef5efa9e8c5e16856370cd29b", // 0030_hub_sync.sql
+	"ca94b9a69c8a2df46c45a1b0182be0054eb48654a503528f1d4db689bda035bf", // 0031_hub_audit.sql
 }
 
 func TestMigrationsNumbered(t *testing.T) {

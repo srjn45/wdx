@@ -131,3 +131,42 @@ func (s *HubLoginStream) Next() (api.HubLoginEvent, error) {
 
 // Close stops following the login.
 func (s *HubLoginStream) Close() error { return s.body.Close() }
+
+// StartHubCode starts setting up the node's authenticator code, replacing
+// the one set up when replace says to. The secret is a secret: never log it.
+func (c *Client) StartHubCode(ctx context.Context, replace bool) (api.HubCodePendingEnvelope, error) {
+	r, err := c.api.StartHubCodeWithResponse(ctx, api.HubCodeStart{Replace: &replace})
+	if err != nil {
+		return api.HubCodePendingEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// VerifyHubCode finishes the setup with a code of the pending secret. The
+// code and the recovery key returned are secrets: never log them.
+func (c *Client) VerifyHubCode(ctx context.Context, code string) (api.HubCodeSetUp, error) {
+	r, err := c.api.VerifyHubCodeWithResponse(ctx, api.HubCodeCheck{Code: code})
+	if err != nil {
+		return api.HubCodeSetUp{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// RecoverHubCode starts a new setup with the recovery key, a secret: never
+// log it, nor the secret returned.
+func (c *Client) RecoverHubCode(ctx context.Context, key string) (api.HubCodePendingEnvelope, error) {
+	r, err := c.api.RecoverHubCodeWithResponse(ctx, api.HubCodeRecovery{RecoveryKey: key})
+	if err != nil {
+		return api.HubCodePendingEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
+}
+
+// VerifyHubAudit walks the node's audit chain.
+func (c *Client) VerifyHubAudit(ctx context.Context) (api.HubAuditEnvelope, error) {
+	r, err := c.api.VerifyHubAuditWithResponse(ctx)
+	if err != nil {
+		return api.HubAuditEnvelope{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

@@ -51,7 +51,7 @@ func newHubCmd() *cobra.Command {
 		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newHubLoginCmd(), newHubLogoutCmd(), newHubNodeCmd(), newHubStatusCmd())
+	cmd.AddCommand(newHubAuditCmd(), newHubCodeCmd(), newHubLoginCmd(), newHubLogoutCmd(), newHubNodeCmd(), newHubStatusCmd())
 	return cmd
 }
 
@@ -408,6 +408,19 @@ func (r hubStatus) Text(w io.Writer, st style.Style) {
 	}
 	if h.HubVersion != nil {
 		fmt.Fprintf(w, "%s %s\n", st.Muted("hub version:"), *h.HubVersion)
+	}
+	access := "remote access off"
+	if h.RemoteAccess == api.HubStatusRemoteAccessOn {
+		access = "remote access on"
+	}
+	if h.CodeSetup {
+		fmt.Fprintf(w, "%s, code set up\n", access)
+	} else {
+		fmt.Fprintf(w, "%s, no code set up\n", access)
+		writeHint(w, st, "run "+identity.Name+" hub code setup to allow remote access")
+	}
+	if h.CodeSetup && h.RemoteAccess == api.HubStatusRemoteAccessOff {
+		writeHint(w, st, "run "+identity.Name+" setting set --name hub.remote_access --value true to allow sessions into this node")
 	}
 	if h.InRange != nil && !*h.InRange {
 		if deref(h.Behind) == "hub" {

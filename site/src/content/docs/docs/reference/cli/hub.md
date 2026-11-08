@@ -14,12 +14,127 @@ A hub keeps an account's nodes, the machines its user logged in from. The daemon
 
 | Command | What it does |
 |---|---|
+| [`wdx hub audit verify`](#wdx-hub-audit-verify) | Check that no row of the node's audit chain was changed, removed or inserted |
+| [`wdx hub code recover`](#wdx-hub-code-recover) | Set up a new authenticator entry with the recovery key, when the old is lost |
+| [`wdx hub code setup`](#wdx-hub-code-setup) | Set up an authenticator entry for this node, and get its recovery key |
 | [`wdx hub login`](#wdx-hub-login) | Make this machine a node of your account on a hub |
 | [`wdx hub logout`](#wdx-hub-logout) | Leave the hub: this machine is no longer a node of the account |
 | [`wdx hub node get`](#wdx-hub-node-get) | Show a node of your account, with its key's fingerprint |
 | [`wdx hub node list`](#wdx-hub-node-list) | List the nodes of your account, and which are online |
 | [`wdx hub node remove`](#wdx-hub-node-remove) | Remove another node from your account, cutting it off at once |
 | [`wdx hub status`](#wdx-hub-status) | Show this machine's login to a hub and its connection |
+
+## wdx hub audit verify
+
+Check that no row of the node's audit chain was changed, removed or inserted.
+
+```sh
+wdx hub audit verify [flags]
+```
+
+The daemon walks the chain in order, recomputing each row's hash, and stops at the first that does not match. It works logged out.
+
+### Examples
+
+```sh
+# Verify the audit chain
+wdx hub audit verify
+
+# As JSON
+wdx hub audit verify --json
+```
+
+### Output
+
+How many rows the chain has and the last one's hash. With `--json`: {"audit": {"rows": ..., "head": ...}}
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`audit_broken`](/wdx/docs/reference/errors/#audit_broken) | 1 | a row of the node's audit chain does not match its hash: the chain was changed |
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx hub code recover
+
+Set up a new authenticator entry with the recovery key, when the old is lost.
+
+```sh
+wdx hub code recover [flags]
+```
+
+You type the recovery key, hidden as you type it; a wrong one makes the next try wait, from 1 second doubling to 5 minutes. A right one goes on as setup does, with a new recovery key at the end: the old one is spent.
+
+### Examples
+
+```sh
+# Recover this node's code
+wdx hub code recover
+```
+
+### Output
+
+The entry's label and the new recovery key, once. Interactive only: no `--json`.
+
+With `--json`, `result` is one of: `recovered`.
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up) | 1 | no authenticator code is set up on the node |
+| [`code_wrong`](/wdx/docs/reference/errors/#code_wrong) | 1 | the code is wrong, used already, or came too soon after a wrong one |
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in) | 1 | this node is not logged in to a hub, or the hub cut it off |
+| [`recovery_key_wrong`](/wdx/docs/reference/errors/#recovery_key_wrong) | 1 | the recovery key is wrong, or came too soon after a wrong one |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx hub code setup
+
+Set up an authenticator entry for this node, and get its recovery key.
+
+```sh
+wdx hub code setup [--replace] [flags]
+```
+
+A QR code for your authenticator app is shown, with the secret as text for an app that cannot scan; you type a code from the app back, three tries at most, and get a recovery key, shown once. With a code set up already, `--replace` replaces it, asking first: the old entry stops working, and the sessions open stay. Sessions also need hub.remote\_access on.
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--replace` |  | replace the code set up, asking first |
+
+### Examples
+
+```sh
+# Set up this node's code
+wdx hub code setup
+
+# Replace it with a new entry
+wdx hub code setup --replace
+```
+
+### Output
+
+The entry's label and the recovery key, once. Interactive only: no `--json`.
+
+With `--json`, `result` is one of: `set_up`.
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`cancelled`](/wdx/docs/reference/errors/#cancelled) | 1 | the question was answered no |
+| [`code_exists`](/wdx/docs/reference/errors/#code_exists) | 1 | an authenticator code is set up on this node already |
+| [`code_wrong`](/wdx/docs/reference/errors/#code_wrong) | 1 | the code is wrong, used already, or came too soon after a wrong one |
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in) | 1 | this node is not logged in to a hub, or the hub cut it off |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
 ## wdx hub login
 
