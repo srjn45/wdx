@@ -77,6 +77,9 @@ type Usage struct {
 	UsedPercent int       // 0 to 100, or above past the limit, as given
 	ResetsAt    time.Time // when the window resets; zero when the ACA gives none
 	ObservedAt  time.Time // when the ACA told it, as best known: the file's time
+	// Limited is whether the ACA said this window's bucket cannot be used now,
+	// whatever UsedPercent says: Codex may stop at 99 and then refuse with an error.
+	Limited bool
 }
 
 // ContextSize is how full an agent's context is.

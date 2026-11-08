@@ -1419,6 +1419,34 @@ func TestAgentContextFollowsItsACA(t *testing.T) {
 	waitContext("5 of 200000")
 }
 
+// TestAgentUsageToldLimited: a window the ACA says is limited short of 100 and with
+// no reset is stored and served limited.
+func TestAgentUsageToldLimited(t *testing.T) {
+	t.Parallel()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{}}
+		o.StatusInterval = time.Millisecond
+	})
+	ctx := context.Background()
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	backup := identity.AgentDir(td.home, a.Id)
+	if err := acatest.WriteUsage(backup, []aca.Usage{{Window: "weekly", Bucket: "codex", UsedPercent: 99, Limited: true, ObservedAt: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := acatest.WriteContextSize(backup, aca.ContextSize{Tokens: 70_086, Window: 200_000}); err != nil {
+		t.Fatal(err)
+	}
+	td.waitProject(t, "app", "context 70086 of 200000", func(e event) bool { return contextOf(e, "helper") == "70086 of 200000" })
+	r, err := td.client.ListUsageWithResponse(ctx)
+	if err != nil || r.JSON200 == nil || len(r.JSON200.Usage) != 1 {
+		t.Fatalf("list usage: %v, %s", err, r.Body)
+	}
+	if w := r.JSON200.Usage[0]; w.Window != "weekly" || w.Bucket != "codex" || w.UsedPercent != 99 || !w.Limited || w.ResetsAt != nil {
+		t.Errorf("served usage = %+v", w)
+	}
+}
+
 // TestAgentUsageFollowsItsACA: what the agent's ACA tells of its account's usage is
 // recorded by ACA, through the same watch as its context size, and stays once its
 // terminal ended; the agent it was read from is kept until that agent is gone.

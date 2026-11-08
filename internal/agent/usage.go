@@ -18,7 +18,9 @@ import (
 type Usage struct {
 	ACA string // the ACA's id
 	aca.Usage
-	Limited bool   // whether the window is used up: UsedPercent at 100 or more
+	// Limited is whether the window is used up: UsedPercent at 100 or more, or the
+	// ACA said so. It hides aca.Usage's Limited, which is only what the ACA said.
+	Limited bool
 	AgentID string // the agent it was read from, for the log; "" once that agent is gone
 }
 
@@ -50,11 +52,13 @@ func (s *Store) Usage(ctx context.Context) ([]Usage, error) {
 
 // setUsage records rows as what the ACA acaID told through the agent with id, at
 // now, and reports whether anything changed. A row replaces the window's when its
-// observation is newer; one whose reset has passed says nothing of now and is
-// skipped, so that a stale file read late does not bring a window back. A window
-// the rows no longer give is dropped once its reset has passed, as Claude Code
-// drops it, or at once when it had none; kept until then, as of its last
-// observation. No rows change nothing: the caller does not call with none.
+// observation is newer, and is limited at 100 % or when the ACA says so, whatever
+// the percentage and with or without a reset. One whose reset has passed says
+// nothing of now and is skipped, Limited or not, as a limit past its reset is over,
+// so that a stale file read late does not bring a window back. A window the rows
+// no longer give is dropped once its reset has passed, as Claude Code drops it, or
+// at once when it had none; kept until then, as of its last observation. No rows
+// change nothing: the caller does not call with none.
 func (s *Store) setUsage(ctx context.Context, acaID, agentID string, rows []aca.Usage, now time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -78,11 +82,11 @@ func (s *Store) setUsage(ctx context.Context, acaID, agentID string, rows []aca.
 		}
 		n, err := sqlite.Exec(ctx, tx, `
 			INSERT INTO aca_usage (aca, window, bucket, used_percent, resets_at, limited, observed_at, agent_id)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?4 >= 100, ?6, NULLIF(?7, ''))
+			VALUES (?1, ?2, ?3, ?4, ?5, ?4 >= 100 OR ?8, ?6, NULLIF(?7, ''))
 			ON CONFLICT (aca, window, bucket) DO UPDATE
 			SET used_percent = excluded.used_percent, resets_at = excluded.resets_at, limited = excluded.limited, observed_at = excluded.observed_at, agent_id = excluded.agent_id
 			WHERE excluded.observed_at > aca_usage.observed_at`,
-			acaID, u.Window, u.Bucket, u.UsedPercent, resets, u.ObservedAt.UnixMilli(), agentID)
+			acaID, u.Window, u.Bucket, u.UsedPercent, resets, u.ObservedAt.UnixMilli(), agentID, u.Limited)
 		if err != nil {
 			return false, err
 		}

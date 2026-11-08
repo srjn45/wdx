@@ -121,3 +121,34 @@ func TestStoreUsageByACA(t *testing.T) {
 		t.Errorf("spend_limit no longer told: %s, %v", usageText(list), err)
 	}
 }
+
+// TestStoreUsageToldLimited: a window the ACA says is limited is stored limited
+// whatever its percentage, with or without a reset; the same row not said limited is
+// not; and a limit whose reset has passed is over, so it is skipped as any other.
+func TestStoreUsageToldLimited(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newUsageStore(t)
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	rows := []aca.Usage{
+		{Window: "weekly", Bucket: "codex", UsedPercent: 70, ResetsAt: now.Add(time.Hour), ObservedAt: now, Limited: true},
+		{Window: "five_hour", Bucket: "codex", UsedPercent: 99, ObservedAt: now, Limited: true},
+		{Window: "monthly", Bucket: "codex", UsedPercent: 70, ResetsAt: now.Add(time.Hour), ObservedAt: now},
+		{Window: "old", Bucket: "codex", UsedPercent: 99, ResetsAt: now.Add(-time.Second), ObservedAt: now, Limited: true},
+	}
+	if _, err := s.setUsage(ctx, "codex", "", rows, now); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.Usage(ctx)
+	if err != nil || usageText(list) != "codex five_hour/codex 99 limited; codex monthly/codex 70; codex weekly/codex 70 limited; " {
+		t.Fatalf("told limited: %s, %v", usageText(list), err)
+	}
+	// Told again, newer, no longer limited: the row is not.
+	rows[0].Limited, rows[0].ObservedAt = false, now.Add(time.Second)
+	if _, err := s.setUsage(ctx, "codex", "", rows[:3], now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if list, err = s.Usage(ctx); err != nil || usageText(list) != "codex five_hour/codex 99 limited; codex monthly/codex 70; codex weekly/codex 70; " {
+		t.Errorf("no longer told limited: %s, %v", usageText(list), err)
+	}
+}

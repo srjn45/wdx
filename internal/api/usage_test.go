@@ -12,14 +12,15 @@ func at(h int) *time.Time {
 
 // TestUsageBuckets: rows group by ACA and bucket; every window gates the bucket, so
 // one limited window makes it unavailable until its reset, the latest reset among the
-// limited ones when several are.
+// limited ones when several are. Limited alone gates, whatever the percentage, as
+// Codex may stop at 99 and say it is limited.
 func TestUsageBuckets(t *testing.T) {
 	t.Parallel()
 	rows := []UsageWindow{
 		{Aca: "claude_code", Window: "five_hour", UsedPercent: 100, Limited: true, ResetsAt: at(21), ObservedAt: *at(16)},
 		{Aca: "claude_code", Window: "seven_day", UsedPercent: 42, ResetsAt: at(23), ObservedAt: *at(17)},
 		{Aca: "claude_code", Bucket: "Fable", Window: "seven_day", UsedPercent: 35, ResetsAt: at(23), ObservedAt: *at(15)},
-		{Aca: "codex", Window: "weekly", UsedPercent: 100, Limited: true, ObservedAt: *at(12)},
+		{Aca: "codex", Window: "weekly", UsedPercent: 99, Limited: true, ObservedAt: *at(12)},
 	}
 	got := UsageBuckets(rows)
 	if len(got) != 3 {

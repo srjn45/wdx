@@ -168,7 +168,8 @@ func (a *ACA) Usage(l aca.Launch) ([]aca.Usage, []string, error) {
 }
 
 // WriteUsage writes rows as what the test ACA's Usage tells for the agent whose
-// backup is backup, whole, as Claude Code's status line is.
+// backup is backup, whole, as Claude Code's status line is, every field of each
+// row with it, Limited too.
 func WriteUsage(backup string, rows []aca.Usage) error {
 	data, err := json.Marshal(rows)
 	if err != nil {
