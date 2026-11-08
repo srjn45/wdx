@@ -179,11 +179,13 @@ func (l *Link) push(ctx context.Context, nodes *hubapi.ClientWithResponses, url 
 		held[c.DocId] = true
 		failed++
 	}
+	left += len(sent)
+	// Logged before the outbox changes, so that whoever sees it change finds
+	// the line saying what the hub answered.
+	log.Info("docs pushed", "sent", len(changes), "applied", len(applied), "refused", failed, "left", left)
 	if err := l.opts.Outbox.Done(ctx, applied, l.opts.Clock.Now()); err != nil {
 		return fmt.Errorf("outbox: %w", err)
 	}
-	left += len(sent)
-	log.Info("docs pushed", "sent", len(changes), "applied", len(applied), "refused", failed, "left", left)
 	if left > 0 {
 		return fmt.Errorf("the hub applied %d of the changes sent, %d refused, the last with %q, or not answered", len(applied)+failed, left, leftCode)
 	}

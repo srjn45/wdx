@@ -330,11 +330,18 @@ func (o *Outbox) Fail(ctx context.Context, seq int64, code string) error {
 }
 
 // Status returns how far the docs of the project with projectID are on the hub.
+// Its two reads are one transaction, so that a change the pusher marks failed
+// between them is not counted both pending and failed.
 func (o *Outbox) Status(ctx context.Context, projectID string) (SyncStatus, error) {
+	tx, err := o.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return SyncStatus{}, err
+	}
+	defer tx.Rollback()
 	var st SyncStatus
 	var pushed sql.NullInt64
 	var key sql.NullString
-	err := o.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT p.hub_sync, p.hub_pushed_at, p.origin_key,
 			(SELECT count(*) FROM hub_outbox o WHERE o.project_id = p.id AND o.failed IS NULL)
 		FROM projects p WHERE p.id = ?`, projectID).Scan(&st.Sync, &pushed, &key, &st.Pending)
@@ -348,7 +355,7 @@ func (o *Outbox) Status(ctx context.Context, projectID string) (SyncStatus, erro
 	if pushed.Valid {
 		st.LastPushedAt = time.UnixMilli(pushed.Int64).UTC()
 	}
-	rows, err := o.db.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, `
 		SELECT o.doc_id, coalesce(d.name, ''), o.failed FROM hub_outbox o
 		LEFT JOIN docs d ON d.id = o.doc_id
 		WHERE o.project_id = ? AND o.failed IS NOT NULL
