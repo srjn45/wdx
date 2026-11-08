@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -21,10 +22,10 @@ func newHolderCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Nothing: it reports to the daemon on fd 3 and on its socket.",
+			clikit.OutputNote: "Nothing: it reports to the daemon on fd 3 and on its socket.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			env := invocationOf(cmd).env
+			env := envOf(cmd)
 			o.Home = env.Config.Home
 			o.Socket = identity.HolderSocket(o.Home, o.ID)
 			// The daemon starts it with exactly the variables the shell gets.

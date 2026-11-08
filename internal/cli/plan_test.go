@@ -84,17 +84,17 @@ func TestPlanProblemsText(t *testing.T) {
 		"  " + file + ":3: id \"a_b\" can only have letters, numbers and -, at most 50\n" +
 		"  " + file + ":5: task c has no prompt\n" +
 		"  hint: wdx help plans says how to write a plan\n"
-	if out.exit != clikit.ExitRejected || !strings.HasPrefix(out.stderr, want) {
-		t.Fatalf("got %q\nwant it to start with %q", out.stderr, want)
+	if out.Exit != clikit.ExitRejected || !strings.HasPrefix(out.Stderr, want) {
+		t.Fatalf("got %q\nwant it to start with %q", out.Stderr, want)
 	}
 	out = wdxWith(t, home, both(in(app), stdin("goal: g\n")), "plan", "create", "--name", "bad", "--path", "-")
-	if !strings.Contains(out.stderr, "the plan in stdin has 1 problem  [invalid_plan]\n  stdin:1: no tasks or plans\n") {
-		t.Fatalf("from stdin: %q", out.stderr)
+	if !strings.Contains(out.Stderr, "the plan in stdin has 1 problem  [invalid_plan]\n  stdin:1: no tasks or plans\n") {
+		t.Fatalf("from stdin: %q", out.Stderr)
 	}
 	newPlan(t, home, app, "sso", planYAML)
 	out = wdxWith(t, home, both(in(app), stdin("goal: g\n")), "plan", "update", "--name", "sso", "--path", "-", "--base", "1")
-	if !strings.Contains(out.stderr, "wdx: not updated: the plan in stdin has 1 problem  [invalid_plan]\n  stdin:1: no tasks or plans\n") {
-		t.Fatalf("an update: %q", out.stderr)
+	if !strings.Contains(out.Stderr, "wdx: not updated: the plan in stdin has 1 problem  [invalid_plan]\n  stdin:1: no tasks or plans\n") {
+		t.Fatalf("an update: %q", out.Stderr)
 	}
 }
 
@@ -207,24 +207,24 @@ func TestPlansOfPlansCommands(t *testing.T) {
 		t.Fatalf("a plan a plan of plans lists moved: exit %d, %+v", exit, v)
 	}
 	out := wdxWith(t, home, in(app), "plan", "set", "--name", "auth", "--folder", "/x")
-	if want := "plan auth is in /x\nmoved with it: auth-a\n"; out.exit != clikit.ExitOK || out.stdout != want {
+	if want := "plan auth is in /x\nmoved with it: auth-a\n"; out.Exit != clikit.ExitOK || out.Stdout != want {
 		t.Errorf("a plan of plans moved: %+v, want %q", out, want)
 	}
-	if out := wdxWith(t, home, in(app), "plan", "list"); !hasRow(out.stdout, "/x", "auth-a") {
+	if out := wdxWith(t, home, in(app), "plan", "list"); !hasRow(out.Stdout, "/x", "auth-a") {
 		t.Errorf("the list has no row of auth-a in its folder: %+v", out)
 	}
 	newPlan(t, home, app, "auth-b", planYAML)
 	out = wdxWith(t, home, both(in(app), stdin("goal: g\nplans:\n  - id: auth-b\n")), "plan", "create", "--name", "big", "--path", "-", "--folder", "/x")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "moved auth-b to /x, as it lists them\n") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "moved auth-b to /x, as it lists them\n") {
 		t.Errorf("a plan of plans created: %+v", out)
 	}
 
 	out = wdxWith(t, home, in(app), "plan", "status", "--name", "auth")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "auth: draft, 1 plan\n") || !strings.Contains(out.stdout, "PLAN") || !strings.Contains(out.stdout, "auth-a") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "auth: draft, 1 plan\n") || !strings.Contains(out.Stdout, "PLAN") || !strings.Contains(out.Stdout, "auth-a") {
 		t.Fatalf("the parent's status: %+v", out)
 	}
 	out = wdxWith(t, home, in(app), "plan", "status", "--name", "auth-a")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "parent") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "parent") {
 		t.Fatalf("the child's status: %+v", out)
 	}
 }
@@ -273,15 +273,15 @@ func TestPlanRemove(t *testing.T) {
 	v, exit := wdxJSONWith(t, home, in(app), "plan", "remove", "--name", "sso")
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	out := wdxWith(t, home, in(app), "plan", "remove", "--name", "sso")
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "pass --yes") {
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --yes") {
 		t.Fatalf("without a terminal or --yes: %+v", out)
 	}
 	out = wdxWith(t, home, both(in(app), answering(t, "n")), "plan", "remove", "--name", "sso")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "remove plan sso and its 1 revision? [y/N]: ") || !strings.Contains(out.stderr, "[cancelled]") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "remove plan sso and its 1 revision? [y/N]: ") || !strings.Contains(out.Stderr, "[cancelled]") {
 		t.Fatalf("answered no: %+v", out)
 	}
 	out = wdxWith(t, home, both(in(app), answering(t, "y")), "plan", "remove", "--name", "sso")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan sso removed") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan sso removed") {
 		t.Fatalf("answered yes: %+v", out)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "plan", "remove", "--name", "auth", "--yes")
@@ -315,7 +315,7 @@ func TestPlanText(t *testing.T) {
 		{[]string{"plan", "list"}, "no plans\n"},
 	} {
 		out := wdxWith(t, home, in(app), c.args...)
-		if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, c.stdout) || out.stderr != "" {
+		if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, c.stdout) || out.Stderr != "" {
 			t.Errorf("%v: want stdout from %q, got %+v", c.args, c.stdout, out)
 		}
 	}
@@ -329,7 +329,7 @@ func TestPlanTextNotLogged(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	newPlan(t, home, app, "sso", "goal: goal-secret\ntasks:\n  - id: a\n    prompt: prompt-secret\n")
 	for _, args := range [][]string{{"plan", "get", "--name", "sso"}, {"plan", "status", "--name", "sso"}} {
-		if out := wdxWith(t, home, in(app), args...); out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "-secret") {
+		if out := wdxWith(t, home, in(app), args...); out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "-secret") {
 			t.Fatalf("%v: %+v", args, out)
 		}
 		if _, exit := wdxJSONWith(t, home, in(app), args...); exit != clikit.ExitOK {
@@ -385,7 +385,7 @@ func TestPlanCompletions(t *testing.T) {
 	} {
 		out := wdxWith(t, home, in(app), append([]string{"__complete"}, tc.args...)...)
 		for _, want := range tc.want {
-			if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, want) || strings.Contains(out.stdout, "notes") {
+			if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, want) || strings.Contains(out.Stdout, "notes") {
 				t.Errorf("%v: want %q, got %+v", tc.args, want, out)
 			}
 		}

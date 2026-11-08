@@ -16,12 +16,12 @@ func TestColorAlways(t *testing.T) {
 	home := newHome(t)
 	newProject(t, home, "app")
 	out := wdx(t, home, "project", "list", "--color", "always")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\x1b[1mapp\x1b[0m") || !strings.Contains(out.stdout, "\x1b[1;32mopen\x1b[0m") {
-		t.Fatalf("want colored text, got %q", out.stdout)
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "\x1b[1mapp\x1b[0m") || !strings.Contains(out.Stdout, "\x1b[1;32mopen\x1b[0m") {
+		t.Fatalf("want colored text, got %q", out.Stdout)
 	}
 	out = wdx(t, home, "project", "get", "--name", "nope", "--color", "always")
-	if out.exit != clikit.ExitRejected || !strings.HasPrefix(out.stderr, "\x1b[1;31mwdx:\x1b[0m project not found") || !strings.Contains(out.stderr, "\x1b[1;31m[not_found]\x1b[0m") {
-		t.Fatalf("want a colored error, got %q", out.stderr)
+	if out.Exit != clikit.ExitRejected || !strings.HasPrefix(out.Stderr, "\x1b[1;31mwdx:\x1b[0m project not found") || !strings.Contains(out.Stderr, "\x1b[1;31m[not_found]\x1b[0m") {
+		t.Fatalf("want a colored error, got %q", out.Stderr)
 	}
 }
 
@@ -34,8 +34,8 @@ func TestColorNeverInJSON(t *testing.T) {
 		{"project", "get", "--name", "nope", "--color", "always"},
 	} {
 		out := wdx(t, home, append(args, "--json")...)
-		if strings.Contains(out.stdout+out.stderr, esc) {
-			t.Fatalf("%v: want no color with --json, got %q, %q", args, out.stdout, out.stderr)
+		if strings.Contains(out.Stdout+out.Stderr, esc) {
+			t.Fatalf("%v: want no color with --json, got %q, %q", args, out.Stdout, out.Stderr)
 		}
 	}
 }
@@ -62,8 +62,8 @@ func TestColorSources(t *testing.T) {
 			env.Config.Color = tc.setting
 			env.NoColor = tc.noColor
 		}, args...)
-		if got := strings.Contains(out.stdout, esc); out.exit != clikit.ExitOK || got != tc.want {
-			t.Errorf("color %s, NoColor %v, %v: want colored %v, got %q", tc.setting, tc.noColor, tc.args, tc.want, out.stdout)
+		if got := strings.Contains(out.Stdout, esc); out.Exit != clikit.ExitOK || got != tc.want {
+			t.Errorf("color %s, NoColor %v, %v: want colored %v, got %q", tc.setting, tc.noColor, tc.args, tc.want, out.Stdout)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func TestUnknownCommandSuggestion(t *testing.T) {
 		}
 	}
 	out := wdx(t, t.TempDir(), "projct", "--color", "always")
-	if !strings.Contains(out.stderr, "\x1b[36mhint:\x1b[0m did you mean \x1b[36mwdx project\x1b[0m; see '\x1b[36mwdx\x1b[0m \x1b[33m--help\x1b[0m'\n") {
-		t.Fatalf("want the commands in the hint styled, got %q", out.stderr)
+	if !strings.Contains(out.Stderr, "\x1b[36mhint:\x1b[0m did you mean \x1b[36mwdx project\x1b[0m; see '\x1b[36mwdx\x1b[0m \x1b[33m--help\x1b[0m'\n") {
+		t.Fatalf("want the commands in the hint styled, got %q", out.Stderr)
 	}
 }

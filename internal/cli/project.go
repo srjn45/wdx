@@ -15,6 +15,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -23,7 +24,7 @@ func newProjectCmd(home string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects",
-		Args:  noArgs,
+		Args:  clikit.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newProjectCreateCmd(home), newProjectListCmd(), newProjectGetCmd(), newProjectOpenCmd(home), newProjectCloseCmd(), newProjectLandingCmd(), newProjectRemoveCmd())
@@ -47,21 +48,21 @@ func newProjectCreateCmd(home string) *cobra.Command {
 			"asked to open that project, try another name or cancel; --open and\n" +
 			"--cancel answer in advance, and with --json one of them is required.\n" +
 			"Every failure starts with \"not created:\".",
-		Example: examples(
+		Example: clikit.Examples(
 			"Create a project in ~/.wdx/projects/app", identity.Name+" project create --name app",
 			"Create it in another directory", identity.Name+" project create --name app --path ~/src",
 			"From a script: open the existing project if the name is taken", identity.Name+" project create --name app --open --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not created",
-			outputNote: "The created project. On a conflict answered with --open, the project opened instead,\n" +
+			clikit.FailurePrefix: "not created",
+			clikit.OutputNote: "The created project. On a conflict answered with --open, the project opened instead,\n" +
 				"with the conflict under \"conflict\".\n" +
 				`With --json: {"result": ..., "project": {...}, "conflict": {...}}`,
-			resultList: annotation("cloned", "created", "opened", "registered", "removed"),
-			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+			clikit.Results: clikit.Annotation("cloned", "created", "opened", "registered", "removed"),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
 				api.ErrorCodeNameTaken, api.ErrorCodeProjectInUse, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
-			jsonRequires: annotation("open", "cancel"),
+			clikit.JSONRequires: clikit.Annotation("open", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCreate(cmd, opts, bufio.NewScanner(cmd.InOrStdin()))
@@ -69,8 +70,8 @@ func newProjectCreateCmd(home string) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of the project, also the repository directory name")
 	cmd.Flags().StringVar(&opts.parent, "path", "", "parent `dir` of the repository (default "+identity.ProjectsDir(home)+")")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
-	completeFlag(cmd, "path", completeDirs)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "path", clikit.CompleteDirs)
 	cmd.Flags().BoolVar(&opts.openOnConflict, "open", false, "on a conflict, open the existing project without asking")
 	cmd.Flags().BoolVar(&opts.cancelOnConflict, "cancel", false, "on a conflict, create nothing without asking")
 	cmd.MarkFlagRequired("name")
@@ -81,7 +82,7 @@ func newProjectCreateCmd(home string) *cobra.Command {
 const createConflictQuestion = "create conflict"
 
 func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) error {
-	parent, err := absolute(cmd, opts.parent)
+	parent, err := clikit.Absolute(cmd, opts.parent)
 	if err != nil {
 		return err
 	}
@@ -90,13 +91,13 @@ func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) e
 	req := api.CreateProject{Source: source, Name: &opts.name}
 	if opts.openOnConflict {
 		req.OnConflict = ptr(api.CreateProjectOnConflictOpen)
-		logAnswer(cmd, createConflictQuestion, "open", "--open")
+		clikit.LogAnswer(cmd, createConflictQuestion, "open", "--open")
 	}
 
 	for {
 		r, conflict := clientOf(cmd).CreateProject(cmd.Context(), req)
 		if conflict == nil {
-			return printResult(cmd, projectResult(r))
+			return clikit.PrintResult(cmd, projectResult(r))
 		}
 		retry := "choose another --name"
 		switch problemCode(conflict) {
@@ -104,9 +105,9 @@ func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) e
 		case api.ErrorCodeRepoExists:
 			retry = "choose another --name or --path"
 		case api.ErrorCodeInvalidPath:
-			return &hinted{conflict, "choose another --path"}
+			return &clikit.Hinted{Err: conflict, Hint: "choose another --path"}
 		case api.ErrorCodeInvalidName:
-			return &hinted{conflict, retry}
+			return &clikit.Hinted{Err: conflict, Hint: retry}
 		case api.ErrorCodeCheckoutMissing:
 			if req.OnMissingCheckout, err = askMissingCheckout(cmd, conflict, "", answers); err != nil {
 				return err
@@ -118,37 +119,37 @@ func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) e
 
 		switch {
 		case opts.cancelOnConflict:
-			logAnswer(cmd, createConflictQuestion, "cancel", "--cancel")
-			return &hinted{conflict, retry}
-		case !canPrompt(cmd):
-			logUnanswered(cmd, createConflictQuestion)
-			return &hinted{conflict, "pass --open or --cancel, or " + retry}
+			clikit.LogAnswer(cmd, createConflictQuestion, "cancel", "--cancel")
+			return &clikit.Hinted{Err: conflict, Hint: retry}
+		case !clikit.CanPrompt(cmd):
+			clikit.LogUnanswered(cmd, createConflictQuestion)
+			return &clikit.Hinted{Err: conflict, Hint: "pass --open or --cancel, or " + retry}
 		}
-		prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+		prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 		fmt.Fprintln(prompt, conflict)
 		fmt.Fprintln(prompt, st.Command("[o]"), "open it")
 		fmt.Fprintln(prompt, st.Command("[n]"), "try a different name")
 		fmt.Fprintln(prompt, st.Command("[c]"), "cancel")
-		choice, err := ask(prompt, answers, "choose "+st.Command("[o/n/c]")+": ", "o", "n", "c")
+		choice, err := clikit.Ask(prompt, answers, "choose "+st.Command("[o/n/c]")+": ", "o", "n", "c")
 		if err != nil {
 			return err
 		}
-		logAnswer(cmd, createConflictQuestion, map[string]string{"o": "open", "n": "new name", "c": "cancel"}[choice], "prompt")
+		clikit.LogAnswer(cmd, createConflictQuestion, map[string]string{"o": "open", "n": "new name", "c": "cancel"}[choice], "prompt")
 		switch choice {
 		case "o":
 			req.OnConflict = ptr(api.CreateProjectOnConflictOpen)
 		case "n":
-			name, err := ask(prompt, answers, "new name (empty to cancel): ")
+			name, err := clikit.Ask(prompt, answers, "new name (empty to cancel): ")
 			if err != nil {
 				return err
 			}
-			logAnswer(cmd, "new name", name, "prompt")
+			clikit.LogAnswer(cmd, "new name", name, "prompt")
 			if name == "" {
-				return &hinted{conflict, retry}
+				return &clikit.Hinted{Err: conflict, Hint: retry}
 			}
 			req.Name = &name
 		default:
-			return &hinted{conflict, retry}
+			return &clikit.Hinted{Err: conflict, Hint: retry}
 		}
 	}
 }
@@ -159,15 +160,15 @@ func newProjectListCmd() *cobra.Command {
 		Use:   "list [--all | --open | --closed]",
 		Short: "List projects",
 		Long:  "Projects are listed without their worktrees. With no flag, every project is listed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Every project", identity.Name+" project list",
 			"Only the open ones, as JSON", identity.Name+" project list --open --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The projects sorted by name, each with its number of worktrees; an empty list when none match.\n" +
+			clikit.OutputNote: "The projects sorted by name, each with its number of worktrees; an empty list when none match.\n" +
 				`With --json: {"projects": [...]}`,
-			errorList: codeList(api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var state api.ProjectState
@@ -180,7 +181,7 @@ func newProjectListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, projectList{list, state})
+			return clikit.PrintResult(cmd, projectList{list, state})
 		},
 	}
 	cmd.Flags().Bool("all", false, "list every project (the default)")
@@ -201,7 +202,7 @@ func newProjectLandingCmd() *cobra.Command {
 			"moving the base, and with --push whether it then pushes the base to origin.\n" +
 			"With --method pr too, it opens a PR with gh rather than moving the base.\n" +
 			"Without them, it shows what is saved. Landing needs it to have been said once.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show how a project lands", identity.Name+" project landing --name app",
 			"Check before landing", identity.Name+" project landing --name app --check make-test",
 			"No check, and push", identity.Name+" project landing --name app --no-check --push --json",
@@ -209,17 +210,17 @@ func newProjectLandingCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "How the project lands.\n" + `With --json: {"configured": true, "method": "rebase", "check": "...", "push": false}`,
-			resultList: "updated",
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "How the project lands.\n" + `With --json: {"configured": true, "method": "rebase", "check": "...", "push": false}`,
+			clikit.Results:    "updated",
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			setting := cmd.Flags().Changed("check") || noCheck
 			if push && !setting {
-				return &usageError{errors.New("--push needs --check or --no-check")}
+				return &clikit.UsageError{Err: errors.New("--push needs --check or --no-check")}
 			}
 			if method != "" && !setting {
-				return &usageError{errors.New("--method needs --check or --no-check")}
+				return &clikit.UsageError{Err: errors.New("--method needs --check or --no-check")}
 			}
 			if err := checkLandingMethod(method); err != nil {
 				return err
@@ -242,7 +243,7 @@ func newProjectLandingCmd() *cobra.Command {
 			if err != nil {
 				return projectNotFoundHint(err)
 			}
-			return printResult(cmd, projectLanding(s))
+			return clikit.PrintResult(cmd, projectLanding(s))
 		},
 	}
 	ref.addFlags(cmd, "")
@@ -250,15 +251,15 @@ func newProjectLandingCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noCheck, "no-check", false, "run nothing before landing")
 	cmd.Flags().BoolVar(&push, "push", false, "push the base to origin once it moved")
 	cmd.Flags().StringVar(&method, "method", "", "`method` of landing, rebase or pr; what is saved when not given")
-	completeFlag(cmd, "method", landingMethods)
+	clikit.CompleteFlag(cmd, "method", landingMethods)
 	cmd.MarkFlagsMutuallyExclusive("check", "no-check")
-	completeFlag(cmd, "check", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "check", cobra.NoFileCompletions)
 	return cmd
 }
 
 type projectLanding api.ProjectLanding
 
-func (l projectLanding) text(w io.Writer, st style.Style) {
+func (l projectLanding) Text(w io.Writer, st style.Style) {
 	if !l.Configured {
 		fmt.Fprintln(w, "not said yet: "+st.Command(identity.Name+" project landing --check <command>")+" or "+st.Command("--no-check"))
 		return
@@ -278,23 +279,23 @@ func newProjectGetCmd() *cobra.Command {
 		Long: "Open and closed projects alike, with each worktree and whether it is still\n" +
 			"on disk, and every terminal in any state. A project with no checkout left\n" +
 			"on disk is orphaned. Nothing is changed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show a project by name", identity.Name+" project get --name app",
 			"By id, as JSON", identity.Name+" project get --id proj-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The project with its worktrees, \"present\" telling whether each is on disk, \"orphaned\"\n" +
+			clikit.OutputNote: "The project with its worktrees, \"present\" telling whether each is on disk, \"orphaned\"\n" +
 				"that none is, and \"terminals\" by name.\n" +
 				`With --json: {"project": {...}}`,
-			errorList: codeList(api.ErrorCodeDependencyMissing, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeDependencyMissing, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := clientOf(cmd).GetProject(cmd.Context(), ref.path())
 			if err != nil {
 				return projectNotFoundHint(err)
 			}
-			return printResult(cmd, projectDetail(p))
+			return clikit.PrintResult(cmd, projectDetail(p))
 		},
 	}
 	ref.addFlags(cmd, "")
@@ -314,8 +315,8 @@ func (r *projectRef) addFlags(cmd *cobra.Command, state api.ProjectState) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the project (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	completeFlag(cmd, "id", completeProjects("id", state))
-	completeFlag(cmd, "name", completeProjects("name", state))
+	clikit.CompleteFlag(cmd, "id", completeProjects("id", state))
+	clikit.CompleteFlag(cmd, "name", completeProjects("name", state))
 }
 
 // projectNotFoundHint tells where to find the projects when one was not found.
@@ -323,7 +324,7 @@ func projectNotFoundHint(err error) error {
 	if problemCode(err) != api.ErrorCodeNotFound {
 		return err
 	}
-	return &hinted{err, "see every project with " + identity.Name + " project list --all"}
+	return &clikit.Hinted{Err: err, Hint: "see every project with " + identity.Name + " project list --all"}
 }
 
 // path is how the API names the project.
@@ -360,7 +361,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 			"one of them is required, except with --local.\n\n" +
 			"With --local or --git, --name names the project, by default after its root\n" +
 			"directory or URL. Names are unique.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Open the repository you are in", identity.Name+" project open --local .",
 			"Choose from a list", identity.Name+" project open",
 			"Open a closed project by name", identity.Name+" project open --name app",
@@ -369,14 +370,14 @@ func newProjectOpenCmd(home string) *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not opened",
-			outputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\",\n" +
+			clikit.FailurePrefix: "not opened",
+			clikit.OutputNote: "The project, with the checkouts dropped because they are no longer on disk under \"dropped\",\n" +
 				"and the terminals closing it stopped, started again, under \"started\".\n" +
 				`With --json: {"result": ..., "project": {...}, "dropped": [...], "started": [...]}`,
-			resultList: annotation("cloned", "created", "opened", "registered", "removed"),
-			errorList: codeList(api.ErrorCodeCancelled, api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
+			clikit.Results: clikit.Annotation("cloned", "created", "opened", "registered", "removed"),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeCancelled, api.ErrorCodeCheckoutMissing, api.ErrorCodeCloneFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPath,
 				api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeNotGitRepo, api.ErrorCodePathExists, api.ErrorCodeProjectInUse, api.ErrorCodeProjectMismatch, api.ErrorCodeRepoExists, api.ErrorCodeDaemonUnavailable),
-			jsonRequires: "git,id,name!local:" + annotation("reclone", "remove"),
+			clikit.JSONRequires: "git,id,name!local:" + clikit.Annotation("reclone", "remove"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			answers := bufio.NewScanner(cmd.InOrStdin())
@@ -395,10 +396,10 @@ func newProjectOpenCmd(home string) *cobra.Command {
 	cmd.Flags().StringVar(&opts.gitURL, "git", "", "`url` of a git repository to clone")
 	cmd.Flags().StringVar(&opts.id, "id", "", "`id` of a known project")
 	cmd.Flags().StringVar(&opts.name, "name", "", "`name` of a known project; with --local or --git, the name to give it (default: the repository directory or URL name)")
-	completeFlag(cmd, "local", completeDirs)
-	completeFlag(cmd, "git", cobra.NoFileCompletions)
-	completeFlag(cmd, "id", completeProjects("id", api.ProjectStateClosed))
-	completeFlag(cmd, "name", completeProjects("name", api.ProjectStateClosed))
+	clikit.CompleteFlag(cmd, "local", clikit.CompleteDirs)
+	clikit.CompleteFlag(cmd, "git", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "id", completeProjects("id", api.ProjectStateClosed))
+	clikit.CompleteFlag(cmd, "name", completeProjects("name", api.ProjectStateClosed))
 	cmd.Flags().BoolVar(&opts.reclone, "reclone", false, "if no checkout is left, clone it again without asking")
 	cmd.Flags().BoolVar(&opts.remove, "remove", false, "if no checkout is left, remove the project without asking")
 	cmd.MarkFlagsMutuallyExclusive("local", "git", "id")
@@ -410,7 +411,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 }
 
 func openLocal(cmd *cobra.Command, local string, opts openOptions, answers *bufio.Scanner) error {
-	path, err := absolute(cmd, local)
+	path, err := clikit.Absolute(cmd, local)
 	if err != nil {
 		return err
 	}
@@ -431,15 +432,15 @@ func openSource(cmd *cobra.Command, source api.Source, opts openOptions, answers
 	req := api.CreateProject{Source: source, Name: optional(opts.name)}
 	if opts.reclone {
 		req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutReclone)
-		logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
 	} else if opts.remove {
 		req.OnMissingCheckout = ptr(api.CreateProjectOnMissingCheckoutRemove)
-		logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
 	}
 	for {
 		r, err := clientOf(cmd).CreateProject(cmd.Context(), req)
 		if err == nil {
-			return printResult(cmd, projectResult(r))
+			return clikit.PrintResult(cmd, projectResult(r))
 		}
 		if problemCode(err) != api.ErrorCodeCheckoutMissing || req.OnMissingCheckout != nil {
 			return openHint(err)
@@ -454,12 +455,12 @@ func openSource(cmd *cobra.Command, source api.Source, opts openOptions, answers
 // answers.
 func reopen(cmd *cobra.Command, ref projectRef, opts openOptions, answers *bufio.Scanner) error {
 	if ref.path() == "" {
-		return &usageError{errors.New("--id or --name is empty")}
+		return &clikit.UsageError{Err: errors.New("--id or --name is empty")}
 	}
 	c := clientOf(cmd)
 	r, err := c.UpdateProject(cmd.Context(), ref.path(), api.ProjectStateOpen, false)
 	if err == nil {
-		return printResult(cmd, projectResult(r))
+		return clikit.PrintResult(cmd, projectResult(r))
 	}
 	if problemCode(err) != api.ErrorCodeCheckoutMissing {
 		return projectNotFoundHint(err)
@@ -468,10 +469,10 @@ func reopen(cmd *cobra.Command, ref projectRef, opts openOptions, answers *bufio
 	switch {
 	case opts.reclone:
 		answer = ptr(api.CreateProjectOnMissingCheckoutReclone)
-		logAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "reclone", "--reclone")
 	case opts.remove:
 		answer = ptr(api.CreateProjectOnMissingCheckoutRemove)
-		logAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "remove", "--remove")
 	default:
 		if answer, err = askMissingCheckout(cmd, err, "", answers); err != nil {
 			return err
@@ -485,24 +486,24 @@ func reopen(cmd *cobra.Command, ref projectRef, opts openOptions, answers *bufio
 	if err != nil {
 		return openHint(err)
 	}
-	return printResult(cmd, projectResult(r))
+	return clikit.PrintResult(cmd, projectResult(r))
 }
 
 const openQuestion = "what to open"
 
 // openChosen lists what can be opened and opens what is chosen.
 func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) error {
-	if opts.reclone || opts.remove || !canPrompt(cmd) {
+	if opts.reclone || opts.remove || !clikit.CanPrompt(cmd) {
 		if !opts.reclone && !opts.remove {
-			logUnanswered(cmd, openQuestion)
+			clikit.LogUnanswered(cmd, openQuestion)
 		}
-		return &hinted{&usageError{errors.New("nothing to open")}, "pass --local, --git, --id or --name"}
+		return &clikit.Hinted{Err: &clikit.UsageError{Err: errors.New("nothing to open")}, Hint: "pass --local, --git, --id or --name"}
 	}
 	list, err := clientOf(cmd).ListProjects(cmd.Context(), api.ProjectStateClosed)
 	if err != nil {
 		return err
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	fmt.Fprintln(prompt, "Open a project:")
 	choices := []string{"", "1", "2", "3"}
 	fmt.Fprintln(prompt, st.Command("[1]"), "create a new project")
@@ -513,25 +514,25 @@ func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) er
 		choices = append(choices, number)
 		fmt.Fprintln(prompt, st.Command("["+number+"]"), st.Name(p.Name), st.Muted("closed"))
 	}
-	choice, err := ask(prompt, answers, "choose "+st.Command("[1-"+choices[len(choices)-1]+"]")+" (empty to cancel): ", choices...)
+	choice, err := clikit.Ask(prompt, answers, "choose "+st.Command("[1-"+choices[len(choices)-1]+"]")+" (empty to cancel): ", choices...)
 	if err != nil {
 		return err
 	}
 	field := func(question string) (string, error) {
-		value, err := ask(prompt, answers, question)
+		value, err := clikit.Ask(prompt, answers, question)
 		if err != nil {
 			return "", err
 		}
-		logAnswer(cmd, question, value, "prompt")
+		clikit.LogAnswer(cmd, question, value, "prompt")
 		return value, nil
 	}
 	var value string
 	switch choice {
 	case "":
-		logAnswer(cmd, openQuestion, "cancel", "prompt")
+		clikit.LogAnswer(cmd, openQuestion, "cancel", "prompt")
 		return openCancelled()
 	case "1":
-		logAnswer(cmd, openQuestion, "create", "prompt")
+		clikit.LogAnswer(cmd, openQuestion, "create", "prompt")
 		if value, err = field("name (empty to cancel): "); err != nil {
 			return err
 		}
@@ -544,7 +545,7 @@ func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) er
 		}
 		return runCreate(cmd, createOptions{name: value, parent: expandHome(cmd, parent)}, answers)
 	case "2":
-		logAnswer(cmd, openQuestion, "local", "prompt")
+		clikit.LogAnswer(cmd, openQuestion, "local", "prompt")
 		if value, err = field("path (empty to cancel): "); err != nil {
 			return err
 		}
@@ -553,7 +554,7 @@ func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) er
 		}
 		return openLocal(cmd, expandHome(cmd, value), opts, answers)
 	case "3":
-		logAnswer(cmd, openQuestion, "git", "prompt")
+		clikit.LogAnswer(cmd, openQuestion, "git", "prompt")
 		if value, err = field("url (empty to cancel): "); err != nil {
 			return err
 		}
@@ -564,7 +565,7 @@ func openChosen(cmd *cobra.Command, opts openOptions, answers *bufio.Scanner) er
 	}
 	number, _ := strconv.Atoi(choice)
 	p := list.Projects[number-4]
-	logAnswer(cmd, openQuestion, p.Name, "prompt")
+	clikit.LogAnswer(cmd, openQuestion, p.Name, "prompt")
 	return reopen(cmd, projectRef{id: p.Id}, opts, answers)
 }
 
@@ -575,7 +576,7 @@ func openCancelled() error {
 // expandHome expands a leading ~ of a path typed at a prompt, where no shell
 // has.
 func expandHome(cmd *cobra.Command, path string) string {
-	home := invocationOf(cmd).env.UserHome
+	home := envOf(cmd).UserHome
 	if home == "" {
 		return path
 	}
@@ -599,45 +600,45 @@ func askMissingCheckout(cmd *cobra.Command, err error, hint string, answers *buf
 		problem = e.Problem
 	}
 	p, _ := detailProject(problem, "project")
-	if !canPrompt(cmd) {
-		logUnanswered(cmd, missingCheckoutQuestion)
+	if !clikit.CanPrompt(cmd) {
+		clikit.LogUnanswered(cmd, missingCheckoutQuestion)
 		if hint == "" {
 			hint = missingCheckoutHint(p)
 		}
-		return nil, &hinted{err, hint}
+		return nil, &clikit.Hinted{Err: err, Hint: hint}
 	}
 	var clonePath string
 	if problem.Details != nil {
 		clonePath, _ = (*problem.Details)["clone_path"].(string)
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	if p.Origin == nil {
 		fmt.Fprintln(prompt, err)
 		fmt.Fprintf(prompt, "%s remove from %s\n", st.Command("[r]"), identity.Name)
 		fmt.Fprintf(prompt, "%s cancel\n", st.Command("[c]"))
-		choice, askErr := ask(prompt, answers, "choose "+st.Command("[r/c]")+": ", "r", "c")
+		choice, askErr := clikit.Ask(prompt, answers, "choose "+st.Command("[r/c]")+": ", "r", "c")
 		if askErr != nil {
 			return nil, askErr
 		}
 		if choice == "c" {
-			logAnswer(cmd, missingCheckoutQuestion, "cancel", "prompt")
-			return nil, &hinted{err, missingCheckoutHint(p)}
+			clikit.LogAnswer(cmd, missingCheckoutQuestion, "cancel", "prompt")
+			return nil, &clikit.Hinted{Err: err, Hint: missingCheckoutHint(p)}
 		}
-		logAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
 		return ptr(api.CreateProjectOnMissingCheckoutRemove), nil
 	}
 	fmt.Fprintf(prompt, "%s (was %s)\n", err, clonePath)
 	fmt.Fprintf(prompt, "%s clone again to %s\n", st.Command("[c]"), clonePath)
 	fmt.Fprintf(prompt, "%s remove from %s\n", st.Command("[r]"), identity.Name)
-	choice, err := ask(prompt, answers, "choose "+st.Command("[c/r]")+": ", "c", "r")
+	choice, err := clikit.Ask(prompt, answers, "choose "+st.Command("[c/r]")+": ", "c", "r")
 	if err != nil {
 		return nil, err
 	}
 	if choice == "r" {
-		logAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
+		clikit.LogAnswer(cmd, missingCheckoutQuestion, "remove", "prompt")
 		return ptr(api.CreateProjectOnMissingCheckoutRemove), nil
 	}
-	logAnswer(cmd, missingCheckoutQuestion, "reclone", "prompt")
+	clikit.LogAnswer(cmd, missingCheckoutQuestion, "reclone", "prompt")
 	return ptr(api.CreateProjectOnMissingCheckoutReclone), nil
 }
 
@@ -645,9 +646,9 @@ func askMissingCheckout(cmd *cobra.Command, err error, hint string, answers *buf
 func openHint(err error) error {
 	switch problemCode(err) {
 	case api.ErrorCodeNameTaken, api.ErrorCodePathExists, api.ErrorCodeInvalidName:
-		return &hinted{err, "choose another with --name"}
+		return &clikit.Hinted{Err: err, Hint: "choose another with --name"}
 	case api.ErrorCodeNotGitRepo:
-		return &hinted{err, "run git init there first, or use " + identity.Name + " project create"}
+		return &clikit.Hinted{Err: err, Hint: "run git init there first, or use " + identity.Name + " project create"}
 	}
 	return err
 }
@@ -670,18 +671,18 @@ func newProjectCloseCmd() *cobra.Command {
 			"any is running, you are asked first, since that ends the programs in them;\n" +
 			"--stop-running and --cancel answer in advance, and with --json one of them\n" +
 			"is required.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Close a project", identity.Name+" project close --name app",
 			"From a script: stop its running terminals", identity.Name+" project close --name app --stop-running --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not closed",
-			outputNote: "The closed project, with the terminals it stopped under \"stopped\".\n" +
+			clikit.FailurePrefix: "not closed",
+			clikit.OutputNote: "The closed project, with the terminals it stopped under \"stopped\".\n" +
 				`With --json: {"result": "closed", "project": {...}, "stopped": [...]}`,
-			resultList:   "closed",
-			errorList:    codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectInUse, api.ErrorCodeDaemonUnavailable),
-			jsonRequires: annotation("stop-running", "cancel"),
+			clikit.Results:      "closed",
+			clikit.Errors:       clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeProjectInUse, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires: clikit.Annotation("stop-running", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			update := func(stopRunning bool) (api.ProjectResult, error) {
@@ -691,7 +692,7 @@ func newProjectCloseCmd() *cobra.Command {
 			if err != nil {
 				return projectNotFoundHint(err)
 			}
-			return printResult(cmd, projectResult(r))
+			return clikit.PrintResult(cmd, projectResult(r))
 		},
 	}
 	ref.addFlags(cmd, api.ProjectStateOpen)
@@ -706,7 +707,7 @@ const stopProjectQuestion = "stop running terminals and agents"
 // answers; confirm is the question.
 func stoppingRunning(cmd *cobra.Command, send func(stopRunning bool) (api.ProjectResult, error), stopRunning, cancel bool, confirm string) (api.ProjectResult, error) {
 	if stopRunning {
-		logAnswer(cmd, stopProjectQuestion, "stop", "--stop-running")
+		clikit.LogAnswer(cmd, stopProjectQuestion, "stop", "--stop-running")
 	}
 	r, err := send(stopRunning)
 	if problemCode(err) != api.ErrorCodeProjectInUse || stopRunning {
@@ -728,18 +729,18 @@ func newProjectRemoveCmd() *cobra.Command {
 			"Its terminals are removed too. If any is running, you are asked first,\n" +
 			"since stopping it ends the programs in it; --stop-running and --cancel\n" +
 			"answer in advance, and with --json one of them is required.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Remove a project", identity.Name+" project remove --name app",
 			"By id, as JSON, stopping its running terminals", identity.Name+" project remove --id proj-1a2b3c4d --stop-running --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not removed",
-			outputNote: "The removed project, with the terminals it stopped under \"stopped\".\n" +
+			clikit.FailurePrefix: "not removed",
+			clikit.OutputNote: "The removed project, with the terminals it stopped under \"stopped\".\n" +
 				`With --json: {"result": "removed", "project": {...}, "stopped": [...]}`,
-			resultList:   "removed",
-			errorList:    codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectInUse, api.ErrorCodeDaemonUnavailable),
-			jsonRequires: annotation("stop-running", "cancel"),
+			clikit.Results:      "removed",
+			clikit.Errors:       clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeProjectInUse, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires: clikit.Annotation("stop-running", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			remove := func(stopRunning bool) (api.ProjectResult, error) {
@@ -749,7 +750,7 @@ func newProjectRemoveCmd() *cobra.Command {
 			if err != nil {
 				return projectNotFoundHint(err)
 			}
-			return printResult(cmd, projectResult(r))
+			return clikit.PrintResult(cmd, projectResult(r))
 		},
 	}
 	ref.addFlags(cmd, "")
@@ -760,7 +761,7 @@ func newProjectRemoveCmd() *cobra.Command {
 // projectResult is a project a command changed.
 type projectResult api.ProjectResult
 
-func (r projectResult) text(w io.Writer, st style.Style) {
+func (r projectResult) Text(w io.Writer, st style.Style) {
 	p := r.Project
 	switch {
 	case r.Conflict == nil:
@@ -772,7 +773,7 @@ func (r projectResult) text(w io.Writer, st style.Style) {
 	}
 	fmt.Fprintf(w, "  %s %s\n", st.Muted("origin:   "), originText(st, p.Origin))
 	for i, wt := range p.Worktrees {
-		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", label(i, "worktrees:"))), wt.Path)
+		fmt.Fprintf(w, "  %s %s\n", st.Muted(fmt.Sprintf("%-10s", clikit.Label(i, "worktrees:"))), wt.Path)
 	}
 	if r.Dropped != nil {
 		for _, wt := range *r.Dropped {
@@ -820,9 +821,9 @@ type projectDetail api.ProjectEnvelope
 // LogValue keeps the text of its agents' prompts out of the log.
 func (d projectDetail) LogValue() slog.Value { return loggedAgents(api.ProjectEnvelope(d)) }
 
-func (d projectDetail) text(w io.Writer, st style.Style) {
+func (d projectDetail) Text(w io.Writer, st style.Style) {
 	p := d.Project
-	field := fieldPrinter(w, st, 10)
+	field := clikit.FieldPrinter(w, st, 10)
 	fmt.Fprintf(w, "project %s\n", projectName(st, p))
 	field("state:", stateText(st, p.State))
 	field("origin:", originText(st, p.Origin))
@@ -836,7 +837,7 @@ func (d projectDetail) text(w io.Writer, st style.Style) {
 		if wt.Present != nil && !*wt.Present {
 			missing = " " + st.Warning("(missing)")
 		}
-		field(label(i, "worktrees:"), wt.Path+missing)
+		field(clikit.Label(i, "worktrees:"), wt.Path+missing)
 	}
 	if p.Terminals != nil {
 		terminals(field, st, *p.Terminals)
@@ -845,7 +846,7 @@ func (d projectDetail) text(w io.Writer, st style.Style) {
 		agents(field, st, *p.Agents)
 	}
 	if p.Orphaned != nil && *p.Orphaned {
-		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), hintText(st, missingCheckoutHint(p)))
+		fmt.Fprintf(w, "  %s  no checkout on disk; %s\n", st.Warning("orphaned:"), clikit.HintText(st, identity.Name, missingCheckoutHint(p)))
 	}
 }
 
@@ -862,7 +863,7 @@ func terminals(field func(name, value string), st style.Style, list []api.Termin
 	var b strings.Builder
 	table.Write(&b)
 	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
-		field(label(i, "terminals:"), line)
+		field(clikit.Label(i, "terminals:"), line)
 	}
 }
 
@@ -880,7 +881,7 @@ func agents(field func(name, value string), st style.Style, list []api.Agent) {
 	var b strings.Builder
 	table.Write(&b)
 	for i, line := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
-		field(label(i, "agents:"), line)
+		field(clikit.Label(i, "agents:"), line)
 	}
 }
 
@@ -890,7 +891,7 @@ type projectList struct {
 	state api.ProjectState
 }
 
-func (l projectList) text(w io.Writer, st style.Style) {
+func (l projectList) Text(w io.Writer, st style.Style) {
 	if len(l.Projects) == 0 {
 		if l.state == "" {
 			fmt.Fprintln(w, "no projects")

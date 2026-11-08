@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -26,22 +27,22 @@ func newTerminalHistoryCmd() *cobra.Command {
 			"colors when the output gets color; --plain, or output that is not a terminal,\n" +
 			"strips them. Lines are numbered from 0, which --from counts in; --count alone\n" +
 			"starts at the oldest kept.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The last lines of a terminal of the project you are in", identity.Name+" terminal history --name server",
 			"The last 50, without colors", identity.Name+" terminal history --name server --tail 50 --plain",
 			"From line 1200 on, as JSON", identity.Name+" terminal history --id term-1a2b3c4d --from 1200 --count 100 --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The lines, oldest first.\n" + `With --json: {"history": {"from": ..., "next": ..., "first": ..., "lines": [...]}}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The lines, oldest first.\n" + `With --json: {"history": {"from": ..., "next": ..., "first": ..., "lines": [...]}}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
 				return err
 			}
-			n := invocationOf(cmd).env.Config.TerminalHistoryTail
+			n := envOf(cmd).Config.TerminalHistoryTail
 			var start *int64
 			switch {
 			case cmd.Flags().Changed("from") || cmd.Flags().Changed("count"):
@@ -50,13 +51,13 @@ func newTerminalHistoryCmd() *cobra.Command {
 				n = tail
 			}
 			if n < 1 || n > 10_000 {
-				return &usageError{fmt.Errorf("%d lines is not between 1 and 10000", n)}
+				return &clikit.UsageError{Err: fmt.Errorf("%d lines is not between 1 and 10000", n)}
 			}
 			h, err := clientOf(cmd).GetTerminalHistory(cmd.Context(), path, project, dir, start, n)
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, historyResult{h, plain})
+			return clikit.PrintResult(cmd, historyResult{h, plain})
 		},
 	}
 	ref.addFlags(cmd)
@@ -67,7 +68,7 @@ func newTerminalHistoryCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("tail", "from")
 	cmd.MarkFlagsMutuallyExclusive("tail", "count")
 	for _, name := range []string{"tail", "from", "count"} {
-		completeFlag(cmd, name, cobra.NoFileCompletions)
+		clikit.CompleteFlag(cmd, name, cobra.NoFileCompletions)
 	}
 	return cmd
 }
@@ -78,7 +79,7 @@ type historyResult struct {
 	plain bool
 }
 
-func (r historyResult) text(w io.Writer, st style.Style) {
+func (r historyResult) Text(w io.Writer, st style.Style) {
 	for _, line := range r.History.Lines {
 		if r.plain || !st.On() {
 			line = ansi.Strip(line)

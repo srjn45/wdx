@@ -12,6 +12,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -23,7 +24,7 @@ func newTerminalCmd() *cobra.Command {
 		Long: "A terminal's shell runs in its own process, so it keeps running when the\n" +
 			"daemon restarts or is upgraded. Closing its project stops it, and opening\n" +
 			"the project again starts a fresh shell.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newTerminalAttachCmd(), newTerminalCreateCmd(), newTerminalGetCmd(), newTerminalHistoryCmd(),
@@ -41,8 +42,8 @@ func (p *projectScope) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&p.id, "project-id", "", "`id` of the project (default: the one the working directory is in)")
 	cmd.Flags().StringVar(&p.name, "project-name", "", "`name` of the project (default: the one the working directory is in)")
 	cmd.MarkFlagsMutuallyExclusive("project-id", "project-name")
-	completeFlag(cmd, "project-id", completeProjects("id", ""))
-	completeFlag(cmd, "project-name", completeProjects("name", ""))
+	clikit.CompleteFlag(cmd, "project-id", completeProjects("id", ""))
+	clikit.CompleteFlag(cmd, "project-name", completeProjects("name", ""))
 }
 
 // given reports whether a project flag was given.
@@ -63,7 +64,7 @@ func outsideHint(err error, scope projectScope, also string) error {
 	if problemCode(err) != api.ErrorCodeNotFound || scope.given() {
 		return err
 	}
-	return &hinted{err, "run it in a project's worktree, or pass --project-name or --project-id" + also}
+	return &clikit.Hinted{Err: err, Hint: "run it in a project's worktree, or pass --project-name or --project-id" + also}
 }
 
 func newTerminalCreateCmd() *cobra.Command {
@@ -79,17 +80,17 @@ func newTerminalCreateCmd() *cobra.Command {
 			"Terminals get a generated name such as swift-falcon unless --name is\n" +
 			"given; names have letters, numbers and - only, and are unique within a\n" +
 			"project.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Create a terminal in the project you are in", identity.Name+" terminal create",
 			"Name it and pick the project", identity.Name+" terminal create --project-name app --name server",
 			"As JSON", identity.Name+" terminal create --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not created",
-			outputNote:    "The terminal, running.\n" + `With --json: {"result": "created", "terminal": {...}}`,
-			resultList:    "created",
-			errorList: codeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed,
+			clikit.FailurePrefix: "not created",
+			clikit.OutputNote:    "The terminal, running.\n" + `With --json: {"result": "created", "terminal": {...}}`,
+			clikit.Results:       "created",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed,
 				api.ErrorCodeStartFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -101,12 +102,12 @@ func newTerminalCreateCmd() *cobra.Command {
 			if err != nil {
 				return terminalHint(outsideHint(err, scope, ""))
 			}
-			return printResult(cmd, terminalResult(r))
+			return clikit.PrintResult(cmd, terminalResult(r))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the terminal (default: a generated one)")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -118,15 +119,15 @@ func newTerminalListCmd() *cobra.Command {
 		Short: "List terminals",
 		Long: "Without a flag, the terminals of the project the working directory is in.\n" +
 			"Every state is listed: a terminal stays until it is removed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The terminals of the project you are in", identity.Name+" terminal list",
 			"Every project's, as JSON", identity.Name+" terminal list --all --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The terminals by project, then name; an empty list when there are none.\n" +
+			clikit.OutputNote: "The terminals by project, then name; an empty list when there are none.\n" +
 				`With --json: {"terminals": [...]}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var dir string
@@ -140,7 +141,7 @@ func newTerminalListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, ", or --all")
 			}
-			return printResult(cmd, terminalList{list, all})
+			return clikit.PrintResult(cmd, terminalList{list, all})
 		},
 	}
 	scope.addFlags(cmd)
@@ -162,8 +163,8 @@ func (r *terminalRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the terminal (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	completeFlag(cmd, "id", completeTerminals("id"))
-	completeFlag(cmd, "name", completeTerminals("name"))
+	clikit.CompleteFlag(cmd, "id", completeTerminals("id"))
+	clikit.CompleteFlag(cmd, "name", completeTerminals("name"))
 	r.scope.addFlags(cmd)
 }
 
@@ -185,7 +186,7 @@ func (r terminalRef) notFoundHint(err error) error {
 	if problemCode(err) != api.ErrorCodeNotFound || r.id != "" || r.scope.given() {
 		return err
 	}
-	return &hinted{err, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id"}
+	return &clikit.Hinted{Err: err, Hint: "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id"}
 }
 
 func newTerminalGetCmd() *cobra.Command {
@@ -195,14 +196,14 @@ func newTerminalGetCmd() *cobra.Command {
 		Short: "Show a terminal",
 		Long: "In any state, with why it failed when it did. Without a project flag, --name\n" +
 			"is looked up in the project the working directory is in. Nothing is changed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show a terminal of the project you are in", identity.Name+" terminal get --name server",
 			"By id, as JSON", identity.Name+" terminal get --id term-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The terminal.\n" + `With --json: {"terminal": {...}}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The terminal.\n" + `With --json: {"terminal": {...}}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -213,7 +214,7 @@ func newTerminalGetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, terminalDetail(t))
+			return clikit.PrintResult(cmd, terminalDetail(t))
 		},
 	}
 	ref.addFlags(cmd)
@@ -228,16 +229,16 @@ func newTerminalStartCmd() *cobra.Command {
 		Long: "The terminal keeps its id, name and dir; its scrollback and the programs\n" +
 			"that ran in it are gone. Terminals stopped by closing their project start\n" +
 			"again when it is opened.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Start a terminal of the project you are in", identity.Name+" terminal start --name server",
 			"By id, as JSON", identity.Name+" terminal start --id term-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not started",
-			outputNote:    "The terminal, running.\n" + `With --json: {"result": "started", "terminal": {...}}`,
-			resultList:    "started",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
+			clikit.FailurePrefix: "not started",
+			clikit.OutputNote:    "The terminal, running.\n" + `With --json: {"result": "started", "terminal": {...}}`,
+			clikit.Results:       "started",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeTerminalRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -249,7 +250,7 @@ func newTerminalStartCmd() *cobra.Command {
 			if err != nil {
 				return terminalHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, terminalResult(r))
+			return clikit.PrintResult(cmd, terminalResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -266,21 +267,21 @@ func newTerminalSendCmd() *cobra.Command {
 			"take it, in the order sent, into whatever is running there. This does not\n" +
 			"wait for it to be typed or to run. A message still queued when the shell\n" +
 			"ends is kept, and waits in wdx message list to be sent again or discarded.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Run a command in a terminal of the project you are in", identity.Name+" terminal send --name server --prompt make",
 			"By id, as JSON", identity.Name+" terminal send --id term-1a2b3c4d --prompt make --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not sent",
-			outputNote:    "The terminal the message is queued for.\n" + `With --json: {"result": "queued", "terminal": {...}}`,
-			resultList:    "queued",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeSendFailed,
+			clikit.FailurePrefix: "not sent",
+			clikit.OutputNote:    "The terminal the message is queued for.\n" + `With --json: {"result": "queued", "terminal": {...}}`,
+			clikit.Results:       "queued",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeSendFailed,
 				api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if prompt == "" {
-				return &usageError{errors.New("--prompt is empty")}
+				return &clikit.UsageError{Err: errors.New("--prompt is empty")}
 			}
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
@@ -288,18 +289,18 @@ func newTerminalSendCmd() *cobra.Command {
 			}
 			r, err := clientOf(cmd).SendTerminal(cmd.Context(), path, project, dir, prompt)
 			if problemCode(err) == api.ErrorCodeTerminalNotRunning {
-				return &hinted{err, "start its shell with " + identity.Name + " terminal start, or open its project"}
+				return &clikit.Hinted{Err: err, Hint: "start its shell with " + identity.Name + " terminal start, or open its project"}
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, terminalResult(r))
+			return clikit.PrintResult(cmd, terminalResult(r))
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to type; Enter follows it")
-	cmd.MarkFlagRequired(promptFlag)
-	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&prompt, clikit.PromptFlag, "", "`text` to type; Enter follows it")
+	cmd.MarkFlagRequired(clikit.PromptFlag)
+	clikit.CompleteFlag(cmd, clikit.PromptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -314,17 +315,17 @@ func newTerminalRemoveCmd() *cobra.Command {
 		Long: "If its shell is running, you are asked whether to stop it, which ends the\n" +
 			"programs in it; --stop-running and --cancel answer in advance, and with\n" +
 			"--json one of them is required.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Remove a terminal of the project you are in", identity.Name+" terminal remove --name server",
 			"From a script: stop it if it is running", identity.Name+" terminal remove --id term-1a2b3c4d --stop-running --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not removed",
-			outputNote:    "The removed terminal, as it was before.\n" + `With --json: {"result": "removed", "terminal": {...}}`,
-			resultList:    "removed",
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalRunning, api.ErrorCodeDaemonUnavailable),
-			jsonRequires:  annotation("stop-running", "cancel"),
+			clikit.FailurePrefix: "not removed",
+			clikit.OutputNote:    "The removed terminal, as it was before.\n" + `With --json: {"result": "removed", "terminal": {...}}`,
+			clikit.Results:       "removed",
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalRunning, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires:  clikit.Annotation("stop-running", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -332,7 +333,7 @@ func newTerminalRemoveCmd() *cobra.Command {
 				return err
 			}
 			if stopRunning {
-				logAnswer(cmd, stopTerminalQuestion, "stop", "--stop-running")
+				clikit.LogAnswer(cmd, stopTerminalQuestion, "stop", "--stop-running")
 			}
 			r, err := clientOf(cmd).DeleteTerminal(cmd.Context(), path, project, dir, stopRunning)
 			if problemCode(err) == api.ErrorCodeTerminalRunning && !stopRunning {
@@ -344,7 +345,7 @@ func newTerminalRemoveCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, terminalResult(r))
+			return clikit.PrintResult(cmd, terminalResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -365,14 +366,14 @@ func addStopRunningFlags(cmd *cobra.Command, stopRunning, cancel *bool, what str
 // answers no in advance.
 func askStopRunning(cmd *cobra.Command, err error, question string, cancel bool, confirm, them string) error {
 	if cancel {
-		logAnswer(cmd, question, "cancel", "--cancel")
-		return &hinted{err, "pass --stop-running to stop " + them}
+		clikit.LogAnswer(cmd, question, "cancel", "--cancel")
+		return &clikit.Hinted{Err: err, Hint: "pass --stop-running to stop " + them}
 	}
-	if !canPrompt(cmd) {
-		logUnanswered(cmd, question)
-		return &hinted{err, "pass --stop-running or --cancel"}
+	if !clikit.CanPrompt(cmd) {
+		clikit.LogUnanswered(cmd, question)
+		return &clikit.Hinted{Err: err, Hint: "pass --stop-running or --cancel"}
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	fmt.Fprintln(prompt, err)
 	terminals, agents := detailRunning(err)
 	line := func(name, state string, pid *int) {
@@ -394,15 +395,15 @@ func askStopRunning(cmd *cobra.Command, err error, question string, cancel bool,
 	if len(agents) > 0 {
 		fmt.Fprintln(prompt, st.Warning("stopping an agent interrupts what it is doing"))
 	}
-	choice, aerr := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), confirm+" "+st.Command("[y/n]")+": ", "y", "n")
+	choice, aerr := clikit.Ask(prompt, bufio.NewScanner(cmd.InOrStdin()), confirm+" "+st.Command("[y/n]")+": ", "y", "n")
 	if aerr != nil {
 		return aerr
 	}
 	if choice == "n" {
-		logAnswer(cmd, question, "cancel", "prompt")
-		return &hinted{err, "pass --stop-running to stop " + them}
+		clikit.LogAnswer(cmd, question, "cancel", "prompt")
+		return &clikit.Hinted{Err: err, Hint: "pass --stop-running to stop " + them}
 	}
-	logAnswer(cmd, question, "stop", "prompt")
+	clikit.LogAnswer(cmd, question, "stop", "prompt")
 	return nil
 }
 
@@ -434,13 +435,13 @@ func detailRunning(err error) ([]api.Terminal, []api.Agent) {
 func terminalHint(err error) error {
 	switch problemCode(err) {
 	case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-		return &hinted{err, "choose another --name"}
+		return &clikit.Hinted{Err: err, Hint: "choose another --name"}
 	case api.ErrorCodeProjectClosed:
-		return &hinted{err, "open the project first with " + identity.Name + " project open"}
+		return &clikit.Hinted{Err: err, Hint: "open the project first with " + identity.Name + " project open"}
 	case api.ErrorCodeTerminalRunning:
-		return &hinted{err, "it is already running; remove it with " + identity.Name + " terminal remove --stop-running to start over"}
+		return &clikit.Hinted{Err: err, Hint: "it is already running; remove it with " + identity.Name + " terminal remove --stop-running to start over"}
 	case api.ErrorCodeStartFailed:
-		return &hinted{err, "check its dir and terminal.shell, then run " + identity.Name + " terminal start"}
+		return &clikit.Hinted{Err: err, Hint: "check its dir and terminal.shell, then run " + identity.Name + " terminal start"}
 	}
 	return err
 }
@@ -448,14 +449,14 @@ func terminalHint(err error) error {
 // terminalResult is a terminal a command changed.
 type terminalResult api.TerminalResult
 
-func (r terminalResult) text(w io.Writer, st style.Style) {
+func (r terminalResult) Text(w io.Writer, st style.Style) {
 	t := r.Terminal
 	in := "in"
 	if r.Result == api.ResultRemoved {
 		in = "from"
 	}
 	fmt.Fprintf(w, "%s terminal %s %s %s\n", st.Success(string(r.Result)), st.Name(t.Name), in, st.Name(t.ProjectName))
-	field := fieldPrinter(w, st, 6)
+	field := clikit.FieldPrinter(w, st, 6)
 	field("dir", t.Dir)
 	field("shell", t.Shell)
 	field("id", t.Id)
@@ -468,7 +469,7 @@ type terminalList struct {
 	all bool
 }
 
-func (l terminalList) text(w io.Writer, st style.Style) {
+func (l terminalList) Text(w io.Writer, st style.Style) {
 	if len(l.Terminals) == 0 {
 		fmt.Fprintln(w, "no terminals")
 		return
@@ -492,9 +493,9 @@ func (l terminalList) text(w io.Writer, st style.Style) {
 // terminalDetail is one terminal, in any state.
 type terminalDetail api.TerminalEnvelope
 
-func (d terminalDetail) text(w io.Writer, st style.Style) {
+func (d terminalDetail) Text(w io.Writer, st style.Style) {
 	t := d.Terminal
-	field := fieldPrinter(w, st, 8)
+	field := clikit.FieldPrinter(w, st, 8)
 	fmt.Fprintf(w, "terminal %s in %s\n", st.Name(t.Name), st.Name(t.ProjectName))
 	field("state", terminalStateText(st, t))
 	if t.Error != nil {

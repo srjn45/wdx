@@ -8,13 +8,14 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/runtest"
 )
 
 // answering runs a command with answers typed on its terminal.
 func answering(t *testing.T, answers ...string) func(*Env) {
-	stdin := typed(t, answers...)
+	stdin := clikittest.Typed(t, answers...)
 	return func(env *Env) { env.Stdin = stdin }
 }
 
@@ -24,7 +25,7 @@ func TestCreatePromptOpen(t *testing.T) {
 	id := newProject(t, home, "app")
 
 	out := wdxWith(t, home, answering(t, "o"), "project", "create", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "choose [o/n/c]: ") || !strings.HasPrefix(out.stdout, "opened existing project app ("+id+")") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stderr, "choose [o/n/c]: ") || !strings.HasPrefix(out.Stdout, "opened existing project app ("+id+")") {
 		t.Fatalf("want app opened, got %+v", out)
 	}
 }
@@ -35,7 +36,7 @@ func TestCreatePromptNewName(t *testing.T) {
 	newProject(t, home, "app")
 
 	out := wdxWith(t, home, answering(t, "n", "web"), "project", "create", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created project web (") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "created project web (") {
 		t.Fatalf("want web created, got %+v", out)
 	}
 }
@@ -48,7 +49,7 @@ func TestCreatePromptCancel(t *testing.T) {
 	newProject(t, home, "app")
 
 	out := wdxWith(t, home, answering(t, "x", "c"), "project", "create", "--name", "app")
-	if out.exit != clikit.ExitRejected || strings.Count(out.stderr, "choose [o/n/c]: ") != 2 || !strings.Contains(out.stderr, "[name_taken]") {
+	if out.Exit != clikit.ExitRejected || strings.Count(out.Stderr, "choose [o/n/c]: ") != 2 || !strings.Contains(out.Stderr, "[name_taken]") {
 		t.Fatalf("want name_taken after asking twice, got %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "project", "list"); len(v.Projects) != 1 {
@@ -78,7 +79,7 @@ func TestOpenPromptReclone(t *testing.T) {
 	remote, clone, _ := openedThenLost(t, home)
 
 	out := wdxWith(t, home, answering(t, "c"), "project", "open", "--git", remote)
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "choose [c/r]: ") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stderr, "choose [c/r]: ") {
 		t.Fatalf("want app cloned again, got %+v", out)
 	}
 	if _, err := os.Stat(filepath.Join(clone, ".git")); err != nil {
@@ -92,7 +93,7 @@ func TestOpenPromptRemove(t *testing.T) {
 	remote, _, id := openedThenLost(t, home)
 
 	out := wdxWith(t, home, answering(t, "r"), "project", "open", "--git", remote)
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed project app ("+id+")") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed project app ("+id+")") {
 		t.Fatalf("want app removed, got %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "project", "list"); len(v.Projects) != 0 {
@@ -110,7 +111,7 @@ func TestTerminalRemovePromptYes(t *testing.T) {
 		in(app)(env)
 		answering(t, "y")(env)
 	}, "terminal", "remove", "--name", "build")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "stop it and remove it? [y/n]: ") || !strings.HasPrefix(out.stdout, "removed terminal build from app") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stderr, "stop it and remove it? [y/n]: ") || !strings.HasPrefix(out.Stdout, "removed terminal build from app") {
 		t.Fatalf("want build removed, got %+v", out)
 	}
 	if runtest.Alive(*term.Pid) {
@@ -128,7 +129,7 @@ func TestTerminalRemovePromptNo(t *testing.T) {
 		in(app)(env)
 		answering(t, "n")(env)
 	}, "terminal", "remove", "--name", "build")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running to stop it") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "hint: pass --stop-running to stop it") {
 		t.Fatalf("want build kept, got %+v", out)
 	}
 	if v, exit := wdxJSON(t, home, "terminal", "get", "--id", term.Id); exit != clikit.ExitOK || v.Terminal.State != api.TerminalStateRunning {

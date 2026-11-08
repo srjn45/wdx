@@ -18,6 +18,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
@@ -43,7 +44,7 @@ func newDaemonCmd(home string) *cobra.Command {
 		Long: "The daemon serves the project commands on " + identity.SocketPath(home) + ".\n" +
 			"It reads the settings when it starts; restart it after changing them or\n" +
 			"updating " + identity.Name + ".",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newDaemonStartCmd(), newDaemonStopCmd(), newDaemonRestartCmd(), newDaemonStatusCmd())
@@ -56,7 +57,7 @@ type daemonResult struct {
 	Daemon *api.Daemon `json:"daemon"` // the daemon started or stopped; null when unknown
 }
 
-func (r daemonResult) text(w io.Writer, st style.Style) {
+func (r daemonResult) Text(w io.Writer, st style.Style) {
 	if r.Daemon == nil {
 		fmt.Fprintf(w, "daemon %s\n", st.Warning(strings.ReplaceAll(r.Result, "_", " ")))
 		return
@@ -81,17 +82,17 @@ func newDaemonStartCmd() *cobra.Command {
 			"the installer set it up as a service, else in the background. With\n" +
 			"--foreground it runs in this process until interrupted, as a service\n" +
 			"manager runs it.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Start the daemon", identity.Name+" daemon start",
 			"Run it in this terminal until Ctrl-C", identity.Name+" daemon start --foreground",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not started",
-			outputNote: "The daemon, already running or started; with --foreground, the daemon once stopped.\n" +
+			clikit.FailurePrefix: "not started",
+			clikit.OutputNote: "The daemon, already running or started; with --foreground, the daemon once stopped.\n" +
 				`With --json: {"result": ..., "daemon": {...}}`,
-			resultList: annotation(resultRunning, resultStarted, resultStopped),
-			errorList:  codeList(api.ErrorCodeAlreadyRunning, api.ErrorCodeDaemonUnavailable),
+			clikit.Results: clikit.Annotation(resultRunning, resultStarted, resultStopped),
+			clikit.Errors:  clikit.CodeList(api.ErrorCodeAlreadyRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if foreground {
@@ -105,7 +106,7 @@ func newDaemonStartCmd() *cobra.Command {
 			if started {
 				result = resultStarted
 			}
-			return printResult(cmd, daemonResult{Result: result, Daemon: &d})
+			return clikit.PrintResult(cmd, daemonResult{Result: result, Daemon: &d})
 		},
 	}
 	cmd.Flags().BoolVar(&foreground, "foreground", false, "run in this process until interrupted")
@@ -114,7 +115,7 @@ func newDaemonStartCmd() *cobra.Command {
 
 // runForeground runs the daemon in this process until SIGINT or SIGTERM.
 func runForeground(cmd *cobra.Command) error {
-	cfg := invocationOf(cmd).env.Config
+	cfg := envOf(cmd).Config
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	logs := logging.NewDailyFile(identity.LogsDir(cfg.Home), identity.Name, cfg.LogRetentionDays, time.Now)
@@ -129,7 +130,7 @@ func runForeground(cmd *cobra.Command) error {
 		Home:                 cfg.Home,
 		Log:                  log,
 		Metrics:              settings.Metrics,
-		ShellEnv:             invocationOf(cmd).env.ShellEnv,
+		ShellEnv:             envOf(cmd).ShellEnv,
 		TerminalShell:        settings.TerminalShell,
 		TerminalHistoryLines: settings.TerminalHistoryLines,
 		Editor:               settings.Editor,
@@ -152,15 +153,15 @@ func runForeground(cmd *cobra.Command) error {
 	}
 	info := d.Info()
 	logging.FromContext(ctx).Info("daemon serving", "socket", info.Socket)
-	if !jsonMode(cmd) {
-		st := stderrStyle(cmd)
+	if !clikit.JSONMode(cmd) {
+		st := clikit.StderrStyle(cmd)
 		fmt.Fprintf(cmd.ErrOrStderr(), "daemon %s on %s %s; stop it with Ctrl-C or %s\n",
 			st.Success("running"), info.Socket, st.Muted(fmt.Sprintf("(pid %d)", info.Pid)), st.Command(identity.Name+" daemon stop"))
 	}
 	if err := d.Serve(ctx); err != nil {
 		return err
 	}
-	return printResult(cmd, daemonResult{Result: resultStopped, Daemon: &info})
+	return clikit.PrintResult(cmd, daemonResult{Result: resultStopped, Daemon: &info})
 }
 
 // daemonSettings are the settings of cfg the daemon applies itself.
@@ -181,8 +182,8 @@ func daemonSettings(cfg config.Config) daemon.Settings {
 func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 	ctx := cmd.Context()
 	log := logging.FromContext(ctx)
-	inv := invocationOf(cmd)
-	home := inv.env.Config.Home
+	env := envOf(cmd)
+	home := env.Config.Home
 	pid, err := daemon.Running(home)
 	if err != nil {
 		return api.Daemon{}, false, err
@@ -192,13 +193,13 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 		d, err := waitAnswering(cmd, nil)
 		return d, false, err
 	}
-	if m := inv.env.Service; m != nil {
+	if m := env.Service; m != nil {
 		if err := m.Run(ctx, m.Start); err != nil {
 			return api.Daemon{}, false, err
 		}
 		d, err := waitAnswering(cmd, nil)
 		if err != nil {
-			return api.Daemon{}, false, &hinted{err, "see the log in " + identity.LogsDir(home) + " and " + m.Logs}
+			return api.Daemon{}, false, &clikit.Hinted{Err: err, Hint: "see the log in " + identity.LogsDir(home) + " and " + m.Logs}
 		}
 		return d, true, nil
 	}
@@ -215,8 +216,8 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 	defer os.Remove(stderr.Name())
 	defer stderr.Close()
 	c, err := startRetrying(func() *exec.Cmd {
-		c := exec.Command(inv.env.Executable, "daemon", "start", "--foreground")
-		c.Env = append(slices.Clip(inv.env.Environ), identity.Env("HOME")+"="+home)
+		c := exec.Command(env.Executable, "daemon", "start", "--foreground")
+		c.Env = append(slices.Clip(env.Environ), identity.Env("HOME")+"="+home)
 		c.Stderr = stderr
 		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		return c
@@ -224,7 +225,7 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 	if err != nil {
 		return api.Daemon{}, false, err
 	}
-	log.Info("daemon process started", "daemon_pid", c.Process.Pid, "executable", inv.env.Executable)
+	log.Info("daemon process started", "daemon_pid", c.Process.Pid, "executable", env.Executable)
 	exited := make(chan error, 1)
 	go func() { exited <- c.Wait() }()
 
@@ -239,7 +240,7 @@ func startDaemon(cmd *cobra.Command) (_ api.Daemon, started bool, _ error) {
 			log.Error("daemon failed to start", "stderr", string(out))
 			err = fmt.Errorf("%w: %s", err, out)
 		}
-		return api.Daemon{}, false, &hinted{err, "see the log in " + identity.LogsDir(home)}
+		return api.Daemon{}, false, &clikit.Hinted{Err: err, Hint: "see the log in " + identity.LogsDir(home)}
 	}
 	return d, true, nil
 }
@@ -262,7 +263,7 @@ func startRetrying(newCmd func() *exec.Cmd) (*exec.Cmd, error) {
 // waitAnswering waits until the daemon answers, giving up when it exits
 // (when exited is not nil) or after the start timeout.
 func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) {
-	timeouts := invocationOf(cmd).env.Timeouts
+	timeouts := envOf(cmd).Timeouts
 	timeout := cmp.Or(timeouts.Start, startTimeout)
 	deadline := timeouts.StartExpired
 	if deadline == nil {
@@ -277,9 +278,9 @@ func waitAnswering(cmd *cobra.Command, exited <-chan error) (api.Daemon, error) 
 		}
 		select {
 		case err := <-exited:
-			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("the daemon exited: %w", err)}
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(envOf(cmd).Config.Home), Err: fmt.Errorf("the daemon exited: %w", err)}
 		case <-deadline:
-			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(invocationOf(cmd).env.Config.Home), Err: fmt.Errorf("no answer within %s", timeout)}
+			return api.Daemon{}, &client.UnavailableError{Socket: identity.SocketPath(envOf(cmd).Config.Home), Err: fmt.Errorf("no answer within %s", timeout)}
 		case <-tick.C:
 		}
 	}
@@ -291,14 +292,14 @@ func newDaemonStopCmd() *cobra.Command {
 		Short: "Stop the daemon",
 		Long: "The requests in flight finish first. It stops through systemd or launchd\n" +
 			"when it runs as a service, else by signalling it.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Stop the daemon", identity.Name+" daemon stop",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not stopped",
-			outputNote:    "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
-			resultList:    annotation(resultNotRunning, resultStopped),
+			clikit.FailurePrefix: "not stopped",
+			clikit.OutputNote:    "The daemon stopped, or that none was running.\n" + `With --json: {"result": ..., "daemon": {...}}`,
+			clikit.Results:       clikit.Annotation(resultNotRunning, resultStopped),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, err := stopDaemon(cmd)
@@ -306,9 +307,9 @@ func newDaemonStopCmd() *cobra.Command {
 				return err
 			}
 			if d == nil {
-				return printResult(cmd, daemonResult{Result: resultNotRunning})
+				return clikit.PrintResult(cmd, daemonResult{Result: resultNotRunning})
 			}
-			return printResult(cmd, daemonResult{Result: resultStopped, Daemon: d})
+			return clikit.PrintResult(cmd, daemonResult{Result: resultStopped, Daemon: d})
 		},
 	}
 }
@@ -317,7 +318,7 @@ func newDaemonStopCmd() *cobra.Command {
 // none was running.
 func stopDaemon(cmd *cobra.Command) (*api.Daemon, error) {
 	log := logging.FromContext(cmd.Context())
-	home := invocationOf(cmd).env.Config.Home
+	home := envOf(cmd).Config.Home
 	pid, err := daemon.Running(home)
 	if err != nil || pid == 0 {
 		return nil, err
@@ -326,7 +327,7 @@ func stopDaemon(cmd *cobra.Command) (*api.Daemon, error) {
 	if answered, err := clientOf(cmd).Daemon(cmd.Context()); err == nil {
 		d = answered
 	}
-	if m := invocationOf(cmd).env.Service; m != nil {
+	if m := envOf(cmd).Service; m != nil {
 		if err := m.Run(cmd.Context(), m.Stop); err != nil {
 			return nil, err
 		}
@@ -363,15 +364,15 @@ func newDaemonRestartCmd() *cobra.Command {
 		Use:   "restart",
 		Short: "Restart the daemon, or start it",
 		Long:  "Stop the daemon if it is running, then start it, as after updating " + identity.Name + " or its settings.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Restart the daemon after changing the settings", identity.Name+" daemon restart",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not restarted",
-			outputNote:    "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
-			resultList:    resultRestarted,
-			errorList:     codeList(api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not restarted",
+			clikit.OutputNote:    "The daemon started.\n" + `With --json: {"result": "restarted", "daemon": {...}}`,
+			clikit.Results:       resultRestarted,
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, err := stopDaemon(cmd); err != nil {
@@ -381,7 +382,7 @@ func newDaemonRestartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, daemonResult{Result: resultRestarted, Daemon: &d})
+			return clikit.PrintResult(cmd, daemonResult{Result: resultRestarted, Daemon: &d})
 		},
 	}
 }
@@ -396,8 +397,8 @@ type daemonStatus struct {
 	socket  string
 }
 
-func (s daemonStatus) text(w io.Writer, st style.Style) {
-	field := fieldPrinter(w, st, 8)
+func (s daemonStatus) Text(w io.Writer, st style.Style) {
+	field := clikit.FieldPrinter(w, st, 8)
 	switch {
 	case !s.Running:
 		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
@@ -420,24 +421,24 @@ func newDaemonStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show whether the daemon is running",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show whether the daemon is running", identity.Name+" daemon status",
 			"As JSON", identity.Name+" daemon status --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Whether the daemon is running, its pid, what it says about itself when it answers, and the\n" +
+			clikit.OutputNote: "Whether the daemon is running, its pid, what it says about itself when it answers, and the\n" +
 				"service manager that runs it, if it is installed as a service.\n" +
 				`With --json: {"running": ..., "pid": ..., "daemon": {...}, "manager": ...}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			home := invocationOf(cmd).env.Config.Home
+			home := envOf(cmd).Config.Home
 			pid, err := daemon.Running(home)
 			if err != nil {
 				return err
 			}
 			s := daemonStatus{Running: pid != 0, socket: identity.SocketPath(home)}
-			if m := invocationOf(cmd).env.Service; m != nil {
+			if m := envOf(cmd).Service; m != nil {
 				s.Manager = &m.Name
 			}
 			if pid != 0 {
@@ -450,7 +451,7 @@ func newDaemonStatusCmd() *cobra.Command {
 					s.Daemon = &d
 				}
 			}
-			return printResult(cmd, s)
+			return clikit.PrintResult(cmd, s)
 		},
 	}
 }

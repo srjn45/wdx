@@ -70,17 +70,17 @@ func TestDaemonLifecycle(t *testing.T) {
 	}
 
 	out := wdx(t, home, "daemon", "start")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "daemon started (pid ") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
-	if out = wdx(t, home, "daemon", "status"); !strings.HasPrefix(out.stdout, "daemon running (pid ") || !strings.Contains(out.stdout, "  socket:  "+identity.SocketPath(home)) {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out = wdx(t, home, "daemon", "status"); !strings.HasPrefix(out.Stdout, "daemon running (pid ") || !strings.Contains(out.Stdout, "  socket:  "+identity.SocketPath(home)) {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
-	if out = wdx(t, home, "daemon", "stop"); !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out = wdx(t, home, "daemon", "stop"); !strings.HasPrefix(out.Stdout, "daemon stopped (pid ") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
-	if out = wdx(t, home, "daemon", "status"); out.stdout != "daemon not running\n" {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out = wdx(t, home, "daemon", "status"); out.Stdout != "daemon not running\n" {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -157,7 +157,7 @@ func TestDaemonAsService(t *testing.T) {
 	status := func() map[string]any {
 		t.Helper()
 		var v map[string]any
-		if err := json.Unmarshal([]byte(wdxService(t, home, svc, "daemon", "status", "--json").stdout), &v); err != nil {
+		if err := json.Unmarshal([]byte(wdxService(t, home, svc, "daemon", "status", "--json").Stdout), &v); err != nil {
 			t.Fatal(err)
 		}
 		return v
@@ -166,16 +166,16 @@ func TestDaemonAsService(t *testing.T) {
 	if v := status(); v["running"] != false || v["manager"] != "fake" {
 		t.Fatalf("want stopped under fake, got %v", v)
 	}
-	if out := wdxService(t, home, svc, "daemon", "start"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon started (pid ") {
+	if out := wdxService(t, home, svc, "daemon", "start"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "daemon started (pid ") {
 		t.Fatalf("want started, got %+v", out)
 	}
 	if v := status(); v["running"] != true || v["daemon"] == nil {
 		t.Fatalf("want running, got %v", v)
 	}
-	if out := wdxService(t, home, svc, "daemon", "restart"); out.exit != clikit.ExitOK {
+	if out := wdxService(t, home, svc, "daemon", "restart"); out.Exit != clikit.ExitOK {
 		t.Fatalf("want restarted, got %+v", out)
 	}
-	if out := wdxService(t, home, svc, "daemon", "stop"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "daemon stopped (pid ") {
+	if out := wdxService(t, home, svc, "daemon", "stop"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "daemon stopped (pid ") {
 		t.Fatalf("want stopped, got %+v", out)
 	}
 	if b, err := os.ReadFile(ran); err != nil || string(b) != "start\nstop\nstart\nstop\n" {
@@ -189,7 +189,7 @@ func TestDaemonServiceFails(t *testing.T) {
 	svc := &service.Manager{Name: "fake", Start: []string{"sh", "-c", "echo unit wdx.service not found >&2; exit 5"}}
 	out := wdxService(t, home, svc, "daemon", "start", "--json")
 	var v map[string]any
-	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != clikit.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
+	if err := json.Unmarshal([]byte(out.Stdout), &v); err != nil || out.Exit != clikit.ExitSystem || v["code"] != "internal" || !strings.Contains(v["detail"].(string), "unit wdx.service not found") {
 		t.Fatalf("want the service manager's failure, got %+v", out)
 	}
 }

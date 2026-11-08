@@ -14,6 +14,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -35,13 +36,13 @@ func waitsHint(err error) error {
 	list := strings.Join(names, ", ")
 	switch {
 	case e.Problem.Code == api.ErrorCodePlanNotFinished && child.Parent != nil:
-		return &hinted{err, fmt.Sprintf("run it once %s is done: %s plan status --name %s", list, identity.Name, *child.Parent)}
+		return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("run it once %s is done: %s plan status --name %s", list, identity.Name, *child.Parent)}
 	case e.Problem.Code == api.ErrorCodePlanNotFinished:
-		return &hinted{err, fmt.Sprintf("run it once %s is done", list)}
+		return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("run it once %s is done", list)}
 	case len(merged) == len(names):
-		return &hinted{err, fmt.Sprintf("pull %s: the PR of %s is merged on GitHub", base, list)}
+		return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("pull %s: the PR of %s is merged on GitHub", base, list)}
 	}
-	return &hinted{err, fmt.Sprintf("land the worktree on %s first (%s worktree land), or pull %s once its PR is merged", planBranch(names[0]), identity.Name, base)}
+	return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("land the worktree on %s first (%s worktree land), or pull %s once its PR is merged", planBranch(names[0]), identity.Name, base)}
 }
 
 // planBranch is where a plan's tasks land.
@@ -67,7 +68,7 @@ func newPlanRunCmd() *cobra.Command {
 			"it lists whose plans before it are done, but whose work it cannot see in the\n" +
 			"default branch, waits for you: running that plan is the answer, which also\n" +
 			"asks gh whether their PR is merged, its merge pulled into the default branch.",
-		Example: examples(
+		Example: clikit.Examples(
 			"A plan of the project you are in", identity.Name+" plan run --name sso",
 			"Two tasks at most at once, as JSON", identity.Name+" plan run --name sso --parallel 2 --json",
 			"A plan of plans", identity.Name+" plan run --name auth",
@@ -75,15 +76,15 @@ func newPlanRunCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not started",
-			outputNote:    "The plan, running, and its branch; a plan of plans, and its plans.\n" + `With --json: {"result": "started", "plan": {...}}`,
-			resultList:    string(api.ResultStarted),
-			errorList: codeList(api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanInUse,
+			clikit.FailurePrefix: "not started",
+			clikit.OutputNote:    "The plan, running, and its branch; a plan of plans, and its plans.\n" + `With --json: {"result": "started", "plan": {...}}`,
+			clikit.Results:       string(api.ResultStarted),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanInUse,
 				api.ErrorCodePlanNotFinished, api.ErrorCodePlanNotLanded, api.ErrorCodePlanStarted, api.ErrorCodeProjectClosed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("parallel") && (parallel < 1 || parallel > 20) {
-				return &usageError{fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
+				return &clikit.UsageError{Err: fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
 			}
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
@@ -92,25 +93,25 @@ func newPlanRunCmd() *cobra.Command {
 			r, err := clientOf(cmd).RunPlan(cmd.Context(), path, project, dir, parallel)
 			switch problemCode(err) {
 			case api.ErrorCodePlanStarted:
-				return &hinted{err, "a plan runs once: copy it to run it again"}
+				return &clikit.Hinted{Err: err, Hint: "a plan runs once: copy it to run it again"}
 			case api.ErrorCodePlanInUse:
-				return &hinted{err, "a plan a plan of plans lists runs with it: run the plan of plans"}
+				return &clikit.Hinted{Err: err, Hint: "a plan a plan of plans lists runs with it: run the plan of plans"}
 			case api.ErrorCodePlanNotFinished, api.ErrorCodePlanNotLanded:
 				return waitsHint(err)
 			case api.ErrorCodeBranchExists:
-				return &hinted{err, "remove or rename the branch, or rename the plan"}
+				return &clikit.Hinted{Err: err, Hint: "remove or rename the branch, or rename the plan"}
 			case api.ErrorCodeProjectClosed:
-				return &hinted{err, "open it first with " + identity.Name + " project open"}
+				return &clikit.Hinted{Err: err, Hint: "open it first with " + identity.Name + " project open"}
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planStarted{PlanResult: r, parallel: parallel})
+			return clikit.PrintResult(cmd, planStarted{PlanResult: r, parallel: parallel})
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().IntVar(&parallel, "parallel", 0, "the most tasks it runs at once, a `number` from 1 to 20 (default: the setting plan.parallel)")
-	completeFlag(cmd, "parallel", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "parallel", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -120,11 +121,11 @@ type planStarted struct {
 	parallel int
 }
 
-func (r planStarted) text(w io.Writer, st style.Style) {
+func (r planStarted) Text(w io.Writer, st style.Style) {
 	p := r.Plan
 	if p.Plans != nil {
 		fmt.Fprintf(w, "plan %s %s, each of its plans once those before it have landed\n", st.Name(p.Name), st.Success("running"))
-		field := fieldPrinter(w, st, 8)
+		field := clikit.FieldPrinter(w, st, 8)
 		field("project", p.ProjectName)
 		field("plans", nameList(st, *p.Plans))
 		field("id", st.Muted(p.Id))
@@ -135,7 +136,7 @@ func (r planStarted) text(w io.Writer, st style.Style) {
 		fmt.Fprintf(w, ", up to %s at once", plural(r.parallel, "task"))
 	}
 	fmt.Fprintln(w)
-	field := fieldPrinter(w, st, 8)
+	field := clikit.FieldPrinter(w, st, 8)
 	field("project", p.ProjectName)
 	field("tasks", planSize(p))
 	field("id", st.Muted(p.Id))
@@ -145,7 +146,7 @@ func newPlanTaskCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
 		Short: "A task of a running plan: say it is done, read it, or answer one that cannot go on",
-		Args:  noArgs,
+		Args:  clikit.NoArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newPlanTaskDoneCmd(), newPlanTaskGetCmd(), newPlanTaskLandCmd(), newPlanTaskRetryCmd(), newPlanTaskSkipCmd())
@@ -161,8 +162,8 @@ type taskRef struct {
 func (r *taskRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.plan, "plan", "", "`name` of the plan (case-insensitive)")
 	cmd.Flags().StringVar(&r.task, "task", "", "`id` of the task in the plan")
-	completeFlag(cmd, "plan", completePlans("name"))
-	completeFlag(cmd, "task", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "plan", completePlans("name"))
+	clikit.CompleteFlag(cmd, "task", cobra.NoFileCompletions)
 	r.scope.addFlags(cmd)
 }
 
@@ -183,21 +184,21 @@ func newPlanTaskDoneCmd() *cobra.Command {
 			"Refused while the task's worktree has changes or files not committed, or is\n" +
 			"not on the task's branch. The summary is told to the tasks that wait for it.\n" +
 			"The task's agent is then stopped, and the task lands.",
-		Example: examples(
+		Example: clikit.Examples(
 			"From the task's agent", identity.Name+" plan task done --agent-id agent-1a2b3c4d --summary Added_the_table",
 			"From a person, as JSON", identity.Name+" plan task done --plan sso --task schema --summary Added_the_table --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not done",
-			outputNote:    "The task, landing.\n" + `With --json: {"result": "landing", "task": {...}}`,
-			resultList:    string(api.ResultLanding),
-			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeTaskState,
+			clikit.FailurePrefix: "not done",
+			clikit.OutputNote:    "The task, landing.\n" + `With --json: {"result": "landing", "task": {...}}`,
+			clikit.Results:       string(api.ResultLanding),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeAgentWorking, api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeTaskState,
 				api.ErrorCodeWrongBranch, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(summary) == "" {
-				return &usageError{errors.New("--summary is blank: the tasks after this one are told it")}
+				return &clikit.UsageError{Err: errors.New("--summary is blank: the tasks after this one are told it")}
 			}
 			path, project, dir, task, err := ref.resolveDone(cmd, agentID)
 			if err != nil {
@@ -206,14 +207,14 @@ func newPlanTaskDoneCmd() *cobra.Command {
 			r, err := clientOf(cmd).FinishPlanTask(cmd.Context(), path, project, dir, task, summary)
 			switch problemCode(err) {
 			case api.ErrorCodeNotCommitted:
-				return &hinted{err, "commit your work on the task's branch first"}
+				return &clikit.Hinted{Err: err, Hint: "commit your work on the task's branch first"}
 			case api.ErrorCodeWrongBranch:
-				return &hinted{err, "switch the worktree back to the task's branch, with its commits"}
+				return &clikit.Hinted{Err: err, Hint: "switch the worktree back to the task's branch, with its commits"}
 			}
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, taskDone{PlanTaskResult: r, plan: path})
+			return clikit.PrintResult(cmd, taskDone{PlanTaskResult: r, plan: path})
 		},
 	}
 	ref.addFlags(cmd)
@@ -225,8 +226,8 @@ func newPlanTaskDoneCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("agent-id", "project-name")
 	cmd.MarkFlagsRequiredTogether("plan", "task")
 	_ = cmd.MarkFlagRequired("summary")
-	completeFlag(cmd, "agent-id", completeAgents("id"))
-	completeFlag(cmd, "summary", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "agent-id", completeAgents("id"))
+	clikit.CompleteFlag(cmd, "summary", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -254,7 +255,7 @@ type taskDone struct {
 	plan string
 }
 
-func (r taskDone) text(w io.Writer, st style.Style) {
+func (r taskDone) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "task %s of %s %s: %s on %s\n", st.Name(r.Task.Id), st.Name(r.plan), st.Success("done"), "landing", st.Name(planBranch(r.plan)))
 }
 
@@ -266,15 +267,15 @@ func newPlanTaskGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get --plan <name> --task <id> [--project-id <id> | --project-name <name>]",
 		Short: "Show a plan's task: its state, agent and worktree, prompt and summary",
-		Example: examples(
+		Example: clikit.Examples(
 			"A task of a plan of the project you are in", identity.Name+" plan task get --plan sso --task schema",
 			"Of another project, as JSON", identity.Name+" plan task get --project-name app --plan sso --task schema --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The task's state, agent, worktree and afters, then its prompt and, once done, its summary.\n" +
+			clikit.OutputNote: "The task's state, agent, worktree and afters, then its prompt and, once done, its summary.\n" +
 				`With --json: {"plan": {...}, "task": {...}}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -293,7 +294,7 @@ func newPlanTaskGetCmd() *cobra.Command {
 			if i < 0 {
 				return &client.ProblemError{Problem: api.NewProblem(api.ErrorCodeNotFound, fmt.Sprintf("plan %s has no task %s", c.Plan.Name, ref.task))}
 			}
-			return printResult(cmd, planTask{Plan: c.Plan, Task: tasks[i]})
+			return clikit.PrintResult(cmd, planTask{Plan: c.Plan, Task: tasks[i]})
 		},
 	}
 	ref.addFlags(cmd)
@@ -308,10 +309,10 @@ type planTask struct {
 	Task api.PlanTask `json:"task"`
 }
 
-func (r planTask) text(w io.Writer, st style.Style) {
+func (r planTask) Text(w io.Writer, st style.Style) {
 	t := r.Task
 	fmt.Fprintf(w, "%s of %s: %s\n", st.Name(t.Id), st.Name(r.Plan.Name), taskState(st, t))
-	field := fieldPrinter(w, st, 8)
+	field := clikit.FieldPrinter(w, st, 8)
 	if len(t.After) > 0 {
 		field("after", strings.Join(t.After, ", "))
 	}

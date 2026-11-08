@@ -24,8 +24,8 @@ func TestClose(t *testing.T) {
 	if v.Project.Origin != nil || len(v.Project.Worktrees) != 1 {
 		t.Fatalf("unexpected project: %+v", v.Project)
 	}
-	if out := wdx(t, home, "project", "close", "--name", "app"); !strings.HasPrefix(out.stdout, "closed project app ("+id+")\n") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out := wdx(t, home, "project", "close", "--name", "app"); !strings.HasPrefix(out.Stdout, "closed project app ("+id+")\n") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestNotFound(t *testing.T) {
 		}
 	}
 	out := wdx(t, home, "project", "close", "--name", "nope")
-	if out.exit != clikit.ExitRejected || out.stdout != "" || !strings.HasPrefix(out.stderr, "wdx: not closed: project not found") {
+	if out.Exit != clikit.ExitRejected || out.Stdout != "" || !strings.HasPrefix(out.Stderr, "wdx: not closed: project not found") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 }
@@ -76,8 +76,8 @@ func TestOpenLocal(t *testing.T) {
 	if v, _ = wdxJSON(t, home, "project", "open", "--local", repo); v.Result != "opened" {
 		t.Fatalf("want opened, got %+v", v)
 	}
-	if out := wdx(t, home, "project", "open", "--local", repo); !strings.HasPrefix(out.stdout, "opened project app (") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out := wdx(t, home, "project", "open", "--local", repo); !strings.HasPrefix(out.Stdout, "opened project app (") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestOpenGitCheckoutMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := wdx(t, home, "project", "open", "--git", remote)
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "pass --reclone or --remove") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "pass --reclone or --remove") {
 		t.Fatalf("want checkout missing with hint, got %+v", out)
 	}
 	v, _ := wdxJSON(t, home, "project", "open", "--git", remote, "--reclone")
@@ -230,8 +230,8 @@ func TestCreate(t *testing.T) {
 	if exit != clikit.ExitOK || v.Result != "created" || v.Conflict != nil || v.Project.Worktrees[0].Path != want {
 		t.Fatalf("unexpected create: %+v", v)
 	}
-	if out := wdx(t, home, "project", "create", "--name", "web"); !strings.HasPrefix(out.stdout, "created project web (") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out := wdx(t, home, "project", "create", "--name", "web"); !strings.HasPrefix(out.Stdout, "created project web (") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -264,12 +264,12 @@ func TestCreateNameTaken(t *testing.T) {
 	}
 
 	out := wdx(t, home, "project", "create", "--name", "app")
-	if out.exit != clikit.ExitRejected || !strings.HasPrefix(out.stderr, "wdx: not created: ") || !strings.Contains(out.stderr, "pass --open or --cancel") {
+	if out.Exit != clikit.ExitRejected || !strings.HasPrefix(out.Stderr, "wdx: not created: ") || !strings.Contains(out.Stderr, "pass --open or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 	out = wdx(t, home, "project", "create", "--name", "app", "--open")
-	if !strings.HasPrefix(out.stdout, "opened existing project app ("+id+"); nothing was created\n") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if !strings.HasPrefix(out.Stdout, "opened existing project app ("+id+"); nothing was created\n") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -326,7 +326,7 @@ func TestCreateInvalid(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeInvalidPath, clikit.ExitRejected)
 	wantHint(t, v, "--path")
 
-	if out := wdx(t, home, "project", "create"); out.exit != clikit.ExitUsage || !strings.HasPrefix(out.stderr, "wdx: not created: ") {
+	if out := wdx(t, home, "project", "create"); out.Exit != clikit.ExitUsage || !strings.HasPrefix(out.Stderr, "wdx: not created: ") {
 		t.Fatalf("want usage error with prefix, got %+v", out)
 	}
 }
@@ -344,11 +344,11 @@ func TestListEmpty(t *testing.T) {
 	home := newHome(t)
 	for filter, text := range map[string]string{"--all": "no projects\n", "--open": "no open projects\n", "--closed": "no closed projects\n"} {
 		out := wdx(t, home, "project", "list", filter, "--json")
-		if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, `"projects": []`) {
+		if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, `"projects": []`) {
 			t.Fatalf("%s: want an empty array, got %+v", filter, out)
 		}
-		if out := wdx(t, home, "project", "list", filter); out.stdout != text {
-			t.Fatalf("%s: want %q, got %q", filter, text, out.stdout)
+		if out := wdx(t, home, "project", "list", filter); out.Stdout != text {
+			t.Fatalf("%s: want %q, got %q", filter, text, out.Stdout)
 		}
 	}
 }
@@ -370,7 +370,7 @@ func TestList(t *testing.T) {
 
 	out := wdx(t, home, "project", "list", "--json")
 	var raw struct{ Projects []map[string]any }
-	if err := json.Unmarshal([]byte(out.stdout), &raw); err != nil {
+	if err := json.Unmarshal([]byte(out.Stdout), &raw); err != nil {
 		t.Fatal(err)
 	}
 	if p := raw.Projects[0]; p["worktree_count"] != 1.0 || p["origin"] != nil || p["worktrees"] != nil {
@@ -380,7 +380,7 @@ func TestList(t *testing.T) {
 		t.Fatalf("a list item must not carry worktrees: %v", raw.Projects[0])
 	}
 
-	lines := strings.Split(strings.TrimSpace(wdx(t, home, "project", "list").stdout), "\n")
+	lines := strings.Split(strings.TrimSpace(wdx(t, home, "project", "list").Stdout), "\n")
 	if len(lines) != 4 || !strings.HasPrefix(lines[0], "NAME") || !strings.HasPrefix(lines[1], "app ") || !strings.Contains(lines[3], "closed") {
 		t.Fatalf("unexpected table:\n%s", strings.Join(lines, "\n"))
 	}
@@ -407,9 +407,9 @@ func TestGet(t *testing.T) {
 	}
 
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if !strings.HasPrefix(out.stdout, "project App ("+id+")\n  state:     closed\n") || strings.Contains(out.stdout, "orphaned") ||
-		!strings.Contains(out.stdout, "\n  terminals: (none)\n") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if !strings.HasPrefix(out.Stdout, "project App ("+id+")\n  state:     closed\n") || strings.Contains(out.Stdout, "orphaned") ||
+		!strings.Contains(out.Stdout, "\n  terminals: (none)\n") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -426,8 +426,8 @@ func TestGetOrphaned(t *testing.T) {
 		t.Fatalf("want an orphaned project with its missing checkout, got %+v", v.Project)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if !strings.Contains(out.stdout, "(missing)\n") || !strings.Contains(out.stdout, "orphaned:  no checkout on disk; remove it with wdx project remove --id "+id) {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if !strings.Contains(out.Stdout, "(missing)\n") || !strings.Contains(out.Stdout, "orphaned:  no checkout on disk; remove it with wdx project remove --id "+id) {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -447,7 +447,7 @@ func TestWorktreeFieldsOnlyInGet(t *testing.T) {
 	home := newHome(t)
 	newProject(t, home, "app")
 	out := wdx(t, home, "project", "close", "--name", "app", "--cancel", "--json")
-	if strings.Contains(out.stdout, `"present"`) || strings.Contains(out.stdout, `"orphaned"`) || strings.Contains(out.stdout, `"terminals"`) || !strings.Contains(out.stdout, `"created_at"`) {
-		t.Fatalf("close must not carry disk status: %s", out.stdout)
+	if strings.Contains(out.Stdout, `"present"`) || strings.Contains(out.Stdout, `"orphaned"`) || strings.Contains(out.Stdout, `"terminals"`) || !strings.Contains(out.Stdout, `"created_at"`) {
+		t.Fatalf("close must not carry disk status: %s", out.Stdout)
 	}
 }

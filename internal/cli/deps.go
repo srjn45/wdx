@@ -20,6 +20,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/deps"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
@@ -33,7 +34,7 @@ func newDepsCmd() *cobra.Command {
 		Short: "Show and install the programs wdx needs besides itself",
 		Long: "git is mandatory: projects and their terminals need it. The others are\n" +
 			"optional: without one, only the features it enables are missing.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newDepsListCmd(), newDepsInstallCmd())
@@ -127,7 +128,7 @@ type depsList struct {
 	Dependencies []dependencyView `json:"dependencies"`
 }
 
-func (l depsList) text(w io.Writer, st style.Style) {
+func (l depsList) Text(w io.Writer, st style.Style) {
 	var t style.Table
 	for _, d := range l.Dependencies {
 		need := "optional"
@@ -189,18 +190,18 @@ func newDepsListCmd() *cobra.Command {
 			"installed but not usable, as docker whose daemon does not answer. The\n" +
 			"clipboard tool is the one for the session: wl-copy on Wayland, xclip or\n" +
 			"xsel on X11, pbcopy on macOS.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Every dependency", identity.Name+" deps list",
 			"As JSON, for a script", identity.Name+" deps list --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Each dependency: mandatory or optional, its status, the program and version found and the\n" +
+			clikit.OutputNote: "Each dependency: mandatory or optional, its status, the program and version found and the\n" +
 				"features it enables; why it is not ready below; then the system.\n" +
 				`With --json: {"system": {...}, "dependencies": [...]}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p := probe(invocationOf(cmd).env)
+			p := probe(*envOf(cmd))
 			sys := deps.Detect(p)
 			l := depsList{System: systemView{
 				OS:             sys.OS,
@@ -220,7 +221,7 @@ func newDepsListCmd() *cobra.Command {
 				}
 				l.Dependencies = append(l.Dependencies, v)
 			}
-			return printResult(cmd, l)
+			return clikit.PrintResult(cmd, l)
 		},
 	}
 }
@@ -262,7 +263,7 @@ type installResult struct {
 	Install    *installView   `json:"install"` // what ran; null when nothing did
 }
 
-func (r installResult) text(w io.Writer, st style.Style) {
+func (r installResult) Text(w io.Writer, st style.Style) {
 	d := r.Dependency
 	found := d.Name
 	if d.Program != nil && *d.Program != d.Name {
@@ -333,37 +334,37 @@ func newDepsInstallCmd() *cobra.Command {
 			"sudo cannot ask, so it works only when no password is needed. docker and\n" +
 			"podman each provide the container dependency. A dependency already ready\n" +
 			"is left as it is. Every failure says why and how to install it yourself.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Install the clipboard tool TIDE copies with", identity.Name+" deps install --name clipboard",
 			"Install docker without being asked", identity.Name+" deps install --name docker --yes",
 			"From a script, where sudo needs no password", identity.Name+" deps install --name git --yes --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not installed",
-			outputNote: "The dependency as it is now, with what is left to do, as logging in again.\n" +
+			clikit.FailurePrefix: "not installed",
+			clikit.OutputNote: "The dependency as it is now, with what is left to do, as logging in again.\n" +
 				`With --json: {"result": ..., "dependency": {...}, "install": {...}}`,
-			resultList:   annotation(resultInstalled, resultReady),
-			errorList:    codeList(api.ErrorCodeCancelled, api.ErrorCodeInstallFailed, api.ErrorCodePrivilegesRequired, api.ErrorCodeUnsupportedSystem),
-			jsonRequires: annotation("yes"),
+			clikit.Results:      clikit.Annotation(resultInstalled, resultReady),
+			clikit.Errors:       clikit.CodeList(api.ErrorCodeCancelled, api.ErrorCodeInstallFailed, api.ErrorCodePrivilegesRequired, api.ErrorCodeUnsupportedSystem),
+			clikit.JSONRequires: clikit.Annotation("yes"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error { return runDepsInstall(cmd, name, yes) },
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`dependency` to install: "+strings.Join(deps.Installable, ", "))
 	cmd.Flags().BoolVar(&yes, "yes", false, "run the commands that need root without asking")
 	_ = cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.FixedCompletions(deps.Installable, cobra.ShellCompDirectiveNoFileComp))
+	clikit.CompleteFlag(cmd, "name", cobra.FixedCompletions(deps.Installable, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
 func runDepsInstall(cmd *cobra.Command, name string, yes bool) error {
 	if !slices.Contains(deps.Installable, name) {
-		return &usageError{fmt.Errorf("no dependency %q: name one of %s", name, strings.Join(deps.Installable, ", "))}
+		return &clikit.UsageError{Err: fmt.Errorf("no dependency %q: name one of %s", name, strings.Join(deps.Installable, ", "))}
 	}
-	ctx, env := cmd.Context(), invocationOf(cmd).env
-	p := probe(env)
+	ctx, env := cmd.Context(), envOf(cmd)
+	p := probe(*env)
 	if c := deps.CheckInstallable(ctx, p, name); c.Status == deps.Ready {
-		return printResult(cmd, installResult{Result: resultReady, Dependency: newDependencyView(c)})
+		return clikit.PrintResult(cmd, installResult{Result: resultReady, Dependency: newDependencyView(c)})
 	}
 	sys := deps.Detect(p)
 	plan, err := deps.PlanFor(name, sys, userName())
@@ -373,33 +374,33 @@ func runDepsInstall(cmd *cobra.Command, name string, yes bool) error {
 	log := logging.FromContext(ctx)
 	log.Info("install planned", "name", name, "commands", plan.Commands, "needs_root", plan.NeedsRoot())
 
-	interactive := canPrompt(cmd)
+	interactive := clikit.CanPrompt(cmd)
 	if plan.NeedsRoot() {
 		switch {
 		case interactive && yes:
-			logAnswer(cmd, installQuestion, "yes", "--yes")
+			clikit.LogAnswer(cmd, installQuestion, "yes", "--yes")
 		case interactive:
-			prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+			prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 			fmt.Fprintf(prompt, "installing %s runs, as root:\n", name)
 			for _, c := range plan.Commands {
 				fmt.Fprintf(prompt, "  %s\n", st.Command(strings.Join(c, " ")))
 			}
-			answer, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "run them? "+st.Command("[y/N]")+": ", "y", "n", "")
+			answer, err := clikit.Ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "run them? "+st.Command("[y/N]")+": ", "y", "n", "")
 			if err != nil {
 				return err
 			}
 			if answer != "y" {
-				logAnswer(cmd, installQuestion, "no", "prompt")
+				clikit.LogAnswer(cmd, installQuestion, "no", "prompt")
 				return &installError{code: api.ErrorCodeCancelled, err: errors.New("you answered no"), plan: plan}
 			}
-			logAnswer(cmd, installQuestion, "yes", "prompt")
+			clikit.LogAnswer(cmd, installQuestion, "yes", "prompt")
 		case !yes:
-			logUnanswered(cmd, installQuestion)
-			return &installError{code: api.ErrorCodePrivilegesRequired, err: fmt.Errorf("installing %s needs root and nothing answered whether to use sudo (%s): pass --yes", name, noPromptReason(cmd)), plan: plan}
+			clikit.LogUnanswered(cmd, installQuestion)
+			return &installError{code: api.ErrorCodePrivilegesRequired, err: fmt.Errorf("installing %s needs root and nothing answered whether to use sudo (%s): pass --yes", name, clikit.NoPromptReason(cmd)), plan: plan}
 		default:
 			// No terminal: sudo must not ask, so it runs only when it needs
 			// no password.
-			logAnswer(cmd, installQuestion, "yes", "--yes")
+			clikit.LogAnswer(cmd, installQuestion, "yes", "--yes")
 			if _, err := p.Output(ctx, "sudo", "-n", "true"); err != nil {
 				log.Info("sudo needs a password", "err", err)
 				return &installError{code: api.ErrorCodePrivilegesRequired, err: errors.New("sudo needs a password, and without a terminal it cannot ask for it"), plan: plan}
@@ -426,7 +427,7 @@ func runDepsInstall(cmd *cobra.Command, name string, yes bool) error {
 		}
 	}
 	c := deps.CheckInstallable(ctx, p, name)
-	return printResult(cmd, installResult{Result: resultInstalled, Dependency: newDependencyView(c), Install: newInstallView(plan)})
+	return clikit.PrintResult(cmd, installResult{Result: resultInstalled, Dependency: newDependencyView(c), Install: newInstallView(plan)})
 }
 
 // lastLines returns the last n lines of s.

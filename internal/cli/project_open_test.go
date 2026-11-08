@@ -41,10 +41,10 @@ func TestOpenByNameAndID(t *testing.T) {
 	if v, exit = wdxJSON(t, home, "project", "open", "--id", id, "--remove"); exit != clikit.ExitOK || v.Result != "opened" || v.Project.State != "open" {
 		t.Fatalf("by id: %+v", v)
 	}
-	if out := wdx(t, home, "project", "close", "--id", id, "--cancel"); out.exit != clikit.ExitOK {
+	if out := wdx(t, home, "project", "close", "--id", id, "--cancel"); out.Exit != clikit.ExitOK {
 		t.Fatalf("close: %+v", out)
 	}
-	if out := wdx(t, home, "project", "open", "--name", "app"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "opened project app (") {
+	if out := wdx(t, home, "project", "open", "--name", "app"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "opened project app (") {
 		t.Fatalf("text: %+v", out)
 	}
 }
@@ -89,7 +89,7 @@ func TestOpenFlagRules(t *testing.T) {
 
 	// Without a terminal, nothing asks.
 	out := wdx(t, home, "project", "open")
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "pass --local, --git, --id or --name") {
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --local, --git, --id or --name") {
 		t.Fatalf("no terminal: %+v", out)
 	}
 }
@@ -122,14 +122,14 @@ func TestOpenByNamePrompt(t *testing.T) {
 	_, clone, _ := openedThenLost(t, home)
 
 	out := wdxWith(t, home, answering(t, "c"), "project", "open", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "choose [c/r]: ") || !strings.HasPrefix(out.stdout, "cloned") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stderr, "choose [c/r]: ") || !strings.HasPrefix(out.Stdout, "cloned") {
 		t.Fatalf("clone: %+v", out)
 	}
 	if err := os.RemoveAll(clone); err != nil {
 		t.Fatal(err)
 	}
 	out = wdxWith(t, home, answering(t, "r"), "project", "open", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed project app") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed project app") {
 		t.Fatalf("remove: %+v", out)
 	}
 
@@ -137,7 +137,7 @@ func TestOpenByNamePrompt(t *testing.T) {
 	home = newHome(t)
 	openedThenLost(t, home)
 	out = wdx(t, home, "project", "open", "--name", "app")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "--reclone or --remove") && !strings.Contains(out.stderr, "with --reclone") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "--reclone or --remove") && !strings.Contains(out.Stderr, "with --reclone") {
 		t.Fatalf("no terminal: %+v", out)
 	}
 }
@@ -163,14 +163,14 @@ func TestOpenNoOriginMissingCheckout(t *testing.T) {
 
 	// Nothing to clone from, so the question does not offer it.
 	out := wdxWith(t, home, answering(t, "c"), "project", "open", "--name", "app")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "choose [r/c]: ") || strings.Contains(out.stderr, "clone again") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "choose [r/c]: ") || strings.Contains(out.Stderr, "clone again") {
 		t.Fatalf("cancel: %+v", out)
 	}
 	v, exit := wdxJSON(t, home, "project", "open", "--name", "app", "--reclone")
 	wantError(t, v, exit, api.ErrorCodeInvalidArgument, clikit.ExitRejected)
 
 	out = wdxWith(t, home, answering(t, "r"), "project", "open", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed project app") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed project app") {
 		t.Fatalf("remove: %+v", out)
 	}
 }
@@ -183,16 +183,16 @@ func TestOpenMenuClosedProject(t *testing.T) {
 	newProject(t, home, "gamma")
 
 	out := wdxWith(t, home, answering(t, "9", "5"), "project", "open")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "opened project beta ("+id+")") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "opened project beta ("+id+")") {
 		t.Fatalf("beta: %+v", out)
 	}
 	for _, want := range []string{"[1] create a new project", "[2] open a local repository", "[3] clone a git repository", "[4] alpha closed", "[5] beta closed", "choose [1-5] (empty to cancel): "} {
-		if !strings.Contains(out.stderr, want) {
-			t.Fatalf("want %q in:\n%s", want, out.stderr)
+		if !strings.Contains(out.Stderr, want) {
+			t.Fatalf("want %q in:\n%s", want, out.Stderr)
 		}
 	}
-	if strings.Contains(out.stderr, "gamma") {
-		t.Fatalf("an open project listed:\n%s", out.stderr)
+	if strings.Contains(out.Stderr, "gamma") {
+		t.Fatalf("an open project listed:\n%s", out.Stderr)
 	}
 }
 
@@ -201,7 +201,7 @@ func TestOpenMenuCreate(t *testing.T) {
 	home := newHome(t)
 	parent := t.TempDir()
 	out := wdxWith(t, home, answering(t, "1", "web", parent), "project", "open")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created project web (") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "created project web (") {
 		t.Fatalf("create: %+v", out)
 	}
 	if _, err := os.Stat(filepath.Join(parent, "web", ".git")); err != nil {
@@ -209,7 +209,7 @@ func TestOpenMenuCreate(t *testing.T) {
 	}
 	// The conflict's question reads the same answers.
 	out = wdxWith(t, home, answering(t, "1", "web", parent, "o"), "project", "open")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "opened existing project web (") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "opened existing project web (") {
 		t.Fatalf("conflict: %+v", out)
 	}
 }
@@ -226,7 +226,7 @@ func TestOpenMenuLocal(t *testing.T) {
 	inHome := func(env *Env) { env.UserHome = userHome }
 	stdin := answering(t, "2", "~/code")
 	out := wdxWith(t, home, func(env *Env) { stdin(env); inHome(env) }, "project", "open")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "registered project code (") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "registered project code (") {
 		t.Fatalf("local: %+v", out)
 	}
 }
@@ -236,7 +236,7 @@ func TestOpenMenuGit(t *testing.T) {
 	home := newHome(t)
 	remote := gittest.Bare(t, "web")
 	out := wdxWith(t, home, answering(t, "3", remote), "project", "open")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "cloned project web (") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "cloned project web (") {
 		t.Fatalf("git: %+v", out)
 	}
 }
@@ -246,7 +246,7 @@ func TestOpenMenuCancel(t *testing.T) {
 	home := newHome(t)
 	for _, answers := range [][]string{{""}, {"1", ""}, {"2", ""}, {"3", ""}} {
 		out := wdxWith(t, home, answering(t, answers...), "project", "open")
-		if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "[cancelled]") {
+		if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[cancelled]") {
 			t.Fatalf("%q: %+v", answers, out)
 		}
 	}

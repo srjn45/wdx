@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -21,7 +22,7 @@ func newMessageCmd() *cobra.Command {
 			"typed it. When a holder dies, its messages go on if the agent resumes the same\n" +
 			"conversation. If it starts anew, or a shell does, they are held for you to send\n" +
 			"or discard, as what they were meant for is gone.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newMessageDiscardCmd(), newMessageListCmd(), newMessageResendCmd())
@@ -34,14 +35,14 @@ func newMessageListCmd() *cobra.Command {
 		Use:   "list [--project-id <id> | --project-name <name>]",
 		Short: "List a project's messages still waiting, oldest first",
 		Long:  "Without a project flag, the project the working directory is in.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The messages of the project you are in", identity.Name+" message list",
 			"Another project's, as JSON", identity.Name+" message list --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The messages, oldest first.\n" + `With --json: {"messages": [...]}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The messages, oldest first.\n" + `With --json: {"messages": [...]}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ref, dir, err := worktreeScopeOf(cmd, scope)
@@ -52,7 +53,7 @@ func newMessageListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, messageList(list))
+			return clikit.PrintResult(cmd, messageList(list))
 		},
 	}
 	scope.addFlags(cmd)
@@ -65,27 +66,27 @@ func newMessageResendCmd() *cobra.Command {
 		Use:   "resend --id <id>",
 		Short: "Send a message still waiting to its terminal or agent, as it is now",
 		Long:  "It goes in whatever conversation the agent is in now.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Send a held message", identity.Name+" message resend --id msg-1a2b3c4d",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not sent",
-			outputNote:    "The message.\n" + `With --json: {"result": "queued", "message": {...}}`,
-			resultList:    "queued",
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeTerminalNotRunning, api.ErrorCodeSendFailed, api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not sent",
+			clikit.OutputNote:    "The message.\n" + `With --json: {"result": "queued", "message": {...}}`,
+			clikit.Results:       "queued",
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeTerminalNotRunning, api.ErrorCodeSendFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r, err := clientOf(cmd).ResendMessage(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, messageResult(r))
+			return clikit.PrintResult(cmd, messageResult(r))
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "`id` of the message")
 	cmd.MarkFlagRequired("id")
-	completeFlag(cmd, "id", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "id", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -95,33 +96,33 @@ func newMessageDiscardCmd() *cobra.Command {
 		Use:   "discard --id <id>",
 		Short: "Discard a message still waiting",
 		Long:  "A review's comments go back to being drafts, to send again.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Discard a held message", identity.Name+" message discard --id msg-1a2b3c4d",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not discarded",
-			outputNote:    "That it went.\n" + `With --json: {"result": "removed"}`,
-			resultList:    "removed",
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not discarded",
+			clikit.OutputNote:    "That it went.\n" + `With --json: {"result": "removed"}`,
+			clikit.Results:       "removed",
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r, err := clientOf(cmd).DiscardMessage(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, messageDiscarded(r))
+			return clikit.PrintResult(cmd, messageDiscarded(r))
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "`id` of the message")
 	cmd.MarkFlagRequired("id")
-	completeFlag(cmd, "id", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "id", cobra.NoFileCompletions)
 	return cmd
 }
 
 type messageList api.MessageList
 
-func (l messageList) text(w io.Writer, st style.Style) {
+func (l messageList) Text(w io.Writer, st style.Style) {
 	if len(l.Messages) == 0 {
 		fmt.Fprintln(w, "no messages waiting")
 		return
@@ -136,13 +137,13 @@ func (l messageList) text(w io.Writer, st style.Style) {
 
 type messageResult api.MessageResult
 
-func (r messageResult) text(w io.Writer, st style.Style) {
+func (r messageResult) Text(w io.Writer, st style.Style) {
 	fmt.Fprintln(w, st.Success("queued")+" for "+st.Name(r.Message.Name))
 }
 
 type messageDiscarded api.MessageDiscarded
 
-func (messageDiscarded) text(w io.Writer, st style.Style) {
+func (messageDiscarded) Text(w io.Writer, st style.Style) {
 	fmt.Fprintln(w, st.Success("discarded"))
 }
 

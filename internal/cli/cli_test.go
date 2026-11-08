@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/aca/acatest"
@@ -220,26 +219,20 @@ func removeTerminals(home string) {
 	}
 }
 
-type output struct {
-	exit           int
-	stdout, stderr string
-	pid            int // the wdx binary's that ran it; 0 for this process
-}
-
 // wdx runs the command line args against home, which stands in for ~/.wdx.
-func wdx(t *testing.T, home string, args ...string) output {
+func wdx(t *testing.T, home string, args ...string) clikittest.Output {
 	t.Helper()
 	return wdxService(t, home, nil, args...)
 }
 
 // wdxService runs args with svc as the service the daemon is installed as.
-func wdxService(t *testing.T, home string, svc *service.Manager, args ...string) output {
+func wdxService(t *testing.T, home string, svc *service.Manager, args ...string) clikittest.Output {
 	t.Helper()
 	return wdxWith(t, home, func(env *Env) { env.Service = svc }, args...)
 }
 
 // wdxWith runs args in an environment that adjust changes.
-func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) output {
+func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) clikittest.Output {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
@@ -250,9 +243,72 @@ func wdxWith(t *testing.T, home string, adjust func(*Env), args ...string) outpu
 	env.Timeouts.Holder = holdertest.Limits(t)
 	adjust(&env)
 	exit := Run(context.Background(), args, env)
-	out := output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
+	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
 	wantLogged(t, home, args, out)
 	return out
+}
+
+// wantLogged checks that wdx and its daemon logged the run of args in home.
+func wantLogged(t *testing.T, home string, args []string, out clikittest.Output) {
+	t.Helper()
+	clikittest.WantLogged(t, clikittest.Logged{Dir: identity.LogsDir(home), Called: "daemon called", Abandoned: "daemon unreachable", Served: "request returned"}, args, out, redacted(args, out))
+}
+
+// redacted turns what the run of args printed into what it logged: what wdx
+// measures or counts rather than logs.
+func redacted(args []string, out clikittest.Output) func(printed map[string]any) {
+	return func(obj map[string]any) {
+		replace := func(b []byte, err error) {
+			if err != nil {
+				return
+			}
+			clear(obj)
+			_ = json.Unmarshal(b, &obj)
+		}
+		if (slices.Contains(args, "worktree") || slices.Contains(args, "message")) && out.Exit == clikit.ExitOK {
+			// A file's contents and comments are measured, not logged.
+			replace(json.Marshal(api.WorktreeResponseLogged([]byte(out.Stdout))))
+		}
+		if obj["agent"] != nil || obj["agents"] != nil || obj["project"] != nil {
+			// A prompt's text is the agent's: its kind and options are counted, not logged.
+			replace(json.Marshal(api.AgentResponseLogged([]byte(out.Stdout))))
+		}
+		if h, ok := obj["history"].(map[string]any); ok {
+			h["lines"] = float64(len(h["lines"].([]any))) // terminal output is counted, not logged
+		}
+		if r, ok := obj["transcript"].(map[string]any); ok {
+			r["lines"] = float64(len(r["lines"].([]any))) // a conversation is counted, not logged
+		}
+		if content, ok := obj["content"].(string); ok && obj["doc"] != nil {
+			delete(obj, "content") // a doc is measured, not logged
+			obj["content_bytes"] = float64(len(content))
+		}
+		if obj["plan"] != nil && (obj["content"] != nil || obj["definition"] != nil) {
+			// A plan's text is measured, not logged.
+			replace(json.Marshal(api.PlanResponseLogged([]byte(out.Stdout))))
+		}
+		if obj["task"] != nil && obj["definition"] == nil {
+			// A task's prompt and summary are measured, not logged.
+			replace(json.Marshal(api.PlanTaskResponseLogged([]byte(out.Stdout))))
+		}
+	}
+}
+
+// wantDeclared checks that the help of the command args run lists what v
+// holds: its result, or its codes.
+func wantDeclared(t *testing.T, args []string, v jsonOutput) {
+	t.Helper()
+	var conflict string
+	if v.Conflict != nil {
+		conflict = v.Conflict.Code
+	}
+	clikittest.WantDeclared(t, newRoot(config.Default()), args, v.Result, v.Code, conflict)
+}
+
+// codes is what wdx's error codes say about code.
+func codes(code string) (clikit.CodeInfo, bool) {
+	info, ok := api.Codes[api.ErrorCode(code)]
+	return info, ok
 }
 
 type jsonProject struct {
@@ -455,11 +511,11 @@ func wdxJSONWith(t *testing.T, home string, adjust func(*Env), args ...string) (
 	t.Helper()
 	out := wdxWith(t, home, adjust, append(args, "--json")...)
 	var v jsonOutput
-	if err := json.Unmarshal(clikittest.JSON(t, args, out.kit(), codes), &v); err != nil {
-		t.Fatalf("%v: stdout is not JSON: %v\n%s", args, err, out.stdout)
+	if err := json.Unmarshal(clikittest.JSON(t, args, out, codes), &v); err != nil {
+		t.Fatalf("%v: stdout is not JSON: %v\n%s", args, err, out.Stdout)
 	}
 	wantDeclared(t, args, v)
-	return v, out.exit
+	return v, out.Exit
 }
 
 func wantError(t *testing.T, v jsonOutput, exit int, code api.ErrorCode, wantExit int) {
@@ -486,8 +542,8 @@ func TestVersion(t *testing.T) {
 	if exit != clikit.ExitOK || v.CLI.Name != "wdx" || v.CLI.Version != identity.Version || v.Daemon == nil || v.Daemon.Version != identity.Version {
 		t.Fatalf("unexpected version: %+v", v)
 	}
-	if out := wdx(t, home, "version"); out.stdout != "wdx dev (none)\ndaemon dev (none)\n" {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out := wdx(t, home, "version"); out.Stdout != "wdx dev (none)\ndaemon dev (none)\n" {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -498,8 +554,8 @@ func TestVersionWithoutDaemon(t *testing.T) {
 	if exit != clikit.ExitOK || v.CLI.Name != "wdx" || v.Daemon != nil {
 		t.Fatalf("unexpected version: %+v", v)
 	}
-	if out := wdx(t, home, "version"); !strings.HasSuffix(out.stdout, "\ndaemon not running\n") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out := wdx(t, home, "version"); !strings.HasSuffix(out.Stdout, "\ndaemon not running\n") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -531,7 +587,7 @@ func TestUsageErrors(t *testing.T) {
 	v, _ := wdxJSON(t, t.TempDir(), "project", "create", "--name", "app")
 	wantHint(t, v, "pass --open or --cancel; see 'wdx project create --help'")
 	out := wdx(t, t.TempDir(), "project", "bogus")
-	if out.exit != clikit.ExitUsage || out.stdout != "" || !strings.Contains(out.stderr, "\n  hint: see 'wdx project --help'\n") {
+	if out.Exit != clikit.ExitUsage || out.Stdout != "" || !strings.Contains(out.Stderr, "\n  hint: see 'wdx project --help'\n") {
 		t.Fatalf("unexpected text usage error: %+v", out)
 	}
 }
@@ -552,7 +608,7 @@ func TestDaemonUnavailable(t *testing.T) {
 		wantHint(t, v, "run wdx daemon start")
 	}
 	out := wdx(t, home, "project", "list")
-	if out.exit != clikit.ExitSystem || !strings.HasPrefix(out.stderr, "wdx: the daemon is not answering on "+identity.SocketPath(home)+": connect: ") {
+	if out.Exit != clikit.ExitSystem || !strings.HasPrefix(out.Stderr, "wdx: the daemon is not answering on "+identity.SocketPath(home)+": connect: ") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 }
@@ -575,56 +631,16 @@ func wantHint(t *testing.T, v jsonOutput, hint string) {
 }
 
 // TestCommandDocs checks that every command documents itself, so a new
-// command fails here until its help is complete.
+// command fails here until its help is complete, and lists only wdx's codes.
 func TestCommandDocs(t *testing.T) {
 	t.Parallel()
+	root := newRoot(config.Default())
+	clikittest.CheckDocs(t, root)
 	var check func(cmd *cobra.Command)
 	check = func(cmd *cobra.Command) {
-		path := cmd.CommandPath()
-		if cmd.Short == "" {
-			t.Errorf("%s: no summary", path)
-		}
-		if !cmd.HasAvailableSubCommands() && cmd.Annotations[outputNote] == "" {
-			t.Errorf("%s: no output note", path)
-		}
-		for _, code := range annotationList(cmd, errorList) {
-			if _, ok := api.Codes[api.ErrorCode(code)]; !ok || code == string(api.ErrorCodeUsage) || code == string(api.ErrorCodeInternal) {
-				t.Errorf("%s: unexpected error code %q", path, code)
-			}
-		}
-		if !cmd.HasAvailableSubCommands() && len(parseExamples(cmd.Example)) == 0 {
-			t.Errorf("%s: no examples", path)
-		}
-		flags := cmd.LocalFlags()
-		if !cmd.HasParent() {
-			flags = cmd.PersistentFlags()
-		}
-		flags.VisitAll(func(f *pflag.Flag) {
-			if f.Value.Type() == "bool" {
-				return
-			}
-			if name, _ := pflag.UnquoteUsage(f); !strings.Contains(f.Usage, "`"+name+"`") {
-				t.Errorf("%s: --%s does not name its value with backticks in %q", path, f.Name, f.Usage)
-			}
-			if _, ok := flagCompletion(cmd, f.Name); !ok {
-				t.Errorf("%s: --%s completes nothing; register its completion, cobra.NoFileCompletions if none", path, f.Name)
-			}
-		})
-		if cmd.Runnable() && cmd.ValidateArgs([]string{"x"}) == nil {
-			t.Errorf("%s: takes a positional argument; every input must be a flag", path)
-		}
-		for _, r := range flagRules(cmd) {
-			names := r.Flags
-			if r.When != nil {
-				names = append(names, *r.When)
-			}
-			if r.Unless != nil {
-				names = append(names, *r.Unless)
-			}
-			for _, name := range names {
-				if cmd.Flags().Lookup(name) == nil {
-					t.Errorf("%s: rule %s names unknown flag %q", path, r.Rule, name)
-				}
+		for _, code := range clikit.AnnotationList(cmd, clikit.Errors) {
+			if _, ok := api.Codes[api.ErrorCode(code)]; !ok {
+				t.Errorf("%s: unexpected error code %q", cmd.CommandPath(), code)
 			}
 		}
 		for _, sub := range cmd.Commands() {
@@ -633,7 +649,7 @@ func TestCommandDocs(t *testing.T) {
 			}
 		}
 	}
-	check(newRoot(config.Default()))
+	check(root)
 }
 
 func TestHelp(t *testing.T) {
@@ -662,17 +678,17 @@ func TestHelp(t *testing.T) {
 		{[]string{"help", "plans"}, []string{"wdx plan run --name sso", "plan.parallel", "wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>"}, nil},
 	} {
 		out := wdx(t, t.TempDir(), tc.args...)
-		if out.exit != clikit.ExitOK || out.stderr != "" {
+		if out.Exit != clikit.ExitOK || out.Stderr != "" {
 			t.Fatalf("%v: unexpected %+v", tc.args, out)
 		}
 		for _, s := range tc.want {
-			if !strings.Contains(out.stdout, s) {
-				t.Errorf("%v: want %q in:\n%s", tc.args, s, out.stdout)
+			if !strings.Contains(out.Stdout, s) {
+				t.Errorf("%v: want %q in:\n%s", tc.args, s, out.Stdout)
 			}
 		}
 		for _, s := range tc.deny {
-			if strings.Contains(out.stdout, s) {
-				t.Errorf("%v: unexpected %q in:\n%s", tc.args, s, out.stdout)
+			if strings.Contains(out.Stdout, s) {
+				t.Errorf("%v: unexpected %q in:\n%s", tc.args, s, out.Stdout)
 			}
 		}
 	}

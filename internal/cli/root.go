@@ -213,7 +213,7 @@ func clientOf(cmd *cobra.Command) *client.Client {
 
 // warnVersion warns on stderr that the daemon is of another version.
 func warnVersion(cmd *cobra.Command, daemonVersion string) {
-	st := stderrStyle(cmd)
+	st := clikit.StderrStyle(cmd)
 	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but %s is %s; run %s\n",
 		identity.Name, st.Warning("warning:"), daemonVersion, identity.Name, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
@@ -233,12 +233,12 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of " + identity.Name + " and of the daemon",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show the versions of "+identity.Name+" and of the daemon", identity.Name+" version",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The name, version and commit of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
+			clikit.OutputNote: "The name, version and commit of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
 				`With --json: {"cli": {"name": ..., "version": ..., "commit": ...}, "daemon": {...}}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -250,7 +250,7 @@ func newVersionCmd() *cobra.Command {
 			if err == nil {
 				r.Daemon = &v
 			}
-			return printResult(cmd, r)
+			return clikit.PrintResult(cmd, r)
 		},
 	}
 }
@@ -260,7 +260,7 @@ type versionResponse struct {
 	Daemon *api.Version `json:"daemon"` // null when no daemon answers
 }
 
-func (r versionResponse) text(w io.Writer, st style.Style) {
+func (r versionResponse) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "%s %s %s\n", r.CLI.Name, st.Name(r.CLI.Version), st.Muted("("+r.CLI.Commit+")"))
 	if r.Daemon == nil {
 		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))

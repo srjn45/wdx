@@ -67,7 +67,7 @@ func TestDocCreate(t *testing.T) {
 	if exit != clikit.ExitOK || v.Doc.Size != 0 || v.Doc.Format != "" || v.Doc.Folder != "/hub/initial" {
 		t.Fatalf("empty, with no format, in a folder: exit %d, %+v", exit, v.Doc)
 	}
-	if out := wdxWith(t, home, in(app), "doc", "list"); !hasRow(out.stdout, "/hub/initial", "empty") {
+	if out := wdxWith(t, home, in(app), "doc", "list"); !hasRow(out.Stdout, "/hub/initial", "empty") {
 		t.Errorf("the list has no row of empty in its folder: %+v", out)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "doc", "create", "--name", "bad", "--folder", "a.b")
@@ -102,7 +102,7 @@ func TestDocGet(t *testing.T) {
 		t.Fatalf("the latest: exit %d, %+v", exit, v)
 	}
 	out := wdxWith(t, home, in(app), "doc", "get", "--id", d.Id, "--revision", "1")
-	if out.exit != clikit.ExitOK || out.stdout != "one\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "one\n" {
 		t.Fatalf("revision 1 as text: %+v", out)
 	}
 
@@ -300,16 +300,16 @@ func TestDocRemove(t *testing.T) {
 	v, exit := wdxJSONWith(t, home, in(app), "doc", "remove", "--name", "auth")
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	out := wdxWith(t, home, in(app), "doc", "remove", "--name", "auth")
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "pass --yes") {
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --yes") {
 		t.Fatalf("without a terminal or --yes: %+v", out)
 	}
 
 	out = wdxWith(t, home, both(in(app), answering(t, "n")), "doc", "remove", "--name", "auth")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "remove doc auth and its 2 revisions? [y/N]: ") || !strings.Contains(out.stderr, "[cancelled]") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "remove doc auth and its 2 revisions? [y/N]: ") || !strings.Contains(out.Stderr, "[cancelled]") {
 		t.Fatalf("answered no: %+v", out)
 	}
 	out = wdxWith(t, home, both(in(app), answering(t, "y")), "doc", "remove", "--name", "auth")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "doc auth removed") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "doc auth removed") {
 		t.Fatalf("answered yes: %+v", out)
 	}
 
@@ -345,7 +345,7 @@ func TestDocText(t *testing.T) {
 		{[]string{"doc", "list"}, "no docs\n", ""},
 	} {
 		out := wdxWith(t, home, in(app), c.args...)
-		if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, c.stdout) || out.stderr != c.stderr {
+		if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, c.stdout) || out.Stderr != c.stderr {
 			t.Errorf("%v: want stdout from %q and stderr %q, got %+v", c.args, c.stdout, c.stderr, out)
 		}
 	}
@@ -378,7 +378,7 @@ func TestDocSyncToGit(t *testing.T) {
 		t.Fatalf("the file: %q, %v", b, err)
 	}
 	out := wdxWith(t, home, in(app), "doc", "sync-to-git", "--path", "docs")
-	if out.exit != clikit.ExitOK || out.stdout != "1 doc written to docs\nskipped design.md, as a file wdx did not write has the name\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "1 doc written to docs\nskipped design.md, as a file wdx did not write has the name\n" {
 		t.Fatalf("text: %+v", out)
 	}
 

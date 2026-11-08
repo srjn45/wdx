@@ -32,7 +32,7 @@ command's questions are then required up front.
 
 "result" names what happened; commands that change nothing have none. Keys
 are snake_case, absent values null and timestamps RFC 3339. Each command's
-help lists its results and error codes, and ` + usageText(st, identity.Name+" <command> --help --json") + `
+help lists its results and error codes, and ` + clikit.UsageText(st, identity.Name+" <command> --help --json") + `
 prints the help itself as JSON.`
 }
 
@@ -58,7 +58,7 @@ func logsTopic(st style.Style) string {
 lines to <home>/logs/` + identity.Name + `-<date>.log, kept for log.retention_days days.
 
 A failure prints its debug_id; every line of that run, in ` + identity.Name + ` and in the
-daemon, carries it. ` + usageText(st, identity.Name+" observe start") + ` shows the logs in Grafana, where
+daemon, carries it. ` + clikit.UsageText(st, identity.Name+" observe start") + ` shows the logs in Grafana, where
 the debug_id finds them too.`
 }
 

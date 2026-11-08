@@ -28,6 +28,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
@@ -221,13 +222,13 @@ func (in installation) run(t *testing.T, args ...string) (jsonOutput, int) {
 }
 
 // runText runs the installed binary on its own, in text.
-func (in installation) runText(t *testing.T, args ...string) output {
+func (in installation) runText(t *testing.T, args ...string) clikittest.Output {
 	t.Helper()
 	return in.runTyped(t, nil, args...)
 }
 
 // runTyped runs the installed binary on its own, in text, reading stdin.
-func (in installation) runTyped(t *testing.T, stdin io.Reader, args ...string) output {
+func (in installation) runTyped(t *testing.T, stdin io.Reader, args ...string) clikittest.Output {
 	t.Helper()
 	c := exec.Command(in.binary, args...)
 	c.Env = append(os.Environ(), identity.Env("HOME")+"="+in.home)
@@ -235,7 +236,7 @@ func (in installation) runTyped(t *testing.T, stdin io.Reader, args ...string) o
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
 	_ = c.Run() // the exit code tells
-	return output{exit: c.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String()}
+	return clikittest.Output{Exit: c.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String()}
 }
 
 // wantInstalled checks that the installed binary is binary.
@@ -297,7 +298,7 @@ func TestUpdateCheck(t *testing.T) {
 	wantHint(t, v, "update.base_url")
 
 	out := wdxWith(t, in.home, in.env, "update")
-	if out.exit != clikit.ExitOK || out.stdout != "update available: wdx dev -> 0.2.0 (stable channel)\n  run wdx update --apply\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "update available: wdx dev -> 0.2.0 (stable channel)\n  run wdx update --apply\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -395,7 +396,7 @@ func TestUpdateRollbackRestores(t *testing.T) {
 	in.wantInstalled(t, releaseBinary)
 
 	out := in.runText(t, "update", "--rollback")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --discard-changes") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "hint: pass --discard-changes") {
 		t.Fatalf("want the restore refused without a terminal, got %+v", out)
 	}
 
@@ -413,8 +414,8 @@ func TestUpdateRollbackPromptYes(t *testing.T) {
 	t.Parallel()
 	in, _ := updatedAcrossBreaking(t)
 
-	out := in.runTyped(t, typed(t, "y"), "update", "--rollback")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stderr, "restore the backup? [y/N]: ") {
+	out := in.runTyped(t, clikittest.Typed(t, "y"), "update", "--rollback")
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stderr, "restore the backup? [y/N]: ") {
 		t.Fatalf("want rolled back, got %+v", out)
 	}
 	in.wantInstalled(t, wdxBinary)
@@ -443,8 +444,8 @@ func TestUpdateRollbackPromptNo(t *testing.T) {
 	t.Parallel()
 	in, _ := updatedAcrossBreaking(t)
 
-	out := in.runTyped(t, typed(t, ""), "update", "--rollback")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "[restore_required]") {
+	out := in.runTyped(t, clikittest.Typed(t, ""), "update", "--rollback")
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[restore_required]") {
 		t.Fatalf("want the rollback refused, got %+v", out)
 	}
 	in.wantInstalled(t, releaseBinary)
@@ -732,7 +733,7 @@ func TestDaemonStartGivesUp(t *testing.T) {
 		env.Executable = mute
 		env.Timeouts.StartExpired = expired
 	}, "daemon", "start", "--json")
-	if out.exit != clikit.ExitSystem {
+	if out.Exit != clikit.ExitSystem {
 		t.Fatalf("want start to fail, got %+v", out)
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(readFile(t, pidFile)))
@@ -804,11 +805,11 @@ func TestUpdateText(t *testing.T) {
 	base, _ := publish(t, releaseVersion, releaseVersion, map[string]string{releaseVersion: releaseBinary})
 	in := install(t, base)
 	out := wdxWith(t, in.home, in.env, "update", "--apply")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "updated wdx dev -> 0.2.0\n") ||
-		!strings.Contains(out.stderr, "==> downloading wdx 0.2.0\n") || !strings.Contains(out.stderr, "==> starting the daemon\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "updated wdx dev -> 0.2.0\n") ||
+		!strings.Contains(out.Stderr, "==> downloading wdx 0.2.0\n") || !strings.Contains(out.Stderr, "==> starting the daemon\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
-	if out = in.runText(t, "update", "--rollback"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "rolled back wdx 0.2.0 -> dev\n") || !strings.Contains(out.stdout, "database: kept") {
+	if out = in.runText(t, "update", "--rollback"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "rolled back wdx 0.2.0 -> dev\n") || !strings.Contains(out.Stdout, "database: kept") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }

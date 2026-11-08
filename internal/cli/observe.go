@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/observe"
 	"github.com/srjn45/wdx/internal/style"
@@ -22,7 +23,7 @@ func newObserveCmd() *cobra.Command {
 		Long: "It runs in a container on this machine, under Docker or Podman, and reads\n" +
 			"the log files of the home; the daemon sends its metrics to it at\n" +
 			"otel.endpoint.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newObserveStartCmd(), newObserveStopCmd(), newObserveStatusCmd())
@@ -53,7 +54,7 @@ func newStackView(s *observe.Stack, state observe.State) *stackView {
 }
 
 func (v *stackView) text(w io.Writer, st style.Style) {
-	field := fieldPrinter(w, st, 8)
+	field := clikit.FieldPrinter(w, st, 8)
 	field("grafana:", st.Hint(v.GrafanaURL))
 	field("metrics:", v.OTLPEndpoint)
 	field("logs:", v.Logs)
@@ -62,7 +63,7 @@ func (v *stackView) text(w io.Writer, st style.Style) {
 
 // findStack returns the stack of the home, run by the runtime found.
 func findStack(cmd *cobra.Command) (*observe.Stack, error) {
-	env := invocationOf(cmd).env
+	env := envOf(cmd)
 	ports := env.ObservePorts
 	if ports == (observe.Ports{}) {
 		ports = observe.DefaultPorts
@@ -95,7 +96,7 @@ type observeResult struct {
 	DataRemoved *bool      `json:"data_removed"` // whether stop --purge removed data; null without it
 }
 
-func (r observeResult) text(w io.Writer, st style.Style) {
+func (r observeResult) Text(w io.Writer, st style.Style) {
 	switch r.Result {
 	case resultStarted:
 		fmt.Fprintf(w, "observability stack %s: open %s\n", st.Success("started"), st.Hint(r.Stack.GrafanaURL))
@@ -126,16 +127,16 @@ func newObserveStartCmd() *cobra.Command {
 			"on 127.0.0.1:3000 and the collector the daemon sends its metrics to on\n" +
 			"127.0.0.1:4318. The first start pulls the image, which can take minutes.\n" +
 			"It runs until stopped, and its data stays across starts.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Start Grafana, then open the URL it prints", identity.Name+" observe start",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not started",
-			outputNote: "The stack, already running or started, and where to open Grafana.\n" +
+			clikit.FailurePrefix: "not started",
+			clikit.OutputNote: "The stack, already running or started, and where to open Grafana.\n" +
 				`With --json: {"result": ..., "stack": {...}, "data_removed": null}`,
-			resultList: annotation(resultRunning, resultStarted),
-			errorList:  codeList(api.ErrorCodePortInUse, api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
+			clikit.Results: clikit.Annotation(resultRunning, resultStarted),
+			clikit.Errors:  clikit.CodeList(api.ErrorCodePortInUse, api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := findStack(cmd)
@@ -147,10 +148,10 @@ func newObserveStartCmd() *cobra.Command {
 				return err
 			}
 			if v != nil && v.Status == "running" {
-				return printResult(cmd, observeResult{Result: resultRunning, Stack: v})
+				return clikit.PrintResult(cmd, observeResult{Result: resultRunning, Stack: v})
 			}
 			progress := io.Discard
-			if !jsonMode(cmd) {
+			if !clikit.JSONMode(cmd) {
 				progress = cmd.ErrOrStderr()
 			}
 			if err := s.Start(cmd.Context(), progress); err != nil {
@@ -159,7 +160,7 @@ func newObserveStartCmd() *cobra.Command {
 			if v, err = stackState(cmd, s); err != nil {
 				return err
 			}
-			return printResult(cmd, observeResult{Result: resultStarted, Stack: v})
+			return clikit.PrintResult(cmd, observeResult{Result: resultStarted, Stack: v})
 		},
 	}
 }
@@ -171,17 +172,17 @@ func newObserveStopCmd() *cobra.Command {
 		Short: "Stop Grafana",
 		Long: "The stack's container is removed. Its data, the logs and metrics it stored,\n" +
 			"stays for the next start unless --purge is given.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Stop Grafana and keep its data", identity.Name+" observe stop",
 			"Stop it and remove its data", identity.Name+" observe stop --purge",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not stopped",
-			outputNote: "Whether the stack was stopped and, with --purge, whether its data was removed.\n" +
+			clikit.FailurePrefix: "not stopped",
+			clikit.OutputNote: "Whether the stack was stopped and, with --purge, whether its data was removed.\n" +
 				`With --json: {"result": ..., "stack": null, "data_removed": ...}`,
-			resultList: annotation(resultNotRunning, resultStopped),
-			errorList:  codeList(api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
+			clikit.Results: clikit.Annotation(resultNotRunning, resultStopped),
+			clikit.Errors:  clikit.CodeList(api.ErrorCodeRuntimeFailed, api.ErrorCodeRuntimeMissing),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := findStack(cmd)
@@ -203,7 +204,7 @@ func newObserveStopCmd() *cobra.Command {
 				}
 				r.DataRemoved = &dataRemoved
 			}
-			return printResult(cmd, r)
+			return clikit.PrintResult(cmd, r)
 		},
 	}
 	cmd.Flags().BoolVar(&purge, "purge", false, "also remove the stack's data")
@@ -217,7 +218,7 @@ type observeStatus struct {
 	Stack   *stackView `json:"stack"`   // null when there is no container
 }
 
-func (s observeStatus) text(w io.Writer, st style.Style) {
+func (s observeStatus) Text(w io.Writer, st style.Style) {
 	switch {
 	case s.Runtime == nil:
 		fmt.Fprintf(w, "observability stack %s: neither docker nor podman is installed\n", st.Warning("not running"))
@@ -237,20 +238,20 @@ func newObserveStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show whether Grafana is running",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show whether Grafana is running", identity.Name+" observe status",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Whether the stack is running, under which runtime, and its container: where to open\n" +
+			clikit.OutputNote: "Whether the stack is running, under which runtime, and its container: where to open\n" +
 				"Grafana, where it takes metrics and which logs it reads.\n" +
 				`With --json: {"running": ..., "runtime": ..., "stack": {...}}`,
-			errorList: codeList(api.ErrorCodeRuntimeFailed),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeRuntimeFailed),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := findStack(cmd)
 			if _, missing := errors.AsType[*observe.RuntimeMissingError](err); missing {
-				return printResult(cmd, observeStatus{})
+				return clikit.PrintResult(cmd, observeStatus{})
 			}
 			if err != nil {
 				return err
@@ -259,7 +260,7 @@ func newObserveStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, observeStatus{Running: v != nil && v.Status == "running", Runtime: &s.Runtime, Stack: v})
+			return clikit.PrintResult(cmd, observeStatus{Running: v != nil && v.Status == "running", Runtime: &s.Runtime, Stack: v})
 		},
 	}
 }

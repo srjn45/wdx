@@ -96,7 +96,7 @@ func TestAgentCreate(t *testing.T) {
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id")
 
 	out := wdxWith(t, home, in(app), "agent", "create", "--name", "texty")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created agent texty in app\n  dir  "+app+"\n  aca  claude_code\n  id   agent-") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "created agent texty in app\n  dir  "+app+"\n  aca  claude_code\n  id   agent-") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -119,7 +119,7 @@ func TestAgentCreateModelAndPermissions(t *testing.T) {
 		t.Fatalf("read back: exit %d, model %v, permissions %q", exit, v.Agent.RequestedModel, v.Agent.Permissions)
 	}
 	out := wdxWith(t, home, in(app), "agent", "get", "--name", "asked")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "  model       asked for sonnet\n  permissions ask\n") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "  model       asked for sonnet\n  permissions ask\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 
@@ -141,7 +141,7 @@ func TestAgentModels(t *testing.T) {
 		t.Fatalf("exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "agent", "models")
-	if out.exit != clikit.ExitOK || out.stdout != "models of claude_code\nID      NAME\nfable   Fable\nopus    Opus\nsonnet  Sonnet\nhaiku   Haiku\nwith no --model, your own setting for it\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "models of claude_code\nID      NAME\nfable   Fable\nopus    Opus\nsonnet  Sonnet\nhaiku   Haiku\nwith no --model, your own setting for it\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if got := complete(t, home, "agent", "create", "--model", ""); !slices.Equal(got, []string{"fable\tFable", "opus\tOpus", "sonnet\tSonnet", "haiku\tHaiku"}) {
@@ -185,11 +185,11 @@ func TestAgentList(t *testing.T) {
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id, or --all")
 
 	out := wdxWith(t, home, in(app), "agent", "list")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "NAME") || !strings.Contains(out.stdout, "helper") || !strings.Contains(out.stdout, "claude_code") || strings.Contains(out.stdout, "shell") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "NAME") || !strings.Contains(out.Stdout, "helper") || !strings.Contains(out.Stdout, "claude_code") || strings.Contains(out.Stdout, "shell") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	empty := newProjectDir(t, home, "empty")
-	if out := wdxWith(t, home, in(empty), "agent", "list"); out.exit != clikit.ExitOK || out.stdout != "no agents\n" {
+	if out := wdxWith(t, home, in(empty), "agent", "list"); out.Exit != clikit.ExitOK || out.Stdout != "no agents\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -219,8 +219,8 @@ func TestAgentGet(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	out := wdxWith(t, home, in(app), "agent", "get", "--name", "helper")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "agent helper in app\n") || !strings.Contains(out.stdout, a.SessionId) ||
-		!strings.Contains(out.stdout, "activity") || !strings.Contains(out.stdout, "unknown") || strings.Contains(out.stdout, "draft") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "agent helper in app\n") || !strings.Contains(out.Stdout, a.SessionId) ||
+		!strings.Contains(out.Stdout, "activity") || !strings.Contains(out.Stdout, "unknown") || strings.Contains(out.Stdout, "draft") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -231,7 +231,7 @@ func TestAgentStatusText(t *testing.T) {
 	t.Parallel()
 	waiting, yes, two, model := api.AgentActivityWaiting, true, 2, "Haiku 5.5"
 	var out bytes.Buffer
-	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two, Model: &model}}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Draft: &yes, Queued: &two, Model: &model}}}.Text(&out, style.New(false))
 	if !regexp.MustCompile(`activity\s+waiting\n`).MatchString(out.String()) || !regexp.MustCompile(`model\s+Haiku 5\.5\n`).MatchString(out.String()) || !regexp.MustCompile(`draft\s+yes\n`).MatchString(out.String()) || !regexp.MustCompile(`queued\s+2\n`).MatchString(out.String()) {
 		t.Errorf("running: %s", out.String())
 	}
@@ -241,30 +241,30 @@ func TestAgentStatusText(t *testing.T) {
 	out.Reset()
 	title, detail, selected := "Bash command", "touch a.txt\nls", 1
 	prompt := &api.AgentPrompt{Kind: api.AgentPromptKindYesNo, Title: &title, Question: "Do you want to proceed?", Detail: &detail, Options: []string{"Yes", "No"}, Selected: &selected}
-	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt}}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt}}}.Text(&out, style.New(false))
 	if !strings.Contains(out.String(), "  activity    yes/no\n  prompt      yes/no · Bash command\n  question    Do you want to proceed?\n  detail      touch a.txt\n              ls\n  options       Yes\n              ❯ No\n") {
 		t.Errorf("a yes/no prompt: %s", out.String())
 	}
 	out.Reset()
 	decision := &api.AgentPrompt{Kind: api.AgentPromptKindDecision, Question: "Which fruits do you like?", Options: []string{"Apple", "Pear"}, Multi: true, Ticked: []int{0}}
-	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision}}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision}}}.Text(&out, style.New(false))
 	if !strings.Contains(out.String(), "  activity    decision\n  prompt      decision\n  question    Which fruits do you like?\n  options       [✔] Apple\n                [ ] Pear\n") || strings.Contains(out.String(), "detail") {
 		t.Errorf("a decision: %s", out.String())
 	}
 	out.Reset()
-	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}}.text(&out, style.New(false))
+	agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited}}}.Text(&out, style.New(false))
 	if strings.Contains(out.String(), "activity") || strings.Contains(out.String(), "draft") || strings.Contains(out.String(), "model") {
 		t.Errorf("exited: %s", out.String())
 	}
 	out.Reset()
 	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Model: &model, Aca: "claude_code",
-		Context: &api.AgentContext{Tokens: 1_500_000}}}}}.text(&out, style.New(false))
+		Context: &api.AgentContext{Tokens: 1_500_000}}}}}.Text(&out, style.New(false))
 	if !regexp.MustCompile(`NAME\s+STATE\s+ACTIVITY\s+MODEL\s+CONTEXT\s+ACA`).MatchString(out.String()) || !regexp.MustCompile(`helper\s+running\s+waiting\s+Haiku 5\.5\s+1\.5M\s+claude_code`).MatchString(out.String()) {
 		t.Errorf("list: %s", out.String())
 	}
 	out.Reset()
 	agentList{AgentList: api.AgentList{Agents: []api.Agent{{Name: "helper", State: api.AgentStateRunning, Activity: &waiting, Prompt: prompt, Aca: "claude_code"},
-		{Name: "picker", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision, Aca: "claude_code"}}}}.text(&out, style.New(false))
+		{Name: "picker", State: api.AgentStateRunning, Activity: &waiting, Prompt: decision, Aca: "claude_code"}}}}.Text(&out, style.New(false))
 	if !regexp.MustCompile(`helper\s+running\s+yes/no\s+claude_code`).MatchString(out.String()) || !regexp.MustCompile(`picker\s+running\s+decision\s+claude_code`).MatchString(out.String()) {
 		t.Errorf("list with prompts: %s", out.String())
 	}
@@ -346,7 +346,7 @@ func TestAgentRename(t *testing.T) {
 	v, exit = wdxJSON(t, home, "agent", "rename", "--id", a.Id)
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
-	if out := wdx(t, home, "agent", "rename", "--id", a.Id, "--new-name", "aide-2"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "renamed agent aide-2 in app\n") {
+	if out := wdx(t, home, "agent", "rename", "--id", a.Id, "--new-name", "aide-2"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "renamed agent aide-2 in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 
@@ -388,7 +388,7 @@ func TestAgentRemove(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeAgentRunning, clikit.ExitRejected)
 	wantHint(t, v, "pass --stop-running to stop it")
 	out := wdxWith(t, home, in(app), "agent", "remove", "--name", "helper")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "hint: pass --stop-running or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 
@@ -405,7 +405,7 @@ func TestAgentRemove(t *testing.T) {
 	// One that is not running needs no answer.
 	newAgent(t, home, app, "idle")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if out := wdxWith(t, home, in(app), "agent", "remove", "--name", "idle"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed agent idle from app\n") {
+	if out := wdxWith(t, home, in(app), "agent", "remove", "--name", "idle"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed agent idle from app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -417,11 +417,11 @@ func TestAgentRemoveAnswers(t *testing.T) {
 	newAgent(t, home, app, "helper")
 
 	out := wdxWith(t, home, func(env *Env) { in(app)(env); answering(t, "n")(env) }, "agent", "remove", "--name", "helper")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "stopping an agent interrupts what it is doing") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "stopping an agent interrupts what it is doing") {
 		t.Fatalf("unexpected answer no: %+v", out)
 	}
 	out = wdxWith(t, home, func(env *Env) { in(app)(env); answering(t, "y")(env) }, "agent", "remove", "--name", "helper")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed agent helper from app\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed agent helper from app\n") {
 		t.Fatalf("unexpected answer yes: %+v", out)
 	}
 }
@@ -470,7 +470,7 @@ func TestProjectGetAgents(t *testing.T) {
 		t.Fatalf("project terminals: %+v", v.Project.Terminals)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "agents:") || !strings.Contains(out.stdout, "helper") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "agents:") || !strings.Contains(out.Stdout, "helper") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -498,7 +498,7 @@ func TestProjectCloseAndRemoveWithAgents(t *testing.T) {
 		t.Fatalf("sessions = %q", got)
 	}
 	out := wdx(t, home, "project", "remove", "--name", "app", "--stop-running")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\n  stopped agent helper ("+a.Id+")\n") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "\n  stopped agent helper ("+a.Id+")\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "agent", "list", "--all"); len(v.Agents) != 0 {
@@ -519,8 +519,8 @@ func TestCompleteAgents(t *testing.T) {
 		{[]string{"agent", "remove", "--id", ""}, a.Id + "\thelper in app"},
 	} {
 		out := wdxWith(t, home, in(app), append([]string{"__complete"}, tc.args...)...)
-		if !strings.Contains(out.stdout, tc.want+"\n") {
-			t.Errorf("%v: got %q, want %q", tc.args, out.stdout, tc.want)
+		if !strings.Contains(out.Stdout, tc.want+"\n") {
+			t.Errorf("%v: got %q, want %q", tc.args, out.Stdout, tc.want)
 		}
 	}
 }
@@ -602,7 +602,7 @@ func TestAgentAttachText(t *testing.T) {
 	a.waitScreen("d detach")
 	a.input("d")
 	out := a.waitText()
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "detached from agent helper in app\n") || !strings.Contains(out.stdout, agent.Id) || strings.Contains(out.stdout, agent.TerminalId) {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "detached from agent helper in app\n") || !strings.Contains(out.Stdout, agent.Id) || strings.Contains(out.Stdout, agent.TerminalId) {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -640,21 +640,21 @@ func TestAgentCreateChild(t *testing.T) {
 	}
 	out := wdxWith(t, home, in(app), "agent", "list")
 	for _, want := range []string{"\nparent ", "\n├ by-id ", "\n└ by-name ", "\n  └ deep "} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("list: no %q in:\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("list: no %q in:\n%s", want, out.Stdout)
 		}
 	}
 	out = wdxWith(t, home, in(app), "agent", "get", "--name", "parent")
-	if !strings.Contains(out.stdout, "by-id, by-name") {
-		t.Errorf("get: %s", out.stdout)
+	if !strings.Contains(out.Stdout, "by-id, by-name") {
+		t.Errorf("get: %s", out.Stdout)
 	}
 	out = wdxWith(t, home, in(app), "agent", "create", "--parent-id", parent.Id, "--name", "text")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "parent "+parent.Id) {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "parent "+parent.Id) {
 		t.Errorf("create: %+v", out)
 	}
 	out = wdxWith(t, home, in(app), "project", "get", "--name", "app")
-	if !strings.Contains(out.stdout, "└ deep") {
-		t.Errorf("project get: %s", out.stdout)
+	if !strings.Contains(out.Stdout, "└ deep") {
+		t.Errorf("project get: %s", out.Stdout)
 	}
 }
 
@@ -668,7 +668,7 @@ func TestAgentRemoveParent(t *testing.T) {
 	}
 
 	out := wdxWith(t, home, in(app), "agent", "remove", "--name", "parent", "--stop-running")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "until its children are gone") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "until its children are gone") {
 		t.Fatalf("remove: %+v", out)
 	}
 	got, exit := wdxJSON(t, home, "agent", "get", "--id", parent.Id)
@@ -676,7 +676,7 @@ func TestAgentRemoveParent(t *testing.T) {
 		t.Fatalf("get: exit %d, %+v", exit, got.Agent)
 	}
 	out = wdxWith(t, home, in(app), "agent", "get", "--name", "parent")
-	if !strings.Contains(out.stdout, "removed") {
+	if !strings.Contains(out.Stdout, "removed") {
 		t.Fatalf("get: %+v", out)
 	}
 
@@ -694,8 +694,8 @@ func TestAgentRemoveParent(t *testing.T) {
 
 	// A parent cannot be a tombstone: completions leave it out.
 	out = wdxWith(t, home, in(app), "__complete", "agent", "create", "--parent-name", "")
-	if strings.Contains(out.stdout, "parent\t") || !strings.Contains(out.stdout, "child\t") {
-		t.Fatalf("completions: %q", out.stdout)
+	if strings.Contains(out.Stdout, "parent\t") || !strings.Contains(out.Stdout, "child\t") {
+		t.Fatalf("completions: %q", out.Stdout)
 	}
 
 	if v, exit := wdxJSONWith(t, home, in(app), "agent", "remove", "--name", "child", "--stop-running"); exit != clikit.ExitOK {
@@ -744,11 +744,11 @@ func TestAgentCreateWorktree(t *testing.T) {
 
 	// Text says what happened.
 	out := wdxWith(t, home, in(repo), "agent", "create", "--name", "txt", "--worktree", "text-one")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "text-one (new)") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "text-one (new)") {
 		t.Fatalf("text: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "agent", "get", "--name", "txt")
-	if !strings.Contains(out.stdout, "worktree    text-one") {
+	if !strings.Contains(out.Stdout, "worktree    text-one") {
 		t.Fatalf("get: %+v", out)
 	}
 
@@ -805,7 +805,7 @@ func TestAgentSend(t *testing.T) {
 		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "agent", "send", "--id", a.Id, "--instant", "--prompt=line one\nline two")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "queued agent helper in app\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "queued agent helper in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	// Its parser and its way of delivering, not typing. The second is instant, so is
@@ -903,11 +903,11 @@ func TestAgentTranscript(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 
 	out := wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--tail", "1")
-	if out.exit != clikit.ExitOK || out.stdout != "hello\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "hello\n" {
 		t.Fatalf("text: %+v", out)
 	}
 	out = wdxWith(t, home, in(app), "agent", "transcript", "--name", "helper", "--path")
-	if out.exit != clikit.ExitOK || out.stdout != file+"\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != file+"\n" {
 		t.Fatalf("path: %+v", out)
 	}
 }
@@ -926,7 +926,7 @@ func TestAgentCreateWithAPrompt(t *testing.T) {
 		t.Fatalf("create: %d, %+v", exit, v)
 	}
 	out := wdxWith(t, home, in(app), "message", "list")
-	if !strings.Contains(out.stdout, secret) || !strings.Contains(out.stdout, "worker") {
+	if !strings.Contains(out.Stdout, secret) || !strings.Contains(out.Stdout, "worker") {
 		t.Errorf("its message: %+v", out)
 	}
 	logs, err := filepath.Glob(filepath.Join(identity.LogsDir(home), "*.log"))
@@ -967,7 +967,7 @@ func TestAgentRestart(t *testing.T) {
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 
 	out := wdxWith(t, home, in(app), "agent", "restart", "--name", "helper", "--force")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "restarted agent helper") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "restarted agent helper") {
 		t.Fatalf("text: %+v", out)
 	}
 
@@ -1042,7 +1042,7 @@ func TestAgentTranscriptBrief(t *testing.T) {
 	v, exit = wdxJSON(t, home, "agent", "transcript", "--id", "agent-nothing", "--brief")
 	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	out := wdxWith(t, home, in(app), "agent", "transcript", "--id", a.Id, "--brief")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "This is the conversation so far in brief") || !strings.Contains(out.stdout, "the request\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "This is the conversation so far in brief") || !strings.Contains(out.Stdout, "the request\n") {
 		t.Fatalf("text: %+v", out)
 	}
 }
@@ -1061,7 +1061,7 @@ func TestAgentContextText(t *testing.T) {
 		{nil, ""},
 	} {
 		var out bytes.Buffer
-		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited, Context: tc.context}}}.text(&out, style.New(false))
+		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: api.Agent{Name: "helper", State: api.AgentStateExited, Context: tc.context}}}.Text(&out, style.New(false))
 		var got string
 		for line := range strings.Lines(out.String()) {
 			if strings.HasPrefix(strings.TrimSpace(line), "context") {
@@ -1087,12 +1087,12 @@ func TestAgentContextColors(t *testing.T) {
 	} {
 		a := api.Agent{Name: "helper", State: api.AgentStateExited, Context: &api.AgentContext{Tokens: tc.tokens}}
 		var out bytes.Buffer
-		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: a}, thresholds: thresholds}.text(&out, st)
+		agentDetail{AgentEnvelope: api.AgentEnvelope{Agent: a}, thresholds: thresholds}.Text(&out, st)
 		if want := tc.color(api.TokenCount(tc.tokens)) + "\n"; !strings.Contains(out.String(), want) {
 			t.Errorf("get %d: want %q in %q", tc.tokens, want, out.String())
 		}
 		out.Reset()
-		agentList{AgentList: api.AgentList{Agents: []api.Agent{a}}, thresholds: thresholds}.text(&out, st)
+		agentList{AgentList: api.AgentList{Agents: []api.Agent{a}}, thresholds: thresholds}.Text(&out, st)
 		if want := tc.color(api.TokenCount(tc.tokens)) + " "; !strings.Contains(out.String(), want) {
 			t.Errorf("list %d: want %q in %q", tc.tokens, want, out.String())
 		}

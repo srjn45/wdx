@@ -20,6 +20,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -38,7 +39,7 @@ func newDocCmd() *cobra.Command {
 			"top: a folder given is cleaned (whitespace dropped, lowercased, one / between\n" +
 			"its parts and at its start) and then has a-z, 0-9, _, - and / only. Names\n" +
 			"stay unique within a project whatever the folder.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newDocCreateCmd(), newDocGetCmd(), newDocHistoryCmd(), newDocListCmd(), newDocRemoveCmd(),
@@ -51,12 +52,12 @@ var docStatuses = []string{string(api.DocStatusWip), string(api.DocStatusReview)
 
 func addFolderFlag(cmd *cobra.Command, folder *string, usage string) {
 	cmd.Flags().StringVar(folder, "folder", "", usage)
-	completeFlag(cmd, "folder", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "folder", cobra.NoFileCompletions)
 }
 
 func addStatusFlag(cmd *cobra.Command, status *string, usage string) {
 	cmd.Flags().StringVar(status, "status", "", usage)
-	completeFlag(cmd, "status", cobra.FixedCompletions(docStatuses, cobra.ShellCompDirectiveNoFileComp))
+	clikit.CompleteFlag(cmd, "status", cobra.FixedCompletions(docStatuses, cobra.ShellCompDirectiveNoFileComp))
 }
 
 // docRef is a doc named on the command line by --id, or by --name in a project.
@@ -70,8 +71,8 @@ func (r *docRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the doc (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	completeFlag(cmd, "id", completeDocs("id"))
-	completeFlag(cmd, "name", completeDocs("name"))
+	clikit.CompleteFlag(cmd, "id", completeDocs("id"))
+	clikit.CompleteFlag(cmd, "name", completeDocs("name"))
 	r.scope.addFlags(cmd)
 }
 
@@ -101,7 +102,7 @@ func (r docRef) notFoundHint(err error) error {
 	if problemCode(err) != api.ErrorCodeNotFound || r.id != "" || r.scope.given() {
 		return err
 	}
-	return &hinted{err, "names are unique within a project: run it in the doc's project, or pass --project-name or --project-id"}
+	return &clikit.Hinted{Err: err, Hint: "names are unique within a project: run it in the doc's project, or pass --project-name or --project-id"}
 }
 
 func newDocCreateCmd() *cobra.Command {
@@ -118,7 +119,7 @@ func newDocCreateCmd() *cobra.Command {
 			"copies get, is the file's, else md. Labels have lowercase letters, numbers,\n" +
 			"_ and - only. Content is UTF-8 text of at most 2 MiB.\n\n" +
 			"A name the project has is refused: changing a doc's content is doc update.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Add a file of the project you are in as a doc", identity.Name+" doc create --path docs/auth.md",
 			"Name it, label it and pick the project", identity.Name+" doc create --project-name app --path notes.md --name auth-rfc --labels auth,rfc",
 			"In a folder", identity.Name+" doc create --path docs/auth.md --folder /hub/initial",
@@ -126,10 +127,10 @@ func newDocCreateCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not created",
-			outputNote:    "The doc, at revision 1.\n" + `With --json: {"result": "created", "doc": {...}}`,
-			resultList:    "created",
-			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound,
+			clikit.FailurePrefix: "not created",
+			clikit.OutputNote:    "The doc, at revision 1.\n" + `With --json: {"result": "created", "doc": {...}}`,
+			clikit.Results:       "created",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound,
 				api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -142,7 +143,7 @@ func newDocCreateCmd() *cobra.Command {
 			}
 			fromFile := path != "" && path != "-"
 			if !fromFile && name == "" {
-				return &usageError{errors.New("--name is required without a file to take it from")}
+				return &clikit.UsageError{Err: errors.New("--name is required without a file to take it from")}
 			}
 			if fromFile {
 				base := filepath.Base(path)
@@ -170,7 +171,7 @@ func newDocCreateCmd() *cobra.Command {
 			if err != nil {
 				return createDocHint(outsideHint(err, scope, ""), name == "")
 			}
-			return printResult(cmd, docResult(r))
+			return clikit.PrintResult(cmd, docResult(r))
 		},
 	}
 	scope.addFlags(cmd)
@@ -180,10 +181,10 @@ func newDocCreateCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&labels, "labels", nil, "`labels` to give it, comma-separated")
 	addStatusFlag(cmd, &status, "`status` to create it in: wip, review, approved or rejected (default: wip)")
 	addFolderFlag(cmd, &folder, "`folder` TIDE shows it in, such as /hub/initial (default: /, the top)")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
-	completeFlag(cmd, "path", completeFiles)
-	completeFlag(cmd, "format", cobra.NoFileCompletions)
-	completeFlag(cmd, "labels", completeDocLabels)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "path", clikit.CompleteFiles)
+	clikit.CompleteFlag(cmd, "format", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "labels", completeDocLabels)
 	return cmd
 }
 
@@ -192,12 +193,12 @@ func newDocCreateCmd() *cobra.Command {
 func createDocHint(err error, named bool) error {
 	switch problemCode(err) {
 	case api.ErrorCodeNameTaken:
-		return &hinted{err, "choose another --name, or change the doc with " + identity.Name + " doc update"}
+		return &clikit.Hinted{Err: err, Hint: "choose another --name, or change the doc with " + identity.Name + " doc update"}
 	case api.ErrorCodeInvalidName:
 		if named {
-			return &hinted{err, "the name comes from the file: pass --name"}
+			return &clikit.Hinted{Err: err, Hint: "the name comes from the file: pass --name"}
 		}
-		return &hinted{err, "choose another --name"}
+		return &clikit.Hinted{Err: err, Hint: "choose another --name"}
 	}
 	return err
 }
@@ -220,13 +221,13 @@ func readContent(cmd *cobra.Command, path string) (string, error) {
 	if path == "-" {
 		b, err = io.ReadAll(cmd.InOrStdin())
 	} else {
-		if path, err = absolute(cmd, path); err != nil {
+		if path, err = clikit.Absolute(cmd, path); err != nil {
 			return "", err
 		}
 		b, err = os.ReadFile(path)
 	}
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", &usageError{fmt.Errorf("no file %s", path)}
+		return "", &clikit.UsageError{Err: fmt.Errorf("no file %s", path)}
 	}
 	if err != nil {
 		return "", err
@@ -250,7 +251,7 @@ func newDocGetCmd() *cobra.Command {
 			"cat does. With --out it is written to a file of yours to edit, then given\n" +
 			"back with doc update --base and the revision it was read at; a file there is\n" +
 			"replaced only with --overwrite.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Print a doc of the project you are in", identity.Name+" doc get --name auth-rfc",
 			"Write it to a file to change", identity.Name+" doc get --name auth-rfc --out auth-rfc.md",
 			"Get it again after it changed", identity.Name+" doc get --name auth-rfc --out auth-rfc.md --overwrite",
@@ -258,19 +259,19 @@ func newDocGetCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The content alone; with --out, the revision written and where.\n" +
+			clikit.OutputNote: "The content alone; with --out, the revision written and where.\n" +
 				`With --json: {"doc": {...}, "revision": ..., "content": "..."}, without content with --out`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if overwrite && out == "" {
-				return &usageError{errors.New("--overwrite is for --out")}
+				return &clikit.UsageError{Err: errors.New("--overwrite is for --out")}
 			}
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
 				return err
 			}
-			if out, err = absolute(cmd, out); err != nil {
+			if out, err = clikit.Absolute(cmd, out); err != nil {
 				return err
 			}
 			d, err := clientOf(cmd).GetDoc(cmd.Context(), path, project, dir, revision)
@@ -280,21 +281,21 @@ func newDocGetCmd() *cobra.Command {
 			r := docContent{Doc: d.Doc, Revision: d.Revision}
 			if out == "" {
 				r.Content = &d.Content
-				return printResult(cmd, r)
+				return clikit.PrintResult(cmd, r)
 			}
 			if err := writeCopy(cmd.Context(), out, d.Content, overwrite); err != nil {
 				return err
 			}
 			r.out = out
-			return printResult(cmd, r)
+			return clikit.PrintResult(cmd, r)
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().Int64Var(&revision, "revision", 0, "the `revision` to get (default: the latest)")
 	cmd.Flags().StringVar(&out, "out", "", "`file` to write it to, read-write, instead of printing it")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "with --out, replace the file if there is one")
-	completeFlag(cmd, "revision", completeDocRevisions)
-	completeFlag(cmd, "out", completeFiles)
+	clikit.CompleteFlag(cmd, "revision", completeDocRevisions)
+	clikit.CompleteFlag(cmd, "out", clikit.CompleteFiles)
 	return cmd
 }
 
@@ -308,7 +309,7 @@ func writeCopy(ctx context.Context, path, content string, overwrite bool) error 
 	if errors.Is(err, fs.ErrExist) {
 		p := api.NewProblem(api.ErrorCodePathExists, path+" already exists")
 		p.Details = &map[string]any{"path": path}
-		return &hinted{&client.ProblemError{Problem: p}, "pass --overwrite to replace it"}
+		return &clikit.Hinted{Err: &client.ProblemError{Problem: p}, Hint: "pass --overwrite to replace it"}
 	}
 	if err != nil {
 		return err
@@ -333,16 +334,16 @@ func newDocUpdateCmd() *cobra.Command {
 			"to it and update with the new base, so that no change is lost. A new\n" +
 			"revision makes the doc wip, whatever it was; content equal to the latest\n" +
 			"makes none and changes nothing.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Write back a changed copy", identity.Name+" doc update --name auth-rfc --path auth-rfc.md --base 4",
 			"From stdin, as JSON", identity.Name+" doc update --id doc-1a2b3c4d --path - --base 4 --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not updated",
-			outputNote:    "The doc's revision now.\n" + `With --json: {"result": "updated", "doc": {...}, "previous_status": ...}`,
-			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
-			errorList: codeList(api.ErrorCodeDocChanged, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound,
+			clikit.FailurePrefix: "not updated",
+			clikit.OutputNote:    "The doc's revision now.\n" + `With --json: {"result": "updated", "doc": {...}, "previous_status": ...}`,
+			clikit.Results:       clikit.Annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeDocChanged, api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound,
 				api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -361,11 +362,11 @@ func newDocUpdateCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			if r.PreviousStatus != nil && *r.PreviousStatus != api.DocStatusWip && !jsonMode(cmd) {
-				st := stderrStyle(cmd)
+			if r.PreviousStatus != nil && *r.PreviousStatus != api.DocStatusWip && !clikit.JSONMode(cmd) {
+				st := clikit.StderrStyle(cmd)
 				fmt.Fprintln(cmd.ErrOrStderr(), st.Warning(fmt.Sprintf("%s was %s; it is wip again", r.Doc.Name, *r.PreviousStatus)))
 			}
-			return printResult(cmd, docUpdated(r))
+			return clikit.PrintResult(cmd, docUpdated(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -373,8 +374,8 @@ func newDocUpdateCmd() *cobra.Command {
 	cmd.Flags().Int64Var(&base, "base", 0, "the `revision` the change was made on")
 	_ = cmd.MarkFlagRequired("path")
 	_ = cmd.MarkFlagRequired("base")
-	completeFlag(cmd, "path", completeFiles)
-	completeFlag(cmd, "base", completeDocRevisions)
+	clikit.CompleteFlag(cmd, "path", clikit.CompleteFiles)
+	clikit.CompleteFlag(cmd, "base", completeDocRevisions)
 	return cmd
 }
 
@@ -385,7 +386,7 @@ func docChangedHint(err error, ref docRef) error {
 	if e, ok := errors.AsType[*client.ProblemError](err); !ok || !decodeDetail(e.Problem, "doc", &d) {
 		return err
 	}
-	return &hinted{err, fmt.Sprintf("get it again with %s doc get %s --out <file> --overwrite, apply your change, and update with --base %d",
+	return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("get it again with %s doc get %s --out <file> --overwrite, apply your change, and update with --base %d",
 		identity.Name, ref.flag(), d.Revision)}
 }
 
@@ -398,14 +399,14 @@ func newDocListCmd() *cobra.Command {
 		Short: "List a project's docs",
 		Long: "Without a project flag, the docs of the project the working directory is in.\n" +
 			"With --labels, only those that have every one of them.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The docs of the project you are in", identity.Name+" doc list",
 			"The approved docs labeled auth, as JSON", identity.Name+" doc list --project-name app --labels auth --status approved --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The docs by folder, then name, without content; an empty list when there are none.\n" + `With --json: {"docs": [...]}`,
-			errorList:  codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The docs by folder, then name, without content; an empty list when there are none.\n" + `With --json: {"docs": [...]}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			project, dir, err := docScope(cmd, scope)
@@ -416,13 +417,13 @@ func newDocListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, docList(list))
+			return clikit.PrintResult(cmd, docList(list))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringSliceVar(&labels, "labels", nil, "`labels` a doc must all have, comma-separated")
 	addStatusFlag(cmd, &status, "the `status` a doc must be in")
-	completeFlag(cmd, "labels", completeDocLabels)
+	clikit.CompleteFlag(cmd, "labels", completeDocLabels)
 	return cmd
 }
 
@@ -432,14 +433,14 @@ func newDocHistoryCmd() *cobra.Command {
 		Use:   "history (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
 		Short: "List a doc's revisions",
 		Long:  "Every revision is kept until the doc is removed; doc get --revision reads one.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The revisions of a doc of the project you are in", identity.Name+" doc history --name auth-rfc",
 			"By id, as JSON", identity.Name+" doc history --id doc-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The revisions, latest first, without content.\n" + `With --json: {"revisions": [...]}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The revisions, latest first, without content.\n" + `With --json: {"revisions": [...]}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -450,7 +451,7 @@ func newDocHistoryCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, docHistory(list))
+			return clikit.PrintResult(cmd, docHistory(list))
 		},
 	}
 	ref.addFlags(cmd)
@@ -466,17 +467,17 @@ func newDocSetCmd() *cobra.Command {
 		Short: "Change a doc's folder, status or labels",
 		Long: "Its content and revision stay as they are, and no base is needed. Removing a\n" +
 			"label it does not have is not an error.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Approve a doc of the project you are in", identity.Name+" doc set --name auth-rfc --status approved",
 			"Change its labels, as JSON", identity.Name+" doc set --id doc-1a2b3c4d --add-labels auth --remove-labels draft --json",
 			"Move it to a folder", identity.Name+" doc set --name auth-rfc --folder /hub/initial",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not changed",
-			outputNote:    "The doc's status, folder and labels now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
-			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
-			errorList:     codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not changed",
+			clikit.OutputNote:    "The doc's status, folder and labels now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
+			clikit.Results:       clikit.Annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -491,7 +492,7 @@ func newDocSetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, docSet(r))
+			return clikit.PrintResult(cmd, docSet(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -500,8 +501,8 @@ func newDocSetCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&remove, "remove-labels", nil, "`labels` to remove, comma-separated")
 	addFolderFlag(cmd, &folder, "`folder` to move it to, such as /hub/initial; / is the top")
 	cmd.MarkFlagsOneRequired("folder", "status", "add-labels", "remove-labels")
-	completeFlag(cmd, "add-labels", completeDocLabels)
-	completeFlag(cmd, "remove-labels", completeDocLabels)
+	clikit.CompleteFlag(cmd, "add-labels", completeDocLabels)
+	clikit.CompleteFlag(cmd, "remove-labels", completeDocLabels)
 	return cmd
 }
 
@@ -512,16 +513,16 @@ func newDocRenameCmd() *cobra.Command {
 		Use:   "rename (--id <id> | --name <name>) [--project-id <id> | --project-name <name>] --new-name <name>",
 		Short: "Rename a doc",
 		Long:  "Its id, content, revisions and status stay as they are; changing only the case of its name is a rename.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Rename a doc of the project you are in", identity.Name+" doc rename --name auth-rfc --new-name auth-design",
 			"By id, as JSON", identity.Name+" doc rename --id doc-1a2b3c4d --new-name auth-design --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not renamed",
-			outputNote:    "The doc's name before and now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
-			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
-			errorList:     codeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not renamed",
+			clikit.OutputNote:    "The doc's name before and now.\n" + `With --json: {"result": "updated", "doc": {...}}`,
+			clikit.Results:       clikit.Annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeInvalidName, api.ErrorCodeNameTaken, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -531,18 +532,18 @@ func newDocRenameCmd() *cobra.Command {
 			r, err := clientOf(cmd).UpdateDoc(cmd.Context(), path, project, dir, api.UpdateDoc{Name: &newName})
 			switch problemCode(err) {
 			case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-				return &hinted{err, "choose another --new-name"}
+				return &clikit.Hinted{Err: err, Hint: "choose another --new-name"}
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, docRenamed{r, cmp.Or(ref.name, ref.id)})
+			return clikit.PrintResult(cmd, docRenamed{r, cmp.Or(ref.name, ref.id)})
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&newName, "new-name", "", "the doc's new `name`")
 	_ = cmd.MarkFlagRequired("new-name")
-	completeFlag(cmd, "new-name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "new-name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -558,17 +559,17 @@ func newDocSyncToGitCmd() *cobra.Command {
 			"Files wdx wrote there of docs that are gone are removed, and only those:\n" +
 			".wdx-docs lists what it wrote. Nothing is staged or committed. The setting\n" +
 			"docs.git_path has the daemon do this on every change.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Write the docs of the project you are in", identity.Name+" doc sync-to-git --path docs/wdx",
 			"Of another project, as JSON", identity.Name+" doc sync-to-git --project-name app --path docs/wdx --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not synced",
-			outputNote: "How many docs were written and where, and the files removed or skipped.\n" +
+			clikit.FailurePrefix: "not synced",
+			clikit.OutputNote: "How many docs were written and where, and the files removed or skipped.\n" +
 				`With --json: {"result": "synced", "path": "...", "written": [...], "removed": [...], "skipped": [...]}`,
-			resultList: string(api.ResultSynced),
-			errorList: codeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeInvalidPath, api.ErrorCodeNotFound,
+			clikit.Results: string(api.ResultSynced),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeCheckoutMissing, api.ErrorCodeInvalidPath, api.ErrorCodeNotFound,
 				api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -579,18 +580,18 @@ func newDocSyncToGitCmd() *cobra.Command {
 			// Relative to the repository, not to where this runs: never made absolute.
 			r, err := clientOf(cmd).SyncDocsToGit(cmd.Context(), project, dir, path)
 			if problemCode(err) == api.ErrorCodeInvalidPath {
-				return &hinted{err, "give a directory relative to the project's main checkout, outside .git"}
+				return &clikit.Hinted{Err: err, Hint: "give a directory relative to the project's main checkout, outside .git"}
 			}
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, docSynced{r, path})
+			return clikit.PrintResult(cmd, docSynced{r, path})
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&path, "path", "", "`dir` to write into, relative to the project's main checkout")
 	_ = cmd.MarkFlagRequired("path")
-	completeFlag(cmd, "path", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "path", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -604,17 +605,17 @@ func newDocRemoveCmd() *cobra.Command {
 		Short: "Delete a doc and all its revisions",
 		Long: "You are asked first, as nothing brings it back; --yes answers in advance, and\n" +
 			"with --json, or without a terminal, it is required.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Remove a doc of the project you are in", identity.Name+" doc remove --name auth-rfc",
 			"From a script", identity.Name+" doc remove --id doc-1a2b3c4d --yes --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not removed",
-			outputNote:    "The removed doc, as it was before.\n" + `With --json: {"result": "removed", "doc": {...}}`,
-			resultList:    string(api.ResultRemoved),
-			errorList:     codeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
-			jsonRequires:  annotation("yes"),
+			clikit.FailurePrefix: "not removed",
+			clikit.OutputNote:    "The removed doc, as it was before.\n" + `With --json: {"result": "removed", "doc": {...}}`,
+			clikit.Results:       string(api.ResultRemoved),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires:  clikit.Annotation("yes"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -622,7 +623,7 @@ func newDocRemoveCmd() *cobra.Command {
 				return err
 			}
 			if yes {
-				logAnswer(cmd, removeDocQuestion, "yes", "--yes")
+				clikit.LogAnswer(cmd, removeDocQuestion, "yes", "--yes")
 			} else if err := confirmDocRemove(cmd, ref, path, project, dir); err != nil {
 				return err
 			}
@@ -630,7 +631,7 @@ func newDocRemoveCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, docResult(r))
+			return clikit.PrintResult(cmd, docResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -640,25 +641,25 @@ func newDocRemoveCmd() *cobra.Command {
 
 // confirmDocRemove asks whether to remove the doc; nil means yes.
 func confirmDocRemove(cmd *cobra.Command, ref docRef, path, project, dir string) error {
-	if !canPrompt(cmd) {
-		logUnanswered(cmd, removeDocQuestion)
-		return &usageError{fmt.Errorf("removing a doc needs an answer, and none can be asked (%s): pass --yes", noPromptReason(cmd))}
+	if !clikit.CanPrompt(cmd) {
+		clikit.LogUnanswered(cmd, removeDocQuestion)
+		return &clikit.UsageError{Err: fmt.Errorf("removing a doc needs an answer, and none can be asked (%s): pass --yes", clikit.NoPromptReason(cmd))}
 	}
 	d, err := clientOf(cmd).GetDoc(cmd.Context(), path, project, dir, 0)
 	if err != nil {
 		return ref.notFoundHint(err)
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	question := fmt.Sprintf("remove doc %s and its %s? %s: ", st.Name(d.Doc.Name), plural(int(d.Doc.Revision), "revision"), st.Command("[y/N]"))
-	answer, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), question, "y", "n", "")
+	answer, err := clikit.Ask(prompt, bufio.NewScanner(cmd.InOrStdin()), question, "y", "n", "")
 	if err != nil {
 		return err
 	}
 	if answer != "y" {
-		logAnswer(cmd, removeDocQuestion, "no", "prompt")
+		clikit.LogAnswer(cmd, removeDocQuestion, "no", "prompt")
 		return &client.ProblemError{Problem: api.NewProblem(api.ErrorCodeCancelled, "you answered no")}
 	}
-	logAnswer(cmd, removeDocQuestion, "yes", "prompt")
+	clikit.LogAnswer(cmd, removeDocQuestion, "yes", "prompt")
 	return nil
 }
 
@@ -718,14 +719,14 @@ func completeDocLabels(cmd *cobra.Command, _ []string, _ string) ([]cobra.Comple
 // completionDocs are the docs of the project the command line names, else of the
 // one the working directory is in; none when the daemon does not answer.
 func completionDocs(cmd *cobra.Command) []api.Doc {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 	defer cancel()
 	var scope projectScope
 	scope.id, _ = cmd.Flags().GetString("project-id")
 	scope.name, _ = cmd.Flags().GetString("project-name")
 	var dir string
 	if !scope.given() {
-		dir = invocationOf(cmd).env.WorkDir
+		dir = envOf(cmd).WorkDir
 	}
 	list, err := clientOf(cmd).ListDocs(ctx, scope.ref(), dir, nil, "")
 	if err != nil {
@@ -738,7 +739,7 @@ func completionDocs(cmd *cobra.Command) []api.Doc {
 // completeDocRevisions completes --revision or --base with the revisions of the
 // doc the command line names.
 func completeDocRevisions(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(invocationOf(cmd).env.Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
 	defer cancel()
 	var ref docRef
 	ref.id, _ = cmd.Flags().GetString("id")
@@ -767,14 +768,14 @@ func completeDocRevisions(cmd *cobra.Command, _ []string, _ string) ([]cobra.Com
 // docResult is a doc a command created or removed.
 type docResult api.DocResult
 
-func (r docResult) text(w io.Writer, st style.Style) {
+func (r docResult) Text(w io.Writer, st style.Style) {
 	d := r.Doc
 	fmt.Fprintf(w, "doc %s %s\n", st.Name(d.Name), st.Success(string(r.Result)))
 	docFields(w, st, d)
 }
 
 func docFields(w io.Writer, st style.Style, d api.Doc) {
-	field := fieldPrinter(w, st, 8)
+	field := clikit.FieldPrinter(w, st, 8)
 	field("project", d.ProjectName)
 	field("folder", d.Folder)
 	field("status", docStatusText(st, d.Status))
@@ -791,7 +792,7 @@ func docFields(w io.Writer, st style.Style, d api.Doc) {
 // docUpdated is a doc whose content a command wrote.
 type docUpdated api.DocResult
 
-func (r docUpdated) text(w io.Writer, st style.Style) {
+func (r docUpdated) Text(w io.Writer, st style.Style) {
 	if r.Result == api.ResultUnchanged {
 		fmt.Fprintf(w, "%s is unchanged at revision %d\n", st.Name(r.Doc.Name), r.Doc.Revision)
 		return
@@ -802,7 +803,7 @@ func (r docUpdated) text(w io.Writer, st style.Style) {
 // docSet is a doc whose status or labels a command set.
 type docSet api.DocResult
 
-func (r docSet) text(w io.Writer, st style.Style) {
+func (r docSet) Text(w io.Writer, st style.Style) {
 	d := r.Doc
 	already := ""
 	if r.Result == api.ResultUnchanged {
@@ -821,7 +822,7 @@ type docRenamed struct {
 	from string
 }
 
-func (r docRenamed) text(w io.Writer, st style.Style) {
+func (r docRenamed) Text(w io.Writer, st style.Style) {
 	if r.Result == api.ResultUnchanged {
 		fmt.Fprintf(w, "doc %s already has that name\n", st.Name(r.Doc.Name))
 		return
@@ -837,7 +838,7 @@ type docContent struct {
 	out      string
 }
 
-func (r docContent) text(w io.Writer, st style.Style) {
+func (r docContent) Text(w io.Writer, st style.Style) {
 	if r.Content != nil {
 		fmt.Fprint(w, *r.Content)
 		return
@@ -860,7 +861,7 @@ type docSynced struct {
 	dir string
 }
 
-func (r docSynced) text(w io.Writer, st style.Style) {
+func (r docSynced) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "%s written to %s\n", plural(len(r.Written), "doc"), st.Name(r.dir))
 	if len(r.Removed) > 0 {
 		fmt.Fprintf(w, "removed %s\n", strings.Join(r.Removed, ", "))
@@ -873,7 +874,7 @@ func (r docSynced) text(w io.Writer, st style.Style) {
 // docList is a project's docs.
 type docList api.DocList
 
-func (l docList) text(w io.Writer, st style.Style) {
+func (l docList) Text(w io.Writer, st style.Style) {
 	if len(l.Docs) == 0 {
 		fmt.Fprintln(w, "no docs")
 		return
@@ -890,7 +891,7 @@ func (l docList) text(w io.Writer, st style.Style) {
 // docHistory is a doc's revisions.
 type docHistory api.DocRevisionList
 
-func (h docHistory) text(w io.Writer, st style.Style) {
+func (h docHistory) Text(w io.Writer, st style.Style) {
 	var table style.Table
 	table.Row(st.Heading("REVISION"), st.Heading("SIZE"), st.Heading("CREATED"))
 	for _, r := range h.Revisions {

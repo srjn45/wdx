@@ -16,13 +16,13 @@ func TestCompletionScripts(t *testing.T) {
 	t.Parallel()
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		out := wdx(t, t.TempDir(), "completion", shell, "--color", "always")
-		if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "__complete") || strings.Contains(out.stdout, esc) {
-			t.Fatalf("%s: want an uncolored script, got exit %d:\n%.300s", shell, out.exit, out.stdout)
+		if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "__complete") || strings.Contains(out.Stdout, esc) {
+			t.Fatalf("%s: want an uncolored script, got exit %d:\n%.300s", shell, out.Exit, out.Stdout)
 		}
 		var v completionScript
 		o := wdx(t, t.TempDir(), "completion", shell, "--json")
-		if err := json.Unmarshal([]byte(o.stdout), &v); err != nil || v.Shell != shell || v.Script != out.stdout {
-			t.Fatalf("%s: unexpected JSON %.300s: %v", shell, o.stdout, err)
+		if err := json.Unmarshal([]byte(o.Stdout), &v); err != nil || v.Shell != shell || v.Script != out.Stdout {
+			t.Fatalf("%s: unexpected JSON %.300s: %v", shell, o.Stdout, err)
 		}
 	}
 }
@@ -32,8 +32,8 @@ func TestCompletionScripts(t *testing.T) {
 func complete(t *testing.T, home string, args ...string) []string {
 	t.Helper()
 	out := wdx(t, home, append([]string{"__complete"}, args...)...)
-	lines := strings.Split(strings.TrimSuffix(out.stdout, "\n"), "\n")
-	if out.exit != clikit.ExitOK || len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1], ":") {
+	lines := strings.Split(strings.TrimSuffix(out.Stdout, "\n"), "\n")
+	if out.Exit != clikit.ExitOK || len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1], ":") {
 		t.Fatalf("%v: unexpected completion %+v", args, out)
 	}
 	return lines[:len(lines)-1]
@@ -91,8 +91,8 @@ func TestCompleteStatic(t *testing.T) {
 		}
 	}
 	out := wdx(t, home, "__complete", "project", "open", "--local", "")
-	if !strings.HasSuffix(out.stdout, ":16\n") { // ShellCompDirectiveFilterDirs
-		t.Fatalf("want directories completed, got %q", out.stdout)
+	if !strings.HasSuffix(out.Stdout, ":16\n") { // ShellCompDirectiveFilterDirs
+		t.Fatalf("want directories completed, got %q", out.Stdout)
 	}
 }
 
@@ -131,4 +131,9 @@ func TestCompletionLoggedAtDebug(t *testing.T) {
 			t.Errorf("%s: want DEBUG, got %q (all: %v)", msg, levels[msg], levels)
 		}
 	}
+}
+
+type completionScript struct {
+	Shell  string `json:"shell"`
+	Script string `json:"script"`
 }

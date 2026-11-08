@@ -16,6 +16,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -29,7 +30,7 @@ func newAgentCmd() *cobra.Command {
 			"to it. Closing its project stops it, and opening the project again starts\n" +
 			"it in the same session. " + identity.Name + " agent acas lists the AI coding agents\n" +
 			"new agents can run.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newAgentAcasCmd(), newAgentAttachCmd(), newAgentCreateCmd(), newAgentGetCmd(), newAgentListCmd(), newAgentModelsCmd(), newAgentRemoveCmd(), newAgentRenameCmd(), newAgentRestartCmd(), newAgentSendCmd(), newAgentStartCmd(), newAgentTranscriptCmd())
@@ -67,7 +68,7 @@ func newAgentCreateCmd() *cobra.Command {
 			"--permissions full, the default, lets it do anything without asking, with\n" +
 			"network access and no sandbox; ask leaves that to your settings for it. Both\n" +
 			"are kept for every later start: restart and resume use them too.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Create an agent in the project you are in", identity.Name+" agent create",
 			"Start one on a task", identity.Name+" agent create --name reviewer --prompt summarize",
 			"Start a child on a task, in a worktree of its own", identity.Name+" agent create --parent-name reviewer --worktree fix-login --prompt fix",
@@ -82,27 +83,27 @@ func newAgentCreateCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not created",
-			outputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}, and "worktree_created": true when its worktree is new`,
-			resultList:    "created",
-			errorList: codeList(api.ErrorCodeAcaUnavailable, api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+			clikit.FailurePrefix: "not created",
+			clikit.OutputNote:    "The agent, running.\n" + `With --json: {"result": "created", "agent": {...}}, and "worktree_created": true when its worktree is new`,
+			clikit.Results:       "created",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeAcaUnavailable, api.ErrorCodeAgentRemoved, api.ErrorCodeBranchExists, api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodePathExists, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeWorktreeFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if cmd.Flags().Changed(promptFlag) && strings.TrimSpace(prompt) == "" {
-				return &usageError{errors.New("--prompt is empty")}
+			if cmd.Flags().Changed(clikit.PromptFlag) && strings.TrimSpace(prompt) == "" {
+				return &clikit.UsageError{Err: errors.New("--prompt is empty")}
 			}
 			if cmd.Flags().Changed("aca") && acaID == "" {
-				return &usageError{errors.New("--aca is empty")}
+				return &clikit.UsageError{Err: errors.New("--aca is empty")}
 			}
 			if cmd.Flags().Changed("model") && model == "" {
-				return &usageError{errors.New("--model is empty")}
+				return &clikit.UsageError{Err: errors.New("--model is empty")}
 			}
 			var mode *api.AgentPermissions
 			if cmd.Flags().Changed("permissions") {
 				if !api.AgentPermissions(permissions).Valid() {
-					return &usageError{fmt.Errorf("--permissions is %q, not one of %s", permissions, strings.Join(agentPermissions, ", "))}
+					return &clikit.UsageError{Err: fmt.Errorf("--permissions is %q, not one of %s", permissions, strings.Join(agentPermissions, ", "))}
 				}
 				mode = ptr(api.AgentPermissions(permissions))
 			}
@@ -122,27 +123,27 @@ func newAgentCreateCmd() *cobra.Command {
 				}
 				return agentHint(err)
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the agent (default: a generated one)")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&parentID, "parent-id", "", "`id` of the agent to create it under")
 	cmd.Flags().StringVar(&parentName, "parent-name", "", "`name` of the agent to create it under (case-insensitive)")
 	cmd.MarkFlagsMutuallyExclusive("parent-id", "parent-name")
-	completeFlag(cmd, "parent-id", completeParents("id"))
-	completeFlag(cmd, "parent-name", completeParents("name"))
+	clikit.CompleteFlag(cmd, "parent-id", completeParents("id"))
+	clikit.CompleteFlag(cmd, "parent-name", completeParents("name"))
 	cmd.Flags().StringVar(&worktree, "worktree", "", "`name` of the worktree to start in, created when there is none (default: the parent's, else the one you are in, else main)")
-	completeFlag(cmd, "worktree", cobra.NoFileCompletions)
-	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` of its first task; it is submitted once it is ready")
-	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "worktree", cobra.NoFileCompletions)
+	cmd.Flags().StringVar(&prompt, clikit.PromptFlag, "", "`text` of its first task; it is submitted once it is ready")
+	clikit.CompleteFlag(cmd, clikit.PromptFlag, cobra.NoFileCompletions)
 	cmd.Flags().StringVar(&acaID, "aca", "", "`id` of the AI coding agent it runs (default: the first installed and enabled)")
-	completeFlag(cmd, "aca", completeACAs)
+	clikit.CompleteFlag(cmd, "aca", completeACAs)
 	cmd.Flags().StringVar(&model, "model", "", "`model` its AI coding agent uses, on every start (default: its own default)")
-	completeFlag(cmd, "model", completeModels)
+	clikit.CompleteFlag(cmd, "model", completeModels)
 	cmd.Flags().StringVar(&permissions, "permissions", "", "`mode`: full lets it do anything without asking, ask leaves that to your settings for it (default: full)")
-	completeFlag(cmd, "permissions", cobra.FixedCompletions(agentPermissions, cobra.ShellCompDirectiveNoFileComp))
+	clikit.CompleteFlag(cmd, "permissions", cobra.FixedCompletions(agentPermissions, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
@@ -158,20 +159,20 @@ func newAgentModelsCmd() *cobra.Command {
 			"or by default the first installed and enabled. One marked default is what it\n" +
 			"runs with no --model; with none marked, it runs what your own settings for\n" +
 			"it say.",
-		Example: examples(
+		Example: clikit.Examples(
 			"List them", identity.Name+" agent models",
 			"List another AI coding agent's", identity.Name+" agent models --aca claude_code",
 			"As JSON", identity.Name+" agent models --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The AI coding agent's models, in its order.\n" +
+			clikit.OutputNote: "The AI coding agent's models, in its order.\n" +
 				`With --json: {"aca": "claude_code", "models": [{"id": ..., "name": ..., "default": ...}, ...]}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("aca") && acaID == "" {
-				return &usageError{errors.New("--aca is empty")}
+				return &clikit.UsageError{Err: errors.New("--aca is empty")}
 			}
 			id, err := chosenACA(cmd.Context(), clientOf(cmd), acaID)
 			if err != nil {
@@ -181,11 +182,11 @@ func newAgentModelsCmd() *cobra.Command {
 			if err != nil {
 				return agentHint(err)
 			}
-			return printResult(cmd, acaModels(list))
+			return clikit.PrintResult(cmd, acaModels(list))
 		},
 	}
 	cmd.Flags().StringVar(&acaID, "aca", "", "`id` of the AI coding agent (default: the first installed and enabled)")
-	completeFlag(cmd, "aca", completeACAs)
+	clikit.CompleteFlag(cmd, "aca", completeACAs)
 	return cmd
 }
 
@@ -215,22 +216,22 @@ func newAgentAcasCmd() *cobra.Command {
 			"its aca.<id>.enabled setting, in the order they are offered; the default is what\n" +
 			"agent create runs with no --aca. " + identity.Name + " deps list says which are installed,\n" +
 			"and " + identity.Name + " setting list which are enabled.",
-		Example: examples(
+		Example: clikit.Examples(
 			"List them", identity.Name+" agent acas",
 			"As JSON", identity.Name+" agent acas --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The AI coding agents, the default first.\n" +
+			clikit.OutputNote: "The AI coding agents, the default first.\n" +
 				`With --json: {"acas": [{"id": "claude_code", "default": true}, ...]}`,
-			errorList: codeList(api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			list, err := clientOf(cmd).ListAcas(cmd.Context())
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, acaList(list))
+			return clikit.PrintResult(cmd, acaList(list))
 		},
 	}
 	return cmd
@@ -239,7 +240,7 @@ func newAgentAcasCmd() *cobra.Command {
 // acaList is the AI coding agents new agents can run.
 type acaList api.AcaList
 
-func (l acaList) text(w io.Writer, st style.Style) {
+func (l acaList) Text(w io.Writer, st style.Style) {
 	if len(l.Acas) == 0 {
 		fmt.Fprintln(w, "no AI coding agent installed and enabled")
 		fmt.Fprintln(w, st.Muted(identity.Name+" deps list says which are installed, "+identity.Name+" setting list which are enabled"))
@@ -261,7 +262,7 @@ func (l acaList) text(w io.Writer, st style.Style) {
 // acaModels is the models of an AI coding agent.
 type acaModels api.AcaModelList
 
-func (l acaModels) text(w io.Writer, st style.Style) {
+func (l acaModels) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "models of %s\n", st.Name(l.Aca))
 	var table style.Table
 	table.Row(st.Heading("ID"), st.Heading("NAME"))
@@ -290,15 +291,15 @@ func newAgentListCmd() *cobra.Command {
 			"Every state is listed: an agent stays until it is removed. Children are\n" +
 			"indented under their parents, and a removed agent stays as long as it has\n" +
 			"children.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The agents of the project you are in", identity.Name+" agent list",
 			"Every project's, as JSON", identity.Name+" agent list --all --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The agents by project, then name, each with its children; an empty list when there are none.\n" +
+			clikit.OutputNote: "The agents by project, then name, each with its children; an empty list when there are none.\n" +
 				`With --json: {"agents": [...]}, the children of each under "children"`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var dir string
@@ -312,7 +313,7 @@ func newAgentListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, ", or --all")
 			}
-			return printResult(cmd, agentList{list, all, contextThresholdsOf(cmd)})
+			return clikit.PrintResult(cmd, agentList{list, all, contextThresholdsOf(cmd)})
 		},
 	}
 	scope.addFlags(cmd)
@@ -334,8 +335,8 @@ func (r *agentRef) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&r.name, "name", "", "`name` of the agent (case-insensitive)")
 	cmd.MarkFlagsOneRequired("id", "name")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
-	completeFlag(cmd, "id", completeAgents("id"))
-	completeFlag(cmd, "name", completeAgents("name"))
+	clikit.CompleteFlag(cmd, "id", completeAgents("id"))
+	clikit.CompleteFlag(cmd, "name", completeAgents("name"))
 	r.scope.addFlags(cmd)
 }
 
@@ -357,7 +358,7 @@ func (r agentRef) notFoundHint(err error) error {
 	if problemCode(err) != api.ErrorCodeNotFound || r.id != "" || r.scope.given() {
 		return err
 	}
-	return &hinted{err, "names are unique within a project: run it in the agent's project, or pass --project-name or --project-id"}
+	return &clikit.Hinted{Err: err, Hint: "names are unique within a project: run it in the agent's project, or pass --project-name or --project-id"}
 }
 
 func newAgentGetCmd() *cobra.Command {
@@ -367,14 +368,14 @@ func newAgentGetCmd() *cobra.Command {
 		Short: "Show an agent",
 		Long: "In any state, with why it failed when it did. Without a project flag, --name\n" +
 			"is looked up in the project the working directory is in. Nothing is changed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show an agent of the project you are in", identity.Name+" agent get --name reviewer",
 			"By id, as JSON", identity.Name+" agent get --id agent-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The agent.\n" + `With --json: {"agent": {...}}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The agent.\n" + `With --json: {"agent": {...}}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -385,7 +386,7 @@ func newAgentGetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, agentDetail{a, contextThresholdsOf(cmd)})
+			return clikit.PrintResult(cmd, agentDetail{a, contextThresholdsOf(cmd)})
 		},
 	}
 	ref.addFlags(cmd)
@@ -400,16 +401,16 @@ func newAgentStartCmd() *cobra.Command {
 		Long: "The agent keeps its id, name, dir and session, so its conversation comes\n" +
 			"back, in the directory it last worked in if that is still there, else its own.\n" +
 			"Agents stopped by closing their project start again when it is opened.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Start an agent of the project you are in", identity.Name+" agent start --name reviewer",
 			"By id, as JSON", identity.Name+" agent start --id agent-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not started",
-			outputNote:    "The agent, running.\n" + `With --json: {"result": "started", "agent": {...}}`,
-			resultList:    "started",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
+			clikit.FailurePrefix: "not started",
+			clikit.OutputNote:    "The agent, running.\n" + `With --json: {"result": "started", "agent": {...}}`,
+			clikit.Results:       "started",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeAgentBusy, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -419,12 +420,12 @@ func newAgentStartCmd() *cobra.Command {
 			}
 			r, err := clientOf(cmd).StartAgent(cmd.Context(), path, project, dir)
 			if problemCode(err) == api.ErrorCodeAgentBusy {
-				return &hinted{err, "wait for its background session, or start again in a new session with " + identity.Name + " agent restart --force"}
+				return &clikit.Hinted{Err: err, Hint: "wait for its background session, or start again in a new session with " + identity.Name + " agent restart --force"}
 			}
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -447,16 +448,16 @@ func newAgentRestartCmd() *cobra.Command {
 			"as agent start and agent remove do.\n" +
 			"Unless it is idle with an empty input box, and no such session is at work, it\n" +
 			"takes --force, which can leave work half done.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Restart an idle agent of the project you are in", identity.Name+" agent restart --name reviewer",
 			"In the middle of its work, as JSON", identity.Name+" agent restart --id agent-1a2b3c4d --force --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not restarted",
-			outputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}, with stopped_sessions when it stopped any`,
-			resultList:    "restarted",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
+			clikit.FailurePrefix: "not restarted",
+			clikit.OutputNote:    "The agent, running in its new session.\n" + `With --json: {"result": "restarted", "agent": {...}}, with stopped_sessions when it stopped any`,
+			clikit.Results:       "restarted",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodeStartFailed,
 				api.ErrorCodeAgentRemoved, api.ErrorCodeAgentBusy, api.ErrorCodeAcaUnsupported, api.ErrorCodeAcaUnavailable, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -468,7 +469,7 @@ func newAgentRestartCmd() *cobra.Command {
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -485,16 +486,16 @@ func newAgentRenameCmd() *cobra.Command {
 		Long: "It goes on running, in the same session. Names have letters, numbers and -\n" +
 			"only, and are unique within a project, among agents and terminals. What\n" +
 			"used the old name no longer finds it. A removed agent cannot be renamed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Rename an agent of the project you are in", identity.Name+" agent rename --name reviewer --new-name auth-review",
 			"By id, as JSON", identity.Name+" agent rename --id agent-1a2b3c4d --new-name auth-review --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not renamed",
-			outputNote:    "The agent, under its new name.\n" + `With --json: {"result": "renamed", "agent": {...}}`,
-			resultList:    "renamed",
-			errorList: codeList(api.ErrorCodeAgentRemoved, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
+			clikit.FailurePrefix: "not renamed",
+			clikit.OutputNote:    "The agent, under its new name.\n" + `With --json: {"result": "renamed", "agent": {...}}`,
+			clikit.Results:       "renamed",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeAgentRemoved, api.ErrorCodeInvalidName, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -505,18 +506,18 @@ func newAgentRenameCmd() *cobra.Command {
 			r, err := clientOf(cmd).RenameAgent(cmd.Context(), path, project, dir, newName)
 			switch problemCode(err) {
 			case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-				return &hinted{err, "choose another --new-name"}
+				return &clikit.Hinted{Err: err, Hint: "choose another --new-name"}
 			}
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&newName, "new-name", "", "`name` to give the agent")
 	cmd.MarkFlagRequired("new-name")
-	completeFlag(cmd, "new-name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "new-name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -540,22 +541,22 @@ func newAgentSendCmd() *cobra.Command {
 			"pane too narrow to show that a turn is running.\n\n" +
 			"A message whose first non-blank character is ! is given to the model as \\!,\n" +
 			"never run as a shell command.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Give an agent of the project you are in a task", identity.Name+" agent send --name reviewer --prompt summarize",
 			"Give it this first: Claude Code takes it at once", identity.Name+" agent send --name reviewer --prompt stop --instant",
 			"By id, as JSON", identity.Name+" agent send --id agent-1a2b3c4d --prompt summarize --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not sent",
-			outputNote:    "The agent the message is queued for.\n" + `With --json: {"result": "queued", "agent": {...}}`,
-			resultList:    "queued",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAgentRemoved,
+			clikit.FailurePrefix: "not sent",
+			clikit.OutputNote:    "The agent the message is queued for.\n" + `With --json: {"result": "queued", "agent": {...}}`,
+			clikit.Results:       "queued",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAgentRemoved,
 				api.ErrorCodeSendFailed, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if prompt == "" {
-				return &usageError{errors.New("--prompt is empty")}
+				return &clikit.UsageError{Err: errors.New("--prompt is empty")}
 			}
 			path, project, dir, err := ref.resolve(cmd)
 			if err != nil {
@@ -563,19 +564,19 @@ func newAgentSendCmd() *cobra.Command {
 			}
 			r, err := clientOf(cmd).SendAgent(cmd.Context(), path, project, dir, prompt, instant)
 			if problemCode(err) == api.ErrorCodeAgentNotRunning {
-				return &hinted{err, "start it with " + identity.Name + " agent start, or open its project"}
+				return &clikit.Hinted{Err: err, Hint: "start it with " + identity.Name + " agent start, or open its project"}
 			}
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	ref.addFlags(cmd)
-	cmd.Flags().StringVar(&prompt, promptFlag, "", "`text` to give it; it is submitted")
+	cmd.Flags().StringVar(&prompt, clikit.PromptFlag, "", "`text` to give it; it is submitted")
 	cmd.Flags().BoolVar(&instant, "instant", false, "go before other messages; Claude Code takes it at once, and an AI coding agent that cannot take it into its turn is interrupted")
-	cmd.MarkFlagRequired(promptFlag)
-	completeFlag(cmd, promptFlag, cobra.NoFileCompletions)
+	cmd.MarkFlagRequired(clikit.PromptFlag)
+	clikit.CompleteFlag(cmd, clikit.PromptFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -593,17 +594,17 @@ func newAgentRemoveCmd() *cobra.Command {
 			"on disk.\n\n" +
 			"An agent with children stays in the list as removed, its children untouched,\n" +
 			"until the last of them is removed.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Remove an agent of the project you are in", identity.Name+" agent remove --name reviewer",
 			"From a script: stop it if it is running", identity.Name+" agent remove --id agent-1a2b3c4d --stop-running --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not removed",
-			outputNote:    "The removed agent, as it was before.\n" + `With --json: {"result": "removed", "agent": {...}}`,
-			resultList:    "removed",
-			errorList:     codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
-			jsonRequires:  annotation("stop-running", "cancel"),
+			clikit.FailurePrefix: "not removed",
+			clikit.OutputNote:    "The removed agent, as it was before.\n" + `With --json: {"result": "removed", "agent": {...}}`,
+			clikit.Results:       "removed",
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAgentRemoved, api.ErrorCodeAgentRunning, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires:  clikit.Annotation("stop-running", "cancel"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -611,7 +612,7 @@ func newAgentRemoveCmd() *cobra.Command {
 				return err
 			}
 			if stopRunning {
-				logAnswer(cmd, stopAgentQuestion, "stop", "--stop-running")
+				clikit.LogAnswer(cmd, stopAgentQuestion, "stop", "--stop-running")
 			}
 			r, err := clientOf(cmd).DeleteAgent(cmd.Context(), path, project, dir, stopRunning)
 			if problemCode(err) == api.ErrorCodeAgentRunning && !stopRunning {
@@ -623,7 +624,7 @@ func newAgentRemoveCmd() *cobra.Command {
 			if err != nil {
 				return agentHint(ref.notFoundHint(err))
 			}
-			return printResult(cmd, agentResult(r))
+			return clikit.PrintResult(cmd, agentResult(r))
 		},
 	}
 	ref.addFlags(cmd)
@@ -642,24 +643,24 @@ func newAgentAttachCmd() *cobra.Command {
 			"the agent running, and gives the window back as it was; C-\\ ? lists them\n" +
 			"all. It runs in the terminal it was started from, not on stdin and stdout,\n" +
 			"which print the result when it ends.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Attach to an agent of the project you are in", identity.Name+" agent attach --name reviewer",
 			"With ctrl-] as the prefix", identity.Name+" agent attach --id agent-1a2b3c4d --prefix-key ctrl-]",
 			"As JSON once it ends", identity.Name+" agent attach --name reviewer --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not attached",
-			outputNote: "The agent, once you detach or it exits.\n" +
+			clikit.FailurePrefix: "not attached",
+			clikit.OutputNote: "The agent, once you detach or it exits.\n" +
 				`With --json: {"result": "detached" or "exited", "agent": {...}}`,
-			resultList: annotation("detached", "exited"),
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAttachUnsupported,
+			clikit.Results: clikit.Annotation("detached", "exited"),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAttachUnsupported,
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := parsePrefixKey(prefix)
 			if err != nil {
-				return &usageError{err}
+				return &clikit.UsageError{Err: err}
 			}
 			return attach(cmd, func(ctx context.Context) (attachTarget, error) {
 				path, project, dir, err := ref.resolve(cmd)
@@ -707,26 +708,26 @@ func agentTarget(cmd *cobra.Command, a api.Agent) attachTarget {
 func agentHint(err error) error {
 	switch problemCode(err) {
 	case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-		return &hinted{err, "choose another --name or --worktree"}
+		return &clikit.Hinted{Err: err, Hint: "choose another --name or --worktree"}
 	case api.ErrorCodeBranchExists:
-		return &hinted{err, "a new worktree gets a new branch: choose another --worktree, or delete the branch"}
+		return &clikit.Hinted{Err: err, Hint: "a new worktree gets a new branch: choose another --worktree, or delete the branch"}
 	case api.ErrorCodePathExists:
-		return &hinted{err, "something else is in the worktree's place: choose another --worktree"}
+		return &clikit.Hinted{Err: err, Hint: "something else is in the worktree's place: choose another --worktree"}
 	case api.ErrorCodeProjectClosed:
-		return &hinted{err, "open the project first with " + identity.Name + " project open"}
+		return &clikit.Hinted{Err: err, Hint: "open the project first with " + identity.Name + " project open"}
 	case api.ErrorCodeAgentRemoved:
-		return &hinted{err, "it goes when its last child is removed; see them with " + identity.Name + " agent get"}
+		return &clikit.Hinted{Err: err, Hint: "it goes when its last child is removed; see them with " + identity.Name + " agent get"}
 	case api.ErrorCodeAgentBusy:
-		return &hinted{err, "see what it is doing with " + identity.Name + " agent attach, or restart it anyway with --force"}
+		return &clikit.Hinted{Err: err, Hint: "see what it is doing with " + identity.Name + " agent attach, or restart it anyway with --force"}
 	case api.ErrorCodeAgentRunning:
-		return &hinted{err, "it is already running; attach to it with " + identity.Name + " agent attach"}
+		return &clikit.Hinted{Err: err, Hint: "it is already running; attach to it with " + identity.Name + " agent attach"}
 	case api.ErrorCodeStartFailed:
-		return &hinted{err, "check its dir, then run " + identity.Name + " agent start"}
+		return &clikit.Hinted{Err: err, Hint: "check its dir, then run " + identity.Name + " agent start"}
 	case api.ErrorCodeAcaUnavailable:
-		return &hinted{err, acaUnavailableHint(err)}
+		return &clikit.Hinted{Err: err, Hint: acaUnavailableHint(err)}
 	case api.ErrorCodeNotFound:
 		if detail(err, "argument") == "aca" {
-			return &hinted{err, identity.Name + " agent acas lists the AI coding agents that can be used"}
+			return &clikit.Hinted{Err: err, Hint: identity.Name + " agent acas lists the AI coding agents that can be used"}
 		}
 	}
 	return err
@@ -757,7 +758,7 @@ func detail(err error, key string) string {
 // agentResult is an agent a command changed.
 type agentResult api.AgentResult
 
-func (r agentResult) text(w io.Writer, st style.Style) {
+func (r agentResult) Text(w io.Writer, st style.Style) {
 	a := r.Agent
 	in := "in"
 	if r.Result == api.ResultRemoved {
@@ -772,7 +773,7 @@ func (r agentResult) text(w io.Writer, st style.Style) {
 	case a.ParentAgentId != nil:
 		width = 6
 	}
-	field := fieldPrinter(w, st, width)
+	field := clikit.FieldPrinter(w, st, width)
 	if a.ParentAgentId != nil {
 		field("parent", st.Muted(*a.ParentAgentId))
 	}
@@ -805,7 +806,7 @@ type agentList struct {
 	thresholds contextThresholds
 }
 
-func (l agentList) text(w io.Writer, st style.Style) {
+func (l agentList) Text(w io.Writer, st style.Style) {
 	if len(l.Agents) == 0 {
 		fmt.Fprintln(w, "no agents")
 		return
@@ -883,9 +884,9 @@ func loggedAgents(v any) slog.Value {
 	return slog.AnyValue(api.AgentResponseLogged(b))
 }
 
-func (d agentDetail) text(w io.Writer, st style.Style) {
+func (d agentDetail) Text(w io.Writer, st style.Style) {
 	a := d.Agent
-	field := fieldPrinter(w, st, 11)
+	field := clikit.FieldPrinter(w, st, 11)
 	fmt.Fprintf(w, "agent %s in %s\n", st.Name(a.Name), st.Name(a.ProjectName))
 	field("state", agentStateText(st, a))
 	if a.Activity != nil {
@@ -1000,7 +1001,7 @@ func agentContextSize(a api.Agent) string {
 type contextThresholds struct{ warning, critical int64 }
 
 func contextThresholdsOf(cmd *cobra.Command) contextThresholds {
-	cfg := invocationOf(cmd).env.Config
+	cfg := envOf(cmd).Config
 	return contextThresholds{warning: cfg.ContextWarning, critical: cfg.ContextCritical}
 }
 

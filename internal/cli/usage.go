@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -25,23 +26,23 @@ func newUsageCmd() *cobra.Command {
 			"limited, and a bucket can be used while none of its windows is. Nothing is\n" +
 			"shown until an AI coding agent has told something; one on a plan without\n" +
 			"limits never does.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Every limit", identity.Name+" usage",
 			"As JSON, for a script", identity.Name+" usage --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Each AI coding agent: whether it can be used, then its windows: label, bucket, used,\n" +
+			clikit.OutputNote: "Each AI coding agent: whether it can be used, then its windows: label, bucket, used,\n" +
 				"when it resets and as of when.\n" +
 				`With --json: {"usage": [{"aca": ..., "window": ..., "bucket": ..., "used_percent": ..., "resets_at": ..., "limited": ..., "observed_at": ...}, ...]}`,
-			errorList: codeList(api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			list, err := clientOf(cmd).ListUsage(cmd.Context())
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, usageList{UsageList: list, now: time.Now()})
+			return clikit.PrintResult(cmd, usageList{UsageList: list, now: time.Now()})
 		},
 	}
 }
@@ -52,7 +53,7 @@ type usageList struct {
 	now time.Time
 }
 
-func (l usageList) text(w io.Writer, st style.Style) {
+func (l usageList) Text(w io.Writer, st style.Style) {
 	if len(l.Usage) == 0 {
 		fmt.Fprintln(w, "no usage told yet: no AI coding agent has answered, or its plan has no limits")
 		return

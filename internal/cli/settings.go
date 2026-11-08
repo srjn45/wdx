@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
@@ -29,7 +30,7 @@ func newSettingCmd() *cobra.Command {
 		Aliases: []string{"settings"},
 		Short:   "Show and change the settings",
 		Long:    identity.Name + " help settings explains every setting.",
-		Args:    noArgs,
+		Args:    clikit.NoArgs,
 		RunE:    func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newSettingListCmd(), newSettingGetCmd(), newSettingSetCmd(), newSettingWriteCmd())
@@ -40,21 +41,21 @@ func newSettingListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List every setting with its value",
-		Example: examples(
+		Example: clikit.Examples(
 			"List the settings", identity.Name+" setting list",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Each setting's key, value and where the value comes from.\n" +
+			clikit.OutputNote: "Each setting's key, value and where the value comes from.\n" +
 				`With --json: {"settings": [{"key": ..., "value": ..., "default": ..., "description": ..., "from": ..., "choices": ..., "editable": ...}, ...]}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg := invocationOf(cmd).env.Config
+			cfg := envOf(cmd).Config
 			list := settingList{Settings: []api.Setting{}}
 			for _, s := range config.Settings() {
 				list.Settings = append(list.Settings, viewOf(cfg, s))
 			}
-			return printResult(cmd, list)
+			return clikit.PrintResult(cmd, list)
 		},
 	}
 }
@@ -64,12 +65,12 @@ func newSettingGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get --name <key>",
 		Short: "Show one setting",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show one setting", identity.Name+" setting get --name log.level",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The setting's value, default, description and where the value comes from.\n" +
+			clikit.OutputNote: "The setting's value, default, description and where the value comes from.\n" +
 				`With --json: {"setting": {"key": ..., "value": ..., "default": ..., "description": ..., "from": ..., "choices": ..., "editable": ...}}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -77,12 +78,12 @@ func newSettingGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, settingEnvelope{viewOf(invocationOf(cmd).env.Config, s)})
+			return clikit.PrintResult(cmd, settingEnvelope{viewOf(envOf(cmd).Config, s)})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`key` of the setting, such as log.level")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", completeSettings(false))
+	clikit.CompleteFlag(cmd, "name", clikit.CompleteSettings(config.Settings(), false))
 	return cmd
 }
 
@@ -96,17 +97,17 @@ func newSettingSetCmd() *cobra.Command {
 			"already running keep their shell and history limit, and a running TIDE its\n" +
 			"colors. The file is written anew, as by " + identity.Name + " setting write, so comments\n" +
 			"of your own are not kept.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Log in more detail", identity.Name+" setting set --name log.level --value debug",
 			"Follow the dev releases", identity.Name+" setting set --name update.channel --value dev",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not set",
-			outputNote: "The setting, and what the daemon did with it: applied, not_running (it reads the\n" +
+			clikit.FailurePrefix: "not set",
+			clikit.OutputNote: "The setting, and what the daemon did with it: applied, not_running (it reads the\n" +
 				"value when it starts) or not_applied (saved, with a warning on stderr to restart it).\n" +
 				`With --json: {"result": ..., "setting": {...}, "reload": ..., "dropped_settings": [...]}`,
-			resultList: annotation(resultUpdated, resultUnchanged),
+			clikit.Results: clikit.Annotation(resultUpdated, resultUnchanged),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			log := logging.FromContext(cmd.Context())
@@ -115,12 +116,12 @@ func newSettingSetCmd() *cobra.Command {
 				return err
 			}
 			if s.EnvVar != "" {
-				return &hinted{&usageError{fmt.Errorf("%s is read from %s, not the config file", s.Key, s.EnvVar)}, "set " + s.EnvVar + " in the environment"}
+				return &clikit.Hinted{Err: &clikit.UsageError{Err: fmt.Errorf("%s is read from %s, not the config file", s.Key, s.EnvVar)}, Hint: "set " + s.EnvVar + " in the environment"}
 			}
-			home := invocationOf(cmd).env.Config.Home
+			home := envOf(cmd).Config.Home
 			r, err := config.Set(home, s.Key, value)
 			if _, invalid := errors.AsType[*settings.Error](err); invalid {
-				return &hinted{err, "see what it takes in " + identity.Name + " help settings"}
+				return &clikit.Hinted{Err: err, Hint: "see what it takes in " + identity.Name + " help settings"}
 			}
 			if err != nil {
 				return err
@@ -136,15 +137,15 @@ func newSettingSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, settingSetResult{Result: result, Setting: viewOf(cfg, s), Reload: reloadDaemon(cmd), DroppedSettings: r.Dropped})
+			return clikit.PrintResult(cmd, settingSetResult{Result: result, Setting: viewOf(cfg, s), Reload: reloadDaemon(cmd), DroppedSettings: r.Dropped})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "`key` of the setting, such as log.level")
 	cmd.Flags().StringVar(&value, "value", "", "the new `value`")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagRequired("value")
-	completeFlag(cmd, "name", completeSettings(true))
-	completeFlag(cmd, "value", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", clikit.CompleteSettings(config.Settings(), true))
+	clikit.CompleteFlag(cmd, "value", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -160,7 +161,7 @@ func reloadDaemon(cmd *cobra.Command) string {
 		return resultNotRunning
 	}
 	logging.FromContext(cmd.Context()).Warn("daemon did not apply the settings", "err", err)
-	st := stderrStyle(cmd)
+	st := clikit.StderrStyle(cmd)
 	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s saved, but the daemon did not apply it: %v; run %s\n",
 		identity.Name, st.Warning("warning:"), err, st.Command(identity.Name+" daemon restart"))
 	return reloadNotApplied
@@ -175,22 +176,22 @@ func newSettingWriteCmd() *cobra.Command {
 			"written, the others are commented with their defaults. Keys no setting has\n" +
 			"are moved, commented, to the end of the file. Comments of your own are not\n" +
 			"kept. " + identity.Name + " update does the same with the settings of the release it installs.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Add the settings of this version to the config file", identity.Name+" setting write",
 			"Write the result to another file, leaving the config file alone", identity.Name+" setting write --to /tmp/config.yaml",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not written",
-			outputNote: "The file written, the settings it lists that the file did not and the keys moved to its end.\n" +
+			clikit.FailurePrefix: "not written",
+			clikit.OutputNote: "The file written, the settings it lists that the file did not and the keys moved to its end.\n" +
 				`With --json: {"result": ..., "settings": {"path": ..., "added": [...], "dropped": [...]}}`,
-			resultList: annotation(resultUnchanged, resultWritten),
+			clikit.Results: clikit.Annotation(resultUnchanged, resultWritten),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			log := logging.FromContext(cmd.Context())
-			home := invocationOf(cmd).env.Config.Home
+			home := envOf(cmd).Config.Home
 			path := identity.ConfigPath(home)
-			dest, err := absolute(cmd, to)
+			dest, err := clikit.Absolute(cmd, to)
 			if err != nil {
 				return err
 			}
@@ -222,11 +223,11 @@ func newSettingWriteCmd() *cobra.Command {
 				result = resultWritten
 			}
 			log.Info("settings "+result, "from", path, "path", dest, "added", r.Added, "dropped", r.Dropped)
-			return printResult(cmd, settingsResult{Result: result, Settings: settingsChange{Path: dest, Added: r.Added, Dropped: r.Dropped}})
+			return clikit.PrintResult(cmd, settingsResult{Result: result, Settings: settingsChange{Path: dest, Added: r.Added, Dropped: r.Dropped}})
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "write it to `path` instead of the config file")
-	completeFlag(cmd, "to", completeFiles)
+	clikit.CompleteFlag(cmd, "to", clikit.CompleteFiles)
 	return cmd
 }
 
@@ -236,7 +237,7 @@ func findSetting(key string) (settings.Setting, error) {
 	if i := slices.IndexFunc(list, func(s settings.Setting) bool { return s.Key == key }); i >= 0 {
 		return list[i], nil
 	}
-	return settings.Setting{}, &hinted{&usageError{fmt.Errorf("no setting is named %q", key)}, "see every setting with " + identity.Name + " setting list"}
+	return settings.Setting{}, &clikit.Hinted{Err: &clikit.UsageError{Err: fmt.Errorf("no setting is named %q", key)}, Hint: "see every setting with " + identity.Name + " setting list"}
 }
 
 // viewOf is s as the commands and the API show it.
@@ -306,7 +307,7 @@ type settingList struct {
 	Settings []api.Setting `json:"settings"`
 }
 
-func (l settingList) text(w io.Writer, st style.Style) {
+func (l settingList) Text(w io.Writer, st style.Style) {
 	var table style.Table
 	for _, s := range l.Settings {
 		table.Row(st.Name(s.Key), shown(s.Value), st.Muted(s.From))
@@ -318,10 +319,10 @@ type settingEnvelope struct {
 	Setting api.Setting `json:"setting"`
 }
 
-func (e settingEnvelope) text(w io.Writer, st style.Style) {
+func (e settingEnvelope) Text(w io.Writer, st style.Style) {
 	s := e.Setting
 	fmt.Fprintf(w, "%s %s\n", st.Name(s.Key), shown(s.Value))
-	field := fieldPrinter(w, st, len("description"))
+	field := clikit.FieldPrinter(w, st, len("description"))
 	field("description", s.Description)
 	field("default", shown(s.Default))
 	field("from", s.From)
@@ -339,7 +340,7 @@ type settingSetResult struct {
 	DroppedSettings []string `json:"dropped_settings"`
 }
 
-func (r settingSetResult) text(w io.Writer, st style.Style) {
+func (r settingSetResult) Text(w io.Writer, st style.Style) {
 	verb := "set"
 	if r.Result == resultUnchanged {
 		verb = "already set"
@@ -370,7 +371,7 @@ type settingsChange struct {
 	Dropped []string `json:"dropped"`
 }
 
-func (r settingsResult) text(w io.Writer, st style.Style) {
+func (r settingsResult) Text(w io.Writer, st style.Style) {
 	s := r.Settings
 	if r.Result == resultUnchanged {
 		fmt.Fprintf(w, "%s: %s already lists every setting\n", st.Success("up to date"), st.Name(s.Path))

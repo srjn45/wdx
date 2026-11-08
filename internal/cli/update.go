@@ -14,6 +14,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/codesign"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
@@ -44,7 +45,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			"change since the update, which --discard-changes or the prompt agrees to,\n" +
 			"and --cancel refuses.\n" +
 			"Only one previous version is kept.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Show whether a newer release is available", identity.Name+" update",
 			"Install it", identity.Name+" update --apply",
 			"Install the newest dev release this once", identity.Name+" update --apply --channel dev",
@@ -55,29 +56,29 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "Without a flag, the installed version, the newest on the channel and whether it is newer;\n" +
+			clikit.OutputNote: "Without a flag, the installed version, the newest on the channel and whether it is newer;\n" +
 				"with --apply or --rollback, the versions and schema versions before and after.\n" +
 				`With --json: {"update": {"current": ..., "latest": ..., "channel": ..., "available": ...}}, or` + "\n" +
 				`{"result": ..., "update": {"from": ..., "to": ..., "channel": ..., "schema_from": ..., "schema_to": ..., "data_restored": ..., "settings": {"added": [...], "dropped": [...]}}, "warnings": [...]}`,
-			resultList:   annotation(resultRolledBack, resultUpToDate, resultUpdated),
-			jsonRequires: "rollback:" + annotation("discard-changes", "cancel"),
-			errorList: codeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
+			clikit.Results:      clikit.Annotation(resultRolledBack, resultUpToDate, resultUpdated),
+			clikit.JSONRequires: "rollback:" + clikit.Annotation("discard-changes", "cancel"),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeChecksumMismatch, api.ErrorCodeDownloadFailed, api.ErrorCodeNoPreviousVersion,
 				api.ErrorCodeOlderVersion, api.ErrorCodeRestoreRequired, api.ErrorCodeSettingsInvalid, api.ErrorCodeUpdateFailed, api.ErrorCodeUpdateRunning),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !slices.Contains(config.UpdateChannels, channel) {
-				return &usageError{fmt.Errorf("--channel %q is not one of %s", channel, strings.Join(config.UpdateChannels, ", "))}
+				return &clikit.UsageError{Err: fmt.Errorf("--channel %q is not one of %s", channel, strings.Join(config.UpdateChannels, ", "))}
 			}
 			if discardChanges && !rollback {
-				return &usageError{errors.New("--discard-changes goes with --rollback")}
+				return &clikit.UsageError{Err: errors.New("--discard-changes goes with --rollback")}
 			}
 			if cancel && !rollback {
-				return &usageError{errors.New("--cancel goes with --rollback")}
+				return &clikit.UsageError{Err: errors.New("--cancel goes with --rollback")}
 			}
 			o := updateOptions(cmd)
 			switch {
 			case apply:
-				cmd.Annotations[failurePrefix] = "not updated"
+				cmd.Annotations[clikit.FailurePrefix] = "not updated"
 				r, err := update.Apply(cmd.Context(), o, channel, version)
 				if err != nil {
 					return err
@@ -88,7 +89,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 				}
 				return printUpdateResult(cmd, newUpdateResult(result, r, &channel))
 			case rollback:
-				cmd.Annotations[failurePrefix] = "not rolled back"
+				cmd.Annotations[clikit.FailurePrefix] = "not rolled back"
 				r, err := rollBack(cmd, o, discardChanges, cancel)
 				if err != nil {
 					return err
@@ -99,7 +100,7 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, updateCheck{Update: updateStatus{Current: s.Current, Latest: s.Latest, Channel: s.Channel, Available: s.Available}})
+			return clikit.PrintResult(cmd, updateCheck{Update: updateStatus{Current: s.Current, Latest: s.Latest, Channel: s.Channel, Available: s.Available}})
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "install the newest release on the channel")
@@ -109,8 +110,8 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 	cmd.Flags().BoolVar(&discardChanges, "discard-changes", false, "with --rollback, restore the database backup without asking when the previous version needs it")
 	cmd.Flags().BoolVar(&cancel, "cancel", false, "with --rollback, change nothing without asking when the previous version needs the database backup restored")
 	cmd.MarkFlagsMutuallyExclusive("discard-changes", "cancel")
-	completeFlag(cmd, "channel", cobra.FixedCompletions(config.UpdateChannels, cobra.ShellCompDirectiveNoFileComp))
-	completeFlag(cmd, "version", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "channel", cobra.FixedCompletions(config.UpdateChannels, cobra.ShellCompDirectiveNoFileComp))
+	clikit.CompleteFlag(cmd, "version", cobra.NoFileCompletions)
 	cmd.MarkFlagsMutuallyExclusive("apply", "rollback")
 	cmd.MarkFlagsMutuallyExclusive("rollback", "channel")
 	cmd.MarkFlagsMutuallyExclusive("rollback", "version")
@@ -119,21 +120,21 @@ func newUpdateCmd(cfg config.Config) *cobra.Command {
 
 // updateOptions switches the installed binary and the daemon of the home.
 func updateOptions(cmd *cobra.Command) update.Options {
-	inv := invocationOf(cmd)
+	env, inv := envOf(cmd), clikit.InvocationOf(cmd)
 	// Between the old binary and the new daemon the versions differ on
 	// purpose: no warning.
-	inv.client = client.New(client.Options{Socket: identity.SocketPath(inv.env.Config.Home), DebugID: inv.debugID, Quiet: inv.quiet})
+	env.client = client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.DebugID, Quiet: inv.Quiet})
 	var progress io.Writer
-	if !jsonMode(cmd) {
+	if !clikit.JSONMode(cmd) {
 		progress = cmd.ErrOrStderr()
 	}
 	return update.Options{
-		Home:      inv.env.Config.Home,
-		Binary:    inv.env.Executable,
+		Home:      env.Config.Home,
+		Binary:    env.Executable,
 		Current:   identity.Version,
-		BaseURL:   inv.env.Config.UpdateBaseURL,
-		Environ:   inv.env.Environ,
-		Preflight: inv.env.Timeouts.UpdatePreflight,
+		BaseURL:   env.Config.UpdateBaseURL,
+		Environ:   env.Environ,
+		Preflight: env.Timeouts.UpdatePreflight,
 		Daemon: update.Daemon{
 			Stop: func(context.Context) error {
 				_, err := stopDaemon(cmd)
@@ -145,7 +146,7 @@ func updateOptions(cmd *cobra.Command) update.Options {
 			},
 		},
 		Progress: progress,
-		Sign:     signer(inv.env.Config.Home),
+		Sign:     signer(env.Config.Home),
 	}
 }
 
@@ -167,30 +168,30 @@ func signer(home string) func(ctx context.Context, binary string) (bool, error) 
 func rollBack(cmd *cobra.Command, o update.Options, discardChanges, cancel bool) (update.Result, error) {
 	r, err := update.Rollback(cmd.Context(), o, discardChanges)
 	if discardChanges && r.DataRestored {
-		logAnswer(cmd, discardChangesQuestion, "yes", "--discard-changes")
+		clikit.LogAnswer(cmd, discardChangesQuestion, "yes", "--discard-changes")
 	}
 	if _, needed := errors.AsType[*update.RestoreRequiredError](err); !needed {
 		return r, err
 	}
 	if cancel {
-		logAnswer(cmd, discardChangesQuestion, "no", "--cancel")
+		clikit.LogAnswer(cmd, discardChangesQuestion, "no", "--cancel")
 		return r, err
 	}
-	if !canPrompt(cmd) {
-		logUnanswered(cmd, discardChangesQuestion)
+	if !clikit.CanPrompt(cmd) {
+		clikit.LogUnanswered(cmd, discardChangesQuestion)
 		return r, err
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	fmt.Fprintln(prompt, err)
-	answer, askErr := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "restore the backup? "+st.Command("[y/N]")+": ", "y", "n", "")
+	answer, askErr := clikit.Ask(prompt, bufio.NewScanner(cmd.InOrStdin()), "restore the backup? "+st.Command("[y/N]")+": ", "y", "n", "")
 	if askErr != nil {
 		return r, askErr
 	}
 	if answer != "y" {
-		logAnswer(cmd, discardChangesQuestion, "no", "prompt")
+		clikit.LogAnswer(cmd, discardChangesQuestion, "no", "prompt")
 		return r, err
 	}
-	logAnswer(cmd, discardChangesQuestion, "yes", "prompt")
+	clikit.LogAnswer(cmd, discardChangesQuestion, "yes", "prompt")
 	return update.Rollback(cmd.Context(), o, true)
 }
 
@@ -206,7 +207,7 @@ type updateStatus struct {
 	Available bool   `json:"available"`
 }
 
-func (c updateCheck) text(w io.Writer, st style.Style) {
+func (c updateCheck) Text(w io.Writer, st style.Style) {
 	u := c.Update
 	if !u.Available {
 		fmt.Fprintf(w, "%s: %s %s %s\n", st.Success("up to date"), identity.Name, st.Name(u.Current), st.Muted(fmt.Sprintf("(newest on the %s channel: %s)", u.Channel, u.Latest)))
@@ -254,19 +255,19 @@ func newUpdateResult(result string, r update.Result, channel *string) updateResu
 
 // printUpdateResult prints r, and in text its warnings on stderr.
 func printUpdateResult(cmd *cobra.Command, r updateResult) error {
-	if err := printResult(cmd, r); err != nil || jsonMode(cmd) {
+	if err := clikit.PrintResult(cmd, r); err != nil || clikit.JSONMode(cmd) {
 		return err
 	}
-	st := stderrStyle(cmd)
+	st := clikit.StderrStyle(cmd)
 	for _, w := range r.Warnings {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s %s\n", identity.Name, st.Warning("warning:"), w)
 	}
 	return nil
 }
 
-func (r updateResult) text(w io.Writer, st style.Style) {
+func (r updateResult) Text(w io.Writer, st style.Style) {
 	u := r.Update
-	field := fieldPrinter(w, st, 9)
+	field := clikit.FieldPrinter(w, st, 9)
 	schema := fmt.Sprint(u.SchemaTo)
 	if u.SchemaFrom != u.SchemaTo {
 		schema = fmt.Sprintf("%d -> %d", u.SchemaFrom, u.SchemaTo)

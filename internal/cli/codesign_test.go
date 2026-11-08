@@ -34,7 +34,7 @@ func TestCodesignOffMacOS(t *testing.T) {
 	}
 
 	out := wdx(t, home, "codesign", "--path", binary)
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "wdx: not signed: signing is for macOS only") {
-		t.Fatalf("want the text error, got exit %d, %q", out.exit, out.stderr)
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "wdx: not signed: signing is for macOS only") {
+		t.Fatalf("want the text error, got exit %d, %q", out.Exit, out.Stderr)
 	}
 }

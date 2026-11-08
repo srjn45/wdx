@@ -105,7 +105,7 @@ func TestPlanRunAnswered(t *testing.T) {
 	if exit != clikit.ExitOK || v.Plan.State != api.PlanStatePaused || v.Run == nil || v.Run.PausedReason == nil || *v.Run.PausedReason != api.PlanRunPausedReasonProjectClosed {
 		t.Errorf("status of a closed project's plan: exit %d, %+v, %+v", exit, v.Plan, v.Run)
 	}
-	if out := wdxWith(t, home, in(repo), "plan", "status", "--name", "sso"); !strings.HasPrefix(out.stdout, "sso: paused (project closed), 0/2 tasks done, on plan/sso\n") {
+	if out := wdxWith(t, home, in(repo), "plan", "status", "--name", "sso"); !strings.HasPrefix(out.Stdout, "sso: paused (project closed), 0/2 tasks done, on plan/sso\n") {
 		t.Errorf("status text of a closed project's plan: %+v", out)
 	}
 	if v, exit := wdxJSON(t, home, "project", "open", "--local", repo, "--name", "app"); exit != clikit.ExitOK {
@@ -128,15 +128,15 @@ func TestPlanCancelAsks(t *testing.T) {
 		t.Fatal("not started")
 	}
 	out := wdxWith(t, home, in(repo), "plan", "cancel", "--name", "sso")
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "pass --yes") {
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --yes") {
 		t.Errorf("without a terminal: %+v", out)
 	}
 	out = wdxWith(t, home, both(in(repo), answering(t, "n")), "plan", "cancel", "--name", "sso")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "cancel plan sso? its running agents stop and it cannot run again [y/N]") || !strings.Contains(out.stderr, "[cancelled]") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "cancel plan sso? its running agents stop and it cannot run again [y/N]") || !strings.Contains(out.Stderr, "[cancelled]") {
 		t.Errorf("answered no: %+v", out)
 	}
 	out = wdxWith(t, home, both(in(repo), answering(t, "y")), "plan", "cancel", "--name", "sso")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan sso cancelled: its agents stop, its worktrees holding work stay, and so does plan/sso\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan sso cancelled: its agents stop, its worktrees holding work stay, and so does plan/sso\n") {
 		t.Errorf("answered yes: %+v", out)
 	}
 	testPlanLifecycle(t, home, repo)
@@ -152,7 +152,7 @@ func testPlanLifecycle(t *testing.T, home, repo string) {
 	}
 	text := func(want string, args ...string) {
 		t.Helper()
-		if out := wdxWith(t, home, in(repo), append([]string{"plan"}, args...)...); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, want) {
+		if out := wdxWith(t, home, in(repo), append([]string{"plan"}, args...)...); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, want) {
 			t.Errorf("%v: %+v, want from %q", args, out, want)
 		}
 	}
@@ -172,7 +172,7 @@ func testPlanLifecycle(t *testing.T, home, repo string) {
 		t.Errorf("list --all: exit %d, %+v", exit, v.Plans)
 	}
 	text("FOLDER", "list", "--all")
-	if out := wdxWith(t, home, in(repo), "plan", "list", "--all"); !strings.Contains(out.stdout, "cancelled, archived") {
+	if out := wdxWith(t, home, in(repo), "plan", "list", "--all"); !strings.Contains(out.Stdout, "cancelled, archived") {
 		t.Errorf("list --all text: %+v", out)
 	}
 
@@ -185,8 +185,8 @@ func testPlanLifecycle(t *testing.T, home, repo string) {
 		t.Errorf("copy in a folder: exit %d, %+v", exit, v)
 	}
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso-4\n")
-	if out := wdxWith(t, home, in(repo), "plan", "copy", "--name", "big", "--new-name", "big-2"); out.exit != clikit.ExitOK ||
-		!strings.HasPrefix(out.stdout, "plan big-2 created from big, with 1 plan\n") || !strings.Contains(out.stdout, "sso-4-2") {
+	if out := wdxWith(t, home, in(repo), "plan", "copy", "--name", "big", "--new-name", "big-2"); out.Exit != clikit.ExitOK ||
+		!strings.HasPrefix(out.Stdout, "plan big-2 created from big, with 1 plan\n") || !strings.Contains(out.Stdout, "sso-4-2") {
 		t.Errorf("a plan of plans' copy: %+v", out)
 	}
 	v, exit = run("copy", "--name", "sso", "--new-name", "SSO-2")
@@ -240,17 +240,17 @@ func TestPlanTaskAnswered(t *testing.T) {
 	waitTasks(t, home, repo, "sso", "a:land_failed b:pending")
 	out := wdxWith(t, home, in(repo), "plan", "status", "--name", "sso")
 	for _, want := range []string{"sso: running, 0/2 tasks done, 1 failed, on plan/sso\n", "land failed: check (terminal land-sso-1)"} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("status: want %q in\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("status: want %q in\n%s", want, out.Stdout)
 		}
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "a")
-	if !strings.Contains(out.stdout, "its output in the terminal land-sso-1") {
-		t.Errorf("task get: %s", out.stdout)
+	if !strings.Contains(out.Stdout, "its output in the terminal land-sso-1") {
+		t.Errorf("task get: %s", out.Stdout)
 	}
 	out = wdxWith(t, home, in(repo), "plan", "list")
-	if !strings.Contains(out.stdout, "0/2, 1 failed") {
-		t.Errorf("list: %s", out.stdout)
+	if !strings.Contains(out.Stdout, "0/2, 1 failed") {
+		t.Errorf("list: %s", out.Stdout)
 	}
 
 	v, exit = task("retry", "--task", "a", "--fresh")
@@ -309,18 +309,18 @@ func TestPlanAnswersText(t *testing.T) {
 		{[]string{"set", "--name", "sso", "--parallel", "4"}, "plan sso already runs up to 4 tasks at once\n"},
 	} {
 		out := wdxWith(t, home, in(repo), append([]string{"plan"}, c.args...)...)
-		if out.exit != clikit.ExitOK || out.stdout != c.want {
+		if out.Exit != clikit.ExitOK || out.Stdout != c.want {
 			t.Errorf("%v: %+v, want %q", c.args, out, c.want)
 		}
 	}
 	failTask(t, home, repo, "sso", "a", "a:running b:pending", "a:failed b:pending")
 	out := wdxWith(t, home, in(repo), "plan", "task", "retry", "--plan", "sso", "--task", "a")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "task a of sso retried: a new agent starts\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "task a of sso retried: a new agent starts\n") {
 		t.Errorf("retry of a task whose agent was removed: %+v", out)
 	}
 	failTask(t, home, repo, "sso", "a", "a:running b:pending", "a:failed b:pending")
 	out = wdxWith(t, home, in(repo), "plan", "task", "skip", "--plan", "sso", "--task", "a")
-	if out.exit != clikit.ExitOK || out.stdout != "task a of sso skipped: what waits for it goes on without it\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "task a of sso skipped: what waits for it goes on without it\n" {
 		t.Errorf("skip: %+v", out)
 	}
 	// The skip has the runner start b on its own: until its agent is there, the

@@ -80,7 +80,7 @@ func TestTerminalCreate(t *testing.T) {
 	}
 
 	out := wdxWith(t, home, in(app), "terminal", "create", "--name", "server")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "created terminal server in app\n  dir    "+app+"\n  shell  ") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "created terminal server in app\n  dir    "+app+"\n  shell  ") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -124,11 +124,11 @@ func TestTerminalList(t *testing.T) {
 	wantHint(t, v, "run it in a project's worktree, or pass --project-name or --project-id, or --all")
 
 	out := wdxWith(t, home, in(app), "terminal", "list")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "NAME  STATE    DIR") || !strings.Contains(out.stdout, "\na     running  "+app) {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "NAME  STATE    DIR") || !strings.Contains(out.Stdout, "\na     running  "+app) {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
-	if out := wdxWith(t, home, in(app), "terminal", "list", "--all"); !strings.HasPrefix(out.stdout, "PROJECT  NAME") {
-		t.Fatalf("want a project column with --all, got %q", out.stdout)
+	if out := wdxWith(t, home, in(app), "terminal", "list", "--all"); !strings.HasPrefix(out.Stdout, "PROJECT  NAME") {
+		t.Fatalf("want a project column with --all, got %q", out.Stdout)
 	}
 }
 
@@ -156,9 +156,9 @@ func TestTerminalGet(t *testing.T) {
 	wantHint(t, v, "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id")
 
 	out := wdx(t, home, "terminal", "get", "--id", term.Id)
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "terminal build in app\n  state    running\n  dir      "+app+"\n") ||
-		!strings.Contains(out.stdout, "\n  id       "+term.Id+"\n") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "terminal build in app\n  state    running\n  dir      "+app+"\n") ||
+		!strings.Contains(out.Stdout, "\n  id       "+term.Id+"\n") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -174,8 +174,8 @@ func TestProjectGetTerminals(t *testing.T) {
 		t.Fatalf("want terminals a and b, got exit %d, %+v", exit, v.Project)
 	}
 	out := wdx(t, home, "project", "get", "--name", "app")
-	if !strings.Contains(out.stdout, "\n  terminals: a  running  "+app+"  term-") || !strings.Contains(out.stdout, "\n             b  running  "+app+"  term-") {
-		t.Fatalf("unexpected text: %q", out.stdout)
+	if !strings.Contains(out.Stdout, "\n  terminals: a  running  "+app+"  term-") || !strings.Contains(out.Stdout, "\n             b  running  "+app+"  term-") {
+		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }
 
@@ -216,7 +216,7 @@ func TestTerminalRemove(t *testing.T) {
 	wantHint(t, v, "pass --stop-running to stop it")
 	// Without --json and a terminal to ask on, the answer must be given.
 	out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "build")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "hint: pass --stop-running or --cancel") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "hint: pass --stop-running or --cancel") {
 		t.Fatalf("unexpected text error: %+v", out)
 	}
 
@@ -233,7 +233,7 @@ func TestTerminalRemove(t *testing.T) {
 	// One that is not running needs no answer.
 	newTerminal(t, home, app, "idle")
 	wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running")
-	if out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "idle"); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "removed terminal idle from app\n  dir    "+app+"\n") {
+	if out := wdxWith(t, home, in(app), "terminal", "remove", "--name", "idle"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "removed terminal idle from app\n  dir    "+app+"\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
@@ -262,7 +262,7 @@ func TestProjectCloseAndRemoveWithTerminals(t *testing.T) {
 	v, exit = wdxJSON(t, home, "project", "remove", "--name", "app", "--cancel")
 	wantError(t, v, exit, api.ErrorCodeProjectInUse, clikit.ExitRejected)
 	out := wdx(t, home, "project", "remove", "--name", "app", "--stop-running")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "\n  stopped terminal build ("+term.Id+")\n") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "\n  stopped terminal build ("+term.Id+")\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if v, _ := wdxJSON(t, home, "terminal", "list", "--all"); len(v.Terminals) != 0 {
@@ -289,7 +289,7 @@ func TestCompleteTerminals(t *testing.T) {
 		{t.TempDir(), []string{"terminal", "start", "--name", ""}, nil},
 	} {
 		out := wdxWith(t, home, in(tc.dir), append([]string{"__complete"}, tc.args...)...)
-		lines := strings.Split(strings.TrimSuffix(out.stdout, "\n"), "\n")
+		lines := strings.Split(strings.TrimSuffix(out.Stdout, "\n"), "\n")
 		got := lines[:len(lines)-1]
 		if len(got) != len(tc.want) {
 			t.Errorf("%v: got %q, want %q", tc.args, got, tc.want)
@@ -306,8 +306,8 @@ func TestCompleteTerminals(t *testing.T) {
 func TestHolderHidden(t *testing.T) {
 	t.Parallel()
 	out := wdx(t, t.TempDir(), "--help")
-	if out.exit != clikit.ExitOK || strings.Contains(out.stdout, "holder") || !strings.Contains(out.stdout, "terminal") {
-		t.Fatalf("want terminal listed and holder hidden: %s", out.stdout)
+	if out.Exit != clikit.ExitOK || strings.Contains(out.Stdout, "holder") || !strings.Contains(out.Stdout, "terminal") {
+		t.Fatalf("want terminal listed and holder hidden: %s", out.Stdout)
 	}
 }
 
@@ -324,7 +324,7 @@ func TestTerminalSend(t *testing.T) {
 		t.Fatalf("want it queued, got exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "terminal", "send", "--id", term.Id, "--prompt=ls -la")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "queued terminal build in app\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "queued terminal build in app\n") {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	got := filepath.Join(app, "got")

@@ -19,7 +19,7 @@ func TestAgentAcas(t *testing.T) {
 		t.Fatalf("exit %d, %+v", exit, v.Acas)
 	}
 	out := wdx(t, home, "agent", "acas")
-	if out.exit != clikit.ExitOK || out.stdout != "AI coding agents\nID\nclaude_code (default)\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "AI coding agents\nID\nclaude_code (default)\n" {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 	if got := complete(t, home, "agent", "create", "--aca", ""); !slices.Equal(got, []string{"claude_code"}) {
@@ -70,7 +70,7 @@ func TestNoACAInstalled(t *testing.T) {
 	if a, exit := wdxJSON(t, home, "agent", "acas"); exit != clikit.ExitOK || a.Acas == nil || len(a.Acas) != 0 {
 		t.Fatalf("acas: exit %d, %+v", exit, a.Acas)
 	}
-	if out := wdx(t, home, "agent", "acas"); !strings.HasPrefix(out.stdout, "no AI coding agent installed and enabled\n") {
+	if out := wdx(t, home, "agent", "acas"); !strings.HasPrefix(out.Stdout, "no AI coding agent installed and enabled\n") {
 		t.Errorf("text: %+v", out)
 	}
 	if _, exit := wdxJSONWith(t, home, in(app), "terminal", "create"); exit != clikit.ExitOK {

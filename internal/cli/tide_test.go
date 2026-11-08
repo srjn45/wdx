@@ -16,7 +16,7 @@ func TestTideRefused(t *testing.T) {
 	v, exit := wdxJSONWith(t, home, func(*Env) {}, "tide", "--json")
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
 	out := wdx(t, home, "tide")
-	if out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "no terminal to run TIDE in") {
+	if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "no terminal to run TIDE in") {
 		t.Fatalf("without a terminal: %+v", out)
 	}
 }
@@ -31,8 +31,8 @@ func TestTideRunning(t *testing.T) {
 	// Another command line than the first's: the log checks tell runs apart by it.
 	second := []string{"tide", "--color", "never"}
 	out := wdx(t, home, second...)
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "a TIDE is already running for this home, as pid") ||
-		!strings.Contains(out.stderr, "[tide_running]") || !strings.Contains(out.stderr, "hint: go to the window it runs in") {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "a TIDE is already running for this home, as pid") ||
+		!strings.Contains(out.Stderr, "[tide_running]") || !strings.Contains(out.Stderr, "hint: go to the window it runs in") {
 		t.Fatalf("a second tide: %+v", out)
 	}
 	run.input("\x1b") // Esc: the popup closed
@@ -41,11 +41,11 @@ func TestTideRunning(t *testing.T) {
 	run.input("\x11") // C-q: the menu
 	run.waitScreen("┃ q  quit")
 	run.input("q")
-	if out := run.waitText(); out.exit != clikit.ExitOK {
+	if out := run.waitText(); out.Exit != clikit.ExitOK {
 		t.Fatalf("quit: %+v", out)
 	}
 	// Once it quit the lock is free again: no terminal to run in is what stops this one.
-	if out := wdx(t, home, second...); out.exit != clikit.ExitUsage || !strings.Contains(out.stderr, "no terminal to run TIDE in") {
+	if out := wdx(t, home, second...); out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "no terminal to run TIDE in") {
 		t.Fatalf("after quitting: %+v", out)
 	}
 }
@@ -80,7 +80,7 @@ func TestTideDetachesAttach(t *testing.T) {
 	run.input("\x11")
 	run.waitScreen("┃ q  quit")
 	run.input("q")
-	if out := run.waitText(); out.exit != clikit.ExitOK {
+	if out := run.waitText(); out.Exit != clikit.ExitOK {
 		t.Fatalf("got %+v", out)
 	}
 }
@@ -114,7 +114,7 @@ func TestTide(t *testing.T) {
 	run.waitScreen("┃ q  quit")
 	run.input("q")
 	out := run.waitText()
-	if out.exit != clikit.ExitOK || out.stdout != "TIDE closed\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "TIDE closed\n" {
 		t.Fatalf("got %+v", out)
 	}
 	run.waitScreen(callingText) // the window given back
@@ -133,7 +133,7 @@ func TestTideResume(t *testing.T) {
 	run.input("\x11") // C-q: the menu
 	run.waitScreen("┃ q  quit")
 	run.input("q")
-	if out := run.waitText(); out.exit != clikit.ExitOK || out.stdout != "TIDE closed\n" {
+	if out := run.waitText(); out.Exit != clikit.ExitOK || out.Stdout != "TIDE closed\n" {
 		t.Fatalf("got %+v", out)
 	}
 }

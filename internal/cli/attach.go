@@ -18,6 +18,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
@@ -46,24 +47,24 @@ func newTerminalAttachCmd() *cobra.Command {
 			"terminal; the last to attach or resize sets its size. It runs in the\n" +
 			"terminal it was started from, not on stdin and stdout, which print the\n" +
 			"result when it ends.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Attach to a terminal of the project you are in", identity.Name+" terminal attach --name server",
 			"With ctrl-] as the prefix", identity.Name+" terminal attach --id term-1a2b3c4d --prefix-key ctrl-]",
 			"As JSON once it ends", identity.Name+" terminal attach --name server --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not attached",
-			outputNote: "The terminal, once you detach or its shell exits.\n" +
+			clikit.FailurePrefix: "not attached",
+			clikit.OutputNote: "The terminal, once you detach or its shell exits.\n" +
 				`With --json: {"result": "detached" or "exited", "terminal": {...}}`,
-			resultList: annotation("detached", "exited"),
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeAttachUnsupported,
+			clikit.Results: clikit.Annotation("detached", "exited"),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeAttachUnsupported,
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := parsePrefixKey(prefix)
 			if err != nil {
-				return &usageError{err}
+				return &clikit.UsageError{Err: err}
 			}
 			return attach(cmd, func(ctx context.Context) (attachTarget, error) {
 				path, project, dir, err := ref.resolve(cmd)
@@ -85,7 +86,7 @@ func newTerminalAttachCmd() *cobra.Command {
 
 func addPrefixKeyFlag(cmd *cobra.Command, prefix *string) {
 	cmd.Flags().StringVar(prefix, "prefix-key", `ctrl-\`, "`key` before attach's own keys: ctrl-<letter> but i and m, ctrl-\\ or ctrl-]")
-	completeFlag(cmd, "prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
+	clikit.CompleteFlag(cmd, "prefix-key", cobra.FixedCompletions([]string{`ctrl-\`, "ctrl-]", "ctrl-b", "ctrl-a"}, cobra.ShellCompDirectiveNoFileComp))
 }
 
 // attachTarget is what attach shows: a terminal, or an agent. Both are a
@@ -223,7 +224,7 @@ func (r attachResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{"result": r.Result, r.target.noun: r.target.value})
 }
 
-func (r attachResult) text(w io.Writer, st style.Style) {
+func (r attachResult) Text(w io.Writer, st style.Style) {
 	t := r.target
 	if r.Result == api.ResultExited {
 		code := "?"
@@ -252,13 +253,13 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	if !t.running {
 		return &notRunningError{t}
 	}
-	env := invocationOf(cmd).env
+	env := envOf(cmd)
 	if env.TTY == nil {
-		return &usageError{errors.New("no terminal to attach in: run it in one")}
+		return &clikit.UsageError{Err: errors.New("no terminal to attach in: run it in one")}
 	}
 	tty, err := env.TTY()
 	if err != nil {
-		return &usageError{fmt.Errorf("no terminal to attach in: %w", err)}
+		return &clikit.UsageError{Err: fmt.Errorf("no terminal to attach in: %w", err)}
 	}
 	defer tty.Close()
 	fd, err := ttyFD(tty)
@@ -267,10 +268,10 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	}
 	size, err := ttySize(fd)
 	if err != nil {
-		return &usageError{fmt.Errorf("%s is not a terminal: %w", tty.Name(), err)}
+		return &clikit.UsageError{Err: fmt.Errorf("%s is not a terminal: %w", tty.Name(), err)}
 	}
 	if size.Cols < minCols || size.Rows < minRows {
-		return &usageError{fmt.Errorf("the terminal is %d×%d; attach needs at least %d×%d", size.Cols, size.Rows, minCols, minRows)}
+		return &clikit.UsageError{Err: fmt.Errorf("the terminal is %d×%d; attach needs at least %d×%d", size.Cols, size.Rows, minCols, minRows)}
 	}
 	size.Rows-- // the status line's
 
@@ -296,7 +297,7 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	// as after C-\ d.
 	viewCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	ended, err := runAttachView(viewCtx, tty, env, view)
+	ended, err := runAttachView(viewCtx, tty, *env, view)
 	if err != nil {
 		log.Info("connection lost", "terminal_id", t.holderID, "err", err)
 		return &connectionLostError{t, err}
@@ -307,14 +308,14 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	} else if got, err := t.reread(ctx); err == nil {
 		t = got
 	}
-	return printResult(cmd, attachResult{Result: ended, target: t})
+	return clikit.PrintResult(cmd, attachResult{Result: ended, target: t})
 }
 
 // viewStyle styles the attach view, which is on a terminal whatever stdout
 // is: off only when color is turned off.
 func viewStyle(cmd *cobra.Command) style.Style {
-	env := invocationOf(cmd).env
-	mode := colorMode(cmd, env)
+	env := envOf(cmd)
+	mode := clikit.ColorMode(cmd)
 	return style.New(mode == style.ColorAlways || mode == style.ColorAuto && !env.NoColor)
 }
 

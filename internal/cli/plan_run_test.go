@@ -220,32 +220,32 @@ func TestPlanRunText(t *testing.T) {
 	repo := planRepo(t, home, "a manual\nb manual\n")
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: Add the table.\n  - id: b\n    after: [a]\n    prompt: p\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "2")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
 		t.Errorf("run: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:running b:pending")
 	waitCommitted(t, repo, "a")
 	out = wdxWith(t, home, in(repo), "plan", "status", "--name", "sso")
 	for _, want := range []string{"sso: running, 0/2 tasks done, on plan/sso\n", "TASK", "AGENT", "sso-a", "sso-1", "waiting for a"} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("status: want %q in\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("status: want %q in\n%s", want, out.Stdout)
 		}
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "a")
-	if !strings.HasPrefix(out.stdout, "a of sso: running\n") || !strings.Contains(out.stdout, "PROMPT\nAdd the table.\n") {
+	if !strings.HasPrefix(out.Stdout, "a of sso: running\n") || !strings.Contains(out.Stdout, "PROMPT\nAdd the table.\n") {
 		t.Errorf("task get: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "did a")
-	if out.exit != clikit.ExitOK || out.stdout != "task a of sso done: landing on plan/sso\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "task a of sso done: landing on plan/sso\n" {
 		t.Errorf("task done: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:done b:running")
 	out = wdxWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "a")
-	if !strings.HasPrefix(out.stdout, "a of sso: done\n") || !strings.HasSuffix(out.stdout, "\nSUMMARY\ndid a\n") {
+	if !strings.HasPrefix(out.Stdout, "a of sso: done\n") || !strings.HasSuffix(out.Stdout, "\nSUMMARY\ndid a\n") {
 		t.Errorf("task get once done: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "plan", "list")
-	if !strings.Contains(out.stdout, "running") || !strings.Contains(out.stdout, "1/2") {
+	if !strings.Contains(out.Stdout, "running") || !strings.Contains(out.Stdout, "1/2") {
 		t.Errorf("list: %+v", out)
 	}
 }
@@ -266,12 +266,12 @@ func TestPlanOfPlansRun(t *testing.T) {
 	waitTasks(t, home, repo, "sso", "a:running")
 	out := wdxWith(t, home, in(repo), "plan", "status", "--name", "big")
 	for _, want := range []string{"big: running, 0/2 plans done\n", "PLAN", "TASKS", "0/1", "waiting for sso", "1 task"} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("status: want %q in\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("status: want %q in\n%s", want, out.Stdout)
 		}
 	}
 	out = wdxWith(t, home, in(repo), "plan", "list")
-	if !strings.Contains(out.stdout, "0/2 plans") {
+	if !strings.Contains(out.Stdout, "0/2 plans") {
 		t.Errorf("list: %+v", out)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
@@ -283,9 +283,9 @@ func TestPlanOfPlansRun(t *testing.T) {
 	}
 	if !eventually(t, func() bool {
 		out = wdxWith(t, home, in(repo), "plan", "status", "--name", "big")
-		return strings.Contains(out.stdout, "1/2 plans done") && strings.Contains(out.stdout, "waiting for you")
+		return strings.Contains(out.Stdout, "1/2 plans done") && strings.Contains(out.Stdout, "waiting for you")
 	}) {
-		t.Errorf("ui waiting for the person:\n%s", out.stdout)
+		t.Errorf("ui waiting for the person:\n%s", out.Stdout)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "ui")
 	wantError(t, v, exit, api.ErrorCodePlanNotLanded, clikit.ExitRejected)
@@ -299,7 +299,7 @@ func TestPlanOfPlansRunText(t *testing.T) {
 	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "big")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.stdout, "sso") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.Stdout, "sso") {
 		t.Errorf("run: %+v", out)
 	}
 	waitTasks(t, home, repo, "sso", "a:running")
@@ -355,8 +355,8 @@ func TestWaitsHint(t *testing.T) {
 		{[]string{"sso", "auth"}, "pull main: the PR of sso, auth is merged on GitHub"},
 		{[]string{"auth"}, "land the worktree on plan/sso first (wdx worktree land), or pull main once its PR is merged"},
 	} {
-		var h *hinted
-		if err := waitsHint(problem(tt.merged...)); !errors.As(err, &h) || h.hint != tt.want {
+		var h *clikit.Hinted
+		if err := waitsHint(problem(tt.merged...)); !errors.As(err, &h) || h.Hint != tt.want {
 			t.Errorf("merged %v: %v", tt.merged, err)
 		}
 	}

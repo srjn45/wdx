@@ -111,8 +111,8 @@ func TestDepsListText(t *testing.T) {
 		"install it: wdx deps install --name docker or --name podman",
 		"system: ubuntu, installs with apt, wayland session",
 	} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("no %q in:\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("no %q in:\n%s", want, out.Stdout)
 		}
 	}
 }
@@ -214,7 +214,7 @@ func TestDepsInstallPrompt(t *testing.T) {
 	home := newHome(t)
 	m := newMachine()
 	out := wdxWith(t, home, func(env *Env) { m.env(env); answering(t, "y")(env) }, "deps", "install", "--name", "git")
-	if out.exit != clikit.ExitOK || !strings.Contains(out.stdout, "git installed") || !strings.Contains(out.stderr, "run them? [y/N]") || !strings.Contains(out.stderr, "sudo apt-get install -y git") {
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "git installed") || !strings.Contains(out.Stderr, "run them? [y/N]") || !strings.Contains(out.Stderr, "sudo apt-get install -y git") {
 		t.Fatalf("%+v", out)
 	}
 	// On a terminal sudo asks for the password itself.
@@ -225,13 +225,13 @@ func TestDepsInstallPrompt(t *testing.T) {
 	// --yes on a terminal runs them without asking; sudo still may.
 	m = newMachine()
 	out = wdxWith(t, home, func(env *Env) { m.env(env); answering(t)(env) }, "deps", "install", "--name", "git", "--yes")
-	if out.exit != clikit.ExitOK || strings.Contains(out.stderr, "run them?") || len(m.ran) != 2 || m.ran[1] != "sudo apt-get install -y git" {
+	if out.Exit != clikit.ExitOK || strings.Contains(out.Stderr, "run them?") || len(m.ran) != 2 || m.ran[1] != "sudo apt-get install -y git" {
 		t.Fatalf("--yes: %+v, ran %q", out, m.ran)
 	}
 
 	m = newMachine()
 	out = wdxWith(t, home, func(env *Env) { m.env(env); answering(t, "n")(env) }, "deps", "install", "--name", "docker")
-	if out.exit != clikit.ExitRejected || !strings.Contains(out.stderr, "[cancelled]") || !strings.Contains(out.stderr, "install it yourself: sudo apt-get update && sudo apt-get install -y docker.io && sudo usermod -aG docker") || len(m.ran) != 0 {
+	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[cancelled]") || !strings.Contains(out.Stderr, "install it yourself: sudo apt-get update && sudo apt-get install -y docker.io && sudo usermod -aG docker") || len(m.ran) != 0 {
 		t.Fatalf("no: %+v, ran %q", out, m.ran)
 	}
 }

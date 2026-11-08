@@ -12,6 +12,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -22,7 +23,7 @@ func newWorktreeCmd() *cobra.Command {
 		Short: "Read a project's worktrees, what is uncommitted and what a PR would show, land them and remove them",
 		Long: "All but land, rebase and remove only read, so they can run beside any git command: they take\n" +
 			"no lock on the repository. wdx agent create --worktree creates a worktree.",
-		Args: noArgs,
+		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newWorktreeCommentsCmd(), newWorktreeDiffCmd(), newWorktreeLandCmd(), newWorktreeListCmd(), newWorktreeRebaseCmd(), newWorktreeRemoveCmd())
@@ -48,14 +49,14 @@ func newWorktreeListCmd() *cobra.Command {
 			"worktree says how far it is ahead of its base, the default branch, and\n" +
 			"which files have uncommitted changes. One whose directory is gone is listed\n" +
 			"as missing.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The worktrees of the project you are in", identity.Name+" worktree list",
 			"Another project's, as JSON", identity.Name+" worktree list --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The worktrees, the clone first, named main.\n" + `With --json: {"worktrees": [...]}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The worktrees, the clone first, named main.\n" + `With --json: {"worktrees": [...]}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ref, dir, err := worktreeScopeOf(cmd, scope)
@@ -66,7 +67,7 @@ func newWorktreeListCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, worktreeList(list))
+			return clikit.PrintResult(cmd, worktreeList(list))
 		},
 	}
 	scope.addFlags(cmd)
@@ -84,7 +85,7 @@ func newWorktreeDiffCmd() *cobra.Command {
 			"PR would show it: later commits on the base are not removals. With\n" +
 			"--uncommitted, everything not committed, untracked files too. With --path,\n" +
 			"the uncommitted changes of that file, with all of its lines.",
-		Example: examples(
+		Example: clikit.Examples(
 			"What a worktree has committed", identity.Name+" worktree diff --name auth-fix",
 			"Everything not committed", identity.Name+" worktree diff --name auth-fix --uncommitted",
 			"The uncommitted changes of a file", identity.Name+" worktree diff --name auth-fix --path internal/tide/tabs.go",
@@ -92,9 +93,9 @@ func newWorktreeDiffCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The unified diff; nothing when nothing differs.\n" +
+			clikit.OutputNote: "The unified diff; nothing when nothing differs.\n" +
 				`With --json: {"worktree": "...", "patch": "...", ...}`,
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ref, dir, err := worktreeScopeOf(cmd, scope)
@@ -106,7 +107,7 @@ func newWorktreeDiffCmd() *cobra.Command {
 				if err != nil {
 					return outsideHint(err, scope, "")
 				}
-				return printResult(cmd, worktreeFileDiff(d))
+				return clikit.PrintResult(cmd, worktreeFileDiff(d))
 			}
 			read := clientOf(cmd).WorktreeDiff
 			if uncommitted {
@@ -116,7 +117,7 @@ func newWorktreeDiffCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, worktreeDiff(d))
+			return clikit.PrintResult(cmd, worktreeDiff(d))
 		},
 	}
 	scope.addFlags(cmd)
@@ -125,8 +126,8 @@ func newWorktreeDiffCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&uncommitted, "uncommitted", false, "show everything not committed instead")
 	cmd.MarkFlagsMutuallyExclusive("uncommitted", "path")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
-	completeFlag(cmd, "path", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "path", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -138,14 +139,14 @@ func newWorktreeCommentsCmd() *cobra.Command {
 		Short: "List the comments left on a worktree's diffs",
 		Long: "Comments are written in TIDE, and sent to an agent together as a review.\n" +
 			"Each says whether it was sent.",
-		Example: examples(
+		Example: clikit.Examples(
 			"The comments on a worktree", identity.Name+" worktree comments --name auth-fix",
 			"As JSON", identity.Name+" worktree comments --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "The comments by file and line.\n" + `With --json: {"comments": [...]}`,
-			errorList:  codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
+			clikit.OutputNote: "The comments by file and line.\n" + `With --json: {"comments": [...]}`,
+			clikit.Errors:     clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ref, dir, err := worktreeScopeOf(cmd, scope)
@@ -156,13 +157,13 @@ func newWorktreeCommentsCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(err, scope, "")
 			}
-			return printResult(cmd, worktreeComments(list))
+			return clikit.PrintResult(cmd, worktreeComments(list))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree, main for the clone")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -179,7 +180,7 @@ func newWorktreeLandCmd() *cobra.Command {
 			"leaving does not stop it. wdx project landing says how a project lands.\n\n" +
 			"By PR it runs the check, pushes the branch and opens a PR with gh, or adds to\n" +
 			"the one open. It never rebases or forces, and the base stays where it is.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Land a worktree", identity.Name+" worktree land --name auth-fix",
 			"Open a PR this once", identity.Name+" worktree land --name auth-fix --method pr",
 			"From the agent working in it", identity.Name+" worktree land --name auth-fix --agent-id agent-1a2b3c4d",
@@ -187,9 +188,9 @@ func newWorktreeLandCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "What landed and on what, or the PR opened.\n" + `With --json: {"result": "landed", "worktree": "...", ...}`,
-			resultList: "landed, pr_opened",
-			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeFastForwardFailed,
+			clikit.OutputNote: "What landed and on what, or the PR opened.\n" + `With --json: {"result": "landed", "worktree": "...", ...}`,
+			clikit.Results:    "landed, pr_opened",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseMoved, api.ErrorCodeCheckFailed, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeFastForwardFailed,
 				api.ErrorCodeInvalidPath, api.ErrorCodeLandNotConfigured, api.ErrorCodeLandingRunning, api.ErrorCodeNoLocalBase,
 				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeNothingToLand, api.ErrorCodePrFailed, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed,
 				api.ErrorCodeRebaseFailed, api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
@@ -206,7 +207,7 @@ func newWorktreeLandCmd() *cobra.Command {
 			started, err := c.LandWorktree(cmd.Context(), name, ref, dir, method, agentID)
 			if err != nil {
 				if problemCode(err) == api.ErrorCodeLandNotConfigured {
-					return &hinted{err, "say how with " + identity.Name + " project landing --check <command> or --no-check"}
+					return &clikit.Hinted{Err: err, Hint: "say how with " + identity.Name + " project landing --check <command> or --no-check"}
 				}
 				return outsideHint(inPlanHint(err), scope, "")
 			}
@@ -221,7 +222,7 @@ func newWorktreeLandCmd() *cobra.Command {
 			if l.State == api.WorktreeLandingStateOpened {
 				result = api.ResultPrOpened
 			}
-			return printResult(cmd, worktreeLanded{
+			return clikit.PrintResult(cmd, worktreeLanded{
 				Result: result, Worktree: name, Base: l.Base, Commit: l.Commit, Pushed: l.Pushed, PushError: l.PushError, PullRequest: l.PullRequest,
 			})
 		},
@@ -230,8 +231,8 @@ func newWorktreeLandCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.Flags().StringVar(&method, "method", "", "`method` for this landing, rebase or pr; what the project says when not given")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
-	completeFlag(cmd, "method", landingMethods)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "method", landingMethods)
 	addAskingAgentFlag(cmd, &agentID)
 	return cmd
 }
@@ -242,7 +243,7 @@ func inPlanHint(err error) error {
 	if e, ok := errors.AsType[*client.ProblemError](err); !ok || e.Problem.Code != api.ErrorCodeWorktreeInPlan || !decodeDetail(e.Problem, "plan", &p) {
 		return err
 	}
-	return &hinted{err, fmt.Sprintf("it is a slot of plan %s, which lands its tasks on %s: %s plan status --name %s",
+	return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("it is a slot of plan %s, which lands its tasks on %s: %s plan status --name %s",
 		p.Name, planBranch(p.Name), identity.Name, p.Name)}
 }
 
@@ -254,7 +255,7 @@ func landingMethods(*cobra.Command, []string, string) ([]string, cobra.ShellComp
 // checkLandingMethod is a usage error unless method is empty or a way to land.
 func checkLandingMethod(method string) error {
 	if method != "" && method != "rebase" && method != "pr" {
-		return &usageError{fmt.Errorf("--method must be rebase or pr, not %q", method)}
+		return &clikit.UsageError{Err: fmt.Errorf("--method must be rebase or pr, not %q", method)}
 	}
 	return nil
 }
@@ -308,15 +309,15 @@ func landingProblem(l api.WorktreeLanding) error {
 	var err error = &client.ProblemError{Problem: p}
 	switch code {
 	case api.ErrorCodeRebaseFailed:
-		err = &hinted{err, "nothing changed; ask an agent to rebase with " + identity.Name + " agent send, then land again"}
+		err = &clikit.Hinted{Err: err, Hint: "nothing changed; ask an agent to rebase with " + identity.Name + " agent send, then land again"}
 	case api.ErrorCodeCheckFailed:
 		if l.Terminal != nil {
-			err = &hinted{err, "read its output in terminal " + *l.Terminal}
+			err = &clikit.Hinted{Err: err, Hint: "read its output in terminal " + *l.Terminal}
 		}
 	case api.ErrorCodeBaseMoved:
-		err = &hinted{err, "land again: it rebases and checks again"}
+		err = &clikit.Hinted{Err: err, Hint: "land again: it rebases and checks again"}
 	case api.ErrorCodePushFailed:
-		err = &hinted{err, "nothing was forced: bring the branch up to date with origin, then land again"}
+		err = &clikit.Hinted{Err: err, Hint: "nothing was forced: bring the branch up to date with origin, then land again"}
 	}
 	return err
 }
@@ -332,7 +333,7 @@ type worktreeLanded struct {
 	PullRequest *api.WorktreePullRequest `json:"pull_request"`
 }
 
-func (r worktreeLanded) text(w io.Writer, st style.Style) {
+func (r worktreeLanded) Text(w io.Writer, st style.Style) {
 	if r.PullRequest != nil {
 		fmt.Fprintf(w, "%s worktree %s onto %s\n%s\n", st.Success(fmt.Sprintf("PR #%d open:", r.PullRequest.Number)), st.Name(r.Worktree), st.Name(r.Base), r.PullRequest.Url)
 		return
@@ -361,16 +362,16 @@ func newWorktreeRebaseCmd() *cobra.Command {
 			"if so, only the plan's own commits move onto the default branch, and its PR\n" +
 			"goes there too, once the merge is pulled; if not, they move onto the plan\n" +
 			"below's branch as it is now.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Rebase a worktree", identity.Name+" worktree rebase --name auth-fix",
 			"From the agent working in it", identity.Name+" worktree rebase --name auth-fix --agent-id agent-1a2b3c4d",
 			"As JSON", identity.Name+" worktree rebase --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "What it was rebased onto, or that it was up to date.\n" + `With --json: {"result": "rebased", "worktree": "...", ...}`,
-			resultList: "rebased, up_to_date",
-			errorList: codeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseNotPulled, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeInvalidPath, api.ErrorCodeNoLocalBase,
+			clikit.OutputNote: "What it was rebased onto, or that it was up to date.\n" + `With --json: {"result": "rebased", "worktree": "...", ...}`,
+			clikit.Results:    "rebased, up_to_date",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeAgentWorking, api.ErrorCodeBaseNotPulled, api.ErrorCodeDependencyMissing, api.ErrorCodeDetachedHead, api.ErrorCodeInvalidPath, api.ErrorCodeNoLocalBase,
 				api.ErrorCodeNotCommitted, api.ErrorCodeNotFound, api.ErrorCodeProjectClosed, api.ErrorCodePushFailed, api.ErrorCodeRebaseFailed,
 				api.ErrorCodeWorktreeBusy, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone, api.ErrorCodeDaemonUnavailable),
 		},
@@ -383,13 +384,13 @@ func newWorktreeRebaseCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(inPlanHint(rebaseHint(err)), scope, "")
 			}
-			return printResult(cmd, worktreeRebased(r))
+			return clikit.PrintResult(cmd, worktreeRebased(r))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	addAskingAgentFlag(cmd, &agentID)
 	return cmd
 }
@@ -398,7 +399,7 @@ func newWorktreeRebaseCmd() *cobra.Command {
 // the command, it is mid-turn, and would otherwise count as working in its worktree.
 func addAskingAgentFlag(cmd *cobra.Command, agentID *string) {
 	cmd.Flags().StringVar(agentID, "agent-id", "", "`id` of the agent asking, which an agent finds in $"+identity.Env("AGENT_ID")+"; it is not counted as working in the worktree")
-	completeFlag(cmd, "agent-id", completeAgents("id"))
+	clikit.CompleteFlag(cmd, "agent-id", completeAgents("id"))
 }
 
 // rebaseHint says what to do about a rebase refused or undone: an agent's work, which
@@ -406,16 +407,16 @@ func addAskingAgentFlag(cmd *cobra.Command, agentID *string) {
 func rebaseHint(err error) error {
 	switch problemCode(err) {
 	case api.ErrorCodeRebaseFailed:
-		return &hinted{err, "nothing changed; ask an agent to rebase, resolving the conflicts, with " + identity.Name + " agent send"}
+		return &clikit.Hinted{Err: err, Hint: "nothing changed; ask an agent to rebase, resolving the conflicts, with " + identity.Name + " agent send"}
 	case api.ErrorCodeNotCommitted:
-		return &hinted{err, "nothing is stashed; ask an agent to commit with " + identity.Name + " agent send, then rebase again"}
+		return &clikit.Hinted{Err: err, Hint: "nothing is stashed; ask an agent to commit with " + identity.Name + " agent send, then rebase again"}
 	case api.ErrorCodePushFailed:
-		return &hinted{err, "the rebase is kept, and nothing on origin was overwritten: see what was pushed there since"}
+		return &clikit.Hinted{Err: err, Hint: "the rebase is kept, and nothing on origin was overwritten: see what was pushed there since"}
 	case api.ErrorCodeBaseNotPulled:
 		var below, base string
 		e, _ := errors.AsType[*client.ProblemError](err)
 		if decodeDetail(e.Problem, "below", &below) && decodeDetail(e.Problem, "base", &base) {
-			return &hinted{err, fmt.Sprintf("pull %s: %s's PR is merged on GitHub", base, below)}
+			return &clikit.Hinted{Err: err, Hint: fmt.Sprintf("pull %s: %s's PR is merged on GitHub", base, below)}
 		}
 	}
 	return err
@@ -423,7 +424,7 @@ func rebaseHint(err error) error {
 
 type worktreeRebased api.WorktreeRebased
 
-func (r worktreeRebased) text(w io.Writer, st style.Style) {
+func (r worktreeRebased) Text(w io.Writer, st style.Style) {
 	if r.Result == api.ResultUpToDate {
 		fmt.Fprintln(w, st.Success("up to date:")+" worktree "+st.Name(r.Worktree)+" already sits on "+st.Name(r.Base))
 		return
@@ -445,15 +446,15 @@ func newWorktreeRemoveCmd() *cobra.Command {
 			"One whose directory is gone can always be removed: only git's entry goes.\n" +
 			"The branch goes with it if git says it is merged. Agents running there are\n" +
 			"sent where to go on, and terminals running there are left as they are.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Remove a worktree that landed", identity.Name+" worktree remove --name auth-fix",
 			"As JSON", identity.Name+" worktree remove --name auth-fix --project-name app --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			outputNote: "What went, and who was told.\n" + `With --json: {"result": "removed", "worktree": "...", ...}`,
-			resultList: "removed",
-			errorList: codeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone,
+			clikit.OutputNote: "What went, and who was told.\n" + `With --json: {"result": "removed", "worktree": "...", ...}`,
+			clikit.Results:    "removed",
+			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeInvalidPath, api.ErrorCodeWorktreeInPlan, api.ErrorCodeWorktreeIsClone,
 				api.ErrorCodeWorktreeNotLanded, api.ErrorCodeWorktreeNotRemoved, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -465,19 +466,19 @@ func newWorktreeRemoveCmd() *cobra.Command {
 			if err != nil {
 				return outsideHint(inPlanHint(err), scope, "")
 			}
-			return printResult(cmd, worktreeRemoved(r))
+			return clikit.PrintResult(cmd, worktreeRemoved(r))
 		},
 	}
 	scope.addFlags(cmd)
 	cmd.Flags().StringVar(&name, "name", "", "`name` of the worktree")
 	cmd.MarkFlagRequired("name")
-	completeFlag(cmd, "name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
 }
 
 type worktreeRemoved api.WorktreeRemoved
 
-func (r worktreeRemoved) text(w io.Writer, st style.Style) {
+func (r worktreeRemoved) Text(w io.Writer, st style.Style) {
 	fmt.Fprintln(w, st.Success("removed")+" worktree "+st.Name(r.Worktree))
 	if r.BranchDeleted != nil {
 		fmt.Fprintln(w, "branch "+st.Name(*r.BranchDeleted)+" deleted")
@@ -492,7 +493,7 @@ func (r worktreeRemoved) text(w io.Writer, st style.Style) {
 
 type worktreeComments api.WorktreeCommentList
 
-func (l worktreeComments) text(w io.Writer, st style.Style) {
+func (l worktreeComments) Text(w io.Writer, st style.Style) {
 	if len(l.Comments) == 0 {
 		fmt.Fprintln(w, "no comments")
 		return
@@ -507,7 +508,7 @@ func (l worktreeComments) text(w io.Writer, st style.Style) {
 
 type worktreeList api.WorktreeList
 
-func (l worktreeList) text(w io.Writer, st style.Style) {
+func (l worktreeList) Text(w io.Writer, st style.Style) {
 	var table style.Table
 	table.Row(st.Heading("NAME"), st.Heading("BRANCH"), st.Heading("AHEAD"), st.Heading("CHANGED"), st.Heading("PATH"))
 	for _, t := range l.Worktrees {
@@ -528,11 +529,11 @@ func (l worktreeList) text(w io.Writer, st style.Style) {
 
 type worktreeDiff api.WorktreeDiff
 
-func (d worktreeDiff) text(w io.Writer, _ style.Style) { writePatch(w, d.Patch, d.Truncated) }
+func (d worktreeDiff) Text(w io.Writer, _ style.Style) { writePatch(w, d.Patch, d.Truncated) }
 
 type worktreeFileDiff api.WorktreeFileDiff
 
-func (d worktreeFileDiff) text(w io.Writer, _ style.Style) { writePatch(w, d.Patch, d.Truncated) }
+func (d worktreeFileDiff) Text(w io.Writer, _ style.Style) { writePatch(w, d.Patch, d.Truncated) }
 
 func writePatch(w io.Writer, patch string, truncated bool) {
 	fmt.Fprint(w, patch)

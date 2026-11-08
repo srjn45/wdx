@@ -11,18 +11,19 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
 
 // planNotRunningHint says what a plan that is not running or paused takes.
 func planNotRunningHint(err error) error {
-	return &hinted{err, "only a running or paused plan takes this: " + identity.Name + " plan status says what it is"}
+	return &clikit.Hinted{Err: err, Hint: "only a running or paused plan takes this: " + identity.Name + " plan status says what it is"}
 }
 
 // planNotFinishedHint says what a plan that is not done or cancelled takes.
 func planNotFinishedHint(err error) error {
-	return &hinted{err, "only a done or cancelled plan is archived: " + identity.Name + " plan status says what it is"}
+	return &clikit.Hinted{Err: err, Hint: "only a done or cancelled plan is archived: " + identity.Name + " plan status says what it is"}
 }
 
 // newPlanRunAnswerCmd is pause, resume, archive or unarchive: verb the command,
@@ -36,16 +37,16 @@ func newPlanRunAnswerCmd(verb, short, long string, result api.Result, errs []api
 		Use:   verb + " (--id <id> | --name <name>) [--project-id <id> | --project-name <name>]",
 		Short: short,
 		Long:  long,
-		Example: examples(
+		Example: clikit.Examples(
 			"A plan of the project you are in", identity.Name+" plan "+verb+" --name sso",
 			"By id, as JSON", identity.Name+" plan "+verb+" --id doc-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not " + string(result),
-			outputNote:    "The plan.\n" + `With --json: {"result": "` + string(result) + `", "plan": {...}}`,
-			resultList:    annotation(string(result), string(api.ResultUnchanged)),
-			errorList:     codeList(append(errs, api.ErrorCodeDaemonUnavailable)...),
+			clikit.FailurePrefix: "not " + string(result),
+			clikit.OutputNote:    "The plan.\n" + `With --json: {"result": "` + string(result) + `", "plan": {...}}`,
+			clikit.Results:       clikit.Annotation(string(result), string(api.ResultUnchanged)),
+			clikit.Errors:        clikit.CodeList(append(errs, api.ErrorCodeDaemonUnavailable)...),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -59,12 +60,12 @@ func newPlanRunAnswerCmd(verb, short, long string, result api.Result, errs []api
 			case api.ErrorCodePlanNotFinished:
 				return planNotFinishedHint(err)
 			case api.ErrorCodeProjectClosed:
-				return &hinted{err, "open it first with " + identity.Name + " project open; its plans go on as they were"}
+				return &clikit.Hinted{Err: err, Hint: "open it first with " + identity.Name + " project open; its plans go on as they were"}
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planAnswered{PlanResult: r, verb: verb})
+			return clikit.PrintResult(cmd, planAnswered{PlanResult: r, verb: verb})
 		},
 	}
 	ref.addFlags(cmd)
@@ -96,7 +97,7 @@ type planAnswered struct {
 	verb string
 }
 
-func (r planAnswered) text(w io.Writer, st style.Style) {
+func (r planAnswered) Text(w io.Writer, st style.Style) {
 	name := st.Name(r.Plan.Name)
 	unchanged := r.Result == api.ResultUnchanged
 	switch {
@@ -135,17 +136,17 @@ func newPlanCancelCmd() *cobra.Command {
 			"removed, and its branch stays: nothing done is lost. You are asked first, as\n" +
 			"a cancelled plan cannot go on; --yes answers in advance, and with --json, or\n" +
 			"without a terminal, it is required.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Cancel a plan of the project you are in", identity.Name+" plan cancel --name sso",
 			"From a script", identity.Name+" plan cancel --id doc-1a2b3c4d --yes --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not cancelled",
-			outputNote:    "The plan, cancelled.\n" + `With --json: {"result": "cancelled", "plan": {...}}`,
-			resultList:    string(api.ResultCancelled),
-			errorList:     codeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
-			jsonRequires:  annotation("yes"),
+			clikit.FailurePrefix: "not cancelled",
+			clikit.OutputNote:    "The plan, cancelled.\n" + `With --json: {"result": "cancelled", "plan": {...}}`,
+			clikit.Results:       string(api.ResultCancelled),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeCancelled, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
+			clikit.JSONRequires:  clikit.Annotation("yes"),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -153,7 +154,7 @@ func newPlanCancelCmd() *cobra.Command {
 				return err
 			}
 			if yes {
-				logAnswer(cmd, cancelPlanQuestion, "yes", "--yes")
+				clikit.LogAnswer(cmd, cancelPlanQuestion, "yes", "--yes")
 			} else if err := confirmPlanCancel(cmd, ref, path, project, dir); err != nil {
 				return err
 			}
@@ -164,7 +165,7 @@ func newPlanCancelCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planAnswered{PlanResult: r, verb: "cancel"})
+			return clikit.PrintResult(cmd, planAnswered{PlanResult: r, verb: "cancel"})
 		},
 	}
 	ref.addFlags(cmd)
@@ -174,25 +175,25 @@ func newPlanCancelCmd() *cobra.Command {
 
 // confirmPlanCancel asks whether to cancel the plan; nil means yes.
 func confirmPlanCancel(cmd *cobra.Command, ref planRef, path, project, dir string) error {
-	if !canPrompt(cmd) {
-		logUnanswered(cmd, cancelPlanQuestion)
-		return &usageError{fmt.Errorf("cancelling a plan needs an answer, and none can be asked (%s): pass --yes", noPromptReason(cmd))}
+	if !clikit.CanPrompt(cmd) {
+		clikit.LogUnanswered(cmd, cancelPlanQuestion)
+		return &clikit.UsageError{Err: fmt.Errorf("cancelling a plan needs an answer, and none can be asked (%s): pass --yes", clikit.NoPromptReason(cmd))}
 	}
 	p, err := clientOf(cmd).GetPlan(cmd.Context(), path, project, dir, 0)
 	if err != nil {
 		return ref.notFoundHint(err)
 	}
-	prompt, st := cmd.ErrOrStderr(), stderrStyle(cmd)
+	prompt, st := cmd.ErrOrStderr(), clikit.StderrStyle(cmd)
 	question := fmt.Sprintf("cancel plan %s? its running agents stop and it cannot run again %s: ", st.Name(p.Plan.Name), st.Command("[y/N]"))
-	answer, err := ask(prompt, bufio.NewScanner(cmd.InOrStdin()), question, "y", "n", "")
+	answer, err := clikit.Ask(prompt, bufio.NewScanner(cmd.InOrStdin()), question, "y", "n", "")
 	if err != nil {
 		return err
 	}
 	if answer != "y" {
-		logAnswer(cmd, cancelPlanQuestion, "no", "prompt")
+		clikit.LogAnswer(cmd, cancelPlanQuestion, "no", "prompt")
 		return &client.ProblemError{Problem: api.NewProblem(api.ErrorCodeCancelled, "you answered no")}
 	}
-	logAnswer(cmd, cancelPlanQuestion, "yes", "prompt")
+	clikit.LogAnswer(cmd, cancelPlanQuestion, "yes", "prompt")
 	return nil
 }
 
@@ -209,23 +210,23 @@ func newPlanSetCmd() *cobra.Command {
 			"--folder: in any state, cleaned and checked as a doc's (" + identity.Name + " doc --help). A plan\n" +
 			"of plans and the plans it lists move together, whichever is named; moved\n" +
 			"names the others. With --parallel, a plan not running changes neither.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Four tasks at once", identity.Name+" plan set --name sso --parallel 4",
 			"Move it, and its family, to a folder", identity.Name+" plan set --name sso --folder /hub",
 			"As JSON", identity.Name+" plan set --name sso --parallel 1 --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not changed",
-			outputNote:    "The plan, and the others moved with it.\n" + `With --json: {"result": "updated", "plan": {...}, "moved": [...]}`,
-			resultList:    annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
-			errorList:     codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
+			clikit.FailurePrefix: "not changed",
+			clikit.OutputNote:    "The plan, and the others moved with it.\n" + `With --json: {"result": "updated", "plan": {...}, "moved": [...]}`,
+			clikit.Results:       clikit.Annotation(string(api.ResultUpdated), string(api.ResultUnchanged)),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeInvalidArgument, api.ErrorCodeNotFound, api.ErrorCodePlanNotRunning, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var body api.UpdatePlan
 			if cmd.Flags().Changed("parallel") {
 				if parallel < 1 || parallel > 20 {
-					return &usageError{fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
+					return &clikit.UsageError{Err: fmt.Errorf("--parallel %d is not from 1 to 20", parallel)}
 				}
 				body.Parallel = &parallel
 			}
@@ -243,14 +244,14 @@ func newPlanSetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planSet{PlanResult: r, parallel: body.Parallel, folder: body.Folder != nil})
+			return clikit.PrintResult(cmd, planSet{PlanResult: r, parallel: body.Parallel, folder: body.Folder != nil})
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().IntVar(&parallel, "parallel", 0, "the most tasks it runs at once, a `number` from 1 to 20")
 	addFolderFlag(cmd, &folder, "`folder` to move it and its family to, such as /hub; / is the top")
 	cmd.MarkFlagsOneRequired("parallel", "folder")
-	completeFlag(cmd, "parallel", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "parallel", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -262,7 +263,7 @@ type planSet struct {
 	folder   bool
 }
 
-func (r planSet) text(w io.Writer, st style.Style) {
+func (r planSet) Text(w io.Writer, st style.Style) {
 	name := st.Name(r.Plan.Name)
 	already := ""
 	if r.Result == api.ResultUnchanged {
@@ -297,13 +298,13 @@ func newPlanTaskAnswerCmd(verb, short, long string, result api.Result, extraErro
 		Use:     verb + " --plan <name> --task <id> [--project-id <id> | --project-name <name>]",
 		Short:   short,
 		Long:    long,
-		Example: examples(ex...),
+		Example: clikit.Examples(ex...),
 		Args:    cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not " + string(result),
-			outputNote:    "The task.\n" + `With --json: {"result": "` + string(result) + `", "task": {...}}`,
-			resultList:    string(result),
-			errorList:     codeList(append(errs, api.ErrorCodeDaemonUnavailable)...),
+			clikit.FailurePrefix: "not " + string(result),
+			clikit.OutputNote:    "The task.\n" + `With --json: {"result": "` + string(result) + `", "task": {...}}`,
+			clikit.Results:       string(result),
+			clikit.Errors:        clikit.CodeList(append(errs, api.ErrorCodeDaemonUnavailable)...),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, project, dir, err := ref.resolve(cmd)
@@ -315,18 +316,18 @@ func newPlanTaskAnswerCmd(verb, short, long string, result api.Result, extraErro
 			case api.ErrorCodePlanNotRunning:
 				return planNotRunningHint(err)
 			case api.ErrorCodeTaskState:
-				return &hinted{err, identity.Name + " plan task get says what it is"}
+				return &clikit.Hinted{Err: err, Hint: identity.Name + " plan task get says what it is"}
 			case api.ErrorCodeAgentWorking:
-				return &hinted{err, "stop or remove the agent at work in the task's worktree first"}
+				return &clikit.Hinted{Err: err, Hint: "stop or remove the agent at work in the task's worktree first"}
 			case api.ErrorCodeNotCommitted:
-				return &hinted{err, "commit what was done on the task's branch first"}
+				return &clikit.Hinted{Err: err, Hint: "commit what was done on the task's branch first"}
 			case api.ErrorCodeWrongBranch:
-				return &hinted{err, "switch the worktree back to the task's branch, with its commits"}
+				return &clikit.Hinted{Err: err, Hint: "switch the worktree back to the task's branch, with its commits"}
 			}
 			if err != nil {
 				return err
 			}
-			return printResult(cmd, taskAnswered{PlanTaskResult: r, plan: path, verb: verb})
+			return clikit.PrintResult(cmd, taskAnswered{PlanTaskResult: r, plan: path, verb: verb})
 		},
 	}
 	ref.addFlags(cmd)
@@ -384,7 +385,7 @@ type taskAnswered struct {
 	plan, verb string
 }
 
-func (r taskAnswered) text(w io.Writer, st style.Style) {
+func (r taskAnswered) Text(w io.Writer, st style.Style) {
 	task, plan := st.Name(r.Task.Id), st.Name(r.plan)
 	switch r.verb {
 	case "retry":

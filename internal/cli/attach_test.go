@@ -23,6 +23,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/pty"
 	"github.com/srjn45/wdx/internal/screen"
@@ -43,7 +44,7 @@ type attachRun struct {
 	args   []string
 	master *os.File
 	tty    *os.File // the side attach reads
-	done   chan output
+	done   chan clikittest.Output
 
 	mu     sync.Mutex
 	screen *screen.Screen // the calling terminal
@@ -83,7 +84,7 @@ func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []stri
 		}
 		env.Timeouts.ProjectStrip = waittest.Limit(t) // a test polling late still sees it; the next key hides it
 		exit := Run(context.Background(), a.args, env)
-		a.done <- output{exit: exit, stdout: stdout.String(), stderr: stderr.String()}
+		a.done <- clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
 	}()
 	return a
 }
@@ -123,7 +124,7 @@ func startBinaryInTerminal(t *testing.T, home, dir string, cols, rows int, args 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	go func() {
 		_ = cmd.Wait() // the exit code tells
-		a.done <- output{exit: cmd.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String(), pid: cmd.Process.Pid}
+		a.done <- clikittest.Output{Exit: cmd.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String(), Pid: cmd.Process.Pid}
 	}()
 	return a, cmd.Process
 }
@@ -145,7 +146,7 @@ func newAttachRun(t *testing.T, home string, master, tty *os.File, cols, rows in
 	// The terminal's answers go back to the view.
 	sc := screen.New(cols, rows, func(p []byte) { _, _ = master.Write(p) })
 	sc.Write([]byte(callingText + "\r\n$ "))
-	a := &attachRun{t: t, home: home, args: args, master: master, tty: tty, screen: sc, done: make(chan output, 1)}
+	a := &attachRun{t: t, home: home, args: args, master: master, tty: tty, screen: sc, done: make(chan clikittest.Output, 1)}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -208,9 +209,9 @@ func (a *attachRun) waitFor(what string, ok func(text string) bool) {
 }
 
 // waitText waits for the command to end and returns its output.
-func (a *attachRun) waitText() output {
+func (a *attachRun) waitText() clikittest.Output {
 	a.t.Helper()
-	var out output
+	var out clikittest.Output
 	select {
 	case out = <-a.done:
 	case <-waittest.After(a.t):
@@ -225,10 +226,10 @@ func (a *attachRun) wait() (jsonOutput, int) {
 	a.t.Helper()
 	out := a.waitText()
 	var v jsonOutput
-	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil {
-		a.t.Fatalf("%v: stdout is not JSON: %v\n%s", a.args, err, out.stdout)
+	if err := json.Unmarshal([]byte(out.Stdout), &v); err != nil {
+		a.t.Fatalf("%v: stdout is not JSON: %v\n%s", a.args, err, out.Stdout)
 	}
-	return v, out.exit
+	return v, out.Exit
 }
 
 // wantBar waits for the status line, on the bottom row, to be painted in
@@ -391,7 +392,7 @@ func TestTerminalAttachExitedText(t *testing.T) {
 	a := startAttach(t, home, app, "--name", "api")
 	a.waitScreen("for keys") // attached: the view is up
 	a.input("exit 3\r")
-	if out := a.waitText(); out.exit != clikit.ExitOK || out.stdout != "terminal api in app exited with code 3\n" {
+	if out := a.waitText(); out.Exit != clikit.ExitOK || out.Stdout != "terminal api in app exited with code 3\n" {
 		t.Fatalf("want exited with code 3, got %+v", out)
 	}
 }
@@ -469,8 +470,8 @@ func TestTerminalAttachKeys(t *testing.T) {
 	b.input("\x1c") // no longer the prefix: the shell gets it
 	b.input("\x1d")
 	b.input("d")
-	if out := b.waitText(); out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "detached from terminal api in app\n") {
-		t.Fatalf("want detached by ctrl-] d, got exit %d, %q", out.exit, out.stdout)
+	if out := b.waitText(); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "detached from terminal api in app\n") {
+		t.Fatalf("want detached by ctrl-] d, got exit %d, %q", out.Exit, out.Stdout)
 	}
 }
 
@@ -681,8 +682,8 @@ func TestTerminalHistory(t *testing.T) {
 		{[]string{"--color", "always", "--plain"}, "red\n1\n"},
 	} {
 		out := wdxWith(t, home, in(app), append([]string{"terminal", "history", "--name", "api", "--from", "0", "--count", "2"}, tc.args...)...)
-		if out.exit != clikit.ExitOK || out.stdout != tc.want {
-			t.Fatalf("%v: got exit %d, %q, want %q", tc.args, out.exit, out.stdout, tc.want)
+		if out.Exit != clikit.ExitOK || out.Stdout != tc.want {
+			t.Fatalf("%v: got exit %d, %q, want %q", tc.args, out.Exit, out.Stdout, tc.want)
 		}
 	}
 }
@@ -697,11 +698,11 @@ func TestTerminalAttachVersion(t *testing.T) {
 	a := startInTerminal(t, home, app, 80, 24, []string{"terminal", "attach", "--name", "api"})
 	a.waitScreen("C-\\ ? for keys  [wdx " + identity.Version + "]")
 	a.input("\x1c" + "d")
-	if out := a.waitText(); out.exit != clikit.ExitOK {
+	if out := a.waitText(); out.Exit != clikit.ExitOK {
 		t.Fatalf("got %+v", out)
 	}
 	// It asks all the time, so it must not fill the logs.
-	for _, l := range logLines(t, home, a.args) {
+	for _, l := range clikittest.LogLines(t, identity.LogsDir(home), a.args) {
 		if l.Level != "DEBUG" && strings.Contains(l.Msg, "daemon called") && strings.Contains(string(l.Path), "/version") {
 			t.Fatalf("the version check logged at %s: %+v", l.Level, l)
 		}

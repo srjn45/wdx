@@ -16,6 +16,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/db/dbtest"
@@ -86,7 +87,7 @@ func TestSettingsWriteText(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, identity.ConfigPath(home), "old: 1\n")
 	out := wdx(t, home, "settings", "write")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, "wrote "+identity.ConfigPath(home)+"\n") || !strings.Contains(out.stdout, "dropped: old (commented at the end)") {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "wrote "+identity.ConfigPath(home)+"\n") || !strings.Contains(out.Stdout, "dropped: old (commented at the end)") {
 		t.Fatalf("want what was written, got %+v", out)
 	}
 }
@@ -137,7 +138,7 @@ func TestSettingList(t *testing.T) {
 	var v struct {
 		Settings []api.Setting `json:"settings"`
 	}
-	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != clikit.ExitOK {
+	if err := json.Unmarshal([]byte(out.Stdout), &v); err != nil || out.Exit != clikit.ExitOK {
 		t.Fatalf("want the settings, got %+v: %v", out, err)
 	}
 	if len(v.Settings) != len(config.Settings()) {
@@ -158,7 +159,7 @@ func TestSettingList(t *testing.T) {
 	}
 
 	text := wdxWith(t, home, withFileConfig(t, home), "setting", "list")
-	if text.exit != clikit.ExitOK || !strings.Contains(text.stdout, "log.level") || !strings.Contains(text.stdout, path+":2") {
+	if text.Exit != clikit.ExitOK || !strings.Contains(text.Stdout, "log.level") || !strings.Contains(text.Stdout, path+":2") {
 		t.Fatalf("want the settings in text, got %+v", text)
 	}
 }
@@ -174,7 +175,7 @@ func TestSettingGet(t *testing.T) {
 	}
 
 	text := wdxWith(t, home, withFileConfig(t, home), "setting", "get", "--name", "update.channel")
-	if text.exit != clikit.ExitOK || !strings.HasPrefix(text.stdout, "update.channel dev\n") {
+	if text.Exit != clikit.ExitOK || !strings.HasPrefix(text.Stdout, "update.channel dev\n") {
 		t.Fatalf("want the value on the first line, got %+v", text)
 	}
 
@@ -267,7 +268,7 @@ func TestSettingSetApplied(t *testing.T) {
 		t.Fatalf("want applied, got exit %d, %+v", exit, v)
 	}
 	out := wdx(t, home, "setting", "set", "--name", "color", "--value", "always")
-	if out.exit != clikit.ExitOK || out.stdout != "set color to always\n  the daemon applied it\n" {
+	if out.Exit != clikit.ExitOK || out.Stdout != "set color to always\n  the daemon applied it\n" {
 		t.Fatalf("want what was set, got %+v", out)
 	}
 }
@@ -299,11 +300,11 @@ func TestSettingSetNotApplied(t *testing.T) {
 
 	out := wdx(t, home, "setting", "set", "--name", "color", "--value", "never", "--json")
 	var v jsonOutput
-	if err := json.Unmarshal([]byte(out.stdout), &v); err != nil || out.exit != clikit.ExitOK || v.Reload != "not_applied" {
+	if err := json.Unmarshal([]byte(out.Stdout), &v); err != nil || out.Exit != clikit.ExitOK || v.Reload != "not_applied" {
 		t.Fatalf("want not_applied, got %+v: %v", out, err)
 	}
-	if !strings.Contains(out.stderr, "cannot read it") || !strings.Contains(out.stderr, "daemon restart") {
-		t.Fatalf("want a warning naming the restart, got %q", out.stderr)
+	if !strings.Contains(out.Stderr, "cannot read it") || !strings.Contains(out.Stderr, "daemon restart") {
+		t.Fatalf("want a warning naming the restart, got %q", out.Stderr)
 	}
 	if got := readFile(t, identity.ConfigPath(home)); !strings.Contains(got, "\ncolor: never\n") {
 		t.Fatalf("want the value saved, got\n%s", got)
@@ -328,7 +329,7 @@ func TestSettingTakesEffectInDaemon(t *testing.T) {
 	newProject(t, home, "app")
 	daemonDebugLines := func() int {
 		n := 0
-		for _, l := range logLines(t, home, nil) {
+		for _, l := range clikittest.LogLines(t, identity.LogsDir(home), nil) {
 			if l.Pid == pid && l.Level == "DEBUG" {
 				n++
 			}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/style"
 )
@@ -30,17 +31,17 @@ func newPlanCopyCmd() *cobra.Command {
 			"first n from 2 free for all of them (auth-b-2, auth-c-2). The copy lists\n" +
 			"those, without its afters on the plans done, whose work is in the default\n" +
 			"branch once landed. With every plan done, nothing is copied.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Run a plan of the project you are in again", identity.Name+" plan copy --name sso --new-name sso-2",
 			"In another folder, as JSON", identity.Name+" plan copy --name sso --new-name sso-2 --folder /later --json",
 			"A plan of plans, with its plans", identity.Name+" plan copy --name auth --new-name auth-2",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "not copied",
-			outputNote:    "The copy, at revision 1; a plan of plans' copy, with the copies of its plans not done.\n" + `With --json: {"result": "created", "plan": {...}, "dropped": [], "moved": []}`,
-			resultList:    string(api.ResultCreated),
-			errorList: codeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPlan, api.ErrorCodeNameTaken,
+			clikit.FailurePrefix: "not copied",
+			clikit.OutputNote:    "The copy, at revision 1; a plan of plans' copy, with the copies of its plans not done.\n" + `With --json: {"result": "created", "plan": {...}, "dropped": [], "moved": []}`,
+			clikit.Results:       string(api.ResultCreated),
+			clikit.Errors: clikit.CodeList(api.ErrorCodeInvalidArgument, api.ErrorCodeInvalidName, api.ErrorCodeInvalidPlan, api.ErrorCodeNameTaken,
 				api.ErrorCodeNotFound, api.ErrorCodeDaemonUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -55,19 +56,19 @@ func newPlanCopyCmd() *cobra.Command {
 			r, err := clientOf(cmd).CopyPlan(cmd.Context(), path, project, dir, body)
 			switch problemCode(err) {
 			case api.ErrorCodeNameTaken, api.ErrorCodeInvalidName:
-				return &hinted{err, "choose another --new-name"}
+				return &clikit.Hinted{Err: err, Hint: "choose another --new-name"}
 			}
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return printResult(cmd, planCopied{PlanResult: r, from: ref.name})
+			return clikit.PrintResult(cmd, planCopied{PlanResult: r, from: ref.name})
 		},
 	}
 	ref.addFlags(cmd)
 	cmd.Flags().StringVar(&newName, "new-name", "", "`name` of the copy")
 	addFolderFlag(cmd, &folder, "`folder` of the copy (default: the plan's)")
 	_ = cmd.MarkFlagRequired("new-name")
-	completeFlag(cmd, "new-name", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "new-name", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -78,14 +79,14 @@ type planCopied struct {
 	from string
 }
 
-func (r planCopied) text(w io.Writer, st style.Style) {
+func (r planCopied) Text(w io.Writer, st style.Style) {
 	from := ""
 	if r.from != "" {
 		from = " from " + st.Name(r.from)
 	}
 	fmt.Fprintf(w, "plan %s %s%s, with %s\n", st.Name(r.Plan.Name), st.Success("created"), from, planSize(r.Plan))
 	if r.Plan.Plans != nil {
-		fieldPrinter(w, st, 8)("plans", nameList(st, *r.Plan.Plans))
+		clikit.FieldPrinter(w, st, 8)("plans", nameList(st, *r.Plan.Plans))
 	}
 	planFields(w, st, r.Plan)
 }

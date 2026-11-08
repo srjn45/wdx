@@ -15,6 +15,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -53,15 +54,15 @@ func newTideCmd() *cobra.Command {
 			"agent opened, each live in its pane. TIDE needs the daemon running, runs in\n" +
 			"the terminal it was started from and has no --json. One TIDE runs per home:\n" +
 			"another is refused.",
-		Example: examples(
+		Example: clikit.Examples(
 			"Open TIDE", identity.Name+" tide",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			failurePrefix: "TIDE did not start",
-			outputNote:    "Once you quit, that TIDE closed; it gives the window back as it was.",
-			resultList:    annotation("closed"),
-			errorList:     codeList(api.ErrorCodeTideRunning),
+			clikit.FailurePrefix: "TIDE did not start",
+			clikit.OutputNote:    "Once you quit, that TIDE closed; it gives the window back as it was.",
+			clikit.Results:       clikit.Annotation("closed"),
+			clikit.Errors:        clikit.CodeList(api.ErrorCodeTideRunning),
 		},
 		RunE: runTide,
 	}
@@ -69,7 +70,7 @@ func newTideCmd() *cobra.Command {
 	// it, and every release must keep it, since an older one reloads into it.
 	cmd.Flags().String(resumeFlag, "", "show what the `state` says, as the run before did")
 	_ = cmd.Flags().MarkHidden(resumeFlag)
-	completeFlag(cmd, resumeFlag, cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, resumeFlag, cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -79,8 +80,8 @@ const resumeFlag = "resume"
 // version: at debug level on both sides, since it asks all the time. It has
 // its own client so that the answer warns of nothing.
 func daemonVersionCheck(cmd *cobra.Command) func(context.Context) (string, error) {
-	inv := invocationOf(cmd)
-	c := client.New(client.Options{Socket: identity.SocketPath(inv.env.Config.Home), DebugID: inv.debugID, Quiet: true})
+	inv := clikit.InvocationOf(cmd)
+	c := client.New(client.Options{Socket: identity.SocketPath(envOf(cmd).Config.Home), DebugID: inv.DebugID, Quiet: true})
 	return func(ctx context.Context) (string, error) {
 		ctx = logging.NewContext(ctx, logging.Quiet(logging.FromContext(ctx)))
 		ctx, cancel := context.WithTimeout(ctx, tide.VersionCheckTimeout)
@@ -93,16 +94,16 @@ func daemonVersionCheck(cmd *cobra.Command) func(context.Context) (string, error
 // warnTideVersion warns on stderr that the daemon is of another version than
 // the tide that ended, which ran for long enough for either to be the old one.
 func warnTideVersion(cmd *cobra.Command, daemonVersion string) {
-	st := stderrStyle(cmd)
+	st := clikit.StderrStyle(cmd)
 	fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s the daemon is version %s but this TIDE was %s; open TIDE again if the daemon is the newer, or run %s if it is the older\n",
 		identity.Name, st.Warning("warning:"), daemonVersion, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
 
 func runTide(cmd *cobra.Command, _ []string) error {
-	if jsonMode(cmd) {
-		return &usageError{errors.New("TIDE is interactive and has no --json")}
+	if clikit.JSONMode(cmd) {
+		return &clikit.UsageError{Err: errors.New("TIDE is interactive and has no --json")}
 	}
-	env := invocationOf(cmd).env
+	env := envOf(cmd)
 	lock, err := lockTide(env.Config.Home)
 	if err != nil {
 		return err
@@ -110,17 +111,17 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	defer lock.Close()
 	logging.FromContext(cmd.Context()).Info("tide lock taken", "path", lock.Name())
 	if env.TTY == nil {
-		return &usageError{errors.New("no terminal to run TIDE in: run it in one")}
+		return &clikit.UsageError{Err: errors.New("no terminal to run TIDE in: run it in one")}
 	}
 	tty, err := env.TTY()
 	if err != nil {
-		return &usageError{fmt.Errorf("no terminal to run TIDE in: %w", err)}
+		return &clikit.UsageError{Err: fmt.Errorf("no terminal to run TIDE in: %w", err)}
 	}
 	defer tty.Close()
 
 	ctx := cmd.Context()
 	log := logging.FromContext(ctx)
-	inv := invocationOf(cmd)
+	inv := clikit.InvocationOf(cmd)
 	var resume *tide.Resume
 	if state, _ := cmd.Flags().GetString(resumeFlag); state != "" {
 		r, err := tide.ParseResume(state)
@@ -131,7 +132,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	}
 	// The status line says when the daemon is of another version, and the
 	// warning, which would land in the window, waits until tide gives it back.
-	c := client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.debugID})
+	c := client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.DebugID})
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
 	opts := tide.Options{Client: c, Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
@@ -155,7 +156,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	if err != nil && !killed {
 		return err
 	}
-	return printResult(cmd, tideResult{Result: api.ResultClosed})
+	return clikit.PrintResult(cmd, tideResult{Result: api.ResultClosed})
 }
 
 // tideResult is how tide ended.
@@ -163,7 +164,7 @@ type tideResult struct {
 	Result api.Result `json:"result"`
 }
 
-func (r tideResult) text(w io.Writer, st style.Style) {
+func (r tideResult) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "TIDE %s\n", st.Success(string(r.Result)))
 }
 

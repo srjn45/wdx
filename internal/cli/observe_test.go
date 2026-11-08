@@ -269,13 +269,13 @@ func TestObserveText(t *testing.T) {
 	home := shortHome(t)
 	f := newFakeRuntime(t, "docker")
 	out := wdxWith(t, home, f.env, "observe", "start")
-	if out.exit != clikit.ExitOK || !strings.HasPrefix(out.stdout, fmt.Sprintf("observability stack started: open http://localhost:%d\n", f.ports.Grafana)) || !strings.Contains(out.stderr, "pulling "+observe.Image) {
+	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, fmt.Sprintf("observability stack started: open http://localhost:%d\n", f.ports.Grafana)) || !strings.Contains(out.Stderr, "pulling "+observe.Image) {
 		t.Fatalf("unexpected start: %+v", out)
 	}
-	if out = wdxWith(t, home, f.env, "observe", "status"); !strings.HasPrefix(out.stdout, "observability stack running") || !strings.Contains(out.stdout, "  logs:    "+identity.LogsDir(home)) {
-		t.Fatalf("unexpected status: %q", out.stdout)
+	if out = wdxWith(t, home, f.env, "observe", "status"); !strings.HasPrefix(out.Stdout, "observability stack running") || !strings.Contains(out.Stdout, "  logs:    "+identity.LogsDir(home)) {
+		t.Fatalf("unexpected status: %q", out.Stdout)
 	}
-	if out = wdxWith(t, home, f.env, "observe", "stop"); !strings.HasPrefix(out.stdout, "observability stack stopped\n") {
-		t.Fatalf("unexpected stop: %q", out.stdout)
+	if out = wdxWith(t, home, f.env, "observe", "stop"); !strings.HasPrefix(out.Stdout, "observability stack stopped\n") {
+		t.Fatalf("unexpected stop: %q", out.Stdout)
 	}
 }

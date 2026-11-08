@@ -28,7 +28,7 @@ func TestAgentsTopicCommands(t *testing.T) {
 		}
 		command, _, _ = strings.Cut(strings.TrimSpace(command), "  ") // its comment
 		n++
-		c, err := checkCommandLine(command)
+		c, err := clikittest.CheckCommandLine(func() *cobra.Command { return newRoot(config.Default()) }, command)
 		switch {
 		case !strings.HasPrefix(command, identity.Name+" "):
 			t.Errorf("%q is indented as a command line", command)
@@ -85,13 +85,13 @@ func TestHelpColor(t *testing.T) {
 	t.Parallel()
 	out := wdx(t, t.TempDir(), "project", "open", "--help", "--color", "always")
 	for _, want := range []string{"\x1b[1mUsage:\x1b[0m", "\x1b[33m--local\x1b[0m \x1b[2;3m<path>\x1b[0m", "\x1b[1;32mcloned\x1b[0m"} {
-		if !strings.Contains(out.stdout, want) {
-			t.Errorf("want %q in the help, got:\n%s", want, out.stdout)
+		if !strings.Contains(out.Stdout, want) {
+			t.Errorf("want %q in the help, got:\n%s", want, out.Stdout)
 		}
 	}
 	for _, args := range [][]string{{"project", "open", "--help"}, {"help", "settings"}} {
-		if out := wdx(t, t.TempDir(), append(args, "--json", "--color", "always")...); strings.Contains(out.stdout, esc) {
-			t.Errorf("%v: want no color in the JSON help, got %q", args, out.stdout)
+		if out := wdx(t, t.TempDir(), append(args, "--json", "--color", "always")...); strings.Contains(out.Stdout, esc) {
+			t.Errorf("%v: want no color in the JSON help, got %q", args, out.Stdout)
 		}
 	}
 }
