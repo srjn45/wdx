@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"os"
 )
 
@@ -12,8 +13,8 @@ import (
 // after each model response, so only such lines are parsed.
 var codexTokenCount = []byte(`"type":"token_count"`)
 
-// codexReadBlock is how much of a session file ContextSize reads at a time, from its
-// end: the file can be several MB, and the last token_count line is near the end.
+// codexReadBlock is how much of a session file ContextSize and Usage read at a time,
+// from its end: the file can be several MB, and what they look for is near the end.
 const codexReadBlock = 64 << 10
 
 // codexTokenCountLine is what ContextSize reads of a token_count line. Its info is
@@ -74,18 +75,31 @@ func codexSessionPath(l Launch) (string, error) {
 	return codexSessionFile(l.UserHome, l.SessionID)
 }
 
-// codexLastTokenCount reads the session file from its end, a block at a time, back to
-// the last token_count line whose info is not null, and says whether there is one. A
-// file shorter than it was when opened is read again at the next change.
+// codexLastTokenCount reads the session file from its end back to the last
+// token_count line whose info is not null, and says whether there is one.
 func codexLastTokenCount(path string) (ContextSize, bool, error) {
+	var size ContextSize
+	found := false
+	err := codexReadBack(path, math.MaxInt64, func(line []byte) bool {
+		size, found = codexParseTokenCount(line)
+		return found
+	})
+	return size, found, err
+}
+
+// codexReadBack hands each whole line of the session file at path to line, from the
+// last back, a block at a time, until line returns true, the file's start, or limit
+// bytes have been read. A file shorter than it was when opened is read again at the
+// next change.
+func codexReadBack(path string, limit int64, line func([]byte) bool) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return ContextSize{}, false, err
+		return err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return ContextSize{}, false, err
+		return err
 	}
 	// buf is what is read of the file, from pos to its end, that is not yet looked at:
 	// a line is whole once the byte before it is read, or it starts the file.
@@ -95,9 +109,9 @@ func codexLastTokenCount(path string) (ContextSize, bool, error) {
 		block := make([]byte, min(codexReadBlock, pos))
 		if _, err := f.ReadAt(block, pos-int64(len(block))); err != nil {
 			if errors.Is(err, io.EOF) {
-				return ContextSize{}, false, nil
+				return nil
 			}
-			return ContextSize{}, false, err
+			return err
 		}
 		pos -= int64(len(block))
 		buf = append(block, buf...)
@@ -105,6 +119,9 @@ func codexLastTokenCount(path string) (ContextSize, bool, error) {
 		if pos > 0 {
 			nl := bytes.IndexByte(buf, '\n')
 			if nl < 0 {
+				if info.Size()-pos >= limit {
+					return nil
+				}
 				continue // one line longer than what is read: read more of it
 			}
 			whole = buf[nl+1:]
@@ -116,13 +133,13 @@ func codexLastTokenCount(path string) (ContextSize, bool, error) {
 				end--
 			}
 			start := bytes.LastIndexByte(whole[:end], '\n') + 1
-			if size, ok := codexParseTokenCount(whole[start:end]); ok {
-				return size, true, nil
+			if line(whole[start:end]) {
+				return nil
 			}
 			whole = whole[:start]
 		}
-		if pos == 0 {
-			return ContextSize{}, false, nil
+		if pos == 0 || info.Size()-pos >= limit {
+			return nil
 		}
 	}
 }

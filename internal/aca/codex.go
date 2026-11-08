@@ -11,10 +11,9 @@ import (
 )
 
 // Codex is OpenAI's Codex CLI: the wdx docs ACA_CODEX, ACA_READY, CODEX_ACTIVITY,
-// CODEX_STEER, CODEX_RESUME, CODEX_BACKUP, CODEX_BRIEF and CODEX_CONTEXT.
+// CODEX_STEER, CODEX_RESUME, CODEX_BACKUP, CODEX_BRIEF, CODEX_CONTEXT and USAGE_CODEX.
 type Codex struct {
 	NoDetached
-	NoUsage
 }
 
 // CodexID is Codex's ID.
