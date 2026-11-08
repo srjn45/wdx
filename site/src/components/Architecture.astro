@@ -2,7 +2,7 @@
 // How the processes fit together; the docs' architecture pages go deeper.
 ---
 <section class="sec band" id="how"><div class="wrap">
-  <div class="sec-head"><span class="eyebrow">How it works</span><h2>One daemon holds everything. Every window is a client.</h2><p class="lede">TIDE and the CLI talk to the daemon over a Unix socket. Each terminal and agent lives in a holder process of its own, which keeps it running when the daemon restarts or is updated.</p></div>
+  <div class="sec-head"><span class="eyebrow">How it works</span><h2>One daemon holds everything. Every window is a client.</h2><p class="lede">TIDE and the CLI talk to the daemon over a Unix socket. Each terminal and agent lives in a holder process of its own, which keeps it running when the daemon restarts or is updated.</p><a class="more" href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/docs/architecture/`}>How it works, in depth →</a></div>
   <div class="diagram"><svg viewBox="0 0 980 300" role="img" aria-label="cli, TIDE and scripts talk to the daemon over a Unix socket; the daemon keeps one SQLite database and starts a holder per terminal or agent; each holder owns a PTY running a shell or an AI CLI; TIDE attaches to holders directly.">
     <defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="hd" d="M0 0L10 5L0 10z"/></marker><marker id="hh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="hd hot" d="M0 0L10 5L0 10z"/></marker></defs>
     <rect class="bx" x="10" y="40" width="170" height="54" rx="8"/><text x="28" y="66">wdx tide</text><text class="sm" x="28" y="84">the Terminal IDE</text>

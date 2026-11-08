@@ -1,0 +1,18 @@
+---
+// An update over time: the daemon is replaced, the holders go on.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="up" width={720} height={350}
+  label="An update over time. The daemon of the old version stops; while it is stopped the binary is replaced, the database backed up and the settings written anew; the daemon of the new version starts and adopts the running holders. The holders of an agent and of a shell run on, on the old version, the whole time. A terminal started after the update gets a holder of the new version."
+  caption="wdx update stops only the daemon. The holders, with the shells and AI CLIs in them, run on through it and the new daemon adopts them.">
+  <text class="ttl" x="10" y="22">time</text><path class="ar" d="M60 18 L710 18" marker-end="url(#up-a)" />
+  <rect class="bx" x="10" y="44" width="200" height="54" rx="8" /><text x="24" y="68">wdx daemon 0.4</text><text class="sm" x="24" y="86">serves the API</text>
+  <rect class="bx dim" x="220" y="44" width="230" height="54" rx="8" /><text x="234" y="68">wdx update</text><text class="sm" x="234" y="86">binary · db backup · settings</text>
+  <rect class="bx hot" x="460" y="44" width="250" height="54" rx="8" /><text x="474" y="68">wdx daemon 0.5</text><text class="sm" x="474" y="86">adopts the holders it finds</text>
+  <rect class="bx hot" x="10" y="140" width="600" height="44" rx="8" /><text x="24" y="167">wdx holder 0.4 · agent reviewer</text><text class="sm" x="270" y="167">claude runs on, untouched</text>
+  <rect class="bx hot" x="10" y="200" width="600" height="44" rx="8" /><text x="24" y="227">wdx holder 0.4 · terminal dev</text><text class="sm" x="270" y="227">zsh runs on, with its history</text>
+  <rect class="bx" x="400" y="260" width="210" height="54" rx="8" /><text x="414" y="284">wdx holder 0.5</text><text class="sm" x="414" y="302">a new terminal</text>
+  <path class="ar dash" d="M650 98 V162 H614" marker-end="url(#up-a)" /><path class="ar dash" d="M650 162 V222 H614" marker-end="url(#up-a)" /><path class="ar" d="M690 98 V287 H614" marker-end="url(#up-a)" />
+  <text class="sm" x="600" y="126">adopts</text><text class="sm" x="622" y="280">starts</text>
+  <text class="sm" x="10" y="340">a holder runs the binary it was started from until its terminal starts again</text>
+</Diagram>

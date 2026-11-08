@@ -77,6 +77,18 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Architecture',
+          items: [
+            { label: 'Overview', link: '/docs/architecture/' },
+            'docs/architecture/daemon',
+            'docs/architecture/holders',
+            'docs/architecture/state',
+            'docs/architecture/api',
+            'docs/architecture/agent-state',
+            'docs/architecture/worktrees',
+          ],
+        },
+        {
           label: 'Reference',
           collapsed: true,
           items: [

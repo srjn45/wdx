@@ -1,0 +1,25 @@
+---
+// How an agent's state is read from its screen, and where it goes.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="as" width={720} height={440}
+  label="How an agent's state is read. In the holder, the PTY's output keeps the vt's screen; a moment after the screen changes, watchScreen reads it and hands its lines to the ACA's own ScreenParser, which gives a ScreenState: the activity, whether its input box shows, a draft, the model, the question it asks. The inbox uses it to decide when a message may go into the PTY. On a change, the holder sends the state to the daemon, which writes it into the agent's row and sends the project to its streams, which TIDE shows."
+  caption="The parser runs in the holder, and the screen's text never leaves it: the daemon gets only what was read.">
+  <rect class="grp" x="10" y="10" width="700" height="226" rx="12" /><text class="ttl" x="24" y="30">the agent's holder</text>
+  <rect class="bx hot" x="26" y="44" width="70" height="54" rx="8" /><text x="40" y="76">PTY</text>
+  <rect class="bx hot" x="116" y="44" width="110" height="54" rx="8" /><text x="130" y="68">vt</text><text class="sm" x="130" y="86">the screen</text>
+  <rect class="bx hot" x="246" y="44" width="150" height="54" rx="8" /><text x="260" y="68">watchScreen</text><text class="sm" x="260" y="86">after a change</text>
+  <rect class="bx hot" x="416" y="44" width="150" height="54" rx="8" /><text x="430" y="68">ScreenParser</text><text class="sm" x="430" y="86">the ACA's own</text>
+  <rect class="bx hot" x="416" y="150" width="280" height="54" rx="8" /><text x="430" y="174">ScreenState</text><text class="sm" x="430" y="192">activity · box · draft · model</text>
+  <rect class="bx" x="186" y="150" width="200" height="54" rx="8" /><text x="200" y="174">inbox</text><text class="sm" x="200" y="192">goes in when it can</text>
+  <path class="ar hot" d="M96 71 L112 71" marker-end="url(#as-h)" /><path class="ar hot" d="M226 71 L242 71" marker-end="url(#as-h)" /><path class="ar hot" d="M396 71 L412 71" marker-end="url(#as-h)" />
+  <path class="ar hot" d="M491 98 L491 146" marker-end="url(#as-h)" />
+  <path class="ar" d="M416 177 L390 177" marker-end="url(#as-a)" />
+  <path class="ar" d="M186 177 H61 V102" marker-end="url(#as-a)" /><text class="sm" x="70" y="170">a message</text>
+  <rect class="grp" x="10" y="266" width="700" height="160" rx="12" /><text class="ttl" x="24" y="286">the daemon</text>
+  <rect class="bx" x="460" y="320" width="236" height="54" rx="8" /><text x="474" y="344">the agent's row</text><text class="sm" x="474" y="362">activity · model · context</text>
+  <rect class="bx" x="230" y="320" width="210" height="54" rx="8" /><text x="244" y="344">the project stream</text><text class="sm" x="244" y="362">the project, whole</text>
+  <rect class="bx" x="26" y="320" width="184" height="54" rx="8" /><text x="40" y="344">TIDE's agents list</text><text class="sm" x="40" y="362">a row per agent</text>
+  <path class="ar hot" d="M630 204 L630 316" marker-end="url(#as-h)" /><rect class="lbl" x="500" y="252" width="124" height="18" rx="3" /><text class="sm" x="506" y="265">on a change only</text>
+  <path class="ar" d="M460 347 L444 347" marker-end="url(#as-a)" /><path class="ar" d="M230 347 L214 347" marker-end="url(#as-a)" />
+</Diagram>

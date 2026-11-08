@@ -1,0 +1,84 @@
+---
+title: The API
+description: "The daemon's HTTP API over a Unix socket: one command's path through it, its errors and debug ids, and the project stream TIDE follows."
+---
+import Request from '../../../../components/diagrams/Request.astro';
+
+Every command, and TIDE, reaches wdx through the daemon's API: HTTP over the Unix socket `~/.wdx/wdx.sock`. The API is written first, in [`api/openapi.yaml`](https://github.com/srjn45/wdx/blob/main/api/openapi.yaml), and the server's interface, its types and the client are generated from it, so the spec and the code cannot drift apart.
+
+<Request />
+
+## One command's path
+
+1. **The CLI** parses the flags, makes paths absolute, as the daemon does not share your working directory, and picks a **debug id**, `dbg-` and 12 hex digits.
+2. **The client** sends the request with the id in a `Wdx-Debug-Id` header.
+3. **The daemon** checks the request against the spec before any code of its own runs: a request the spec does not allow is a 400.
+4. **A request that changes anything** runs one at a time, and to its end even when the client leaves: no two changes race, and a change is never left half done because a command was interrupted.
+5. **The domain** does the work and returns a value, or a typed error that knows nothing of HTTP.
+6. **The daemon** turns an error into **Problem Details**, the standard JSON for HTTP errors, with a stable `code` from one list. That code decides the status and the CLI's exit code.
+7. **The CLI** prints text, or with `--json` the body exactly as the daemon sent it, and exits 0, 1 (rejected), 2 (usage) or 3 (system failure).
+
+Resources are plural nouns under `/v1`. A project in a path is its name, or `id:` and its id.
+
+## Calling it yourself
+
+Scripts should use the CLI with `--json`: it prints the same bodies, gives the exit codes, and needs nothing but `wdx`. The API is there all the same, and `curl` can call it:
+
+```sh
+curl --unix-socket ~/.wdx/wdx.sock http://wdx/v1/projects
+```
+
+```json
+{"projects":[{"created_at":"2026-11-08T00:47:41.306Z","id":"proj-22ca285c","name":"app","origin":null,"state":"closed","updated_at":"2026-11-08T01:31:13.129Z","worktree_count":2}]}
+```
+
+A project that is not there is a 404, as Problem Details:
+
+```json
+{"code":"not_found","debug_id":"dbg-2d9eacf5e16a","detail":"project not found: \"nope\"","details":null,"hint":null,"status":404,"title":"nothing has this name or id","type":"urn:wdx:error:not_found"}
+```
+
+Every code, its status and its exit code is in [Errors and exit codes](/wdx/docs/reference/errors/). An HTTP reference generated from the spec is to come; until then the [spec](https://github.com/srjn45/wdx/blob/main/api/openapi.yaml) is the reference.
+
+## One id through both logs
+
+The CLI and the daemon log to the same daily file, and every line of a command carries its debug id. A command that failed prints it:
+
+```text
+$ wdx project get --name nope
+wdx: project not found: "nope"  [not_found]
+  hint: see every project with wdx project list --all
+  debug_id: dbg-dc61ff467dbe
+```
+
+and its lines in the log tell the whole story, from both processes:
+
+```text
+cli     INFO   command received
+cli     INFO   command started
+daemon  INFO   request received
+daemon  DEBUG  project looked up
+daemon  ERROR  request returned
+cli     INFO   daemon called
+cli     ERROR  command returned
+```
+
+Each `received` line has what was asked, and each `returned` line the exact response. The [Observability](/wdx/docs/guides/observability/) guide shows them in Grafana.
+
+## The project stream
+
+TIDE does not ask again and again what changed. It follows each open project's stream, `GET /v1/projects/<project>/events`, as server-sent events. The first event is the project whole: its agents, terminals, docs and plans. After any change under it, whoever made it, the project is sent whole again, never a delta, so a client only ever replaces what it holds:
+
+```text
+event: project
+data: {"project":{"agents":[{"aca":"claude_code","activity":null, … ,"name":"reviewer", …
+```
+
+With `?worktrees=true` each event also carries the worktrees' changes, which the daemon reads only while such a stream is open, and only when something says they changed: see [Worktrees and watchers](/wdx/docs/architecture/worktrees/).
+
+## In the repository
+
+- [`api/openapi.yaml`](https://github.com/srjn45/wdx/blob/main/api/openapi.yaml): the API, every path, body and error.
+- [`internal/api/codes.go`](https://github.com/srjn45/wdx/blob/main/internal/api/codes.go): each error code's status, exit code and description.
+- [`AGENTS.md`](https://github.com/srjn45/wdx/blob/main/AGENTS.md), its API, CLI conventions and Logging sections.
+- [`internal/daemon`](https://github.com/srjn45/wdx/tree/main/internal/daemon), [`internal/client`](https://github.com/srjn45/wdx/tree/main/internal/client), [`internal/cli`](https://github.com/srjn45/wdx/tree/main/internal/cli).

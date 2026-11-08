@@ -42,11 +42,13 @@ The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/do
 
 - [The daemon and its service](/wdx/docs/guides/daemon/), [Settings](/wdx/docs/guides/settings/), [Updating](/wdx/docs/guides/updating/), [Dependencies](/wdx/docs/guides/dependencies/), [Observability](/wdx/docs/guides/observability/) and [Shell completion](/wdx/docs/guides/completion/).
 
+## Architecture
+
+How wdx works inside, each page around a diagram: [the overview](/wdx/docs/architecture/), [Daemon and service](/wdx/docs/architecture/daemon/), [Holders and PTYs](/wdx/docs/architecture/holders/), [State in one SQLite file](/wdx/docs/architecture/state/), [The API](/wdx/docs/architecture/api/), [Reading an agent's state](/wdx/docs/architecture/agent-state/) and [Worktrees and watchers](/wdx/docs/architecture/worktrees/).
+
 ## Reference
 
 - [The CLI](/wdx/docs/reference/cli/): every command, its flags, examples, output and errors.
 - [Settings](/wdx/docs/reference/settings/), [Errors and exit codes](/wdx/docs/reference/errors/), [JSON output](/wdx/docs/reference/json/) and the [Changelog](/wdx/docs/reference/changelog/).
 
 These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
-
-How wdx is built is on its way.

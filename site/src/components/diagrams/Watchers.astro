@@ -1,0 +1,25 @@
+---
+// What makes the daemon read a worktree again: git's files changing, seen
+// through one inotify instance, and a few events of its own.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="wa" width={720} height={370}
+  label="What makes the daemon read a worktree again. git, run by anyone, changes files: the index, HEAD and logs/HEAD in a worktree's git directory; the worktrees directory when one is added or removed; the base branch's ref and reflog when it moves. One inotify instance per daemon, fswatch, sees them and tells the worktree tracker, which reads that worktree again with git commands that take no lock, and sends what it read on the project's stream. An agent stopping and the user looking in TIDE make it read too. fswatch also follows the files that say how full an agent's context is."
+  caption="No timer runs git. Only these events do, and only while a client follows the project.">
+  <rect class="bx" x="10" y="110" width="120" height="54" rx="8" /><text x="24" y="134">git</text><text class="sm" x="24" y="152">run by anyone</text>
+  <rect class="bx" x="150" y="30" width="200" height="54" rx="8" /><text x="164" y="54">index · HEAD · logs</text><text class="sm" x="164" y="72">a worktree's git dir</text>
+  <rect class="bx" x="150" y="110" width="200" height="54" rx="8" /><text x="164" y="134">worktrees/</text><text class="sm" x="164" y="152">one added, removed</text>
+  <rect class="bx" x="150" y="190" width="200" height="54" rx="8" /><text x="164" y="214">the base's ref, reflog</text><text class="sm" x="164" y="232">the base moved</text>
+  <rect class="bx hot" x="380" y="30" width="130" height="214" rx="10" /><text x="394" y="56">fswatch</text><text class="sm" x="394" y="82">one inotify</text><text class="sm" x="394" y="100">instance for</text><text class="sm" x="394" y="118">the daemon</text>
+  <rect class="bx hot" x="540" y="30" width="170" height="54" rx="8" /><text x="554" y="54">the stream</text><text class="sm" x="554" y="72">to TIDE</text>
+  <rect class="bx hot" x="540" y="110" width="170" height="54" rx="8" /><text x="554" y="134">tracker</text><text class="sm" x="554" y="152">git, no lock</text>
+  <rect class="bx" x="370" y="290" width="150" height="54" rx="8" /><text x="384" y="314">context sizes</text><text class="sm" x="384" y="332">an agent's files</text>
+  <rect class="bx" x="530" y="290" width="85" height="54" rx="8" /><text x="542" y="314">an agent</text><text class="sm" x="542" y="332">stops</text>
+  <rect class="bx" x="625" y="290" width="85" height="54" rx="8" /><text x="637" y="314">you look</text><text class="sm" x="637" y="332">f · a tab</text>
+  <path class="ar" d="M130 125 L146 66" marker-end="url(#wa-a)" /><path class="ar" d="M130 137 L146 137" marker-end="url(#wa-a)" /><path class="ar" d="M130 149 L146 208" marker-end="url(#wa-a)" />
+  <path class="ar hot" d="M350 57 L376 57" marker-end="url(#wa-h)" /><path class="ar hot" d="M350 137 L376 137" marker-end="url(#wa-h)" /><path class="ar hot" d="M350 217 L376 217" marker-end="url(#wa-h)" />
+  <path class="ar hot" d="M510 137 L536 137" marker-end="url(#wa-h)" /><path class="ar hot" d="M625 110 L625 88" marker-end="url(#wa-h)" />
+  <path class="ar" d="M445 244 L445 286" marker-end="url(#wa-a)" />
+  <path class="ar" d="M572 290 L600 168" marker-end="url(#wa-a)" />
+  <path class="ar" d="M667 290 L650 168" marker-end="url(#wa-a)" />
+</Diagram>

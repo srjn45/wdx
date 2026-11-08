@@ -1,0 +1,49 @@
+---
+title: Worktrees and watchers
+description: "How wdx keeps every worktree's changes live without running git on a timer or taking git's lock, through one inotify instance for the whole daemon."
+---
+import Watchers from '../../../../components/diagrams/Watchers.astro';
+
+TIDE shows each worktree's changes as they happen: what is committed, what is not, how far it is ahead of its base. wdx keeps them current without polling git. In a large repository a `git status` every few seconds would cost real time and could get in the way of the agents' own git, so the daemon reads a worktree again only when something says it changed.
+
+<Watchers />
+
+## What makes it read
+
+| Event | How it is seen | What is read again |
+|---|---|---|
+| A client starts following the project | its stream starts | the list and every worktree |
+| A commit, `add`, `reset`, `switch`, `rebase` in a worktree | its git directory's `index`, `HEAD` or `logs/HEAD` changed | that worktree |
+| A worktree added or removed | the repository's `worktrees` directory changed | the list |
+| The base branch moved | its ref or its reflog changed | every worktree's summary against the base |
+| An agent stops: idle, waiting or ended | its state, from its [holder](/wdx/docs/architecture/agent-state/) | its worktree |
+| You look: the focus on the left pane, a diff tab opening, `f` | a request from TIDE | that worktree, or all of them |
+| The watcher lost events | the watcher says so | the list and every worktree |
+
+**The cost:** an edit not yet staged changes no file of git's, so it shows when the agent stops, or when you look, rather than as it is typed. Watching every directory of a worktree's files would catch it, but takes a watch per directory, which a large repository runs out of.
+
+**Only while someone looks.** The daemon reads worktrees only for a stream that asks for them, TIDE's, and stops when it closes. `wdx worktree list` reads them once, when asked.
+
+## Never in git's way
+
+The daemon's own git never writes to a repository, so it never takes `index.lock`, the lock that makes your `git commit` fail with `Unable to create index.lock` while something else holds it.
+
+- Every read runs with `GIT_OPTIONAL_LOCKS=0`, so `git status` does not refresh the index, and with `diff.autoRefreshIndex=false`, as `git diff HEAD` refreshes it even then.
+- It never runs `fetch`, `gc`, `worktree prune` or `worktree repair` in the background.
+- Measured with `reset --hard`, `pull`, `fetch` and `add` running for 20 seconds beside reads in a tight loop, on a repository of 3,000 files: a plain `git status` and `git diff HEAD` made 47 of them fail on the lock; with both settings, none did.
+
+Only what you ask for writes: landing, rebasing and removing a worktree, each a command of its own.
+
+## One watcher for the daemon
+
+Linux tells a program of file changes through inotify: a program asks the kernel for an instance, then adds the directories it wants to hear about. The kernel allows each user 128 instances by default, shared by everything they run: the desktop, editors, file managers, wdx.
+
+So the daemon opens **one** instance, `fswatch`, the first time something asks to watch, and hands each change to whoever asked for its path. The worktree tracker and the agents' [context sizes](/wdx/docs/architecture/agent-state/) share it. A repository takes two watches per worktree, its git directory and its `logs`, plus three: the `worktrees` directory and the directories of the base's ref and reflog.
+
+**When the kernel refuses**, because the user's instances are all taken, the daemon logs it and goes on: worktrees are still read when an agent stops, when you look and on `f`, only not on every commit. A repository in git's newer reftable format has none of the files above, so it gets those events only, and the log says so.
+
+## In the repository
+
+- [`docs/TIDE_WORKTREES.md`](https://github.com/srjn45/wdx/blob/main/docs/TIDE_WORKTREES.md): the events, which file each git command touches, the lock rule and how it was measured, landing and removing.
+- [`docs/LARGE_REPOS.md`](https://github.com/srjn45/wdx/blob/main/docs/LARGE_REPOS.md): what was measured on large repositories, and what was made faster.
+- [`internal/worktree`](https://github.com/srjn45/wdx/tree/main/internal/worktree): the tracker; [`internal/fswatch`](https://github.com/srjn45/wdx/tree/main/internal/fswatch): the one watcher.

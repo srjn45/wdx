@@ -1,0 +1,27 @@
+---
+// The tables of wdx.db, in groups that hang off projects, and what is kept on
+// disk beside the database.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="tb" width={720} height={556}
+  label="The tables of wdx.db. Every group hangs off projects, and removing a project removes its rows. Worktrees: project_worktrees, project_landing, worktree_pull_requests, review_comments, verified_files. Terminals: terminals, agents and messages, an agent and a message each belonging to a terminal. Docs and plans: docs, doc_revisions, plan_runs, plan_tasks, plan_slots, a plan being a doc. TIDE: tide_view, tide_project_views, tide_tabs, tide_tab_revisions. schema_readers records the oldest version that can read the file. Beside the database on disk: each terminal's spool and history, each agent's conversation backup, read-only copies of docs and plans, and the logs."
+  caption="One SQLite file, wdx.db, that only the daemon opens. What is too large or too fast for it is kept in files beside it.">
+  <rect class="bx" x="10" y="16" width="220" height="150" rx="8" /><text x="24" y="40">worktrees</text>
+  <text class="sm" x="24" y="64">project_worktrees</text><text class="sm" x="24" y="84">project_landing</text><text class="sm" x="24" y="104">worktree_pull_requests</text><text class="sm" x="24" y="124">review_comments</text><text class="sm" x="24" y="144">verified_files</text>
+  <rect class="bx" x="250" y="16" width="220" height="150" rx="8" /><text x="264" y="40">terminals</text>
+  <text class="sm" x="264" y="64">terminals</text><text class="sm" x="264" y="84">agents</text><text class="sm" x="264" y="104">messages</text><text class="sm" x="264" y="128">an agent is a terminal</text><text class="sm" x="264" y="146">running an ACA</text>
+  <rect class="bx" x="490" y="16" width="220" height="150" rx="8" /><text x="504" y="40">docs and plans</text>
+  <text class="sm" x="504" y="64">docs</text><text class="sm" x="504" y="84">doc_revisions</text><text class="sm" x="504" y="104">plan_runs</text><text class="sm" x="504" y="124">plan_tasks</text><text class="sm" x="504" y="144">plan_slots</text>
+  <rect class="bx hot" x="250" y="200" width="220" height="50" rx="8" /><text x="264" y="222">projects</text><text class="sm" x="264" y="240">every group hangs off it</text>
+  <rect class="bx" x="130" y="286" width="220" height="124" rx="8" /><text x="144" y="310">TIDE</text>
+  <text class="sm" x="144" y="334">tide_view</text><text class="sm" x="144" y="354">tide_project_views</text><text class="sm" x="144" y="374">tide_tabs</text><text class="sm" x="144" y="394">tide_tab_revisions</text>
+  <rect class="bx dim" x="370" y="286" width="220" height="124" rx="8" /><text x="384" y="310">the schema</text>
+  <text class="sm" x="384" y="334">schema_readers</text><text class="sm" x="384" y="358">the oldest version</text><text class="sm" x="384" y="376">that can read it</text>
+  <path class="ar" d="M120 166 L290 196" marker-end="url(#tb-a)" />
+  <path class="ar" d="M360 166 L360 196" marker-end="url(#tb-a)" />
+  <path class="ar" d="M600 166 L430 196" marker-end="url(#tb-a)" />
+  <path class="ar" d="M240 286 L320 254" marker-end="url(#tb-a)" />
+  <rect class="grp" x="10" y="440" width="700" height="100" rx="10" /><text class="ttl" x="24" y="464">on disk beside it</text>
+  <text class="sm" x="24" y="490">terminals/&lt;id&gt;/  spool, history</text><text class="sm" x="24" y="514">agents/&lt;id&gt;/  the conversation's backup</text>
+  <text class="sm" x="380" y="490">docs/, plans/  read-only copies</text><text class="sm" x="380" y="514">logs/  daily JSON lines</text>
+</Diagram>

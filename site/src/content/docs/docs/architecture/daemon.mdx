@@ -1,0 +1,61 @@
+---
+title: Daemon and service
+description: "How the wdx daemon runs as a service, why it never holds a terminal itself, and how an update replaces it while your agents run on."
+---
+import Update from '../../../../components/diagrams/Update.astro';
+
+The daemon is the one process every command talks to. It never holds a terminal itself: each runs in a holder of its own, which outlives it. So the daemon can stop, restart or be replaced by a new version while every shell and agent goes on.
+
+<Update />
+
+## One per home
+
+- **What it holds.** The database, the settings it read at start, a connection to each holder, the streams clients follow, and one file watcher for git. It runs git and `gh`, starts holders, and serves the [API](/wdx/docs/architecture/api/) on `~/.wdx/wdx.sock`.
+- **What it never holds** is a PTY. A terminal's process belongs to its holder. The daemon keeps the `terminals` table and knows what each terminal should be doing; the holder knows what it is doing.
+- **One at a time.** The daemon holds `daemon.lock` for as long as it runs, so a second one in the same home fails with `already_running`. Another home (`WDX_HOME`) is another daemon, with nothing shared.
+- **Never started by a command.** A command that cannot reach it fails with `daemon_unavailable` and the hint `run wdx daemon start`. Starting a daemon behind your back would hide that it stopped, and why.
+
+## As a service
+
+The install script installs it as a service, so it starts at boot or login and starts again when it fails: a systemd user unit on Linux, a launchd agent on macOS. [The daemon](/wdx/docs/guides/daemon/) guide has the commands and the files.
+
+- **Stopping the service stops only the daemon.** systemd kills every process in a service's cgroup when it stops, so the unit has `KillMode=process`. On macOS the holder's `setsid` takes it out of the job's process group, and the plist also sets `AbandonProcessGroup`.
+- **A stop lets changes finish.** Requests in flight get 30 seconds, then a change still running is cancelled and gets 10 more. The plist's `ExitTimeOut` is 60 seconds for that, as launchd's default 20 would cut it short.
+- **The service's environment** is not your shell's. The installer gives it the `PATH` you installed with, and terminals get `PATH`, the locale, the ssh agent and the desktop session's variables from the daemon, never from the command that created them.
+
+## Adopting holders
+
+Before it serves, a daemon dials the socket of every terminal the database says is starting, running or stopped. A holder that answers with the same terminal id is adopted: the daemon opens a control connection and carries on.
+
+| The database says | The holder | The daemon |
+|---|---|---|
+| running | its shell is alive | keeps it running |
+| running | its shell ended | records the exit and its code |
+| running | does not answer | marks it `lost` |
+| starting | answers | marks it running |
+| starting | does not answer | marks it `failed`, interrupted while starting |
+| stopped | is alive | finishes the stop |
+
+Nothing polls. A holder learns of its shell's end from the kernel, as its parent, and tells the daemon at once. The daemon learns of a holder's end when its connection closes.
+
+## Updating
+
+`wdx update` replaces the binary while holders run on:
+
+1. downloads the release, and has it write your config file anew aside, with its own settings listed, which checks it runs and accepts your values;
+2. on macOS, signs it, so the permissions you granted wdx survive;
+3. stops the daemon, keeps the old binary, a backup of the database and the config file, and puts the new binary and config file in place;
+4. starts the daemon on the new binary, which migrates the database and adopts the holders.
+
+If any step fails, the old binary, database and config file are put back and the daemon starts on the old one. `wdx update --rollback` goes back one version; the [Updating](/wdx/docs/guides/updating/) guide says how it treats the database.
+
+**A holder keeps running the binary it was started from**, after an update too: its process is never replaced. So the daemon and its holders can be of different versions. They speak a protocol whose version each says first, and a daemon drives holders of its own version and those before it. A holder started before a feature arrived, such as typing messages in for an agent, gets `send_failed` with a hint to restart it, rather than a message lost. Starting a terminal again gives it a holder of the new version.
+
+**The CLI and the daemon** can differ too, after an update by hand: a command that finds a daemon of another version warns on stderr, and `wdx daemon restart` puts them back in step.
+
+## In the repository
+
+- [`docs/DAEMON.md`](https://github.com/srjn45/wdx/blob/main/docs/DAEMON.md): the service on each system, signing on macOS, completion, and the gotchas.
+- [`docs/TERMINALS.md`](https://github.com/srjn45/wdx/blob/main/docs/TERMINALS.md): the holder's architecture, its states and reconciliation.
+- [`docs/RELEASING.md`](https://github.com/srjn45/wdx/blob/main/docs/RELEASING.md): versions, channels, and what an update and a rollback do.
+- [`internal/daemon`](https://github.com/srjn45/wdx/tree/main/internal/daemon), [`internal/service`](https://github.com/srjn45/wdx/tree/main/internal/service), [`internal/update`](https://github.com/srjn45/wdx/tree/main/internal/update).

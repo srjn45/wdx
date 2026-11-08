@@ -1,0 +1,50 @@
+---
+title: State in one SQLite file
+description: "Everything wdx knows in one SQLite file, wdx.db: its tables, what is kept beside it on disk, and the migrations that let an update roll back."
+---
+import Tables from '../../../../components/diagrams/Tables.astro';
+
+Everything wdx knows is in one SQLite database, `~/.wdx/wdx.db`: projects, worktrees, terminals, agents, messages, docs, plans and what TIDE shows. There is never a second database file. One file is one thing to back up, one to restore on a rollback, and one transaction can change any of it.
+
+<Tables />
+
+## Who opens it
+
+Only the daemon, which serves every read and change to it through the [API](/wdx/docs/architecture/api/). Commands, TIDE and holders never open it. Besides the daemon, only `wdx update` touches the file: it reads the schema's version, and keeps a copy of the file while the daemon is stopped.
+
+The database is in WAL mode, which is why `wdx.db-wal` and `wdx.db-shm` sit beside it while the daemon runs: to copy the database by hand, stop the daemon first.
+
+## The tables
+
+- **Every group hangs off a project.** Removing a project removes its rows, through foreign keys with `ON DELETE CASCADE`, so nothing is left pointing at a project that is gone.
+- **An agent is a terminal** running an AI CLI: its row points at the terminal's. A message points at the terminal it goes to, so one table serves `agent send` and `terminal send`. An agent's parent is set to nothing, not removed with it, when the parent is removed: its children go on.
+- **A plan is a doc**, with its runs, tasks and slots beside it; a doc keeps every revision.
+- **TIDE's state,** the open tabs and what each project's view shows, is in the database too, so TIDE opens where you left it.
+- **The conventions:** every table is STRICT, ids are random with a prefix (`proj-`, `term-`, `agent-`), times are milliseconds since 1970, an absent value is NULL, names compare without case, and JSON columns are checked to be JSON.
+
+## Beside it, on disk
+
+What is too large for the database, or changes too fast, is kept in files under the home:
+
+- **A terminal's spool and history,** under `terminals/<id>/`: the output, written by its [holder](/wdx/docs/architecture/holders/) as fast as the shell writes.
+- **An agent's conversation,** under `agents/<id>/`: a backup of what its AI CLI keeps and a `transcript.md` that only grows, readable at any time, kept until the agent is removed and for 7 days after.
+- **A copy of each doc and plan,** under `docs/` and `plans/`: the latest revision, read-only, to recover from if the database is lost.
+- **The logs,** under `logs/`.
+
+The database records **intent and history**: which terminals exist and what wdx was asked to do with them. The holders are the truth about processes. At start the daemon reconciles the two.
+
+## Migrations
+
+The schema is a list of numbered migrations built into the binary, applied in order at start, each in one transaction with the version it brings. A committed migration is never edited.
+
+- **Most migrations only add:** a table, an index, a column with a default. A binary one version older can still use such a database, so `wdx update --rollback` keeps everything that changed since the update.
+- **A migration that changes or removes** what an older binary uses is marked `-- breaks-older: true`. The database then records, in `schema_readers`, the oldest version that can read it. An older binary refuses to start on it, rather than misreading it, and a rollback across it restores the backup taken at the update, after asking.
+
+So an update is safe to try: the [Updating](/wdx/docs/guides/updating/) guide has what a rollback asks.
+
+## In the repository
+
+- [`AGENTS.md`](https://github.com/srjn45/wdx/blob/main/AGENTS.md), its Database section: the rules for tables and migrations.
+- [`internal/db`](https://github.com/srjn45/wdx/tree/main/internal/db): opening the database, the migrations and the backup.
+- [`internal/db/migrations`](https://github.com/srjn45/wdx/tree/main/internal/db/migrations): every migration, in order.
+- [`docs/DOCS.md`](https://github.com/srjn45/wdx/blob/main/docs/DOCS.md) and [`docs/PLANS.md`](https://github.com/srjn45/wdx/blob/main/docs/PLANS.md): how docs and plans are kept.

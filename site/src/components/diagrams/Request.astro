@@ -1,0 +1,23 @@
+---
+// One command's path through the API, and the project stream beside it.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="rq" width={720} height={430}
+  label="One command's path. wdx project get calls the client, which sends an HTTP request with a Wdx-Debug-Id over the daemon's Unix socket. The daemon checks the request against api/openapi.yaml, runs requests that change anything one at a time, and calls the domain. The domain answers with a value or a typed error, which the daemon turns into a body or Problem Details with a stable code. The CLI prints it as text or, with --json, as it came, and exits with the code's exit code. Below, the project stream: every change notifies the streams, which send the project whole to TIDE as server-sent events."
+  caption="Both processes log every step under the one debug id the CLI chose, so one id finds a command in the logs of the CLI and of the daemon.">
+  <rect class="bx" x="10" y="30" width="150" height="54" rx="8" /><text x="24" y="54">wdx project get</text><text class="sm" x="24" y="72">--name app</text>
+  <rect class="bx hot" x="180" y="30" width="150" height="54" rx="8" /><text x="194" y="54">client</text><text class="sm" x="194" y="72">Wdx-Debug-Id</text>
+  <rect class="bx hot" x="350" y="30" width="120" height="54" rx="8" /><text x="364" y="54">wdx.sock</text><text class="sm" x="364" y="72">HTTP/1.1</text>
+  <rect class="bx hot" x="490" y="30" width="220" height="54" rx="8" /><text x="504" y="54">checked</text><text class="sm" x="504" y="72">against openapi.yaml</text>
+  <rect class="bx hot" x="490" y="140" width="220" height="54" rx="8" /><text x="504" y="164">changes</text><text class="sm" x="504" y="182">one at a time</text>
+  <rect class="bx hot" x="250" y="140" width="220" height="54" rx="8" /><text x="264" y="164">domain</text><text class="sm" x="264" y="182">a value or an error</text>
+  <rect class="bx hot" x="10" y="140" width="220" height="54" rx="8" /><text x="24" y="164">body or Problem Details</text><text class="sm" x="24" y="182">a stable code</text>
+  <rect class="bx hot" x="10" y="250" width="300" height="54" rx="8" /><text x="24" y="274">text, or --json as it came</text><text class="sm" x="24" y="292">exit code 0 · 1 · 2 · 3</text>
+  <path class="ar hot" d="M160 57 L176 57" marker-end="url(#rq-h)" /><path class="ar hot" d="M330 57 L346 57" marker-end="url(#rq-h)" /><path class="ar hot" d="M470 57 L486 57" marker-end="url(#rq-h)" />
+  <path class="ar hot" d="M600 84 L600 136" marker-end="url(#rq-h)" /><path class="ar hot" d="M490 167 L474 167" marker-end="url(#rq-h)" /><path class="ar hot" d="M250 167 L234 167" marker-end="url(#rq-h)" /><path class="ar hot" d="M120 194 L120 246" marker-end="url(#rq-h)" />
+  <text class="ttl" x="10" y="344">the project stream</text>
+  <rect class="bx" x="490" y="360" width="220" height="54" rx="8" /><text x="504" y="384">any change</text><text class="sm" x="504" y="402">a request · a holder</text>
+  <rect class="bx" x="240" y="360" width="230" height="54" rx="8" /><text x="254" y="384">…/projects/app/events</text><text class="sm" x="254" y="402">the project, whole</text>
+  <rect class="bx" x="10" y="360" width="210" height="54" rx="8" /><text x="24" y="384">wdx tide</text><text class="sm" x="24" y="402">server-sent events</text>
+  <path class="ar" d="M490 387 L474 387" marker-end="url(#rq-a)" /><path class="ar" d="M240 387 L224 387" marker-end="url(#rq-a)" />
+</Diagram>

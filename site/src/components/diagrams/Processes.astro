@@ -1,0 +1,24 @@
+---
+// wdx's processes: its clients, the daemon, a holder per terminal.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="pr" width={720} height={312}
+  label="TIDE, wdx commands and scripts talk to the daemon over its Unix socket, wdx.sock. The daemon keeps the one SQLite database and starts a holder process per terminal or agent. Each holder owns a PTY running a shell or an AI CLI. TIDE also attaches to a holder's own socket directly. Holders outlive the daemon."
+  caption="Every process is the one wdx binary: wdx for a command or TIDE, wdx daemon, and wdx holder, which the daemon runs for each terminal.">
+  <rect class="bx" x="10" y="44" width="150" height="54" rx="8" /><text x="24" y="68">wdx tide</text><text class="sm" x="24" y="86">the Terminal IDE</text>
+  <rect class="bx" x="10" y="126" width="150" height="54" rx="8" /><text x="24" y="150">wdx &lt;command&gt;</text><text class="sm" x="24" y="168">people · --json</text>
+  <rect class="bx" x="10" y="208" width="150" height="54" rx="8" /><text x="24" y="232">scripts, agents</text><text class="sm" x="24" y="250">wdx help agents</text>
+  <rect class="bx hot" x="196" y="74" width="208" height="166" rx="10" /><text x="210" y="102">wdx daemon</text>
+  <text class="sm" x="210" y="128">API over wdx.sock</text><text class="sm" x="210" y="150">wdx.db · one SQLite file</text><text class="sm" x="210" y="172">starts, adopts holders</text><text class="sm" x="210" y="194">git events · one inotify</text><text class="sm" x="210" y="216">metrics → OpenTelemetry</text>
+  <rect class="bx" x="450" y="34" width="140" height="50" rx="8" /><text x="464" y="56">wdx holder</text><text class="sm" x="464" y="74">run/&lt;id&gt;.sock</text>
+  <rect class="bx" x="450" y="129" width="140" height="50" rx="8" /><text x="464" y="151">wdx holder</text><text class="sm" x="464" y="169">run/&lt;id&gt;.sock</text>
+  <rect class="bx" x="450" y="224" width="140" height="50" rx="8" /><text x="464" y="246">wdx holder</text><text class="sm" x="464" y="264">run/&lt;id&gt;.sock</text>
+  <rect class="bx" x="620" y="34" width="90" height="50" rx="8" /><text x="634" y="56">PTY</text><text class="sm" x="634" y="74">claude</text>
+  <rect class="bx" x="620" y="129" width="90" height="50" rx="8" /><text x="634" y="151">PTY</text><text class="sm" x="634" y="169">codex</text>
+  <rect class="bx" x="620" y="224" width="90" height="50" rx="8" /><text x="634" y="246">PTY</text><text class="sm" x="634" y="264">zsh</text>
+  <path class="ar hot" d="M160 71 L192 108" marker-end="url(#pr-h)" /><path class="ar hot" d="M160 153 L192 154" marker-end="url(#pr-h)" /><path class="ar hot" d="M160 235 L192 200" marker-end="url(#pr-h)" />
+  <path class="ar" d="M404 124 L446 64" marker-end="url(#pr-a)" /><path class="ar" d="M404 154 L446 154" marker-end="url(#pr-a)" /><path class="ar" d="M404 184 L446 244" marker-end="url(#pr-a)" />
+  <path class="ar" d="M590 59 L616 59" marker-end="url(#pr-a)" /><path class="ar" d="M590 154 L616 154" marker-end="url(#pr-a)" /><path class="ar" d="M590 249 L616 249" marker-end="url(#pr-a)" />
+  <path class="ar dash" d="M85 44 C 85 8, 420 8, 470 30" marker-end="url(#pr-a)" /><rect class="lbl" x="186" y="8" width="256" height="18" rx="3" /><text class="sm" x="192" y="21">TIDE attaches to a holder directly</text>
+  <text class="sm" x="450" y="302">holders outlive the daemon</text>
+</Diagram>

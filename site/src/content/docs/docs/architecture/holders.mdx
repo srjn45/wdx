@@ -1,0 +1,55 @@
+---
+title: Holders and PTYs
+description: "The holder, one process per terminal: how it drains the PTY, keeps the screen, spool and history, serves attached clients and types messages in."
+---
+import Holder from '../../../../components/diagrams/Holder.astro';
+
+Every terminal, and so every agent, runs in a **holder**: the `wdx` binary run as the hidden command `wdx holder`, which the daemon starts. The holder opens a PTY, starts the shell or the AI CLI in it as its own child, and is the one process that reads and writes it.
+
+<Holder />
+
+## Why a process per terminal
+
+- **It outlives the daemon.** A holder runs in a session of its own, so stopping, restarting or [updating](/wdx/docs/architecture/daemon/) the daemon leaves it and its shell running. The next daemon adopts it.
+- **It is the truth about the process.** As the shell's parent, it learns of the shell's end from the kernel, keeps its exit code, and tells the daemon at once. The database says what a terminal was asked to be; the holder says what it is.
+- **A failure stays small.** A holder that crashes takes one terminal with it, never the daemon or the other terminals.
+
+## Output
+
+The **reader** reads the PTY all the time, whether or not anyone looks: a shell whose output nobody drains stops once the kernel's buffer fills. Each chunk goes two ways at once:
+
+- **To the attached clients,** live and at full speed: TIDE's panes, `wdx terminal attach`.
+- **To the spool,** the raw output on disk in files of 8 MiB, under `terminals/<id>/spool/`. The spool lets everything behind it fall behind during a flood, a `cat` of a large log, without losing anything or slowing the shell.
+
+The reader never waits for anything behind it, so the shell never blocks on a slow client or a slow screen.
+
+## The screen
+
+A **vt**, a terminal emulator with no window, reads the spool and keeps the screen as a terminal would: its cells and their colours, the cursor, the modes a program sets. The holder never draws it: every client has its own vt and draws for itself. The holder's screen is what a client sees first when it attaches, and what an agent's state is [read from](/wdx/docs/architecture/agent-state/).
+
+- **Size.** The PTY and the vt have one size, set by the client that attached or resized last, as tmux does. A holder starts at 80×24.
+- **Queries.** Programs ask the terminal things, such as where the cursor is. While a client is attached its terminal answers; with none attached the vt does, so a program waiting for an answer never hangs.
+- **A vt that fails** on input it cannot take is reset to an empty screen of the same size, with a mark in history. The shell and the clients never notice.
+
+## History
+
+Lines that scroll off the screen go to **history**, under `terminals/<id>/history/`, in files of 10,000 lines, each line kept with its colours and links. `wdx terminal history` and TIDE's scrolling read it a page at a time. `terminal.history_lines`, 100,000 by default, is how much is kept; 0 keeps none, as terminal output can hold secrets.
+
+What full-screen programs show, vim or less, never scrolls into history, as in every terminal. When the shell ends, what it left on the screen goes to history first, so a terminal that has stopped still shows its last screen. A shell started again carries on the numbering after a `── shell restarted ──` line.
+
+## Input
+
+- **Keys** from an attached client go straight into the PTY through the holder's socket, `run/<id>.sock`: one hop, never through the daemon.
+- **Messages** sent with `wdx agent send` or `terminal send` come from the daemon over its control connection and wait in the holder's **inbox**. One goroutine types them in when they can go: for a shell at once, followed by Enter; for an agent when its screen says it can take one, each AI CLI with its own keys. The inbox survives a daemon restart, as it lives in the holder; the database keeps every message too, so one is not lost with a holder. See [Messages and sending](/wdx/docs/guides/messages/).
+
+## The daemon's connection
+
+The daemon keeps one control connection to each holder: it sends start, stop and messages, and hears back the shell's exit, the agent's state as it changes, and which messages it typed in. Nothing on it polls. Its protocol has a version, said first by each side, so a daemon can drive holders started by an older wdx.
+
+## In the repository
+
+- [`docs/TERMINALS.md`](https://github.com/srjn45/wdx/blob/main/docs/TERMINALS.md): the holder, the table, the states and reconciliation.
+- [`docs/ATTACH.md`](https://github.com/srjn45/wdx/blob/main/docs/ATTACH.md): the spool, the vt, size, history, the protocol and the clients.
+- [`docs/SEND.md`](https://github.com/srjn45/wdx/blob/main/docs/SEND.md): the inbox, and how a message goes into each AI CLI.
+- [`docs/VT.md`](https://github.com/srjn45/wdx/blob/main/docs/VT.md): the vt, and the fork wdx keeps of it.
+- [`internal/holder`](https://github.com/srjn45/wdx/tree/main/internal/holder), [`internal/pty`](https://github.com/srjn45/wdx/tree/main/internal/pty), [`internal/screen`](https://github.com/srjn45/wdx/tree/main/internal/screen).

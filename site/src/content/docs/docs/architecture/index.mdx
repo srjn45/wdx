@@ -1,0 +1,63 @@
+---
+title: How wdx works
+description: "wdx's processes, the daemon, a holder per terminal and their clients, the packages of its code, and what it keeps in its home."
+sidebar:
+  label: Overview
+  order: 0
+---
+import Processes from '../../../../components/diagrams/Processes.astro';
+import Packages from '../../../../components/diagrams/Packages.astro';
+
+wdx is one binary that runs as three kinds of process. A **daemon** holds everything: the database, the projects, git, the agents' state. A **holder** owns each terminal: its PTY, and the shell or AI CLI in it. Everything else is a client of the daemon: `wdx` commands, scripts and agents calling them with `--json`, and TIDE.
+
+<Processes />
+
+## The processes
+
+- **`wdx daemon`**, one per home. It serves the API over a Unix socket, `~/.wdx/wdx.sock`, and is the only process that opens the database. It starts a holder for each terminal and keeps a connection to each. Commands never start it: without it they fail with `daemon_unavailable`. See [Daemon and service](/wdx/docs/architecture/daemon/).
+- **`wdx holder`**, one per terminal or agent, started by the daemon. It owns the PTY and keeps the screen, the output's spool and history, and the messages waiting to go in. It is its own process so that a terminal outlives the daemon: restart or update wdx, and your agents go on. See [Holders and PTYs](/wdx/docs/architecture/holders/).
+- **`wdx <command>`** and **`wdx tide`**, the clients. A command makes one or a few requests and exits. TIDE follows each open project's stream and attaches to holders directly to show their terminals, so typing takes one hop. See [The API](/wdx/docs/architecture/api/).
+
+## What is in the home
+
+Everything wdx keeps is in its home, `~/.wdx`, or the directory `WDX_HOME` names. In a home with one project, an agent and a terminal:
+
+```text
+/home/you/.wdx
+├── config.yaml          the settings
+├── wdx.db               the database, with wdx.db-wal and wdx.db-shm beside it
+├── wdx.sock             the daemon's socket
+├── daemon.lock          held by the running daemon, with its pid
+├── run/                 a socket per holder, run/<terminal id>.sock
+├── terminals/
+│   └── term-d41f0bca/   its spool and history
+├── agents/
+│   └── agent-b3316566/  the backup of its conversation
+├── docs/  plans/        a read-only copy of each doc's and plan's latest revision
+├── projects/            projects wdx created or cloned
+├── trash/               what is kept of removed agents, until it expires
+└── logs/                a JSON-lines file per day, shared by every process
+```
+
+The database holds what wdx was asked to do and what it knows; the files beside it hold what is too large or changes too fast for it. See [State in one SQLite file](/wdx/docs/architecture/state/).
+
+## The code
+
+<Packages />
+
+Dependencies point one way, from the commands down to the database and the PTY, and `make lint` fails on a package that reaches the wrong way. Each feature is a package of its own with its types, its store and its tests: `project`, `terminal`, `agent`, `worktree`, `doc`, `plan`. The `cli` package parses flags and prints; everything it asks of wdx goes through `client` and the API, so a script with `--json` sees exactly what a person sees.
+
+## The other pages
+
+- [Daemon and service](/wdx/docs/architecture/daemon/): how the daemon runs, and why an update keeps your agents.
+- [Holders and PTYs](/wdx/docs/architecture/holders/): what a holder does with a terminal's output and input.
+- [State in one SQLite file](/wdx/docs/architecture/state/): the tables, and the migrations that let you roll back.
+- [The API](/wdx/docs/architecture/api/): one command's path, its errors, and the project stream.
+- [Reading an agent's state](/wdx/docs/architecture/agent-state/): working, idle or waiting, from the screen.
+- [Worktrees and watchers](/wdx/docs/architecture/worktrees/): keeping worktrees live without running git on a timer.
+
+## In the repository
+
+- [`AGENTS.md`](https://github.com/srjn45/wdx/blob/main/AGENTS.md): the project layout, every package and the rules the code follows.
+- [`docs/`](https://github.com/srjn45/wdx/tree/main/docs): the developer docs, a file per part, which these pages point into.
+- [`internal/identity`](https://github.com/srjn45/wdx/tree/main/internal/identity): every path in the home.

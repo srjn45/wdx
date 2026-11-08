@@ -1,0 +1,62 @@
+---
+title: Reading an agent's state
+description: "How wdx knows an agent is working, idle or waiting: its screen read in the holder by a parser for each AI CLI, and what that state decides."
+---
+import AgentState from '../../../../components/diagrams/AgentState.astro';
+
+wdx shows whether each agent is working, idle or waiting on you, and holds a message until the agent can take it. It knows this the way you do: by reading the agent's screen.
+
+<AgentState />
+
+## Why the screen
+
+Every AI CLI draws its state on screen: a spinner and `esc to interrupt` while it works, an empty input box when it is done, a question with options when it needs you. The screen is there for every AI CLI, every version and every way of running it, and it is what you see too, so wdx and you never disagree.
+
+Hooks and SDKs differ too much between AI CLIs to build on: some cannot be set for one run, some have no event for a question or an interrupt. wdx uses them only where the screen cannot tell, as for how full the context is (below).
+
+## Where it is read
+
+In the agent's [holder](/wdx/docs/architecture/holders/), which already keeps the screen:
+
+1. Each time the vt's screen changes, `watchScreen` is told. It waits a moment, 50 ms, so that it reads a finished redraw rather than half of one, then takes the screen's lines.
+2. The ACA's own **parser** reads them. A parser is a pure function of the lines, one per AI CLI, and gives a **ScreenState**: the activity, whether the input box shows, whether you have typed a draft in it, whether it is in a turn, the model it names, and the question it asks.
+3. **On a change only,** the holder sends the state to the daemon, which writes it into the agent's row and sends the project to its streams: TIDE's list, `wdx agent get` and `agent list` show it.
+
+The screen's text never leaves the holder: only what the parser read does, and the logs have the values, never the lines. A parser that fails is caught, and the agent reads `unknown` until the next screen; the agent and its PTY are never touched.
+
+The holder is generic and knows no AI CLI. The daemon starts it with `--aca <id>`, and the hidden `wdx holder` command gives it that ACA's parser. A parser fixed in a new wdx reaches a running agent at its next start, when it gets a holder of the new version, as its AI CLI also keeps its wording until it starts again.
+
+## The activities
+
+| Activity | What it means | Read from |
+|---|---|---|
+| `working` | in a turn, or running something in the background | the AI CLI's own sign: a spinner, `esc to interrupt`, a count of tasks |
+| `idle` | done, its input box empty and ready | the box, with no sign of work |
+| `waiting` | asking you something: an approval, a choice | the question's options and hint |
+| `unknown` | the screen does not say | anything else: a menu open, a footer cut off |
+
+**`unknown` is never acted on.** When the screen does not say, wdx looks at whether it moves: a screen that keeps changing reads `working`, one that is still with its input box `idle`. A pane too narrow for the footer still reads right that way. wdx uses this only where the screen's words fail, as a blinking cursor at a prompt would read as work.
+
+## What it decides
+
+- **When a message goes in.** The holder's inbox delivers only when the parser says it can: an input box with no draft of yours, no question open. A draft you are typing is never sent with a message, nor overwritten. See [Messages and sending](/wdx/docs/guides/messages/).
+- **When a plan waits for you**: a task whose agent asks a question stops for your answer. See [Running plans](/wdx/docs/guides/running-plans/).
+- **What TIDE and the CLI show**: the state, the model, and for Claude Code the question and its options, which TIDE lets you answer. See [Agents in TIDE](/wdx/docs/tide/agents/).
+
+## Each AI CLI
+
+What each parser reads, and where it was checked, is on its page; in short:
+
+- **[Claude Code](/wdx/docs/acas/claude-code/)**: its footer for the activity and the model, and its questions, yes/no or a choice, with their options.
+- **[Codex](/wdx/docs/acas/codex/)**: the block above its input box, `• Working` or `Worked for 3s`; its box counts only once its status line shows, as Codex draws it before it can take input.
+- **[Cursor](/wdx/docs/acas/cursor/)**: `ctrl+c to stop` and its spinner line; idle is read from their absence, so recordings check that no screen in a turn reads idle.
+- **[Antigravity](/wdx/docs/acas/antigravity/)**: its footer and the spinner above the box; its box counts only once the footer names a model.
+
+**Context size** is not on the screen in a form fit to read. Claude Code and Cursor tell it to a status line command wdx gives them, Codex writes it to its session file, and Antigravity to its own status line; the daemon follows those files.
+
+## In the repository
+
+- [`docs/AGENT_STATE.md`](https://github.com/srjn45/wdx/blob/main/docs/AGENT_STATE.md): the model, the parsers, the motion fallback, the recordings.
+- [`docs/ACA.md`](https://github.com/srjn45/wdx/blob/main/docs/ACA.md): everything specific to each AI CLI, in one list.
+- [`docs/SEND.md`](https://github.com/srjn45/wdx/blob/main/docs/SEND.md): the inbox, and when a message goes in.
+- [`internal/aca`](https://github.com/srjn45/wdx/tree/main/internal/aca): the parsers and their recordings in `testdata`; [`internal/screen`](https://github.com/srjn45/wdx/tree/main/internal/screen): `ScreenState` and the motion fallback.
