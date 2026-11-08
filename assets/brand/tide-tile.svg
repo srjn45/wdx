@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="tide">
+  <rect width="100" height="100" rx="22" fill="#1e222a"/>
+  <g transform="translate(50 50) scale(0.78) translate(-50 -50)">
+  <rect x="10" y="18" width="80" height="64" rx="10" fill="none" stroke="#e9ecf2" stroke-width="8"/>
+  <polyline points="30,40 44,52 30,64" fill="none" stroke="#6fd3c1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="53" y="43" width="14" height="22" rx="2" fill="#e9ecf2"/>
+  </g>
+</svg>

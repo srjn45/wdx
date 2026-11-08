@@ -1,9 +1,11 @@
 ---
 // A terminal window around a live tide demo. The demo draws into the .sim
-// element; slot "bar" goes in the title bar, the default slot under it.
+// element; slot "bar" goes in the title bar, the default slot under it. The
+// mark stays outside the title, whose text the demo rewrites.
 interface Props { simId: string; titleId: string; title: string; }
 const { simId, titleId, title } = Astro.props;
+import TideMark from './TideMark.astro';
 ---
-<div class="wbar"><i></i><i></i><i></i><span class="t" id={titleId}>{title}</span><slot name="bar" /></div>
+<div class="wbar"><i></i><i></i><i></i><TideMark class="wmark" /><span class="t" id={titleId}>{title}</span><slot name="bar" /></div>
 <div class="sim" id={simId} aria-describedby={`${simId}-cap`}></div>
 <slot />
