@@ -1,74 +1,97 @@
-# wdx
+<p align="center">
+  <a href="https://srjn45.github.io/wdx/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wdx-wordmark-light.svg">
+      <img src="assets/brand/wdx-wordmark.svg" alt="wdx" height="72">
+    </picture>
+  </a>
+</p>
 
-wdx manages AI coding agents on your machine: a daemon that runs as a user service, and a CLI that serves people and scripts alike, with `--json` on every command. Today it manages projects (git repositories and their checkouts), terminals, agents, docs and plans. Terminals are shells in PTYs that outlive the daemon, which you attach to from any terminal, with their history to scroll back through. Agents run an AI coding agent, Claude Code for now, the same way, and go on in the same session when started again; an agent can have child agents and work in its own git worktree. Docs live in wdx rather than the repository, with a revision per change and a status, so people and agents see each one as soon as it is written. Plans break a feature into tasks for agents, each with the tasks it waits for, or a big plan into smaller ones; wdx runs a plan of tasks, an agent for each task that can go, each in a worktree of the plan's, landing every finished task on the plan's branch after the project's landing check; a task that fails or does not land waits for you to retry, land or skip it. A plan of plans runs each of its plans once the work of those before it is in the default branch, landed through wdx or a PR merged and pulled, and asks you when it cannot tell. With `pr: true` wdx opens a plan's PR once it is done; a plan of plans with `stacked: true` too starts each plan on the branch of the one before it as soon as that one is done, its PR against that branch, so that review does not hold up the next. Any worktree can be rebased onto its base when asked, a stacked one onto the default branch once the PR below it merged, a conflict or uncommitted changes going to an agent you pick in tide. A plan runs once: running it again is a copy, and one that is over, done or cancelled, has its agents removed, keeping each task's summary, and can be archived. While a plan runs, its worktrees are its own: wdx lands them on the plan's branch and refuses to land or remove one by hand. `wdx tide`, the terminal IDE, shows a project with its agents and terminals in one window, a plan's agents and worktrees grouped under it, its Plans section showing all plans, those in draft and in progress, or those completed, and a plan in a tab of its own: its state and progress, its tasks with their DAG drawn as `git log --graph` draws commits, and the keys its state takes.
+<p align="center"><b>Run a team of AI coding agents from one terminal.</b></p>
 
-**Status: early development.** wdx is the successor of [warden](https://github.com/srjn45/warden) and runs side by side with it (its own `wdx` binary and `~/.wdx` home), but it does not replace warden yet.
+<p align="center">
+  <a href="https://srjn45.github.io/wdx/">Website</a> ·
+  <a href="https://srjn45.github.io/wdx/docs/">Docs</a> ·
+  <a href="https://github.com/srjn45/wdx/releases">Releases</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/srjn45/wdx/releases/latest"><img src="https://img.shields.io/github/v/release/srjn45/wdx?label=release" alt="Latest release"></a>
+  <a href="https://github.com/srjn45/wdx/actions/workflows/ci.yml"><img src="https://github.com/srjn45/wdx/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/srjn45/wdx" alt="License: Apache-2.0"></a>
+</p>
+
+wdx keeps Claude Code, Codex, Cursor and Antigravity agents running on your machine, each in its own terminal and often its own git worktree, long after the window you started them from has closed. TIDE, its Terminal IDE, shows all of them in one window, with their diffs, docs, plans and code.
+
+<p align="center"><img src="assets/readme/tide.png" alt="TIDE showing a project: its agents, worktrees, docs, plans and code on the left, an agent's conversation on the right, and a terminal below" width="880"></p>
+
+## Why wdx
+
+- **Agents that stay.** Each runs in a process of its own that outlives your terminal, the daemon, and updates of wdx itself.
+- **A branch per agent.** An agent in a worktree never edits the files another is editing; you read its diff, then land it with no merge commit, after your check passes.
+- **Know who needs you.** wdx reads each agent's screen: working, idle, or waiting for you, with the question it asks.
+- **Plans that run themselves.** Split a feature into tasks for agents, with the tasks each waits for; wdx starts them, lands each finished one, and asks you only when it must.
+- **For scripts and AIs too.** Every command takes `--json` and never prompts then, and `wdx help agents` teaches the agents wdx runs to use it.
 
 ## Install
 
-Linux and macOS, amd64 and arm64. The installer puts `wdx` in `~/.local/bin`, adds the shell completions and runs the daemon as a systemd user service or a launchd agent:
+On Linux or macOS, amd64 or arm64:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | WDX_CHANNEL=dev sh
+curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | sh
 ```
 
-There are only dev releases so far, which may be buggy; without `WDX_CHANNEL=dev` the installer looks for a stable release and stops. `WDX_VERSION=0.2.0-dev.156` installs one release. From a clone, `make install` builds and installs the current commit (needs Go). The same script with `sh -s -- --uninstall` removes wdx and keeps `~/.wdx`.
-
-wdx needs git 2.31 or later for its projects; a clipboard tool (`wl-copy` or `xclip`; macOS has one) for tide's copy, and Docker or Podman for `wdx observe`, are optional. `wdx deps list` shows what is ready, and `wdx deps install --name <dependency>` installs one with apt (Ubuntu, Debian) or brew (macOS); without one, only its features are missing.
+It puts `wdx` in `~/.local/bin`, installs the shell completions and runs the daemon as a user service. [Install](https://srjn45.github.io/wdx/docs/start/install/) has the dependencies, the dev channel and uninstalling.
 
 ## Quick start
 
-```sh
-wdx daemon status                          # the installer started it; wdx daemon start otherwise
-wdx project create --name app              # a new git repository under ~/.wdx/projects
-wdx project open --local ~/code/api        # a repository you already have
-wdx project open --git https://github.com/acme/web.git
-wdx project open --name app                # one closed earlier; with no flags, choose from a list
-wdx project list
+In a repository you already have, with Claude Code and Codex installed:
 
+```sh
+wdx project open --local ~/code/api
 cd ~/code/api
-wdx agent create --name reviewer           # Claude Code in the project you are in; needs claude installed
-wdx agent create --name fix --worktree fix # the same in a new worktree, on a new branch
-wdx agent attach --name reviewer           # talk to it
-wdx agent list                             # what each is doing: working, idle, or waiting for you
-wdx doc create --path design.md            # a doc of the project, from a file
-wdx doc list
-wdx doc get --name design --out design.md --overwrite      # a copy to edit
-wdx doc update --name design --path design.md --base 1     # revision 2, unless another came first
-wdx terminal create --name server          # a shell in the project
-wdx terminal attach --name server
-
-wdx tide                                   # all of it in one window
-wdx help                                   # every command; wdx <command> --help for one
+wdx agent create --name reviewer --prompt "review the open changes"
+wdx agent create --name fix-auth --worktree fix-auth --aca codex --prompt "fix the session expiry bug"
+wdx agent list
+wdx tide
 ```
 
-Scripts and agents add `--json`: stdout then holds one JSON object, a result or a problem with a stable error `code`, and nothing prompts (`wdx help json`). `wdx help agents` is the manual for an AI agent wdx runs: child agents, messages, worktrees, docs and plans; `wdx help plans` says how to write a plan.
+The [Quickstart](https://srjn45.github.io/wdx/docs/start/quickstart/) goes on from there: talking to an agent, its diff, and landing its work.
 
-## Updating
+## AI CLIs
 
-```sh
-wdx update               # the installed version and the newest on the channel
-wdx update --apply       # install it; any failed step is undone
-wdx update --rollback    # go back to the version the last update replaced
-```
+wdx runs each the same way, as far as each allows; [the AI CLIs](https://srjn45.github.io/wdx/docs/acas/) compares them side by side.
 
-The channel is the `update.channel` setting, which `WDX_CHANNEL=dev` saves when installing. For a wdx installed before that, run `wdx setting set --name update.channel --value dev`. See [docs/RELEASING.md](docs/RELEASING.md).
+| AI CLI | Its program | |
+|---|---|---|
+| Claude Code | `claude` | [page](https://srjn45.github.io/wdx/docs/acas/claude-code/) |
+| Codex | `codex` | [page](https://srjn45.github.io/wdx/docs/acas/codex/) |
+| Cursor | `cursor-agent` | [page](https://srjn45.github.io/wdx/docs/acas/cursor/) |
+| Antigravity | `agy` | [page](https://srjn45.github.io/wdx/docs/acas/antigravity/) |
 
-## Docs
+## Documentation
 
-- [docs/DAEMON.md](docs/DAEMON.md): the daemon, the service and the shell completions
-- [docs/DEPS.md](docs/DEPS.md): the programs wdx needs besides itself (`wdx deps`)
-- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md): logs and metrics in Grafana (`wdx observe`)
-- [docs/RELEASING.md](docs/RELEASING.md): versions, channels, releasing and updating
-- [docs/TERMINALS.md](docs/TERMINALS.md): terminals and the holder process that keeps each shell running
-- [docs/AGENT.md](docs/AGENT.md): agents, which run an AI coding agent on the same process machinery; [docs/CHILD_AGENTS.md](docs/CHILD_AGENTS.md): child agents
-- [docs/SEND.md](docs/SEND.md): sending a message to a terminal or an agent (`wdx terminal send`, `wdx agent send`)
-- [docs/ATTACH.md](docs/ATTACH.md): attaching to a terminal (`wdx terminal attach`) and its history; [docs/VT.md](docs/VT.md): the terminal emulator it uses and what to fix in it
-- [docs/DOCS.md](docs/DOCS.md): docs kept by wdx, with revisions and statuses (`wdx doc`)
-- [docs/PLANS.md](docs/PLANS.md): plans, a feature broken into tasks for agents (`wdx plan`), being built in steps
-- [docs/TIDE.md](docs/TIDE.md): the terminal IDE (`wdx tide`), what is built and what comes next
-- [AGENTS.md](AGENTS.md): how the code is organized, for people and AI agents working on it
-- The backlog: [docs/V1_FEATURES.md](docs/V1_FEATURES.md)
+On [the website](https://srjn45.github.io/wdx/docs/):
+
+- [Start](https://srjn45.github.io/wdx/docs/start/what-is-wdx/): what wdx is, installing it, the quickstart and its concepts.
+- [Guides](https://srjn45.github.io/wdx/docs/guides/projects/): a page per feature, from projects and agents to worktrees, docs and plans.
+- [TIDE](https://srjn45.github.io/wdx/docs/tide/layout/): the Terminal IDE, screen by screen, with its screens live.
+- [Scripting with --json](https://srjn45.github.io/wdx/docs/guides/scripting/) and [Working with AI agents](https://srjn45.github.io/wdx/docs/guides/ai-agents/).
+- [Running wdx](https://srjn45.github.io/wdx/docs/guides/daemon/): the daemon, settings, updating, dependencies, observability.
+- [Architecture](https://srjn45.github.io/wdx/docs/architecture/): how wdx works inside, each page around a diagram.
+- [Reference](https://srjn45.github.io/wdx/docs/reference/cli/): every command, setting and error code, generated from wdx itself.
+
+Working on wdx itself: [`docs/`](docs/) has a file per part of it, and [`AGENTS.md`](AGENTS.md) the rules the code follows.
+
+## Status
+
+wdx has had stable releases since 0.4.0, with dev releases between them for those who want features early; the [changelog](https://srjn45.github.io/wdx/docs/reference/changelog/) says what each brought. It is the next generation of [warden](https://github.com/srjn45/warden), written anew; warden is deprecated.
+
+Coming next, on the [roadmap](https://srjn45.github.io/wdx/docs/project/roadmap/): each AI CLI's usage and limits, being built, and wdx hub, in design, to reach your agents from another machine and share docs and plans with a team.
+
+## Contributing
+
+Issues are welcome. Design comes before code here: [Contributing](https://srjn45.github.io/wdx/docs/project/contributing/) says how a change is made, built and tested.
 
 ## License
 
