@@ -141,8 +141,14 @@ func TestProjectSyncEndToEnd(t *testing.T) {
 	}
 	docsOnHub(t, hh, "removed", d.Id, func(_ string, _ int, err error) bool { return err != nil })
 
-	v, exit := wdxJSON(t, hh.home, "project", "sync", "--name", "app")
-	if exit != clikit.ExitOK || v.Sync.Pending != 0 || v.Sync.LastPushedAt == nil || !v.Sync.LoggedIn {
+	// The node deletes the change from its outbox once the hub answered,
+	// which can be after the hub applied it.
+	var v jsonOutput
+	var exit int
+	if !eventually(t, func() bool {
+		v, exit = wdxJSON(t, hh.home, "project", "sync", "--name", "app")
+		return exit != clikit.ExitOK || v.Sync.Pending == 0
+	}) || exit != clikit.ExitOK || v.Sync.LastPushedAt == nil || !v.Sync.LoggedIn {
 		t.Fatalf("status: %+v", v.Sync)
 	}
 }
