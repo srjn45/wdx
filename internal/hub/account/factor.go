@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base32"
 	"errors"
 	"regexp"
 	"strings"
@@ -337,4 +338,41 @@ func (s *Store) PassRecoveryCode(ctx context.Context, by By, userID, sessionID, 
 		return err
 	})
 	return started, left, err
+}
+
+// EnrolmentKey returns the key userID is enrolling and has not confirmed, so
+// that the page asking for its code can show it again; ErrNoEnrolment when
+// there is none.
+func (s *Store) EnrolmentKey(ctx context.Context, userID string) (*otp.Key, error) {
+	return s.pendingKey(ctx, userID, "SELECT secret FROM totp_factors WHERE user_id = ? AND confirmed_at IS NULL")
+}
+
+// ReplacementKey returns the key ReplaceTOTP started for userID and
+// ConfirmReplacement has not taken; ErrNoEnrolment when there is none.
+func (s *Store) ReplacementKey(ctx context.Context, userID string) (*otp.Key, error) {
+	return s.pendingKey(ctx, userID, "SELECT pending_secret FROM totp_factors WHERE user_id = ? AND confirmed_at IS NOT NULL AND pending_secret IS NOT NULL")
+}
+
+func (s *Store) pendingKey(ctx context.Context, userID, query string) (*otp.Key, error) {
+	username, err := usernameOf(ctx, s.db, userID)
+	if err != nil {
+		return nil, err
+	}
+	var sealed []byte
+	err = s.db.QueryRowContext(ctx, query, userID).Scan(&sealed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNoEnrolment
+	}
+	if err != nil {
+		return nil, err
+	}
+	plain, err := seal.Open(s.key, sealed, []byte(userID))
+	if err != nil {
+		return nil, err
+	}
+	raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(string(plain))
+	if err != nil {
+		return nil, err
+	}
+	return totp.Generate(totp.GenerateOpts{Issuer: s.issuer, AccountName: username, Period: totpPeriod, Digits: totpDigits, Algorithm: otp.AlgorithmSHA1, Secret: raw})
 }

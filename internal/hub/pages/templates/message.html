@@ -1,0 +1,4 @@
+{{define "main"}}
+{{with .Text}}<p>{{.}}</p>{{end}}
+{{with .Link}}<p><a class="button" href="{{.}}">{{$.LinkText}}</a></p>{{end}}
+{{end}}

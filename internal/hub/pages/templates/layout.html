@@ -1,0 +1,20 @@
+{{define "layout" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · wdx hub</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header><a href="/">wdx hub</a></header>
+<main>
+<h1>{{.Title}}</h1>
+{{with .Notice}}<p class="notice">{{.}}</p>{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{template "main" .}}
+</main>
+</body>
+</html>
+{{end}}

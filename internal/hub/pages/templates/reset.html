@@ -1,0 +1,12 @@
+{{define "main"}}
+{{if .SecondFactor}}<p>Your authenticator and recovery codes are removed too: you set up a new authenticator when you next log in.</p>{{end}}
+<form method="post" action="/reset">
+<input type="hidden" name="token" value="{{.Token}}">
+<label>New password
+<input type="password" name="password" autocomplete="new-password" required minlength="12" maxlength="128" autofocus></label>
+<label>New password again
+<input type="password" name="password2" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+<p class="help">12 to 128 characters. Every browser logged in is signed out.</p>
+<button>Set the password</button>
+</form>
+{{end}}

@@ -1,0 +1,15 @@
+{{define "main"}}
+<form method="post" action="/signup">
+{{with .Invite}}<input type="hidden" name="invite" value="{{.}}">{{end}}
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label>Username
+<input name="username" value="{{.Username}}" autocomplete="username" required maxlength="39" autofocus></label>
+<p class="help">1 to 39 letters, digits and -, starting with a letter or digit. It cannot be changed.</p>
+<label>Password
+<input type="password" name="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+<label>Password again
+<input type="password" name="password2" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+<p class="help">12 to 128 characters. Next you set up an authenticator app.</p>
+<button>Sign up</button>
+</form>
+{{end}}

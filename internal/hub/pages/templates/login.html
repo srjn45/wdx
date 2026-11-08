@@ -1,0 +1,11 @@
+{{define "main"}}
+<form method="post" action="/login">
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label>Username
+<input name="username" value="{{.Username}}" autocomplete="username" required autofocus></label>
+<label>Password
+<input type="password" name="password" autocomplete="current-password" required></label>
+<button>Log in</button>
+</form>
+<p class="help">Lost your password or authenticator? Ask the hub's operator for a reset link.</p>
+{{end}}

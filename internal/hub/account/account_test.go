@@ -1237,3 +1237,44 @@ func TestNoSecretLogged(t *testing.T) {
 func hashForms(b []byte) []string {
 	return []string{base64.StdEncoding.EncodeToString(b), base64.RawURLEncoding.EncodeToString(b), hex.EncodeToString(b)}
 }
+
+// The page asking for a code shows again the key being enrolled or
+// replacing, and nobody else's.
+func TestPendingKeys(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	u := f.signUp(t, "alice")
+	_, err := f.EnrolmentKey(f.ctx, u.ID)
+	wantErr(t, "before enrolling", err, ErrNoEnrolment)
+	key, err := f.EnrolTOTP(f.ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.EnrolmentKey(f.ctx, u.ID)
+	if err != nil || got.URL() != key.URL() {
+		t.Fatalf("enrolment key %v, %v; want %s", got, err, key.URL())
+	}
+	bob := f.signUp(t, "bob")
+	_, err = f.EnrolmentKey(f.ctx, bob.ID)
+	wantErr(t, "another user's", err, ErrNoEnrolment)
+	_, err = f.ReplacementKey(f.ctx, u.ID)
+	wantErr(t, "a replacement while enrolling", err, ErrNoEnrolment)
+
+	e := f.enrolled(t, "carol")
+	_, err = f.EnrolmentKey(f.ctx, e.ID)
+	wantErr(t, "once confirmed", err, ErrNoEnrolment)
+	_, err = f.ReplacementKey(f.ctx, e.ID)
+	wantErr(t, "before replacing", err, ErrNoEnrolment)
+	next, err := f.ReplaceTOTP(f.ctx, e.ID, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.ReplacementKey(f.ctx, e.ID); err != nil || got.URL() != next.URL() {
+		t.Fatalf("replacement key %v, %v; want %s", got, err, next.URL())
+	}
+	if err := f.ConfirmReplacement(f.ctx, browser, e.ID, code(t, next, f.step(0))); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.ReplacementKey(f.ctx, e.ID)
+	wantErr(t, "once replaced", err, ErrNoEnrolment)
+}

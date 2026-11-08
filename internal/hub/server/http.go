@@ -55,7 +55,71 @@ func (s *Server) handler(e endpoint) http.Handler {
 	if e == endpointAdmin {
 		next = s.oneChangeAtATime(next)
 	}
-	return s.logRequests(e, ownOnly(sp.validate(next)))
+	operations := s.logRequests(e, ownOnly(sp.validate(next)))
+	if e != endpointWeb {
+		return operations
+	}
+	// The web endpoint serves the sign-in pages beside its operations.
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", operations)
+	mux.Handle("/", s.logPages(s.pages))
+	return mux
+}
+
+// logPages logs every page request from received to returned with its
+// method, path and status alone, never its query, which holds the tokens of
+// invite and reset links, nor its form, which holds passwords and codes;
+// measures it; and turns a panic into an internal error. A refusal of a page
+// is no failure of the hub's: it is logged as returned at info, and each
+// step logs why.
+func (s *Server) logPages(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		id := logging.NewDebugID()
+		log := s.opts.Log.With("debug_id", id, "endpoint", string(endpointWeb))
+		r = r.WithContext(logging.NewContext(context.WithValue(r.Context(), debugIDKey{}, id), log))
+		log.Info("request received", "page", true, "method", r.Method, "path", r.URL.Path)
+		w.Header().Set(hubapi.DebugIDHeader, id)
+		rec := &statusRecorder{ResponseWriter: w}
+		defer func() {
+			attrs := []any{"page", true, "method", r.Method, "path", r.URL.Path}
+			level := slog.LevelInfo
+			if v := recover(); v != nil {
+				level = slog.LevelError
+				attrs = append(attrs, "err", fmt.Sprintf("panic: %v", v), "stack", string(debug.Stack()))
+				if rec.status == 0 {
+					http.Error(rec, "the page could not be shown", http.StatusInternalServerError)
+				}
+			}
+			if rec.status >= http.StatusInternalServerError {
+				level = slog.LevelError
+			}
+			(*s.requestDuration.Load()).Record(context.Background(), time.Since(start).Seconds(), metric.WithAttributes(
+				attribute.String("endpoint", string(endpointWeb)), attribute.Int("status", rec.status)))
+			log.Log(context.Background(), level, "request returned", append(attrs, "status", rec.status, logging.Duration(start))...)
+		}()
+		next.ServeHTTP(rec, r)
+	})
+}
+
+// statusRecorder keeps the status written, for the log.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status == 0 {
+		r.status = status
+	}
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.ResponseWriter.Write(b)
 }
 
 // spec is what the embedded spec gives: parsed once, and only read after

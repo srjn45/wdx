@@ -1,0 +1,10 @@
+{{define "main"}}
+<form method="post" action="/login/recovery-code">
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label>One of your recovery codes
+<input name="code" autocomplete="off" required maxlength="20" autofocus></label>
+<p class="help">It works once.</p>
+<button>Log in</button>
+</form>
+<p><a href="/login/second-factor{{with .Next}}?next={{.}}{{end}}">Use your authenticator instead</a></p>
+{{end}}

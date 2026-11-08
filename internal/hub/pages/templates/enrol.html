@@ -1,0 +1,11 @@
+{{define "main"}}
+<p>Scan this code with your authenticator app, or type the key into it.</p>
+<p class="qr"><img src="{{.QR}}" alt="The authenticator's key as a QR code" width="200" height="200"></p>
+<p>Key: <code class="secret">{{.Secret}}</code></p>
+<form method="post" action="{{.Action}}">
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label>The code the app shows
+<input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="7" autofocus></label>
+<button>Confirm</button>
+</form>
+{{end}}

@@ -1,0 +1,9 @@
+{{define "main"}}
+<form method="post" action="/login/second-factor">
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label>The code your authenticator app shows
+<input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="7" autofocus></label>
+<button>Log in</button>
+</form>
+<p><a href="/login/recovery-code{{with .Next}}?next={{.}}{{end}}">Use a recovery code instead</a></p>
+{{end}}

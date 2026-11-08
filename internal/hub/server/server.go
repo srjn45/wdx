@@ -29,6 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
+	"github.com/srjn45/wdx/internal/hub/pages"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/telemetry"
@@ -132,14 +133,18 @@ type Addresses struct {
 
 // Server is a hub listening on its three endpoints.
 type Server struct {
-	opts      Options
-	log       *slog.Logger // the hub's own lines, under a debug id of their own
-	lock      *os.File
-	db        *sql.DB
-	ca        *ca.CA
-	accounts  *account.Store
-	listeners map[endpoint]net.Listener
-	started   time.Time
+	opts     Options
+	log      *slog.Logger // the hub's own lines, under a debug id of their own
+	lock     *os.File
+	db       *sql.DB
+	ca       *ca.CA
+	accounts *account.Store
+	pages    http.Handler // the sign-in pages, on the web endpoint
+	// registration is the setting as the last reload read it, which the
+	// pages ask at each request.
+	registration atomic.Value
+	listeners    map[endpoint]net.Listener
+	started      time.Time
 
 	changes sync.Mutex // one admin request changing anything at a time
 	// abort is cancelled when the change in flight at shutdown has run out
@@ -185,6 +190,16 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		return nil, err
 	}
 	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2}); err != nil {
+		return nil, err
+	}
+	s.registration.Store(cfg.Registration)
+	if s.pages, err = pages.New(pages.Options{
+		Accounts:       s.accounts,
+		PublicURL:      cfg.PublicURL,
+		TrustedProxies: cfg.TrustedProxies,
+		Registration:   func() string { return s.registration.Load().(string) },
+		Now:            opts.Now,
+	}); err != nil {
 		return nil, err
 	}
 	var caOpts []ca.Option
@@ -323,6 +338,7 @@ func (s *Server) reload(ctx context.Context) ([]string, error) {
 	if s.opts.LogLevel != nil {
 		s.opts.LogLevel.Set(cfg.LogLevel)
 	}
+	s.registration.Store(cfg.Registration)
 	if metrics := metricsOf(cfg); metrics != s.metrics {
 		// The exporter outlives the request, so it logs as the hub does.
 		if err := s.meter(logging.NewContext(context.WithoutCancel(ctx), s.log), metrics); err != nil {
@@ -336,7 +352,7 @@ func (s *Server) reload(ctx context.Context) ([]string, error) {
 			notApplied = append(notApplied, key)
 		}
 	}
-	log.Info("settings reloaded", "log_level", cfg.Value("log.level"), "not_applied", notApplied)
+	log.Info("settings reloaded", "log_level", cfg.Value("log.level"), "registration", cfg.Registration, "not_applied", notApplied)
 	return notApplied, nil
 }
 

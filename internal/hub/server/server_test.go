@@ -194,7 +194,12 @@ func wantRequestsLogged(t *testing.T, home string) {
 		case "request received":
 			received[line["debug_id"].(string)]++
 		case "request returned":
-			if line["response"] == nil || line["status"] == nil || line["endpoint"] == nil {
+			if line["page"] == true {
+				// A page's line has its status alone.
+				if line["status"] == nil || line["query"] != nil || line["body"] != nil || line["response"] != nil {
+					t.Errorf("page line %v", line)
+				}
+			} else if line["response"] == nil || line["status"] == nil || line["endpoint"] == nil {
 				t.Errorf("incomplete line %v", line)
 			} else if failed, _ := line["status"].(float64); (failed >= 400) != (line["code"] != nil) {
 				t.Errorf("want a code exactly when the request failed: %v", line)

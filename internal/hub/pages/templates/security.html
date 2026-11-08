@@ -1,0 +1,54 @@
+{{define "main"}}
+<p>Logged in as <strong>{{.Username}}</strong>.</p>
+<form method="post" action="/logout"><button>Log out</button></form>
+
+<section>
+<h2>Password</h2>
+<p>Changing it signs out every other browser.</p>
+<form method="post" action="/security/password">
+<label>Current password
+<input type="password" name="current" autocomplete="current-password" required></label>
+<label>New password
+<input type="password" name="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+<label>New password again
+<input type="password" name="password2" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+<button>Change the password</button>
+</form>
+</section>
+
+<section>
+<h2>Authenticator</h2>
+<p>Replace it with a new entry in your app. The one in use works until the new one is confirmed.</p>
+<form method="post" action="/security/authenticator">
+<label>Current password
+<input type="password" name="current" autocomplete="current-password" required></label>
+<button>Replace the authenticator</button>
+</form>
+</section>
+
+<section>
+<h2>Recovery codes</h2>
+<p>{{.Left}} of 10 left. New ones replace them all.</p>
+<form method="post" action="/security/recovery-codes">
+<label>Current password
+<input type="password" name="current" autocomplete="current-password" required></label>
+<button>Make new recovery codes</button>
+</form>
+</section>
+
+<section>
+<h2>Browsers</h2>
+<table>
+<thead><tr><th>Address</th><th>Browser</th><th>Started</th><th>Last seen</th><th></th></tr></thead>
+<tbody>
+{{range .Sessions}}<tr{{if .This}} class="this"{{end}}>
+<td>{{.Address}}</td>
+<td>{{.UserAgent}}</td>
+<td>{{.Started}}</td>
+<td>{{.Seen}}</td>
+<td>{{if .This}}this browser{{else}}<form method="post" action="/security/sessions/end"><input type="hidden" name="session" value="{{.ID}}"><button>Sign out</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</section>
+{{end}}

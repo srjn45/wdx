@@ -1,0 +1,11 @@
+{{define "main"}}
+<p>Each code logs you in once in place of your authenticator, should you lose it. Keep them where you keep your passwords: they are shown only now.</p>
+<ol class="codes">
+{{range .Codes}}<li><code>{{.}}</code></li>
+{{end}}</ol>
+<form method="post" action="/recovery-codes/saved">
+{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
+<label class="check"><input type="checkbox" name="saved" value="yes" required> I have saved them</label>
+<button>Go on</button>
+</form>
+{{end}}
