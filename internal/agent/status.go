@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -20,6 +21,13 @@ import (
 // tells of its status: its context size and its account's usage.
 const DefaultStatusInterval = time.Second
 
+// DefaultUsageFetchInterval is the least time between two fetches of an agent's
+// account's usage, for an ACA that tells it only through its vendor's API.
+const DefaultUsageFetchInterval = 5 * time.Minute
+
+// usageFetchTimeout bounds one fetch of an account's usage.
+const usageFetchTimeout = 10 * time.Second
+
 // StatusReads keeps what each running agent's AI coding agent tells of its status:
 // how full its context is, through ContextSize, and how much of its account's limits
 // is used, through Usage, both read again each time its backup, or a file either
@@ -31,6 +39,9 @@ type StatusReads struct {
 	acas     *ACAs
 	watcher  *fswatch.Watcher
 	interval time.Duration
+	// fetchInterval is the least time between two usage fetches of one agent.
+	fetchInterval time.Duration
+	client        *http.Client
 	// OnChange, when set, is told an agent's context size or its ACA's usage changed.
 	OnChange func()
 
@@ -41,12 +52,18 @@ type StatusReads struct {
 
 // NewStatusReads returns the status reads of the agents in store, whose backups are
 // under home, of the AI coding agents acas knows, watched through the daemon's
-// watcher and read at most once an interval, or DefaultStatusInterval when 0.
-func NewStatusReads(ctx context.Context, store *Store, home string, acas *ACAs, watcher *fswatch.Watcher, interval time.Duration) *StatusReads {
+// watcher and read at most once an interval, or DefaultStatusInterval when 0. The
+// usage of an ACA that is an aca.UsageFetcher is fetched at most once a fetchInterval
+// per agent, or DefaultUsageFetchInterval when 0.
+func NewStatusReads(ctx context.Context, store *Store, home string, acas *ACAs, watcher *fswatch.Watcher, interval, fetchInterval time.Duration) *StatusReads {
 	if interval == 0 {
 		interval = DefaultStatusInterval
 	}
-	return &StatusReads{ctx: context.WithoutCancel(ctx), store: store, home: home, acas: acas, watcher: watcher, interval: interval, asked: map[string]chan struct{}{}}
+	if fetchInterval == 0 {
+		fetchInterval = DefaultUsageFetchInterval
+	}
+	return &StatusReads{ctx: context.WithoutCancel(ctx), store: store, home: home, acas: acas, watcher: watcher, interval: interval,
+		fetchInterval: fetchInterval, client: &http.Client{}, asked: map[string]chan struct{}{}}
 }
 
 // Watch follows the status of the agent on terminal row terminalID, whose process
@@ -130,6 +147,8 @@ func (c *StatusReads) watch(ctx context.Context, terminalID string) {
 		return
 	}
 	last := time.Now()
+	fetch := c.usageFetch(ctx, known)
+	defer fetch.wait()
 	// next fires the read a change asked for, once the interval since the last is up;
 	// nil while none waits.
 	var next <-chan time.Time
@@ -157,6 +176,10 @@ func (c *StatusReads) watch(ctx context.Context, terminalID string) {
 				return
 			}
 			last = time.Now()
+			// A change, so the agent works: its account's usage moves.
+			fetch.start(l)
+		case result := <-fetch.done:
+			fetch.finished(result)
 		}
 	}
 }
@@ -289,4 +312,77 @@ func (c *StatusReads) follow(ctx context.Context, w *statusWatch, want []string)
 		added = true
 	}
 	return added
+}
+
+// usageFetch fetches the usage of one agent's account, for an ACA that tells it only
+// through its vendor's API, in a goroutine of its own so that no read waits for the
+// network: at most one at a time, and once a fetchInterval. Its answer lands in the
+// backup, whose change the watch reads as any other. Its fields are the watch's.
+type usageFetch struct {
+	ctx      context.Context
+	fetcher  aca.UsageFetcher // nil when the ACA fetches nothing
+	client   *http.Client
+	interval time.Duration
+	last     time.Time            // when the last began; zero before the first
+	done     chan usageFetchEnded // the one running sends its end; nil while none runs
+	denied   bool                 // the last was refused its login, which is logged once
+}
+
+type usageFetchEnded struct {
+	err  error
+	took time.Duration
+}
+
+func (c *StatusReads) usageFetch(ctx context.Context, known aca.AiCodingAgent) *usageFetch {
+	fetcher, _ := known.(aca.UsageFetcher)
+	return &usageFetch{ctx: ctx, fetcher: fetcher, client: c.client, interval: c.fetchInterval}
+}
+
+// start begins a fetch with l, unless one runs or the last began less than an
+// interval ago.
+func (f *usageFetch) start(l aca.Launch) {
+	if f.fetcher == nil || f.done != nil || !f.last.IsZero() && time.Since(f.last) < f.interval {
+		return
+	}
+	f.last = time.Now()
+	done := make(chan usageFetchEnded, 1)
+	f.done = done
+	go func() {
+		ctx, cancel := context.WithTimeout(f.ctx, usageFetchTimeout)
+		defer cancel()
+		began := time.Now()
+		err := f.fetcher.FetchUsage(ctx, l, f.client)
+		done <- usageFetchEnded{err: err, took: time.Since(began)}
+	}()
+}
+
+// finished logs how the fetch that ran ended.
+func (f *usageFetch) finished(result usageFetchEnded) {
+	f.done = nil
+	log := logging.FromContext(f.ctx)
+	ms := result.took.Milliseconds()
+	var fetchErr *aca.UsageFetchError
+	switch {
+	case result.err == nil:
+		f.denied = false
+		log.Info("usage fetched", "status", http.StatusOK, "duration_ms", ms)
+	case errors.Is(result.err, aca.ErrNoUsage):
+		log.Debug("usage not fetched", "err", result.err)
+	case errors.Is(result.err, context.Canceled):
+		log.Debug("usage fetch stopped with its watch", "duration_ms", ms)
+	case errors.Is(result.err, aca.ErrUsageDenied) && f.denied:
+		log.Debug("usage fetch refused again", "duration_ms", ms)
+	case errors.As(result.err, &fetchErr):
+		f.denied = errors.Is(result.err, aca.ErrUsageDenied)
+		log.Error("usage not fetched", "status", fetchErr.Status, "code", fetchErr.Code, "duration_ms", ms)
+	default:
+		log.Error("usage not fetched", "duration_ms", ms, "err", result.err)
+	}
+}
+
+// wait waits for the fetch that runs, if one does, which the watch's context ends.
+func (f *usageFetch) wait() {
+	if f.done != nil {
+		f.finished(<-f.done)
+	}
 }

@@ -80,13 +80,3 @@ func TestClaudeCodeUsageUnknown(t *testing.T) {
 		t.Errorf("no backup: %v", err)
 	}
 }
-
-// TestUsageNotSupported: the other ACAs tell nothing of their accounts' limits yet.
-func TestUsageNotSupported(t *testing.T) {
-	t.Parallel()
-	for _, a := range []aca.AiCodingAgent{aca.Cursor{}} {
-		if _, _, err := a.Usage(aca.Launch{BackupDir: t.TempDir()}); !errors.Is(err, aca.ErrNotSupported) {
-			t.Errorf("%s: %v", a.ID(), err)
-		}
-	}
-}

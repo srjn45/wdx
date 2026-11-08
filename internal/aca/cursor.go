@@ -23,7 +23,12 @@ import (
 // CURSOR_PARITY.
 type Cursor struct {
 	NoDetached
-	NoUsage
+	// Endpoint is Cursor's API, which FetchUsage asks; "" is DefaultCursorEndpoint.
+	Endpoint string
+	// AuthFile is the login file of Cursor's CLI, which FetchUsage reads its token
+	// from; "" is ~/.config/cursor/auth.json in Launch.UserHome. Tests set both, as
+	// the home a daemon looks up is the user's own.
+	AuthFile string
 }
 
 // CursorID is Cursor's ID.

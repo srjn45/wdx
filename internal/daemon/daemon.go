@@ -97,6 +97,10 @@ type Options struct {
 	// StatusInterval is the least time between two reads of what an agent's ACA tells
 	// of its status, its context size and its usage; agent.DefaultStatusInterval when 0.
 	StatusInterval time.Duration
+	// UsageFetchInterval is the least time between two fetches of an agent's account's
+	// usage, for an ACA that tells it only through its vendor's API, as Cursor;
+	// agent.DefaultUsageFetchInterval when 0.
+	UsageFetchInterval time.Duration
 	// TrashRetention is how long what is kept of a removed agent stays;
 	// agent.DefaultTrashRetention when 0.
 	TrashRetention time.Duration
@@ -303,7 +307,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups = agent.NewBackups(logged, agents, opts.Home, acas, opts.TrashRetention)
 	d.backups.OnChange = d.notices.notify
 	d.watcher = fswatch.New(logged)
-	statusReads := agent.NewStatusReads(logged, agents, opts.Home, acas, d.watcher, opts.StatusInterval)
+	statusReads := agent.NewStatusReads(logged, agents, opts.Home, acas, d.watcher, opts.StatusInterval, opts.UsageFetchInterval)
 	statusReads.OnChange = d.notices.notify
 	d.backups.OnSessionChange = statusReads.SessionChanged
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
