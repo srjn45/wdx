@@ -79,3 +79,5 @@ tr.this td { font-weight: 600; }
   tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
   td { border: 0; padding: 2px 0; }
 }
+button.secondary { color: var(--text); background: var(--panel); border: 1px solid var(--line); }
+table.facts th { width: 6rem; }

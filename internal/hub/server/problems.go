@@ -10,6 +10,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/audit"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hubapi"
 )
 
@@ -103,10 +104,48 @@ func classify(err error) (hubapi.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*account.InvalidError](err); ok {
 		return hubapi.ErrorCodeInvalidArgument, map[string]any{"argument": e.Field}
 	}
+	if e, ok := errors.AsType[*RateLimitedError](err); ok {
+		return hubapi.ErrorCodeRateLimited, map[string]any{"retry_after_seconds": int((e.Wait + time.Second - 1) / time.Second)}
+	}
+	if e, ok := errors.AsType[*node.InvalidError](err); ok {
+		return hubapi.ErrorCodeInvalidArgument, map[string]any{"argument": e.Field}
+	}
+	if code, ok := nodeCodes[unwrapNode(err)]; ok {
+		if e, ok := errors.AsType[*nodeError](err); ok {
+			return code, map[string]any{"node": e.ref}
+		}
+		return code, nil
+	}
 	if e, ok := errors.AsType[*AuditBrokenError](err); ok {
 		return hubapi.ErrorCodeAuditBroken, map[string]any{"id": e.Broken.ID, "at": e.Broken.At.Format(time.RFC3339Nano)}
 	}
 	return hubapi.ErrorCodeInternal, nil
+}
+
+// nodeCodes are the codes of the node store's errors.
+var nodeCodes = map[error]hubapi.ErrorCode{
+	node.ErrLoginNotFound: hubapi.ErrorCodeNotFound,
+	node.ErrLoginExpired:  hubapi.ErrorCodeExpiredToken,
+	node.ErrLoginDone:     hubapi.ErrorCodeNotFound,
+	node.ErrNameTaken:     hubapi.ErrorCodeNameTaken,
+	node.ErrWrongVerifier: hubapi.ErrorCodeInvalidGrant,
+	node.ErrPending:       hubapi.ErrorCodeAuthorizationPending,
+	node.ErrSlowDown:      hubapi.ErrorCodeSlowDown,
+	node.ErrDenied:        hubapi.ErrorCodeAccessDenied,
+	node.ErrNotFound:      hubapi.ErrorCodeNotFound,
+	node.ErrRevoked:       hubapi.ErrorCodeNodeRevoked,
+	node.ErrDisabled:      hubapi.ErrorCodeAccountDisabled,
+	errStopping:           hubapi.ErrorCodeHubUnavailable,
+}
+
+// unwrapNode is the error of nodeCodes err is, or nil.
+func unwrapNode(err error) error {
+	for e := range nodeCodes {
+		if errors.Is(err, e) {
+			return e
+		}
+	}
+	return nil
 }
 
 func writeProblem(w http.ResponseWriter, p hubapi.Problem) {

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"log/slog"
@@ -22,13 +23,16 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/hub/account"
+	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/sqlite/sqlitetest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -147,6 +151,38 @@ func nodeCert(t *testing.T, c *ca.CA) *tls.Certificate {
 		t.Fatal(err)
 	}
 	return &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// nodeCert returns the client certificate of a node of a user, both made
+// in the hub's database, as a login makes them.
+func (th *testHub) nodeCert(t *testing.T) *tls.Certificate {
+	t.Helper()
+	ctx := context.Background()
+	user, err := sqlite.NewID("usr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := th.server.db.Exec("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, 'x', 0)", user, user); err != nil {
+		t.Fatal(err)
+	}
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := node.By{Actor: audit.ActorUser, Address: "127.0.0.1"}
+	started, err := th.server.nodes.StartLogin(ctx, by, node.StartRequest{Flow: node.FlowDevice, Name: "desktop", OS: "linux/amd64", Version: "0.5.0", PublicKey: pub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := th.server.nodes.Approve(ctx, by, user, started.ID, "desktop"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := th.server.nodes.Poll(ctx, started.DeviceCode, th.server.issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(c.Certificate)
+	return &tls.Certificate{Certificate: [][]byte{block.Bytes}, PrivateKey: key}
 }
 
 // do sends a request with body, when not empty, and returns the response
@@ -269,7 +305,7 @@ func TestVersionOnEachEndpoint(t *testing.T) {
 
 	web, err := th.webClient(t).GetVersionWithResponse(ctx)
 	wantVersion(t, "web", web.JSON200, web.StatusCode(), err)
-	nodes, err := client(t, "https://"+th.addrs.Nodes, th.nodes(nodeCert(t, th.server.CA()))).GetNodeVersionWithResponse(ctx)
+	nodes, err := client(t, "https://"+th.addrs.Nodes, th.nodes(th.nodeCert(t))).GetNodeVersionWithResponse(ctx)
 	if err != nil {
 		t.Fatalf("nodes: %v", err)
 	}
@@ -307,7 +343,7 @@ func TestNodeEndpointRefusesOtherCertificates(t *testing.T) {
 func TestOperationOfAnotherEndpoint(t *testing.T) {
 	t.Parallel()
 	th := start(t, nil)
-	nodes := th.nodes(nodeCert(t, th.server.CA()))
+	nodes := th.nodes(th.nodeCert(t))
 	web, node, admin := "http://"+th.addrs.Web, "https://"+th.addrs.Nodes, "http://wdx-hub"
 	for _, tc := range []struct {
 		name        string
@@ -339,7 +375,7 @@ func TestOperationOfAnotherEndpoint(t *testing.T) {
 func TestRequestsLoggedUnderTheClientsDebugID(t *testing.T) {
 	t.Parallel()
 	th := start(t, nil)
-	nodes := th.nodes(nodeCert(t, th.server.CA()))
+	nodes := th.nodes(th.nodeCert(t))
 	for i, tc := range []struct {
 		hc  *http.Client
 		url string

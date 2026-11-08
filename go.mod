@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/vt v0.1.1-0.20261028143050-ac49f62f807e
+	github.com/coder/websocket v1.8.14
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/oapi-codegen/nethttp-middleware v1.3.1

@@ -35,6 +35,9 @@ func appendN(t *testing.T, d *sql.DB, n int) {
 			t.Fatal(err)
 		}
 		e := Entry{At: start.Add(time.Duration(i) * time.Minute), UserID: "usr-1a2b3c4d", Actor: ActorUser, Action: "user.logged_in", Address: "192.0.2.1", Details: map[string]any{"recovery_code": i%2 == 0}}
+		if i == 2 {
+			e.NodeID, e.Action = "node-1a2b3c4d", "node.approved"
+		}
 		if i == 0 {
 			e = Entry{At: start, Actor: ActorAdmin, Action: "user.invited"}
 		}
@@ -113,6 +116,12 @@ func TestChainBroken(t *testing.T) {
 		{"an address made NULL", func(t *testing.T, d *sql.DB) {
 			exec(t, d, "UPDATE audit SET address = NULL WHERE id = 2")
 		}, 1, 2},
+		{"a node set", func(t *testing.T, d *sql.DB) {
+			exec(t, d, "UPDATE audit SET node_id = 'node-00000000' WHERE id = 2")
+		}, 1, 2},
+		{"a node made NULL", func(t *testing.T, d *sql.DB) {
+			exec(t, d, "UPDATE audit SET node_id = NULL WHERE id = 3")
+		}, 2, 3},
 		{"a row removed", func(t *testing.T, d *sql.DB) {
 			exec(t, d, "DELETE FROM audit WHERE id = 2")
 		}, 1, 3},

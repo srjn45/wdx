@@ -32,7 +32,9 @@ const (
 type Entry struct {
 	At time.Time
 	// UserID is the user the act was on; empty for none, as an invite.
-	UserID  string
+	UserID string
+	// NodeID is the node the act was by or on; empty for none.
+	NodeID  string
 	Actor   Actor
 	Action  string // such as user.signed_up
 	Address string // the client's address; empty for none
@@ -79,21 +81,21 @@ func Append(ctx context.Context, tx *sql.Tx, e Entry) error {
 	// The id is hashed, so it is known before the row is written.
 	r := row{
 		id: id + 1, at: e.At.UnixMilli(), userID: nullable(e.UserID), actor: string(e.Actor),
-		action: e.Action, address: nullable(e.Address), details: string(details),
+		action: e.Action, address: nullable(e.Address), details: string(details), nodeID: nullable(e.NodeID),
 	}
 	r.hash = r.compute(prev)
-	if _, err := tx.ExecContext(ctx, "INSERT INTO audit (id, at, user_id, actor, action, address, details, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		r.id, r.at, r.userID, r.actor, r.action, r.address, r.details, r.hash); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO audit (id, at, user_id, actor, action, address, details, node_id, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		r.id, r.at, r.userID, r.actor, r.action, r.address, r.details, r.nodeID, r.hash); err != nil {
 		return err
 	}
-	logging.FromContext(ctx).Info("audit appended", "audit_id", r.id, "action", r.action, "user_id", e.UserID, "actor", r.actor)
+	logging.FromContext(ctx).Info("audit appended", "audit_id", r.id, "action", r.action, "user_id", e.UserID, "node_id", e.NodeID, "actor", r.actor)
 	return nil
 }
 
 // Verify walks the chain in order, recomputing each row's hash, and stops at
 // the first that does not match.
 func Verify(ctx context.Context, db *sql.DB) (Verification, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id, at, user_id, actor, action, address, details, hash FROM audit ORDER BY id")
+	rows, err := db.QueryContext(ctx, "SELECT id, at, user_id, actor, action, address, details, node_id, hash FROM audit ORDER BY id")
 	if err != nil {
 		return Verification{}, err
 	}
@@ -102,7 +104,7 @@ func Verify(ctx context.Context, db *sql.DB) (Verification, error) {
 	prev := make([]byte, sha256.Size)
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.at, &r.userID, &r.actor, &r.action, &r.address, &r.details, &r.hash); err != nil {
+		if err := rows.Scan(&r.id, &r.at, &r.userID, &r.actor, &r.action, &r.address, &r.details, &r.nodeID, &r.hash); err != nil {
 			return Verification{}, err
 		}
 		if !bytes.Equal(r.compute(prev), r.hash) {
@@ -145,6 +147,7 @@ type row struct {
 	id              int64
 	at              int64
 	userID, address sql.NullString
+	nodeID          sql.NullString
 	actor, action   string
 	details         string
 	hash            []byte
@@ -152,7 +155,10 @@ type row struct {
 
 // compute returns the row's hash: the SHA-256 of the previous row's hash,
 // then each field in order, an integer as 8 bytes big-endian, a text as 1
-// byte for NULL or not, its length as 8 bytes and its bytes.
+// byte for NULL or not, its length as 8 bytes and its bytes. node_id, added
+// after rows were written without it, is hashed last and only when it is not
+// NULL, so that those rows keep their hashes; a node_id set or cleared on a
+// row still changes its hash.
 func (r row) compute(prev []byte) []byte {
 	h := sha256.New()
 	h.Write(prev)
@@ -177,6 +183,9 @@ func (r row) compute(prev []byte) []byte {
 	text(valid(r.action))
 	text(r.address)
 	text(valid(r.details))
+	if r.nodeID.Valid {
+		text(r.nodeID)
+	}
 	return h.Sum(nil)
 }
 

@@ -194,6 +194,13 @@ func (f *fixture) count(t *testing.T, query string, args ...any) int {
 	return n
 }
 
+func (f *fixture) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := f.db.Exec(query, args...); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func wantErr(t *testing.T, what string, err, want error) {
 	t.Helper()
 	if !errors.Is(err, want) {
@@ -797,13 +804,19 @@ func TestRemove(t *testing.T) {
 	if _, err := f.CreateReset(f.ctx, Admin, u.ID, false); err != nil {
 		t.Fatal(err)
 	}
+	f.exec(t, "INSERT INTO nodes (id, user_id, name, public_key, os, version, created_at) VALUES ('node-1', ?, 'desktop', x'00', 'linux/amd64', '0.5.0', 0)", u.ID)
+	f.exec(t, "INSERT INTO node_logins (id, flow, name, os, version, public_key, status, user_id, node_id, address, created_at, expires_at) "+
+		"VALUES ('nl-1', 'device', 'desktop', 'linux/amd64', '0.5.0', x'00', 'approved', ?, 'node-1', '192.0.2.1', 0, 1)", u.ID)
+	if got, err := f.User(f.ctx, u.ID); err != nil || got.Nodes != 1 {
+		t.Fatalf("want 1 node counted, got %+v, %v", got, err)
+	}
 	if err := f.Remove(f.ctx, Admin, u.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.lastAction(t); got != ActionRemoved {
 		t.Errorf("last action %s", got)
 	}
-	for table, where := range map[string]string{"totp_factors": "user_id", "recovery_codes": "user_id", "web_sessions": "user_id", "password_resets": "user_id", "invites": "used_by"} {
+	for table, where := range map[string]string{"totp_factors": "user_id", "recovery_codes": "user_id", "web_sessions": "user_id", "password_resets": "user_id", "invites": "used_by", "nodes": "user_id", "node_logins": "user_id"} {
 		if n := f.count(t, "SELECT COUNT(*) FROM "+table+" WHERE "+where+" = ?", u.ID); n != 0 {
 			t.Errorf("%d rows of %s left", n, table)
 		}

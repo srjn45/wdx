@@ -42,7 +42,7 @@ const (
 // endpoint, once valid, run one at a time when it changes anything.
 func (s *Server) handler(e endpoint) http.Handler {
 	sp := embedded()
-	api := &api{server: s, apiVersion: sp.spec.Info.Version}
+	api := &api{server: s, apiVersion: s.apiVersion}
 	strict := hubapi.NewStrictHandlerWithOptions(api, nil, hubapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -51,11 +51,16 @@ func (s *Server) handler(e endpoint) http.Handler {
 		BaseRouter:       http.NewServeMux(),
 		ErrorHandlerFunc: badRequest,
 	})
-	next := routes
-	if e == endpointAdmin {
-		next = s.oneChangeAtATime(next)
+	next := ownOnly(sp.validate(routes))
+	switch e {
+	case endpointAdmin:
+		next = ownOnly(sp.validate(s.oneChangeAtATime(routes)))
+	case endpointNodes:
+		// Before anything else, even a 404: the endpoint tells a node it
+		// does not know nothing.
+		next = s.checkNode(next)
 	}
-	operations := s.logRequests(e, ownOnly(sp.validate(next)))
+	operations := s.logRequests(e, next)
 	if e != endpointWeb {
 		return operations
 	}
@@ -242,6 +247,7 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 			operation = route.Operation.OperationID
 		}
 		ctx := context.WithValue(context.WithValue(r.Context(), debugIDKey{}, id), operationKey{}, operation)
+		ctx = context.WithValue(ctx, addressKey{}, s.pages.Address(r))
 		r = r.WithContext(logging.NewContext(ctx, log))
 		log.Info("request received",
 			"operation", operation,
@@ -285,10 +291,11 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 }
 
 // requestLogged is a request's body as logged: a setting's value can be a
-// secret, so it is measured, never logged.
+// secret, as are the codes and the verifier of the node logins, so they are
+// measured, never logged.
 func requestLogged(operation string, b []byte) any {
 	if operation != "updateSetting" {
-		return jsonValue(b)
+		return hubapi.RequestLogged(operation, b)
 	}
 	var r map[string]any
 	if json.Unmarshal(b, &r) != nil {
@@ -302,20 +309,13 @@ func requestLogged(operation string, b []byte) any {
 }
 
 // responseLogged is a response's body as logged: an invite's or a reset's
-// link is a secret, so it is measured, never logged.
+// link is a secret, as are a device login's codes, so they are measured,
+// never logged.
 func responseLogged(operation string, b []byte) any {
 	if operation == "createInvite" || operation == "createUserReset" {
 		return hubapi.LinkResponseLogged(b)
 	}
-	return jsonValue(b)
-}
-
-// jsonValue logs b as nested JSON when it is JSON, else as a string.
-func jsonValue(b []byte) any {
-	if json.Valid(b) {
-		return json.RawMessage(b)
-	}
-	return string(b)
+	return hubapi.ResponseLogged(operation, b)
 }
 
 // recorder keeps the status and body written, for the log.
@@ -348,6 +348,9 @@ func (r *recorder) Write(b []byte) (int, error) {
 	r.body.Write(b)
 	return r.ResponseWriter.Write(b)
 }
+
+// Unwrap is the writer recorded, which the control WebSocket hijacks.
+func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 // connectionErrors logs what an http.Server reports of its connections, such
 // as a refused handshake, as the hub's lines rather than on stderr.

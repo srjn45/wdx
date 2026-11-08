@@ -7,6 +7,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/audit"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -55,7 +56,11 @@ func (a *api) GetUser(ctx context.Context, req hubapi.GetUserRequestObject) (hub
 	if err != nil {
 		return nil, err
 	}
-	return hubapi.GetUser200JSONResponse{User: userDetailOf(u)}, nil
+	d, err := a.userDetail(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	return hubapi.GetUser200JSONResponse{User: d}, nil
 }
 
 func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject) (hubapi.UpdateUserResponseObject, error) {
@@ -76,10 +81,18 @@ func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject
 		logging.FromContext(ctx).Info("user unchanged", "user_id", u.ID, "disabled", req.Body.Disabled)
 		result = hubapi.ResultUnchanged
 	}
+	if req.Body.Disabled {
+		// Even unchanged: a node that connected meanwhile is refused anyway.
+		a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonDisabled)
+	}
 	if u, err = a.user(ctx, req.Username); err != nil {
 		return nil, err
 	}
-	return hubapi.UpdateUser200JSONResponse{Result: result, User: userDetailOf(u)}, nil
+	d, err := a.userDetail(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	return hubapi.UpdateUser200JSONResponse{Result: result, User: d}, nil
 }
 
 func (a *api) CreateUserReset(ctx context.Context, req hubapi.CreateUserResetRequestObject) (hubapi.CreateUserResetResponseObject, error) {
@@ -103,10 +116,15 @@ func (a *api) RemoveUser(ctx context.Context, req hubapi.RemoveUserRequestObject
 	if err != nil {
 		return nil, err
 	}
+	d, err := a.userDetail(ctx, u) // as they were
+	if err != nil {
+		return nil, err
+	}
 	if err := a.server.accounts.Remove(ctx, account.Admin, u.ID); err != nil {
 		return nil, &userError{username: req.Username, err: err}
 	}
-	return hubapi.RemoveUser200JSONResponse{Result: hubapi.ResultRemoved, User: userDetailOf(u)}, nil
+	a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonRevoked)
+	return hubapi.RemoveUser200JSONResponse{Result: hubapi.ResultRemoved, User: d}, nil
 }
 
 func (a *api) VerifyAudit(ctx context.Context, _ hubapi.VerifyAuditRequestObject) (hubapi.VerifyAuditResponseObject, error) {
@@ -137,7 +155,7 @@ func (a *api) user(ctx context.Context, username string) (account.User, error) {
 }
 
 func userOf(u account.User) hubapi.User {
-	r := hubapi.User{Username: u.Username, CreatedAt: u.CreatedAt, Disabled: u.Disabled()}
+	r := hubapi.User{Username: u.Username, CreatedAt: u.CreatedAt, Disabled: u.Disabled(), Nodes: u.Nodes}
 	if !u.LastLoginAt.IsZero() {
 		r.LastLoginAt = &u.LastLoginAt
 	}
@@ -147,10 +165,20 @@ func userOf(u account.User) hubapi.User {
 	return r
 }
 
-func userDetailOf(u account.User) hubapi.UserDetail {
+// userDetail is u with their nodes.
+func (a *api) userDetail(ctx context.Context, u account.User) (hubapi.UserDetail, error) {
+	nodes, err := a.server.nodes.Nodes(ctx, u.ID)
+	if err != nil {
+		return hubapi.UserDetail{}, err
+	}
+	list := make([]hubapi.Node, 0, len(nodes))
+	for _, n := range nodes {
+		list = append(list, a.server.nodeOf(n))
+	}
 	r := userOf(u)
 	return hubapi.UserDetail{
 		Username: r.Username, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt,
 		Disabled: r.Disabled, SecondFactor: r.SecondFactor, Sessions: u.Sessions,
-	}
+		Nodes: r.Nodes, NodeList: list,
+	}, nil
 }

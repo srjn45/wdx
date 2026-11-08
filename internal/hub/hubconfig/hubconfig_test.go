@@ -110,6 +110,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		"WDX_HUB_LOG_LEVEL": "warn", "WDX_HUB_LOG_RETENTION_DAYS": "9",
 		"WDX_HUB_OTEL_ENDPOINT": "https://env:4318", "WDX_HUB_OTEL_INTERVAL_SECONDS": "6",
 		"WDX_HUB_MASTER_KEY": testKey, "WDX_HUB_REGISTRATION": "open", "WDX_HUB_TRUSTED_PROXIES": "10.0.0.1",
+		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/",
 	}
 	maps.Copy(e, vars)
 	c, err := Load(e.getenv)
@@ -121,6 +122,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		WebTLS: TLSOff, WebTLSCert: "/env/cert", WebTLSKey: "/env/key", LogLevel: slog.LevelWarn, LogRetentionDays: 9,
 		OtelEndpoint: "https://env:4318", OtelInterval: 6 * time.Second,
 		MasterKey: testKeyBytes, Registration: RegistrationOpen, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
+		NodesURL: "https://nodes.example.com:9443",
 	}
 	from := c.From
 	c.From = nil
@@ -182,6 +184,23 @@ func TestTLSFilesRequiresBoth(t *testing.T) {
 	}
 	if got := problems(t, url+"web:\n  tls_cert: cert.pem\n", nil); got["web.tls_cert"] == "" {
 		t.Fatalf("want a relative path refused, got %v", got)
+	}
+}
+
+func TestNodesURL(t *testing.T) {
+	t.Parallel()
+	c := Config{PublicURL: "https://hub.example.com"}
+	if got := c.NodesEndpoint(8443); got != "https://hub.example.com:8443" {
+		t.Errorf("derived %q, want public_url's host with the port", got)
+	}
+	c.NodesURL = "https://nodes.example.com:9443"
+	if got := c.NodesEndpoint(8443); got != c.NodesURL {
+		t.Errorf("got %q, want the setting", got)
+	}
+	for _, bad := range []string{"http://localhost:8443", "nodes.example.com:8443", "https://", "https://nodes.example.com/path", "https://u:p@nodes.example.com"} {
+		if got := problems(t, "public_url: http://localhost\n", env{"WDX_HUB_NODES_URL": bad}); got["nodes_url"] == "" {
+			t.Errorf("%s: want it refused, got %v", bad, got)
+		}
 	}
 }
 

@@ -59,9 +59,13 @@ type Config struct {
 	Home string
 	// PublicURL is the address browsers and nodes reach the hub at, without
 	// a trailing slash.
-	PublicURL        string
-	ListenWeb        string
-	ListenNodes      string
+	PublicURL   string
+	ListenWeb   string
+	ListenNodes string
+	// NodesURL is the address nodes reach the node endpoint at, without a
+	// trailing slash; empty for public_url's host with listen.nodes' port,
+	// which NodesEndpoint gives.
+	NodesURL         string
 	WebTLS           string // TLSOff or TLSFiles
 	WebTLSCert       string
 	WebTLSKey        string
@@ -89,6 +93,15 @@ func (c Config) PublicHost() string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// NodesEndpoint is the address nodes reach the node endpoint at: NodesURL,
+// or public_url's host with port, the one listen.nodes listens on.
+func (c Config) NodesEndpoint(port int) string {
+	if c.NodesURL != "" {
+		return c.NodesURL
+	}
+	return "https://" + net.JoinHostPort(c.PublicHost(), strconv.Itoa(port))
 }
 
 var logLevels = []string{"debug", "info", "warn", "error"}
@@ -149,6 +162,22 @@ var rows = []settings.Row[Config]{
 		Default:     ":8443",
 		Set:         func(c *Config, v string) error { return setAddress(&c.ListenNodes, v) },
 		Get:         func(c Config) string { return c.ListenNodes },
+	},
+	{
+		Key: "nodes_url",
+		Description: "address nodes reach the node endpoint at, such as https://hub.example.com:8443, when a proxy or a host's " +
+			"port mapping makes it differ from listen.nodes; empty is public_url's host with listen.nodes' port",
+		Default: "",
+		Set: func(c *Config, v string) error {
+			if v != "" {
+				if err := checkNodesURL(v); err != nil {
+					return err
+				}
+			}
+			c.NodesURL = strings.TrimSuffix(v, "/")
+			return nil
+		},
+		Get: func(c Config) string { return c.NodesURL },
 	},
 	{
 		Key:         "web.tls",
@@ -337,6 +366,19 @@ func checkPublicURL(v string) error {
 	}
 	if u.Scheme == "http" && !slices.Contains(localHosts, u.Hostname()) {
 		return fmt.Errorf("%q must be https: http is only for %s", v, strings.Join(localHosts, " and "))
+	}
+	return nil
+}
+
+// checkNodesURL refuses an address that is not https with a host and nothing
+// after it: the node endpoint always serves TLS.
+func checkNodesURL(v string) error {
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return fmt.Errorf("%q is not an https URL: the node endpoint always serves TLS", v)
+	}
+	if u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%q has more than a scheme, a host and a port", v)
 	}
 	return nil
 }

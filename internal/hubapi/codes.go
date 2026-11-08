@@ -19,6 +19,17 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeHubUnavailable:  codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "the hub is not running or not answering"),
 	ErrorCodeAuditBroken:     codeInfo(http.StatusConflict, clikit.ExitRejected, "a row of the audit chain does not match its hash: the chain was changed"),
 	ErrorCodeCancelled:       codeInfo(http.StatusConflict, clikit.ExitRejected, "the question was answered no"),
+
+	ErrorCodeNameTaken:             codeInfo(http.StatusConflict, clikit.ExitRejected, "the account has a node of that name already"),
+	ErrorCodeRateLimited:           codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "too many tries from this address: wait and try again"),
+	ErrorCodeNodeRevoked:           codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node was removed from its account, or never was in one"),
+	ErrorCodeAccountDisabled:       codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node's account is disabled"),
+	ErrorCodeHubVersionUnsupported: codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the hub serves no version of the API the node speaks"),
+	ErrorCodeInvalidGrant:          codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the PKCE verifier is not the one the login started with"),
+	ErrorCodeAuthorizationPending:  codeInfo(http.StatusConflict, clikit.ExitRejected, "the login is not approved yet"),
+	ErrorCodeSlowDown:              codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "polled faster than the login's interval"),
+	ErrorCodeAccessDenied:          codeInfo(http.StatusForbidden, clikit.ExitRejected, "the person denied the login"),
+	ErrorCodeExpiredToken:          codeInfo(http.StatusGone, clikit.ExitRejected, "the login expired before it was approved and finished"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

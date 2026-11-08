@@ -265,3 +265,42 @@ func TestIssueClientCertificate(t *testing.T) {
 		t.Fatal("want it expired after its validity")
 	}
 }
+
+func TestIssueNode(t *testing.T) {
+	t.Parallel()
+	clk := &clock{now: start}
+	c, _ := load(t, filepath.Join(t.TempDir(), "ca"), clk)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM, notAfter, err := c.IssueNode(pub, "node-1a2b3c4d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := decodeCert(certPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, ok := NodeID(cert); !ok || id != "node-1a2b3c4d" || cert.URIs[0].String() != "wdx-node:node-1a2b3c4d" {
+		t.Errorf("names %v, want wdx-node:node-1a2b3c4d", cert.URIs)
+	}
+	if !notAfter.Equal(start.Add(NodeValidity)) || !cert.NotAfter.Equal(notAfter) || !cert.PublicKey.(ed25519.PublicKey).Equal(pub) {
+		t.Errorf("valid until %v (said %v) for %v, want a year from %v", cert.NotAfter, notAfter, cert.PublicKey, start)
+	}
+	opts := x509.VerifyOptions{Roots: c.Pool(), CurrentTime: start, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
+	if _, err := cert.Verify(opts); err != nil {
+		t.Fatalf("want it verified as a client: %v", err)
+	}
+	opts.KeyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if _, err := cert.Verify(opts); err == nil {
+		t.Fatal("want it refused as a server's")
+	}
+	other, _ := load(t, filepath.Join(t.TempDir(), "ca"), clk)
+	if _, ok := NodeID(other.Certificate()); ok {
+		t.Error("a CA's certificate names a node")
+	}
+	if ca, err := decodeCert(c.CertificatePEM()); err != nil || !ca.Equal(c.Certificate()) {
+		t.Errorf("CertificatePEM is not the CA's: %v", err)
+	}
+}

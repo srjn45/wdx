@@ -21,6 +21,9 @@ const (
 	triesPerMinute = 20
 	// signUpsPerMinute is how many sign-ups an address may post a minute.
 	signUpsPerMinute = 10
+	// loginStartsPerMinute is how many node logins an address may start a
+	// minute, as many as sign-ups.
+	loginStartsPerMinute = signUpsPerMinute
 	// forgetAfter is how long after its last wrong try a username's streak
 	// is kept, so that memory does not grow with every name ever typed.
 	forgetAfter = 24 * time.Hour
@@ -34,7 +37,9 @@ type limits struct {
 	streaks map[string]*streak // by username in lower case
 	tries   map[string]*window // by address
 	signUps map[string]*window // by address
-	swept   time.Time
+	// loginStarts are the node logins started, by address.
+	loginStarts map[string]*window
+	swept       time.Time
 }
 
 // streak is a username's wrong tries in a row.
@@ -52,7 +57,7 @@ type window struct {
 }
 
 func newLimits(now func() time.Time) *limits {
-	return &limits{now: now, streaks: map[string]*streak{}, tries: map[string]*window{}, signUps: map[string]*window{}}
+	return &limits{now: now, streaks: map[string]*streak{}, tries: map[string]*window{}, signUps: map[string]*window{}, loginStarts: map[string]*window{}}
 }
 
 // wait returns how long the streak makes its next try wait at now.
@@ -123,6 +128,14 @@ func (l *limits) signUpWait(address string) time.Duration {
 
 func (l *limits) countSignUp(address string) { l.count(l.signUps, address) }
 
+// loginStartWait returns how long address must wait before it starts its
+// next node login.
+func (l *limits) loginStartWait(address string) time.Duration {
+	return l.windowWait(l.loginStarts, address, loginStartsPerMinute)
+}
+
+func (l *limits) countLoginStart(address string) { l.count(l.loginStarts, address) }
+
 func (l *limits) windowWait(windows map[string]*window, address string, limit int) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -154,7 +167,7 @@ func (l *limits) sweep(now time.Time) {
 		return
 	}
 	l.swept = now
-	for _, windows := range []map[string]*window{l.tries, l.signUps} {
+	for _, windows := range []map[string]*window{l.tries, l.signUps, l.loginStarts} {
 		for a, w := range windows {
 			if !now.Before(w.start.Add(time.Minute)) {
 				delete(windows, a)

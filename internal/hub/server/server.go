@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hub/pages"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
@@ -69,6 +71,10 @@ type Options struct {
 	// logs the head of its audit chain, besides at startup;
 	// DefaultHousekeepingInterval when 0.
 	HousekeepingInterval time.Duration
+	// HelloTimeout, PingInterval and RenewInterval time the control
+	// connections; DefaultHelloTimeout, DefaultPingInterval and
+	// DefaultRenewInterval when 0.
+	HelloTimeout, PingInterval, RenewInterval time.Duration
 }
 
 // SettingStore is the settings as the commands keep them: the server does not
@@ -123,7 +129,7 @@ func (e *AlreadyRunningError) Error() string {
 
 // atStart are the settings the hub applies only when it starts; a reload
 // applies the others at once.
-var atStart = []string{"public_url", "listen.web", "listen.nodes", "web.tls", "web.tls_cert", "web.tls_key", "master_key", "trusted_proxies"}
+var atStart = []string{"public_url", "listen.web", "listen.nodes", "nodes_url", "web.tls", "web.tls_cert", "web.tls_key", "master_key", "trusted_proxies"}
 
 // Addresses are where the endpoints listen.
 type Addresses struct {
@@ -139,12 +145,25 @@ type Server struct {
 	db       *sql.DB
 	ca       *ca.CA
 	accounts *account.Store
-	pages    http.Handler // the sign-in pages, on the web endpoint
+	nodes    *node.Store
+	pages    *pages.Pages // the sign-in pages, on the web endpoint
+	// nodesURL is where nodes reach the node endpoint, as they are told.
+	nodesURL string
+	// apiVersion is the spec's info.version.
+	apiVersion string
 	// registration is the setting as the last reload read it, which the
 	// pages ask at each request.
 	registration atomic.Value
 	listeners    map[endpoint]net.Listener
 	started      time.Time
+
+	// stopping ends when the hub stops, and with it every control
+	// connection, which controls counts; controlsMu orders counting one in
+	// with stopping.
+	stopping   context.Context
+	stopNow    context.CancelFunc
+	controlsMu sync.Mutex
+	controls   sync.WaitGroup
 
 	changes sync.Mutex // one admin request changing anything at a time
 	// abort is cancelled when the change in flight at shutdown has run out
@@ -170,9 +189,16 @@ type Server struct {
 func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
 	opts.HousekeepingInterval = cmp.Or(opts.HousekeepingInterval, DefaultHousekeepingInterval)
+	opts.HelloTimeout = cmp.Or(opts.HelloTimeout, DefaultHelloTimeout)
+	opts.PingInterval = cmp.Or(opts.PingInterval, DefaultPingInterval)
+	opts.RenewInterval = cmp.Or(opts.RenewInterval, DefaultRenewInterval)
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
 	cfg := opts.Config
-	s := &Server{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), listeners: map[endpoint]net.Listener{}}
+	s := &Server{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), listeners: map[endpoint]net.Listener{}, apiVersion: embedded().spec.Info.Version}
 	s.abort, s.abortChanges = context.WithCancel(context.Background())
+	s.stopping, s.stopNow = context.WithCancel(context.Background())
 	defer func() {
 		if err != nil {
 			s.close()
@@ -192,9 +218,11 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2}); err != nil {
 		return nil, err
 	}
+	s.nodes = node.New(s.db, node.Options{Now: opts.Now})
 	s.registration.Store(cfg.Registration)
 	if s.pages, err = pages.New(pages.Options{
 		Accounts:       s.accounts,
+		Nodes:          s.nodes,
 		PublicURL:      cfg.PublicURL,
 		TrustedProxies: cfg.TrustedProxies,
 		Registration:   func() string { return s.registration.Load().(string) },
@@ -202,15 +230,7 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	}); err != nil {
 		return nil, err
 	}
-	var caOpts []ca.Option
-	if opts.Now != nil {
-		caOpts = append(caOpts, ca.WithClock(opts.Now))
-	}
-	if s.ca, err = ca.Load(ctx, hubconfig.CADir(cfg.Home), caOpts...); err != nil {
-		return nil, err
-	}
-	nodesCert, err := s.ca.NodeEndpoint(ctx, cfg.PublicHost())
-	if err != nil {
+	if s.ca, err = ca.Load(ctx, hubconfig.CADir(cfg.Home), ca.WithClock(opts.Now)); err != nil {
 		return nil, err
 	}
 	if err := s.meter(ctx, metricsOf(cfg)); err != nil {
@@ -233,6 +253,15 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	if err != nil {
 		return nil, err
 	}
+	s.listeners[endpointNodes] = nodes
+	// The address nodes are told, and the endpoint's certificate names, is
+	// known once it listens, on the port the system chose for port 0.
+	s.nodesURL = cfg.NodesEndpoint(nodes.Addr().(*net.TCPAddr).Port)
+	nodesHost := hostOf(s.nodesURL)
+	nodesCert, err := s.ca.NodeEndpoint(ctx, nodesHost)
+	if err != nil {
+		return nil, err
+	}
 	s.listeners[endpointNodes] = tls.NewListener(nodes, &tls.Config{
 		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{nodesCert},
@@ -247,9 +276,21 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	a := s.Addresses()
 	s.log.Info("hub listening",
 		"web", a.Web, "web_tls", cfg.WebTLS, "nodes", a.Nodes, "admin", a.Admin,
-		"public_url", cfg.PublicURL, "home", cfg.Home)
+		"public_url", cfg.PublicURL, "nodes_url", s.nodesURL, "home", cfg.Home)
 	return s, nil
 }
+
+// hostOf is the host of an address the settings checked.
+func hostOf(address string) string {
+	u, err := url.Parse(address)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// now is the hub's clock.
+func (s *Server) now() time.Time { return s.opts.Now() }
 
 // listenSocket listens on the Unix socket at path, which only the user may
 // use: reaching it is the authority to run the admin commands.
@@ -287,6 +328,13 @@ func (s *Server) CA() *ca.CA { return s.ca }
 
 // Accounts is the hub's store of accounts.
 func (s *Server) Accounts() *account.Store { return s.accounts }
+
+// Nodes is the hub's store of nodes.
+func (s *Server) Nodes() *node.Store { return s.nodes }
+
+// NodesURL is where nodes reach the node endpoint, as they are told at
+// login.
+func (s *Server) NodesURL() string { return s.nodesURL }
 
 func metricsOf(cfg hubconfig.Config) telemetry.Options {
 	return telemetry.Options{Endpoint: cfg.OtelEndpoint, Interval: cfg.OtelInterval, Service: hubconfig.Name}
@@ -383,6 +431,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	select {
 	case err = <-served:
 		s.log.Error("hub stopped serving", "err", err)
+		s.stopControls()
 		for _, srv := range servers {
 			srv.Close()
 		}
@@ -393,6 +442,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 	case <-ctx.Done():
 		s.log.Info("hub stopping")
+		// Each control connection says goodbye: Shutdown waits for none,
+		// having handed them over.
+		s.stopControls()
 		err = s.shutdown(servers)
 		for range servers {
 			if err := <-served; !errors.Is(err, http.ErrServerClosed) {
@@ -417,6 +469,9 @@ func (s *Server) housekeep(ctx context.Context) {
 	for {
 		if _, err := s.accounts.DeleteExpired(ctx); err != nil && ctx.Err() == nil {
 			s.log.Error("expired not deleted", "err", err)
+		}
+		if _, err := s.nodes.DeleteExpired(ctx); err != nil && ctx.Err() == nil {
+			s.log.Error("expired logins not deleted", "err", err)
 		}
 		if head, err := audit.Head(ctx, s.db); err != nil {
 			if ctx.Err() == nil {
@@ -464,6 +519,7 @@ func (s *Server) shutdown(servers map[endpoint]*http.Server) error {
 
 // close releases what Listen took; the listener removes the socket.
 func (s *Server) close() {
+	s.stopNow()
 	for _, ln := range s.listeners {
 		ln.Close()
 	}

@@ -38,6 +38,13 @@ const (
 // commonName names the CA's certificate.
 const commonName = "wdx-hub CA"
 
+// NodeValidity is how long a node's certificate lasts.
+const NodeValidity = 365 * 24 * time.Hour
+
+// nodeScheme is the scheme of the URI that names a node in its certificate:
+// wdx-node:<id>.
+const nodeScheme = "wdx-node"
+
 const (
 	caValidity    = 10 * 365 * 24 * time.Hour
 	nodesValidity = 365 * 24 * time.Hour
@@ -204,6 +211,39 @@ func (c *CA) Issue(pub crypto.PublicKey, r Request) ([]byte, error) {
 	}
 	return x509.CreateCertificate(rand.Reader, tmpl, c.cert, pub, c.key)
 }
+
+// IssueNode signs the certificate of the node nodeID for its key pub: a
+// client's, naming the node as URI:wdx-node:<id>, valid NodeValidity from
+// now. It returns it in PEM, with when it ends.
+func (c *CA) IssueNode(pub ed25519.PublicKey, nodeID string) (certPEM []byte, notAfter time.Time, err error) {
+	der, err := c.Issue(pub, Request{
+		CommonName:  nodeID,
+		URIs:        []*url.URL{{Scheme: nodeScheme, Opaque: nodeID}},
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		Validity:    NodeValidity,
+	})
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return encodeCert(der), cert.NotAfter, nil
+}
+
+// NodeID is the id of the node cert names, ok false when it names none.
+func NodeID(cert *x509.Certificate) (id string, ok bool) {
+	for _, u := range cert.URIs {
+		if u.Scheme == nodeScheme && u.Opaque != "" {
+			return u.Opaque, true
+		}
+	}
+	return "", false
+}
+
+// CertificatePEM is the CA's own certificate in PEM, as nodes are given it.
+func (c *CA) CertificatePEM() []byte { return encodeCert(c.cert.Raw) }
 
 // NodeEndpoint returns the node endpoint's key and certificate for host, the
 // host of public_url, which the CA issued: valid a year, its common name host

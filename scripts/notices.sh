@@ -22,7 +22,8 @@ license() {
 	if grep -q 'Redistribution and use in source and binary forms' "$1"; then
 		if grep -q 'Neither the name' "$1"; then ids="$ids BSD-3-Clause"; else ids="$ids BSD-2-Clause"; fi
 	fi
-	grep -q 'Permission to use, copy, modify, and/or distribute' "$1" && ids="$ids ISC"
+	# ISC, in its wording since 2007 and in the original one, without /or.
+	grep -Eq 'Permission to use, copy, modify, and(/or)? distribute' "$1" && ids="$ids ISC"
 	printf '%s' "${ids# }" | sed 's/ / and /g'
 }
 

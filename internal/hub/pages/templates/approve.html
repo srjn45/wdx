@@ -1,0 +1,27 @@
+{{define "main"}}
+{{with .Login}}
+<p>wdx on <strong>{{.Name}}</strong> wants to join your account.</p>
+<table class="facts">
+<tbody>
+<tr><th>System</th><td>{{.OS}}</td></tr>
+<tr><th>wdx</th><td>{{.Version}}</td></tr>
+<tr><th>From</th><td>{{.Address}}</td></tr>
+<tr><th>Asked</th><td>{{.Started}}</td></tr>
+</tbody>
+</table>
+<p class="help">Approve only a machine of yours that you started <code>wdx hub login</code> on just now. Approved, it can list your nodes and remove them.</p>
+<form method="post" action="/nodes/approve">
+{{with .ID}}<input type="hidden" name="login" value="{{.}}">{{end}}
+{{with .UserCode}}<input type="hidden" name="user_code" value="{{.}}">{{end}}
+<label>Its name in your account
+<input name="name" value="{{.Name}}" autocomplete="off" required maxlength="64"></label>
+<p class="help">1 to 64 letters, digits, ., _ and -, starting with a letter or digit.</p>
+<button>Approve</button>
+</form>
+<form method="post" action="/nodes/deny">
+{{with .ID}}<input type="hidden" name="login" value="{{.}}">{{end}}
+{{with .UserCode}}<input type="hidden" name="user_code" value="{{.}}">{{end}}
+<button class="secondary">Deny</button>
+</form>
+{{end}}
+{{end}}

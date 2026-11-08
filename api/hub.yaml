@@ -179,7 +179,7 @@ paths:
     get:
       operationId: getUser
       tags: [admin]
-      summary: One user, with their browser sessions counted
+      summary: One user, with their browser sessions counted and their nodes
       description: "Errors: not_found."
       responses:
         "200":
@@ -193,8 +193,8 @@ paths:
       tags: [admin]
       summary: Disable a user, or enable them again
       description: |
-        Disabling ends every browser session of the user, and refuses their
-        logins until they are enabled.
+        Disabling ends every browser session of the user, cuts their nodes
+        off, and refuses their logins and their nodes until they are enabled.
 
         Errors: not_found.
       requestBody:
@@ -215,7 +215,8 @@ paths:
       summary: Remove a user, keeping their username taken
       description: |
         The user's password, second factor, recovery codes, browser sessions,
-        resets and invite are deleted; the username is never given again.
+        resets, invite and nodes are deleted, their nodes cut off; the
+        username is never given again.
 
         Errors: not_found.
       responses:
@@ -267,6 +268,162 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/node-logins:
+    post:
+      operationId: startNodeLogin
+      tags: [web]
+      summary: Start making a machine one of an account's nodes
+      description: |
+        Two flows. browser: the person opens login_url on the machine, logs
+        in and approves the node; the hub then sends their browser to
+        callback, which must be on http://127.0.0.1, with code and state, the
+        login's id, and the node exchanges the code at
+        /v1/node-logins/exchange with its PKCE verifier. device: the person
+        types user_code on verification_url, from any browser, and the node
+        polls /v1/node-logins/token with device_code every interval seconds.
+        Either expires 10 minutes after it started. Starting logins is rate
+        limited per address.
+
+        device_code and user_code are secrets: the hub logs their length.
+
+        Errors: invalid_argument, rate_limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartNodeLogin" }
+      responses:
+        "201":
+          description: The login started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeLoginStarted" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/node-logins/exchange:
+    post:
+      operationId: exchangeNodeLogin
+      tags: [web]
+      summary: Exchange a browser login's authorization code for the node's credentials
+      description: |
+        The code works once. The hub logs the length of the code and of the
+        verifier, never them.
+
+        Errors: not_found, for a code that is unknown, used or expired;
+        invalid_grant, for a verifier that is not the challenge's;
+        account_disabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExchangeNodeLogin" }
+      responses:
+        "200":
+          description: The node's credentials.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeCredentials" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/node-logins/token:
+    post:
+      operationId: pollNodeLogin
+      tags: [web]
+      summary: Ask whether a device login was approved, as RFC 8628 has it
+      description: |
+        Polled every interval seconds until it answers with the credentials,
+        once, or fails with anything but authorization_pending and
+        slow_down. The hub logs the device code's length, never it.
+
+        Errors: authorization_pending, not approved yet; slow_down, polled
+        faster than interval, which the node then raises by 5 seconds;
+        access_denied; expired_token; not_found, for a device code unknown
+        or used; account_disabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PollNodeLogin" }
+      responses:
+        "200":
+          description: The node's credentials.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeCredentials" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/control:
+    get:
+      operationId: openControl
+      tags: [nodes]
+      summary: The node's control WebSocket
+      description: |
+        Upgraded to a WebSocket of JSON text messages, each an object with a
+        type: the node sends ControlHello first, and the hub answers
+        ControlWelcome, or closes with status 4001 when it serves no API
+        version of the node's, its reason naming the side behind, node or
+        hub (hub_version_unsupported). The hub then sends
+        ControlCertificate when two thirds of the node's certificate's life
+        have passed, at the welcome and daily, which the node answers with
+        ControlCertificateSaved once it wrote it, and ControlBye before it
+        closes the connection. WebSocket pings keep it alive.
+
+        Errors: node_revoked, account_disabled, as on every request of this
+        endpoint.
+      responses:
+        "101":
+          description: Switched to the WebSocket.
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/nodes:
+    get:
+      operationId: listNodes
+      tags: [nodes]
+      summary: The nodes of the calling node's account, by name
+      responses:
+        "200":
+          description: The nodes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountNodeList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/nodes/{node}:
+    parameters:
+      - name: node
+        in: path
+        required: true
+        description: "The node's name, whatever its case, or id: and its id."
+        schema: { type: string }
+    get:
+      operationId: getNode
+      tags: [nodes]
+      summary: One node of the calling node's account
+      description: "Errors: not_found."
+      responses:
+        "200":
+          description: The node.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountNodeEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: removeNode
+      tags: [nodes]
+      summary: Revoke a node of the calling node's account, the caller among them
+      description: |
+        The node's connections are cut at once and it can never connect
+        again; its name is free for another node.
+
+        Errors: not_found.
+      responses:
+        "200":
+          description: The node, as it was, with result removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountNodeResult" }
         default: { $ref: "#/components/responses/Problem" }
 
 components:
@@ -412,11 +569,175 @@ components:
         result: { $ref: "#/components/schemas/Result" }
         reset: { $ref: "#/components/schemas/Reset" }
 
+    StartNodeLogin:
+      type: object
+      required: [flow, name, os, wdx_version, public_key]
+      additionalProperties: false
+      properties:
+        flow: { $ref: "#/components/schemas/NodeLoginFlow" }
+        name: { type: string, description: "The node's name in the account: 1 to 64 letters, digits, ., _ and -, starting with a letter or digit." }
+        os: { type: string, maxLength: 64, description: "The node's operating system and architecture, such as linux/amd64." }
+        wdx_version: { type: string, maxLength: 64 }
+        public_key: { type: string, format: byte, description: "The node's Ed25519 public key, 32 bytes in base64." }
+        pkce_challenge: { type: string, description: "browser only: the S256 challenge of the node's PKCE verifier, in base64url without padding." }
+        callback: { type: string, description: "browser only: where the browser goes once the node is approved, http://127.0.0.1:<port>/<path>." }
+
+    NodeLoginFlow:
+      type: string
+      enum: [browser, device]
+
+    NodeLoginStarted:
+      type: object
+      required: [flow, expires_at, login_url, device_code, user_code, verification_url, interval]
+      properties:
+        flow: { $ref: "#/components/schemas/NodeLoginFlow" }
+        expires_at: { type: string, format: date-time }
+        login_url: { type: string, nullable: true, description: "browser: the approval page the node opens; null for device." }
+        device_code: { type: string, nullable: true, description: "device: the secret the node polls with; null for browser." }
+        user_code: { type: string, nullable: true, description: "device: the code the person types, such as WDX-4F7K-9QPA; null for browser." }
+        verification_url: { type: string, nullable: true, description: "device: the page the person types it on, which never carries it; null for browser." }
+        interval: { type: integer, nullable: true, description: "device: the seconds between two polls; null for browser." }
+
+    ExchangeNodeLogin:
+      type: object
+      required: [code, pkce_verifier]
+      additionalProperties: false
+      properties:
+        code: { type: string, description: "The authorization code the browser brought to the callback." }
+        pkce_verifier: { type: string }
+
+    PollNodeLogin:
+      type: object
+      required: [device_code]
+      additionalProperties: false
+      properties:
+        device_code: { type: string }
+
+    NodeRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    NodeCredentials:
+      type: object
+      required: [node, user, certificate, ca_certificate, nodes_url]
+      properties:
+        node: { $ref: "#/components/schemas/NodeRef" }
+        user: { type: string, description: "The account's username." }
+        certificate: { type: string, description: "The node's certificate in PEM, for the public key the login started with, valid a year." }
+        ca_certificate: { type: string, description: "The hub's CA in PEM, the only one the node endpoint is trusted by." }
+        nodes_url: { type: string, description: "The node endpoint, https://<host>:<port>." }
+
+    Node:
+      type: object
+      required: [id, name, os, version, created_at, last_seen_at, online]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        os: { type: string }
+        version: { type: string, description: "The wdx version it last connected with." }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time, nullable: true, description: "Null when it never connected." }
+        online: { type: boolean, description: "Whether it has a control connection now." }
+
+    AccountNode:
+      allOf:
+        - $ref: "#/components/schemas/Node"
+        - type: object
+          required: [this]
+          properties:
+            this: { type: boolean, description: "Whether it is the node asking." }
+
+    AccountNodeDetail:
+      allOf:
+        - $ref: "#/components/schemas/AccountNode"
+        - type: object
+          required: [public_key, fingerprint]
+          properties:
+            public_key: { type: string, format: byte, description: "Its Ed25519 public key, in base64." }
+            fingerprint: { type: string, description: "SHA256: and the key's SHA-256 in base64 without padding." }
+
+    AccountNodeList:
+      type: object
+      required: [nodes]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/AccountNode" }
+
+    AccountNodeEnvelope:
+      type: object
+      required: [node]
+      properties:
+        node: { $ref: "#/components/schemas/AccountNodeDetail" }
+
+    AccountNodeResult:
+      type: object
+      required: [result, node]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        node: { $ref: "#/components/schemas/AccountNode" }
+
+    ControlHello:
+      type: object
+      description: The node's first message on the control WebSocket.
+      required: [type, api_version, wdx_version, os]
+      properties:
+        type: { type: string, enum: [hello] }
+        api_version: { type: string, description: "The info.version of the hub.yaml the node was built with." }
+        wdx_version: { type: string }
+        os: { type: string }
+
+    ControlWelcome:
+      type: object
+      description: The hub's answer to a hello it can serve.
+      required: [type, hub_version, api_version, node]
+      properties:
+        type: { type: string, enum: [welcome] }
+        hub_version: { type: string }
+        api_version: { type: string, description: "The info.version of the hub's API." }
+        node: { $ref: "#/components/schemas/NodeRef" }
+
+    ControlCertificate:
+      type: object
+      description: A new certificate of the node, for its key.
+      required: [type, certificate, expires_at]
+      properties:
+        type: { type: string, enum: [certificate] }
+        certificate: { type: string, description: "In PEM." }
+        expires_at: { type: string, format: date-time }
+
+    ControlCertificateSaved:
+      type: object
+      description: The node wrote the certificate whose expiry it names.
+      required: [type, expires_at]
+      properties:
+        type: { type: string, enum: [certificate_saved] }
+        expires_at: { type: string, format: date-time }
+
+    ControlBye:
+      type: object
+      description: Why the hub closes the connection; revoked and disabled mean for good.
+      required: [type, reason]
+      properties:
+        type: { type: string, enum: [bye] }
+        reason: { type: string, enum: [revoked, disabled, shutting_down] }
+
+    ControlMessage:
+      type: object
+      description: What every control message has, to tell which it is.
+      required: [type]
+      properties:
+        type: { type: string }
+
     User:
       type: object
-      required: [username, created_at, last_login_at, disabled, second_factor]
+      required: [username, created_at, last_login_at, disabled, second_factor, nodes]
       properties:
         username: { type: string }
+        nodes: { type: integer, description: "Their nodes not removed." }
         created_at: { type: string, format: date-time }
         last_login_at: { type: string, format: date-time, nullable: true, description: "Null when they never logged in." }
         disabled: { type: boolean }
@@ -429,9 +750,13 @@ components:
       allOf:
         - $ref: "#/components/schemas/User"
         - type: object
-          required: [sessions]
+          required: [sessions, node_list]
           properties:
             sessions: { type: integer, description: "Their browser sessions that have not ended." }
+            node_list:
+              type: array
+              description: Their nodes not removed, by name.
+              items: { $ref: "#/components/schemas/Node" }
 
     UserList:
       type: object
@@ -497,6 +822,16 @@ components:
         - hub_unavailable
         - audit_broken
         - cancelled
+        - name_taken
+        - rate_limited
+        - node_revoked
+        - account_disabled
+        - hub_version_unsupported
+        - invalid_grant
+        - authorization_pending
+        - slow_down
+        - access_denied
+        - expired_token
 
     Problem:
       type: object

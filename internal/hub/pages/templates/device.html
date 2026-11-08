@@ -1,0 +1,9 @@
+{{define "main"}}
+<p>Type the code your terminal shows after <code>wdx hub login</code>.</p>
+<form method="post" action="/device">
+<label>The code
+<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required maxlength="20" placeholder="WDX-XXXX-XXXX" autofocus></label>
+<button>Go on</button>
+</form>
+<p class="help">Approving a machine lets wdx on it act for your account: list your nodes and, once you set it up, open sessions on them. Only type a code you got from a terminal of your own just now.</p>
+{{end}}

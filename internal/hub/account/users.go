@@ -24,6 +24,7 @@ type User struct {
 	// before.
 	SecondFactor string
 	Sessions     int // the live browser sessions
+	Nodes        int // the nodes not removed
 }
 
 // Disabled reports whether the user may not log in.
@@ -33,14 +34,15 @@ func (u User) Disabled() bool { return !u.DisabledAt.IsZero() }
 // has them.
 const userColumns = "id, username, created_at, last_login_at, disabled_at, " +
 	"(SELECT 'totp' FROM totp_factors f WHERE f.user_id = users.id AND f.confirmed_at IS NOT NULL), " +
-	"(SELECT COUNT(*) FROM web_sessions w WHERE w.user_id = users.id AND w.expires_at > ?1 AND w.last_seen_at > ?2)"
+	"(SELECT COUNT(*) FROM web_sessions w WHERE w.user_id = users.id AND w.expires_at > ?1 AND w.last_seen_at > ?2), " +
+	"(SELECT COUNT(*) FROM nodes n WHERE n.user_id = users.id AND n.revoked_at IS NULL)"
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
 	var created int64
 	var login, disabled sql.NullInt64
 	var factor sql.NullString
-	if err := row.Scan(&u.ID, &u.Username, &created, &login, &disabled, &factor, &u.Sessions); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &created, &login, &disabled, &factor, &u.Sessions, &u.Nodes); err != nil {
 		return User{}, err
 	}
 	u.CreatedAt = time.UnixMilli(created).UTC()
@@ -266,7 +268,8 @@ func (s *Store) ChangePassword(ctx context.Context, by By, userID, sessionID, cu
 }
 
 // Disable keeps userID from logging in and ends their sessions; changed is
-// false when they were disabled already.
+// false when they were disabled already. Their nodes are refused from then
+// on; cutting off their connections is the caller's.
 func (s *Store) Disable(ctx context.Context, by By, userID string) (changed bool, err error) {
 	return s.setDisabled(ctx, by, userID, true)
 }
@@ -313,7 +316,8 @@ func (s *Store) setDisabled(ctx context.Context, by By, userID string, disable b
 
 // Remove marks userID removed, keeping the row so that the username is never
 // given again, and deletes their password hash, factor, recovery codes,
-// sessions, resets and the invite they used.
+// sessions, resets, the invite they used, their node logins and their nodes;
+// cutting off the nodes' connections is the caller's.
 func (s *Store) Remove(ctx context.Context, by By, userID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		n, err := sqlite.Exec(ctx, tx, "UPDATE users SET removed_at = ?, password_hash = NULL WHERE id = ? AND removed_at IS NULL", ms(s.now()), userID)
@@ -329,6 +333,8 @@ func (s *Store) Remove(ctx context.Context, by By, userID string) error {
 			"DELETE FROM web_sessions WHERE user_id = ?",
 			"DELETE FROM password_resets WHERE user_id = ?",
 			"DELETE FROM invites WHERE used_by = ?",
+			"DELETE FROM node_logins WHERE user_id = ?",
+			"DELETE FROM nodes WHERE user_id = ?",
 		} {
 			if _, err := sqlite.Exec(ctx, tx, q, userID); err != nil {
 				return err

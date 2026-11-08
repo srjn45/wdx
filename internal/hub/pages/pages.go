@@ -1,6 +1,7 @@
 // Package pages serves the hub's sign-in pages on the web endpoint: signing
 // up from an invite, enrolling an authenticator, the recovery codes, logging
-// in with the second factor, the password reset and the Security page. They
+// in with the second factor, the password reset, the Security page, and the
+// device page and the approval of a node with its result. They
 // are plain HTML from embedded templates and one stylesheet, with no
 // JavaScript; every page is behind the cross-origin check and the security
 // headers, and the tries are rate limited (the wdx doc HUB_ACCOUNTS).
@@ -22,12 +23,14 @@ import (
 	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
 // Options configure the pages.
 type Options struct {
 	Accounts *account.Store
+	Nodes    *node.Store
 	// PublicURL is where browsers reach the hub: its origin is trusted by
 	// the cross-origin check, and https adds Strict-Transport-Security.
 	PublicURL string
@@ -88,8 +91,29 @@ type pages struct {
 	https  bool
 }
 
+// Pages are the pages' handler, and their protections that the hub's API on
+// the web endpoint uses too.
+type Pages struct {
+	http.Handler
+	p *pages
+}
+
+// Address is the client's address of r, as the pages know it: the
+// connection's, or the one a trusted proxy forwarded.
+func (h *Pages) Address(r *http.Request) string { return h.p.address(r) }
+
+// AllowLoginStart counts a node login started from address, and returns how
+// long address must wait when it has started too many, 0 when it may.
+func (h *Pages) AllowLoginStart(address string) time.Duration {
+	if wait := h.p.limits.loginStartWait(address); wait > 0 {
+		return wait
+	}
+	h.p.limits.countLoginStart(address)
+	return 0
+}
+
 // New returns the handler of the pages.
-func New(opts Options) (http.Handler, error) {
+func New(opts Options) (*Pages, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -105,7 +129,7 @@ func New(opts Options) (http.Handler, error) {
 		return nil, err
 	}
 	cross.SetDenyHandler(http.HandlerFunc(p.crossOrigin))
-	return p.headers(cross.Handler(mux)), nil
+	return &Pages{Handler: p.headers(cross.Handler(mux)), p: p}, nil
 }
 
 func (p *pages) routes(mux *http.ServeMux) {
@@ -137,10 +161,13 @@ func (p *pages) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /security/recovery-codes", p.renewCodes)
 	mux.HandleFunc("POST /security/sessions/end", p.endSession)
 
-	// Step 5's pages go here: the device page, where a person types the
-	// code their node shows, and the approval of a node with its result.
 	// Each starts with p.loggedIn, as the Security page does, so that a
 	// next of theirs leads through the login and back.
+	mux.HandleFunc("GET /device", p.deviceForm)
+	mux.HandleFunc("POST /device", p.device)
+	mux.HandleFunc("GET /nodes/approve", p.approveForm)
+	mux.HandleFunc("POST /nodes/approve", p.approve)
+	mux.HandleFunc("POST /nodes/deny", p.deny)
 
 	mux.HandleFunc("/", p.notFound)
 }
@@ -189,6 +216,9 @@ type page struct {
 	Left   int          // recovery codes not used
 
 	Sessions []browser
+
+	// Login is the node login the approval page asks about.
+	Login *approval
 
 	// A message page's text and its one link.
 	Text, Link, LinkText string

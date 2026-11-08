@@ -2,6 +2,8 @@ package hubcli
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"net/url"
 	"os"
@@ -18,6 +20,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hub/server"
 	"github.com/srjn45/wdx/internal/hubapi"
 )
@@ -166,14 +169,43 @@ func TestUserList(t *testing.T) {
 	}
 }
 
+// newNode makes a node of username named name, as an approved login does.
+func newNode(t *testing.T, s *server.Server, username, name string) {
+	t.Helper()
+	ctx := context.Background()
+	u, err := s.Accounts().UserByUsername(ctx, username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := node.By{Actor: audit.ActorUser}
+	started, err := s.Nodes().StartLogin(ctx, by, node.StartRequest{Flow: node.FlowDevice, Name: name, OS: "linux/amd64", Version: "0.5.0", PublicKey: pub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Nodes().Approve(ctx, by, u.ID, started.ID, name); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUserGet(t *testing.T) {
 	t.Parallel()
 	home, s := newHubServer(t)
 	newUser(t, s, "alice", true)
+	newNode(t, s, "alice", "desktop")
 	v, exit := hubJSON(t, home, "user", "get", "--username", "ALICE")
 	u, _ := v["user"].(map[string]any)
-	if exit != clikit.ExitOK || u["username"] != "alice" || u["sessions"] != float64(1) || u["second_factor"] != "totp" {
-		t.Fatalf("want alice with her session, got exit %d: %v", exit, v)
+	if exit != clikit.ExitOK || u["username"] != "alice" || u["sessions"] != float64(1) || u["second_factor"] != "totp" || u["nodes"] != float64(1) {
+		t.Fatalf("want alice with her session and node, got exit %d: %v", exit, v)
+	}
+	if list, _ := u["node_list"].([]any); len(list) != 1 || list[0].(map[string]any)["name"] != "desktop" || list[0].(map[string]any)["online"] != false {
+		t.Fatalf("want her desktop listed offline, got %v", u["node_list"])
+	}
+	if out := hub(t, home, "user", "list"); !strings.Contains(out.Stdout, "NODES") {
+		t.Fatalf("want the nodes counted in the list, got %+v", out)
 	}
 	v, exit = hubJSON(t, home, "user", "get", "--username", "nobody")
 	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
@@ -181,7 +213,7 @@ func TestUserGet(t *testing.T) {
 		t.Fatalf("want the username in details, got %v", v)
 	}
 	if out := hub(t, home, "user", "get", "--username", "alice"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "user alice\n  factor") ||
-		!strings.Contains(out.Stdout, "sessions   1\n") {
+		!strings.Contains(out.Stdout, "sessions   1\n") || !strings.Contains(out.Stdout, "nodes      1\n") || !strings.Contains(out.Stdout, "desktop") {
 		t.Fatalf("unexpected text %+v", out)
 	}
 }
@@ -208,7 +240,7 @@ func TestUserDisableEnable(t *testing.T) {
 		v, exit = hubJSON(t, home, "user", verb, "--username", "nobody")
 		want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
 	}
-	if out := hub(t, home, "user", "disable", "--username", "alice"); out.Stdout != "disabled user alice; their browser sessions ended\n" {
+	if out := hub(t, home, "user", "disable", "--username", "alice"); out.Stdout != "disabled user alice; their browser sessions ended and their nodes were cut off\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
 	if out := hub(t, home, "user", "disable", "--username", "alice"); out.Stdout != "user alice is disabled already\n" {

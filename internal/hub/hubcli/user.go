@@ -97,8 +97,8 @@ func newUserListCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			clikit.OutputNote: "A row per user: username, second factor, whether disabled, created and last login.\n" +
-				`With --json: {"users": [{"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ...}, ...]}`,
+			clikit.OutputNote: "A row per user: username, second factor, whether disabled, nodes, created and last login.\n" +
+				`With --json: {"users": [{"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "nodes": ...}, ...]}`,
 			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeHubUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -119,9 +119,9 @@ func (l userList) Text(w io.Writer, st style.Style) {
 		return
 	}
 	var t style.Table
-	t.Row(st.Muted("USERNAME"), st.Muted("FACTOR"), st.Muted("STATE"), st.Muted("CREATED"), st.Muted("LAST LOGIN"))
+	t.Row(st.Muted("USERNAME"), st.Muted("FACTOR"), st.Muted("STATE"), st.Muted("NODES"), st.Muted("CREATED"), st.Muted("LAST LOGIN"))
 	for _, u := range l.Users {
-		t.Row(st.Name(u.Username), factorText(u.SecondFactor), stateText(st, u.Disabled), timeText(u.CreatedAt), lastLoginText(u.LastLoginAt))
+		t.Row(st.Name(u.Username), factorText(u.SecondFactor), stateText(st, u.Disabled), strconv.Itoa(u.Nodes), timeText(u.CreatedAt), lastLoginText(u.LastLoginAt))
 	}
 	t.Write(w)
 }
@@ -136,8 +136,9 @@ func newUserGetCmd() *cobra.Command {
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			clikit.OutputNote: "The user, with their browser sessions counted.\n" +
-				`With --json: {"user": {"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "sessions": ...}}`,
+			clikit.OutputNote: "The user, with their browser sessions counted, and their nodes.\n" +
+				`With --json: {"user": {"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "sessions": ..., ` +
+				`"nodes": ..., "node_list": [{"id": ..., "name": ..., "os": ..., "version": ..., "created_at": ..., "last_seen_at": ..., "online": ...}, ...]}}`,
 			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeHubUnavailable, hubapi.ErrorCodeNotFound),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -163,6 +164,25 @@ func (d userDetail) Text(w io.Writer, st style.Style) {
 	field("created", timeText(u.CreatedAt))
 	field("last login", lastLoginText(u.LastLoginAt))
 	field("sessions", strconv.Itoa(u.Sessions))
+	field("nodes", strconv.Itoa(u.Nodes))
+	if len(u.NodeList) == 0 {
+		return
+	}
+	var t style.Table
+	t.Row(st.Muted("NODE"), st.Muted("ID"), st.Muted("STATE"), st.Muted("OS"), st.Muted("WDX"), st.Muted("LAST SEEN"))
+	for _, n := range u.NodeList {
+		state := st.Muted("offline")
+		if n.Online {
+			state = st.Success("online")
+		}
+		seen := "never"
+		if n.LastSeenAt != nil {
+			seen = timeText(*n.LastSeenAt)
+		}
+		t.Row(st.Name(n.Name), n.Id, state, n.Os, n.Version, seen)
+	}
+	fmt.Fprintln(w)
+	t.Write(w)
 }
 
 // newUserDisableCmd is user disable, or user enable when disable is false.
@@ -171,7 +191,7 @@ func newUserDisableCmd(disable bool) *cobra.Command {
 	verb, short, long, failure := "enable", "Let a disabled user log in again", "", "not enabled"
 	if disable {
 		verb, short, failure = "disable", "Keep a user from logging in", "not disabled"
-		long = "Their browser sessions end, and their logins are refused until " + name + " user\nenable."
+		long = "Their browser sessions end and their nodes are cut off, and their logins and\nnodes are refused until " + name + " user enable."
 	}
 	cmd := &cobra.Command{
 		Use:   verb + " --username <name>",
@@ -210,7 +230,7 @@ func (r userResult) Text(w io.Writer, st style.Style) {
 	case hubapi.ResultRemoved:
 		fmt.Fprintf(w, "%s user %s; the username stays taken\n", st.Success("removed"), u)
 	case hubapi.ResultDisabled:
-		fmt.Fprintf(w, "%s user %s; their browser sessions ended\n", st.Success("disabled"), u)
+		fmt.Fprintf(w, "%s user %s; their browser sessions ended and their nodes were cut off\n", st.Success("disabled"), u)
 	default:
 		fmt.Fprintf(w, "%s user %s\n", st.Success(string(r.Result)), u)
 	}
@@ -277,10 +297,10 @@ func newUserRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove --username <name> [--yes]",
 		Short: "Remove a user, keeping their username taken",
-		Long: "Their password, authenticator, recovery codes, browser sessions and resets are\n" +
-			"deleted, and the username is never given again. You are asked first, as\n" +
-			"nothing brings it back; --yes answers in advance, and with --json, or without\n" +
-			"a terminal, it is required.",
+		Long: "Their password, authenticator, recovery codes, browser sessions, resets and\n" +
+			"nodes are deleted, their nodes cut off, and the username is never given again.\n" +
+			"You are asked first, as nothing brings it back; --yes answers in advance, and\n" +
+			"with --json, or without a terminal, it is required.",
 		Example: clikit.Examples(
 			"Remove a user", name+" user remove --username alice",
 			"From a script", name+" user remove --username alice --yes --json",

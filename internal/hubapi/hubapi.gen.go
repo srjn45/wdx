@@ -23,45 +23,189 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ControlByeReason.
+const (
+	ControlByeReasonDisabled     ControlByeReason = "disabled"
+	ControlByeReasonRevoked      ControlByeReason = "revoked"
+	ControlByeReasonShuttingDown ControlByeReason = "shutting_down"
+)
+
+// Valid indicates whether the value is a known member of the ControlByeReason enum.
+func (e ControlByeReason) Valid() bool {
+	switch e {
+	case ControlByeReasonDisabled:
+		return true
+	case ControlByeReasonRevoked:
+		return true
+	case ControlByeReasonShuttingDown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlByeType.
+const (
+	ControlByeTypeBye ControlByeType = "bye"
+)
+
+// Valid indicates whether the value is a known member of the ControlByeType enum.
+func (e ControlByeType) Valid() bool {
+	switch e {
+	case ControlByeTypeBye:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlCertificateType.
+const (
+	ControlCertificateTypeCertificate ControlCertificateType = "certificate"
+)
+
+// Valid indicates whether the value is a known member of the ControlCertificateType enum.
+func (e ControlCertificateType) Valid() bool {
+	switch e {
+	case ControlCertificateTypeCertificate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlCertificateSavedType.
+const (
+	ControlCertificateSavedTypeCertificateSaved ControlCertificateSavedType = "certificate_saved"
+)
+
+// Valid indicates whether the value is a known member of the ControlCertificateSavedType enum.
+func (e ControlCertificateSavedType) Valid() bool {
+	switch e {
+	case ControlCertificateSavedTypeCertificateSaved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlHelloType.
+const (
+	ControlHelloTypeHello ControlHelloType = "hello"
+)
+
+// Valid indicates whether the value is a known member of the ControlHelloType enum.
+func (e ControlHelloType) Valid() bool {
+	switch e {
+	case ControlHelloTypeHello:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ControlWelcomeType.
+const (
+	ControlWelcomeTypeWelcome ControlWelcomeType = "welcome"
+)
+
+// Valid indicates whether the value is a known member of the ControlWelcomeType enum.
+func (e ControlWelcomeType) Valid() bool {
+	switch e {
+	case ControlWelcomeTypeWelcome:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
-	ErrorCodeAlreadyRunning  ErrorCode = "already_running"
-	ErrorCodeAuditBroken     ErrorCode = "audit_broken"
-	ErrorCodeCancelled       ErrorCode = "cancelled"
-	ErrorCodeHubUnavailable  ErrorCode = "hub_unavailable"
-	ErrorCodeInternal        ErrorCode = "internal"
-	ErrorCodeInvalidArgument ErrorCode = "invalid_argument"
-	ErrorCodeInvalidSetting  ErrorCode = "invalid_setting"
-	ErrorCodeNotFound        ErrorCode = "not_found"
-	ErrorCodePathExists      ErrorCode = "path_exists"
-	ErrorCodeReloadFailed    ErrorCode = "reload_failed"
-	ErrorCodeUsage           ErrorCode = "usage"
+	ErrorCodeAccessDenied          ErrorCode = "access_denied"
+	ErrorCodeAccountDisabled       ErrorCode = "account_disabled"
+	ErrorCodeAlreadyRunning        ErrorCode = "already_running"
+	ErrorCodeAuditBroken           ErrorCode = "audit_broken"
+	ErrorCodeAuthorizationPending  ErrorCode = "authorization_pending"
+	ErrorCodeCancelled             ErrorCode = "cancelled"
+	ErrorCodeExpiredToken          ErrorCode = "expired_token"
+	ErrorCodeHubUnavailable        ErrorCode = "hub_unavailable"
+	ErrorCodeHubVersionUnsupported ErrorCode = "hub_version_unsupported"
+	ErrorCodeInternal              ErrorCode = "internal"
+	ErrorCodeInvalidArgument       ErrorCode = "invalid_argument"
+	ErrorCodeInvalidGrant          ErrorCode = "invalid_grant"
+	ErrorCodeInvalidSetting        ErrorCode = "invalid_setting"
+	ErrorCodeNameTaken             ErrorCode = "name_taken"
+	ErrorCodeNodeRevoked           ErrorCode = "node_revoked"
+	ErrorCodeNotFound              ErrorCode = "not_found"
+	ErrorCodePathExists            ErrorCode = "path_exists"
+	ErrorCodeRateLimited           ErrorCode = "rate_limited"
+	ErrorCodeReloadFailed          ErrorCode = "reload_failed"
+	ErrorCodeSlowDown              ErrorCode = "slow_down"
+	ErrorCodeUsage                 ErrorCode = "usage"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeAccessDenied:
+		return true
+	case ErrorCodeAccountDisabled:
+		return true
 	case ErrorCodeAlreadyRunning:
 		return true
 	case ErrorCodeAuditBroken:
 		return true
+	case ErrorCodeAuthorizationPending:
+		return true
 	case ErrorCodeCancelled:
 		return true
+	case ErrorCodeExpiredToken:
+		return true
 	case ErrorCodeHubUnavailable:
+		return true
+	case ErrorCodeHubVersionUnsupported:
 		return true
 	case ErrorCodeInternal:
 		return true
 	case ErrorCodeInvalidArgument:
 		return true
+	case ErrorCodeInvalidGrant:
+		return true
 	case ErrorCodeInvalidSetting:
+		return true
+	case ErrorCodeNameTaken:
+		return true
+	case ErrorCodeNodeRevoked:
 		return true
 	case ErrorCodeNotFound:
 		return true
 	case ErrorCodePathExists:
 		return true
+	case ErrorCodeRateLimited:
+		return true
 	case ErrorCodeReloadFailed:
 		return true
+	case ErrorCodeSlowDown:
+		return true
 	case ErrorCodeUsage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NodeLoginFlow.
+const (
+	NodeLoginFlowBrowser NodeLoginFlow = "browser"
+	NodeLoginFlowDevice  NodeLoginFlow = "device"
+)
+
+// Valid indicates whether the value is a known member of the NodeLoginFlow enum.
+func (e NodeLoginFlow) Valid() bool {
+	switch e {
+	case NodeLoginFlowBrowser:
+		return true
+	case NodeLoginFlowDevice:
 		return true
 	default:
 		return false
@@ -107,6 +251,70 @@ func (e Result) Valid() bool {
 	}
 }
 
+// AccountNode defines model for AccountNode.
+type AccountNode struct {
+	CreatedAt time.Time `json:"created_at"`
+	Id        string    `json:"id"`
+
+	// LastSeenAt Null when it never connected.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name       string     `json:"name"`
+
+	// Online Whether it has a control connection now.
+	Online bool   `json:"online"`
+	Os     string `json:"os"`
+
+	// This Whether it is the node asking.
+	This bool `json:"this"`
+
+	// Version The wdx version it last connected with.
+	Version string `json:"version"`
+}
+
+// AccountNodeDetail defines model for AccountNodeDetail.
+type AccountNodeDetail struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Fingerprint SHA256: and the key's SHA-256 in base64 without padding.
+	Fingerprint string `json:"fingerprint"`
+	Id          string `json:"id"`
+
+	// LastSeenAt Null when it never connected.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name       string     `json:"name"`
+
+	// Online Whether it has a control connection now.
+	Online bool   `json:"online"`
+	Os     string `json:"os"`
+
+	// PublicKey Its Ed25519 public key, in base64.
+	PublicKey []byte `json:"public_key"`
+
+	// This Whether it is the node asking.
+	This bool `json:"this"`
+
+	// Version The wdx version it last connected with.
+	Version string `json:"version"`
+}
+
+// AccountNodeEnvelope defines model for AccountNodeEnvelope.
+type AccountNodeEnvelope struct {
+	Node AccountNodeDetail `json:"node"`
+}
+
+// AccountNodeList defines model for AccountNodeList.
+type AccountNodeList struct {
+	Nodes []AccountNode `json:"nodes"`
+}
+
+// AccountNodeResult defines model for AccountNodeResult.
+type AccountNodeResult struct {
+	Node AccountNode `json:"node"`
+
+	// Result The most significant thing that happened.
+	Result Result `json:"result"`
+}
+
 // Audit defines model for Audit.
 type Audit struct {
 	// Head The last row's hash, in hex; null for an empty chain.
@@ -135,6 +343,67 @@ type BackupResult struct {
 	Result Result `json:"result"`
 }
 
+// ControlBye Why the hub closes the connection; revoked and disabled mean for good.
+type ControlBye struct {
+	Reason ControlByeReason `json:"reason"`
+	Type   ControlByeType   `json:"type"`
+}
+
+// ControlByeReason defines model for ControlBye.Reason.
+type ControlByeReason string
+
+// ControlByeType defines model for ControlBye.Type.
+type ControlByeType string
+
+// ControlCertificate A new certificate of the node, for its key.
+type ControlCertificate struct {
+	// Certificate In PEM.
+	Certificate string                 `json:"certificate"`
+	ExpiresAt   time.Time              `json:"expires_at"`
+	Type        ControlCertificateType `json:"type"`
+}
+
+// ControlCertificateType defines model for ControlCertificate.Type.
+type ControlCertificateType string
+
+// ControlCertificateSaved The node wrote the certificate whose expiry it names.
+type ControlCertificateSaved struct {
+	ExpiresAt time.Time                   `json:"expires_at"`
+	Type      ControlCertificateSavedType `json:"type"`
+}
+
+// ControlCertificateSavedType defines model for ControlCertificateSaved.Type.
+type ControlCertificateSavedType string
+
+// ControlHello The node's first message on the control WebSocket.
+type ControlHello struct {
+	// ApiVersion The info.version of the hub.yaml the node was built with.
+	ApiVersion string           `json:"api_version"`
+	Os         string           `json:"os"`
+	Type       ControlHelloType `json:"type"`
+	WdxVersion string           `json:"wdx_version"`
+}
+
+// ControlHelloType defines model for ControlHello.Type.
+type ControlHelloType string
+
+// ControlMessage What every control message has, to tell which it is.
+type ControlMessage struct {
+	Type string `json:"type"`
+}
+
+// ControlWelcome The hub's answer to a hello it can serve.
+type ControlWelcome struct {
+	// ApiVersion The info.version of the hub's API.
+	ApiVersion string             `json:"api_version"`
+	HubVersion string             `json:"hub_version"`
+	Node       NodeRef            `json:"node"`
+	Type       ControlWelcomeType `json:"type"`
+}
+
+// ControlWelcomeType defines model for ControlWelcome.Type.
+type ControlWelcomeType string
+
 // CreateInvite defines model for CreateInvite.
 type CreateInvite struct {
 	// ExpiresSeconds How long the invite works, in seconds, at most 30 days; 24 hours when left out.
@@ -152,6 +421,13 @@ type CreateReset struct {
 // hub.
 type ErrorCode string
 
+// ExchangeNodeLogin defines model for ExchangeNodeLogin.
+type ExchangeNodeLogin struct {
+	// Code The authorization code the browser brought to the callback.
+	Code         string `json:"code"`
+	PkceVerifier string `json:"pkce_verifier"`
+}
+
 // Invite defines model for Invite.
 type Invite struct {
 	ExpiresAt time.Time `json:"expires_at"`
@@ -168,10 +444,77 @@ type InviteResult struct {
 	Result Result `json:"result"`
 }
 
+// Node defines model for Node.
+type Node struct {
+	CreatedAt time.Time `json:"created_at"`
+	Id        string    `json:"id"`
+
+	// LastSeenAt Null when it never connected.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name       string     `json:"name"`
+
+	// Online Whether it has a control connection now.
+	Online bool   `json:"online"`
+	Os     string `json:"os"`
+
+	// Version The wdx version it last connected with.
+	Version string `json:"version"`
+}
+
+// NodeCredentials defines model for NodeCredentials.
+type NodeCredentials struct {
+	// CaCertificate The hub's CA in PEM, the only one the node endpoint is trusted by.
+	CaCertificate string `json:"ca_certificate"`
+
+	// Certificate The node's certificate in PEM, for the public key the login started with, valid a year.
+	Certificate string  `json:"certificate"`
+	Node        NodeRef `json:"node"`
+
+	// NodesUrl The node endpoint, https://<host>:<port>.
+	NodesUrl string `json:"nodes_url"`
+
+	// User The account's username.
+	User string `json:"user"`
+}
+
+// NodeLoginFlow defines model for NodeLoginFlow.
+type NodeLoginFlow string
+
+// NodeLoginStarted defines model for NodeLoginStarted.
+type NodeLoginStarted struct {
+	// DeviceCode device: the secret the node polls with; null for browser.
+	DeviceCode *string       `json:"device_code"`
+	ExpiresAt  time.Time     `json:"expires_at"`
+	Flow       NodeLoginFlow `json:"flow"`
+
+	// Interval device: the seconds between two polls; null for browser.
+	Interval *int `json:"interval"`
+
+	// LoginUrl browser: the approval page the node opens; null for device.
+	LoginUrl *string `json:"login_url"`
+
+	// UserCode device: the code the person types, such as WDX-4F7K-9QPA; null for browser.
+	UserCode *string `json:"user_code"`
+
+	// VerificationUrl device: the page the person types it on, which never carries it; null for browser.
+	VerificationUrl *string `json:"verification_url"`
+}
+
+// NodeRef defines model for NodeRef.
+type NodeRef struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // NotApplied The keys of the settings the config file changes that the running hub
 // applies only at its next start, such as listen.web and public_url;
 // empty when it applied them all.
 type NotApplied = []string
+
+// PollNodeLogin defines model for PollNodeLogin.
+type PollNodeLogin struct {
+	DeviceCode string `json:"device_code"`
+}
 
 // Problem An error as Problem Details (RFC 9457).
 type Problem struct {
@@ -266,6 +609,26 @@ type SettingResult struct {
 	Setting Setting `json:"setting"`
 }
 
+// StartNodeLogin defines model for StartNodeLogin.
+type StartNodeLogin struct {
+	// Callback browser only: where the browser goes once the node is approved, http://127.0.0.1:<port>/<path>.
+	Callback *string       `json:"callback,omitempty"`
+	Flow     NodeLoginFlow `json:"flow"`
+
+	// Name The node's name in the account: 1 to 64 letters, digits, ., _ and -, starting with a letter or digit.
+	Name string `json:"name"`
+
+	// Os The node's operating system and architecture, such as linux/amd64.
+	Os string `json:"os"`
+
+	// PkceChallenge browser only: the S256 challenge of the node's PKCE verifier, in base64url without padding.
+	PkceChallenge *string `json:"pkce_challenge,omitempty"`
+
+	// PublicKey The node's Ed25519 public key, 32 bytes in base64.
+	PublicKey  []byte `json:"public_key"`
+	WdxVersion string `json:"wdx_version"`
+}
+
 // UpdateSetting defines model for UpdateSetting.
 type UpdateSetting struct {
 	// Value Its new value; empty for the settings that take that.
@@ -286,6 +649,9 @@ type User struct {
 	// LastLoginAt Null when they never logged in.
 	LastLoginAt *time.Time `json:"last_login_at"`
 
+	// Nodes Their nodes not removed.
+	Nodes int `json:"nodes"`
+
 	// SecondFactor Their second factor: totp, or null while none is enrolled.
 	SecondFactor *string `json:"second_factor"`
 	Username     string  `json:"username"`
@@ -298,6 +664,12 @@ type UserDetail struct {
 
 	// LastLoginAt Null when they never logged in.
 	LastLoginAt *time.Time `json:"last_login_at"`
+
+	// NodeList Their nodes not removed, by name.
+	NodeList []Node `json:"node_list"`
+
+	// Nodes Their nodes not removed.
+	Nodes int `json:"nodes"`
 
 	// SecondFactor Their second factor: totp, or null while none is enrolled.
 	SecondFactor *string `json:"second_factor"`
@@ -341,6 +713,15 @@ type BackupJSONRequestBody = Backup
 
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody = CreateInvite
+
+// StartNodeLoginJSONRequestBody defines body for StartNodeLogin for application/json ContentType.
+type StartNodeLoginJSONRequestBody = StartNodeLogin
+
+// ExchangeNodeLoginJSONRequestBody defines body for ExchangeNodeLogin for application/json ContentType.
+type ExchangeNodeLoginJSONRequestBody = ExchangeNodeLogin
+
+// PollNodeLoginJSONRequestBody defines body for PollNodeLogin for application/json ContentType.
+type PollNodeLoginJSONRequestBody = PollNodeLogin
 
 // UpdateSettingJSONRequestBody defines body for UpdateSetting for application/json ContentType.
 type UpdateSettingJSONRequestBody = UpdateSetting
@@ -462,6 +843,24 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/backup (the `Backup` operationId).
 	Backup(ctx context.Context, body BackupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// OpenControl The node's control WebSocket
+	//
+	// Upgraded to a WebSocket of JSON text messages, each an object with a
+	// type: the node sends ControlHello first, and the hub answers
+	// ControlWelcome, or closes with status 4001 when it serves no API
+	// version of the node's, its reason naming the side behind, node or
+	// hub (hub_version_unsupported). The hub then sends
+	// ControlCertificate when two thirds of the node's certificate's life
+	// have passed, at the welcome and daily, which the node answers with
+	// ControlCertificateSaved once it wrote it, and ControlBye before it
+	// closes the connection. WebSocket pings keep it alive.
+	//
+	// Errors: node_revoked, account_disabled, as on every request of this
+	// endpoint.
+	//
+	// Corresponds with GET /v1/control (the `OpenControl` operationId).
+	OpenControl(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateInviteWithBody Make an invite, a link that lets one person sign up
 	//
 	// The link holds the invite's token: whoever has it can make an account
@@ -486,10 +885,134 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
 	CreateInvite(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// StartNodeLoginWithBody Start making a machine one of an account's nodes
+	//
+	// Two flows. browser: the person opens login_url on the machine, logs
+	// in and approves the node; the hub then sends their browser to
+	// callback, which must be on http://127.0.0.1, with code and state, the
+	// login's id, and the node exchanges the code at
+	// /v1/node-logins/exchange with its PKCE verifier. device: the person
+	// types user_code on verification_url, from any browser, and the node
+	// polls /v1/node-logins/token with device_code every interval seconds.
+	// Either expires 10 minutes after it started. Starting logins is rate
+	// limited per address.
+	//
+	// device_code and user_code are secrets: the hub logs their length.
+	//
+	// Errors: invalid_argument, rate_limited.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+	StartNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartNodeLogin Start making a machine one of an account's nodes
+	//
+	// Two flows. browser: the person opens login_url on the machine, logs
+	// in and approves the node; the hub then sends their browser to
+	// callback, which must be on http://127.0.0.1, with code and state, the
+	// login's id, and the node exchanges the code at
+	// /v1/node-logins/exchange with its PKCE verifier. device: the person
+	// types user_code on verification_url, from any browser, and the node
+	// polls /v1/node-logins/token with device_code every interval seconds.
+	// Either expires 10 minutes after it started. Starting logins is rate
+	// limited per address.
+	//
+	// device_code and user_code are secrets: the hub logs their length.
+	//
+	// Errors: invalid_argument, rate_limited.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+	StartNodeLogin(ctx context.Context, body StartNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeNodeLoginWithBody Exchange a browser login's authorization code for the node's credentials
+	//
+	// The code works once. The hub logs the length of the code and of the
+	// verifier, never them.
+	//
+	// Errors: not_found, for a code that is unknown, used or expired;
+	// invalid_grant, for a verifier that is not the challenge's;
+	// account_disabled.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+	ExchangeNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeNodeLogin Exchange a browser login's authorization code for the node's credentials
+	//
+	// The code works once. The hub logs the length of the code and of the
+	// verifier, never them.
+	//
+	// Errors: not_found, for a code that is unknown, used or expired;
+	// invalid_grant, for a verifier that is not the challenge's;
+	// account_disabled.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+	ExchangeNodeLogin(ctx context.Context, body ExchangeNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PollNodeLoginWithBody Ask whether a device login was approved, as RFC 8628 has it
+	//
+	// Polled every interval seconds until it answers with the credentials,
+	// once, or fails with anything but authorization_pending and
+	// slow_down. The hub logs the device code's length, never it.
+	//
+	// Errors: authorization_pending, not approved yet; slow_down, polled
+	// faster than interval, which the node then raises by 5 seconds;
+	// access_denied; expired_token; not_found, for a device code unknown
+	// or used; account_disabled.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+	PollNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PollNodeLogin Ask whether a device login was approved, as RFC 8628 has it
+	//
+	// Polled every interval seconds until it answers with the credentials,
+	// once, or fails with anything but authorization_pending and
+	// slow_down. The hub logs the device code's length, never it.
+	//
+	// Errors: authorization_pending, not approved yet; slow_down, polled
+	// faster than interval, which the node then raises by 5 seconds;
+	// access_denied; expired_token; not_found, for a device code unknown
+	// or used; account_disabled.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+	PollNodeLogin(ctx context.Context, body PollNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetNodeVersion Version of the hub, to a node
 	//
 	// Corresponds with GET /v1/node/version (the `GetNodeVersion` operationId).
 	GetNodeVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNodes The nodes of the calling node's account, by name
+	//
+	// Corresponds with GET /v1/nodes (the `ListNodes` operationId).
+	ListNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveNode Revoke a node of the calling node's account, the caller among them
+	//
+	// The node's connections are cut at once and it can never connect
+	// again; its name is free for another node.
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with DELETE /v1/nodes/{node} (the `RemoveNode` operationId).
+	RemoveNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNode One node of the calling node's account
+	//
+	// Errors: not_found.
+	//
+	// Corresponds with GET /v1/nodes/{node} (the `GetNode` operationId).
+	GetNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Reload Read the settings again and apply them
 	//
@@ -543,14 +1066,15 @@ type ClientInterface interface {
 	// RemoveUser Remove a user, keeping their username taken
 	//
 	// The user's password, second factor, recovery codes, browser sessions,
-	// resets and invite are deleted; the username is never given again.
+	// resets, invite and nodes are deleted, their nodes cut off; the
+	// username is never given again.
 	//
 	// Errors: not_found.
 	//
 	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
 	RemoveUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetUser One user, with their browser sessions counted
+	// GetUser One user, with their browser sessions counted and their nodes
 	//
 	// Errors: not_found.
 	//
@@ -559,8 +1083,8 @@ type ClientInterface interface {
 
 	// UpdateUserWithBody Disable a user, or enable them again
 	//
-	// Disabling ends every browser session of the user, and refuses their
-	// logins until they are enabled.
+	// Disabling ends every browser session of the user, cuts their nodes
+	// off, and refuses their logins and their nodes until they are enabled.
 	//
 	// Errors: not_found.
 	//
@@ -571,8 +1095,8 @@ type ClientInterface interface {
 
 	// UpdateUser Disable a user, or enable them again
 	//
-	// Disabling ends every browser session of the user, and refuses their
-	// logins until they are enabled.
+	// Disabling ends every browser session of the user, cuts their nodes
+	// off, and refuses their logins and their nodes until they are enabled.
 	//
 	// Errors: not_found.
 	//
@@ -692,6 +1216,34 @@ func (c *Client) Backup(ctx context.Context, body BackupJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
+// OpenControl The node's control WebSocket
+//
+// Upgraded to a WebSocket of JSON text messages, each an object with a
+// type: the node sends ControlHello first, and the hub answers
+// ControlWelcome, or closes with status 4001 when it serves no API
+// version of the node's, its reason naming the side behind, node or
+// hub (hub_version_unsupported). The hub then sends
+// ControlCertificate when two thirds of the node's certificate's life
+// have passed, at the welcome and daily, which the node answers with
+// ControlCertificateSaved once it wrote it, and ControlBye before it
+// closes the connection. WebSocket pings keep it alive.
+//
+// Errors: node_revoked, account_disabled, as on every request of this
+// endpoint.
+//
+// Corresponds with GET /v1/control (the `OpenControl` operationId).
+func (c *Client) OpenControl(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOpenControlRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateInviteWithBody Make an invite, a link that lets one person sign up
 //
 // The link holds the invite's token: whoever has it can make an account
@@ -736,11 +1288,225 @@ func (c *Client) CreateInvite(ctx context.Context, body CreateInviteJSONRequestB
 	return c.Client.Do(req)
 }
 
+// StartNodeLoginWithBody Start making a machine one of an account's nodes
+//
+// Two flows. browser: the person opens login_url on the machine, logs
+// in and approves the node; the hub then sends their browser to
+// callback, which must be on http://127.0.0.1, with code and state, the
+// login's id, and the node exchanges the code at
+// /v1/node-logins/exchange with its PKCE verifier. device: the person
+// types user_code on verification_url, from any browser, and the node
+// polls /v1/node-logins/token with device_code every interval seconds.
+// Either expires 10 minutes after it started. Starting logins is rate
+// limited per address.
+//
+// device_code and user_code are secrets: the hub logs their length.
+//
+// Errors: invalid_argument, rate_limited.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+func (c *Client) StartNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartNodeLoginRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartNodeLogin Start making a machine one of an account's nodes
+//
+// Two flows. browser: the person opens login_url on the machine, logs
+// in and approves the node; the hub then sends their browser to
+// callback, which must be on http://127.0.0.1, with code and state, the
+// login's id, and the node exchanges the code at
+// /v1/node-logins/exchange with its PKCE verifier. device: the person
+// types user_code on verification_url, from any browser, and the node
+// polls /v1/node-logins/token with device_code every interval seconds.
+// Either expires 10 minutes after it started. Starting logins is rate
+// limited per address.
+//
+// device_code and user_code are secrets: the hub logs their length.
+//
+// Errors: invalid_argument, rate_limited.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+func (c *Client) StartNodeLogin(ctx context.Context, body StartNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartNodeLoginRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExchangeNodeLoginWithBody Exchange a browser login's authorization code for the node's credentials
+//
+// The code works once. The hub logs the length of the code and of the
+// verifier, never them.
+//
+// Errors: not_found, for a code that is unknown, used or expired;
+// invalid_grant, for a verifier that is not the challenge's;
+// account_disabled.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+func (c *Client) ExchangeNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeNodeLoginRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExchangeNodeLogin Exchange a browser login's authorization code for the node's credentials
+//
+// The code works once. The hub logs the length of the code and of the
+// verifier, never them.
+//
+// Errors: not_found, for a code that is unknown, used or expired;
+// invalid_grant, for a verifier that is not the challenge's;
+// account_disabled.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+func (c *Client) ExchangeNodeLogin(ctx context.Context, body ExchangeNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeNodeLoginRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PollNodeLoginWithBody Ask whether a device login was approved, as RFC 8628 has it
+//
+// Polled every interval seconds until it answers with the credentials,
+// once, or fails with anything but authorization_pending and
+// slow_down. The hub logs the device code's length, never it.
+//
+// Errors: authorization_pending, not approved yet; slow_down, polled
+// faster than interval, which the node then raises by 5 seconds;
+// access_denied; expired_token; not_found, for a device code unknown
+// or used; account_disabled.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+func (c *Client) PollNodeLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPollNodeLoginRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PollNodeLogin Ask whether a device login was approved, as RFC 8628 has it
+//
+// Polled every interval seconds until it answers with the credentials,
+// once, or fails with anything but authorization_pending and
+// slow_down. The hub logs the device code's length, never it.
+//
+// Errors: authorization_pending, not approved yet; slow_down, polled
+// faster than interval, which the node then raises by 5 seconds;
+// access_denied; expired_token; not_found, for a device code unknown
+// or used; account_disabled.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+func (c *Client) PollNodeLogin(ctx context.Context, body PollNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPollNodeLoginRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetNodeVersion Version of the hub, to a node
 //
 // Corresponds with GET /v1/node/version (the `GetNodeVersion` operationId).
 func (c *Client) GetNodeVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetNodeVersionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNodes The nodes of the calling node's account, by name
+//
+// Corresponds with GET /v1/nodes (the `ListNodes` operationId).
+func (c *Client) ListNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNodesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveNode Revoke a node of the calling node's account, the caller among them
+//
+// The node's connections are cut at once and it can never connect
+// again; its name is free for another node.
+//
+// Errors: not_found.
+//
+// Corresponds with DELETE /v1/nodes/{node} (the `RemoveNode` operationId).
+func (c *Client) RemoveNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveNodeRequest(c.Server, node)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNode One node of the calling node's account
+//
+// Errors: not_found.
+//
+// Corresponds with GET /v1/nodes/{node} (the `GetNode` operationId).
+func (c *Client) GetNode(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNodeRequest(c.Server, node)
 	if err != nil {
 		return nil, err
 	}
@@ -853,7 +1619,8 @@ func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (
 // RemoveUser Remove a user, keeping their username taken
 //
 // The user's password, second factor, recovery codes, browser sessions,
-// resets and invite are deleted; the username is never given again.
+// resets, invite and nodes are deleted, their nodes cut off; the
+// username is never given again.
 //
 // Errors: not_found.
 //
@@ -870,7 +1637,7 @@ func (c *Client) RemoveUser(ctx context.Context, username Username, reqEditors .
 	return c.Client.Do(req)
 }
 
-// GetUser One user, with their browser sessions counted
+// GetUser One user, with their browser sessions counted and their nodes
 //
 // Errors: not_found.
 //
@@ -889,8 +1656,8 @@ func (c *Client) GetUser(ctx context.Context, username Username, reqEditors ...R
 
 // UpdateUserWithBody Disable a user, or enable them again
 //
-// Disabling ends every browser session of the user, and refuses their
-// logins until they are enabled.
+// Disabling ends every browser session of the user, cuts their nodes
+// off, and refuses their logins and their nodes until they are enabled.
 //
 // Errors: not_found.
 //
@@ -911,8 +1678,8 @@ func (c *Client) UpdateUserWithBody(ctx context.Context, username Username, cont
 
 // UpdateUser Disable a user, or enable them again
 //
-// Disabling ends every browser session of the user, and refuses their
-// logins until they are enabled.
+// Disabling ends every browser session of the user, cuts their nodes
+// off, and refuses their logins and their nodes until they are enabled.
 //
 // Errors: not_found.
 //
@@ -1088,6 +1855,33 @@ func NewBackupRequestWithBody(server string, contentType string, body io.Reader)
 	return req, nil
 }
 
+// NewOpenControlRequest constructs an http.Request for the OpenControl method
+func NewOpenControlRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/control")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCreateInviteRequest calls the generic CreateInvite builder with application/json body
 func NewCreateInviteRequest(server string, body CreateInviteJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1128,6 +1922,126 @@ func NewCreateInviteRequestWithBody(server string, contentType string, body io.R
 	return req, nil
 }
 
+// NewStartNodeLoginRequest calls the generic StartNodeLogin builder with application/json body
+func NewStartNodeLoginRequest(server string, body StartNodeLoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartNodeLoginRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewStartNodeLoginRequestWithBody constructs an http.Request for the StartNodeLogin method, with any body, and a specified content type
+func NewStartNodeLoginRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/node-logins")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExchangeNodeLoginRequest calls the generic ExchangeNodeLogin builder with application/json body
+func NewExchangeNodeLoginRequest(server string, body ExchangeNodeLoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExchangeNodeLoginRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewExchangeNodeLoginRequestWithBody constructs an http.Request for the ExchangeNodeLogin method, with any body, and a specified content type
+func NewExchangeNodeLoginRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/node-logins/exchange")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPollNodeLoginRequest calls the generic PollNodeLogin builder with application/json body
+func NewPollNodeLoginRequest(server string, body PollNodeLoginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPollNodeLoginRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPollNodeLoginRequestWithBody constructs an http.Request for the PollNodeLogin method, with any body, and a specified content type
+func NewPollNodeLoginRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/node-logins/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetNodeVersionRequest constructs an http.Request for the GetNodeVersion method
 func NewGetNodeVersionRequest(server string) (*http.Request, error) {
 	var err error
@@ -1138,6 +2052,101 @@ func NewGetNodeVersionRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/v1/node/version")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListNodesRequest constructs an http.Request for the ListNodes method
+func NewListNodesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/nodes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveNodeRequest constructs an http.Request for the RemoveNode method
+func NewRemoveNodeRequest(server string, node string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "node", node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetNodeRequest constructs an http.Request for the GetNode method
+func NewGetNodeRequest(server string, node string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "node", node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/nodes/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1557,6 +2566,26 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/backup (the `Backup` operationId).
 	BackupWithResponse(ctx context.Context, body BackupJSONRequestBody, reqEditors ...RequestEditorFn) (*BackupResponse, error)
 
+	// OpenControlWithResponse The node's control WebSocket
+	//
+	// Upgraded to a WebSocket of JSON text messages, each an object with a
+	// type: the node sends ControlHello first, and the hub answers
+	// ControlWelcome, or closes with status 4001 when it serves no API
+	// version of the node's, its reason naming the side behind, node or
+	// hub (hub_version_unsupported). The hub then sends
+	// ControlCertificate when two thirds of the node's certificate's life
+	// have passed, at the welcome and daily, which the node answers with
+	// ControlCertificateSaved once it wrote it, and ControlBye before it
+	// closes the connection. WebSocket pings keep it alive.
+	//
+	// Errors: node_revoked, account_disabled, as on every request of this
+	// endpoint.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/control (the `OpenControl` operationId).
+	OpenControlWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OpenControlResponse, error)
+
 	// CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
 	//
 	// The link holds the invite's token: whoever has it can make an account
@@ -1581,12 +2610,142 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/invites (the `CreateInvite` operationId).
 	CreateInviteWithResponse(ctx context.Context, body CreateInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateInviteResponse, error)
 
+	// StartNodeLoginWithBodyWithResponse Start making a machine one of an account's nodes
+	//
+	// Two flows. browser: the person opens login_url on the machine, logs
+	// in and approves the node; the hub then sends their browser to
+	// callback, which must be on http://127.0.0.1, with code and state, the
+	// login's id, and the node exchanges the code at
+	// /v1/node-logins/exchange with its PKCE verifier. device: the person
+	// types user_code on verification_url, from any browser, and the node
+	// polls /v1/node-logins/token with device_code every interval seconds.
+	// Either expires 10 minutes after it started. Starting logins is rate
+	// limited per address.
+	//
+	// device_code and user_code are secrets: the hub logs their length.
+	//
+	// Errors: invalid_argument, rate_limited.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+	StartNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartNodeLoginResponse, error)
+
+	// StartNodeLoginWithResponse Start making a machine one of an account's nodes
+	//
+	// Two flows. browser: the person opens login_url on the machine, logs
+	// in and approves the node; the hub then sends their browser to
+	// callback, which must be on http://127.0.0.1, with code and state, the
+	// login's id, and the node exchanges the code at
+	// /v1/node-logins/exchange with its PKCE verifier. device: the person
+	// types user_code on verification_url, from any browser, and the node
+	// polls /v1/node-logins/token with device_code every interval seconds.
+	// Either expires 10 minutes after it started. Starting logins is rate
+	// limited per address.
+	//
+	// device_code and user_code are secrets: the hub logs their length.
+	//
+	// Errors: invalid_argument, rate_limited.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+	StartNodeLoginWithResponse(ctx context.Context, body StartNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*StartNodeLoginResponse, error)
+
+	// ExchangeNodeLoginWithBodyWithResponse Exchange a browser login's authorization code for the node's credentials
+	//
+	// The code works once. The hub logs the length of the code and of the
+	// verifier, never them.
+	//
+	// Errors: not_found, for a code that is unknown, used or expired;
+	// invalid_grant, for a verifier that is not the challenge's;
+	// account_disabled.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+	ExchangeNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeNodeLoginResponse, error)
+
+	// ExchangeNodeLoginWithResponse Exchange a browser login's authorization code for the node's credentials
+	//
+	// The code works once. The hub logs the length of the code and of the
+	// verifier, never them.
+	//
+	// Errors: not_found, for a code that is unknown, used or expired;
+	// invalid_grant, for a verifier that is not the challenge's;
+	// account_disabled.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+	ExchangeNodeLoginWithResponse(ctx context.Context, body ExchangeNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeNodeLoginResponse, error)
+
+	// PollNodeLoginWithBodyWithResponse Ask whether a device login was approved, as RFC 8628 has it
+	//
+	// Polled every interval seconds until it answers with the credentials,
+	// once, or fails with anything but authorization_pending and
+	// slow_down. The hub logs the device code's length, never it.
+	//
+	// Errors: authorization_pending, not approved yet; slow_down, polled
+	// faster than interval, which the node then raises by 5 seconds;
+	// access_denied; expired_token; not_found, for a device code unknown
+	// or used; account_disabled.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+	PollNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PollNodeLoginResponse, error)
+
+	// PollNodeLoginWithResponse Ask whether a device login was approved, as RFC 8628 has it
+	//
+	// Polled every interval seconds until it answers with the credentials,
+	// once, or fails with anything but authorization_pending and
+	// slow_down. The hub logs the device code's length, never it.
+	//
+	// Errors: authorization_pending, not approved yet; slow_down, polled
+	// faster than interval, which the node then raises by 5 seconds;
+	// access_denied; expired_token; not_found, for a device code unknown
+	// or used; account_disabled.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+	PollNodeLoginWithResponse(ctx context.Context, body PollNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*PollNodeLoginResponse, error)
+
 	// GetNodeVersionWithResponse Version of the hub, to a node
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/node/version (the `GetNodeVersion` operationId).
 	GetNodeVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNodeVersionResponse, error)
+
+	// ListNodesWithResponse The nodes of the calling node's account, by name
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/nodes (the `ListNodes` operationId).
+	ListNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNodesResponse, error)
+
+	// RemoveNodeWithResponse Revoke a node of the calling node's account, the caller among them
+	//
+	// The node's connections are cut at once and it can never connect
+	// again; its name is free for another node.
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/nodes/{node} (the `RemoveNode` operationId).
+	RemoveNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*RemoveNodeResponse, error)
+
+	// GetNodeWithResponse One node of the calling node's account
+	//
+	// Errors: not_found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/nodes/{node} (the `GetNode` operationId).
+	GetNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error)
 
 	// ReloadWithResponse Read the settings again and apply them
 	//
@@ -1646,7 +2805,8 @@ type ClientWithResponsesInterface interface {
 	// RemoveUserWithResponse Remove a user, keeping their username taken
 	//
 	// The user's password, second factor, recovery codes, browser sessions,
-	// resets and invite are deleted; the username is never given again.
+	// resets, invite and nodes are deleted, their nodes cut off; the
+	// username is never given again.
 	//
 	// Errors: not_found.
 	//
@@ -1655,7 +2815,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
 	RemoveUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error)
 
-	// GetUserWithResponse One user, with their browser sessions counted
+	// GetUserWithResponse One user, with their browser sessions counted and their nodes
 	//
 	// Errors: not_found.
 	//
@@ -1666,8 +2826,8 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateUserWithBodyWithResponse Disable a user, or enable them again
 	//
-	// Disabling ends every browser session of the user, and refuses their
-	// logins until they are enabled.
+	// Disabling ends every browser session of the user, cuts their nodes
+	// off, and refuses their logins and their nodes until they are enabled.
 	//
 	// Errors: not_found.
 	//
@@ -1678,8 +2838,8 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateUserWithResponse Disable a user, or enable them again
 	//
-	// Disabling ends every browser session of the user, and refuses their
-	// logins until they are enabled.
+	// Disabling ends every browser session of the user, cuts their nodes
+	// off, and refuses their logins and their nodes until they are enabled.
 	//
 	// Errors: not_found.
 	//
@@ -1868,6 +3028,47 @@ func (r BackupResponse) ContentType() string {
 	return ""
 }
 
+type OpenControlResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r OpenControlResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r OpenControlResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OpenControlResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OpenControlResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OpenControlResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CreateInviteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1916,6 +3117,150 @@ func (r CreateInviteResponse) ContentType() string {
 	return ""
 }
 
+type StartNodeLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *NodeLoginStarted
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r StartNodeLoginResponse) GetJSON201() *NodeLoginStarted {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StartNodeLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StartNodeLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartNodeLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartNodeLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartNodeLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExchangeNodeLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NodeCredentials
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExchangeNodeLoginResponse) GetJSON200() *NodeCredentials {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExchangeNodeLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExchangeNodeLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExchangeNodeLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExchangeNodeLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExchangeNodeLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PollNodeLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NodeCredentials
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PollNodeLoginResponse) GetJSON200() *NodeCredentials {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PollNodeLoginResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PollNodeLoginResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PollNodeLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PollNodeLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PollNodeLoginResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetNodeVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1958,6 +3303,150 @@ func (r GetNodeVersionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetNodeVersionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListNodesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccountNodeList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNodesResponse) GetJSON200() *AccountNodeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNodesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNodesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNodesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNodesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccountNodeResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveNodeResponse) GetJSON200() *AccountNodeResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveNodeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccountNodeEnvelope
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNodeResponse) GetJSON200() *AccountNodeEnvelope {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2461,6 +3950,32 @@ func (c *ClientWithResponses) BackupWithResponse(ctx context.Context, body Backu
 	return ParseBackupResponse(rsp)
 }
 
+// OpenControlWithResponse The node's control WebSocket
+//
+// Upgraded to a WebSocket of JSON text messages, each an object with a
+// type: the node sends ControlHello first, and the hub answers
+// ControlWelcome, or closes with status 4001 when it serves no API
+// version of the node's, its reason naming the side behind, node or
+// hub (hub_version_unsupported). The hub then sends
+// ControlCertificate when two thirds of the node's certificate's life
+// have passed, at the welcome and daily, which the node answers with
+// ControlCertificateSaved once it wrote it, and ControlBye before it
+// closes the connection. WebSocket pings keep it alive.
+//
+// Errors: node_revoked, account_disabled, as on every request of this
+// endpoint.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/control (the `OpenControl` operationId).
+func (c *ClientWithResponses) OpenControlWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OpenControlResponse, error) {
+	rsp, err := c.OpenControl(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOpenControlResponse(rsp)
+}
+
 // CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
 //
 // The link holds the invite's token: whoever has it can make an account
@@ -2497,6 +4012,144 @@ func (c *ClientWithResponses) CreateInviteWithResponse(ctx context.Context, body
 	return ParseCreateInviteResponse(rsp)
 }
 
+// StartNodeLoginWithBodyWithResponse Start making a machine one of an account's nodes
+//
+// Two flows. browser: the person opens login_url on the machine, logs
+// in and approves the node; the hub then sends their browser to
+// callback, which must be on http://127.0.0.1, with code and state, the
+// login's id, and the node exchanges the code at
+// /v1/node-logins/exchange with its PKCE verifier. device: the person
+// types user_code on verification_url, from any browser, and the node
+// polls /v1/node-logins/token with device_code every interval seconds.
+// Either expires 10 minutes after it started. Starting logins is rate
+// limited per address.
+//
+// device_code and user_code are secrets: the hub logs their length.
+//
+// Errors: invalid_argument, rate_limited.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+func (c *ClientWithResponses) StartNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartNodeLoginResponse, error) {
+	rsp, err := c.StartNodeLoginWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartNodeLoginResponse(rsp)
+}
+
+// StartNodeLoginWithResponse Start making a machine one of an account's nodes
+//
+// Two flows. browser: the person opens login_url on the machine, logs
+// in and approves the node; the hub then sends their browser to
+// callback, which must be on http://127.0.0.1, with code and state, the
+// login's id, and the node exchanges the code at
+// /v1/node-logins/exchange with its PKCE verifier. device: the person
+// types user_code on verification_url, from any browser, and the node
+// polls /v1/node-logins/token with device_code every interval seconds.
+// Either expires 10 minutes after it started. Starting logins is rate
+// limited per address.
+//
+// device_code and user_code are secrets: the hub logs their length.
+//
+// Errors: invalid_argument, rate_limited.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins (the `StartNodeLogin` operationId).
+func (c *ClientWithResponses) StartNodeLoginWithResponse(ctx context.Context, body StartNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*StartNodeLoginResponse, error) {
+	rsp, err := c.StartNodeLogin(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartNodeLoginResponse(rsp)
+}
+
+// ExchangeNodeLoginWithBodyWithResponse Exchange a browser login's authorization code for the node's credentials
+//
+// The code works once. The hub logs the length of the code and of the
+// verifier, never them.
+//
+// Errors: not_found, for a code that is unknown, used or expired;
+// invalid_grant, for a verifier that is not the challenge's;
+// account_disabled.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+func (c *ClientWithResponses) ExchangeNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeNodeLoginResponse, error) {
+	rsp, err := c.ExchangeNodeLoginWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeNodeLoginResponse(rsp)
+}
+
+// ExchangeNodeLoginWithResponse Exchange a browser login's authorization code for the node's credentials
+//
+// The code works once. The hub logs the length of the code and of the
+// verifier, never them.
+//
+// Errors: not_found, for a code that is unknown, used or expired;
+// invalid_grant, for a verifier that is not the challenge's;
+// account_disabled.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins/exchange (the `ExchangeNodeLogin` operationId).
+func (c *ClientWithResponses) ExchangeNodeLoginWithResponse(ctx context.Context, body ExchangeNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeNodeLoginResponse, error) {
+	rsp, err := c.ExchangeNodeLogin(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeNodeLoginResponse(rsp)
+}
+
+// PollNodeLoginWithBodyWithResponse Ask whether a device login was approved, as RFC 8628 has it
+//
+// Polled every interval seconds until it answers with the credentials,
+// once, or fails with anything but authorization_pending and
+// slow_down. The hub logs the device code's length, never it.
+//
+// Errors: authorization_pending, not approved yet; slow_down, polled
+// faster than interval, which the node then raises by 5 seconds;
+// access_denied; expired_token; not_found, for a device code unknown
+// or used; account_disabled.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+func (c *ClientWithResponses) PollNodeLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PollNodeLoginResponse, error) {
+	rsp, err := c.PollNodeLoginWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePollNodeLoginResponse(rsp)
+}
+
+// PollNodeLoginWithResponse Ask whether a device login was approved, as RFC 8628 has it
+//
+// Polled every interval seconds until it answers with the credentials,
+// once, or fails with anything but authorization_pending and
+// slow_down. The hub logs the device code's length, never it.
+//
+// Errors: authorization_pending, not approved yet; slow_down, polled
+// faster than interval, which the node then raises by 5 seconds;
+// access_denied; expired_token; not_found, for a device code unknown
+// or used; account_disabled.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/node-logins/token (the `PollNodeLogin` operationId).
+func (c *ClientWithResponses) PollNodeLoginWithResponse(ctx context.Context, body PollNodeLoginJSONRequestBody, reqEditors ...RequestEditorFn) (*PollNodeLoginResponse, error) {
+	rsp, err := c.PollNodeLogin(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePollNodeLoginResponse(rsp)
+}
+
 // GetNodeVersionWithResponse Version of the hub, to a node
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2508,6 +4161,52 @@ func (c *ClientWithResponses) GetNodeVersionWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseGetNodeVersionResponse(rsp)
+}
+
+// ListNodesWithResponse The nodes of the calling node's account, by name
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/nodes (the `ListNodes` operationId).
+func (c *ClientWithResponses) ListNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNodesResponse, error) {
+	rsp, err := c.ListNodes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNodesResponse(rsp)
+}
+
+// RemoveNodeWithResponse Revoke a node of the calling node's account, the caller among them
+//
+// The node's connections are cut at once and it can never connect
+// again; its name is free for another node.
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/nodes/{node} (the `RemoveNode` operationId).
+func (c *ClientWithResponses) RemoveNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*RemoveNodeResponse, error) {
+	rsp, err := c.RemoveNode(ctx, node, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveNodeResponse(rsp)
+}
+
+// GetNodeWithResponse One node of the calling node's account
+//
+// Errors: not_found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/nodes/{node} (the `GetNode` operationId).
+func (c *ClientWithResponses) GetNodeWithResponse(ctx context.Context, node string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error) {
+	rsp, err := c.GetNode(ctx, node, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNodeResponse(rsp)
 }
 
 // ReloadWithResponse Read the settings again and apply them
@@ -2598,7 +4297,8 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 // RemoveUserWithResponse Remove a user, keeping their username taken
 //
 // The user's password, second factor, recovery codes, browser sessions,
-// resets and invite are deleted; the username is never given again.
+// resets, invite and nodes are deleted, their nodes cut off; the
+// username is never given again.
 //
 // Errors: not_found.
 //
@@ -2613,7 +4313,7 @@ func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, userna
 	return ParseRemoveUserResponse(rsp)
 }
 
-// GetUserWithResponse One user, with their browser sessions counted
+// GetUserWithResponse One user, with their browser sessions counted and their nodes
 //
 // Errors: not_found.
 //
@@ -2630,8 +4330,8 @@ func (c *ClientWithResponses) GetUserWithResponse(ctx context.Context, username 
 
 // UpdateUserWithBodyWithResponse Disable a user, or enable them again
 //
-// Disabling ends every browser session of the user, and refuses their
-// logins until they are enabled.
+// Disabling ends every browser session of the user, cuts their nodes
+// off, and refuses their logins and their nodes until they are enabled.
 //
 // Errors: not_found.
 //
@@ -2648,8 +4348,8 @@ func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context
 
 // UpdateUserWithResponse Disable a user, or enable them again
 //
-// Disabling ends every browser session of the user, and refuses their
-// logins until they are enabled.
+// Disabling ends every browser session of the user, cuts their nodes
+// off, and refuses their logins and their nodes until they are enabled.
 //
 // Errors: not_found.
 //
@@ -2816,6 +4516,35 @@ func ParseBackupResponse(rsp *http.Response) (*BackupResponse, error) {
 	return response, nil
 }
 
+// ParseOpenControlResponse parses an HTTP response from a OpenControlWithResponse call
+func ParseOpenControlResponse(rsp *http.Response) (*OpenControlResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OpenControlResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 101:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseCreateInviteResponse parses an HTTP response from a CreateInviteWithResponse call
 func ParseCreateInviteResponse(rsp *http.Response) (*CreateInviteResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2849,6 +4578,105 @@ func ParseCreateInviteResponse(rsp *http.Response) (*CreateInviteResponse, error
 	return response, nil
 }
 
+// ParseStartNodeLoginResponse parses an HTTP response from a StartNodeLoginWithResponse call
+func ParseStartNodeLoginResponse(rsp *http.Response) (*StartNodeLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartNodeLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NodeLoginStarted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExchangeNodeLoginResponse parses an HTTP response from a ExchangeNodeLoginWithResponse call
+func ParseExchangeNodeLoginResponse(rsp *http.Response) (*ExchangeNodeLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExchangeNodeLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeCredentials
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePollNodeLoginResponse parses an HTTP response from a PollNodeLoginWithResponse call
+func ParsePollNodeLoginResponse(rsp *http.Response) (*PollNodeLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PollNodeLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeCredentials
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetNodeVersionResponse parses an HTTP response from a GetNodeVersionWithResponse call
 func ParseGetNodeVersionResponse(rsp *http.Response) (*GetNodeVersionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2865,6 +4693,105 @@ func ParseGetNodeVersionResponse(rsp *http.Response) (*GetNodeVersionResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Version
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNodesResponse parses an HTTP response from a ListNodesWithResponse call
+func ParseListNodesResponse(rsp *http.Response) (*ListNodesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNodesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccountNodeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveNodeResponse parses an HTTP response from a RemoveNodeWithResponse call
+func ParseRemoveNodeResponse(rsp *http.Response) (*RemoveNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccountNodeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNodeResponse parses an HTTP response from a GetNodeWithResponse call
+func ParseGetNodeResponse(rsp *http.Response) (*GetNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccountNodeEnvelope
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3190,12 +5117,33 @@ type ServerInterface interface {
 	// Backup Copy the database, consistent, while the hub runs
 	// (POST /v1/backup)
 	Backup(w http.ResponseWriter, r *http.Request)
+	// OpenControl The node's control WebSocket
+	// (GET /v1/control)
+	OpenControl(w http.ResponseWriter, r *http.Request)
 	// CreateInvite Make an invite, a link that lets one person sign up
 	// (POST /v1/invites)
 	CreateInvite(w http.ResponseWriter, r *http.Request)
+	// StartNodeLogin Start making a machine one of an account's nodes
+	// (POST /v1/node-logins)
+	StartNodeLogin(w http.ResponseWriter, r *http.Request)
+	// ExchangeNodeLogin Exchange a browser login's authorization code for the node's credentials
+	// (POST /v1/node-logins/exchange)
+	ExchangeNodeLogin(w http.ResponseWriter, r *http.Request)
+	// PollNodeLogin Ask whether a device login was approved, as RFC 8628 has it
+	// (POST /v1/node-logins/token)
+	PollNodeLogin(w http.ResponseWriter, r *http.Request)
 	// GetNodeVersion Version of the hub, to a node
 	// (GET /v1/node/version)
 	GetNodeVersion(w http.ResponseWriter, r *http.Request)
+	// ListNodes The nodes of the calling node's account, by name
+	// (GET /v1/nodes)
+	ListNodes(w http.ResponseWriter, r *http.Request)
+	// RemoveNode Revoke a node of the calling node's account, the caller among them
+	// (DELETE /v1/nodes/{node})
+	RemoveNode(w http.ResponseWriter, r *http.Request, node string)
+	// GetNode One node of the calling node's account
+	// (GET /v1/nodes/{node})
+	GetNode(w http.ResponseWriter, r *http.Request, node string)
 	// Reload Read the settings again and apply them
 	// (POST /v1/reload)
 	Reload(w http.ResponseWriter, r *http.Request)
@@ -3211,7 +5159,7 @@ type ServerInterface interface {
 	// RemoveUser Remove a user, keeping their username taken
 	// (DELETE /v1/users/{username})
 	RemoveUser(w http.ResponseWriter, r *http.Request, username Username)
-	// GetUser One user, with their browser sessions counted
+	// GetUser One user, with their browser sessions counted and their nodes
 	// (GET /v1/users/{username})
 	GetUser(w http.ResponseWriter, r *http.Request, username Username)
 	// UpdateUser Disable a user, or enable them again
@@ -3276,6 +5224,20 @@ func (siw *ServerInterfaceWrapper) Backup(w http.ResponseWriter, r *http.Request
 	handler.ServeHTTP(w, r)
 }
 
+// OpenControl operation middleware
+func (siw *ServerInterfaceWrapper) OpenControl(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenControl(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateInvite operation middleware
 func (siw *ServerInterfaceWrapper) CreateInvite(w http.ResponseWriter, r *http.Request) {
 
@@ -3290,11 +5252,119 @@ func (siw *ServerInterfaceWrapper) CreateInvite(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// StartNodeLogin operation middleware
+func (siw *ServerInterfaceWrapper) StartNodeLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartNodeLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExchangeNodeLogin operation middleware
+func (siw *ServerInterfaceWrapper) ExchangeNodeLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExchangeNodeLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollNodeLogin operation middleware
+func (siw *ServerInterfaceWrapper) PollNodeLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollNodeLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNodeVersion operation middleware
 func (siw *ServerInterfaceWrapper) GetNodeVersion(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetNodeVersion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListNodes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNodes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveNode operation middleware
+func (siw *ServerInterfaceWrapper) RemoveNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node" -------------
+	var node string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node", r.PathValue("node"), &node, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveNode(w, r, node)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNode operation middleware
+func (siw *ServerInterfaceWrapper) GetNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node" -------------
+	var node string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node", r.PathValue("node"), &node, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNode(w, r, node)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3624,6 +5694,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/users/{username}", wrapper.UpdateUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/users/{username}/resets", wrapper.CreateUserReset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/audit/verification", wrapper.VerifyAudit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins", wrapper.StartNodeLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins/exchange", wrapper.ExchangeNodeLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins/token", wrapper.PollNodeLogin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/control", wrapper.OpenControl)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes", wrapper.ListNodes)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.RemoveNode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.GetNode)
 
 	return m
 }
@@ -3747,6 +5824,38 @@ func (response BackupdefaultApplicationProblemPlusJSONResponse) VisitBackupRespo
 	return err
 }
 
+type OpenControlRequestObject struct {
+}
+
+type OpenControlResponseObject interface {
+	VisitOpenControlResponse(w http.ResponseWriter) error
+}
+
+type OpenControl101Response struct {
+}
+
+func (response OpenControl101Response) VisitOpenControlResponse(w http.ResponseWriter) error {
+	w.WriteHeader(101)
+	return nil
+}
+
+type OpenControldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response OpenControldefaultApplicationProblemPlusJSONResponse) VisitOpenControlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateInviteRequestObject struct {
 	Body *CreateInviteJSONRequestBody
 }
@@ -3786,6 +5895,123 @@ func (response CreateInvitedefaultApplicationProblemPlusJSONResponse) VisitCreat
 	return err
 }
 
+type StartNodeLoginRequestObject struct {
+	Body *StartNodeLoginJSONRequestBody
+}
+
+type StartNodeLoginResponseObject interface {
+	VisitStartNodeLoginResponse(w http.ResponseWriter) error
+}
+
+type StartNodeLogin201JSONResponse NodeLoginStarted
+
+func (response StartNodeLogin201JSONResponse) VisitStartNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartNodeLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StartNodeLogindefaultApplicationProblemPlusJSONResponse) VisitStartNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExchangeNodeLoginRequestObject struct {
+	Body *ExchangeNodeLoginJSONRequestBody
+}
+
+type ExchangeNodeLoginResponseObject interface {
+	VisitExchangeNodeLoginResponse(w http.ResponseWriter) error
+}
+
+type ExchangeNodeLogin200JSONResponse NodeCredentials
+
+func (response ExchangeNodeLogin200JSONResponse) VisitExchangeNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExchangeNodeLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ExchangeNodeLogindefaultApplicationProblemPlusJSONResponse) VisitExchangeNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollNodeLoginRequestObject struct {
+	Body *PollNodeLoginJSONRequestBody
+}
+
+type PollNodeLoginResponseObject interface {
+	VisitPollNodeLoginResponse(w http.ResponseWriter) error
+}
+
+type PollNodeLogin200JSONResponse NodeCredentials
+
+func (response PollNodeLogin200JSONResponse) VisitPollNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollNodeLogindefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response PollNodeLogindefaultApplicationProblemPlusJSONResponse) VisitPollNodeLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNodeVersionRequestObject struct {
 }
 
@@ -3813,6 +6039,122 @@ type GetNodeVersiondefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetNodeVersiondefaultApplicationProblemPlusJSONResponse) VisitGetNodeVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNodesRequestObject struct {
+}
+
+type ListNodesResponseObject interface {
+	VisitListNodesResponse(w http.ResponseWriter) error
+}
+
+type ListNodes200JSONResponse AccountNodeList
+
+func (response ListNodes200JSONResponse) VisitListNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNodesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListNodesdefaultApplicationProblemPlusJSONResponse) VisitListNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveNodeRequestObject struct {
+	Node string `json:"node"`
+}
+
+type RemoveNodeResponseObject interface {
+	VisitRemoveNodeResponse(w http.ResponseWriter) error
+}
+
+type RemoveNode200JSONResponse AccountNodeResult
+
+func (response RemoveNode200JSONResponse) VisitRemoveNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RemoveNodedefaultApplicationProblemPlusJSONResponse) VisitRemoveNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNodeRequestObject struct {
+	Node string `json:"node"`
+}
+
+type GetNodeResponseObject interface {
+	VisitGetNodeResponse(w http.ResponseWriter) error
+}
+
+type GetNode200JSONResponse AccountNodeEnvelope
+
+func (response GetNode200JSONResponse) VisitGetNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetNodedefaultApplicationProblemPlusJSONResponse) VisitGetNodeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4185,12 +6527,33 @@ type StrictServerInterface interface {
 	// Backup Copy the database, consistent, while the hub runs
 	// (POST /v1/backup)
 	Backup(ctx context.Context, request BackupRequestObject) (BackupResponseObject, error)
+	// OpenControl The node's control WebSocket
+	// (GET /v1/control)
+	OpenControl(ctx context.Context, request OpenControlRequestObject) (OpenControlResponseObject, error)
 	// CreateInvite Make an invite, a link that lets one person sign up
 	// (POST /v1/invites)
 	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
+	// StartNodeLogin Start making a machine one of an account's nodes
+	// (POST /v1/node-logins)
+	StartNodeLogin(ctx context.Context, request StartNodeLoginRequestObject) (StartNodeLoginResponseObject, error)
+	// ExchangeNodeLogin Exchange a browser login's authorization code for the node's credentials
+	// (POST /v1/node-logins/exchange)
+	ExchangeNodeLogin(ctx context.Context, request ExchangeNodeLoginRequestObject) (ExchangeNodeLoginResponseObject, error)
+	// PollNodeLogin Ask whether a device login was approved, as RFC 8628 has it
+	// (POST /v1/node-logins/token)
+	PollNodeLogin(ctx context.Context, request PollNodeLoginRequestObject) (PollNodeLoginResponseObject, error)
 	// GetNodeVersion Version of the hub, to a node
 	// (GET /v1/node/version)
 	GetNodeVersion(ctx context.Context, request GetNodeVersionRequestObject) (GetNodeVersionResponseObject, error)
+	// ListNodes The nodes of the calling node's account, by name
+	// (GET /v1/nodes)
+	ListNodes(ctx context.Context, request ListNodesRequestObject) (ListNodesResponseObject, error)
+	// RemoveNode Revoke a node of the calling node's account, the caller among them
+	// (DELETE /v1/nodes/{node})
+	RemoveNode(ctx context.Context, request RemoveNodeRequestObject) (RemoveNodeResponseObject, error)
+	// GetNode One node of the calling node's account
+	// (GET /v1/nodes/{node})
+	GetNode(ctx context.Context, request GetNodeRequestObject) (GetNodeResponseObject, error)
 	// Reload Read the settings again and apply them
 	// (POST /v1/reload)
 	Reload(ctx context.Context, request ReloadRequestObject) (ReloadResponseObject, error)
@@ -4206,7 +6569,7 @@ type StrictServerInterface interface {
 	// RemoveUser Remove a user, keeping their username taken
 	// (DELETE /v1/users/{username})
 	RemoveUser(ctx context.Context, request RemoveUserRequestObject) (RemoveUserResponseObject, error)
-	// GetUser One user, with their browser sessions counted
+	// GetUser One user, with their browser sessions counted and their nodes
 	// (GET /v1/users/{username})
 	GetUser(ctx context.Context, request GetUserRequestObject) (GetUserResponseObject, error)
 	// UpdateUser Disable a user, or enable them again
@@ -4338,6 +6701,30 @@ func (sh *strictHandler) Backup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// OpenControl operation middleware
+func (sh *strictHandler) OpenControl(w http.ResponseWriter, r *http.Request) {
+	var request OpenControlRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenControl(ctx, request.(OpenControlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenControl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenControlResponseObject); ok {
+		if err := validResponse.VisitOpenControlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateInvite operation middleware
 func (sh *strictHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	var request CreateInviteRequestObject
@@ -4369,6 +6756,99 @@ func (sh *strictHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// StartNodeLogin operation middleware
+func (sh *strictHandler) StartNodeLogin(w http.ResponseWriter, r *http.Request) {
+	var request StartNodeLoginRequestObject
+
+	var body StartNodeLoginJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartNodeLogin(ctx, request.(StartNodeLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartNodeLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartNodeLoginResponseObject); ok {
+		if err := validResponse.VisitStartNodeLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExchangeNodeLogin operation middleware
+func (sh *strictHandler) ExchangeNodeLogin(w http.ResponseWriter, r *http.Request) {
+	var request ExchangeNodeLoginRequestObject
+
+	var body ExchangeNodeLoginJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExchangeNodeLogin(ctx, request.(ExchangeNodeLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExchangeNodeLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExchangeNodeLoginResponseObject); ok {
+		if err := validResponse.VisitExchangeNodeLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollNodeLogin operation middleware
+func (sh *strictHandler) PollNodeLogin(w http.ResponseWriter, r *http.Request) {
+	var request PollNodeLoginRequestObject
+
+	var body PollNodeLoginJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollNodeLogin(ctx, request.(PollNodeLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollNodeLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollNodeLoginResponseObject); ok {
+		if err := validResponse.VisitPollNodeLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetNodeVersion operation middleware
 func (sh *strictHandler) GetNodeVersion(w http.ResponseWriter, r *http.Request) {
 	var request GetNodeVersionRequestObject
@@ -4386,6 +6866,82 @@ func (sh *strictHandler) GetNodeVersion(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetNodeVersionResponseObject); ok {
 		if err := validResponse.VisitGetNodeVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNodes operation middleware
+func (sh *strictHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
+	var request ListNodesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNodes(ctx, request.(ListNodesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNodes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNodesResponseObject); ok {
+		if err := validResponse.VisitListNodesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveNode operation middleware
+func (sh *strictHandler) RemoveNode(w http.ResponseWriter, r *http.Request, node string) {
+	var request RemoveNodeRequestObject
+
+	request.Node = node
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveNode(ctx, request.(RemoveNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveNodeResponseObject); ok {
+		if err := validResponse.VisitRemoveNodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNode operation middleware
+func (sh *strictHandler) GetNode(w http.ResponseWriter, r *http.Request, node string) {
+	var request GetNodeRequestObject
+
+	request.Node = node
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNode(ctx, request.(GetNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNodeResponseObject); ok {
+		if err := validResponse.VisitGetNodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4645,70 +7201,112 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"J8L+O2uypO9/vf/fAAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
