@@ -108,7 +108,7 @@ paths:
         hub keeps the values it has and fails with reload_failed.
       responses:
         "200":
-          description: The settings were applied.
+          description: The settings were applied, with result reloaded, but for those not_applied lists.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ReloadResult" }
@@ -193,16 +193,26 @@ components:
 
     SettingResult:
       type: object
-      required: [result, setting]
+      required: [result, setting, not_applied]
       properties:
         result: { $ref: "#/components/schemas/Result" }
         setting: { $ref: "#/components/schemas/Setting" }
+        not_applied: { $ref: "#/components/schemas/NotApplied" }
 
     ReloadResult:
       type: object
-      required: [result]
+      required: [result, not_applied]
       properties:
         result: { $ref: "#/components/schemas/Result" }
+        not_applied: { $ref: "#/components/schemas/NotApplied" }
+
+    NotApplied:
+      type: array
+      description: |
+        The keys of the settings the config file changes that the running hub
+        applies only at its next start, such as listen.web and public_url;
+        empty when it applied them all.
+      items: { type: string }
 
     Backup:
       type: object

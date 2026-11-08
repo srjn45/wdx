@@ -1,8 +1,9 @@
-// Package telemetry sends the daemon's metrics to an OpenTelemetry collector
-// over OTLP/HTTP.
+// Package telemetry sends a server's metrics, the daemon's or the hub's, to an
+// OpenTelemetry collector over OTLP/HTTP.
 package telemetry
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"log/slog"
@@ -31,6 +32,9 @@ const sendTimeout = 10 * time.Second
 type Options struct {
 	Endpoint string        // the collector's base URL; nothing is sent when empty
 	Interval time.Duration // between two sends
+	// Service is the service.name the metrics are sent as; identity.Name
+	// when empty.
+	Service string
 }
 
 // Start returns the provider the daemon's meters come from, and stop, which
@@ -66,7 +70,7 @@ func Start(ctx context.Context, opts Options) (_ metric.MeterProvider, stop func
 		sdkmetric.WithReader(reader),
 		sdkmetric.WithExemplarFilter(exemplar.TraceBasedFilter),
 		sdkmetric.WithResource(resource.NewSchemaless(
-			attribute.String("service.name", identity.Name),
+			attribute.String("service.name", cmp.Or(opts.Service, identity.Name)),
 			attribute.String("service.version", identity.Version))))
 	log.Info("metrics exporter started", "url", url, "interval_ms", opts.Interval.Milliseconds())
 	return provider, provider.Shutdown, nil
