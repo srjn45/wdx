@@ -52,6 +52,16 @@ export default defineConfig({
           ],
         },
         {
+          label: 'AI CLIs',
+          items: [
+            { label: 'Overview', link: '/docs/acas/' },
+            'docs/acas/claude-code',
+            'docs/acas/codex',
+            'docs/acas/cursor',
+            'docs/acas/antigravity',
+          ],
+        },
+        {
           label: 'Scripts and AI agents',
           items: ['docs/guides/scripting', 'docs/guides/ai-agents'],
         },

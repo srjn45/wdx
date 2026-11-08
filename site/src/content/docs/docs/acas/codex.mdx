@@ -1,0 +1,42 @@
+---
+title: Codex
+description: "Agents on OpenAI's Codex CLI: its program, models, permissions, what wdx reads from its screen, and how it gets messages."
+sidebar:
+  order: 2
+---
+
+Codex is OpenAI's coding CLI. Its id is `codex`.
+
+## Install
+
+wdx runs the `codex` program your login shell finds. Install it as [its repository](https://github.com/openai/codex) says, and log in once in a terminal of your own. wdx was last checked on 0.163.0.
+
+```sh
+wdx agent create --aca codex --model gpt-5
+```
+
+## What wdx gives it
+
+- **Models:** what `codex debug models` lists, in its order; `-m` passes the one chosen. Without one, the `model` of your Codex config.
+- **Permissions:** `full` is `--dangerously-bypass-approvals-and-sandbox`; `ask` passes nothing, leaving your own config.
+- **The launch note:** wdx's instructions to work through wdx, given as `developer_instructions`, added to Codex's own instructions for that run, at every start.
+- **Resuming:** once Codex keeps a file for the session, a start resumes it with `codex resume`, in the directory it last worked in, so Codex does not ask which.
+- **Turns:** wdx follows each turn through Codex's `notify`, which it sets for the agent's runs.
+
+## What wdx reads
+
+- **Its state**, from the input box and the status line under it: working, idle or waiting, and a draft. A message waits until the box is ready, as one sent while Codex loads would be lost.
+- **The question it asks:** not yet; a question reads `waiting`.
+- **Its model**, from its screen.
+- **How full its context is**, from the last token count in its session file.
+- **Its conversation**, copied from its session files, its subagents' too, so `wdx agent transcript` and `--brief` have it all, and a session file Codex deleted is put back, which resuming needs.
+
+## Messages
+
+- **A message** is pasted, then Enter, which Codex takes into a running turn at its next step and submits at rest. A message starting with `/` gets a space before it, or Codex would read a command.
+- **An instant message** goes first in wdx's queue; Codex takes it at its next step, as any message.
+- **A leading `!`** is typed as `\!`, as Codex would run it as a shell command.
+
+## What differs
+
+Codex keeps its sessions in `~/.codex/sessions`, by date. Esc stops its turn, but a command it started keeps running in the background.

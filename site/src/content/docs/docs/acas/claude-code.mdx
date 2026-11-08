@@ -1,0 +1,42 @@
+---
+title: Claude Code
+description: "Agents on Anthropic's Claude Code: its program, models, permissions, what wdx reads from its screen, and how it gets messages."
+sidebar:
+  order: 1
+---
+
+Claude Code is the default ACA when it is installed, and the one wdx reads the most from: besides its state, model and context, the question it asks and its options. Its id is `claude_code`.
+
+## Install
+
+wdx runs the `claude` program your login shell finds. Install it as [Anthropic's docs](https://www.anthropic.com/claude-code) say, and log in once in a terminal of your own. wdx was last checked on 2.1.319.
+
+```sh
+wdx agent create --aca claude_code --model opus
+```
+
+## What wdx gives it
+
+- **Models:** `fable`, `opus`, `sonnet` and `haiku`, Claude Code's aliases. Claude Code has no command that lists its models, so this list is wdx's; any other name is passed as given.
+- **Permissions:** `full` is `--permission-mode bypassPermissions`, with the sandbox off and its warning about that mode skipped; `ask` passes nothing, leaving your own settings.
+- **The launch note:** wdx's instructions to work through wdx, added to its system prompt with `--append-system-prompt`, at every start.
+- **A session of wdx's choosing:** a new agent starts with `--session-id`, and a start later resumes it with `--resume`, in the directory it last worked in.
+- **Its own screen settings:** wdx turns off its alternate screen and its mouse, so that TIDE and `agent attach` keep its scrollback and the mouse.
+
+## What wdx reads
+
+- **Its state**, from the input box and footer: working, idle, or waiting, and a draft in the box.
+- **The question it asks**, only Claude Code's so far: `yes/no` for a permission or trust question, `decision` for a choice, with the question, its detail and its options, in `wdx agent get` and TIDE's info tab.
+- **Its model**, from its banner and `/model`.
+- **How full its context is**, from a status line wdx gives it, which writes a small file in the agent's backup. Your own status line still runs, after wdx's.
+- **Its conversation**, copied from its transcripts as they grow, with `/clear` followed through a hook, so `wdx agent transcript` and `--brief` have it all, and a transcript Claude Code deleted is put back.
+
+## Messages
+
+- **A message** is pasted, then Enter as a key of its own. During a turn, Claude Code takes it in at its next tool result, in the same turn.
+- **An instant message** is sent at once with Ctrl+X Ctrl+S: a running command moves to the background rather than stopping, and an answer being written is cut there.
+- **A leading `!`** is typed as `\!`, as Claude Code would run it as a shell command without asking.
+
+## What differs
+
+It is the only ACA whose questions wdx reads, so its rows say `yes/no` and `decision` where the others say `waiting`.

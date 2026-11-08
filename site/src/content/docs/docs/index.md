@@ -29,6 +29,10 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 
 The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/docs/tide/layout/), [Agents](/wdx/docs/tide/agents/), [Worktrees and diffs](/wdx/docs/tide/worktrees/), [Code](/wdx/docs/tide/code/), [Docs and plans](/wdx/docs/tide/docs-and-plans/), [The menu](/wdx/docs/tide/menu/) and [Settings](/wdx/docs/tide/settings/).
 
+## AI CLIs
+
+[The AI CLIs](/wdx/docs/acas/) wdx runs agents on, side by side, and a page each: [Claude Code](/wdx/docs/acas/claude-code/), [Codex](/wdx/docs/acas/codex/), [Cursor](/wdx/docs/acas/cursor/) and [Antigravity](/wdx/docs/acas/antigravity/).
+
 ## Scripts and AI agents
 
 - [Scripting with --json](/wdx/docs/guides/scripting/): one JSON object per command, stable error codes, no prompts.
@@ -45,4 +49,4 @@ The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/do
 
 These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
 
-The AI CLIs' pages and how wdx is built are on their way.
+How wdx is built is on its way.

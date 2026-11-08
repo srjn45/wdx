@@ -1,0 +1,42 @@
+---
+title: Cursor
+description: "Agents on Cursor's CLI agent: its program, models, permissions, what wdx reads from its screen, and how it gets messages."
+sidebar:
+  order: 3
+---
+
+Cursor's agent runs in a terminal as `cursor-agent`. Its id is `cursor`.
+
+## Install
+
+wdx runs the `cursor-agent` program your login shell finds; its installer also installs it as `agent`, a name too common for wdx to look for. Install it as [Cursor's CLI page](https://cursor.com/cli) says, and log in once in a terminal of your own. wdx was last checked on 2026.11.05.
+
+```sh
+wdx agent create --aca cursor
+```
+
+## What wdx gives it
+
+- **A config folder of its own,** in the agent's backup, so its chats and settings are the agent's alone. Each start copies your `~/.cursor/cli-config.json` into it, so your settings apply, with steering turned on, which delivering messages needs.
+- **Models:** what `cursor-agent models` lists, with the one it marks as its default; `--model` changes only the agent's own settings.
+- **Permissions:** `full` is `--force --sandbox disabled --approve-mcps`; `ask` passes nothing. Your login, hooks, MCP servers and rules stay yours, as Cursor reads them from your home.
+- **The launch note:** given by a plugin wdx writes, whose session hook gives Cursor wdx's instructions as context at the start of a chat. A resumed chat keeps it.
+- **Resuming:** a start resumes the agent's chat with `--resume`, in the directory it began in.
+
+## What wdx reads
+
+- **Its state**, from the input box and its footer: working, idle or waiting, and a draft.
+- **The question it asks:** not yet; a question reads `waiting`.
+- **Its model**, from its screen.
+- **How full its context is**, from a status line wdx gives it in the agent's config.
+- **Its conversation**, rendered from its chat store as it grows, so `wdx agent transcript` and `--brief` have it; a chat store Cursor lost is put back. Its subagents are not rendered yet.
+
+## Messages
+
+- **A message** is pasted, then Enter twice: during a turn it is read at the next step, not after the turn.
+- **An instant message**, during a tool call, reaches the model at once while the command goes on; while it writes, it waits for the next tool call.
+- **A leading `!`:** Cursor takes a pasted `!` as text already, so nothing runs.
+
+## What differs
+
+Ctrl+C, not Esc, stops its turn, putting the message back in the box. A message that is exactly a command, as `/clear`, runs as that command.

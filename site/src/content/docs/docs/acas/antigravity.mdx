@@ -1,0 +1,41 @@
+---
+title: Antigravity
+description: "Agents on Google's Antigravity CLI: its program, models, permissions, what wdx reads from its screen, and how it gets messages."
+sidebar:
+  order: 4
+---
+
+Antigravity's CLI runs as `agy`. Its id is `antigravity`.
+
+## Install
+
+wdx runs the `agy` program your login shell finds. Install it as [Antigravity's site](https://antigravity.google) says, and log in once in a terminal of your own. wdx was last checked on 1.5.2.
+
+```sh
+wdx agent create --aca antigravity
+```
+
+## What wdx gives it
+
+- **Models:** what `agy models` lists; `--model` passes the one chosen.
+- **Permissions:** `full` is `--dangerously-skip-permissions` with its terminal sandbox off; `ask` passes nothing. Its settings for the session also trust the agent's folder, so the question whether to trust a new folder does not stop it.
+- **The launch note:** Antigravity has no flag for its system prompt, so wdx adds a folder of the agent's backup to its workspace, holding the note as `AGENTS.md`, which it reads as the workspace's rules, and names the project as where to work.
+- **Resuming:** once Antigravity keeps the conversation, a start resumes it with `--conversation`, and a conversation it lost is put back from wdx's copy.
+
+## What wdx reads
+
+- **Its state**, from the input box and footer: working, idle or waiting, and a draft.
+- **The question it asks:** not yet; a question reads `waiting`.
+- **Its model**, from its screen.
+- **How full its context is**, from a status line wdx gives it, which writes a small file in the agent's backup; your own status line still runs.
+- **Its conversation**, copied from its transcripts, its subagents' too, so `wdx agent transcript` and `--brief` have it all.
+
+## Messages
+
+- **A message** is pasted, then `Alt+M`, which wdx sets to hand it to a running turn at its next step, after the running tool or answer.
+- **An instant message** goes first in wdx's queue; Antigravity takes it at its next step, so a long tool delays it.
+- **A leading `!`** is typed as `\!`, as Antigravity would run it as a shell command.
+
+## What differs
+
+Its conversations are SQLite databases under `~/.gemini/antigravity-cli`, which wdx snapshots read-only. Esc stops its turn and the command it runs, but not a background task.

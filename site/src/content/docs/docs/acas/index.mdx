@@ -1,0 +1,40 @@
+---
+title: AI CLIs
+description: The AI coding CLIs wdx runs agents on, Claude Code, Codex, Cursor and Antigravity, choosing one, and what each gives wdx.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+An agent runs an AI coding CLI in a terminal of its own: Claude Code, Codex, Cursor or Antigravity. wdx calls each an ACA, for AI coding agent. It drives every one the same way, so an agent's features are the same whichever runs it: its state read from the screen, messages delivered when it can take them, its model and permissions kept for every start, its conversation kept and resumed, and the same instructions to work through wdx.
+
+## Choosing one
+
+- **Installed and enabled.** An ACA is offered when its program is found through your login shell and its `aca.<id>.enabled` setting is true. `wdx agent acas` lists them, the default first; `wdx deps list` says which programs are found.
+- **Per agent.** `wdx agent create --aca codex`, or the ACA field of TIDE's new agent form. Without it, the first offered, in the order Claude Code, Antigravity, Cursor, Codex.
+- **Its model** is `--model`, as that CLI's own model flag takes it; `wdx agent models --aca <id>` lists what it offers. Without one, your own settings for that CLI decide.
+- **Permissions.** `--permissions full`, the default, lets the agent work without asking, with network access and no sandbox; `ask` leaves that to your own settings for the CLI. Each page says what the two mean for its CLI.
+
+## What each gives wdx
+
+| | [Claude Code](/wdx/docs/acas/claude-code/) | [Codex](/wdx/docs/acas/codex/) | [Cursor](/wdx/docs/acas/cursor/) | [Antigravity](/wdx/docs/acas/antigravity/) |
+|---|---|---|---|---|
+| Its id, `--aca` | `claude_code` | `codex` | `cursor` | `antigravity` |
+| Its program | `claude` | `codex` | `cursor-agent` | `agy` |
+| Checked on | 2.1.319 | 0.163.0 | 2026.11.05 | 1.5.2 |
+| Working, idle, waiting, from its screen | yes | yes | yes | yes |
+| The question it asks, and its options | yes: `yes/no` and `decision` | no: `waiting` | no: `waiting` | no: `waiting` |
+| Its model | yes | yes | yes | yes |
+| How full its context is | yes | yes | yes | yes |
+| Models to choose from | wdx's list: `fable`, `opus`, `sonnet`, `haiku` | `codex debug models` | `cursor-agent models` | `agy models` |
+| A message during a turn | at its next tool result | at its next step | at its next step | at its next step |
+| An instant message | taken at once | at its next step | at once during a tool, else at its next tool call | at its next step |
+| The conversation kept and resumed | yes | yes | yes | yes |
+| `agent transcript` and `--brief` | yes | yes | yes | yes |
+| wdx's launch note | its system prompt | its developer instructions | a session hook | a workspace rule |
+
+The versions are those wdx was last checked on. A newer one may draw its screen differently: what wdx reads from it can then lag until wdx catches up.
+
+## How wdx reads a screen
+
+wdx keeps each agent's screen in the holder that runs it, and reads it as you would: the input box, the footer, the spinner of a running turn, the model's name. From that it tells working, idle and waiting apart, sees a draft you have typed, and knows when a message can go in. A screen it cannot read yet reads `unknown`. Nothing is asked of the AI CLI's vendor, and no API key passes through wdx: each CLI runs logged in as you are.
