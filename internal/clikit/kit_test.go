@@ -126,10 +126,10 @@ func (r greetResult) Text(w io.Writer, st style.Style) {
 }
 
 func newGreetCmd() *cobra.Command {
-	var name, dir, prompt string
+	var name, dir, prompt, code string
 	var yes, no bool
 	cmd := &cobra.Command{
-		Use:   "greet --name <name> [--yes | --no] [--dir <path>] [--prompt <text>]",
+		Use:   "greet --name <name> [--yes | --no] [--dir <path>] [--prompt <text>] [--code <code>]",
 		Short: "Greet someone, once you say yes",
 		Example: clikit.Examples(
 			"Greet ann", "kit greet --name ann --yes",
@@ -180,6 +180,7 @@ func newGreetCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&no, "no", false, "decline without asking")
 	cmd.Flags().StringVar(&dir, "dir", "", "`path` to say where")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "`text` never logged")
+	cmd.Flags().StringVar(&code, "code", "", "`code` never logged")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagsMutuallyExclusive("yes", "no")
 	clikit.CompleteFlag(cmd, "name", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -187,6 +188,7 @@ func newGreetCmd() *cobra.Command {
 	})
 	clikit.CompleteFlag(cmd, "dir", clikit.CompleteDirs)
 	clikit.CompleteFlag(cmd, "prompt", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "code", cobra.NoFileCompletions)
 	return cmd
 }
 

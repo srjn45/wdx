@@ -214,6 +214,7 @@ func (s *server) VerifyHubCode(ctx context.Context, req api.VerifyHubCodeRequest
 	if err != nil {
 		return nil, err
 	}
+	sendHubState(ctx, s.hub, s.access)
 	result := api.ResultSetUp
 	if p.action == nodeaudit.ActionCodeRecovered {
 		result = api.ResultRecovered

@@ -136,11 +136,19 @@ type hubHome struct {
 func newHubHome(t *testing.T) *hubHome {
 	t.Helper()
 	h := hubtest.Start(t)
-	clock := newHubClock(h)
+	return newHubHomeOn(t, h, newHubClock(h))
+}
+
+// newHubHomeOn is a home whose daemon links to h, going by clock: several
+// on one hub are as many machines.
+func newHubHomeOn(t *testing.T, h *hubtest.Hub, clock *hubClock) *hubHome {
+	t.Helper()
 	hh := &hubHome{t: t, hub: h, clock: clock}
-	t.Cleanup(hh.wantNoSecrets) // once the daemon stopped, as it is served after
-	t.Cleanup(hh.wantNoCodes)
 	hh.home = newHomeOpts(t, testShell, nil, func(o *daemon.Options) {
+		// Here, between the home made and the daemon served: so they run
+		// once the daemon stopped, and before the home is removed.
+		t.Cleanup(hh.wantNoSecrets)
+		t.Cleanup(hh.wantNoCodes)
 		o.Hub = daemon.HubOptions{Clock: clock}
 		// The hub's settings are read again from the file, the others kept
 		// as the test gave them.

@@ -2,6 +2,7 @@ package hublink
 
 import (
 	"context"
+	"crypto/ed25519"
 	"net/http"
 	"os"
 	"strings"
@@ -137,4 +138,15 @@ func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 	}
 	log.Info("logged out", "url", c.URL, "node_id", c.Node.ID, "hub_told", hubTold)
 	return hubTold, nil
+}
+
+// Identity is this node, as logged in, and its key, which TLS between two
+// nodes presents; ErrNotLoggedIn without a login.
+func (l *Link) Identity() (NodeRef, ed25519.PrivateKey, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.creds == nil {
+		return NodeRef{}, nil, ErrNotLoggedIn
+	}
+	return l.creds.Node, l.creds.Key, nil
 }

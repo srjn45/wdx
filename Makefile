@@ -39,9 +39,11 @@ generate:
 TEST_CAP = $(shell systemd-run --user --scope -q true 2>/dev/null && echo systemd-run --user --scope -q -p MemoryMax=3G -p MemorySwapMax=0)
 GO_TEST  = $(TEST_CAP) env GOMEMLIMIT=2GiB go test -p 4 -race -shuffle=on
 
-# Run every test, with the race detector and in shuffled order.
+# Run every test, with the race detector and in shuffled order, and those of
+# the copy of CPace, a module of its own.
 test:
 	$(GO_TEST) ./...
+	cd third_party/cpace && $(GO_TEST) ./...
 
 # Run the tests COUNT times over, at 1 and 4 CPUs, to find the ones that fail
 # only now and then; PKG narrows them: make test-stress PKG=./internal/cli COUNT=20.

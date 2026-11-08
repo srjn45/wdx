@@ -151,6 +151,18 @@
     "summary": "Remove another node from your account, cutting it off at once",
     "href": "/wdx/docs/reference/cli/hub/#wdx-hub-node-remove"
   },
+  "hub session close": {
+    "summary": "Close a session, or every one, either way",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-session-close"
+  },
+  "hub session list": {
+    "summary": "List the sessions open into this node and from it",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-session-list"
+  },
+  "hub session open": {
+    "summary": "Open a session into another node of your account, with its code",
+    "href": "/wdx/docs/reference/cli/hub/#wdx-hub-session-open"
+  },
   "hub status": {
     "summary": "Show this machine's login to a hub and its connection",
     "href": "/wdx/docs/reference/cli/hub/#wdx-hub-status"

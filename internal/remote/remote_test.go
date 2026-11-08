@@ -1,0 +1,824 @@
+package remote
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"database/sql"
+	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/srjn45/wdx/internal/authcode"
+	"github.com/srjn45/wdx/internal/db"
+	"github.com/srjn45/wdx/internal/db/dbtest"
+	"github.com/srjn45/wdx/internal/hub/hubtest"
+	"github.com/srjn45/wdx/internal/hublink" //nolint:depguard // remote is the daemon's side of sessions (wdx doc HUB_TUNNEL); the plan's finish task allows it in .golangci.yml
+	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/nodeaudit"
+	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/waittest"
+)
+
+func TestMain(m *testing.M) {
+	os.Exit(runtest.Main(m))
+}
+
+// clock is the nodes' time, which moves only when a test advances it; its
+// waits end then.
+type clock struct {
+	mu    sync.Mutex
+	now   time.Time
+	waits []clockWait
+	// changed is closed at each wait added.
+	changed chan struct{}
+}
+
+type clockWait struct {
+	at time.Time
+	ch chan time.Time
+}
+
+// newClock starts a clock 10 seconds into a 30-second step, so that a test
+// moving it a few seconds stays in the step.
+func newClock() *clock {
+	return &clock{now: time.Unix(authcode.Step(time.Now())*30+10, 0), changed: make(chan struct{})}
+}
+
+func (c *clock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *clock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	if d <= 0 {
+		ch <- c.now
+		return ch
+	}
+	c.waits = append(c.waits, clockWait{at: c.now.Add(d), ch: ch})
+	close(c.changed)
+	c.changed = make(chan struct{})
+	return ch
+}
+
+func (c *clock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	kept := c.waits[:0]
+	for _, w := range c.waits {
+		if w.at.After(c.now) {
+			kept = append(kept, w)
+		} else {
+			w.ch <- c.now
+		}
+	}
+	c.waits = kept
+}
+
+// offset is a clock some steps away from another, as a machine's whose
+// clock is wrong.
+type offset struct {
+	*clock
+	by time.Duration
+}
+
+func (o offset) Now() time.Time { return o.clock.Now().Add(o.by) }
+
+// world is a hub and the nodes of a test, with one log, which no line may
+// hold a secret of.
+type world struct {
+	t     *testing.T
+	hub   *hubtest.Hub
+	clock *clock
+
+	mu      sync.Mutex
+	log     bytes.Buffer
+	secrets []string
+}
+
+func newWorld(t *testing.T) *world {
+	t.Helper()
+	w := &world{t: t, hub: hubtest.Start(t), clock: newClock()}
+	t.Cleanup(w.wantNoSecrets)
+	return w
+}
+
+func (w *world) Write(b []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.log.Write(b)
+}
+
+// secret names values no log line may hold.
+func (w *world) secret(values ...string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.secrets = append(w.secrets, values...)
+	w.hub.Secret(values...)
+}
+
+func (w *world) wantNoSecrets() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for line := range strings.SplitSeq(w.log.String(), "\n") {
+		for _, s := range w.secrets {
+			if s != "" && strings.Contains(line, s) {
+				w.t.Errorf("a secret, %q, logged: %s", s, line)
+			}
+		}
+	}
+}
+
+// logged is the lines logged with msg.
+func (w *world) logged(msg string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return strings.Count(w.log.String(), `"msg":"`+msg+`"`)
+}
+
+// node is a machine of the test: its home, database, link and Remote, which
+// answers the streams the link is asked for.
+type node struct {
+	t      *testing.T
+	w      *world
+	ref    hublink.NodeRef
+	home   string
+	db     *sql.DB
+	link   *hublink.Link
+	files  *authcode.Files
+	opts   Options
+	remote *Remote
+	ctx    context.Context
+
+	access  atomic.Bool
+	timeout atomic.Int64
+	// checked has a value each time the idle timer looked.
+	checked chan struct{}
+	// secret is the code's secret, once set up.
+	secret string
+	serve  sync.WaitGroup
+}
+
+// newNode logs a machine named name in as a node of u, with remote access
+// on and an idle timeout of an hour.
+func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *node {
+	t := w.t
+	t.Helper()
+	home := t.TempDir()
+	hn := w.hub.LogIn(home, u, name)
+	path := filepath.Join(home, "wdx.db")
+	dbtest.Seed(t, path)
+	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), logging.New(w, slog.LevelDebug).With("node", name)))
+	d, err := db.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := hublink.Open(ctx, home, hublink.Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := &node{t: t, w: w, ref: hublink.NodeRef{ID: hn.ID, Name: name}, home: home, db: d, link: link, files: authcode.Open(identity.HubDir(home)), ctx: ctx, checked: make(chan struct{}, 64)}
+	n.access.Store(true)
+	n.timeout.Store(int64(time.Hour))
+	n.opts = Options{DB: d, Link: link, Code: n.files, Clock: w.clock,
+		RemoteAccess: n.access.Load, IdleTimeout: func() time.Duration { return time.Duration(n.timeout.Load()) },
+		idleChecked: func() {
+			select {
+			case n.checked <- struct{}{}:
+			default:
+			}
+		}}
+	for _, a := range adjust {
+		a(&n.opts)
+	}
+	n.start()
+	t.Cleanup(func() {
+		cancel()
+		n.remote.Close()
+		_ = link.Close()
+		n.serve.Wait()
+		d.Close()
+	})
+	n.connected()
+	go func() {
+		for {
+			select {
+			case s := <-link.Streams():
+				n.serve.Add(1)
+				go func() {
+					defer n.serve.Done()
+					n.remote.Serve(ctx, s)
+				}()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return n
+}
+
+// start makes the node's Remote, as a daemon starting does.
+func (n *node) start() {
+	n.t.Helper()
+	r, err := New(n.ctx, n.opts)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	n.remote = r
+}
+
+// restart is the daemon stopping and starting again.
+func (n *node) restart() {
+	n.t.Helper()
+	n.remote.Close()
+	n.start()
+}
+
+// connected waits for the node's control connection.
+func (n *node) connected() {
+	n.t.Helper()
+	timeout := waittest.After(n.t)
+	for {
+		s, changed := n.link.Watch()
+		if s.Connection == hublink.Connected {
+			return
+		}
+		select {
+		case <-changed:
+		case <-timeout:
+			n.t.Fatalf("%s not connected: %+v", n.ref.Name, s)
+		}
+	}
+}
+
+// setUp sets up a code on the node, its last step accepted well before now.
+func (n *node) setUp() {
+	n.t.Helper()
+	p, err := authcode.Generate("wdx", "alice@"+n.ref.Name)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	n.w.secret(p.Secret, p.URL)
+	if _, err := n.files.Write(n.ctx, p.Secret, authcode.Step(n.w.clock.Now())-10); err != nil {
+		n.t.Fatal(err)
+	}
+	n.secret = p.Secret
+}
+
+// code is the node's code at the step now is in, and off steps from it.
+func (n *node) code(off int64) string {
+	n.t.Helper()
+	c, err := authcode.CodeAt(n.secret, authcode.Step(n.w.clock.Now())+off)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	n.w.secret(c)
+	return c
+}
+
+// wrongCode is a code of no step accepted now.
+func (n *node) wrongCode() string {
+	right := map[string]bool{n.code(-1): true, n.code(0): true, n.code(1): true}
+	for _, c := range []string{"000000", "111111", "222222", "333333"} {
+		if !right[c] {
+			return c
+		}
+	}
+	panic("four codes taken")
+}
+
+// open opens a session from n into host with code.
+func (n *node) open(host *node, code string) (Session, bool, error) {
+	return n.remote.Open(n.ctx, host.ref, code)
+}
+
+// mustOpen opens a session into host with its code now.
+func (n *node) mustOpen(host *node) Session {
+	n.t.Helper()
+	s, opened, err := n.open(host, host.code(0))
+	if err != nil || !opened {
+		n.t.Fatalf("open: %v, opened %v", err, opened)
+	}
+	return s
+}
+
+func wantCode(t *testing.T, err error, want Code) {
+	t.Helper()
+	e, ok := asError(err)
+	if !ok || e.Code != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+}
+
+// sessions is the node's open sessions, of direction d.
+func (n *node) sessions(d Direction) []Session {
+	n.t.Helper()
+	list, err := n.remote.Sessions(n.ctx)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	var of []Session
+	for _, s := range list {
+		if s.Direction == d {
+			of = append(of, s)
+		}
+	}
+	return of
+}
+
+// closedReason is why the node's session id closed, "" while open.
+func (n *node) closedReason(id string) Reason {
+	n.t.Helper()
+	var reason sql.NullString
+	if err := n.db.QueryRowContext(n.ctx, "SELECT closed_reason FROM hub_sessions WHERE id = ?", id).Scan(&reason); err != nil {
+		n.t.Fatal(err)
+	}
+	return Reason(reason.String)
+}
+
+// audited is the actions of the node's audit chain, in order, which must
+// verify.
+func (n *node) audited() []string {
+	n.t.Helper()
+	v, err := nodeaudit.Verify(n.ctx, n.db)
+	if err != nil || v.Broken != nil {
+		n.t.Fatalf("audit chain: %v %+v", err, v.Broken)
+	}
+	rows, err := n.db.QueryContext(n.ctx, "SELECT action FROM hub_audit ORDER BY id")
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			n.t.Fatal(err)
+		}
+		actions = append(actions, a)
+	}
+	return actions
+}
+
+// stream opens a stream of the node's session into host.
+func (n *node) stream(host *node) error {
+	conn, _, err := n.remote.Stream(n.ctx, host.ref.ID)
+	if err == nil {
+		conn.Close()
+	}
+	return err
+}
+
+func TestSessionOpened(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	s := laptop.mustOpen(desktop)
+	if s.Direction != Outgoing || s.Node != desktop.ref || s.IdleExpiresAt != s.OpenedAt.Add(time.Hour) {
+		t.Fatalf("session %+v", s)
+	}
+	in := desktop.sessions(Incoming)
+	if len(in) != 1 || in[0].ID != s.ID || in[0].Node != laptop.ref {
+		t.Fatalf("the desktop's sessions %+v, want the laptop's", in)
+	}
+	for _, n := range []struct {
+		at    *node
+		other *node
+	}{{laptop, desktop}, {desktop, laptop}} {
+		known, err := n.at.remote.KeyKnown(n.at.ctx, n.other.ref.ID)
+		if err != nil || !known {
+			t.Errorf("%s: key of %s known %v %v", n.at.ref.Name, n.other.ref.Name, known, err)
+		}
+	}
+	if got := desktop.audited(); len(got) != 1 || got[0] != nodeaudit.ActionSessionOpened {
+		t.Errorf("the desktop's audit chain %v, want a session opened", got)
+	}
+
+	// One session per host: no code is needed, nor any stream.
+	again, opened, err := laptop.open(desktop, "")
+	if err != nil || opened || again.ID != s.ID {
+		t.Fatalf("open again: %+v %v %v, want unchanged", again, opened, err)
+	}
+
+	w.clock.Advance(10 * time.Minute)
+	if err := laptop.stream(desktop); err != nil {
+		t.Fatal(err)
+	}
+	if in := desktop.sessions(Incoming); !in[0].LastUsedAt.Equal(w.clock.Now()) {
+		t.Errorf("last used %v, want the stream's time %v", in[0].LastUsedAt, w.clock.Now())
+	}
+	incoming, outgoing, err := desktop.remote.Counts(desktop.ctx)
+	if err != nil || incoming != 1 || outgoing != 0 {
+		t.Errorf("the desktop's counts %d %d %v", incoming, outgoing, err)
+	}
+	if w.logged("session opened") != 2 || w.logged("node key pinned") != 2 {
+		t.Error("want the session opened and both keys pinned logged on both nodes")
+	}
+}
+
+func TestOpenRefused(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+
+	_, _, err := laptop.open(desktop, "123456")
+	wantCode(t, err, CodeCodeNotSetUp)
+
+	desktop.setUp()
+	desktop.access.Store(false)
+	_, _, err = laptop.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeRemoteAccessOff)
+
+	if len(laptop.sessions(Outgoing)) != 0 || len(desktop.sessions(Incoming)) != 0 {
+		t.Error("a session opened")
+	}
+	if known, _ := laptop.remote.KeyKnown(laptop.ctx, desktop.ref.ID); known {
+		t.Error("a key pinned without a session")
+	}
+}
+
+func TestWrongCodesSlowDown(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	phone := w.newNode(w.hub.User, "phone")
+	desktop.setUp()
+
+	_, _, err := laptop.open(desktop, desktop.wrongCode())
+	wantCode(t, err, CodeCodeWrong)
+	// Refused unread: the right code too, from the laptop or anyone.
+	_, _, err = laptop.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeCodeWrong)
+	_, _, err = phone.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeCodeWrong)
+
+	w.clock.Advance(time.Second)
+	_, _, err = laptop.open(desktop, desktop.wrongCode())
+	wantCode(t, err, CodeCodeWrong)
+	w.clock.Advance(time.Second) // the second wrong code waits 2 seconds
+	_, _, err = laptop.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeCodeWrong)
+	w.clock.Advance(time.Second)
+	laptop.mustOpen(desktop)
+	// A right code ends the waits, the host's own with them; the next code
+	// is the next step's, as a code opens one session.
+	w.clock.Advance(authcode.Period)
+	phone.mustOpen(desktop)
+
+	if got := desktop.audited(); strings.Join(got, " ") != "code.wrong code.wrong session.opened session.opened" {
+		t.Errorf("the desktop's audit chain %v", got)
+	}
+	if w.logged("code wrong") != 2 {
+		t.Error("want each wrong code logged")
+	}
+}
+
+func TestCodeUsedOnce(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	code := desktop.code(0)
+	s, _, err := laptop.open(desktop, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := laptop.remote.CloseSession(laptop.ctx, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = laptop.open(desktop, code)
+	wantCode(t, err, CodeCodeWrong)
+	if got := desktop.audited(); slicesCount(got, nodeaudit.ActionCodeWrong) != 0 {
+		t.Errorf("a step used is refused before CPace, and is no wrong code: %v", got)
+	}
+}
+
+func slicesCount(list []string, v string) int {
+	n := 0
+	for _, s := range list {
+		if s == v {
+			n++
+		}
+	}
+	return n
+}
+
+func TestStepOutOfRange(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	// The laptop's clock is two steps ahead: the step it sends is out of
+	// range, whatever the code.
+	laptop := w.newNode(w.hub.User, "laptop", func(o *Options) { o.Clock = offset{w.clock, 2 * authcode.Period} })
+	desktop.setUp()
+
+	_, _, err := laptop.open(desktop, desktop.code(2))
+	wantCode(t, err, CodeCodeWrong)
+	if len(desktop.sessions(Incoming)) != 0 {
+		t.Error("a session opened")
+	}
+}
+
+func TestOtherChannelFails(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	// The laptop binds CPace to another TLS session's exporter value, as a
+	// hub between two TLS sessions of its own would see each side do.
+	other := otherExporter(t)
+	laptop := w.newNode(w.hub.User, "laptop", func(o *Options) {
+		o.Exporter = func(tls.ConnectionState) ([]byte, error) { return other, nil }
+	})
+	desktop.setUp()
+
+	_, _, err := laptop.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeCodeWrong)
+	if got := desktop.audited(); len(got) != 1 || got[0] != nodeaudit.ActionCodeWrong {
+		t.Errorf("the desktop's audit chain %v, want a wrong code", got)
+	}
+	if len(desktop.sessions(Incoming)) != 0 || len(laptop.sessions(Outgoing)) != 0 {
+		t.Error("a session opened")
+	}
+}
+
+// otherExporter is the exporter value of a TLS session of its own.
+func otherExporter(t *testing.T) []byte {
+	t.Helper()
+	_, k1, _ := ed25519.GenerateKey(rand.Reader)
+	_, k2, _ := ed25519.GenerateKey(rand.Reader)
+	c1, err := certificate(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := certificate(k2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := net.Pipe()
+	client, server := tls.Client(a, config(c1, false)), tls.Server(b, config(c2, true))
+	done := make(chan error, 1)
+	go func() { done <- server.Handshake() }()
+	if err := client.Handshake(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer server.Close()
+	ex, err := exporter(client.ConnectionState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ex
+}
+
+func TestPinnedKeyChanged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	laptop.mustOpen(desktop)
+
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	if _, err := laptop.db.Exec("UPDATE hub_known_nodes SET public_key = ? WHERE node_id = ?", []byte(pub), desktop.ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, laptop.stream(desktop), CodeNodeKeyMismatch)
+	if got := laptop.audited(); len(got) != 1 || got[0] != nodeaudit.ActionNodeKeyMismatch {
+		t.Errorf("the laptop's audit chain %v, want the mismatch", got)
+	}
+
+	// The host refuses a client whose key is not the one it pinned, too.
+	if _, err := laptop.db.Exec("UPDATE hub_sessions SET closed_at = 1, closed_reason = 'closed'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := laptop.db.Exec("DELETE FROM hub_known_nodes"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := desktop.db.Exec("UPDATE hub_known_nodes SET public_key = ? WHERE node_id = ?", []byte(pub), laptop.ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := laptop.open(desktop, desktop.code(1))
+	wantCode(t, err, CodeNodeKeyMismatch)
+	if got := desktop.audited(); got[len(got)-1] != nodeaudit.ActionNodeKeyMismatch {
+		t.Errorf("the desktop's audit chain %v, want the mismatch last", got)
+	}
+}
+
+func TestIdleSessionCloses(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	desktop.timeout.Store(int64(time.Minute))
+	s := laptop.mustOpen(desktop)
+
+	w.clock.Advance(30 * time.Second)
+	if err := laptop.stream(desktop); err != nil {
+		t.Fatal(err)
+	}
+	// Idle from the stream on: 59 seconds after it, it is open still.
+	w.clock.Advance(59 * time.Second)
+	if err := laptop.stream(desktop); err != nil {
+		t.Fatal(err)
+	}
+	drain(desktop.checked)
+	w.clock.Advance(time.Minute)
+	desktop.idleChecked(t)
+	if got := desktop.closedReason(s.ID); got != ReasonIdle {
+		t.Fatalf("closed %q, want idle", got)
+	}
+	err := laptop.stream(desktop)
+	wantCode(t, err, CodeSessionClosed)
+	if got := laptop.closedReason(s.ID); got != ReasonIdle {
+		t.Errorf("the laptop's row closed %q, want idle as the host said", got)
+	}
+	if got := desktop.audited(); got[len(got)-1] != nodeaudit.ActionSessionClosed {
+		t.Errorf("the desktop's audit chain %v", got)
+	}
+}
+
+func drain(ch chan struct{}) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
+// idleChecked waits for the idle timer to have looked.
+func (n *node) idleChecked(t *testing.T) {
+	t.Helper()
+	select {
+	case <-n.checked:
+	case <-waittest.After(t):
+		t.Fatal("the idle timer did not look")
+	}
+}
+
+func TestRestartClosesIncoming(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+
+	desktop.restart()
+	if got := desktop.closedReason(s.ID); got != ReasonRestart {
+		t.Fatalf("closed %q, want restart", got)
+	}
+	wantCode(t, laptop.stream(desktop), CodeSessionClosed)
+	if got := laptop.closedReason(s.ID); got != ReasonRestart {
+		t.Errorf("the laptop's row closed %q, want restart", got)
+	}
+	// The laptop's own restart keeps its outgoing sessions: only a host
+	// closes them.
+	w.clock.Advance(authcode.Period)
+	s = laptop.mustOpen(desktop)
+	laptop.restart()
+	if got := laptop.closedReason(s.ID); got != "" {
+		t.Errorf("the laptop's outgoing session closed %q at its restart", got)
+	}
+}
+
+func TestRemoteAccessOffClosesIncoming(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+
+	desktop.access.Store(false)
+	desktop.remote.Apply(desktop.ctx)
+	if got := desktop.closedReason(s.ID); got != ReasonRemoteAccessOff {
+		t.Fatalf("closed %q, want remote_access_off", got)
+	}
+	wantCode(t, laptop.stream(desktop), CodeSessionClosed)
+	if got := laptop.closedReason(s.ID); got != ReasonRemoteAccessOff {
+		t.Errorf("the laptop's row closed %q, want remote_access_off as the host said", got)
+	}
+	_, _, err := laptop.open(desktop, desktop.code(1))
+	wantCode(t, err, CodeRemoteAccessOff)
+}
+
+func TestClose(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	// Closing an outgoing session tells the host.
+	s := laptop.mustOpen(desktop)
+	if _, err := laptop.remote.CloseSession(laptop.ctx, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := desktop.closedReason(s.ID); got != ReasonClosed {
+		t.Fatalf("the host's row closed %q, want closed", got)
+	}
+	_, err := laptop.remote.CloseSession(laptop.ctx, s.ID)
+	wantCode(t, err, CodeSessionNotFound)
+
+	// Closing an incoming one: the client finds out at its next stream.
+	w.clock.Advance(authcode.Period)
+	s = laptop.mustOpen(desktop)
+	closed, err := desktop.remote.CloseAll(desktop.ctx)
+	if err != nil || len(closed) != 1 || closed[0].ID != s.ID {
+		t.Fatalf("close all: %+v %v", closed, err)
+	}
+	wantCode(t, laptop.stream(desktop), CodeSessionClosed)
+	if got := laptop.closedReason(s.ID); got != ReasonClosed {
+		t.Errorf("the laptop's row closed %q, want closed", got)
+	}
+}
+
+func TestLoggedOut(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+
+	for _, n := range []*node{desktop, laptop} {
+		if err := n.remote.LoggedOut(n.ctx); err != nil {
+			t.Fatal(err)
+		}
+		if got := n.closedReason(s.ID); got != ReasonLoggedOut {
+			t.Errorf("%s: closed %q, want logged_out", n.ref.Name, got)
+		}
+		var keys int
+		if err := n.db.QueryRow("SELECT COUNT(*) FROM hub_known_nodes").Scan(&keys); err != nil || keys != 0 {
+			t.Errorf("%s: %d keys pinned after logout %v", n.ref.Name, keys, err)
+		}
+	}
+}
+
+func TestVersionUnsupported(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	conn, _, _, _, err := laptop.remote.dial(laptop.ctx, desktop.ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := write(conn, message{Type: msgOpen, Version: protocolVersion + 1}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = read(conn, msgExchange)
+	wantCode(t, err, CodeNodeVersionUnsupported)
+}
+
+func TestAuditChainChanged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+	if _, err := laptop.remote.CloseSession(laptop.ctx, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := desktop.audited(); strings.Join(got, " ") != "session.opened session.closed" {
+		t.Fatalf("the desktop's audit chain %v", got)
+	}
+	if _, err := desktop.db.Exec(`UPDATE hub_audit SET details = '{"reason":"idle"}' WHERE action = 'session.closed'`); err != nil {
+		t.Fatal(err)
+	}
+	v, err := nodeaudit.Verify(desktop.ctx, desktop.db)
+	if err != nil || v.Broken == nil || v.Rows != 1 {
+		t.Fatalf("verify %+v %v, want the second row broken", v, err)
+	}
+}

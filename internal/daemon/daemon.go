@@ -34,6 +34,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
+	"github.com/srjn45/wdx/internal/remote"
 	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
@@ -239,8 +240,12 @@ type Daemon struct {
 	// the login it started last.
 	hub       *hublink.Link
 	hubLogins hubLogins
-	// access is the node's authenticator code and remote access.
-	access *hubAccess
+	// access is the node's authenticator code and remote access; remote
+	// the sessions with other nodes, and hubStreams what answers the
+	// streams they ask for.
+	access     *hubAccess
+	remote     *remote.Remote
+	hubStreams *hubStreams
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -382,6 +387,20 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		now = opts.Hub.Clock.Now
 	}
 	d.access = newHubAccess(opts.Home, d.db, now, opts.HubRemoteAccess, opts.HubSessionIdleTimeout)
+	var clock hublink.Clock = realClock{}
+	if opts.Hub.Clock != nil {
+		clock = opts.Hub.Clock
+	}
+	// It closes every incoming session, which a restart ends.
+	if d.remote, err = remote.New(context.WithoutCancel(logged), remote.Options{
+		DB: d.db, Link: d.hub, Code: d.access.files, Clock: clock,
+		RemoteAccess: d.access.remoteAccess.Load,
+		IdleTimeout:  func() time.Duration { return time.Duration(d.access.idleTimeout.Load()) },
+	}); err != nil {
+		return nil, err
+	}
+	d.hubStreams = serveHubStreams(context.WithoutCancel(logged), d.hub, d.remote)
+	sendHubState(logged, d.hub, d.access)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
@@ -466,6 +485,8 @@ func (d *Daemon) reload(ctx context.Context) error {
 	d.planParallel.Store(int64(cmp.Or(s.PlanParallel, DefaultPlanParallel)))
 	d.agents.ACAs().SetEnabled(s.ACAEnabled)
 	d.access.apply(ctx, s.HubRemoteAccess, s.HubSessionIdleTimeout)
+	d.remote.Apply(ctx)
+	sendHubState(ctx, d.hub, d.access)
 	if d.gitCopy.setPath(s.DocsGitPath) {
 		// Under the changes' lock, so that no doc's change syncs at the same time.
 		d.changes.Lock()
@@ -609,7 +630,13 @@ func (d *Daemon) close() {
 		d.listener.Close()
 	}
 	if d.hub != nil {
-		d.hub.Close() // it ends the login pending, and the control connection
+		d.hub.Close() // it ends the login pending, the control connection and the streams
+	}
+	if d.hubStreams != nil {
+		d.hubStreams.close()
+	}
+	if d.remote != nil {
+		d.remote.Close() // it uses the database
 	}
 	if d.runner != nil {
 		d.stopRunner()

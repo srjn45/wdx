@@ -30,6 +30,12 @@ type HubOptions struct {
 	PingInterval           time.Duration
 }
 
+// realClock is the time when the daemon's options give none.
+type realClock struct{}
+
+func (realClock) Now() time.Time                         { return time.Now() }
+func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+
 func (o HubOptions) link() hublink.Options {
 	opts := hublink.Options{MinBackoff: o.MinBackoff, MaxBackoff: o.MaxBackoff, LogoutTimeout: o.LogoutTimeout, PingInterval: o.PingInterval}
 	if o.Clock != nil {
@@ -102,8 +108,12 @@ func hubFailure(err error) error {
 		}
 	}
 	switch hublink.Code(err) {
-	case hubapi.ErrorCodeNotFound:
+	case hubapi.ErrorCodeNotFound, hubapi.ErrorCodeNodeNotFound:
 		code = api.ErrorCodeNodeNotFound
+	case hubapi.ErrorCodeNodeOffline:
+		code = api.ErrorCodeNodeOffline
+	case hubapi.ErrorCodeTooManyStreams:
+		code = api.ErrorCodeTooManyStreams
 	case hubapi.ErrorCodeNameTaken:
 		code = api.ErrorCodeNameTaken
 	case hubapi.ErrorCodeHubVersionUnsupported:
@@ -278,6 +288,11 @@ func (s *server) LogoutHub(ctx context.Context, _ api.LogoutHubRequestObject) (a
 	if err != nil {
 		return nil, hubFailure(err)
 	}
+	// The code's files went with <home>/hub/.
+	if err := s.remote.LoggedOut(ctx); err != nil {
+		logging.FromContext(ctx).Error("sessions not closed at logout", "err", err)
+	}
+	sendHubState(ctx, s.hub, s.access)
 	return api.LogoutHub200JSONResponse{Result: api.ResultLoggedOut, HubTold: told, Hub: s.hubStatusView(ctx, before)}, nil
 }
 
@@ -298,9 +313,18 @@ func (s *server) GetHubNode(ctx context.Context, req api.GetHubNodeRequestObject
 	if err != nil {
 		return nil, hubFailure(err)
 	}
+	known, err := s.remote.KeyKnown(ctx, n.Id)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := s.remote.SessionsWith(ctx, n.Id)
+	if err != nil {
+		return nil, err
+	}
 	return api.GetHubNode200JSONResponse{Node: api.HubNodeDetail{
 		Id: n.Id, Name: n.Name, This: n.This, Online: n.Online, LastSeenAt: utc(n.LastSeenAt),
 		Version: n.Version, Os: n.Os, CreatedAt: n.CreatedAt.UTC(), Fingerprint: n.Fingerprint,
+		KeyKnown: known, Sessions: sessionViews(sessions),
 	}}, nil
 }
 
@@ -324,6 +348,11 @@ func (s *server) hubStatusView(ctx context.Context, h hublink.Status) api.HubSta
 		v.Node = &api.HubNodeRef{Id: h.Node.ID, Name: h.Node.Name}
 		v.CodeSetup = s.access.codeSetUp(ctx)
 	}
+	in, out, err := s.remote.Counts(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("sessions not counted", "err", err)
+	}
+	v.Sessions = api.HubSessionCounts{Incoming: in, Outgoing: out}
 	return v
 }
 

@@ -22,6 +22,9 @@ A hub keeps an account's nodes, the machines its user logged in from. The daemon
 | [`wdx hub node get`](#wdx-hub-node-get) | Show a node of your account, with its key's fingerprint |
 | [`wdx hub node list`](#wdx-hub-node-list) | List the nodes of your account, and which are online |
 | [`wdx hub node remove`](#wdx-hub-node-remove) | Remove another node from your account, cutting it off at once |
+| [`wdx hub session close`](#wdx-hub-session-close) | Close a session, or every one, either way |
+| [`wdx hub session list`](#wdx-hub-session-list) | List the sessions open into this node and from it |
+| [`wdx hub session open`](#wdx-hub-session-open) | Open a session into another node of your account, with its code |
 | [`wdx hub status`](#wdx-hub-status) | Show this machine's login to a hub and its connection |
 
 ## wdx hub audit verify
@@ -356,6 +359,137 @@ With `--json`, `result` is one of: `removed`.
 | [`node_is_this`](/wdx/docs/reference/errors/#node_is_this) | 1 | the node is this one: leaving is wdx hub logout |
 | [`node_not_found`](/wdx/docs/reference/errors/#node_not_found) | 1 | the account has no node of this name or id |
 | [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in) | 1 | this node is not logged in to a hub, or the hub cut it off |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx hub session close
+
+Close a session, or every one, either way.
+
+```sh
+wdx hub session close (--id <id> | --all) [flags]
+```
+
+Closing an outgoing session ends this node's access, telling the host when it can; closing an incoming one cuts off whoever is connected from that node, which finds out at its next use.
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--all` |  | close every session open, both ways |
+| `--id <id>` |  | id of the session |
+
+- exactly one of `--id` or `--all`
+
+### Examples
+
+```sh
+# Close one session
+wdx hub session close --id sess-1a2b3c4d5e6f7a8b
+
+# Close every one, from a script
+wdx hub session close --all --json
+```
+
+### Output
+
+The sessions closed, as they were. With `--json`: {"result": "closed", "session": {...}}, or "sessions": [...] with `--all`
+
+With `--json`, `result` is one of: `closed`.
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`session_not_found`](/wdx/docs/reference/errors/#session_not_found) | 1 | no session of this id is open |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx hub session list
+
+List the sessions open into this node and from it.
+
+```sh
+wdx hub session list [flags]
+```
+
+It asks no hub: the sessions are this node's own.
+
+### Examples
+
+```sh
+# Every session open
+wdx hub session list
+
+# As JSON
+wdx hub session list --json
+```
+
+### Output
+
+The sessions, by when they opened. With `--json`: {"sessions": [...]}
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
+| [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+## wdx hub session open
+
+Open a session into another node of your account, with its code.
+
+```sh
+wdx hub session open --node <name> [--code <code>] [flags]
+```
+
+The code is the one your authenticator app shows for that node (wdx hub code setup there); without `--code` it is asked for, and `--json` needs it. A code opens one session, and is never logged. After a wrong code, the next try waits, from 1 second doubling to 5 minutes. With a session into the node open already, nothing is asked.
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--code <code>` |  | the node's authenticator code now; asked for when not given |
+| `--node <name>` |  | name of the node to open a session into |
+
+- `--node` is required
+- with `--json`: one of `--code`
+
+### Examples
+
+```sh
+# Open a session into the desktop, typing its code
+wdx hub session open --node desktop
+
+# From a script
+wdx hub session open --node desktop --code 492817 --json
+```
+
+### Output
+
+The session. With `--json`: {"result": "opened", "session": {...}}
+
+With `--json`, `result` is one of: `opened` or `unchanged`.
+
+### Errors
+
+| Code | Exit | When |
+|---|---|---|
+| [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up) | 1 | no authenticator code is set up on the node |
+| [`code_wrong`](/wdx/docs/reference/errors/#code_wrong) | 1 | the code is wrong, used already, or came too soon after a wrong one |
+| [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
+| [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable) | 3 | the hub cannot be reached, or did not answer as a hub does |
+| [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported) | 1 | the hub serves no version of the API this wdx speaks |
+| [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch) | 1 | the node showed a key other than the one pinned for it in an earlier session |
+| [`node_not_found`](/wdx/docs/reference/errors/#node_not_found) | 1 | the account has no node of this name or id |
+| [`node_offline`](/wdx/docs/reference/errors/#node_offline) | 1 | the node is not connected to the hub, or did not answer in time |
+| [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported) | 1 | the two nodes speak no version in common between them: update the older |
+| [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in) | 1 | this node is not logged in to a hub, or the hub cut it off |
+| [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off) | 1 | the node allows no sessions: hub.remote\_access is off there |
+| [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams) | 1 | the account has as many streams open through the hub as it may |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 

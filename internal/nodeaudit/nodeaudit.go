@@ -20,7 +20,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// The actions recorded. The session task adds the sessions'.
+// The actions recorded.
 const (
 	ActionCodeSetUp        = "code.set_up"
 	ActionCodeReplaced     = "code.replaced"
@@ -28,6 +28,14 @@ const (
 	ActionRecoveryKeyWrong = "recovery_key.wrong"
 	ActionRemoteAccessOn   = "remote_access.on"
 	ActionRemoteAccessOff  = "remote_access.off"
+	// ActionCodeWrong is a code that failed CPace, ActionSessionOpened and
+	// ActionSessionClosed a session into this node, with the reason it
+	// closed, and ActionNodeKeyMismatch another node showing a key that is
+	// not the one pinned for it.
+	ActionCodeWrong       = "code.wrong"
+	ActionSessionOpened   = "session.opened"
+	ActionSessionClosed   = "session.closed"
+	ActionNodeKeyMismatch = "node_key.mismatch"
 )
 
 // Entry is one act.

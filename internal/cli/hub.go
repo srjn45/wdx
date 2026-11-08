@@ -51,7 +51,7 @@ func newHubCmd() *cobra.Command {
 		Args: clikit.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newHubAuditCmd(), newHubCodeCmd(), newHubLoginCmd(), newHubLogoutCmd(), newHubNodeCmd(), newHubStatusCmd())
+	cmd.AddCommand(newHubAuditCmd(), newHubCodeCmd(), newHubLoginCmd(), newHubLogoutCmd(), newHubNodeCmd(), newHubSessionCmd(), newHubStatusCmd())
 	return cmd
 }
 
@@ -419,6 +419,9 @@ func (r hubStatus) Text(w io.Writer, st style.Style) {
 		fmt.Fprintf(w, "%s, no code set up\n", access)
 		writeHint(w, st, "run "+identity.Name+" hub code setup to allow remote access")
 	}
+	if in, out := h.Sessions.Incoming, h.Sessions.Outgoing; in+out > 0 {
+		fmt.Fprintf(w, "sessions: %d incoming, %d outgoing\n", in, out)
+	}
 	if h.CodeSetup && h.RemoteAccess == api.HubStatusRemoteAccessOff {
 		writeHint(w, st, "run "+identity.Name+" setting set --name hub.remote_access --value true to allow sessions into this node")
 	}
@@ -573,6 +576,14 @@ func (r hubNode) Text(w io.Writer, st style.Style) {
 	t.Row(st.Muted("version"), n.Version)
 	t.Row(st.Muted("os"), n.Os)
 	t.Row(st.Muted("joined"), n.CreatedAt.Local().Format(time.DateTime))
+	known := "no: it is pinned at the first session with it"
+	if n.KeyKnown {
+		known = "yes, pinned in an earlier session"
+	}
+	t.Row(st.Muted("key known"), known)
+	for _, s := range n.Sessions {
+		t.Row(st.Muted("session"), fmt.Sprintf("%s %s, idle until %s", s.Direction, s.Id, s.IdleExpiresAt.Local().Format(time.DateTime)))
+	}
 	t.Write(w)
 }
 

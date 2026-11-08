@@ -2396,6 +2396,9 @@ paths:
       tags: [hub]
       summary: A node of the account, from the hub
       description: |
+        With whether this node pinned its key, and the sessions open with
+        it, from the database.
+
         Errors: hub_unreachable, hub_version_unsupported, node_not_found,
         not_logged_in.
       responses:
@@ -2504,6 +2507,97 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HubCodePendingEnvelope" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/sessions:
+    get:
+      operationId: listHubSessions
+      tags: [hub]
+      summary: The sessions open, into this node and from it
+      description: |
+        Read from the database: it never asks the hub, and works logged out.
+      responses:
+        "200":
+          description: The sessions, by when they opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubSessionList" }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: openHubSession
+      tags: [hub]
+      summary: Open a session into another node of the account with its code
+      description: |
+        Asks the hub for a stream to the node, then speaks TLS 1.3 with it
+        over the stream, between the two nodes' own keys, each checked
+        against the key pinned for the other in an earlier session; then
+        CPace with the node's authenticator code, bound to that TLS channel.
+        With a session open into the node already, nothing is asked:
+        unchanged. The code is measured in the log, never logged.
+
+        Results: opened, unchanged.
+
+        Errors: code_not_set_up, code_wrong (also too soon after a wrong
+        code, or a code used already), hub_unreachable, node_key_mismatch,
+        node_not_found, node_offline, node_version_unsupported,
+        not_logged_in, remote_access_off, too_many_streams.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HubSessionOpen" }
+      responses:
+        "201":
+          description: The session, opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubSessionResult" }
+        "200":
+          description: The session open already, unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubSessionResult" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: closeHubSessions
+      tags: [hub]
+      summary: Close every session open, both ways
+      description: |
+        As closeHubSession does for each.
+
+        Results: closed.
+      responses:
+        "200":
+          description: The sessions closed, as they were.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubSessionsClosed" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/hub/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+    delete:
+      operationId: closeHubSession
+      tags: [hub]
+      summary: Close a session open, either way
+      description: |
+        An outgoing session tells its host first, best effort, waiting at
+        most 10 seconds; the client of an incoming one finds out at its next
+        stream, as session_closed.
+
+        Results: closed.
+
+        Errors: session_not_found (none of this id is open).
+      responses:
+        "200":
+          description: The session closed, as it was.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HubSessionResult" }
         default: { $ref: "#/components/responses/Problem" }
 
   /v1/hub/audit/verification:
@@ -4204,7 +4298,7 @@ components:
 
     HubStatus:
       type: object
-      required: [url, user, node, connection, hub_version, in_range, behind, remote_access, code_setup]
+      required: [url, user, node, connection, hub_version, in_range, behind, remote_access, code_setup, sessions]
       properties:
         url: { type: string, nullable: true, description: "The hub's web endpoint; null when logged out." }
         user: { type: string, nullable: true, description: "The account's username; null when logged out." }
@@ -4224,6 +4318,7 @@ components:
           enum: ["on", "off"]
           description: Whether other nodes of the account may open sessions into this one, as the hub.remote_access setting says.
         code_setup: { type: boolean, description: "Whether an authenticator code is set up here (wdx hub code setup); false when logged out." }
+        sessions: { $ref: "#/components/schemas/HubSessionCounts" }
 
     HubEnvelope:
       type: object
@@ -4270,6 +4365,60 @@ components:
       required: [recovery_key]
       properties:
         recovery_key: { type: string, minLength: 1 }
+
+    HubSessionCounts:
+      type: object
+      required: [incoming, outgoing]
+      properties:
+        incoming: { type: integer, description: "Sessions open into this node from others." }
+        outgoing: { type: integer, description: "Sessions open from this node into others." }
+
+    HubSession:
+      type: object
+      required: [id, direction, node, opened_at, last_used_at, idle_expires_at]
+      properties:
+        id: { type: string, description: "The host's id of the session." }
+        direction:
+          type: string
+          enum: [incoming, outgoing]
+          description: incoming is another node's session into this one, outgoing this node's into another.
+        node:
+          allOf: [{ $ref: "#/components/schemas/HubNodeRef" }]
+          description: The other node, named as it was when the session opened.
+        opened_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time }
+        idle_expires_at: { type: string, format: date-time, description: "When it closes unused: by this node's hub.session_idle_timeout for an incoming one, by the host's, as it said at the open, for an outgoing one." }
+
+    HubSessionList:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/HubSession" }
+
+    HubSessionOpen:
+      type: object
+      required: [node, code]
+      properties:
+        node: { type: string, minLength: 1, description: "The node's name, whatever its case, or \"id:\" and its id." }
+        code: { type: string, minLength: 1, description: "The node's authenticator code now; a secret, measured in the log." }
+
+    HubSessionResult:
+      type: object
+      required: [result, session]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        session: { $ref: "#/components/schemas/HubSession" }
+
+    HubSessionsClosed:
+      type: object
+      required: [result, sessions]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/HubSession" }
 
     HubAudit:
       type: object
@@ -4364,9 +4513,14 @@ components:
       allOf:
         - $ref: "#/components/schemas/HubNode"
         - type: object
-          required: [fingerprint]
+          required: [fingerprint, key_known, sessions]
           properties:
             fingerprint: { type: string, description: "SHA256: and its key's SHA-256 in base64 without padding." }
+            key_known: { type: boolean, description: "Whether this node pinned the node's key in an earlier session; the key TLS between the two shows is checked against it, never against the hub's word." }
+            sessions:
+              type: array
+              items: { $ref: "#/components/schemas/HubSession" }
+              description: The sessions open with the node, both ways.
 
     HubNodeList:
       type: object
@@ -4495,6 +4649,13 @@ components:
         - code_wrong
         - recovery_key_wrong
         - audit_broken
+        - session_not_found
+        - session_closed
+        - remote_access_off
+        - node_key_mismatch
+        - too_many_streams
+        - node_offline
+        - node_version_unsupported
 
     Problem:
       type: object

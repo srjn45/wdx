@@ -574,6 +574,28 @@ func TestPromptMeasured(t *testing.T) {
 	}
 }
 
+func TestCodeMeasured(t *testing.T) {
+	t.Parallel()
+	home := kitHome(t)
+	kit(t, home, nil, "greet", "--name", "ann", "--yes", "--code", "492817")
+	kit(t, home, nil, "greet", "--name", "ann", "--yes", "--code=5038164")
+	for _, l := range logged(t, home) {
+		if b, _ := json.Marshal(l); strings.Contains(string(b), "492817") || strings.Contains(string(b), "5038164") {
+			t.Fatalf("a code logged: %s", b)
+		}
+	}
+	received := loggedMsg(t, home, "command received")
+	if args := received[0]["args"].([]any); args[len(args)-1] != "<6 bytes>" {
+		t.Fatalf("want the code measured, got %v", args)
+	}
+	if args := received[1]["args"].([]any); args[len(args)-1] != "--code=<7 bytes>" {
+		t.Fatalf("want the code measured, got %v", args)
+	}
+	if flags := loggedMsg(t, home, "command started")[0]["flags"].(map[string]any); flags["code"] != "<6 bytes>" {
+		t.Fatalf("want the code flag measured, got %v", flags)
+	}
+}
+
 func TestAbsolute(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ dir, workDir, want string }{

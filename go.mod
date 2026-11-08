@@ -5,6 +5,7 @@ go 1.26.10
 require (
 	charm.land/bubbletea/v2 v2.1.1
 	charm.land/glamour/v2 v2.0.1
+	filippo.io/cpace v0.0.0-20210101143347-24d601e2e469
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
@@ -34,6 +35,7 @@ require (
 
 require (
 	charm.land/lipgloss/v2 v2.0.4 // indirect
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -56,6 +58,7 @@ require (
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
+	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
@@ -99,3 +102,5 @@ replace github.com/charmbracelet/x/vt => github.com/srjn45/x/vt v0.1.1-0.2026110
 replace github.com/charmbracelet/x/ansi => github.com/srjn45/x/ansi v0.11.10-0.20261104172430-dfddc2172df6
 
 replace github.com/muesli/cancelreader => ./third_party/cancelreader
+
+replace filippo.io/cpace => ./third_party/cpace

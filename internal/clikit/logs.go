@@ -50,20 +50,28 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 		slog.Group("settings", settings...))
 }
 
-// PromptFlag is the flag whose value is never logged, only measured: a prompt
-// can hold secrets.
-const PromptFlag = "prompt"
+// PromptFlag and CodeFlag are the flags whose values are never logged, only
+// measured: a prompt can hold secrets, and a code is one.
+const (
+	PromptFlag = "prompt"
+	CodeFlag   = "code"
+)
 
-// ArgsLogged is args as command received logs them: with the value of
-// --prompt measured instead.
+// secretFlags are the flags measured in the log.
+var secretFlags = []string{PromptFlag, CodeFlag}
+
+// ArgsLogged is args as command received logs them: with the values of
+// --prompt and --code measured instead.
 func ArgsLogged(args []string) []string {
 	logged := slices.Clone(args)
 	for i, arg := range logged {
-		if arg == "--"+PromptFlag && i+1 < len(logged) {
-			logged[i+1] = measured(logged[i+1])
-		}
-		if value, ok := strings.CutPrefix(arg, "--"+PromptFlag+"="); ok {
-			logged[i] = "--" + PromptFlag + "=" + measured(value)
+		for _, flag := range secretFlags {
+			if arg == "--"+flag && i+1 < len(logged) {
+				logged[i+1] = measured(logged[i+1])
+			}
+			if value, ok := strings.CutPrefix(arg, "--"+flag+"="); ok {
+				logged[i] = "--" + flag + "=" + measured(value)
+			}
 		}
 	}
 	return logged
@@ -79,7 +87,7 @@ func logStarted(cmd *cobra.Command, args []string) {
 	set := []string{}
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		flags[f.Name] = f.Value.String()
-		if f.Name == PromptFlag {
+		if slices.Contains(secretFlags, f.Name) {
 			flags[f.Name] = measured(f.Value.String())
 		}
 		if f.Changed {

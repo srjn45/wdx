@@ -30,7 +30,7 @@ import (
 // and run one at a time when it changes anything.
 func (d *Daemon) handler() http.Handler {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -256,7 +256,7 @@ func requestLogged(operation string, b []byte) any {
 		return withTextMeasured(b, "summary") // an agent's output
 	case "sendHubLoginCode":
 		return api.HubLoginCodeLogged(b)
-	case "startHubCode", "verifyHubCode", "recoverHubCode":
+	case "startHubCode", "verifyHubCode", "recoverHubCode", "openHubSession":
 		return api.HubCodeRequestLogged(b)
 	}
 	if operation != "sendTerminal" && operation != "sendAgent" {

@@ -170,3 +170,40 @@ func (c *Client) VerifyHubAudit(ctx context.Context) (api.HubAuditEnvelope, erro
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
+
+// HubSessions is the sessions open, both ways.
+func (c *Client) HubSessions(ctx context.Context) (api.HubSessionList, error) {
+	r, err := c.api.ListHubSessionsWithResponse(ctx)
+	if err != nil {
+		return api.HubSessionList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// OpenHubSession opens a session into the node ref names with its code, a
+// secret: never log it.
+func (c *Client) OpenHubSession(ctx context.Context, ref, code string) (api.HubSessionResult, error) {
+	r, err := c.api.OpenHubSessionWithResponse(ctx, api.HubSessionOpen{Node: ref, Code: code})
+	if err != nil {
+		return api.HubSessionResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201, r.JSON200)
+}
+
+// CloseHubSession closes the session open of id.
+func (c *Client) CloseHubSession(ctx context.Context, id string) (api.HubSessionResult, error) {
+	r, err := c.api.CloseHubSessionWithResponse(ctx, id)
+	if err != nil {
+		return api.HubSessionResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
+// CloseHubSessions closes every session open.
+func (c *Client) CloseHubSessions(ctx context.Context) (api.HubSessionsClosed, error) {
+	r, err := c.api.CloseHubSessionsWithResponse(ctx)
+	if err != nil {
+		return api.HubSessionsClosed{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}

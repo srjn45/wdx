@@ -1,7 +1,7 @@
 ---
 title: Hub
-description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, push a project's docs to it, and set up the code that lets your other nodes into one.
-commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync, hub code setup, hub code recover, hub audit verify]
+description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, push a project's docs to it, set up the code that lets your other nodes into one, and open sessions between them.
+commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync, hub code setup, hub code recover, hub audit verify, hub session open, hub session list, hub session close]
 since: 0.5.0
 ---
 import Commands from '../../../../components/Commands.astro';
@@ -68,7 +68,7 @@ sync on, 0 changes waiting, last pushed 2 minutes ago, repository github.com/acm
 
 ## Remote access
 
-Your other nodes will open sessions into this one through the hub, end to end encrypted, so that the hub passes bytes it cannot read. A session needs a code from this node's own authenticator, typed at that moment: neither a hacked hub nor a hacked account opens the machine. This node allows none until you set up its code and turn `hub.remote_access` on; nothing runs through a session yet.
+Your other nodes will open sessions into this one through the hub, end to end encrypted, so that the hub passes bytes it cannot read. A session needs a code from this node's own authenticator, typed at that moment: neither a hacked hub nor a hacked account opens the machine. This node allows none until you set up its code and turn `hub.remote_access` on.
 
 ```console
 $ wdx hub code setup
@@ -92,7 +92,31 @@ $ wdx setting set --name hub.remote_access --value true
 - **Replacing the entry,** with `wdx hub code setup --replace`, asks first: the old entry stops working, and sessions open stay.
 - **The files** are `code.secret`, `code.step` and `recovery.hash` in `~/.wdx/hub/`, which only you may read, and `wdx hub logout` deletes them with the rest. `code.step` keeps a code from being used twice, also across a restart.
 - **`hub.remote_access`,** `false` by default, says whether sessions may come in; turning it off closes every session into the node at once. `hub.session_idle_timeout`, `1h` by default, closes one left unused. `wdx hub status` shows both, with what is missing.
-- **The node's audit chain** records what matters about access to it, each row's hash chained to the one before: the code set up, replaced or recovered, each wrong recovery key, remote access turned on or off. `wdx hub audit verify` walks it and fails with `audit_broken`, naming the first row that does not match, when one was changed, removed or inserted.
+- **The node's audit chain** records what matters about access to it, each row's hash chained to the one before: the code set up, replaced or recovered, each wrong code and recovery key, remote access turned on or off, each session opened and closed with why, and a node that showed another key than the one pinned for it. `wdx hub audit verify` walks it and fails with `audit_broken`, naming the first row that does not match, when one was changed, removed or inserted.
+
+## Sessions
+
+On another node of your account, open a session into this one with the code your authenticator shows for it. Nothing runs through a session yet: commands on another node come next.
+
+```console
+$ wdx hub session open --node desk
+code for desk: 492133
+opened a session into node desk, sess-4k2m9qx7d3rtvhn8; it closes after 1h0m0s unused
+
+$ wdx hub session list
+ID                     DIRECTION  NODE  OPENED               LAST USED            IDLE UNTIL
+sess-4k2m9qx7d3rtvhn8  outgoing   desk  2026-11-08 15:40:02  2026-11-08 15:40:02  2026-11-08 16:40:02
+
+$ wdx hub session close --all
+closed 1 sessions
+  outgoing with node desk, sess-4k2m9qx7d3rtvhn8
+```
+
+- **End to end:** the two nodes speak TLS 1.3 between their own keys inside a stream the hub passes along and cannot read. The code proves itself through CPace, bound to that TLS channel, so a hub in the middle has one guess at it per try. At the first session each node pins the other's key, and refuses any other from then on with `node_key_mismatch`: it never takes the hub's word for another node's key. `wdx hub node get` says whether a node's key is known, and shows its fingerprint to compare by eye with the one that node shows.
+- **A code opens one session,** and is never logged. Without `--code` it is asked for; `--json` needs it. With a session into that node open already, nothing is asked: `unchanged`.
+- **Wrong codes slow down** at the host, per node and in total: after one, the next is refused unread for 1 second, doubling up to 5 minutes, until a right one. Remote access is never turned off by wrong codes alone.
+- **A session ends** when closed, on either node; when unused for the host's `hub.session_idle_timeout`; when the host's daemon restarts; when `hub.remote_access` goes off there; and at `wdx hub logout`, which also forgets the keys pinned. The other node finds out at its next use, as `session_closed`.
+- **Refused** with `remote_access_off` or `code_not_set_up` on the host, `code_wrong`, `node_offline` when the node is not connected, `node_not_found`, `too_many_streams`, or `node_version_unsupported` when the two speak no version in common.
 
 ## Commands
 

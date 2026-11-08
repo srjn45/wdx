@@ -1,0 +1,250 @@
+package remote
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/tls"
+	"errors"
+	"io"
+	"time"
+
+	"filippo.io/cpace"
+
+	"github.com/srjn45/wdx/internal/authcode"
+	"github.com/srjn45/wdx/internal/hublink" //nolint:depguard // remote is the daemon's side of sessions (wdx doc HUB_TUNNEL); the plan's finish task allows it in .golangci.yml
+	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/nodeaudit"
+)
+
+// Serve answers s, a stream another node asked for, as the host: TLS with
+// this node's key, then what the client's first message asks for. It
+// closes s when done.
+func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
+	defer s.Close()
+	log := logging.FromContext(ctx).With("client_node_id", s.Node.ID)
+	ctx = logging.NewContext(ctx, log)
+	host, cert, err := r.identity()
+	if err != nil {
+		log.Info("stream refused", "err", err)
+		return
+	}
+	_ = s.SetDeadline(time.Now().Add(exchangeTimeout))
+	conn := tls.Server(s, config(cert, true))
+	defer conn.Close()
+	if err := conn.HandshakeContext(ctx); err != nil {
+		log.Info("stream refused", "reason", "tls handshake failed", "err", err)
+		return
+	}
+	cs := conn.ConnectionState()
+	clientKey, _ := peerKey(cs) // VerifyConnection checked it
+	first, err := read(conn, msgOpen, msgStream, msgClose)
+	if err != nil {
+		log.Info("stream refused", "reason", "first message unreadable", "err", err)
+		return
+	}
+	if first.Version != protocolVersion {
+		r.refuseStream(ctx, conn, versionRefusal(first.Version), "")
+		return
+	}
+	pinned, err := r.checkPin(ctx, s.Node, clientKey)
+	if e, ok := asError(err); ok {
+		r.refuseStream(ctx, conn, e, "")
+		return
+	}
+	if err != nil {
+		log.Error("node key not read", "err", err)
+		return
+	}
+	switch first.Type {
+	case msgOpen:
+		r.hostOpen(ctx, conn, host, s.Node, clientKey, cs, first)
+	case msgStream, msgClose:
+		if !pinned {
+			r.refuseStream(ctx, conn, refusal(CodeSessionClosed, "no session %s is open", first.Session), "")
+			return
+		}
+		r.hostSession(ctx, conn, s.Node, first)
+	}
+}
+
+// versionRefusal refuses a client of another protocol version, naming the
+// side to update.
+func versionRefusal(v int) *Error {
+	side := "this node, the host"
+	if v < protocolVersion {
+		side = "the client"
+	}
+	return refusal(CodeNodeVersionUnsupported, "the client speaks version %d between nodes, the host %d: update %s", v, protocolVersion, side)
+}
+
+// refuseStream sends e and logs it.
+func (r *Remote) refuseStream(ctx context.Context, w io.Writer, e *Error, reason Reason) {
+	logging.FromContext(ctx).Info("stream refused", "code", e.Code, "err", e)
+	if err := refuse(w, e, reason); err != nil {
+		logging.FromContext(ctx).Info("refusal not sent", "err", err)
+	}
+}
+
+// hostSession serves a stream of a session open: a stream, which moves
+// the idle timer on, or a close.
+func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink.NodeRef, m message) {
+	log := logging.FromContext(ctx).With("session_id", m.Session)
+	ctx = logging.NewContext(ctx, log)
+	if !r.opts.RemoteAccess() {
+		// Apply closes them all, which this may come before.
+		if _, err := r.closeWhere(ctx, ReasonRemoteAccessOff, "direction = 'incoming'"); err != nil {
+			log.Error("incoming sessions not closed", "err", err)
+			return
+		}
+	}
+	s, err := r.openSession(ctx, m.Session, Incoming)
+	if err == nil && s.Node.ID != client.ID {
+		err = refusal(CodeSessionNotFound, "the session is another node's")
+	}
+	if e, ok := asError(err); ok && e.Code == CodeSessionNotFound {
+		r.refuseStream(ctx, conn, refusal(CodeSessionClosed, "session %s is not open on this node: open one again with a code", m.Session), r.closedReason(ctx, m.Session, client.ID))
+		return
+	}
+	if err != nil {
+		log.Error("session not read", "err", err)
+		return
+	}
+	if now := r.opts.Clock.Now(); !now.Before(s.IdleExpiresAt) {
+		// Before the idle timer got to it.
+		if _, err := r.closeWhere(ctx, ReasonIdle, "id = ?", s.ID); err != nil {
+			log.Error("session not closed", "err", err)
+			return
+		}
+		r.refuseStream(ctx, conn, refusal(CodeSessionClosed, "session %s went idle: open one again with a code", s.ID), ReasonIdle)
+		return
+	}
+	if m.Type == msgClose {
+		if _, err := r.closeWhere(ctx, ReasonClosed, "id = ?", s.ID); err != nil {
+			log.Error("session not closed", "err", err)
+			return
+		}
+	} else if err := r.touch(ctx, s.ID, r.opts.Clock.Now()); err != nil {
+		log.Error("session use not recorded", "err", err)
+		return
+	}
+	if err := write(conn, message{Type: msgOK}); err != nil {
+		log.Info("stream ended", "err", err)
+		return
+	}
+	log.Info("session stream served", "kind", m.Type)
+}
+
+// closedReason is why the incoming session id of client closed, empty when
+// it does not know.
+func (r *Remote) closedReason(ctx context.Context, id, clientID string) Reason {
+	var reason Reason
+	_ = r.opts.DB.QueryRowContext(ctx, "SELECT closed_reason FROM hub_sessions WHERE id = ? AND direction = 'incoming' AND node_id = ? AND closed_reason IS NOT NULL", id, clientID).Scan(&reason)
+	return reason
+}
+
+// hostOpen opens a session for client, who sent m, open, on conn: the
+// refusals that need no work first, then CPace with the code of the step
+// the client names, then each side's MAC.
+func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client hublink.NodeRef, clientKey ed25519.PublicKey, cs tls.ConnectionState, m message) {
+	log := logging.FromContext(ctx)
+	r.opening.Lock()
+	defer r.opening.Unlock()
+	now := r.opts.Clock.Now()
+	if !r.opts.RemoteAccess() {
+		r.refuseStream(ctx, conn, refusal(CodeRemoteAccessOff, "remote access is off on this node: turn hub.remote_access on there"), "")
+		return
+	}
+	if wait := r.tooSoon(client.ID, now); wait > 0 {
+		log.Info("code refused unread", "reason", "too soon after a wrong code", "wait_ms", wait.Milliseconds())
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "too soon after a wrong code: try again in %s", wait.Round(time.Second)), "")
+		return
+	}
+	password, err := r.opts.Code.CodeAt(ctx, m.Step, now)
+	switch {
+	case errors.Is(err, authcode.ErrNotSetUp):
+		r.refuseStream(ctx, conn, refusal(CodeCodeNotSetUp, "no code is set up on this node: run wdx hub code setup there"), "")
+		return
+	case errors.Is(err, authcode.ErrStepRefused):
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code is of a time step too old or too new, or used already: check both clocks, and type a new code"), "")
+		return
+	case err != nil:
+		log.Error("code not read", "err", err)
+		return
+	}
+	ex, err := r.opts.Exporter(cs)
+	if err != nil {
+		log.Error("tls exporter not read", "err", err)
+		return
+	}
+	b := binding{exporter: ex, client: clientKey, host: host.key, step: m.Step}
+	msgB, key, err := cpace.Exchange(password, b.context(), m.CPace)
+	if err != nil {
+		log.Info("stream refused", "reason", "cpace message unreadable", "err", err)
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the session's opening message is unreadable"), "")
+		return
+	}
+	if err := write(conn, message{Type: msgExchange, CPace: msgB}); err != nil {
+		log.Info("stream ended", "err", err)
+		return
+	}
+	confirm, err := read(conn, msgConfirm)
+	if err != nil {
+		log.Info("stream ended", "reason", "no confirmation", "err", err)
+		return
+	}
+	if !hmac.Equal(confirm.MAC, b.mac(key, "client")) {
+		wait := r.wrongCode(client.ID, now)
+		log.Info("code wrong", "client_node_name", client.Name, "wait_ms", wait.Milliseconds())
+		if err := nodeaudit.AppendOne(ctx, r.opts.DB, nodeaudit.Entry{At: now, Action: nodeaudit.ActionCodeWrong, NodeID: client.ID, Details: map[string]any{"wait_ms": wait.Milliseconds()}}); err != nil {
+			log.Error("wrong code not in the audit chain", "err", err)
+		}
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code is wrong; the next try waits %s", wait), "")
+		return
+	}
+	if err := r.opts.Code.Use(ctx, m.Step); err != nil {
+		if errors.Is(err, authcode.ErrStepRefused) {
+			r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code was used already: type a new one"), "")
+		} else {
+			log.Error("code step not recorded", "err", err)
+		}
+		return
+	}
+	r.rightCode(client.ID)
+	s, err := r.opened(ctx, Session{ID: newSessionID(), Direction: Incoming, Node: client, OpenedAt: now, LastUsedAt: now}, clientKey)
+	if err != nil {
+		log.Error("session not recorded", "err", err)
+		return
+	}
+	timeout := r.opts.IdleTimeout()
+	if err := write(conn, message{Type: msgOpened, MAC: b.mac(key, "host"), Session: s.ID, IdleTimeoutMS: timeout.Milliseconds()}); err != nil {
+		log.Info("stream ended", "err", err)
+	}
+	log.Info("session opened", "session_id", s.ID, "direction", Incoming, "node_id", client.ID, "node_name", client.Name, "host_node_id", host.node.ID, "idle_timeout_ms", timeout.Milliseconds())
+	r.Kick()
+}
+
+// opened records s, pinning key for its node if none is, with its audit row
+// for an incoming one, all in one transaction.
+func (r *Remote) opened(ctx context.Context, s Session, key ed25519.PublicKey) (Session, error) {
+	tx, err := r.opts.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, err
+	}
+	defer tx.Rollback() // a no-op once committed
+	if err := pin(ctx, tx, s.Node, key, s.OpenedAt); err != nil {
+		return Session{}, err
+	}
+	if err := insertSession(ctx, tx, s); err != nil {
+		return Session{}, err
+	}
+	if s.Direction == Incoming {
+		if err := nodeaudit.Append(ctx, tx, nodeaudit.Entry{At: s.OpenedAt, Action: nodeaudit.ActionSessionOpened, NodeID: s.Node.ID, Details: map[string]any{"session_id": s.ID}}); err != nil {
+			return Session{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Session{}, err
+	}
+	return s, nil
+}
