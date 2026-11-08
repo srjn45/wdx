@@ -33,9 +33,9 @@ wdx needs **git 2.31 or later**. Everything else adds a feature when it is there
 | Program | For |
 |---|---|
 | `claude`, `codex`, `cursor-agent`, `agy` | agents running Claude Code, Codex, Cursor or Antigravity |
-| `wl-copy` or `xclip` (macOS has `pbcopy`) | copying from tide |
+| `wl-copy` or `xclip` (macOS has `pbcopy`) | copying from TIDE |
 | `gh` | landing a worktree through a GitHub PR |
-| vi, vim, nvim, nano, hx or emacs | editing files from tide |
+| vi, vim, nvim, nano, hx or emacs | editing files from TIDE |
 | Docker or Podman | `wdx observe`, the logs and metrics in Grafana |
 
 `wdx deps list` shows what is ready:
@@ -43,7 +43,7 @@ wdx needs **git 2.31 or later**. Everything else adds a feature when it is there
 ```console
 $ wdx deps list
 git           mandatory  ready  git 2.53.0     projects, terminals
-clipboard     optional   ready  wl-copy        tide copy
+clipboard     optional   ready  wl-copy        TIDE copy
 gh            optional   ready  gh 2.46.0      landing by PR
 claude        optional   ready  claude         agents: claude_code
 codex         optional   ready  codex          agents: codex

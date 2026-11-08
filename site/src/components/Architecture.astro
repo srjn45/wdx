@@ -2,10 +2,10 @@
 // How the processes fit together; the docs' architecture pages go deeper.
 ---
 <section class="sec band" id="how"><div class="wrap">
-  <div class="sec-head"><span class="eyebrow">How it works</span><h2>One daemon holds everything. Every window is a client.</h2><p class="lede">tide and the CLI talk to the daemon over a Unix socket. Each terminal and agent lives in a holder process of its own, which keeps it running when the daemon restarts or is updated.</p></div>
-  <div class="diagram"><svg viewBox="0 0 980 300" role="img" aria-label="cli, tide and scripts talk to the daemon over a Unix socket; the daemon keeps one SQLite database and starts a holder per terminal or agent; each holder owns a PTY running a shell or an AI CLI; tide attaches to holders directly.">
+  <div class="sec-head"><span class="eyebrow">How it works</span><h2>One daemon holds everything. Every window is a client.</h2><p class="lede">TIDE and the CLI talk to the daemon over a Unix socket. Each terminal and agent lives in a holder process of its own, which keeps it running when the daemon restarts or is updated.</p></div>
+  <div class="diagram"><svg viewBox="0 0 980 300" role="img" aria-label="cli, TIDE and scripts talk to the daemon over a Unix socket; the daemon keeps one SQLite database and starts a holder per terminal or agent; each holder owns a PTY running a shell or an AI CLI; TIDE attaches to holders directly.">
     <defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="hd" d="M0 0L10 5L0 10z"/></marker><marker id="hh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="hd hot" d="M0 0L10 5L0 10z"/></marker></defs>
-    <rect class="bx" x="10" y="40" width="170" height="54" rx="8"/><text x="28" y="66">wdx tide</text><text class="sm" x="28" y="84">the terminal IDE</text>
+    <rect class="bx" x="10" y="40" width="170" height="54" rx="8"/><text x="28" y="66">wdx tide</text><text class="sm" x="28" y="84">the Terminal IDE</text>
     <rect class="bx" x="10" y="122" width="170" height="54" rx="8"/><text x="28" y="148">wdx &lt;command&gt;</text><text class="sm" x="28" y="166">people · --json</text>
     <rect class="bx" x="10" y="204" width="170" height="54" rx="8"/><text x="28" y="230">scripts, agents</text><text class="sm" x="28" y="248">wdx help agents</text>
     <rect class="bx hot" x="300" y="70" width="220" height="160" rx="10"/><text x="322" y="100">daemon</text><text class="sm" x="322" y="126">API over a Unix socket</text><text class="sm" x="322" y="148">wdx.db · one SQLite file</text><text class="sm" x="322" y="170">git and worktree events</text><text class="sm" x="322" y="192">one inotify instance</text><text class="sm" x="322" y="214">metrics → OpenTelemetry</text>
@@ -19,7 +19,7 @@
     <text class="sm" x="196" y="140">unix socket</text>
     <path class="ar" d="M520 120 L616 58" marker-end="url(#h)"/><path class="ar" d="M520 150 L616 150" marker-end="url(#h)"/><path class="ar" d="M520 180 L616 242" marker-end="url(#h)"/>
     <path class="ar" d="M770 55 L826 55" marker-end="url(#h)"/><path class="ar" d="M770 150 L826 150" marker-end="url(#h)"/><path class="ar" d="M770 245 L826 245" marker-end="url(#h)"/>
-    <path class="ar" d="M95 40 C 95 6, 560 6, 640 28" stroke-dasharray="5 5" marker-end="url(#h)"/><rect class="lbl" x="292" y="6" width="262" height="18" rx="3"/><text class="sm" x="300" y="19">tide attaches to a holder directly</text>
+    <path class="ar" d="M95 40 C 95 6, 560 6, 640 28" stroke-dasharray="5 5" marker-end="url(#h)"/><rect class="lbl" x="292" y="6" width="262" height="18" rx="3"/><text class="sm" x="300" y="19">TIDE attaches to a holder directly</text>
     <text class="sm" x="560" y="296">holders outlive the daemon: update wdx, keep your agents</text>
   </svg></div>
 </div></section>

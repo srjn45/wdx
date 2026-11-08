@@ -1,6 +1,6 @@
-/* The landing page. The live tide window is the hero image; every other picture
-   of tide is drawn by the same engine (src/tide-demo), so no screenshot goes
-   stale. The tide window stays dark in both themes, as a terminal does. */
+/* The landing page. The live TIDE window is the hero image; every other picture
+   of TIDE is drawn by the same engine (src/tide-demo), so no screenshot goes
+   stale. The TIDE window stays dark in both themes, as a terminal does. */
 /* hero */
 .hero{position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;inset:-20% -10% auto;height:900px;background:radial-gradient(60% 50% at 50% 30%,var(--glow),transparent 70%);pointer-events:none}
@@ -48,7 +48,7 @@ section.sec{padding-block:72px}
 .sec-head{display:grid;gap:14px;margin-bottom:34px;max-width:760px}
 .alt{background:var(--surface);border-block:1px solid var(--line)}
 
-/* bento of tide screens */
+/* bento of TIDE screens */
 .bento{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}
 .shot{position:relative;grid-column:span 2;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--win);cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;color:inherit;font:inherit}
 .shot.wide{grid-column:span 3}

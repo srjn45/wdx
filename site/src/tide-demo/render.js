@@ -121,7 +121,7 @@ export class Render {
       lines = [[seg(' ' + t.ref, P.white, true), seg('  ' + d.status, d.status === 'approved' ? P.green : P.yellow), seg('  rev ' + d.rev + (d.labels ? '  · ' + d.labels : ''), P.dim)], []].concat(d.body.split('\n').map((l) => [seg(' ')].concat(hl(l, 'md'))));
       footer = { left: [seg(' e ', P.cyan), seg('edit  ', P.dim), seg('h ', P.cyan), seg('history  ', P.dim), seg('- ', P.cyan), seg('close tab', P.dim)], right: [seg('wdx doc get --name ' + t.ref, P.dim)] };
     } else if (t.kind === 'settings') {
-      const rows = [['tide.theme', 'dark', 'tide\'s colors: dark, light or none'], ['tide.section_order', 'awdpc', 'the sections of the project pane, in order'], ['agent.default_aca', 'claude_code', 'the AI coding agent new agents run'], ['aca.codex.enabled', 'true', 'whether new agents may run codex'], ['aca.cursor.enabled', 'true', 'whether new agents may run cursor'], ['update.channel', 'stable', 'the releases wdx update looks at'], ['log.level', 'info', 'how much the logs say']];
+      const rows = [['tide.theme', 'dark', 'TIDE\'s colors: dark, light or none'], ['tide.section_order', 'awdpc', 'the sections of the project pane, in order'], ['agent.default_aca', 'claude_code', 'the AI coding agent new agents run'], ['aca.codex.enabled', 'true', 'whether new agents may run codex'], ['aca.cursor.enabled', 'true', 'whether new agents may run cursor'], ['update.channel', 'stable', 'the releases wdx update looks at'], ['log.level', 'info', 'how much the logs say']];
       lines = [[seg(' Settings', P.white, true), seg('   from ~/.wdx/config.yaml', P.dim)], []].concat(rows.map(([k, v, d]) => [seg(' ' + k.padEnd(22), P.cyan), seg(v.padEnd(14), P.white, true), seg(d, P.dim)]));
       footer = { left: [seg(' Enter ', P.cyan), seg('change  ', P.dim), seg('r ', P.cyan), seg('reset', P.dim)], right: [] };
     } else if (t.kind === 'info') {
@@ -190,7 +190,7 @@ export class Render {
         g.segs(I.x + 3, y, [seg(on ? '› ' : '  ', P.cyan, true), seg((i + 1) + '. ' + o, on ? P.cyan : P.fg, on)], I.x + bw);
         this.hit(I.x + 2, y, I.x + bw - 1, y, () => { pr.sel = i; this.answer(a, i); });
       });
-      g.text(I.x + 2, by + h, 'Enter answer · 1-3 choose · tide marks this agent ? until you answer', P.dim);
+      g.text(I.x + 2, by + h, 'Enter answer · 1-3 choose · TIDE marks this agent ? until you answer', P.dim);
     } else {
       g.box(I.x + 1, by, bw, 3, 1, foc ? P.dim : P.line);
       g.segs(I.x + 3, by + 1, [seg('> ', P.dim), seg(a.input || ''), seg(foc && this.cursorOn() ? '█' : ' ', P.white)], I.x + bw - 1);
@@ -313,7 +313,7 @@ export class Render {
 
   drawQuit(g) {
     for (const c of g.cells) { c.ch = ' '; c.u = c.d = c.l = c.r = 0; c.lw = 0; c.bg = '#16191f'; }
-    const msg = [[seg('$ wdx tide', P.dim)], [seg('tide closed', P.white, true)], [], [seg('Every agent and terminal is still running in the daemon.', P.fg)], [seg('Start tide again and it comes back as you left it.', P.fg)], [], [seg('$ ', P.green), seg('wdx tide', P.white, true), seg(this.cursorOn() ? '█' : ' ', P.white)], [], [seg('Enter or click to start it again', P.dim)]];
+    const msg = [[seg('$ wdx tide', P.dim)], [seg('TIDE closed', P.white, true)], [], [seg('Every agent and terminal is still running in the daemon.', P.fg)], [seg('Start TIDE again and it comes back as you left it.', P.fg)], [], [seg('$ ', P.green), seg('wdx tide', P.white, true), seg(this.cursorOn() ? '█' : ' ', P.white)], [], [seg('Enter or click to start it again', P.dim)]];
     const y0 = Math.floor(this.H / 2) - 5;
     msg.forEach((l, i) => g.segs(4, y0 + i, l, this.W, '#16191f'));
     this.hits = [{ x0: 0, y0: 0, x1: this.W, y1: this.H, fn: () => this.unquit() }];

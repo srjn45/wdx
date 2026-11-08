@@ -1,4 +1,4 @@
-// The landing page's behaviour: the hero's live tide and its tour, the screens
+// The landing page's behaviour: the hero's live TIDE and its tour, the screens
 // and close-ups drawn from the demo's scenes, the dialog that opens a screen
 // live, and the install command's copy button.
 import { TideSim } from '../tide-demo/sim.js';
@@ -15,15 +15,15 @@ const SHOTS = [
   { scene: 'diff', cls: 'wide', title: 'Worktrees and diffs', text: 'What a worktree committed and what it has not, ready to land.' },
   { scene: 'code', cls: 'wide', title: 'Code', text: 'The code tree of any worktree, with git marks.' },
   { scene: 'menu', cls: '', title: 'The C-q menu', text: 'What every key does, wherever you are.' },
-  { scene: 'terminal', cls: '', title: 'Terminals', text: 'Shells below the agents, still running when tide closes.' },
+  { scene: 'terminal', cls: '', title: 'Terminals', text: 'Shells below the agents, still running when TIDE closes.' },
   { scene: 'zoom', cls: '', title: 'Zoom', text: 'C-] gives the pane you are in the whole window.' },
 ];
 
 // The close-ups: a scene and the cells cut from it (x, y, width, height).
 const CROPS = [
-  { id: 'crop-agents', scene: 'agents', cells: [0, 0, 64, 14], alt: 'tide: the Agents section, with a waiting agent in amber' },
-  { id: 'crop-diff', scene: 'diff', cells: [0, 8, 92, 18], alt: 'tide: a worktree and its diff' },
-  { id: 'crop-plan', scene: 'plan', cells: [30, 0, 90, 16], alt: 'tide: a plan of four tasks drawn as a graph' },
+  { id: 'crop-agents', scene: 'agents', cells: [0, 0, 64, 14], alt: 'TIDE: the Agents section, with a waiting agent in amber' },
+  { id: 'crop-diff', scene: 'diff', cells: [0, 8, 92, 18], alt: 'TIDE: a worktree and its diff' },
+  { id: 'crop-plan', scene: 'plan', cells: [30, 0, 90, 16], alt: 'TIDE: a plan of four tasks drawn as a graph' },
 ];
 
 for (const b of document.querySelectorAll('[data-copy]')) {
@@ -59,7 +59,7 @@ function buildScreens() {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'shot ' + s.cls;
     b.innerHTML = '<span class="try">TRY THIS SCREEN</span><span class="img"></span><span class="cap"><b></b><span></span></span>';
-    b.querySelector('.img').appendChild(image(snapshot(s.scene), 'tide: ' + s.title));
+    b.querySelector('.img').appendChild(image(snapshot(s.scene), 'TIDE: ' + s.title));
     b.querySelector('b').textContent = s.title;
     b.querySelector('.cap span').textContent = s.text;
     b.addEventListener('click', () => openScreen(s));

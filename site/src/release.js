@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
 // The newest stable release, read from the tags at build time: the page shows
-// it, the install command fetches it and the tide demo's status line names it.
+// it, the install command fetches it and the TIDE demo's status line names it.
 // A checkout without tags fails the build rather than show a stale version.
 export function latestRelease() {
   const tags = execFileSync('git', ['tag', '--list', 'v*', '--sort=-v:refname'], { encoding: 'utf8' }).split('\n');

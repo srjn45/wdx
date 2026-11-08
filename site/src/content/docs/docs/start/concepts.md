@@ -7,7 +7,7 @@ The words the rest of the docs use, and how the pieces fit.
 
 ## The daemon
 
-One background process per user, run as a systemd or launchd service. It keeps wdx's state in one SQLite file, `~/.wdx/wdx.db`, watches git for changes, and serves an API on a Unix socket, `~/.wdx/wdx.sock`. The CLI and tide are its clients. `wdx daemon status` says whether it runs.
+One background process per user, run as a systemd or launchd service. It keeps wdx's state in one SQLite file, `~/.wdx/wdx.db`, watches git for changes, and serves an API on a Unix socket, `~/.wdx/wdx.sock`. The CLI and TIDE are its clients. `wdx daemon status` says whether it runs.
 
 ## Projects
 
@@ -35,9 +35,9 @@ A **doc** is a document kept in wdx rather than in the repository, with a revisi
 
 A **plan** splits a feature into **tasks**, each with the tasks it waits for. Running it, wdx starts an agent for each task that is ready, each in a worktree of the plan's, and lands every finished task on the plan's branch. A task that fails waits for you to retry, land or skip it. A **plan of plans** runs bigger work as a series of plans, and can open them as stacked PRs.
 
-## tide
+## TIDE
 
-`wdx tide` is the terminal IDE: one window per project with its agents, worktrees, docs, plans and code on the left, what you open on the right, and terminals below. It is a client of the daemon like the CLI: quit it and everything keeps running.
+`wdx tide` is the Terminal IDE: one window per project with its agents, worktrees, docs, plans and code on the left, what you open on the right, and terminals below. It is a client of the daemon like the CLI: quit it and everything keeps running.
 
 ## The CLI, for people and scripts
 

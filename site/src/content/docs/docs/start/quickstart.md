@@ -3,7 +3,7 @@ title: Quickstart
 description: Open a project, start agents in worktrees, and watch them in tide.
 ---
 
-This takes a repository you already have to a few agents at work and tide showing them. It assumes wdx is [installed](/wdx/docs/start/install/) and at least one AI CLI is: Claude Code (`claude`) here, the default.
+This takes a repository you already have to a few agents at work and TIDE showing them. It assumes wdx is [installed](/wdx/docs/start/install/) and at least one AI CLI is: Claude Code (`claude`) here, the default.
 
 ## 1. Open a project
 
@@ -51,13 +51,13 @@ wdx agent list
 
 Each agent is `working`, `idle`, or `waiting` for you, with the question it asks. `wdx worktree list` shows what each worktree has committed and what it has not, and `wdx worktree diff --name fix-auth` the diff.
 
-## 5. Open tide
+## 5. Open TIDE
 
 ```sh
 wdx tide
 ```
 
-tide shows the project in one window: agents, worktrees, docs and plans on the left, the one you pick on the right, terminals below. Arrows and Enter move and open; `C-q` shows every key; `C-]` zooms a pane. Quit it with `C-q q`: the agents keep running, and tide comes back as you left it.
+TIDE shows the project in one window: agents, worktrees, docs and plans on the left, the one you pick on the right, terminals below. Arrows and Enter move and open; `C-q` shows every key; `C-]` zooms a pane. Quit it with `C-q q`: the agents keep running, and TIDE comes back as you left it.
 
 ## 6. Land the work
 

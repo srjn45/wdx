@@ -1,4 +1,4 @@
-// TideSim: a replica of wdx tide drawn on a canvas, laid out by tide's rules.
+// TideSim: a replica of wdx tide drawn on a canvas, laid out by TIDE's rules.
 // Nothing here runs an AI CLI, a daemon or git: everything is scripted.
 //
 //   new TideSim(host, { rows, maxW, version })  live, in a host element

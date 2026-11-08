@@ -169,7 +169,7 @@ export class Actions {
     } else if (c === 'git log --oneline') {
       out('06f103f (HEAD -> main) feat: cart and checkout skeleton', P.fg);
     } else if (c === 'ls') out('README.md  cmd  go.mod  internal  web', P.cyan);
-    else if (c === 'wdx tide') out('tide is already open: you are in it', P.dim);
+    else if (c === 'wdx tide') out('TIDE is already open: you are in it', P.dim);
     else if (c === 'go run ./cmd/server') { tm.running = 'server'; out('listening on :8080'); }
     else if (c === 'help' || c === 'wdx') { out('demo shell. try: wdx agent list · wdx worktree list · wdx agent list --json · ls · clear', P.dim); }
     else out('(demo) ' + c.split(' ')[0] + ': this shell knows only a few commands; type help', P.dim);

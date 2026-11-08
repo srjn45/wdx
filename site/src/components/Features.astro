@@ -3,10 +3,10 @@
 ---
 <section class="sec band" id="features"><div class="wrap">
   <div class="sec-head"><span class="eyebrow">Features</span><h2>Built for a day of running agents in parallel.</h2></div>
-  <div class="spot"><div class="copy"><span class="eyebrow">Agents</span><h3>Know at a glance who needs you.</h3><p>wdx reads each agent's screen, so tide can mark every row working, waiting or idle, whichever AI CLI it runs. A question from an agent turns its row amber until you answer.</p>
-    <ul><li>Agents run in the daemon: close tide, or the laptop lid, and they keep going</li><li>Child agents, restarts that resume the same session, and the context size on every row</li><li>Answer, steer or send to an agent from tide, the CLI or a script</li></ul></div>
+  <div class="spot"><div class="copy"><span class="eyebrow">Agents</span><h3>Know at a glance who needs you.</h3><p>wdx reads each agent's screen, so TIDE can mark every row working, waiting or idle, whichever AI CLI it runs. A question from an agent turns its row amber until you answer.</p>
+    <ul><li>Agents run in the daemon: close TIDE, or the laptop lid, and they keep going</li><li>Child agents, restarts that resume the same session, and the context size on every row</li><li>Answer, steer or send to an agent from TIDE, the CLI or a script</li></ul></div>
     <div class="crop" id="crop-agents"></div></div>
-  <div class="spot flip"><div class="copy"><span class="eyebrow">Worktrees</span><h3>A branch per agent, and a diff before anything lands.</h3><p>Give an agent a worktree and it works on a branch of its own. tide shows what each one has committed and what it has not, file by file, then lands it on main after your landing check, or opens a PR.</p>
+  <div class="spot flip"><div class="copy"><span class="eyebrow">Worktrees</span><h3>A branch per agent, and a diff before anything lands.</h3><p>Give an agent a worktree and it works on a branch of its own. TIDE shows what each one has committed and what it has not, file by file, then lands it on main after your landing check, or opens a PR.</p>
     <ul><li>Rebase onto main when asked; conflicts go to an agent you pick</li><li>git is read from events, never on a timer, and never writes your index</li></ul></div>
     <div class="crop" id="crop-diff"></div></div>
   <div class="spot"><div class="copy"><span class="eyebrow">Plans</span><h3>Split a feature into tasks, and let wdx run them.</h3><p>A plan is a DAG of tasks. wdx starts an agent for each task that is ready, each in a worktree of the plan's, and lands every finished task on the plan's branch. Plans of plans land as stacked PRs.</p>

@@ -1,4 +1,4 @@
-// TideSim's input: mouse, wheel and keys, mapped to tide's bindings. The
+// TideSim's input: mouse, wheel and keys, mapped to TIDE's bindings. The
 // menu is Ctrl+Space as well as C-q, as Firefox on Linux quits on C-q before
 // the page sees it. Mixed into TideSim by sim.js.
 import { P, seg } from './palette.js';

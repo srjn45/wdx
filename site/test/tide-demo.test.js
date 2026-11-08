@@ -1,4 +1,4 @@
-// The tide demo in node, with a canvas that draws nothing: each test reads the
+// The TIDE demo in node, with a canvas that draws nothing: each test reads the
 // grid of cells the demo would paint.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ const { TOUR, SCENES } = await import('../src/tide-demo/tour.js');
 
 const offscreen = () => new TideSim(null, { fixed: { W: 120, H: 34, cw: 8 }, version: '9.8.7' });
 
-test('panes are laid out as tide lays them out', () => {
+test('panes are laid out as TIDE lays them out', () => {
   const sim = offscreen();
   const lines = screen(sim);
   assert.equal(lines.length, 34);
@@ -24,7 +24,7 @@ test('panes are laid out as tide lays them out', () => {
   assert.match(lines[33], /C-q menu.*\[wdx 9\.8\.7\]/);
 });
 
-test('the left pane lists the project as tide does', () => {
+test('the left pane lists the project as TIDE does', () => {
   const text = screen(offscreen()).join('\n');
   for (const row of ['− Agents', '● reviewer', '? fix-auth', '+ checkout-flow', '− Worktrees']) assert.ok(text.includes(row), row);
 });
@@ -123,12 +123,12 @@ test('every click target and the wheel work without an error', () => {
   sim.render();
 });
 
-test('quitting tide and starting it again keeps the agents', () => {
+test('quitting TIDE and starting it again keeps the agents', () => {
   const { sim, host } = live();
   host.focus();
   const n = sim.s.agents.length;
   sim.quit(); sim.render();
-  assert.match(screen(sim).join('\n'), /tide closed/);
+  assert.match(screen(sim).join('\n'), /TIDE closed/);
   press(host, 'Enter'); sim.render();
   assert.equal(sim.s.quit, false);
   assert.equal(sim.s.agents.length, n);

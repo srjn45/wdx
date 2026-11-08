@@ -1,4 +1,4 @@
-/* The site's colours and type. Dark first, with a light theme; the tide window
+/* The site's colours and type. Dark first, with a light theme; the TIDE window
    stays dark in both, as a terminal does. data-theme on <html> overrides the
    system's choice. */
 :root {

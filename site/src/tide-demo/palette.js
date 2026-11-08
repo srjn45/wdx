@@ -1,4 +1,4 @@
-// tide's colours, as internal/style draws them in its dark theme, and the text
+// TIDE's colours, as internal/style draws them in its dark theme, and the text
 // segments every pane is drawn from.
 
 export const P = {

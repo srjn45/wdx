@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 10 100 80" role="img" aria-label="tide">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 10 100 80" role="img" aria-label="TIDE">
   <rect x="10" y="18" width="80" height="64" rx="10" fill="none" stroke="currentColor" stroke-width="8"/>
   <polyline points="30,40 44,52 30,64" fill="none" stroke="#6fd3c1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <rect x="53" y="43" width="14" height="22" rx="2" fill="currentColor"/>
