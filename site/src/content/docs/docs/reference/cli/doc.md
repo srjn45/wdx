@@ -50,6 +50,7 @@ A name the project has is refused: changing a doc's content is doc update.
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--status <status>` |  | status to create it in: wip, review, approved or rejected (default: wip) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--project-id` or `--project-name`
 
@@ -87,6 +88,8 @@ With `--json`, `result` is one of: `created`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc get
 
 Print a doc's content, or write it to a file to change.
@@ -108,6 +111,7 @@ The latest revision unless `--revision` is given, printed byte for byte, as cat 
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--revision <revision>` | `0` | the revision to get (default: the latest) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -142,6 +146,8 @@ The content alone; with `--out`, the revision written and where. With `--json`: 
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc history
 
 List a doc's revisions.
@@ -160,6 +166,7 @@ Every revision is kept until the doc is removed; doc get `--revision` reads one.
 | `--name <name>` |  | name of the doc (case-insensitive) |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -187,6 +194,8 @@ The revisions, latest first, without content. With `--json`: {"revisions": [...]
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc list
 
 List a project's docs.
@@ -205,6 +214,7 @@ Without a project flag, the docs of the project the working directory is in. Wit
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--status <status>` |  | the status a doc must be in |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--project-id` or `--project-name`
 
@@ -232,6 +242,8 @@ The docs by folder, then name, without content; an empty list when there are non
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc remove
 
 Delete a doc and all its revisions.
@@ -251,6 +263,7 @@ You are asked first, as nothing brings it back; `--yes` answers in advance, and 
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--yes` |  | remove it without asking |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -282,6 +295,8 @@ With `--json`, `result` is one of: `removed`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc rename
 
 Rename a doc.
@@ -301,6 +316,7 @@ Its id, content, revisions and status stay as they are; changing only the case o
 | `--new-name <name>` |  | the doc's new name |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--new-name` is required
 - exactly one of `--id` or `--name`
@@ -333,6 +349,8 @@ With `--json`, `result` is one of: `updated` or `unchanged`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc set
 
 Change a doc's folder, status or labels.
@@ -355,6 +373,7 @@ Its content and revision stay as they are, and no base is needed. Removing a lab
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--remove-labels <labels>` | `[]` | labels to remove, comma-separated |
 | `--status <status>` |  | status to give it: wip, review, approved or rejected |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at least one of `--folder`, `--status`, `--add-labels` or `--remove-labels`
 - exactly one of `--id` or `--name`
@@ -389,6 +408,8 @@ With `--json`, `result` is one of: `updated` or `unchanged`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc sync-to-git
 
 Write a project's docs, read-only, into a directory of its repository.
@@ -406,6 +427,7 @@ wdx doc sync-to-git [--project-id <id> | --project-name <name>] --path <dir> [fl
 | `--path <dir>` |  | dir to write into, relative to the project's main checkout |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--path` is required
 - at most one of `--project-id` or `--project-name`
@@ -437,6 +459,8 @@ With `--json`, `result` is one of: `synced`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx doc update
 
 Write a doc's content as a new revision.
@@ -457,6 +481,7 @@ wdx doc update (--id <id> | --name <name>) [--project-id <id> | --project-name <
 | `--path <file>` |  | file holding the new content, - for stdin |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--base` is required
 - `--path` is required
@@ -489,4 +514,6 @@ With `--json`, `result` is one of: `updated` or `unchanged`.
 | [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 

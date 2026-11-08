@@ -33,6 +33,7 @@ A review's comments go back to being drafts, to send again.
 | Flag | Default | Description |
 |---|---|---|
 | `--id <id>` |  | id of the message |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--id` is required
 
@@ -58,6 +59,8 @@ With `--json`, `result` is one of: `removed`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx message list
 
 List a project's messages still waiting, oldest first.
@@ -74,6 +77,7 @@ Without a project flag, the project the working directory is in.
 |---|---|---|
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--project-id` or `--project-name`
 
@@ -101,6 +105,8 @@ The messages, oldest first. With `--json`: {"messages": [...]}
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx message resend
 
 Send a message still waiting to its terminal or agent, as it is now.
@@ -116,6 +122,7 @@ It goes in whatever conversation the agent is in now.
 | Flag | Default | Description |
 |---|---|---|
 | `--id <id>` |  | id of the message |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--id` is required
 
@@ -143,4 +150,6 @@ With `--json`, `result` is one of: `queued`.
 | [`terminal_not_running`](/wdx/docs/reference/errors/#terminal_not_running) | 1 | the terminal's shell is not running |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 

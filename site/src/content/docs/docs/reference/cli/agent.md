@@ -37,6 +37,12 @@ wdx agent acas [flags]
 
 Those installed, as the login shell finds each one's program, and enabled by its aca.&lt;id&gt;.enabled setting, in the order they are offered; the default is what agent create runs with no `--aca`. wdx deps list says which are installed, and wdx setting list which are enabled.
 
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
+
 ### Examples
 
 ```sh
@@ -59,6 +65,8 @@ The AI coding agents, the default first. With `--json`: {"acas": [{"id": "claude
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent attach
 
 Show an agent full-window and talk to it, as tmux does.
@@ -78,6 +86,7 @@ The agent takes the whole window, above a status line, and what you type goes to
 | `--prefix-key <key>` | `ctrl-\` | key before attach's own keys: ctrl-&lt;letter&gt; but i and m, ctrl-\ or ctrl-] |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -112,6 +121,8 @@ With `--json`, `result` is one of: `detached` or `exited`.
 | [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 
 ## wdx agent create
 
@@ -149,6 +160,7 @@ With `--model` its AI coding agent uses that model, named as its own model flag 
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--prompt <text>` |  | text of its first task; it is submitted once it is ready |
 | `--worktree <name>` |  | name of the worktree to start in, created when there is none (default: the parent's, else the one you are in, else main) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--parent-id` or `--parent-name`
 - at most one of `--project-id` or `--project-name`
@@ -215,6 +227,8 @@ With `--json`, `result` is one of: `created`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent get
 
 Show an agent.
@@ -233,6 +247,7 @@ In any state, with why it failed when it did. Without a project flag, `--name` i
 | `--name <name>` |  | name of the agent (case-insensitive) |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -260,6 +275,8 @@ The agent. With `--json`: {"agent": {...}}
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent list
 
 List agents.
@@ -277,6 +294,7 @@ Without a flag, the agents of the project the working directory is in. Every sta
 | `--all` |  | list the agents of every project |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--all` or `--project-id`
 - at most one of `--all` or `--project-name`
@@ -305,6 +323,8 @@ The agents by project, then name, each with its children; an empty list when the
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent models
 
 List the models agent create `--model` takes.
@@ -320,6 +340,7 @@ The models of an AI coding agent new agents can run, as it says: `--aca`'s, or b
 | Flag | Default | Description |
 |---|---|---|
 | `--aca <id>` |  | id of the AI coding agent (default: the first installed and enabled) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 ### Examples
 
@@ -348,6 +369,8 @@ The AI coding agent's models, in its order. With `--json`: {"aca": "claude\_code
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent remove
 
 Delete an agent.
@@ -370,6 +393,7 @@ An agent with children stays in the list as removed, its children untouched, unt
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--stop-running` |  | if it is running, stop it without asking |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--stop-running` or `--cancel`
@@ -403,6 +427,8 @@ With `--json`, `result` is one of: `removed`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent rename
 
 Give an agent a new name.
@@ -422,6 +448,7 @@ It goes on running, in the same session. Names have letters, numbers and - only,
 | `--new-name <name>` |  | name to give the agent |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--new-name` is required
 - exactly one of `--id` or `--name`
@@ -455,6 +482,8 @@ With `--json`, `result` is one of: `renamed`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent restart
 
 Start an agent again in a new session, which reads its history in brief.
@@ -474,6 +503,7 @@ agent start goes on with the same conversation, whatever its size. This stops th
 | `--name <name>` |  | name of the agent (case-insensitive) |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -509,6 +539,8 @@ With `--json`, `result` is one of: `restarted`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent send
 
 Give a running agent a message, submitted once it can take it.
@@ -533,6 +565,7 @@ A message whose first non-blank character is ! is given to the model as \!, neve
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--prompt <text>` |  | text to give it; it is submitted |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--prompt` is required
 - exactly one of `--id` or `--name`
@@ -569,6 +602,8 @@ With `--json`, `result` is one of: `queued`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent start
 
 Start an agent that exited, failed or was lost, in the same session.
@@ -587,6 +622,7 @@ The agent keeps its id, name, dir and session, so its conversation comes back, i
 | `--name <name>` |  | name of the agent (case-insensitive) |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--project-id` or `--project-name`
@@ -622,6 +658,8 @@ With `--json`, `result` is one of: `started`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx agent transcript
 
 Print an agent's conversation as text.
@@ -647,6 +685,7 @@ wdx keeps its own copy of the conversation, which only grows: it goes on across 
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--tail <lines>` | `1000` | the last lines |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - exactly one of `--id` or `--name`
 - at most one of `--brief` or `--tail`
@@ -692,4 +731,6 @@ The lines, oldest first, as Markdown, or the file's path with `--path`, or the b
 | [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 

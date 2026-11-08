@@ -35,6 +35,48 @@ const (
 	JSONRequires = "jsonRequires"
 )
 
+// flagErrors is the annotation of a flag that holds the error codes every
+// command with the flag can return when it is given, besides its own.
+const flagErrors = "errors"
+
+// FlagErrors declares the codes every command that has the flag name of cmd,
+// its own or inherited, can return when the flag is given: declared once on
+// the flag rather than in each command's Errors.
+func FlagErrors[C ~string](cmd *cobra.Command, name string, codes ...C) {
+	flag := cmd.Flag(name)
+	if flag == nil {
+		panic(fmt.Sprintf("%s has no flag --%s to declare errors on", cmd.CommandPath(), name))
+	}
+	if flag.Annotations == nil {
+		flag.Annotations = map[string][]string{}
+	}
+	for _, c := range codes {
+		flag.Annotations[flagErrors] = append(flag.Annotations[flagErrors], string(c))
+	}
+	slices.Sort(flag.Annotations[flagErrors])
+}
+
+// FlagErrorList is, for each flag of cmd that declares errors, its own or
+// inherited, the codes it declares, by flag name.
+func FlagErrorList(cmd *cobra.Command) []FlagCodes {
+	var list []FlagCodes
+	visit := func(f *pflag.Flag) {
+		if codes := f.Annotations[flagErrors]; len(codes) > 0 && !f.Hidden {
+			list = append(list, FlagCodes{Flag: f.Name, Codes: slices.Clone(codes)})
+		}
+	}
+	cmd.LocalFlags().VisitAll(visit)
+	cmd.InheritedFlags().VisitAll(visit)
+	slices.SortFunc(list, func(a, b FlagCodes) int { return strings.Compare(a.Flag, b.Flag) })
+	return list
+}
+
+// FlagCodes are the error codes a flag declares.
+type FlagCodes struct {
+	Flag  string
+	Codes []string
+}
+
 // setHelp makes --help print the command's help as text, or as JSON with
 // --json, and <program> help print a command's help or one of topics.
 func setHelp(root *cobra.Command, topics []Topic) {
@@ -134,6 +176,9 @@ type commandView struct {
 	Output      *string          `json:"output"`
 	Results     []string         `json:"results"`
 	Errors      []codeView       `json:"errors"`
+	// FlagErrors are the codes a command can return besides Errors when a
+	// flag is given, declared on the flag.
+	FlagErrors []flagErrorsView `json:"flag_errors"`
 
 	long    string // the description below the summary; "" when there is none
 	root    bool
@@ -175,6 +220,11 @@ type topicSummary struct {
 	Summary string `json:"summary"`
 }
 
+type flagErrorsView struct {
+	Flag   string     `json:"flag"`
+	Errors []codeView `json:"errors"`
+}
+
 type codeView struct {
 	Code        string `json:"code"`
 	Exit        int    `json:"exit"`
@@ -194,6 +244,7 @@ func newCommandView(cmd *cobra.Command, topics []Topic) commandView {
 		Commands:    []commandSummary{},
 		Results:     AnnotationList(cmd, Results),
 		Errors:      []codeView{},
+		FlagErrors:  []flagErrorsView{},
 		long:        cmd.Long,
 		root:        !cmd.HasParent(),
 		program:     cmd.Root().Name(),
@@ -201,15 +252,18 @@ func newCommandView(cmd *cobra.Command, topics []Topic) commandView {
 	if cmd.HasAvailableSubCommands() {
 		v.Usage = cmd.CommandPath() + " <command> [flags]"
 	}
-	addFlags := func(flags *pflag.FlagSet, global bool) {
+	// Global are the root's flags, which every command has; a group's
+	// persistent flag is listed with the command's own.
+	rootFlags := cmd.Root().PersistentFlags()
+	addFlags := func(flags *pflag.FlagSet) {
 		flags.VisitAll(func(f *pflag.Flag) {
 			if !f.Hidden {
-				v.Flags = append(v.Flags, newFlagView(f, global))
+				v.Flags = append(v.Flags, newFlagView(f, rootFlags.Lookup(f.Name) == f))
 			}
 		})
 	}
-	addFlags(cmd.LocalFlags(), false)
-	addFlags(cmd.InheritedFlags(), true)
+	addFlags(cmd.LocalFlags())
+	addFlags(cmd.InheritedFlags())
 	for _, sub := range cmd.Commands() {
 		if sub.IsAvailableCommand() {
 			v.Commands = append(v.Commands, commandSummary{Name: sub.Name(), Summary: sub.Short})
@@ -225,12 +279,22 @@ func newCommandView(cmd *cobra.Command, topics []Topic) commandView {
 		v.Output = &note
 	}
 	codes := InvocationOf(cmd).Env.Codes
-	for _, code := range ErrorList(cmd) {
+	view := func(code string) codeView {
 		var info CodeInfo
 		if codes != nil {
 			info, _ = codes(code)
 		}
-		v.Errors = append(v.Errors, codeView{Code: code, Exit: info.Exit, Description: info.Description})
+		return codeView{Code: code, Exit: info.Exit, Description: info.Description}
+	}
+	for _, code := range ErrorList(cmd) {
+		v.Errors = append(v.Errors, view(code))
+	}
+	for _, f := range FlagErrorList(cmd) {
+		fv := flagErrorsView{Flag: f.Flag, Errors: []codeView{}}
+		for _, code := range f.Codes {
+			fv.Errors = append(fv.Errors, view(code))
+		}
+		v.FlagErrors = append(v.FlagErrors, fv)
 	}
 	return v
 }
@@ -517,13 +581,19 @@ func (v commandView) text(w io.Writer, st style.Style) {
 	}
 
 	if len(v.Commands) == 0 {
-		section("Errors")
-		var table style.Table
-		table.Row("  "+st.Heading("CODE"), st.Heading("EXIT"), st.Heading("MEANING"))
-		for _, e := range v.Errors {
-			table.Row("  "+st.Name(e.Code), st.Muted(fmt.Sprint(e.Exit)), e.Description)
+		codeTable := func(title string, errors []codeView) {
+			section(title)
+			var table style.Table
+			table.Row("  "+st.Heading("CODE"), st.Heading("EXIT"), st.Heading("MEANING"))
+			for _, e := range errors {
+				table.Row("  "+st.Name(e.Code), st.Muted(fmt.Sprint(e.Exit)), e.Description)
+			}
+			table.Write(w)
 		}
-		table.Write(w)
+		codeTable("Errors", v.Errors)
+		for _, f := range v.FlagErrors {
+			codeTable("With --"+f.Flag, f.Errors)
+		}
 	}
 
 	if v.root {

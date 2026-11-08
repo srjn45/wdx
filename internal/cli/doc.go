@@ -726,7 +726,7 @@ func completionDocs(cmd *cobra.Command) []api.Doc {
 	scope.name, _ = cmd.Flags().GetString("project-name")
 	var dir string
 	if !scope.given() {
-		dir = envOf(cmd).WorkDir
+		dir = completionDir(cmd)
 	}
 	list, err := clientOf(cmd).ListDocs(ctx, scope.ref(), dir, nil, "")
 	if err != nil {

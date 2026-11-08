@@ -55,7 +55,7 @@ func completeTerminals(key string) cobra.CompletionFunc {
 		scope.name, _ = cmd.Flags().GetString("project-name")
 		var dir string
 		if !scope.given() {
-			dir = envOf(cmd).WorkDir
+			dir = completionDir(cmd)
 		}
 		list, err := clientOf(cmd).ListTerminals(ctx, scope.ref(), dir)
 		if err != nil {
@@ -96,7 +96,7 @@ func completeAgentsWhere(key string, keep func(api.Agent) bool) cobra.Completion
 		scope.name, _ = cmd.Flags().GetString("project-name")
 		var dir string
 		if !scope.given() {
-			dir = envOf(cmd).WorkDir
+			dir = completionDir(cmd)
 		}
 		list, err := clientOf(cmd).ListAgents(ctx, scope.ref(), dir)
 		if err != nil {

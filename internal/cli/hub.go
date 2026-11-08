@@ -681,7 +681,7 @@ func completeHubNodes(key string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 		defer cancel()
-		list, err := clientOf(cmd).HubNodes(ctx)
+		list, err := localClientOf(cmd).HubNodes(ctx)
 		if err != nil {
 			logging.FromContext(cmd.Context()).Info("no hub nodes to complete", "err", err)
 			return nil, cobra.ShellCompDirectiveNoFileComp

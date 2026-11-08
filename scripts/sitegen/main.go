@@ -172,7 +172,11 @@ type command struct {
 	Output      string     `json:"output"`
 	Results     []string   `json:"results"`
 	Errors      []code     `json:"errors"`
-	Commands    []struct {
+	FlagErrors  []struct {
+		Flag   string `json:"flag"`
+		Errors []code `json:"errors"`
+	} `json:"flag_errors"`
+	Commands []struct {
 		Name    string `json:"name"`
 		Summary string `json:"summary"`
 	} `json:"commands"`
@@ -389,6 +393,14 @@ func writeCommand(b *strings.Builder, c command, heading bool) {
 		}
 		b.WriteString("\n")
 	}
+	// The same on every command with the flag: one line each.
+	for _, f := range c.FlagErrors {
+		links := make([]string, len(f.Errors))
+		for i, e := range f.Errors {
+			links[i] = fmt.Sprintf("[`%s`](/wdx/docs/reference/errors/#%s)", e.Code, slug(e.Code))
+		}
+		fmt.Fprintf(b, "With `--%s`, also: %s.\n\n", f.Flag, strings.Join(links, ", "))
+	}
 }
 
 // ownFlags leaves out the flags every command takes, listed once on the index.
@@ -514,10 +526,18 @@ func jsonPage(t topic) string {
 // commands that can return it.
 func errorsPage(tops []command) string {
 	returnedBy := map[string][]string{}
+	withFlag := map[string][]string{} // the flags whose commands return a code, given
 	for _, top := range tops {
 		for _, c := range leavesOf(top) {
 			for _, e := range c.Errors {
 				returnedBy[e.Code] = append(returnedBy[e.Code], c.Path)
+			}
+			for _, f := range c.FlagErrors {
+				for _, e := range f.Errors {
+					if !slices.Contains(withFlag[e.Code], f.Flag) {
+						withFlag[e.Code] = append(withFlag[e.Code], f.Flag)
+					}
+				}
 			}
 		}
 	}
@@ -539,6 +559,9 @@ func errorsPage(tops []command) string {
 				links[i] = fmt.Sprintf("[`%s`](%s)", p, commandLink(p))
 			}
 			b.WriteString(" · returned by " + strings.Join(links, ", "))
+		}
+		for _, f := range withFlag[c] {
+			fmt.Fprintf(&b, " · and by every command with `--%s`", f)
 		}
 		b.WriteString("\n\n")
 	}

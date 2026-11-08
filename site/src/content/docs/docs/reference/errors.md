@@ -134,13 +134,13 @@ Exit 1 · HTTP 409 · returned by [`wdx hub code setup`](/wdx/docs/reference/cli
 
 No authenticator code is set up on the node.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## code_wrong
 
 The code is wrong, used already, or came too soon after a wrong one.
 
-Exit 1 · HTTP 403 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 403 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## connection_lost
 
@@ -152,7 +152,7 @@ Exit 3 · HTTP 503 · returned by [`wdx agent attach`](/wdx/docs/reference/cli/a
 
 The daemon is not running or not answering.
 
-Exit 3 · HTTP 503 · returned by [`wdx agent acas`](/wdx/docs/reference/cli/agent/#wdx-agent-acas), [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx agent create`](/wdx/docs/reference/cli/agent/#wdx-agent-create), [`wdx agent get`](/wdx/docs/reference/cli/agent/#wdx-agent-get), [`wdx agent list`](/wdx/docs/reference/cli/agent/#wdx-agent-list), [`wdx agent models`](/wdx/docs/reference/cli/agent/#wdx-agent-models), [`wdx agent remove`](/wdx/docs/reference/cli/agent/#wdx-agent-remove), [`wdx agent rename`](/wdx/docs/reference/cli/agent/#wdx-agent-rename), [`wdx agent restart`](/wdx/docs/reference/cli/agent/#wdx-agent-restart), [`wdx agent send`](/wdx/docs/reference/cli/agent/#wdx-agent-send), [`wdx agent start`](/wdx/docs/reference/cli/agent/#wdx-agent-start), [`wdx agent transcript`](/wdx/docs/reference/cli/agent/#wdx-agent-transcript), [`wdx daemon restart`](/wdx/docs/reference/cli/daemon/#wdx-daemon-restart), [`wdx daemon start`](/wdx/docs/reference/cli/daemon/#wdx-daemon-start), [`wdx doc create`](/wdx/docs/reference/cli/doc/#wdx-doc-create), [`wdx doc get`](/wdx/docs/reference/cli/doc/#wdx-doc-get), [`wdx doc history`](/wdx/docs/reference/cli/doc/#wdx-doc-history), [`wdx doc list`](/wdx/docs/reference/cli/doc/#wdx-doc-list), [`wdx doc remove`](/wdx/docs/reference/cli/doc/#wdx-doc-remove), [`wdx doc rename`](/wdx/docs/reference/cli/doc/#wdx-doc-rename), [`wdx doc set`](/wdx/docs/reference/cli/doc/#wdx-doc-set), [`wdx doc sync-to-git`](/wdx/docs/reference/cli/doc/#wdx-doc-sync-to-git), [`wdx doc update`](/wdx/docs/reference/cli/doc/#wdx-doc-update), [`wdx hub audit verify`](/wdx/docs/reference/cli/hub/#wdx-hub-audit-verify), [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub logout`](/wdx/docs/reference/cli/hub/#wdx-hub-logout), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session close`](/wdx/docs/reference/cli/hub/#wdx-hub-session-close), [`wdx hub session list`](/wdx/docs/reference/cli/hub/#wdx-hub-session-list), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open), [`wdx hub status`](/wdx/docs/reference/cli/hub/#wdx-hub-status), [`wdx message discard`](/wdx/docs/reference/cli/message/#wdx-message-discard), [`wdx message list`](/wdx/docs/reference/cli/message/#wdx-message-list), [`wdx message resend`](/wdx/docs/reference/cli/message/#wdx-message-resend), [`wdx plan archive`](/wdx/docs/reference/cli/plan/#wdx-plan-archive), [`wdx plan cancel`](/wdx/docs/reference/cli/plan/#wdx-plan-cancel), [`wdx plan copy`](/wdx/docs/reference/cli/plan/#wdx-plan-copy), [`wdx plan create`](/wdx/docs/reference/cli/plan/#wdx-plan-create), [`wdx plan get`](/wdx/docs/reference/cli/plan/#wdx-plan-get), [`wdx plan history`](/wdx/docs/reference/cli/plan/#wdx-plan-history), [`wdx plan list`](/wdx/docs/reference/cli/plan/#wdx-plan-list), [`wdx plan pause`](/wdx/docs/reference/cli/plan/#wdx-plan-pause), [`wdx plan remove`](/wdx/docs/reference/cli/plan/#wdx-plan-remove), [`wdx plan rename`](/wdx/docs/reference/cli/plan/#wdx-plan-rename), [`wdx plan resume`](/wdx/docs/reference/cli/plan/#wdx-plan-resume), [`wdx plan run`](/wdx/docs/reference/cli/plan/#wdx-plan-run), [`wdx plan set`](/wdx/docs/reference/cli/plan/#wdx-plan-set), [`wdx plan status`](/wdx/docs/reference/cli/plan/#wdx-plan-status), [`wdx plan task done`](/wdx/docs/reference/cli/plan/#wdx-plan-task-done), [`wdx plan task get`](/wdx/docs/reference/cli/plan/#wdx-plan-task-get), [`wdx plan task land`](/wdx/docs/reference/cli/plan/#wdx-plan-task-land), [`wdx plan task retry`](/wdx/docs/reference/cli/plan/#wdx-plan-task-retry), [`wdx plan task skip`](/wdx/docs/reference/cli/plan/#wdx-plan-task-skip), [`wdx plan unarchive`](/wdx/docs/reference/cli/plan/#wdx-plan-unarchive), [`wdx plan update`](/wdx/docs/reference/cli/plan/#wdx-plan-update), [`wdx project close`](/wdx/docs/reference/cli/project/#wdx-project-close), [`wdx project create`](/wdx/docs/reference/cli/project/#wdx-project-create), [`wdx project get`](/wdx/docs/reference/cli/project/#wdx-project-get), [`wdx project landing`](/wdx/docs/reference/cli/project/#wdx-project-landing), [`wdx project list`](/wdx/docs/reference/cli/project/#wdx-project-list), [`wdx project open`](/wdx/docs/reference/cli/project/#wdx-project-open), [`wdx project remove`](/wdx/docs/reference/cli/project/#wdx-project-remove), [`wdx project sync`](/wdx/docs/reference/cli/project/#wdx-project-sync), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach), [`wdx terminal create`](/wdx/docs/reference/cli/terminal/#wdx-terminal-create), [`wdx terminal get`](/wdx/docs/reference/cli/terminal/#wdx-terminal-get), [`wdx terminal history`](/wdx/docs/reference/cli/terminal/#wdx-terminal-history), [`wdx terminal list`](/wdx/docs/reference/cli/terminal/#wdx-terminal-list), [`wdx terminal remove`](/wdx/docs/reference/cli/terminal/#wdx-terminal-remove), [`wdx terminal send`](/wdx/docs/reference/cli/terminal/#wdx-terminal-send), [`wdx terminal start`](/wdx/docs/reference/cli/terminal/#wdx-terminal-start), [`wdx usage`](/wdx/docs/reference/cli/usage/), [`wdx worktree comments`](/wdx/docs/reference/cli/worktree/#wdx-worktree-comments), [`wdx worktree diff`](/wdx/docs/reference/cli/worktree/#wdx-worktree-diff), [`wdx worktree land`](/wdx/docs/reference/cli/worktree/#wdx-worktree-land), [`wdx worktree list`](/wdx/docs/reference/cli/worktree/#wdx-worktree-list), [`wdx worktree rebase`](/wdx/docs/reference/cli/worktree/#wdx-worktree-rebase), [`wdx worktree remove`](/wdx/docs/reference/cli/worktree/#wdx-worktree-remove)
+Exit 3 · HTTP 503 · returned by [`wdx agent acas`](/wdx/docs/reference/cli/agent/#wdx-agent-acas), [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx agent create`](/wdx/docs/reference/cli/agent/#wdx-agent-create), [`wdx agent get`](/wdx/docs/reference/cli/agent/#wdx-agent-get), [`wdx agent list`](/wdx/docs/reference/cli/agent/#wdx-agent-list), [`wdx agent models`](/wdx/docs/reference/cli/agent/#wdx-agent-models), [`wdx agent remove`](/wdx/docs/reference/cli/agent/#wdx-agent-remove), [`wdx agent rename`](/wdx/docs/reference/cli/agent/#wdx-agent-rename), [`wdx agent restart`](/wdx/docs/reference/cli/agent/#wdx-agent-restart), [`wdx agent send`](/wdx/docs/reference/cli/agent/#wdx-agent-send), [`wdx agent start`](/wdx/docs/reference/cli/agent/#wdx-agent-start), [`wdx agent transcript`](/wdx/docs/reference/cli/agent/#wdx-agent-transcript), [`wdx daemon restart`](/wdx/docs/reference/cli/daemon/#wdx-daemon-restart), [`wdx daemon start`](/wdx/docs/reference/cli/daemon/#wdx-daemon-start), [`wdx doc create`](/wdx/docs/reference/cli/doc/#wdx-doc-create), [`wdx doc get`](/wdx/docs/reference/cli/doc/#wdx-doc-get), [`wdx doc history`](/wdx/docs/reference/cli/doc/#wdx-doc-history), [`wdx doc list`](/wdx/docs/reference/cli/doc/#wdx-doc-list), [`wdx doc remove`](/wdx/docs/reference/cli/doc/#wdx-doc-remove), [`wdx doc rename`](/wdx/docs/reference/cli/doc/#wdx-doc-rename), [`wdx doc set`](/wdx/docs/reference/cli/doc/#wdx-doc-set), [`wdx doc sync-to-git`](/wdx/docs/reference/cli/doc/#wdx-doc-sync-to-git), [`wdx doc update`](/wdx/docs/reference/cli/doc/#wdx-doc-update), [`wdx hub audit verify`](/wdx/docs/reference/cli/hub/#wdx-hub-audit-verify), [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub logout`](/wdx/docs/reference/cli/hub/#wdx-hub-logout), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session close`](/wdx/docs/reference/cli/hub/#wdx-hub-session-close), [`wdx hub session list`](/wdx/docs/reference/cli/hub/#wdx-hub-session-list), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open), [`wdx hub status`](/wdx/docs/reference/cli/hub/#wdx-hub-status), [`wdx message discard`](/wdx/docs/reference/cli/message/#wdx-message-discard), [`wdx message list`](/wdx/docs/reference/cli/message/#wdx-message-list), [`wdx message resend`](/wdx/docs/reference/cli/message/#wdx-message-resend), [`wdx plan archive`](/wdx/docs/reference/cli/plan/#wdx-plan-archive), [`wdx plan cancel`](/wdx/docs/reference/cli/plan/#wdx-plan-cancel), [`wdx plan copy`](/wdx/docs/reference/cli/plan/#wdx-plan-copy), [`wdx plan create`](/wdx/docs/reference/cli/plan/#wdx-plan-create), [`wdx plan get`](/wdx/docs/reference/cli/plan/#wdx-plan-get), [`wdx plan history`](/wdx/docs/reference/cli/plan/#wdx-plan-history), [`wdx plan list`](/wdx/docs/reference/cli/plan/#wdx-plan-list), [`wdx plan pause`](/wdx/docs/reference/cli/plan/#wdx-plan-pause), [`wdx plan remove`](/wdx/docs/reference/cli/plan/#wdx-plan-remove), [`wdx plan rename`](/wdx/docs/reference/cli/plan/#wdx-plan-rename), [`wdx plan resume`](/wdx/docs/reference/cli/plan/#wdx-plan-resume), [`wdx plan run`](/wdx/docs/reference/cli/plan/#wdx-plan-run), [`wdx plan set`](/wdx/docs/reference/cli/plan/#wdx-plan-set), [`wdx plan status`](/wdx/docs/reference/cli/plan/#wdx-plan-status), [`wdx plan task done`](/wdx/docs/reference/cli/plan/#wdx-plan-task-done), [`wdx plan task get`](/wdx/docs/reference/cli/plan/#wdx-plan-task-get), [`wdx plan task land`](/wdx/docs/reference/cli/plan/#wdx-plan-task-land), [`wdx plan task retry`](/wdx/docs/reference/cli/plan/#wdx-plan-task-retry), [`wdx plan task skip`](/wdx/docs/reference/cli/plan/#wdx-plan-task-skip), [`wdx plan unarchive`](/wdx/docs/reference/cli/plan/#wdx-plan-unarchive), [`wdx plan update`](/wdx/docs/reference/cli/plan/#wdx-plan-update), [`wdx project close`](/wdx/docs/reference/cli/project/#wdx-project-close), [`wdx project create`](/wdx/docs/reference/cli/project/#wdx-project-create), [`wdx project get`](/wdx/docs/reference/cli/project/#wdx-project-get), [`wdx project landing`](/wdx/docs/reference/cli/project/#wdx-project-landing), [`wdx project list`](/wdx/docs/reference/cli/project/#wdx-project-list), [`wdx project open`](/wdx/docs/reference/cli/project/#wdx-project-open), [`wdx project remove`](/wdx/docs/reference/cli/project/#wdx-project-remove), [`wdx project sync`](/wdx/docs/reference/cli/project/#wdx-project-sync), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach), [`wdx terminal create`](/wdx/docs/reference/cli/terminal/#wdx-terminal-create), [`wdx terminal get`](/wdx/docs/reference/cli/terminal/#wdx-terminal-get), [`wdx terminal history`](/wdx/docs/reference/cli/terminal/#wdx-terminal-history), [`wdx terminal list`](/wdx/docs/reference/cli/terminal/#wdx-terminal-list), [`wdx terminal remove`](/wdx/docs/reference/cli/terminal/#wdx-terminal-remove), [`wdx terminal send`](/wdx/docs/reference/cli/terminal/#wdx-terminal-send), [`wdx terminal start`](/wdx/docs/reference/cli/terminal/#wdx-terminal-start), [`wdx usage`](/wdx/docs/reference/cli/usage/), [`wdx worktree comments`](/wdx/docs/reference/cli/worktree/#wdx-worktree-comments), [`wdx worktree diff`](/wdx/docs/reference/cli/worktree/#wdx-worktree-diff), [`wdx worktree land`](/wdx/docs/reference/cli/worktree/#wdx-worktree-land), [`wdx worktree list`](/wdx/docs/reference/cli/worktree/#wdx-worktree-list), [`wdx worktree rebase`](/wdx/docs/reference/cli/worktree/#wdx-worktree-rebase), [`wdx worktree remove`](/wdx/docs/reference/cli/worktree/#wdx-worktree-remove) · and by every command with `--node`
 
 ## dependency_missing
 
@@ -194,13 +194,13 @@ Exit 1 · HTTP 409 · returned by [`wdx worktree land`](/wdx/docs/reference/cli/
 
 The hub cannot be reached, or did not answer as a hub does.
 
-Exit 3 · HTTP 502 · returned by [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 3 · HTTP 502 · returned by [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## hub_version_unsupported
 
 The hub serves no version of the API this wdx speaks.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub login`](/wdx/docs/reference/cli/hub/#wdx-hub-login), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## install_failed
 
@@ -308,25 +308,25 @@ Exit 1 · HTTP 409 · returned by [`wdx hub node remove`](/wdx/docs/reference/cl
 
 The node showed a key other than the one pinned for it in an earlier session.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## node_not_found
 
 The account has no node of this name or id.
 
-Exit 1 · HTTP 404 · returned by [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 404 · returned by [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## node_offline
 
 The node is not connected to the hub, or did not answer in time.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## node_version_unsupported
 
 The two nodes speak no version in common between them: update the older.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## not_committed
 
@@ -350,7 +350,7 @@ Exit 1 · HTTP 422 · returned by [`wdx project open`](/wdx/docs/reference/cli/p
 
 This node is not logged in to a hub, or the hub cut it off.
 
-Exit 1 · HTTP 409 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub logout`](/wdx/docs/reference/cli/hub/#wdx-hub-logout), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 409 · returned by [`wdx hub code recover`](/wdx/docs/reference/cli/hub/#wdx-hub-code-recover), [`wdx hub code setup`](/wdx/docs/reference/cli/hub/#wdx-hub-code-setup), [`wdx hub logout`](/wdx/docs/reference/cli/hub/#wdx-hub-logout), [`wdx hub node get`](/wdx/docs/reference/cli/hub/#wdx-hub-node-get), [`wdx hub node list`](/wdx/docs/reference/cli/hub/#wdx-hub-node-list), [`wdx hub node remove`](/wdx/docs/reference/cli/hub/#wdx-hub-node-remove), [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## nothing_to_land
 
@@ -470,13 +470,13 @@ Exit 1 · HTTP 422
 
 The node allows no sessions: hub.remote_access is off there.
 
-Exit 1 · HTTP 403 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 403 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## remote_not_for_agents
 
 An agent cannot run commands on another node.
 
-Exit 1 · HTTP 403
+Exit 1 · HTTP 403 · and by every command with `--node`
 
 ## repo_exists
 
@@ -494,7 +494,7 @@ Exit 1 · HTTP 409 · returned by [`wdx update`](/wdx/docs/reference/cli/update/
 
 The node does not serve this through a session, or does not have it.
 
-Exit 1 · HTTP 403
+Exit 1 · HTTP 403 · and by every command with `--node`
 
 ## runtime_failed
 
@@ -518,7 +518,7 @@ Exit 3 · HTTP 500 · returned by [`wdx agent send`](/wdx/docs/reference/cli/age
 
 The host closed the session: it went idle, its daemon restarted, remote access went off, or it was closed.
 
-Exit 1 · HTTP 409
+Exit 1 · HTTP 409 · and by every command with `--node`
 
 ## session_not_found
 
@@ -530,7 +530,7 @@ Exit 1 · HTTP 404 · returned by [`wdx hub session close`](/wdx/docs/reference/
 
 No session into the node is open: open one with its code.
 
-Exit 1 · HTTP 409
+Exit 1 · HTTP 409 · and by every command with `--node`
 
 ## settings_invalid
 
@@ -572,7 +572,7 @@ Exit 1 · HTTP 409 · returned by [`wdx tide`](/wdx/docs/reference/cli/tide/)
 
 The account has as many streams open through the hub as it may.
 
-Exit 1 · HTTP 429 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open)
+Exit 1 · HTTP 429 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## unsupported_system
 

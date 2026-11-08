@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -31,6 +33,12 @@ type Options struct {
 	// VersionMismatch is called once when the daemon's version differs from
 	// this binary's.
 	VersionMismatch func(daemonVersion string)
+	// Dial, when set, opens each connection in place of Socket: a stream to
+	// Node, another node's daemon, which the client speaks to through it.
+	// Its errors come back as they are, so they may carry their own hints.
+	Dial func(ctx context.Context) (net.Conn, error)
+	// Node is the node Dial reaches, for the log and the problems.
+	Node string
 }
 
 // ProblemError is an error the daemon returned.
@@ -52,13 +60,33 @@ func (e *UnavailableError) Error() string {
 
 func (e *UnavailableError) Unwrap() error { return e.Err }
 
-// New returns a client of the daemon listening on opts.Socket.
+// nodeIdleConn is how long a stream to another node stays open unused
+// between two requests: less than the host's session server waits for the
+// next request, so that a request never goes on a stream the host is closing.
+const nodeIdleConn = 5 * time.Second
+
+// New returns a client of the daemon listening on opts.Socket, or of the
+// node opts.Dial reaches.
 func New(opts Options) *Client {
-	d := &doer{opts: opts, http: &http.Client{Transport: &http.Transport{
+	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", opts.Socket)
 		},
-	}}}
+	}
+	if opts.Dial != nil {
+		// One stream at a time: a request waits for the one in use rather
+		// than open another, each costing a handshake between the nodes.
+		transport = &http.Transport{MaxConnsPerHost: 1, IdleConnTimeout: nodeIdleConn,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				conn, err := opts.Dial(ctx)
+				if err != nil {
+					return nil, &dialError{err}
+				}
+				return conn, nil
+			},
+		}
+	}
+	d := &doer{opts: opts, http: &http.Client{Transport: transport}}
 	// The host is ignored: every request goes to the socket.
 	c, err := api.NewClientWithResponses("http://"+identity.Name, api.WithHTTPClient(d))
 	if err != nil {
@@ -73,13 +101,28 @@ func New(opts Options) *Client {
 // became of every one.
 func (c *Client) Wait() { c.doer.inflight.Wait() }
 
+// Close closes the connections kept open between requests: with Dial, the
+// streams to the node.
+func (c *Client) Close() { c.doer.http.CloseIdleConnections() }
+
+// APIVersion is the version of the API the daemon last answered with, 0
+// before any answer or from a daemon that does not say it.
+func (c *Client) APIVersion() int { return int(c.doer.apiVersion.Load()) }
+
+// dialError is a failure of Options.Dial, which the client returns as it is.
+type dialError struct{ err error }
+
+func (e *dialError) Error() string { return e.err.Error() }
+func (e *dialError) Unwrap() error { return e.err }
+
 // doer sends requests with the debug id and version, logs them, and turns a
 // failure to reach the daemon into an *UnavailableError.
 type doer struct {
-	opts     Options
-	http     *http.Client
-	checked  sync.Once
-	inflight sync.WaitGroup
+	opts       Options
+	http       *http.Client
+	checked    sync.Once
+	inflight   sync.WaitGroup
+	apiVersion atomic.Int64
 }
 
 func (d *doer) Do(req *http.Request) (*http.Response, error) {
@@ -92,6 +135,9 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 		req.Header.Set(api.LogLevelHeader, api.LogLevelDebug)
 	}
 	log := logging.FromContext(req.Context())
+	if d.opts.Dial != nil {
+		return d.doNode(req, start)
+	}
 	resp, err := d.http.Do(req)
 	if err != nil {
 		log.Info("daemon unreachable", "method", req.Method, "path", req.URL.Path, "socket", d.opts.Socket, "err", err)
@@ -103,6 +149,7 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 		return nil, &UnavailableError{Socket: d.opts.Socket, Err: err}
 	}
 	version := resp.Header.Get(api.VersionHeader)
+	d.recordAPIVersion(resp)
 	log.Info("daemon called", "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "daemon_version", version, logging.Duration(start))
 	if version != identity.Version && d.opts.VersionMismatch != nil {
 		d.checked.Do(func() {
@@ -111,6 +158,51 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 		})
 	}
 	return resp, nil
+}
+
+// doNode sends req to the node Dial reaches, with this build's API version,
+// and refuses an answer from a host older than this build still speaks to. A
+// stream that ends with the request unanswered is a session the host closed.
+// No version warning: two machines run different releases often, and the
+// API version is what they must agree on.
+func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error) {
+	log := logging.FromContext(req.Context())
+	node := d.opts.Node
+	req.Header.Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+	resp, err := d.http.Do(req)
+	if err != nil {
+		log.Info("node unreachable", "method", req.Method, "path", req.URL.Path, "node", node, "err", err)
+		if dial, ok := errors.AsType[*dialError](err); ok {
+			return nil, dial.err
+		}
+		if req.Context().Err() != nil {
+			return nil, err
+		}
+		p := api.NewProblem(api.ErrorCodeSessionClosed, fmt.Sprintf("the stream to node %s ended before it answered: %v", node, err))
+		p.Details = &map[string]any{"node": node}
+		return nil, &ProblemError{Problem: p}
+	}
+	version := d.recordAPIVersion(resp)
+	log.Info("node called", "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "node", node, "api_version", version, logging.Duration(start))
+	if version < api.OldestCompatible {
+		resp.Body.Close()
+		log.Warn("node api version unsupported", "node", node, "api_version", version, "oldest_compatible", api.OldestCompatible)
+		p := api.NewProblem(api.ErrorCodeNodeVersionUnsupported, fmt.Sprintf("node %s speaks API version %d, older than %d, the oldest this wdx speaks: update wdx on %s", node, version, api.OldestCompatible, node))
+		p.Details = &map[string]any{"update": "host", "node": node, "host_version": version, "oldest_compatible": api.OldestCompatible}
+		return nil, &ProblemError{Problem: p}
+	}
+	return resp, nil
+}
+
+// recordAPIVersion keeps the API version resp says, 0 when it says none,
+// and returns it.
+func (d *doer) recordAPIVersion(resp *http.Response) int {
+	version, err := strconv.Atoi(resp.Header.Get(api.APIVersionHeader))
+	if err != nil {
+		version = 0
+	}
+	d.apiVersion.Store(int64(version))
+	return version
 }
 
 // result returns the first success body set, the problem, or an error for a

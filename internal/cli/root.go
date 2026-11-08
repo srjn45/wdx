@@ -75,8 +75,12 @@ type Env struct {
 	OpenBrowser func(ctx context.Context, program, link string) error
 	// Timeouts are how long commands wait; tests shorten or lengthen them.
 	Timeouts Timeouts
+	// AgentID is WDX_AGENT_ID, set where an agent wdx runs runs the
+	// command: such a run cannot use --node.
+	AgentID string
 
 	client *client.Client // the run's, made by clientOf
+	local  *client.Client // the daemon's here, made by localClientOf
 }
 
 // Timeouts bound how long commands wait for the daemon; a zero field takes
@@ -135,7 +139,15 @@ func ShellEnv(environ []string) []string {
 
 // Run executes the command line args and returns the process exit code.
 func Run(ctx context.Context, args []string, env Env) int {
-	return clikit.Run(context.WithValue(ctx, envKey{}, &env), args, frameworkEnv(env, args), func() *cobra.Command { return newRoot(env.Config) })
+	exit := clikit.Run(context.WithValue(ctx, envKey{}, &env), args, frameworkEnv(env, args), func() *cobra.Command { return newRoot(env.Config) })
+	// The streams to another node close with the run, not when the host
+	// gives up on them.
+	for _, c := range []*client.Client{env.client, env.local} {
+		if c != nil {
+			c.Close()
+		}
+	}
+	return exit
 }
 
 // ConfigError reports the settings that failed to load, before any command
@@ -198,20 +210,49 @@ func envOf(cmd *cobra.Command) *Env {
 	return &Env{}
 }
 
-// clientOf returns the client of the daemon serving the configured home. A
-// daemon of another version gets a warning on stderr, once.
+// clientOf returns the client of the daemon the command runs on: the one
+// serving the configured home, or with --node the other node's, through a
+// session. A daemon here of another version gets a warning on stderr, once.
 func clientOf(cmd *cobra.Command) *client.Client {
 	env := envOf(cmd)
 	if env.client == nil {
+		if node := nodeOf(cmd); node != "" {
+			env.client = remoteClient(cmd, node)
+		} else {
+			env.client = localClientOf(cmd)
+		}
+	}
+	return env.client
+}
+
+// localClientOf returns the client of the daemon serving the configured
+// home, with or without --node: the one that has the sessions. With --node
+// it warns of no other version, since the command runs on the other node.
+func localClientOf(cmd *cobra.Command) *client.Client {
+	env := envOf(cmd)
+	if env.local == nil {
 		inv := clikit.InvocationOf(cmd)
-		env.client = client.New(client.Options{
+		opts := client.Options{
 			Socket:          identity.SocketPath(env.Config.Home),
 			DebugID:         inv.DebugID,
 			Quiet:           inv.Quiet,
 			VersionMismatch: func(daemonVersion string) { warnVersion(cmd, daemonVersion) },
-		})
+		}
+		if nodeOf(cmd) != "" {
+			opts.VersionMismatch = nil
+		}
+		env.local = client.New(opts)
 	}
-	return env.client
+	return env.local
+}
+
+// completionDir is the directory a completion names the project by when
+// the command line names none: the working directory, or none with --node.
+func completionDir(cmd *cobra.Command) string {
+	if nodeOf(cmd) != "" {
+		return ""
+	}
+	return envOf(cmd).WorkDir
 }
 
 // warnVersion warns on stderr that the daemon is of another version.
@@ -222,36 +263,43 @@ func warnVersion(cmd *cobra.Command, daemonVersion string) {
 }
 
 func newRoot(cfg config.Config) *cobra.Command {
-	return clikit.NewRoot(clikit.Root{
+	root := clikit.NewRoot(clikit.Root{
 		Use:     identity.Name,
 		Short:   "Manage AI coding agents across CLIs",
 		Long:    "Every command but daemon, observe, setting and update is served by the daemon; " + identity.Name + " daemon start runs it.",
 		NoInput: cfg.NoInput,
 		Color:   cfg.Color,
 		Topics:  topics,
-	}, newVersionCmd(), newProjectCmd(cfg.Home), newTerminalCmd(), newAgentCmd(), newWorktreeCmd(), newMessageCmd(), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), newDocCmd(), newHubCmd(), newPlanCmd(), newUsageCmd())
+	}, addNodeFlag(newVersionCmd()), addNodeFlag(newProjectCmd(cfg.Home)), addNodeFlag(newTerminalCmd()), addNodeFlag(newAgentCmd()),
+		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), newUsageCmd())
+	wrapNode(root)
+	return root
 }
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of " + identity.Name + " and of the daemon",
+		Long: "With --node, the daemon is the other node's: its release, and the version of\n" +
+			"the API it speaks, which the two nodes must agree on.",
 		Example: clikit.Examples(
 			"Show the versions of "+identity.Name+" and of the daemon", identity.Name+" version",
+			"Of the desktop's daemon", identity.Name+" version --node desktop",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
-			clikit.OutputNote: "The name, version and commit of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
-				`With --json: {"cli": {"name": ..., "version": ..., "commit": ...}, "daemon": {...}}`,
+			clikit.OutputNote: "The name, version, commit and API version of " + identity.Name + " and of the daemon, null when it does not answer.\n" +
+				`With --json: {"cli": {"name": ..., "version": ..., "commit": ..., "api_version": ...}, "daemon": {...}}`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			r := versionResponse{CLI: api.Version{Name: identity.Name, Version: identity.Version, Commit: identity.Commit}}
-			v, err := clientOf(cmd).Version(cmd.Context())
+			r := versionResponse{CLI: versionOf{identity.Name, identity.Version, identity.Commit, api.CurrentVersion}}
+			c := clientOf(cmd)
+			v, err := c.Version(cmd.Context())
 			if err != nil && !unavailable(err) {
 				return err
 			}
 			if err == nil {
-				r.Daemon = &v
+				r.Daemon = &versionOf{v.Name, v.Version, v.Commit, c.APIVersion()}
 			}
 			return clikit.PrintResult(cmd, r)
 		},
@@ -259,21 +307,37 @@ func newVersionCmd() *cobra.Command {
 }
 
 type versionResponse struct {
-	CLI    api.Version  `json:"cli"`
-	Daemon *api.Version `json:"daemon"` // null when no daemon answers
+	CLI    versionOf  `json:"cli"`
+	Daemon *versionOf `json:"daemon"` // null when no daemon answers
+}
+
+// versionOf is a program's version and the version of the API it speaks.
+type versionOf struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	Commit     string `json:"commit"`
+	APIVersion int    `json:"api_version"`
 }
 
 func (r versionResponse) Text(w io.Writer, st style.Style) {
-	fmt.Fprintf(w, "%s %s %s\n", r.CLI.Name, st.Name(r.CLI.Version), st.Muted("("+r.CLI.Commit+")"))
+	fmt.Fprintf(w, "%s %s %s, API %d\n", r.CLI.Name, st.Name(r.CLI.Version), st.Muted("("+r.CLI.Commit+")"), r.CLI.APIVersion)
 	if r.Daemon == nil {
 		fmt.Fprintf(w, "daemon %s\n", st.Warning("not running"))
 		return
 	}
-	fmt.Fprintf(w, "daemon %s %s\n", st.Name(r.Daemon.Version), st.Muted("("+r.Daemon.Commit+")"))
+	fmt.Fprintf(w, "daemon %s %s, API %d\n", st.Name(r.Daemon.Version), st.Muted("("+r.Daemon.Commit+")"), r.Daemon.APIVersion)
 }
 
-// workDir is the directory the command runs in.
+// workDir is the directory the command runs in, which names its project
+// when no project flag does. With --node it is none, as this directory is
+// not the other node's: a project flag must name the project.
 func workDir(cmd *cobra.Command) (string, error) {
+	if nodeOf(cmd) != "" {
+		if cmd.Flags().Changed("project-id") || cmd.Flags().Changed("project-name") {
+			return "", nil
+		}
+		return "", &clikit.UsageError{Err: errors.New("pass --project-id or --project-name with --node: the working directory is not the other node's")}
+	}
 	if dir := envOf(cmd).WorkDir; dir != "" {
 		return dir, nil
 	}

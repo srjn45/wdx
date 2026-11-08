@@ -74,7 +74,7 @@ func TestStyles(t *testing.T) {
 		s := New(on)
 		for name, f := range map[string]func(string) string{
 			"heading": s.Heading, "command": s.Command, "flag": s.Flag, "placeholder": s.Placeholder,
-			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint,
+			"success": s.Success, "warning": s.Warning, "failure": s.Failure, "hint": s.Hint, "remote": s.Remote,
 			"name": s.Name, "muted": s.Muted, "focused": s.Focused, "active row": s.ActiveRow, "open row": s.OpenRow, "cursor row": s.CursorRow, "bar name": s.BarName, "bar muted": s.BarMuted,
 			"code keyword": s.CodeKeyword, "code string": s.CodeString, "code comment": s.CodeComment, "code number": s.CodeNumber, "code type": s.CodeType, "code function": s.CodeFunction,
 			"context fine": s.ContextFine, "context warning": s.ContextWarning, "context critical": s.ContextCritical,

@@ -656,6 +656,9 @@ func newAgentAttachCmd() *cobra.Command {
 			clikit.Results: clikit.Annotation("detached", "exited"),
 			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeAgentNotRunning, api.ErrorCodeAttachUnsupported,
 				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
+
+			// It dials the holder's socket itself, which another node's is not.
+			noNode: "attach with --node comes with remote tide",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := parsePrefixKey(prefix)

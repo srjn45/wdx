@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -178,6 +179,7 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 
 		w.Header().Set(api.DebugIDHeader, id)
 		w.Header().Set(api.VersionHeader, identity.Version)
+		w.Header().Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
 		// A stream's body is not kept: it never ends.
 		rec := &recorder{ResponseWriter: w, stream: streamOperations[operation]}
 		defer func() {

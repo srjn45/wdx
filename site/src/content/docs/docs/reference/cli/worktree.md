@@ -38,6 +38,7 @@ Comments are written in TIDE, and sent to an agent together as a review. Each sa
 | `--name <name>` |  | name of the worktree, main for the clone |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--name` is required
 - at most one of `--project-id` or `--project-name`
@@ -66,6 +67,8 @@ The comments by file and line. With `--json`: {"comments": [...]}
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx worktree diff
 
 Show what a worktree has committed, or what it has not.
@@ -85,6 +88,7 @@ By default, what the worktree has committed since it left its base, as a PR woul
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
 | `--uncommitted` |  | show everything not committed instead |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--name` is required
 - at most one of `--uncommitted` or `--path`
@@ -120,6 +124,8 @@ The unified diff; nothing when nothing differs. With `--json`: {"worktree": "...
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx worktree land
 
 Land a worktree's commits on its base, with no merge commit or through a PR.
@@ -141,6 +147,7 @@ By PR it runs the check, pushes the branch and opens a PR with gh, or adds to th
 | `--name <name>` |  | name of the worktree |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--name` is required
 - at most one of `--project-id` or `--project-name`
@@ -195,6 +202,8 @@ With `--json`, `result` is one of: `landed,` or `pr_opened`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx worktree list
 
 List every worktree git lists for a project, with its changes.
@@ -211,6 +220,7 @@ Without a project flag, the project the working directory is in. Each worktree s
 |---|---|---|
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - at most one of `--project-id` or `--project-name`
 
@@ -238,6 +248,8 @@ The worktrees, the clone first, named main. With `--json`: {"worktrees": [...]}
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx worktree rebase
 
 Rebase a worktree onto its base, the default branch or a stacked plan's plan below.
@@ -258,6 +270,7 @@ A stacked plan's worktree asks gh whether the PR of the plan below has merged: i
 | `--name <name>` |  | name of the worktree |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--name` is required
 - at most one of `--project-id` or `--project-name`
@@ -303,6 +316,8 @@ With `--json`, `result` is one of: `rebased,` or `up_to_date`.
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
 
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
+
 ## wdx worktree remove
 
 Remove a worktree that landed, with its branch.
@@ -320,6 +335,7 @@ Only one with nothing ahead of its base and nothing uncommitted, so no commit ca
 | `--name <name>` |  | name of the worktree |
 | `--project-id <id>` |  | id of the project (default: the one the working directory is in) |
 | `--project-name <name>` |  | name of the project (default: the one the working directory is in) |
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 - `--name` is required
 - at most one of `--project-id` or `--project-name`
@@ -353,4 +369,6 @@ With `--json`, `result` is one of: `removed`.
 | [`worktree_not_removed`](/wdx/docs/reference/errors/#worktree_not_removed) | 1 | git would not remove the worktree |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 

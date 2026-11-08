@@ -19,6 +19,8 @@ func main() {
 		Environ:    os.Environ(),
 		ShellEnv:   cli.ShellEnv(os.Environ()),
 		CallerTerm: cli.CallerTerm(os.Environ()),
+		// Set where an agent wdx runs runs wdx: it cannot use --node.
+		AgentID: os.Getenv("WDX_AGENT_ID"),
 	}
 	// Which clipboard tool tide needs depends on the graphical session.
 	env.Deps.Session = cli.Session(os.Environ())

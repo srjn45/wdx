@@ -562,7 +562,7 @@ func TestVersion(t *testing.T) {
 	if exit != clikit.ExitOK || v.CLI.Name != "wdx" || v.CLI.Version != identity.Version || v.Daemon == nil || v.Daemon.Version != identity.Version {
 		t.Fatalf("unexpected version: %+v", v)
 	}
-	if out := wdx(t, home, "version"); out.Stdout != "wdx dev (none)\ndaemon dev (none)\n" {
+	if out := wdx(t, home, "version"); out.Stdout != "wdx dev (none), API 1\ndaemon dev (none), API 1\n" {
 		t.Fatalf("unexpected text: %q", out.Stdout)
 	}
 }

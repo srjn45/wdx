@@ -558,7 +558,7 @@ func completePlans(key string) cobra.CompletionFunc {
 		scope.name, _ = cmd.Flags().GetString("project-name")
 		var dir string
 		if !scope.given() {
-			dir = envOf(cmd).WorkDir
+			dir = completionDir(cmd)
 		}
 		list, err := clientOf(cmd).ListPlans(ctx, scope.ref(), dir, true)
 		if err != nil {

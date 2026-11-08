@@ -184,6 +184,9 @@ func (s Style) Failure(text string) string { return s.apply(text, bold, red) }
 // Hint styles the label of a hint.
 func (s Style) Hint(text string) string { return s.apply(text, cyan) }
 
+// Remote says what runs on another node: the colour a remote TIDE's bar takes.
+func (s Style) Remote(text string) string { return s.apply(text, cyan) }
+
 // Name styles the name of an entity, such as a project.
 func (s Style) Name(text string) string { return s.apply(text, bold) }
 

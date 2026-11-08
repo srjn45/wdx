@@ -290,8 +290,12 @@ func WantDeclared(t *testing.T, root *cobra.Command, args []string, result strin
 	if result != "" && !slices.Contains(clikit.AnnotationList(cmd, clikit.Results), result) {
 		t.Fatalf("%v: result %q is not in the help of %s", args, result, cmd.CommandPath())
 	}
+	declared := clikit.ErrorList(cmd)
+	for _, f := range clikit.FlagErrorList(cmd) {
+		declared = append(declared, f.Codes...)
+	}
 	for _, code := range codes {
-		if code != "" && !slices.Contains(clikit.ErrorList(cmd), code) {
+		if code != "" && !slices.Contains(declared, code) {
 			t.Fatalf("%v: error %q is not in the help of %s", args, code, cmd.CommandPath())
 		}
 	}
@@ -314,6 +318,13 @@ func CheckDocs(t testing.TB, root *cobra.Command) {
 		for _, code := range clikit.AnnotationList(cmd, clikit.Errors) {
 			if code == clikit.CodeUsage || code == clikit.CodeInternal {
 				t.Errorf("%s: lists %q, which every command can return", path, code)
+			}
+		}
+		for _, f := range clikit.FlagErrorList(cmd) {
+			for _, code := range f.Codes {
+				if code == clikit.CodeUsage || code == clikit.CodeInternal {
+					t.Errorf("%s: --%s declares %q, which every command can return", path, f.Flag, code)
+				}
 			}
 		}
 		if errs := clikit.ErrorList(cmd); leaf && (len(errs) < 2 || errs[len(errs)-2] != clikit.CodeUsage || errs[len(errs)-1] != clikit.CodeInternal) {

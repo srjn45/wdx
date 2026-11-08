@@ -82,7 +82,7 @@ func newProjectCreateCmd(home string) *cobra.Command {
 const createConflictQuestion = "create conflict"
 
 func runCreate(cmd *cobra.Command, opts createOptions, answers *bufio.Scanner) error {
-	parent, err := clikit.Absolute(cmd, opts.parent)
+	parent, err := daemonPath(cmd, opts.parent)
 	if err != nil {
 		return err
 	}
@@ -411,7 +411,7 @@ func newProjectOpenCmd(home string) *cobra.Command {
 }
 
 func openLocal(cmd *cobra.Command, local string, opts openOptions, answers *bufio.Scanner) error {
-	path, err := clikit.Absolute(cmd, local)
+	path, err := daemonPath(cmd, local)
 	if err != nil {
 		return err
 	}
