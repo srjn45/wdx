@@ -241,6 +241,8 @@ func (s *Server) oneChangeAtATime(next http.Handler) http.Handler {
 func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 	sp := embedded()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests.Add(1)
+		defer s.requests.Done()
 		start := time.Now()
 		id := r.Header.Get(hubapi.DebugIDHeader)
 		if !logging.IsDebugID(id) {

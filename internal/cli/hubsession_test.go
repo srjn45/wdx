@@ -84,21 +84,17 @@ func (p *hubPair) remoteAccess(on bool) {
 	}
 }
 
-// code is the desktop's code at the step now is in, which no log line of
-// either home may hold.
+// code is the desktop's code at the start of the next step, which the clock
+// moves on to, so that the open it is for arrives in its step wherever in a
+// step the real time is; no log line of either home may hold it.
 func (p *hubPair) code() string {
+	now := p.clock.Now()
+	p.clock.Advance(time.Unix((authcode.Step(now)+1)*int64(authcode.Period/time.Second), 0).Sub(now))
 	c := p.desktop.code(p.secret, 0)
 	p.laptop.mu.Lock()
 	p.laptop.codes = append(p.laptop.codes, c)
 	p.laptop.mu.Unlock()
 	return c
-}
-
-// nextCode is the code of the next step, which the clock moves on to: a
-// code opens one session.
-func (p *hubPair) nextCode() string {
-	p.clock.Advance(authcode.Period)
-	return p.code()
 }
 
 func TestHubSessionOpen(t *testing.T) {
@@ -145,7 +141,7 @@ func TestHubSessionOpen(t *testing.T) {
 	v, exit = p.laptop.sessionJSON("hub", "session", "close", "--id", id)
 	wantCodeExit(t, v.jsonOutput, exit, api.ErrorCodeSessionNotFound, clikit.ExitRejected)
 
-	if _, exit = p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.nextCode()); exit != clikit.ExitOK {
+	if _, exit = p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code()); exit != clikit.ExitOK {
 		t.Fatalf("open: %d", exit)
 	}
 	v, exit = p.desktop.sessionJSON("hub", "session", "close", "--all")

@@ -171,6 +171,10 @@ type Server struct {
 	stopNow    context.CancelFunc
 	controlsMu sync.Mutex
 	controls   sync.WaitGroup
+	// requests counts the requests of the API until their request returned
+	// is logged: Shutdown waits for no connection it handed over, whose
+	// handler logs its end after controls counted it out.
+	requests sync.WaitGroup
 
 	changes sync.Mutex // one admin request changing anything at a time
 	// abort is cancelled when the change in flight at shutdown has run out
@@ -466,6 +470,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			}
 		}
 	}
+	s.requests.Wait()
 	stopHousekeeping()
 	<-housekept
 	s.close()

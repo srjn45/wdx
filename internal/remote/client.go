@@ -35,12 +35,14 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 		}
 		return s, false, err
 	}
+	// The code is of the step it arrived in, not of the step the dial
+	// through the hub ends in.
+	now := r.opts.Clock.Now()
 	conn, me, hostKey, _, err := r.dial(ctx, node)
 	if err != nil {
 		return Session{}, false, err
 	}
 	defer conn.Close()
-	now := r.opts.Clock.Now()
 	ex, err := r.opts.Exporter(conn.ConnectionState())
 	if err != nil {
 		return Session{}, false, err
