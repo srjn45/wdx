@@ -1,0 +1,42 @@
+---
+// A drawn diagram in a docs page: the SVG a diagram component passes in, in
+// the site's colours (tokens.css) so it reads in the light and the dark theme,
+// with a caption. Below 560px it scrolls sideways rather than shrinking
+// its text. Arrows end in url(#<id>-a), or url(#<id>-h) on the path that
+// matters, so two diagrams on one page keep their markers apart.
+interface Props { id: string; label: string; caption: string; width: number; height: number; }
+const { id, label, caption, width, height } = Astro.props;
+---
+<figure class="wdx-diagram not-content">
+  <div class="dg-scroll">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} style={`min-width: ${Math.min(width, 560)}px`}>
+      <defs>
+        <marker id={`${id}-a`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="hd" d="M0 0L10 5L0 10z" /></marker>
+        <marker id={`${id}-h`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="hd hot" d="M0 0L10 5L0 10z" /></marker>
+      </defs>
+      <slot />
+    </svg>
+  </div>
+  <figcaption>{caption}</figcaption>
+</figure>
+
+<style is:global>
+  .wdx-diagram { margin: 1.75rem 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .wdx-diagram .dg-scroll { overflow-x: auto; padding: 14px; scrollbar-color: var(--line) transparent; }
+  .wdx-diagram svg { display: block; width: 100%; height: auto; }
+  .wdx-diagram figcaption { padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font: 14px/1.5 var(--body); }
+  .wdx-diagram .bx { fill: var(--raised); stroke: var(--line); }
+  .wdx-diagram .bx.hot { stroke: var(--brand); stroke-width: 1.5; }
+  .wdx-diagram .bx.dim { fill: none; stroke-dasharray: 5 5; }
+  .wdx-diagram .grp { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .wdx-diagram text { fill: var(--ink); font: 600 14px var(--body); }
+  .wdx-diagram text.sm { fill: var(--muted); font: 12px var(--mono); }
+  .wdx-diagram text.ttl { fill: var(--muted); font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; }
+  .wdx-diagram text.hot { fill: var(--brand); }
+  .wdx-diagram .ar { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .wdx-diagram .ar.hot { stroke: var(--brand); }
+  .wdx-diagram .ar.dash { stroke-dasharray: 5 5; }
+  .wdx-diagram .hd { fill: var(--muted); }
+  .wdx-diagram .hd.hot { fill: var(--brand); }
+  .wdx-diagram .lbl { fill: var(--surface); }
+</style>
