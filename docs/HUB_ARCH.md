@@ -48,12 +48,14 @@ cli ──unix socket──► client daemon ──TLS 1.3 between nodes, in a s
 
 The host serves a session with its usual API handler, behind a layer that:
 
-- allows only a fixed list of routes: what the `--node` commands and tide need. Never `/v1/hub/...` (so no session opens a session onward to a third node, no code setup, no login or logout), never a `hub.*` setting, never stopping the daemon or updating wdx, and never tide's state (`/v1/tide/view`, `/v1/projects/{project}/view` and `/v1/projects/{project}/tabs`; see "Tide's state in a remote session"). A test checks that every route the CLI and tide call with `--node` is on the list, so that a new feature cannot silently fail remotely;
-- refuses a request without a live session, and moves the session's idle time on. Bytes on an attach stream are activity too: a person typing in a remote terminal makes no request;
-- logs each request with the session and the node it came from, under the client's `debug_id`;
+- serves only the operations `remoteOperations` allows: one table classifying every operation of `api/openapi.yaml`, served through a session or refused with its reason, and a test fails on one in neither, so that a new operation is a decision rather than a silent refusal or a silent opening. Refused: every `/v1/hub/...` operation (so no session opens a session onward to a third node, no code setup, no login or logout), the settings (so no `hub.*` setting), the daemon's own (`getDaemon`, `reloadDaemon`; stopping the daemon and updating wdx are no operations), and tide's state (`/v1/tide/view`, `/v1/projects/{project}/view` and `/v1/projects/{project}/tabs`; see "Tide's state in a remote session"). A refused operation, or a route the host does not have, is `route_not_allowed` (403), the latter hinting to update the host. The end-to-end test running every `--node` command's examples against a host checks that what the CLI calls is served (step 8);
+- refuses a request without a live session, checking it at every request, and moves the session's idle time on; a session that closes cuts its streams, and a command cut off fails with `session_closed`. Bytes on an attach stream are activity too: a person typing in a remote terminal makes no request;
+- logs each request with the session and the node it came from (`session_id`, `from_node`), under the client's `debug_id`;
 - closes every incoming session when `hub.remote_access` goes off.
 
 ### Attach
+
+Until step 9, `terminal attach` and `agent attach` refuse `--node` with a `usage` error, `attach with --node comes with remote tide`; attach is no API operation, so nothing of it is served through a session (step 8).
 
 Locally, clients dial the holder's socket, so that a session outlives a daemon restart. Remotely, the host daemon relays: `POST /v1/terminals/{id}/attach` upgraded to a stream that speaks the holder's protocol, which the daemon passes to the holder's socket. ATTACH.md planned this relay for the web; it serves remote attach instead. The holder learns the client's pid from the socket (`SO_PEERCRED`), which for a relayed client is the daemon's, so the relay's `hello` says the client is remote and from which node, and the holder logs that.
 
@@ -65,12 +67,13 @@ docs/TIDE_STATE.md, built the day this design was written: a daemon has one tide
 
 ### Paths and the working directory with `--node`
 
-- A relative path given with `--node` is a `usage` error: `path must be absolute on node <name>`. Absolute paths go as they are, and mean the host's.
+- A relative path the daemon receives (`project create --path`, `project open --local`), given with `--node`, is a `usage` error: `path must be absolute on node <name>`. Absolute paths go as they are, and mean the host's.
+- Files the CLI reads or writes itself (`doc` and `plan`'s `--path` and `--out`) stay the client's, made absolute against the client's working directory: only their content travels (step 8).
 - Commands that take their project from the working directory (`default: the one the working directory is in`) need the project flags with `--node`, since this directory is not the host's.
 
 ### Versions between nodes
 
-The API carries `Wdx-Version` already, but releases are not what nodes must agree on: the API is. `api/openapi.yaml` gets an API version in `info.version` (today a fixed `v1`), raised by every `feat!:` that changes it, and a release states the oldest API version it can talk to. The client daemon checks the host's on the first stream: outside the range, `node_version_unsupported` names which side to update. The client's warning that the daemon runs another version (`VersionMismatch`) would fire on every remote command when the two machines run different releases; with `--node` this check replaces it.
+The API carries `Wdx-Version` already, but releases are not what nodes must agree on: the API is. `info.version` of `api/openapi.yaml` is an integer, `api.CurrentVersion` (1), raised by every `feat!:` that changes the API, and `api.OldestCompatible` beside it is the oldest this release still talks to, both kept by hand in `internal/api/headers.go`. Through a session the CLI sends its version in `Wdx-Api-Version` on every request and the host answers with its own: the host refuses a client older than its `OldestCompatible`, and the CLI a host older than its own, or one that sends none; either is `node_version_unsupported`, naming which side to update in its details (step 8). The check is end to end, between the CLI and the host's daemon; the client daemon only carries the stream. The client's warning that the daemon runs another version (`VersionMismatch`) would fire on every remote command when the two machines run different releases; with `--node` this check replaces it. `wdx version --node <name>` shows the host's release and API version.
 
 ## The hub's certificate authority
 
@@ -271,6 +274,10 @@ The wdx doc HUB_DOCS_PUSH, built: batches over `POST /v1/docs/changes` in place 
 ## Settled in step 7, 2026-11-08
 
 The wdx doc HUB_TUNNEL, built: the slowing of wrong codes is per client node and in total; the node keeps an audit chain, `hub_audit`, with `wdx hub audit verify`; `code.step` keeps the last step accepted; `hub_sessions` gains `node_name`, `idle_timeout_ms` and `closed_reason`; `too_many_streams` (32 per user) and `node_key_mismatch` are new codes; the terminal's QR code is drawn from `boombuler/barcode`'s matrix, with no other QR library; the packages are `internal/hub/relay`, `internal/remote`, `internal/authcode` and `internal/nodeaudit`, and only the daemon uses `remote`, which uses `hublink` for the daemon. A client learns that a session ended at its next stream, refused with `session_closed` and the host's reason, and closes its row for that reason. `remote` hands step 8 a `net.Conn` per stream of a session.
+
+## Settled in step 8, 2026-11-08
+
+The wdx doc HUB_NODE_COMMANDS, built: `--node` is on `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version`; every operation is classified in `remoteOperations`, `getDaemon` and `reloadDaemon` among those refused; `info.version` is an integer with `OldestCompatible`, checked between the CLI and the host through `Wdx-Api-Version`; `route_not_allowed` (403), `session_required` (409) and `remote_not_for_agents` (403) are new codes. The client daemon's `connect` finds the node among its open outgoing sessions only, never asking the hub, and answers `session_required` with none, or when the host has closed it; the CLI then asks the code, on the command's first stream only, and a later `session_required` is `session_closed`. The CLI's HTTP client keeps one connection to the host (`MaxConnsPerHost` 1), idle at most 5 seconds, under the host's 10, after which the host closes a stream with no request. The host serves the streams with a second `http.Server` reading one end of a `net.Pipe`, since the WebSocket's `net.Conn` closes when a read deadline passes, which `net/http` sets. The `--node` codes are declared once, on the flag, shown in help's "With --node" section and its JSON's `flag_errors`. Attach refuses `--node` until step 9.
 
 ## Running the hub locally, until the public one
 
