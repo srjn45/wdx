@@ -109,8 +109,10 @@ func (l *Link) keepControl(ctx context.Context, c *credentials) {
 			return
 		}
 		if cut, ok := errors.AsType[*cutOff](err); ok {
-			l.update(c, func() { l.conn = cut.state })
+			// Logged before the state changes, so that whoever sees the state can
+			// read why.
 			log.Info("node cut off", "state", string(cut.state))
+			l.update(c, func() { l.conn = cut.state })
 			return
 		}
 		if welcomed {
@@ -121,8 +123,8 @@ func (l *Link) keepControl(ctx context.Context, c *credentials) {
 			backoff = l.opts.MaxBackoff
 		}
 		delay := jitter(backoff)
-		l.update(c, func() { l.conn = Offline })
 		log.Info("control lost", "err", err, "retry_in_ms", delay.Milliseconds())
+		l.update(c, func() { l.conn = Offline })
 		select {
 		case <-ctx.Done():
 			return
