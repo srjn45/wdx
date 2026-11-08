@@ -21,7 +21,6 @@ import (
 // docs ACA_ANTIGRAVITY and ANTIGRAVITY_PARITY.
 type Antigravity struct {
 	NoDetached
-	NoUsage
 }
 
 // AntigravityID is Antigravity's ID.

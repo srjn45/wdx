@@ -36,6 +36,12 @@ type statusLineInput struct {
 		UsedPercentage float64 `json:"used_percentage"`
 		ResetsAt       int64   `json:"resets_at"` // unix seconds; 0 for none
 	} `json:"rate_limits"`
+	// Quota is Antigravity's, by bucket id: whatever ids the account has, which may
+	// grow. RemainingFraction is a pointer, as Antigravity leaves out a fraction of 0.
+	Quota map[string]struct {
+		RemainingFraction *float64 `json:"remaining_fraction"` // 0 to 1
+		ResetTime         string   `json:"reset_time"`         // RFC 3339; "" for none
+	} `json:"quota"`
 }
 
 // parseStatusLine is the file name in dir as a status line last wrote it. No file is
