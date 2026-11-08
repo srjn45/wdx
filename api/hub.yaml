@@ -1,0 +1,258 @@
+openapi: 3.0.3
+info:
+  title: wdx-hub API
+  version: "1"
+  description: |
+    The API of wdx-hub, served on three endpoints: web, for browsers, on
+    listen.web; nodes, for wdx daemons, with mutual TLS on listen.nodes; and
+    admin, for wdx-hub's own commands, over the Unix socket
+    <home>/wdx-hub.sock. Each operation carries one tag naming the endpoint
+    that serves it; another endpoint answers it with 404.
+
+    A request may send a Wdx-Debug-Id header (dbg- and 12 hex digits) to have
+    the hub log it under that id; the response echoes the id the request was
+    logged under. A Wdx-Log-Level header of debug has the hub log the
+    request at debug level, its failures excepted, as for tab completions;
+    any other value is ignored.
+
+    Errors are Problem Details (RFC 9457) with a stable "code"; each
+    operation lists the codes it can return besides usage and internal.
+tags:
+  - name: web
+    description: Served on the web endpoint, to browsers.
+  - name: nodes
+    description: Served on the node endpoint, to wdx daemons with a certificate the hub issued.
+  - name: admin
+    description: Served on the admin socket, to wdx-hub's commands.
+paths:
+  /v1/version:
+    get:
+      operationId: getVersion
+      tags: [web]
+      summary: Version of the hub
+      responses:
+        "200": { $ref: "#/components/responses/Version" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/node/version:
+    get:
+      operationId: getNodeVersion
+      tags: [nodes]
+      summary: Version of the hub, to a node
+      responses:
+        "200": { $ref: "#/components/responses/Version" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/admin/version:
+    get:
+      operationId: getAdminVersion
+      tags: [admin]
+      summary: Version of the hub, to its commands
+      responses:
+        "200": { $ref: "#/components/responses/Version" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/settings:
+    get:
+      operationId: listSettings
+      tags: [admin]
+      summary: Every setting, with its value in the config file now
+      description: "Errors: reload_failed, when the config file cannot be used."
+      responses:
+        "200":
+          description: The settings, in the order of their table.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingList" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/settings/{setting}:
+    parameters:
+      - name: setting
+        in: path
+        required: true
+        description: The setting's dotted key, such as log.level.
+        schema: { type: string }
+    patch:
+      operationId: updateSetting
+      tags: [admin]
+      summary: Change a setting and apply it at once
+      description: |
+        The value is checked, saved in the config file, then applied as
+        reload applies it, even when it is what the file has. The file is
+        written anew, so comments of its own are not kept.
+
+        Errors: invalid_setting, not_found, reload_failed, when the value was
+        saved but the hub cannot apply the file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSetting" }
+      responses:
+        "200":
+          description: The setting, with result updated, or unchanged when the file already had it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/reload:
+    post:
+      operationId: reload
+      tags: [admin]
+      summary: Read the settings again and apply them
+      description: |
+        log.level and the otel settings take effect at once; the listeners and
+        public_url at the next start. When the config file cannot be used, the
+        hub keeps the values it has and fails with reload_failed.
+      responses:
+        "200":
+          description: The settings were applied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReloadResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+  /v1/backup:
+    post:
+      operationId: backup
+      tags: [admin]
+      summary: Copy the database, consistent, while the hub runs
+      description: |
+        The copy is written on the hub's filesystem, at a path that must not
+        exist.
+
+        Errors: path_exists, invalid_argument for a path that is not absolute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Backup" }
+      responses:
+        "201":
+          description: The copy was written, with result backed_up.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
+components:
+  responses:
+    Version:
+      description: The name, version and commit the hub was built from, and the version of this API.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Version" }
+    Problem:
+      description: The request failed.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Version:
+      type: object
+      required: [name, version, commit, api_version]
+      properties:
+        name: { type: string }
+        version: { type: string }
+        commit: { type: string }
+        api_version: { type: string, description: "The info.version of the hub's API." }
+
+    Setting:
+      type: object
+      required: [key, value, default, description, from, choices, editable]
+      properties:
+        key: { type: string, description: "Its dotted key, such as log.level." }
+        value: { type: string }
+        default: { type: string }
+        description: { type: string }
+        from: { type: string, description: "Where the value comes from: the default, the file and line, or the variable." }
+        choices:
+          type: array
+          nullable: true
+          description: The values to choose among, when it takes a fixed set; null when it takes any text or number.
+          items: { type: string }
+        editable: { type: boolean, description: "False when it is not read from the config file, so it cannot be set here." }
+
+    SettingList:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          type: array
+          items: { $ref: "#/components/schemas/Setting" }
+
+    UpdateSetting:
+      type: object
+      required: [value]
+      additionalProperties: false
+      properties:
+        value: { type: string, description: "Its new value; empty for the settings that take that." }
+
+    SettingResult:
+      type: object
+      required: [result, setting]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        setting: { $ref: "#/components/schemas/Setting" }
+
+    ReloadResult:
+      type: object
+      required: [result]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+
+    Backup:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string, minLength: 1, description: "Absolute path of the copy, on the hub's filesystem; nothing may be there." }
+
+    BackupResult:
+      type: object
+      required: [result, path]
+      properties:
+        result: { $ref: "#/components/schemas/Result" }
+        path: { type: string }
+
+    Result:
+      type: string
+      description: The most significant thing that happened.
+      enum: [updated, unchanged, reloaded, backed_up]
+
+    ErrorCode:
+      type: string
+      description: |
+        Stable error code; never changed or reused. already_running and
+        hub_unavailable are reported by the CLI, never by the hub.
+      enum:
+        - usage
+        - internal
+        - not_found
+        - invalid_argument
+        - path_exists
+        - invalid_setting
+        - reload_failed
+        - already_running
+        - hub_unavailable
+
+    Problem:
+      type: object
+      description: An error as Problem Details (RFC 9457).
+      required: [type, title, status, detail, code, hint, details, debug_id]
+      properties:
+        type: { type: string, description: "urn:wdx:error: and the code." }
+        title: { type: string, description: What the code means. }
+        status: { type: integer }
+        detail: { type: string, description: What went wrong this time. }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        hint: { type: string, nullable: true, description: What to do about it. }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: The values involved, such as the setting.
+        debug_id: { type: string, description: Finds the request's log lines. }
