@@ -1450,6 +1450,13 @@ func TestAgentUsageFollowsItsACA(t *testing.T) {
 	if u.ACA != aca.ClaudeCodeID || u.Window != "five_hour" || u.Bucket != "" || u.UsedPercent != 100 || !u.Limited || !u.ResetsAt.Equal(resets) || u.AgentID != a.Id {
 		t.Errorf("usage = %+v", u)
 	}
+	r, err := td.client.ListUsageWithResponse(ctx)
+	if err != nil || r.JSON200 == nil || len(r.JSON200.Usage) != 1 {
+		t.Fatalf("list usage: %v, %s", err, r.Body)
+	}
+	if w := r.JSON200.Usage[0]; w.Aca != aca.ClaudeCodeID || w.Window != "five_hour" || w.Bucket != "" || w.UsedPercent != 100 || !w.Limited || w.ResetsAt == nil || !w.ResetsAt.Equal(resets) || !w.ObservedAt.Equal(u.ObservedAt) {
+		t.Errorf("served usage = %+v", w)
+	}
 	if !td.logged(t, "usage recorded") {
 		t.Error("the daemon did not say it recorded the usage")
 	}

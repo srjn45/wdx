@@ -123,6 +123,24 @@ func (s *server) ListAcaModels(ctx context.Context, req api.ListAcaModelsRequest
 	return r, nil
 }
 
+// ListUsage serves what every ACA last told of its account's limits, by ACA, window
+// and bucket (the wdx doc USAGE).
+func (s *server) ListUsage(ctx context.Context, _ api.ListUsageRequestObject) (api.ListUsageResponseObject, error) {
+	rows, err := s.agents.Store().Usage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r := api.ListUsage200JSONResponse{Usage: make([]api.UsageWindow, 0, len(rows))}
+	for _, u := range rows {
+		r.Usage = append(r.Usage, api.UsageWindow{
+			Aca: u.ACA, Window: u.Window, Bucket: u.Bucket, UsedPercent: u.UsedPercent,
+			ResetsAt: optionalTime(u.ResetsAt), Limited: u.Limited, ObservedAt: u.ObservedAt.UTC(),
+		})
+	}
+	logging.FromContext(ctx).Info("usage listed", "count", len(rows))
+	return r, nil
+}
+
 func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {

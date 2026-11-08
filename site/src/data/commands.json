@@ -311,6 +311,10 @@
     "summary": "Show whether a newer wdx is released, install it or roll it back",
     "href": "/wdx/docs/reference/cli/update/"
   },
+  "usage": {
+    "summary": "Show how much of each AI coding agent's account's limits is used",
+    "href": "/wdx/docs/reference/cli/usage/"
+  },
   "version": {
     "summary": "Print the version of wdx and of the daemon",
     "href": "/wdx/docs/reference/cli/version/"

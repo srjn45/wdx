@@ -559,6 +559,7 @@ type jsonOutput struct {
 	Agents     []api.Agent          `json:"agents"`
 	Aca        string               `json:"aca"`
 	Models     []api.AcaModel       `json:"models"`
+	Usage      []api.UsageWindow    `json:"usage"`
 	Acas       []api.Aca            `json:"acas"`
 	History    *api.TerminalHistory `json:"history"`
 	Transcript *api.AgentTranscript `json:"transcript"`

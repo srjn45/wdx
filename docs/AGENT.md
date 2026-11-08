@@ -69,6 +69,7 @@ How much of each ACA's account's limits is used (the wdx doc USAGE), read throug
 - **When it is read:** with the context size, by `agent.StatusReads`, from the same changes of the same files, at the same pace.
 - **Stored** in `aca_usage` (`0028_aca_usage.sql`), a row per ACA, window and bucket, the latest observation only, with `limited` as the percentage at 100 or more and the agent it was read from. A row replaces the window's when its observation is newer; one whose reset has passed is skipped, so that a stale file read late brings no window back. A window no longer told is dropped once its reset has passed, or at once when it had none, and kept until then as of its last observation. A read that tells nothing changes nothing. Every change notifies the project streams.
 - **Logged** at debug on each read, `usage read` with `aca` and `rows`, and at info when a row changed, `usage recorded`, or a window was dropped.
+- **Served** as `GET /v1/usage` and `wdx usage`, the rows as stored. What follows from them, a bucket available while none of its windows is limited and until when otherwise, the labels of the windows wdx knows and the time left to a reset, is derived in `internal/api` (`UsageBuckets`, `UsageLabel`, `ResetText`), so that the CLI and tide say the same from the same rows and the daemon stores nothing derived.
 
 ### Kept for every start
 

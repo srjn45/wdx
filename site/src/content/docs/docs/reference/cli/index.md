@@ -27,6 +27,7 @@ Every command but daemon, observe, setting and update is served by the daemon; w
 | [`wdx terminal`](/wdx/docs/reference/cli/terminal/) | Manage terminals: shells that belong to a project and outlive the daemon |
 | [`wdx tide`](/wdx/docs/reference/cli/tide/) | Work in the terminal IDE: a project, an agent and terminals in one window |
 | [`wdx update`](/wdx/docs/reference/cli/update/) | Show whether a newer wdx is released, install it or roll it back |
+| [`wdx usage`](/wdx/docs/reference/cli/usage/) | Show how much of each AI coding agent's account's limits is used |
 | [`wdx version`](/wdx/docs/reference/cli/version/) | Print the version of wdx and of the daemon |
 | [`wdx worktree`](/wdx/docs/reference/cli/worktree/) | Read a project's worktrees, what is uncommitted and what a PR would show, land them and remove them |
 

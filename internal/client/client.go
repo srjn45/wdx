@@ -239,6 +239,16 @@ func (c *Client) ListAcas(ctx context.Context) (api.AcaList, error) {
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// ListUsage returns how much of each AI coding agent's account's limits is used, a
+// row per ACA, window and bucket.
+func (c *Client) ListUsage(ctx context.Context) (api.UsageList, error) {
+	r, err := c.api.ListUsageWithResponse(ctx)
+	if err != nil {
+		return api.UsageList{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // ListAcaModels returns the models the AI coding agent with id offers.
 func (c *Client) ListAcaModels(ctx context.Context, id string) (api.AcaModelList, error) {
 	r, err := c.api.ListAcaModelsWithResponse(ctx, id)

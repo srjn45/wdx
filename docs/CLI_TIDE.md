@@ -64,6 +64,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Choose its model and permissions when creating | `--model`, `--permissions` | the form's Model and Permissions | Same | |
 | See its model and permissions | `agent get` | the info tab | Same | |
 | List the models to choose from | `agent models [--aca]`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
+| See how much of an ACA's account's limits is used, and whether it can be used | `usage` | the stats tab, `C-q S` (the wdx doc USAGE, step 4) | Later (tide) | the CLI names the fact, `usage`; tide's tab is generic, `stats`, so that other machine-wide facts join it over time |
 | Choose its AI coding agent when creating | `--aca` | the form's ACA field, shown with two or more | Same | |
 | List the AI coding agents to choose from | `agent acas`, `--aca`'s completion | the field's ‹ › | Same | |
 | See why an ACA is not offered | `deps list` (installed), `setting list` (enabled) | the settings tab (enabled); installed is not shown | Later (tide) | tide has no deps screen yet |

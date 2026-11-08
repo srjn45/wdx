@@ -1,7 +1,7 @@
 ---
 title: Agents
 description: Run Claude Code, Codex, Cursor or Antigravity in a terminal wdx keeps, see what each is doing, and pick up its conversation again.
-commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove]
+commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove, usage]
 ---
 import Commands from '../../../../components/Commands.astro';
 
@@ -99,6 +99,16 @@ Working directory "/home/you/code/app/.worktrees/fix-readme" was deleted; shell 
 ```
 ````
 
+How much of the AI CLI's limits is used, as its agents last told; the row is the account's, so every agent of one AI CLI shows the same:
+
+```console
+$ wdx usage
+claude_code      available
+  WINDOW         USED  RESETS         AS OF
+  Session (5 h)  54%   in 2 h 10 min  16:11
+  Week           51%   Nov 12 10:00   16:11
+```
+
 ## In TIDE
 
 The Agents section of the left pane lists the project's agents, children under their parents, each with its activity, model and context size; Enter opens one in the right pane to talk to it. `C-q a` creates one in a form (name, ACA, model, worktree, permissions and a prompt), and `i` opens its info tab, with what `agent get` shows. On an agent, `r` renames it, `g` starts it again once it has ended, `R` starts a new session after a confirmation, and `x` removes it. TIDE has no transcript screen: that is for reading and grepping with the CLI. More in [Agents in TIDE](/wdx/docs/tide/agents/).
@@ -115,6 +125,7 @@ The Agents section of the left pane lists the project's agents, children under t
 - **Names** are generated unless `--name` gives one, unique in a project among agents and terminals; `agent rename` changes one while it runs.
 - **Removing** a running agent asks first, as it interrupts what it does; `--stop-running` or `--cancel` answers in advance. What the ACA keeps of its session stays on disk.
 - **Giving it a task later** is `wdx agent send`, in [Messages and sending](/wdx/docs/guides/messages/).
+- **Usage** is read from what the AI CLI tells its agents, Claude Code's status line for now, with nothing asked of it: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own.
 
 ## Commands
 

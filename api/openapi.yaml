@@ -1475,6 +1475,26 @@ paths:
               schema: { $ref: "#/components/schemas/AcaModelList" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/usage:
+    get:
+      operationId: listUsage
+      summary: How much of each AI coding agent's account's limits is used
+      description: |
+        As each AI coding agent last told through one of its agents (the wdx doc
+        USAGE): a row per ACA, window and bucket of models, the latest observation
+        only, with the window's key and the bucket's name as the ACA gives them.
+        Usage is the account's, not an agent's: every agent of an ACA on this
+        machine draws on the same one. A window used 100% or more is limited, and
+        a bucket is available while none of its windows is. Empty until an ACA has
+        told something; one on a plan without limits never does.
+      responses:
+        "200":
+          description: The usage rows, by ACA, window and bucket.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageList" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/editors:
     post:
       operationId: openEditor
@@ -3107,6 +3127,26 @@ components:
         models:
           type: array
           items: { $ref: "#/components/schemas/AcaModel" }
+
+    UsageWindow:
+      type: object
+      required: [aca, window, bucket, used_percent, resets_at, limited, observed_at]
+      properties:
+        aca: { type: string, description: "The AI coding agent's id." }
+        window: { type: string, description: "The window's key as the ACA gives it, such as five_hour." }
+        bucket: { type: string, description: "The bucket of models the window meters, as the ACA names it; empty for the one every model draws on." }
+        used_percent: { type: integer, description: "0 to 100, or above once past the limit." }
+        resets_at: { type: string, format: date-time, nullable: true, description: "When the window resets; null when the ACA gives none." }
+        limited: { type: boolean, description: "Whether the window is used up: used_percent at 100 or more." }
+        observed_at: { type: string, format: date-time, description: "When the ACA told it." }
+
+    UsageList:
+      type: object
+      required: [usage]
+      properties:
+        usage:
+          type: array
+          items: { $ref: "#/components/schemas/UsageWindow" }
 
     Editor:
       type: object
