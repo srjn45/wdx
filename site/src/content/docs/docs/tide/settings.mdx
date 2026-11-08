@@ -1,0 +1,31 @@
+---
+title: Settings in TIDE
+description: The settings tab lists every setting with its value and description, and changes them in place.
+sidebar:
+  label: Settings
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+`C-q s` opens the settings tab: every setting wdx has, its value and, under the list, what the one under the cursor does. It is `wdx setting list` and `wdx setting set` in one screen. The CLI side, and where settings live, is in [Settings](/wdx/docs/guides/settings/).
+
+## What you see
+
+<TideScreen scene="settings" label="TIDE: the settings tab, each setting with its value, the selected one's description below" caption="Settings with a fixed set of values show ← →; the description of the one under the cursor is at the bottom." />
+
+## Keys
+
+| Key | What it does |
+|---|---|
+| `↑` `↓` | the setting under the cursor |
+| `←` `→` | the next value of a setting with a fixed set of them, such as `color`, `log.level`, `editor` or `tide.theme` |
+| `Enter` | edit any other value in place, then `Enter` to save it |
+| `C-q s` | open the tab, or go to it |
+| `-` | close the tab |
+
+## How it behaves
+
+- **Applied at once.** A change is saved in `~/.wdx/config.yaml` and the daemon reads it again, as `wdx setting set` does. TIDE's own settings, its colors (`tide.theme`) and the order of the project pane's sections (`tide.section_order`), apply on screen at once.
+- **Every setting but `home`** can be changed here; `home` comes from `WDX_HOME`. A value the setting cannot take is refused, the reason under its row.
+- **When it takes effect** is the setting's: `color` once TIDE is reopened, `terminal.shell` and `terminal.history_lines` for new terminals.
+- **The same file.** A change made with `wdx setting set` or in the file shows when the tab is next shown.
+- **Turning off an AI CLI** with `aca.<id>.enabled` takes it out of the new agent form; agents already running it go on.

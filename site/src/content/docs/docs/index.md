@@ -25,6 +25,10 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 - [Docs](/wdx/docs/guides/docs/): designs kept in wdx with a revision per change.
 - [Plans](/wdx/docs/guides/plans/) and [Running plans](/wdx/docs/guides/running-plans/): a feature as tasks for agents, run and landed by wdx.
 
+## TIDE
+
+The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/docs/tide/layout/), [Agents](/wdx/docs/tide/agents/), [Worktrees and diffs](/wdx/docs/tide/worktrees/), [Code](/wdx/docs/tide/code/), [Docs and plans](/wdx/docs/tide/docs-and-plans/), [The menu](/wdx/docs/tide/menu/) and [Settings](/wdx/docs/tide/settings/).
+
 ## Scripts and AI agents
 
 - [Scripting with --json](/wdx/docs/guides/scripting/): one JSON object per command, stable error codes, no prompts.
@@ -41,4 +45,4 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 
 These pages are generated from wdx itself, so they say what `wdx <command> --help` says.
 
-TIDE's own pages and how wdx is built are on their way.
+The AI CLIs' pages and how wdx is built are on their way.

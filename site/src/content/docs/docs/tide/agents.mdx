@@ -1,0 +1,61 @@
+---
+title: Agents in TIDE
+description: The Agents list and what each row says, talking to an agent and answering its questions, its info tab, and the new agent form.
+sidebar:
+  label: Agents
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+The Agents section lists the project's agents, children under their parents and a running plan's agents under the plan, each saying what it is doing. Enter shows one live in the agent pane, where you talk to it as in its own terminal. The CLI side is in the [Agents guide](/wdx/docs/guides/agents/).
+
+## What you see
+
+<TideScreen scene="agents" label="TIDE: the Agents list, with a working agent, its child, an agent waiting on a yes/no question in amber, and a plan's agents" caption="Each row: its mark, its name, what it is doing and how full its context is. fix-auth asks a question, so its row reads yes/no." />
+
+- **The mark** before the name: `●` running, `?` waiting for you, `○` exited, `✕` failed.
+- **What it is doing**, after the name: `working`, nothing when idle, or `yes/no` and `decision` when TIDE can read the question it asks (Claude Code for now), else `waiting`.
+- **Its context size** at the end, `82k` or `1.5M`: green, then yellow from `context.threshold.warning` and red from `context.threshold.critical`.
+- **The active row**, the one shown on the right, starts with a green `▌`; the cursor's row is blue.
+- **Children** are indented under their parent with `└`. A parent folds with `←` and opens with `→`; folded, it says how many below it wait for you.
+
+An agent that asks a question is answered in its own tab, as in its terminal:
+
+<TideScreen scene="answer" label="TIDE: an agent's tab with a question asking whether to run a command, and its options" caption="Answer it without leaving TIDE; the row goes back to working." />
+
+`i` opens an agent's info tab, what `wdx agent get` says:
+
+<TideScreen scene="info" label="TIDE: an agent's info tab listing its name, id, AI CLI, model, permissions, directory, worktree, parent, children, state, activity and context" caption="The info tab: Enter renames the agent." />
+
+`C-q a` opens the new agent form, `C-q c` the same form for a child of the agent under the cursor:
+
+<TideScreen scene="new-agent" label="TIDE: the new agent form with Name, ACA, Model, Worktree, Permissions and Prompt" caption="Fill in what you want; empty fields take their defaults. Enter creates it." />
+
+## Keys
+
+| Key | Where | What it does |
+|---|---|---|
+| `↑` `↓` | the list | move the cursor |
+| `Enter` | an agent's row | show it in the agent pane, the focus staying in the list |
+| `o` | an agent's row | show it and go to it |
+| `←` `→` | a parent's row | fold or open its children |
+| `i` | an agent | its info tab |
+| `a` | the project pane | the new agent form (`C-q a` anywhere) |
+| `c` | an agent | the form for a new child of it |
+| `r` | an agent, or its info tab's `Enter` | rename it |
+| `g` | an agent that ended | start it again, in the same session |
+| `R` | an agent | a new session that reads its history in brief, after a confirmation |
+| `x` | an agent | remove it, after a confirmation |
+| `-` | an agent's row, or its tab | close its tab |
+
+In the agent's own tab, every key goes to the agent; use `C-q` and a letter there.
+
+## How it behaves
+
+- **The form** asks in one box what `wdx agent create` takes as flags: Name (empty for a generated one), ACA (`←` `→` among those installed and enabled, shown with two or more), Model (the ACA's models; empty for your own setting), Worktree (empty for where it would start; a new name creates the worktree), Permissions (`full` or `ask`), and Prompt (one line, its first task). `Tab` moves between fields, `Enter` creates it, `Esc` cancels.
+- **A new agent** becomes the active one, live on the right.
+- **Talking to it** is typing in its tab: what you type goes to the AI CLI, and `Shift+Enter` and other keys reach it as they would in its own terminal. Scroll back with the wheel or PageUp.
+- **Questions** turn the row amber, its mark `?`, until answered; a folded parent shows `N waiting`. With the agent's question read, the info tab and `wdx agent get` show it with its options.
+- **Removing or restarting** asks first, saying what runs; `R` on a busy agent says what it is doing, and `y` goes on.
+- **Agents that ended** keep their row, their last screen and history, read-only, until removed or started again with `g`.
+
+See [Worktrees and diffs](/wdx/docs/tide/worktrees/) for an agent's worktree, and [Docs and plans](/wdx/docs/tide/docs-and-plans/) for a plan's agents.

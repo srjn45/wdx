@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,14 +13,14 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// guidesDir holds the guides, relative to the repository's root.
-const guidesDir = "site/src/content/docs/docs/guides"
+// docsDir holds the docs pages, relative to the repository's root: a page in
+// MDX names the commands it is about in its frontmatter.
+const docsDir = "site/src/content/docs/docs"
 
 // waiting are the commands no guide covers yet: the guides still to be
-// written take them off, and the test fails until they do.
-var waiting = []string{
-	"tide",
-}
+// written take them off, and the test fails until they do. Empty: a new
+// command comes with its guide.
+var waiting = []string{}
 
 // TestGuideCoverage fails when a command is in no guide, a guide names a
 // command that is gone, a command still waiting is in a guide, or a guide
@@ -36,13 +37,19 @@ func TestGuideCoverage(t *testing.T) {
 	if err := json.Unmarshal(data, &commands); err != nil {
 		t.Fatal(err)
 	}
-	guides, err := filepath.Glob(filepath.Join(root, guidesDir, "*.mdx"))
+	var guides []string
+	err = filepath.WalkDir(filepath.Join(root, docsDir), func(path string, d fs.DirEntry, err error) error {
+		if err == nil && filepath.Ext(path) == ".mdx" {
+			guides = append(guides, path)
+		}
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	covered := map[string]bool{}
 	for _, path := range guides {
-		name := filepath.Base(path)
+		name, _ := filepath.Rel(filepath.Join(root, docsDir), path)
 		listed, body, err := guideCommands(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)

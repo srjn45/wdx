@@ -1,0 +1,56 @@
+---
+title: Layout and keys
+description: TIDE's three panes, focus and zoom, the few keys it takes for itself, the mouse, and what quitting keeps.
+commands: [tide]
+---
+import Commands from '../../../../components/Commands.astro';
+import TideScreen from '../../../../components/TideScreen.astro';
+
+`wdx tide` is the Terminal IDE: one window per project, in your own terminal, with every agent, worktree, doc, plan and file of the project on the left, what you open on the right, and the project's terminals below. It is a client of the daemon, as the CLI is: quit it and everything keeps running, and it comes back as you left it.
+
+## What you see
+
+<TideScreen scene="agents" label="TIDE: the project pane on the left with agents, worktrees, docs, plans and code; an agent working on the right; terminals below" caption="The project pane on the left, the agent pane on the right, the terminal pane below. The focused pane has the heavy green border." />
+
+- **The project pane**, a quarter of the width: the project's sections, Agents, Worktrees, Docs, Plans and Code, in the order `tide.section_order` says. Each is a list you move through with the arrows; a click on a heading folds it.
+- **The agent pane**, the rest of the width: tabs of what you opened, an agent live, a diff, a doc, a plan, a file, settings. Each tab has `(-)` to close it.
+- **The terminal pane**, a quarter of the height at the bottom: the project's terminals, a tab each, live.
+- **The status line** names the project and the pane in focus, and lists the keys that work there.
+
+Start it from anywhere; it opens on the project it showed last, or asks which:
+
+```sh
+wdx tide
+```
+
+## Keys
+
+TIDE takes very few keys for itself, as every key it takes is lost to the agents and shells in its panes.
+
+| Key | What it does |
+|---|---|
+| `Alt+←` `Alt+→` | move the focus: the project pane, then each tab in turn |
+| `Alt+↓` `Alt+↑` | to the terminal pane, and back to the top pane that had the focus |
+| `Alt+Shift+←` `Alt+Shift+→` | switch to the previous or next open project |
+| `C-]` | zoom the focused pane to the whole window, or back |
+| `C-\` | show or hide the terminal pane, focusing it when it opens |
+| `C-q` | the menu: every action that applies where you are, a letter each ([The menu](/wdx/docs/tide/menu/)) |
+| `C-q q` | quit TIDE; agents and terminals keep running |
+| `C-q \` `C-q ]` `C-q C-q` | send `C-\`, `C-]` or `C-q` to the program in the focused pane |
+
+In the project pane, the menu's letters work without `C-q`: `a` new agent, `t` new terminal, `s` settings, `/` filter, `q` quit. In the agent and terminal panes, keys go to the program there.
+
+<TideScreen scene="zoom" label="TIDE: the agent pane zoomed to the whole window" caption="C-] gives the pane you are in the whole window; C-] again puts it back." />
+
+## How it behaves
+
+- **The mouse** works as in a terminal: a click focuses a pane, picks a row or a tab; the wheel scrolls; a double click on a pane's title, or its `[⤢]`, zooms it. Dragging selects text within a pane and copies it, through OSC 52 and the system's clipboard tool. Programs that ask for the mouse, as vim does, get it inside their pane.
+- **Quitting keeps everything.** Agents and terminals run in the daemon, not in TIDE. The daemon also keeps TIDE's view: the project shown, the tabs, the focus, the zoom, folds and cursors, so the next `wdx tide` opens where you left.
+- **Live.** The daemon sends TIDE every change of the project as it happens: an agent going idle or asking a question, a file changed in a worktree, a doc updated by an agent. Nothing is polled.
+- **In your terminal.** It runs in GNOME Terminal, Konsole, xterm and macOS Terminal.app, among others. On macOS, Terminal.app sends `Alt` only with "Use Option as Meta key" turned on.
+- **Colors** come from the `tide.theme` setting, its own dark palette; with color off it paints none.
+- **No JSON.** `wdx tide` is interactive by nature, so `--json` fails with `usage`: scripts use the other commands.
+
+## Commands
+
+<Commands />

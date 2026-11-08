@@ -1,0 +1,36 @@
+---
+title: The menu
+description: C-q shows every action that applies where you are, a letter each, from what is selected to the whole of TIDE.
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+`C-q` opens the menu: everything you can do where you are, each with one letter. It is how to find a key, and how to act from a pane whose keys go to a program. TIDE takes so few keys of its own that the menu holds the rest.
+
+## What you see
+
+<TideScreen scene="menu" label="TIDE: the C-q menu over a worktree's diff, in three parts: the worktree selected, the list, and global" caption="The menu in parts, the narrowest first: what is selected, the list, then TIDE and the project." />
+
+## Keys
+
+The menu's parts, each shown only where it applies:
+
+| Part | Letters |
+|---|---|
+| An agent, in the list or its tab | `i` info, `c` new child, `r` rename, `R` new session, `g` start again once ended, `x` remove |
+| A terminal's tab | `g` start again, `x` remove |
+| A worktree | `o` open and go, `R` rebase, `x` remove once landed; on a file, `v` verified; in its tab, `L` land and `C` commit |
+| Code | `e` edit, `n` new file, `N` new directory, `r` rename, `x` delete |
+| A tab, in the right pane | `-` close it |
+| The list, in the project pane | `/` filter, `f` read git again, `z` fold the section, or open it |
+| Global | `a` new agent, `t` new terminal, `p` the project menu, `s` settings, `q` quit |
+| The project menu (`p`) | `o` open a project, `s` switch, `c` close the one shown, `x` remove it from wdx |
+| A program in focus | `\`, `]` and `C-q` send `C-\`, `C-]` and `C-q` to it |
+
+## How it behaves
+
+- **A letter acts at once**, with no wait: `C-q x` removes, after its confirmation. `Enter` runs the line selected, `Esc` closes the menu.
+- **No two parts share a letter** while shown together, so a letter means one thing wherever it shows.
+- **In the project pane**, the letters work without `C-q`: nothing there takes typing but the filter. In the agent and terminal panes keys go to the program, so they keep `C-q`.
+- **The status line** lists the keys of the menu shown, and outside the menu the keys of where you are.
+- **Confirmations** come before what cannot be undone or stops something running: removing, restarting, closing a project with something running. Starting again and closing a tab ask nothing, as they lose nothing.
+- **Firefox on Linux** quits on `C-q` before a web page sees it, so this site's demo also opens the menu with `Ctrl+Space`. TIDE itself, in your terminal, is `C-q`.

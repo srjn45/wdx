@@ -1,0 +1,51 @@
+---
+title: Worktrees and diffs in TIDE
+description: Every worktree with its uncommitted files, a file's changes side by side, a worktree's tab with what it committed, comments and reviews, and landing.
+sidebar:
+  label: Worktrees and diffs
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+The Worktrees section lists every checkout of the project, the clone first as `main`, with what each has committed and what it has not, kept up to date as files change. From there you read an agent's work, comment on it, and land it. The CLI side is in [Worktrees and landing](/wdx/docs/guides/worktrees/).
+
+## What you see
+
+A row says how far the worktree is ahead of its base (`↑2`), the lines it adds and removes, and how many files are not committed; `→` opens it to list them, with their git letter. `Enter` on a file shows its changes beside the committed version:
+
+<TideScreen scene="file-diff" label="TIDE: README.md's uncommitted changes, the committed version on the left and the file on the right, two added lines marked" caption="A file's uncommitted changes: HEAD on the left, the file as it is on the right." />
+
+`Enter` on a worktree opens its tab: what it committed since it left its base, as its PR would show it.
+
+<TideScreen scene="diff" label="TIDE: a worktree's tab showing the diff of its commits against main" caption="A worktree's tab: [ ] moves between changes, { } between files, L lands it." />
+
+## Keys
+
+| Key | Where | What it does |
+|---|---|---|
+| `→` `←` | a worktree's row | list its uncommitted files, or fold them |
+| `Enter` | a worktree's row | its tab: what it committed |
+| `Enter` | a file's row | its uncommitted changes, side by side |
+| `[` `]` | a diff | the previous or next change |
+| `{` `}` | a worktree's tab | the previous or next file |
+| `:` | a file's diff | go to a line |
+| `/` | a diff | search |
+| `v` | a file | mark it verified, or not: you have looked at it |
+| `c` | a line of a diff | write a comment on it |
+| `e` `d` | a comment | edit or delete it |
+| `s` | a worktree's tab | send its comments to an agent as a review |
+| `C` | a worktree's tab | ask the agent there to commit what is not committed |
+| `R` | a worktree | rebase it onto its base, once the base has moved on |
+| `L` | a worktree's tab | land it |
+| `f` | the project pane | read the worktrees again |
+| `x` | a worktree that landed | remove it, after a confirmation naming who is affected |
+
+## How it behaves
+
+- **Live, without locks.** The list follows git's own files as they change, never on a timer, and never writes your repository's index, so it runs beside any git command, an agent's included.
+- **Verified** files carry a `✓` in the list and the diffs, and the box of `L` counts them. The mark holds for the content you looked at: a change takes it away, a commit of that content keeps it. It says a person looked, so only TIDE sets it, and nothing depends on it.
+- **Comments** sit under their lines. Sent as a review, they go to an agent as one message, and come back as drafts if that message is discarded; `wdx worktree comments` lists them.
+- **Landing** with `L`, in the worktree's tab once it has commits and nothing uncommitted, first shows what will land and how: the project's landing check, and its method, which `m` in the box changes between rebase and PR. It then lands as `wdx worktree land` does, and offers to remove the worktree after. The first landing in a project asks how it lands, as `wdx project landing` says it. A conflict offers to send the rebase to an agent; an agent working in the worktree holds `L` back.
+- **A PR** shows on the worktree's row (`PR #12 open`), asked of `gh` when its tab opens or on `f`.
+- **A plan's worktrees** are listed under a row for the plan, each with its task and agent; they are the plan's to land, so `L` and `x` are not offered on them while it runs.
+
+The same files, browsed as a tree rather than as changes, are in [Code](/wdx/docs/tide/code/).

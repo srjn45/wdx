@@ -1,0 +1,43 @@
+---
+title: Code in TIDE
+description: Browse any worktree's files as a tree with git's marks, read them highlighted, edit them in your terminal editor, and create, rename and delete them.
+sidebar:
+  label: Code
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+The Code section is a worktree's files as a tree, marked with what git says of each: a way to read what an agent is working on, and to change a file yourself, without leaving TIDE. There is no CLI command for it: a script or an AI reads files itself.
+
+## What you see
+
+<TideScreen scene="code" label="TIDE: the Code section's tree of a worktree's files, a changed file marked, and a Go file open highlighted in a tab" caption="The tree of the worktree picked at its top, and a file open, read-only and highlighted." />
+
+- **The worktree** is picked on the section's first row, `< main >`: `←` `→` there go through the project's worktrees.
+- **The tree** holds the files git tracks and the untracked ones it does not ignore, directories first, folded until opened.
+- **Marks** at a row's end are git's letters, `M` modified, `A` added, `D` deleted, `?` untracked, colored by kind; a directory says how many of its files changed.
+- **A file's tab** is read-only, with line numbers and syntax highlighting in any of about 300 languages, built into wdx. A Markdown file shows rendered, and `m` switches it to its source and back.
+
+## Keys
+
+| Key | Where | What it does |
+|---|---|---|
+| `←` `→` | the worktree row | the previous or next worktree |
+| `→` `←` | a directory | open or fold it; `←` on a file goes to its directory |
+| `Enter` | a file | open it in a tab, read-only |
+| `e` | a file, or its tab | edit it in your editor, in the tab |
+| `n` `N` | the tree | a new file, or a new directory, where the cursor is |
+| `r` | a file or directory | rename it |
+| `x` | a file or directory | delete it, after a confirmation |
+| `/` | the project pane | filter: the rows that match what you type, in every section |
+| `m` | a Markdown file's tab | its source, or rendered |
+| `/` | a file's tab | search in the file |
+
+## How it behaves
+
+- **Your editor** is the `editor` setting: vi, vim, nvim, nano, hx or emacs. It runs in the tab as a terminal of its own, on the file in its worktree. Closing the tab asks whether to save or discard, and wdx types the editor's own keys for it; when the editor exits, the tab is read-only again and reads the file anew. `wdx deps install --name vi` installs one that is missing.
+- **Live.** The tree and an open file are read again when files change on disk, as when an agent edits them.
+- **Large and binary files** say so rather than show.
+- **The filter** (`/`) narrows the whole pane: agents, worktrees and their changed files, the chosen worktree's paths, docs and plans. `Esc` clears it.
+- **Where it sits.** Code comes last of the sections by default; `tide.section_order` changes the order, or leaves it out.
+
+The changes of a worktree, rather than its files, are in [Worktrees and diffs](/wdx/docs/tide/worktrees/).

@@ -40,6 +40,18 @@ export default defineConfig({
           ],
         },
         {
+          label: 'TIDE',
+          items: [
+            'docs/tide/layout',
+            'docs/tide/agents',
+            'docs/tide/worktrees',
+            'docs/tide/code',
+            'docs/tide/docs-and-plans',
+            'docs/tide/menu',
+            'docs/tide/settings',
+          ],
+        },
+        {
           label: 'Scripts and AI agents',
           items: ['docs/guides/scripting', 'docs/guides/ai-agents'],
         },

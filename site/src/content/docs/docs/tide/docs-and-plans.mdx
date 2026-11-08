@@ -1,0 +1,50 @@
+---
+title: Docs and plans in TIDE
+description: The project's docs and plans as folder trees, a doc rendered as Markdown, and a plan's tab with its graph of tasks, from draft to done.
+sidebar:
+  label: Docs and plans
+---
+import TideScreen from '../../../../components/TideScreen.astro';
+
+The Docs and Plans sections list the project's docs and plans in their folders, each with its status, kept up to date as agents write them. TIDE is where you read them; writing them is the CLI's, or an agent's. The CLI side is in [Docs](/wdx/docs/guides/docs/), [Plans](/wdx/docs/guides/plans/) and [Running plans](/wdx/docs/guides/running-plans/).
+
+## What you see
+
+`Enter` on a doc opens it, rendered as Markdown:
+
+<TideScreen scene="doc" label="TIDE: the CHECKOUT doc open in a tab, rendered as Markdown with its headings, at revision 3 and approved" caption="A doc rendered, its revision and status in the tab's title; m shows its source." />
+
+`Enter` on a plan opens its tab: its state and progress, its goal, and its tasks drawn as `git log --graph` draws commits, with a panel for the task under the cursor:
+
+<TideScreen scene="plan" label="TIDE: a plan's tab, four tasks drawn as a graph, one done, two working and one waiting, the selected task's prompt in a panel" caption="A plan running: ✓ done, ● working, ○ waiting. The panel says what the task needs, what it unblocks, and its prompt." />
+
+## Keys
+
+| Key | Where | What it does |
+|---|---|---|
+| `←` `→` | a folder | fold or open it |
+| `Enter` | a doc or plan | open its tab |
+| `m` | a doc or plan in the list | move it to another folder |
+| `m` | a doc's tab | its source, or rendered |
+| `/` | a doc's tab | search in it |
+| `←` `→` | the Plans section's first row | All, Draft & in progress, or Completed |
+| `↑` `↓` | a plan's tab | the task, or plan, under the cursor |
+| `Enter` | a running task | go to its agent |
+| `Enter` | a task that failed or did not land | a box: `r` retry, `f` retry with a new agent, `l` land again, `s` skip, `t` the failed check's output |
+| `Enter` | a done task | its summary, whole |
+| `r` | a draft plan's tab | run it, after a question |
+| `p` | a running plan's tab | pause it, or resume it |
+| `c` | a running plan's tab | cancel it, after a question |
+| `y` | a plan's tab | copy it to a new draft |
+| `a` | a plan's tab that is over | archive it, or bring it back |
+
+The keys a plan's state takes are on its tab's last line.
+
+## How it behaves
+
+- **Folders** are trees in both sections, folded with `←` `→`; a folded folder says `needs you` when a plan in it does.
+- **A doc renders** as glamour renders Markdown in a terminal: headings, lists, emphasis and code, links you can click (http, https and mailto only). A very large doc shows as source. Its tab's title gives its revision and status; it reads anew when an agent writes a new revision.
+- **A plan's tab** follows its run as it goes. The rail's lanes show what runs in parallel; past six lanes the rail is left out. The task under the cursor marks what it needs `▲` and what waits for it `▼`.
+- **`needs you`** on a plan's row means a task failed or did not land, or one of its agents waits for your answer.
+- **A plan of plans** lists its plans under it, and its tab lists them as its tasks; `Enter` on one goes to that plan, `r` on one waiting for you starts it.
+- **A running plan's agents and worktrees** are in the Agents and Worktrees sections, under a row for the plan.
