@@ -2,7 +2,7 @@
 // menu is Ctrl+Space as well as C-q, as Firefox on Linux quits on C-q before
 // the page sees it. Mixed into TideSim by sim.js.
 import { P, seg } from './palette.js';
-import { ACA_NAMES, prompt, user, say, sub } from './fixture.js';
+import { ACA_NAMES, SETTINGS, prompt, user, say, sub } from './fixture.js';
 import { selectable } from './rows.js';
 
 export class Input {
@@ -51,6 +51,7 @@ export class Input {
     this.userAct();
     if (s.quit) { if (k === 'Enter' || k === ' ') { this.unquit(); return true; } return false; }
     if (e.ctrlKey && (k === ' ' || k === 'q' || k === 'Q')) { if (s.popup) s.popup = null; else this.openMenu(); return true; }
+    if (s.popup && s.popup.form) { this.formKey(e); return true; }
     if (s.popup) {
       const n = this.popupItems().length;
       if (k === 'Escape') { s.popup = null; return true; }
@@ -135,6 +136,12 @@ export class Input {
       if (k === 'Enter') { const tk = p.tasks[p.sel]; if (tk.agent) this.openTab({ kind: 'agent', ref: tk.agent }, true); return true; }
       if (k === 'p') { this.note('(demo) p pauses the plan: running tasks finish'); return true; }
     }
+    if (t.kind === 'settings') {
+      if (k === 'ArrowDown' || k === 'j') { t.sel = Math.min(SETTINGS.length - 1, (t.sel || 0) + 1); return true; }
+      if (k === 'ArrowUp' || k === 'k') { t.sel = Math.max(0, (t.sel || 0) - 1); return true; }
+      if (k === 'ArrowLeft' || k === 'ArrowRight') { this.note('(demo) ←→ would change ' + SETTINGS[t.sel || 0][0] + ', and TIDE applies it'); return true; }
+    }
+    if (t.kind === 'doc' && k === 'm') { t.source = !t.source; t.scroll = 0; return true; }
     if (k === '-') { this.closeTab(s.active); return true; }
     if (k === 'ArrowDown' || k === 'j') { t.scroll = (t.scroll || 0) + 1; if (t.kind === 'file') t.line = (t.line || 0) + 1; return true; }
     if (k === 'ArrowUp' || k === 'k') { t.scroll = Math.max(0, (t.scroll || 0) - 1); if (t.kind === 'file') t.line = Math.max(0, (t.line || 0) - 1); return true; }

@@ -1,7 +1,7 @@
 // TideSim's state changes: tabs, focus, zoom, the menu, agents and terminals,
 // and the demo shell's few commands. Mixed into TideSim by sim.js.
 import { P, seg } from './palette.js';
-import { FILES, ACA, ACA_NAMES, header, prompt, say, sub } from './fixture.js';
+import { FILES, OLD_FILES, ACA, ACA_NAMES, FORM_MODELS, header, prompt, say, sub } from './fixture.js';
 import { buildRows, selectable } from './rows.js';
 
 export class Actions {
@@ -56,7 +56,7 @@ export class Actions {
       case 'agent': this.openTab({ kind: 'agent', ref: row.a.id }); break;
       case 'plangroup': s.planFold = !s.planFold; break;
       case 'wt': row.w.open = !row.w.open; this.openTab({ kind: 'diff', ref: row.w.name }); break;
-      case 'wtfile': this.openTab({ kind: 'diff', ref: row.w.name }); break;
+      case 'wtfile': if (OLD_FILES[row.f.path] && row.w.name === 'main') this.openTab({ kind: 'filediff', ref: 'main/' + row.f.path }); else this.openTab({ kind: 'diff', ref: row.w.name }); break;
       case 'docfolder': row.fo.open = !row.fo.open; break;
       case 'doc': this.openTab({ kind: 'doc', ref: row.name }); break;
       case 'planswitch': s.planView = (s.planView + 1) % 3; this.note('(demo) only one view of plans is filled in'); break;
@@ -88,9 +88,10 @@ export class Actions {
     this.note(a.name + ': answered, and working again');
     this.dirty = true;
   }
-  newAgent(aca) {
-    const s = this.s, name = s.newNames.shift() || 'agent-' + s.agents.length;
-    const a = { id: name, name, aca, model: ACA[aca].model, state: 'working', ctx: '4k', input: '', started: this.t, next: this.t + 1200 };
+  newAgent(aca, form) {
+    const s = this.s, name = (form && form.name) || s.newNames.shift() || 'agent-' + s.agents.length;
+    const model = form ? FORM_MODELS[aca][form.model][0] : ACA[aca].model;
+    const a = { id: name, name, aca, model, state: 'working', ctx: '4k', input: '', started: this.t, next: this.t + 1200, idHex: 'd2f81c6b', wt: (form && form.worktree) || undefined, parent: form && form.parent };
     a.lines = header(a).concat([[seg('(demo) a new ' + ACA_NAMES[aca] + ' session in the project; it would start here.', P.dim)], []]);
     a.stream = [say(a, 'Ready. What should I work on?')]; a.done = 'idle';
     s.agents.splice(s.agents.filter((x) => !x.plan).length, 0, a);
@@ -112,8 +113,8 @@ export class Actions {
     const sections = [];
     const tab = { k: '-', label: 'close tab', act: () => this.closeTab(s.active) };
     if (s.focus === 'left' && row) {
-      if (row.type === 'agent') sections.push({ title: row.a.name + ' (agent)', items: [{ k: 'i', label: 'info', act: () => this.openTab({ kind: 'info', ref: row.a.id }, true) }, { k: 'c', label: 'new child', act: () => this.note('(demo) c starts a child agent of ' + row.a.name) }, { k: 'r', label: 'rename', act: () => this.note('(demo) r renames it') }, { k: 'R', label: 'new session', act: () => this.note('(demo) R starts a new session') }, { k: 'x', label: 'remove', act: () => this.note('(demo) x removes it, asking first') }] });
-      else if (row.type === 'wt' || row.type === 'wtfile') sections.push({ title: (row.w.name) + ' (worktree)', items: [{ k: 'o', label: 'open and go', act: () => this.openRow(row) }, { k: 'L', label: 'land', act: () => this.note('(demo) L lands ' + row.w.name + ' on main after the landing check') }, { k: 'R', label: 'rebase', act: () => this.note('(demo) R rebases it onto main') }, tab] });
+      if (row.type === 'agent') sections.push({ title: row.a.name + ' (agent)', items: [{ k: 'i', label: 'info', act: () => this.openTab({ kind: 'info', ref: row.a.id }, true) }, { k: 'c', label: 'new child', act: () => this.agentForm(row.a.name) }, { k: 'r', label: 'rename', act: () => this.note('(demo) r renames it') }, { k: 'R', label: 'new session', act: () => this.note('(demo) R starts a new session') }, { k: 'x', label: 'remove', act: () => this.note('(demo) x removes it, asking first') }] });
+      else if (row.type === 'wt' || row.type === 'wtfile') sections.push({ title: (row.w.name) + ' (worktree)', items: [{ k: 'o', label: 'open and go', act: () => this.openRow(row) }, { k: 'R', label: 'rebase', act: () => this.note('(demo) R rebases it onto main') }, { k: 'x', label: 'remove', act: () => this.note('(demo) x removes it once it has landed') }, tab] });
       else if (row.type === 'file' || row.type === 'dir') sections.push({ title: row.path + (row.type === 'dir' ? ' (directory)' : ' (file)'), items: [{ k: 'e', label: 'edit', act: () => this.note('(demo) e opens it in your editor, in a tab') }, { k: 'n', label: 'new file', act: () => this.note('(demo) n creates a file here') }, { k: 'N', label: 'new directory', act: () => this.note('(demo) N creates a directory') }, { k: 'r', label: 'rename', act: () => this.note('(demo) r renames it') }] });
       sections.push({ title: 'list', items: [{ k: '/', label: 'filter', act: () => this.startFilter() }, { k: 'f', label: 'refresh', act: () => this.note('read git again') }, { k: 'z', label: 'collapse section', act: () => this.collapseHere() }] });
     } else if (s.focus === 'right' && t) {
@@ -127,9 +128,31 @@ export class Actions {
     s.popup = { title: 'Menu', sections, sel: 0, foot: 'a letter acts  Enter choose  Esc close' };
     this.dirty = true;
   }
-  agentForm() {
-    this.s.popup = { title: 'New agent · AI coding agent', sections: [{ title: 'installed and enabled', items: ['claude', 'codex', 'cursor', 'antigravity'].map((k, i) => ({ k: String(i + 1), label: ACA_NAMES[k] + '  ·  ' + ACA[k].model, act: () => this.newAgent(k) })) }], sel: 0 };
+  // The new agent form: name, ACA, model, worktree, permissions and prompt,
+  // as TIDE asks them.
+  agentForm(parent) {
+    this.s.popup = { title: parent ? 'New child of ' + parent : 'New agent in shop-api', form: { field: 0, name: '', aca: 'claude', model: 0, worktree: '', perm: 'full', prompt: '', parent } };
     this.dirty = true;
+  }
+  formKey(e) {
+    const f = this.s.popup.form, k = e.key, acas = Object.keys(FORM_MODELS);
+    const textField = { 0: 'name', 3: 'worktree', 5: 'prompt' }[f.field];
+    if (k === 'Escape') { this.s.popup = null; return; }
+    if (k === 'Enter') { this.s.popup = null; this.newAgent(f.aca, f); return; }
+    if (k === 'Tab') { f.field = (f.field + (e.shiftKey ? 5 : 1)) % 6; return; }
+    if (k === 'ArrowDown' || k === 'ArrowUp') {
+      const d = k === 'ArrowDown' ? 1 : -1, n = FORM_MODELS[f.aca].length;
+      if (f.field === 2 && f.model + d >= 0 && f.model + d < n) { f.model += d; return; }
+      f.field = Math.max(0, Math.min(5, f.field + d)); return;
+    }
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      const d = k === 'ArrowRight' ? 1 : -1;
+      if (f.field === 1) { f.aca = acas[(acas.indexOf(f.aca) + d + acas.length) % acas.length]; f.model = 0; }
+      if (f.field === 4) f.perm = f.perm === 'full' ? 'ask' : 'full';
+      return;
+    }
+    if (textField && k === 'Backspace') { f[textField] = f[textField].slice(0, -1); return; }
+    if (textField && k.length === 1 && (textField === 'prompt' || /[A-Za-z0-9-]/.test(k))) f[textField] += k;
   }
   projectMenu() {
     this.s.popup = { title: 'Project', sections: [{ items: [{ k: 's', label: 'switch project', act: () => this.note('(demo) one project is open here') }, { k: 'o', label: 'open project', act: () => this.note('(demo) o opens a repository by path or URL') }, { k: 'c', label: 'close project', act: () => this.note('(demo) c closes it; its agents keep running') }] }], sel: 0 };

@@ -1,0 +1,78 @@
+---
+// A live TIDE screen in a docs page: the landing page's demo engine, opened on
+// one of its scenes (src/tide-demo/tour.js), in a terminal window with a
+// caption, and a button that opens it larger in a dialog. It runs nothing: the
+// screen is scripted, and answers clicks, the wheel and keys as TIDE does.
+import TideMark from './TideMark.astro';
+import { latestRelease } from '../release.js';
+
+interface Props { scene: string; caption: string; label: string; }
+const { scene, caption, label } = Astro.props;
+const version = latestRelease();
+---
+<figure class="tide-screen not-content" data-scene={scene} data-label={label} data-version={version}>
+  <div class="ts-bar"><i></i><i></i><i></i><TideMark class="ts-mark" /><span class="ts-title">wdx tide · shop-api</span><button type="button" class="ts-open">Open larger</button></div>
+  <div class="ts-sim" tabindex="0"></div>
+  <figcaption>{caption} <span class="ts-live">Click, scroll and type: it is live, and runs nothing.</span></figcaption>
+</figure>
+
+<script>
+  import { TideSim } from '../tide-demo/sim.js';
+
+  let dialog: HTMLDialogElement | null = null, big: TideSim | null = null;
+
+  // One dialog for the page, made on the first Open larger.
+  function openLarger(scene: string, label: string, version: string) {
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.className = 'ts-dialog';
+      dialog.setAttribute('aria-label', 'TIDE screen');
+      dialog.innerHTML = '<div class="ts-bar"><span class="ts-title">wdx tide · shop-api</span><button type="button" class="ts-close">Close · Esc</button></div><div class="ts-sim" tabindex="0"></div>';
+      document.body.appendChild(dialog);
+      dialog.querySelector('.ts-close')!.addEventListener('click', () => dialog!.close());
+      dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog!.close(); });
+    }
+    dialog.showModal();
+    const host = dialog.querySelector<HTMLElement>('.ts-sim')!;
+    big ??= new TideSim(host, { rows: 34, maxW: 140, version });
+    big.resize();
+    big.reset();
+    big.scene(scene);
+    big.canvas.setAttribute('aria-label', label);
+    host.focus({ preventScroll: true });
+  }
+
+  function start() {
+    for (const fig of document.querySelectorAll<HTMLElement>('.tide-screen')) {
+      if (fig.dataset.started) continue;
+      fig.dataset.started = '1';
+      const { scene, label, version } = fig.dataset as { scene: string; label: string; version: string };
+      const sim = new TideSim(fig.querySelector('.ts-sim'), { rows: 34, maxW: 120, version });
+      sim.scene(scene);
+      sim.canvas.setAttribute('aria-label', label);
+      fig.querySelector('.ts-open')!.addEventListener('click', () => openLarger(scene, label, version));
+    }
+  }
+
+  // The engine measures JetBrains Mono's cells, so it waits for the font, but
+  // not for long: without it the screen still comes, in a fallback font.
+  Promise.all([document.fonts.load('400 16px "JetBrains Mono"'), document.fonts.load('700 16px "JetBrains Mono"')]).catch(() => {}).then(start);
+  setTimeout(start, 2500);
+</script>
+
+<style is:global>
+  .tide-screen { margin: 1.5rem 0; border-radius: 10px; overflow: hidden; background: var(--win); border: 1px solid var(--win-line); }
+  .tide-screen .ts-bar, .ts-dialog .ts-bar { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--win-bar); border-bottom: 1px solid #151820; font: 12px var(--mono); color: #8a93a6; }
+  .tide-screen .ts-bar i { width: 10px; height: 10px; border-radius: 50%; background: #3b4252; display: block; }
+  .tide-screen .ts-mark { height: 13px; width: auto; flex: none; margin-left: 6px; color: #b7bfcf; }
+  .tide-screen .ts-mark .x { stroke: var(--brand); }
+  .ts-title { flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ts-open, .ts-close { border: 1px solid #3a4152; background: #1e222a; color: #e9ecf2; border-radius: 5px; padding: 2px 9px; font: 600 12px var(--mono); cursor: pointer; }
+  .ts-sim { overflow-x: auto; overflow-y: hidden; background: var(--win); outline: none; cursor: default; }
+  .ts-sim canvas { display: block; }
+  .ts-sim:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+  .tide-screen figcaption { padding: 10px 14px; background: var(--win-bar); border-top: 1px solid #151820; color: var(--win-ink); font: 14px/1.5 var(--body); }
+  .tide-screen .ts-live { color: #8a93a6; }
+  .ts-dialog { width: min(1280px, 96vw); max-width: 96vw; padding: 0; border: 1px solid var(--win-line); border-radius: 12px; background: var(--win); color: var(--win-ink); }
+  .ts-dialog::backdrop { background: rgba(8, 10, 14, .72); backdrop-filter: blur(3px); }
+</style>

@@ -102,6 +102,14 @@ The cart and checkout service.
     go run ./cmd/server`,
 };
 
+// The committed version of the files with uncommitted changes, for the side
+// by side diff.
+export const OLD_FILES = {
+  'README.md': `# shop-api
+
+The cart and checkout service.`,
+};
+
 export const DIFFS = {
   'checkout-flow': `2 commits ahead of main · +20 −2 · 2 files
 diff --git a/internal/checkout/checkout.go b/internal/checkout/checkout.go
@@ -213,6 +221,43 @@ export const ACA = {
   antigravity: { label: 'antigravity', icon: '▲', iconFg: P.cyan, bullet: '◆', model: 'gemini' },
 };
 export const ACA_NAMES = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', antigravity: 'Antigravity' };
+export const ACA_IDS = { claude: 'claude_code', codex: 'codex', cursor: 'cursor', antigravity: 'antigravity' };
+
+// The models the new agent form offers for each ACA, as wdx agent models lists them.
+export const FORM_MODELS = {
+  claude: [['fable', 'Fable'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']],
+  codex: [['gpt-5', 'GPT-5']],
+  cursor: [['auto', 'Auto']],
+  antigravity: [['gemini', 'Gemini']],
+};
+
+// The settings tab's rows: key, value, whether ←→ changes it, description.
+export const SETTINGS = [
+  ['home', '~/.wdx', false, 'directory holding the config file, database, logs and cloned projects'],
+  ['no_input', 'false', true, 'never prompt, as --no-input does: true or false'],
+  ['color', 'auto', true, 'color text output: auto (only on a terminal, unless NO_COLOR is set), always or never'],
+  ['log.level', 'info', true, 'lowest level logged: debug, info, warn, error'],
+  ['log.retention_days', '7', false, 'days of log files kept besides today\'s'],
+  ['otel.endpoint', 'http://localhost:4318', false, 'OpenTelemetry collector the daemon sends its metrics to over OTLP/HTTP, such as the one wdx observe starts; empty sends none'],
+  ['otel.interval_seconds', '15', false, 'seconds between two sends of the metrics'],
+  ['update.channel', 'stable', true, 'releases wdx update installs: stable, or dev for the newest release of either kind'],
+  ['update.base_url', 'https://github.com/srjn45/wdx/releases/download', false, 'where wdx update downloads releases, laid out as GitHub Releases; file://<repo>/dist for local builds'],
+  ['terminal.shell', '—', false, 'absolute path of the shell terminals run; empty runs the user\'s login shell, /bin/sh when the system names none'],
+  ['terminal.history_lines', '100000', false, 'lines of each terminal\'s history kept on disk, which wdx terminal attach scrolls back through; 0 keeps none, since terminal output can hold secrets'],
+  ['terminal.history_tail', '1000', false, 'lines of a terminal\'s history wdx terminal history prints when not told how many; at most 10000'],
+  ['editor', 'vi', true, 'terminal editor tide edits a file with: vi, vim, nvim, nano, hx, emacs'],
+  ['tide.section_order', 'awdpc', false, 'the sections tide\'s left pane shows, in their order, a letter each: a agents, w worktrees, d docs, p plans, c code; those left out are hidden'],
+  ['tide.theme', 'slate', true, 'the theme of colors tide paints its panes in: slate, for a dark terminal, is the only one so far; with color off tide paints none'],
+  ['context.threshold.warning', '200000', false, 'tokens in an agent\'s context from which tide and wdx agent show its size as a warning, in yellow, and below which in green; a whole number below context.threshold.critical'],
+  ['context.threshold.critical', '400000', false, 'tokens in an agent\'s context from which tide and wdx agent show its size as critical, in red; a whole number above context.threshold.warning'],
+  ['docs.git_path', '—', false, 'directory of each project\'s repository, relative to its main checkout, that the daemon keeps the project\'s docs written into, read-only, on every change, as wdx doc sync-to-git does once; empty for none'],
+  ['plan.parallel', '3', false, 'the most tasks each plan runs at once, each an agent in a worktree of its own, unless wdx plan run --parallel says otherwise; from 1 to 20'],
+  ['aca.claude_code.enabled', 'true', true, 'whether new agents may run claude_code, when it is installed: true or false'],
+  ['aca.antigravity.enabled', 'true', true, 'whether new agents may run antigravity, when it is installed: true or false'],
+  ['aca.cursor.enabled', 'true', true, 'whether new agents may run cursor, when it is installed: true or false'],
+  ['aca.codex.enabled', 'true', true, 'whether new agents may run codex, when it is installed: true or false'],
+];
+
 
 export function header(a) {
   const k = ACA[a.aca];
@@ -247,6 +292,7 @@ export function mkAgents() {
       script: (a) => ({ start: [user('Task emails of plan checkout: send a receipt email.'), blank()],
         stream: [say(a, 'Looking for a mail package in the module…'), say(a, 'None: adding internal/mail with an SMTP sender.'), sub('Write internal/mail/mail.go · +54', P.green), say(a, 'Writing the receipt template.'), sub('Write internal/mail/receipt.tmpl · +18', P.green), say(a, 'go vet ./... · clean')] }) },
   ];
+  list.forEach((a, i) => { a.idHex = ['3c1e9a07', '5b20f4d1', '9e4d7c2a', '0a6f3b58', 'c47e1d90', '72b9a5e3'][i]; });
   for (const a of list) {
     const sc = a.script(a);
     a.lines = header(a).concat(sc.start);

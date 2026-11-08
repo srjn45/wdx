@@ -78,13 +78,55 @@ test('keys open rows, the menu, zoom and the terminal', () => {
   assert.equal(sim.s.termOpen, false, 'C-\\ hides the terminal');
 });
 
-test('a new agent is created from the menu', () => {
+test('a new agent is created from the form, with what it was given', () => {
   const { sim, host } = live();
   host.focus();
   const before = sim.s.agents.length;
   press(host, 'a');
-  press(host, '2');
+  sim.render();
+  assert.match(screen(sim).join('\n'), /New agent in shop-api[\s\S]*Name[\s\S]*‹ claude_code ›[\s\S]*Permissions  ‹ full ›/);
+  for (const c of 'lint') press(host, c);
+  press(host, 'Tab');
+  press(host, 'ArrowRight');
+  press(host, 'Enter');
   assert.equal(sim.s.agents.length, before + 1);
+  const a = sim.agent('lint');
+  assert.equal(a.aca, 'codex');
+  assert.equal(a.model, 'gpt-5');
+});
+
+test('Esc leaves the form, creating nothing', () => {
+  const { sim, host } = live();
+  host.focus();
+  const before = sim.s.agents.length;
+  press(host, 'a');
+  press(host, 'Escape');
+  assert.equal(sim.s.popup, null);
+  assert.equal(sim.s.agents.length, before);
+});
+
+test('a doc renders as Markdown, and m shows its source', () => {
+  const { sim, host } = live();
+  SCENES.doc(sim);
+  sim.render();
+  let text = screen(sim).join('\n');
+  assert.match(text, /doc: CHECKOUT r3 approved/);
+  assert.match(text, /[│┃] Checkout +[│┃]/);
+  assert.doesNotMatch(text, /# Checkout/);
+  host.focus();
+  press(host, 'm');
+  sim.render();
+  text = screen(sim).join('\n');
+  assert.match(text, /# Checkout/);
+});
+
+test('a file with uncommitted changes shows beside its committed version', () => {
+  const sim = offscreen();
+  sim.scene('file-diff');
+  sim.render();
+  const text = screen(sim).join('\n');
+  assert.match(text, /HEAD +│ +uncommitted/);
+  assert.match(text, /\+ +go run \.\/cmd\/server/);
 });
 
 test('the shell runs wdx agent list', () => {

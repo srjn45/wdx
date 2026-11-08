@@ -25,5 +25,10 @@ export const SCENES = {
   code(sim) { const s = sim.s; s.collapsed.d = true; s.collapsed.w = true; s.tree[2].open = true; s.tree[2].children[2].open = true; sim.openTab({ kind: 'file', ref: 'internal/checkout/checkout.go' }); s.cursor = buildRows(s).findIndex((r) => r.type === 'file' && r.n.name === 'checkout.go'); s.focus = 'left'; },
   menu(sim) { const s = sim.s; s.cursor = buildRows(s).findIndex((r) => r.type === 'wt' && r.w.name === 'checkout-flow'); sim.rows = buildRows(s); sim.openTab({ kind: 'diff', ref: 'checkout-flow' }); s.focus = 'left'; sim.openMenu(); },
   terminal(sim) { const s = sim.s; s.focus = 'term'; s.termActive = 1; sim.runShell(s.terms[1], 'wdx agent list'); s.zoom = null; },
+  info(sim) { const s = sim.s; s.cursor = buildRows(s).findIndex((r) => r.type === 'agent' && r.a.id === 'reviewer'); sim.openTab({ kind: 'agent', ref: 'reviewer' }); sim.openTab({ kind: 'info', ref: 'reviewer' }); s.focus = 'right'; },
+  'new-agent'(sim) { const s = sim.s; s.cursor = buildRows(s).findIndex((r) => r.type === 'agent' && r.a.id === 'reviewer'); s.focus = 'left'; sim.agentForm(); },
+  'file-diff'(sim) { const s = sim.s; s.worktrees[0].open = true; s.cursor = buildRows(s).findIndex((r) => r.type === 'wtfile' && r.w.name === 'main'); sim.openTab({ kind: 'filediff', ref: 'main/README.md' }); s.focus = 'right'; },
+  doc(sim) { const s = sim.s; s.cursor = buildRows(s).findIndex((r) => r.type === 'doc' && r.name === 'CHECKOUT'); sim.openTab({ kind: 'doc', ref: 'CHECKOUT' }); s.focus = 'right'; },
+  settings(sim) { const s = sim.s; sim.openTab({ kind: 'settings', ref: 'settings' }); s.tabs[s.active].sel = 1; s.focus = 'right'; },
   zoom(sim) { const s = sim.s; const a = sim.agent('reviewer'); a.lines = a.lines.concat(a.stream.splice(0, 12)); sim.openTab({ kind: 'agent', ref: 'reviewer' }); s.focus = 'right'; s.zoom = 'right'; },
 };

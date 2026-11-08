@@ -32,3 +32,25 @@ export function diffLines(text) {
     return [seg(t, P.fg)];
   });
 }
+
+// A Markdown doc as TIDE renders it, in glamour's dark style: the title
+// without its #, other headings with theirs, bullets, bold and code without
+// their marks.
+export function markdown(text) {
+  const inline = (t) => {
+    const out = []; const re = /(\*\*[^*]+\*\*)|(`[^`]+`)|([^*`]+|[*`])/g; let m;
+    while ((m = re.exec(t))) {
+      if (m[1]) out.push(seg(m[1].slice(2, -2), P.white, true));
+      else if (m[2]) out.push(seg(m[2].slice(1, -1), P.orange));
+      else out.push(seg(m[3]));
+    }
+    return out;
+  };
+  return text.split('\n').map((l) => {
+    if (/^# /.test(l)) return [seg(l.slice(2), P.white, true)];
+    if (/^#{2,} /.test(l)) return [seg(l, P.cyan, true)];
+    if (/^    /.test(l)) return [seg(l, P.green)];
+    if (/^- /.test(l)) return [seg('• ', P.fg)].concat(inline(l.slice(2)));
+    return inline(l);
+  });
+}

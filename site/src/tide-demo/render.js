@@ -2,9 +2,9 @@
 // then the Grid onto the canvas. Mixed into TideSim by sim.js.
 import { P, seg, len, segsLen } from './palette.js';
 import { BOX, Grid } from './grid.js';
-import { FILES, DIFFS, DOCS, ACA_NAMES, prompt } from './fixture.js';
+import { FILES, DIFFS, DOCS, ACA_NAMES, ACA_IDS, SETTINGS, OLD_FILES, FORM_MODELS, prompt } from './fixture.js';
 import { buildRows, markSeg, rowParts } from './rows.js';
-import { hl, diffLines } from './highlight.js';
+import { hl, diffLines, markdown } from './highlight.js';
 
 export class Render {
   /* ---------- render ---------- */
@@ -107,29 +107,39 @@ export class Render {
     if (!t) { g.segs(I.x, I.y, [seg('no tab open: Enter on a row of the project opens one', P.dim)], I.x + I.w); return; }
     if (t.kind === 'agent') return this.drawAgent(g, I, t);
     if (t.kind === 'plan') return this.drawPlan(g, I, t);
+    if (t.kind === 'filediff') return this.drawFileDiff(g, I, t);
     let lines = [], footer = null, lineNo = false;
+    const keys = (...ks) => ks.flatMap(([k, what], i) => [seg((i ? '  ' : ' ') + k + ' ', P.cyan), seg(what, P.dim)]);
     if (t.kind === 'diff') {
+      const w = this.s.worktrees.find((x) => x.name === t.ref);
       lines = diffLines(DIFFS[t.ref]);
+      if (t.ref !== 'main') lines[0] = [seg('base: main · merge-base 06f103f · ' + w.ahead + (w.ahead === 1 ? ' commit' : ' commits'), P.dim)];
       const chunks = lines.filter((l) => l[0].fg === P.cyan).length;
-      footer = { left: [seg(' [ ] ', P.cyan), seg('change  ', P.dim), seg('{ } ', P.cyan), seg('file  ', P.dim), seg('L ', P.cyan), seg('land  ', P.dim), seg('C ', P.cyan), seg('commit  ', P.dim), seg('? ', P.cyan), seg('keys', P.dim)], right: [seg('change 1 of ' + chunks + ' · file 1 of 2', P.dim)] };
+      footer = { left: keys(['↑↓', 'scroll'], ['[ ]', 'change'], ['{ }', 'file'], ['/', 'search'], ['v', 'verified'], ['L', 'land'], ['?', 'keys']), right: [seg('change 1 of ' + chunks + ' · file 1 of ' + w.files.length, P.dim)] };
     } else if (t.kind === 'file') {
       const lang = t.ref.endsWith('.md') ? 'md' : 'go';
       lines = (FILES[t.ref] || '').split('\n').map((l) => hl(l, lang)); lineNo = true;
-      footer = { left: [seg(' e ', P.cyan), seg('edit  ', P.dim), seg('y ', P.cyan), seg('copy path  ', P.dim), seg('- ', P.cyan), seg('close tab', P.dim)], right: [seg(t.ref + ' · read-only', P.dim)] };
+      footer = { left: keys(['e', 'edit'], ['y', 'copy path'], ['-', 'close tab']), right: [seg(t.ref + ' · read-only', P.dim)] };
     } else if (t.kind === 'doc') {
       const d = DOCS[t.ref];
-      lines = [[seg(' ' + t.ref, P.white, true), seg('  ' + d.status, d.status === 'approved' ? P.green : P.yellow), seg('  rev ' + d.rev + (d.labels ? '  · ' + d.labels : ''), P.dim)], []].concat(d.body.split('\n').map((l) => [seg(' ')].concat(hl(l, 'md'))));
-      footer = { left: [seg(' e ', P.cyan), seg('edit  ', P.dim), seg('h ', P.cyan), seg('history  ', P.dim), seg('- ', P.cyan), seg('close tab', P.dim)], right: [seg('wdx doc get --name ' + t.ref, P.dim)] };
+      lines = t.source ? d.body.split('\n').map((l) => hl(l, 'md')) : markdown(d.body);
+      footer = { left: keys(['↑↓', 'scroll'], ['m', t.source ? 'rendered' : 'source'], ['/', 'search'], ['?', 'keys']), right: [seg('line ' + ((t.scroll || 0) + 1) + ' of ' + lines.length, P.dim)] };
     } else if (t.kind === 'settings') {
-      const rows = [['tide.theme', 'dark', 'TIDE\'s colors: dark, light or none'], ['tide.section_order', 'awdpc', 'the sections of the project pane, in order'], ['agent.default_aca', 'claude_code', 'the AI coding agent new agents run'], ['aca.codex.enabled', 'true', 'whether new agents may run codex'], ['aca.cursor.enabled', 'true', 'whether new agents may run cursor'], ['update.channel', 'stable', 'the releases wdx update looks at'], ['log.level', 'info', 'how much the logs say']];
-      lines = [[seg(' Settings', P.white, true), seg('   from ~/.wdx/config.yaml', P.dim)], []].concat(rows.map(([k, v, d]) => [seg(' ' + k.padEnd(22), P.cyan), seg(v.padEnd(14), P.white, true), seg(d, P.dim)]));
-      footer = { left: [seg(' Enter ', P.cyan), seg('change  ', P.dim), seg('r ', P.cyan), seg('reset', P.dim)], right: [] };
+      const enumOf = (v) => [seg('← ', P.dim), seg(v, P.white, true), seg(' →', P.dim)];
+      lines = SETTINGS.map(([k, v, isEnum], i) => [seg(i === (t.sel || 0) ? '▸ ' : '  ', P.white, true), seg((k + ':').padEnd(29), P.dim)].concat(isEnum ? enumOf(v) : [seg(v)]));
+      footer = { left: keys(['←→', 'change']), right: [], above: [seg(' ' + SETTINGS[t.sel || 0][3])] };
     } else if (t.kind === 'info') {
       const a = this.agent(t.ref);
-      const kv = [['name', a.name], ['ai cli', ACA_NAMES[a.aca]], ['model', a.model], ['state', a.state === 'waiting' ? 'running · waiting for you' : a.state === 'working' ? 'running · working' : 'running · idle'], ['worktree', a.wt || 'main'], ['context', a.ctx + ' tokens'], ['parent', a.parent || (a.plan ? 'plan ' + a.plan : '—')], ['session', 'resumes on wdx agent restart']];
-      lines = [[seg(' ' + a.name, P.white, true), seg('  info', P.dim)], []].concat(kv.map(([k, v]) => [seg(' ' + k.padEnd(10), P.dim), seg(v)]));
+      const kids = this.s.agents.filter((x) => x.parent === a.id).map((x) => x.name);
+      const state = { waiting: 'waiting', working: 'working', idle: 'idle' }[a.state];
+      const kv = [['name', a.name], ['id', 'agent-' + a.idHex], ['aca', ACA_IDS[a.aca]], ['model', a.model], ['requested_model', '—'], ['permissions', 'full'], null,
+        ['project_name', 'shop-api'], ['dir', '~/code/shop-api' + (a.wt ? '/.worktrees/' + a.wt : '')], ['current_dir', '—'], ['worktree', a.wt || 'main'], ['parent_agent_name', a.parent || '—'], ['children', kids.join(', ') || '—'], null,
+        ['state', 'running'], ['exit_code', '—'], ['error', '—'], ['activity', state], ['draft', 'no'], ['queued', '0'], ['held', '0'], ['context', a.ctx]];
+      lines = kv.map((r, i) => (r ? [seg(i === 0 ? '▸ ' : '  ', P.white, true), seg((r[0] + ':').padEnd(20), P.dim), seg(r[1], r[0] === 'activity' && a.state === 'waiting' ? P.yellow : P.fg)] : []));
+      footer = { left: keys(['Enter', 'rename']), right: [] };
     }
-    const bodyH = I.h - (footer ? 1 : 0);
+    const bodyH = I.h - (footer ? 1 : 0) - (footer && footer.above ? 1 : 0);
+    if (t.kind === 'settings') { const sel = t.sel || 0; if (sel < (t.scroll || 0)) t.scroll = sel; if (sel >= (t.scroll || 0) + bodyH) t.scroll = sel - bodyH + 1; }
     t.scroll = Math.max(0, Math.min(t.scroll || 0, Math.max(0, lines.length - bodyH)));
     const gut = lineNo ? 4 : 0;
     for (let i = 0; i < bodyH; i++) {
@@ -142,22 +152,50 @@ export class Render {
     }
     if (footer) {
       const y = I.y + I.h - 1;
-      g.segs(I.x, y, footer.left, I.x + I.w);
-      const rw = segsLen(footer.right); g.segs(I.x + I.w - rw - 1, y, footer.right, I.x + I.w);
+      const rw = segsLen(footer.right), left = footer.left.slice();
+      // the keys that do not fit before the right side go, a key and its word at a time
+      while (left.length > 2 && segsLen(left) > I.w - rw - 3) left.splice(-2);
+      g.segs(I.x, y, left, I.x + I.w);
+      g.segs(I.x + I.w - rw - 1, y, footer.right, I.x + I.w);
+      if (footer.above) g.segs(I.x, y - 1, footer.above, I.x + I.w);
     }
   }
 
   tabTitle(t) {
     switch (t.kind) {
       case 'agent': { const a = this.agent(t.ref); return [markSeg(a), seg(' ' + a.name)]; }
-      case 'diff': return [seg((t.ref === 'main' ? 'uncommitted: ' : 'diff: ') + t.ref)];
+      case 'diff': return [seg((t.ref === 'main' ? 'uncommitted: ' : 'pr: ') + t.ref)];
+      case 'filediff': return [seg('diff: ' + t.ref)];
       case 'plan': return [seg('plan: ' + t.ref + ' r1')];
       case 'file': return [seg('file: ' + t.ref.split('/').pop())];
-      case 'doc': return [seg('doc: ' + t.ref)];
+      case 'doc': { const d = DOCS[t.ref]; return [seg('doc: ' + t.ref + ' r' + d.rev + ' ' + d.status)]; }
       case 'settings': return [seg('settings')];
       case 'info': return [seg('info: ' + t.ref)];
     }
     return [seg('?')];
+  }
+
+  // A file's uncommitted changes, as TIDE shows them: HEAD and the file side
+  // by side, the changed lines marked.
+  drawFileDiff(g, I, t) {
+    const [wt, path] = [t.ref.slice(0, t.ref.indexOf('/')), t.ref.slice(t.ref.indexOf('/') + 1)];
+    const before = OLD_FILES[path].split('\n'), after = FILES[path].split('\n');
+    const half = Math.floor((I.w - 1) / 2), rx = I.x + half + 1;
+    g.text(I.x + 2, I.y, 'HEAD', P.dim); g.text(rx + 2, I.y, wt === 'main' ? 'uncommitted' : wt, P.dim);
+    for (let y = I.y; y < I.y + I.h - 1; y++) g.text(I.x + half, y, '│', P.line);
+    const n = Math.max(before.length, after.length);
+    for (let i = 0; i < n && i < I.h - 2; i++) {
+      const y = I.y + 1 + i, b = before[i], a = after[i];
+      const changed = b !== a;
+      if (b !== undefined) g.segs(I.x, y, [seg(String(i + 1).padEnd(2), P.dim), seg(changed ? '- ' : '  ', P.red)].concat(hl(b, 'md')), I.x + half - 1, changed ? P.delBg : null);
+      if (a !== undefined) {
+        if (changed) g.fill(rx, y, I.w - half - 1, 1, P.addBg);
+        g.segs(rx, y, [seg(String(i + 1).padEnd(2), P.dim), seg(changed ? '+ ' : '  ', P.green)].concat(hl(a, 'md')), I.x + I.w, changed ? P.addBg : null);
+      }
+    }
+    const left = [[' ↑↓', 'scroll'], ['[ ]', 'change'], [':', 'line'], ['/', 'search'], ['v', 'verified'], ['c', 'comment'], ['?', 'keys']].flatMap(([k, w], i) => [seg((i ? '  ' : '') + k + ' ', P.cyan), seg(w, P.dim)]);
+    g.segs(I.x, I.y + I.h - 1, left, I.x + I.w);
+    const r = 'change 1 of 1'; g.text(I.x + I.w - r.length - 1, I.y + I.h - 1, r, P.dim);
   }
 
   drawAgent(g, I, t) {
@@ -277,8 +315,43 @@ export class Render {
     for (const sg of right) { if (sg.t === 'C-q ') { this.hit(off, y, off + 8, y, () => this.openMenu()); break; } off += len(sg.t); }
   }
 
+  // The new agent form, as TIDE draws it: a field per row, the one being
+  // filled marked, a hint under those left empty.
+  formLines(f) {
+    const on = (i) => f.field === i, cur = this.cursorOn() ? '█' : ' ';
+    const label = (i, name) => [seg(on(i) ? '▸ ' : '  ', P.white, true), seg(name.padEnd(13), on(i) ? P.white : P.fg, on(i))];
+    const text = (i, v, hint) => [label(i, ['Name', '', '', 'Worktree', '', 'Prompt'][i]).concat([seg(v), seg(on(i) ? cur : '', P.white)]), v ? null : [seg('               ' + hint, P.dim)]];
+    const models = FORM_MODELS[f.aca];
+    const out = [];
+    out.push(...text(0, f.name, 'empty: a generated one'));
+    out.push(label(1, 'ACA').concat([seg('‹ ', P.dim), seg(ACA_IDS[f.aca], P.white, true), seg(' ›', P.dim)]));
+    out.push(label(2, 'Model'));
+    models.forEach((m, i) => out.push([seg('             ' + (i === f.model ? '▸ ' : '  '), P.white, true), seg(m[0].padEnd(9), i === f.model ? P.white : P.fg, i === f.model), seg(m[1], P.dim)]));
+    out.push(...text(3, f.worktree, 'empty: main; a new name creates it'));
+    out.push(label(4, 'Permissions').concat([seg('‹ ', P.dim), seg(f.perm, P.white, true), seg(' ›', P.dim)]));
+    out.push([seg('               ' + (f.perm === 'full' ? 'no approvals, network access, no sandbox' : 'your own settings for it decide'), P.dim)]);
+    out.push(...text(5, f.prompt, 'empty: none'));
+    return out.filter(Boolean);
+  }
+
   drawPopup(g) {
     const pu = this.s.popup;
+    if (pu.form) {
+      const lines = this.formLines(pu.form), foot = 'Enter create  Tab next  Esc cancel';
+      const iw = Math.max(len(pu.title) + 4, len(foot) + 4, ...lines.map((l) => segsLen(l) + 4));
+      const ih = lines.length + 6, ow = iw + 6, oh = ih + 4;
+      const ox = Math.floor((this.W - ow) / 2), oy = Math.max(0, Math.floor((this.H - 1 - oh) / 2));
+      g.fill(ox, oy, ow, oh, P.bg);
+      for (let j = oy; j < oy + oh; j++) for (let i = ox; i < ox + ow; i++) { const c = g.cell(i, j); if (c) { c.ch = ' '; c.u = c.d = c.l = c.r = 0; c.lw = 0; } }
+      g.box(ox, oy, ow, oh, 2, P.green);
+      const x = ox + 3, y = oy + 2;
+      g.box(x, y, iw, ih, 2, P.green); g.hline(x, x + iw - 1, y + 2, 2, P.green); g.hline(x, x + iw - 1, y + ih - 3, 2, P.green);
+      g.text(x + 2, y + 1, pu.title, P.white, null, true);
+      lines.forEach((l, i) => g.segs(x + 2, y + 3 + i, l, x + iw - 1));
+      g.text(x + 2, y + ih - 2, foot, P.dim);
+      this.hits.push({ x0: 0, y0: 0, x1: this.W, y1: this.H, fn: null, modal: [ox, oy, ox + ow - 1, oy + oh - 1] });
+      return;
+    }
     const lines = [];
     pu.sections.forEach((sec, si) => {
       if (si) lines.push({ blank: true });
