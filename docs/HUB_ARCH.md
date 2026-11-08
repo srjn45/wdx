@@ -171,7 +171,7 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 
 ### Daemon endpoints in `api/openapi.yaml`
 
-`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning link and code) and its state stream; `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `requestLogged` and the response switch in `internal/daemon/http.go` leave prompts and file contents out), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
+`GET /v1/hub` (status); `POST /v1/hub/login` (start, returning link and code) and its state stream; `POST /v1/hub/logout`; `POST /v1/hub/code` (setup: a pending secret goes back once to the CLI, which draws the QR; the response is logged with the secret left out, as `requestLogged` and the response switch in `internal/daemon/http.go` do, with `internal/api/secrets.go`, for prompts and file contents), `POST /v1/hub/code/verify` (one code back, which commits it) and `POST /v1/hub/code/recover`; `GET /v1/hub/nodes`, `GET` and `DELETE /v1/hub/nodes/{node}`; `POST /v1/hub/nodes/{node}/connect` (the stream); `GET`, `POST` and `DELETE /v1/hub/sessions`; `GET` and `PUT /v1/projects/{project}/sync`; `POST /v1/terminals/{id}/attach` (the relay).
 
 ## The hub's API, `api/hub.yaml`
 
@@ -216,7 +216,7 @@ Later: plans and billing.
 
 ## Logging and secrets
 
-- `wdx` logs every flag in `command started` and the daemon every request body: so `--code` and the request field `code` are redacted, where `promptFlag` in `internal/cli/logs.go` keeps a prompt out of the CLI's log and `requestLogged` in `internal/daemon/http.go` keeps prompts and file contents out of the daemon's, and the authenticator secret and recovery key never appear in a response that is logged.
+- `wdx` logs every flag in `command started` and the daemon every request body: so `--code` and the request field `code` are redacted, where `promptFlag` in `internal/cli/logs.go` keeps a prompt out of the CLI's log, and `requestLogged` in `internal/daemon/http.go` with `internal/api/secrets.go` keep prompts and file contents out of the daemon's and the CLI's, and the authenticator secret and recovery key never appear in a response that is logged.
 - Hub settings have a `secret` attribute: `docs_key`, the object storage credentials and the like are shown as `[secret]` by `wdx-hub setting list` and in `command received`, which logs settings.
 - The hub never logs a doc's content, a token, a code or a password hash; the relay logs that a stream opened and closed, with its bytes counted, never its bytes.
 - The audit chain has a verifier, `wdx-hub audit verify`, and the hub writes the chain's latest hash to its log once an hour, so that a tampered chain can be caught against a copy the server does not hold.
