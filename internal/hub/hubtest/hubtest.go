@@ -92,6 +92,7 @@ type Hub struct {
 	// User is the user the hub was started with, alice.
 	User User
 
+	opts    server.Options
 	stop    func()
 	mu      sync.Mutex
 	secrets []string
@@ -100,8 +101,46 @@ type Hub struct {
 // Stop stops the hub, as its operator does, before the test ends.
 func (h *Hub) Stop() { h.stop() }
 
+// Restart stops the hub and serves it again on the same home and the same
+// ports, as its operator does when updating it: nodes reconnect to it at the
+// addresses they were given.
+func (h *Hub) Restart() {
+	h.t.Helper()
+	h.stop()
+	h.opts.Config.ListenWeb = strings.TrimPrefix(h.URL, "http://")
+	h.opts.Config.ListenNodes = strings.TrimPrefix(h.NodesURL, "https://")
+	h.serve()
+}
+
+// serve listens and serves the hub with its options until stop.
+func (h *Hub) serve() {
+	t := h.t
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := server.Listen(ctx, h.opts)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- s.Serve(ctx) }()
+	h.Server = s
+	h.stop = sync.OnceFunc(func() {
+		cancel()
+		if err := <-served; err != nil {
+			t.Errorf("hub: serve: %v", err)
+		}
+	})
+}
+
 // Option changes the hub's options before it starts.
 type Option func(*server.Options)
+
+// RenewEvery makes the hub check every d, rather than daily, whether a
+// connected node's certificate is due for renewal.
+func RenewEvery(d time.Duration) Option {
+	return func(o *server.Options) { o.RenewInterval = d }
+}
 
 // Start serves a hub until the test ends, with a user, alice. A test binary
 // that uses it runs in a scope of its own: runtest.Main in its TestMain.
@@ -125,27 +164,15 @@ func Start(t *testing.T, opts ...Option) *Hub {
 	logtest.OnFailure(t, home) // registered first, so it runs once the hub stopped
 	logs := logging.NewDailyFile(hubconfig.LogsDir(home), hubconfig.Name, 7, time.Now)
 	o.Log = logging.New(logs, slog.LevelDebug)
-	ctx, cancel := context.WithCancel(context.Background())
-	s, err := server.Listen(ctx, o)
-	if err != nil {
-		cancel()
-		logs.Close()
-		t.Fatal(err)
-	}
-	served := make(chan error, 1)
-	go func() { served <- s.Serve(ctx) }()
-	h := &Hub{t: t, Server: s, Home: home, URL: "http://" + s.Addresses().Web, NodesURL: s.NodesURL(), Clock: clock}
-	h.stop = sync.OnceFunc(func() {
-		cancel()
-		if err := <-served; err != nil {
-			t.Errorf("hub: serve: %v", err)
-		}
-	})
+	h := &Hub{t: t, Home: home, Clock: clock, opts: o, stop: func() {}}
 	t.Cleanup(func() {
 		h.stop()
 		logs.Close()
 		h.wantLogged()
 	})
+	h.serve()
+	// The same on a restart, which listens at them again.
+	h.URL, h.NodesURL = "http://"+h.Server.Addresses().Web, h.Server.NodesURL()
 	h.User = h.AddUser("alice")
 	return h
 }

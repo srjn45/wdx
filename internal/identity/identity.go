@@ -108,6 +108,13 @@ func TrashAgentsDir(home string) string {
 	return filepath.Join(home, "trash", "agents")
 }
 
+// HubDir holds this node's login to a hub under home: its key, its
+// certificate, the hub's CA and login.json (the wdx doc HUB_LOGIN). The key
+// is the node's identity: only the user may enter it.
+func HubDir(home string) string {
+	return filepath.Join(home, "hub")
+}
+
 // LogsDir is where the daily log files are written under home.
 func LogsDir(home string) string {
 	return filepath.Join(home, "logs")

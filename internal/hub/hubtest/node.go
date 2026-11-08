@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"testing"
 
@@ -80,4 +81,19 @@ func Certificate(t *testing.T, certPEM string, key ed25519.PrivateKey) tls.Certi
 		t.Fatalf("hubtest: no certificate in %q", certPEM)
 	}
 	return tls.Certificate{Certificate: [][]byte{block.Bytes}, PrivateKey: key}
+}
+
+// Admin is the hub's API on its admin socket, as its operator's commands
+// call it.
+func (h *Hub) Admin() *hubapi.ClientWithResponses {
+	h.t.Helper()
+	socket := h.Server.Addresses().Admin
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+	}}}
+	c, err := hubapi.NewClientWithResponses("http://wdx-hub", hubapi.WithHTTPClient(hc))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return c
 }

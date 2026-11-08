@@ -225,17 +225,25 @@ linters:
           list-mode: strict
           allow:
             - $gostd
-        # Only wdx-hub uses the hub, until hublink in step 5 takes hubapi.
+        # Only wdx-hub uses the hub; hublink, the node's side, uses its API
+        # (the wdx doc HUB_LOGIN).
         hub-in-wdx-hub-only:
           files:
             - "$all"
             - "!**/cmd/wdx-hub/**"
             - "!**/internal/hub/**"
+            - "!**/internal/hublink/**"
           deny:
             - pkg: github.com/srjn45/wdx/internal/hub/
               desc: only wdx-hub uses the hub
             - pkg: github.com/srjn45/wdx/internal/hubapi
-              desc: only wdx-hub uses the hub's API, until hublink in step 5
+              desc: only wdx-hub and hublink use the hub's API
+        # hublink speaks to the hub through its API alone.
+        hublink-not-hub:
+          files: ["**/internal/hublink/*.go", "!$test"]
+          deny:
+            - pkg: github.com/srjn45/wdx/internal/hub/
+              desc: hublink speaks to the hub through hubapi alone
     errcheck:
       # Errors these return have nothing left to handle: a rollback after
       # the commit, a response the client stopped reading, a completion or
