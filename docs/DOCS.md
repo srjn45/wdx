@@ -27,7 +27,9 @@ On 2026-11-02:
 - No author on a revision while wdx is local: there is one user. With the hub, revisions, comments and approvals record the user who made them.
 - Search through docs waits for a later version.
 
-Later, not designed: the hub; keeping only one's own docs locally and reading shared ones from the hub; approvals and comments; search; plans, DAGs in a wdx-defined YAML made from approved docs.
+A synced project's docs are pushed to the hub (`wdx project sync --on`, the wdx doc HUB_DOCS_PUSH), plans not: the doc store writes each change to `hub_outbox` inside the change's own transaction, in `internal/doc` (`store.go`, `outbox.go`), and the daemon's hub link sends it. Nothing comes back down.
+
+Later, not designed: keeping only one's own docs locally and reading shared ones from the hub; approvals and comments; search; plans, DAGs in a wdx-defined YAML made from approved docs.
 
 ## Design
 

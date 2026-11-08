@@ -32,6 +32,7 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 
 - What the user must open, and with `--no-browser` the code, go to stderr while it waits. On approval stdout's first line is `logged in to <url> as <user>; this machine is node <name>`; the hint `run wdx hub code setup to allow remote access`, when no authenticator is set up, comes with step 7.
 - `--json` never prompts; the link, and the code, still go to stderr, so that a script or an AI can hand them to a person. stdout: `{"result": "logged_in", "hub": {...}}`, the hub's status as `wdx hub status` gives it.
+- A login enqueues every doc of every synced project anew, in place of what waited, so that the hub logged in to gets every doc.
 - Results: `logged_in`.
 - Errors: `hub_unreachable` (3); `hub_version_unsupported` (1); `already_logged_in` (1), hinting `wdx hub logout`; `name_taken` (1), hinting `--name`, which the hub as built never sends, since its approval page always asks for another name when the account has one; `login_denied` (1), when Deny was clicked; `login_expired` (1), when not approved within about 10 minutes; `login_cancelled` (1), when another login replaced it.
 
@@ -39,7 +40,7 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 
 - Tells the hub to revoke this node, deletes `<home>/hub/`, and ends remote sessions in and out.
 - With the hub unreachable it still deletes everything here: the node's certificate is useless without its key, which is gone. The result says so, hinting `remove it from another node: wdx hub node remove --name <name>`.
-- No confirmation: nothing on the machine is lost. Projects, agents and docs stay, and docs already on the hub stay there.
+- No confirmation: nothing on the machine is lost. Projects, agents and docs stay, and docs already on the hub stay there. The changes waiting for the hub are deleted, so that none reaches another account; a project stays synced, and the next login sends its docs again.
 - Results: `logged_out`, with `"hub_told": true|false` and `hub`, the status as it was; telling the hub is best effort, with a short timeout. Errors: `not_logged_in` (1).
 
 ### `wdx hub status`
@@ -130,11 +131,12 @@ Not in the MVP. Results: `renamed`. Errors: `name_taken`.
 
 ### `wdx project sync --id | --name [--on | --off]`
 
-- With neither, shows `sync` (on or off), `pending` (changes not yet on the hub), `failed` (changes the hub refused, each with its doc and code, such as `doc_name_taken` when another of one's own nodes made a doc of that name in this repository; renaming the doc pushes it), `last_pushed_at` and the project's repository key.
-- `--on` pushes every doc of the project with all its revisions, then each change: a new doc, a revision, a change of status, labels, folder or name, a removal. Docs only: plans share their table (docs/HUB_ARCH.md) and come later. It works logged out or offline; changes wait for the connection.
-- `--off` stops pushing. What is on the hub stays there: teams will rely on it once docs are distributed. Removing it from the hub is a later command.
+- With neither, shows `{"sync": {...}}`: `on`, `pending` (changes not yet on the hub), `failed` (docs the hub refused, each with its id, name and code, such as `doc_name_taken` when another of one's own nodes made a doc of that name in this repository; renaming the doc pushes it), `last_pushed_at`, `repo_key` and `logged_in`. Text: `sync on, 3 changes waiting, last pushed 2 minutes ago`, then each failed doc with its code; logged out, the hint `not logged in: changes wait until wdx hub login`, not an error. With `--on` or `--off` the same object, with `result`.
+- `--on` pushes every doc of the project with all its revisions, in batches over `POST /v1/docs/changes` (docs/HUB_ARCH.md, "Docs going to the hub"), then each change: a new doc, a revision, a change of status, labels, folder or name, a removal. Docs only: plans share their table (docs/HUB_ARCH.md) and come later. It works logged out or offline; changes wait for the connection.
+- `--off` stops pushing and deletes the changes waiting. What is on the hub stays there, as it does when the project is removed: teams will rely on it once docs are distributed. Removing it from the hub is a later command.
 - A doc removed on the node is removed on the hub too.
-- Needs a git remote, which is how a project is matched across machines: `no_remote` (422).
+- Each change carries the project's current repository key, so a project whose remote moved has its docs moved on the hub as each next changes; `--off` then `--on` moves them all at once.
+- Needs a git remote, which is how a project is matched across machines: `no_remote` (422, exit 1), hinting to add one. `not_found` for a project not there. `--on` and `--off` together are a `usage` error.
 - Results: `changed`; `unchanged` when it was so already.
 - Not in tide in the MVP; `docs/CLI_TIDE.md` gets the row.
 

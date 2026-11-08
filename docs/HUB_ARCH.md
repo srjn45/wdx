@@ -20,7 +20,7 @@ Status: approved 2026-11-03, after a review end to end the same day whose findin
 
 - **Two endpoints on the hub.** The web endpoint serves the sign-in pages and the device flow, under an ordinary public certificate, before a node has any key the hub knows. The node endpoint is TLS of the hub's own, demanding a node's client certificate: everything a logged-in node does goes there.
 - **One control WebSocket per node,** held open by the daemon, dialled out, reconnecting with backoff. It carries small messages: hello and versions, certificate renewal, "a stream is waiting for you", "docs changed", the node's reported state.
-- **One WebSocket per stream.** A remote session's request, an attach, a doc push each open their own WebSocket on the node endpoint, rather than many streams multiplexed in one connection. No multiplexing library (the common one, `hashicorp/yamux`, is MPL-2.0 anyway), no flow control of our own, and a stuck terminal never holds up a doc push. The cost is a TLS handshake per stream, a few milliseconds, which sessions keep few by reusing their streams.
+- **One WebSocket per stream.** A remote session's request and an attach each open their own WebSocket on the node endpoint (a doc push needs none: it is a batch per request, `POST /v1/docs/changes`), rather than many streams multiplexed in one connection. No multiplexing library (the common one, `hashicorp/yamux`, is MPL-2.0 anyway), no flow control of our own, and a stuck terminal never holds up a doc push. The cost is a TLS handshake per stream, a few milliseconds, which sessions keep few by reusing their streams.
 - **The relay** pairs a client node's stream with a host node's, when both belong to one user, then copies bytes both ways and nothing else.
 
 ## Remote sessions, end to end
@@ -111,12 +111,15 @@ The hub's CA certificate and the node endpoint's address come over the web endpo
 
 ## Docs going to the hub
 
-- **An outbox on the node.** Each change of a doc in a synced project (created, a revision, status, labels, folder, name, removed) adds a row to `hub_outbox` in the same transaction as the change, so that no change is ever lost or pushed twice in the wrong order. `project sync --on` adds every doc and revision the project has.
+- **An outbox on the node.** Each change of a doc in a synced project (created, a revision, status, labels, folder, name, removed) adds a row to `hub_outbox` in the same transaction as the change, so that no change is ever lost or pushed twice in the wrong order. `project sync --on` adds every doc and revision the project has; `--off` deletes its rows waiting. The table has the project's id, so a project removed takes its rows with it, and `projects.hub_pushed_at` says when a change of it last reached the hub.
 - **The doc store writes the outbox itself,** inside the transaction of each change, when the project's `hub_sync` is on (an `INSERT … SELECT` over `projects`). No other package can join that transaction, and the store's one hook, `OnChange`, runs after the commit, where a crash between the two writes would lose a change. `hublink` only reads and deletes the rows. (Decided 2026-11-07.)
 - **Plans share the table.** Since docs/PLANS.md, plans are rows of `docs` with `kind` (`doc` or `plan`), `parent_id` and a stored name `plan:<name>`, and since docs/FOLDERS.md every row has a `folder`. The pusher sends only `kind = doc` in the MVP, as agreed; each change carries the doc's `kind` and `folder`, and the hub's `docs` table holds both, so a folder arrives with its doc and plans need no change of the hub's tables when they come. `parent_id` comes with plans. (Decided 2026-11-07.)
-- **The pusher** in hublink sends the outbox in order over a stream, deleting each row once the hub acknowledges it. The hub applies each change idempotently, by the doc's id and revision, so a push retried after a lost acknowledgement does nothing.
+- **The pusher** in hublink sends the outbox in order, in batches of up to 100 changes or 8 MiB over `POST /v1/docs/changes`, answered change by change, while the control connection is up: at connect, when the doc store's `OnChange` kicks it, and after a failure with the control connection's backoff. It deletes each row once the hub acknowledges it; a row refused with a code of its doc's own (`doc_name_taken`, `doc_too_large`, `revision_gap`) is marked failed and holds up that doc's later rows only, until the doc changes again. The hub applies each change idempotently, by the doc's id and revision, so a batch retried after a lost acknowledgement does nothing twice. No stream: a batch retries simply. `hublink` declares the `Outbox` it needs, and the daemon hands it `doc.Outbox`. (Step 6, the wdx doc HUB_DOCS_PUSH.)
+- **Logout clears the outbox, and a login enqueues every synced project anew**, in place of what waited, before the control connection starts: rows written for one account never reach another, and a hub logged in to anew gets every doc.
 - **Offline**, rows wait; `project sync` shows how many.
-- **On the hub**, docs are stored by owner, by the project's repository key (`git.RepoKey` of the remote), and by the doc's id, which is random and global already. A project whose remote changes gets a new key, and its docs on the hub start anew under it; rare, and `project sync` shows a project's key.
+- **On the hub**, docs are stored by owner, by the project's repository key (`git.RepoKey` of the remote), and by the doc's id, which is random and global already. Each change carries the project's current key, and the hub moves the doc to it: a project whose remote moved has its docs moved as each next changes, and `--off` then `--on` moves them all at once; rare, and `project sync` shows a project's key.
+- **A project removed, or `--off`, leaves its docs on the hub**: `wdx project remove` is about this machine. Removing them from the hub is a later command; `wdx-hub user remove` deletes a user's docs.
+- **Nothing comes back down** in the MVP, and plans are not pushed.
 - **Two of one user's nodes can each create a doc of the same name in one repository**, with different ids, and the MVP brings nothing down that would let either know. The hub refuses the second with `doc_name_taken`; the node marks the outbox row failed, `project sync` shows it under `failed`, and the user renames the doc, which pushes it. Nothing is overwritten or dropped in silence.
 
 ### Encrypted at rest
@@ -141,8 +144,8 @@ STRICT, unix-millisecond timestamps, prefixed random ids, as AGENTS.md says for 
 | `web_sessions` | `id` (`ws-`), `user_id`, `token_hash`, `second_factor_at` (NULL until the second factor passed), `address`, `user_agent`, `created_at`, `last_seen_at`, `expires_at` |
 | `node_logins` | `id`, `flow` (`browser`, `device`), `code_hash` (the device code's from the start, the authorization code's once a browser login is approved), `pkce_challenge`, `callback`, `user_code_hash`, `name`, `os`, `version` (of wdx), `public_key`, `status` (`pending`, `approved`, `denied`), `user_id`, `node_id`, `address` (the one that started it, shown on the approval page), `created_at`, `expires_at`, `polled_at` (the device flow's last poll, for `slow_down`) |
 | `nodes` | `id` (`node-`), `user_id`, `name` (unique per user among the nodes not revoked, `NOCASE`), `public_key`, `os`, `version`, `remote_access`, `code_setup`, `created_at`, `last_seen_at`, `cert_expires_at` (when its current certificate ends, so renewal is decided without reading it), `revoked_at`; a removed node is kept, revoked, so its certificate is refused as revoked |
-| `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `kind`, `name`, `folder`, `format`, `labels`, `status`, `revision`, `data_key` (wrapped), `created_at`, `updated_at`; unique on owner, repository and name |
-| `doc_revisions` | `doc_id`, `revision`, `content` (gzip, sealed), `size`, `created_at` |
+| `docs` | `id` (the node's doc id), `owner_id`, `repo_key`, `kind`, `name`, `folder`, `format`, `labels`, `status`, `revision` (the latest stored), `data_key` (random, sealed under `master_key` with the doc's id as additional data), `created_at`, `updated_at`; unique on owner, repository and name |
+| `doc_revisions` | `doc_id`, `revision`, `content` (gzip, sealed under the doc's data key with its id and revision as additional data), `size` (of the text unpacked), `created_at` (the hub's clock); primary key on `doc_id` and `revision` |
 | `audit` | `id`, `at`, `user_id` (no foreign key, as a cascade would delete rows of the chain), `node_id` (with step 5), `actor` (`user`, `admin` or `hub`), `action`, `address`, `details` (JSON), `hash`: each row's hash covers the one before and the row's own fields, so a row changed, removed or inserted breaks the chain |
 
 Tokens, codes and device codes are stored hashed, never as given. Secrets the hub must read back (TOTP) are sealed under the master key.
@@ -165,7 +168,8 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 | Table or column | |
 |---|---|
 | `projects.hub_sync` | `INTEGER NOT NULL DEFAULT 0` |
-| `hub_outbox` | `seq`, `doc_id` (plain text, no foreign key: a `removed` row must outlive its doc), `change`, `revision`, `created_at`, `failed` (the hub's error code, or NULL) |
+| `projects.hub_pushed_at` | when a change of the project last reached the hub, NULL if never |
+| `hub_outbox` | `seq` (the order), `project_id` (`ON DELETE CASCADE`), `doc_id` (plain text, no foreign key: a `removed` row must outlive its doc), `change` (`revision`, `metadata`, `removed`), `revision` (of a `revision` row), `created_at`, `failed` (the hub's error code, or NULL); a row says what changed, and the content and metadata are read when it is sent |
 | `hub_known_nodes` | `node_id`, `name`, `public_key`, `first_seen_at`: keys pinned in sessions |
 | `hub_sessions` | `id`, `direction`, `node_id`, `opened_at`, `last_used_at`, `closed_at` |
 
@@ -178,7 +182,7 @@ Keys and secrets are files, not rows: the database is backed up at every `wdx up
 Each operation has one tag, `web`, `nodes` or `admin`, saying which endpoint serves it; another endpoint answers it 404. One path has one operation, so what each endpoint serves alike has a path per endpoint: the version is `GET /v1/version` on the web endpoint, `GET /v1/node/version` on the node endpoint and `GET /v1/admin/version` on the socket (step 3, the wdx doc HUB_SKELETON).
 
 - Web endpoint: `POST /v1/node-logins` and `POST /v1/node-logins/token` (the device flow), `POST /v1/node-logins/exchange` (the authorization code for the node's credentials), and the sign-in pages' own routes.
-- Node endpoint, mTLS, every request's certificate checked against the database (a revoked node, or a disabled or removed user, is refused with `node_revoked` or `account_disabled`): `GET /v1/control` (the control WebSocket, with `github.com/coder/websocket`, which also carries certificate re-issuance; the messages `hello`, `welcome`, `certificate`, `certificate_saved` and `bye`), `GET /v1/streams/{id}` (a stream WebSocket), `POST /v1/streams` (ask for a stream to a node), `GET /v1/nodes`, `GET` and `DELETE /v1/nodes/{node}`, `POST /v1/docs/changes` (the outbox, in order).
+- Node endpoint, mTLS, every request's certificate checked against the database (a revoked node, or a disabled or removed user, is refused with `node_revoked` or `account_disabled`): `GET /v1/control` (the control WebSocket, with `github.com/coder/websocket`, which also carries certificate re-issuance; the messages `hello`, `welcome`, `certificate`, `certificate_saved` and `bye`), `GET /v1/streams/{id}` (a stream WebSocket), `POST /v1/streams` (ask for a stream to a node), `GET /v1/nodes`, `GET` and `DELETE /v1/nodes/{node}`, `POST /v1/docs/changes` (the outbox, in order, in batches; a body over 8 MiB is refused whole, and the request lines measure each change's `content`, never log it).
 - Control messages are JSON objects with a `type`, described in the spec as schemas, so both sides are generated from one place.
 - A hub states the range of `hub.yaml` versions it serves; the hello on the control socket checks it, and `hub_version_unsupported` says which side is behind.
 
@@ -255,6 +259,10 @@ Shapes found, no decision needed: the settings table already has a per-row `from
 ## Settled in step 5, 2026-11-08
 
 The wdx doc HUB_LOGIN, built: the login's state is `GET /v1/hub/login` with server-sent events, not an Upgrade; the hub has a setting `nodes_url` for where nodes dial the node endpoint, sent at login and kept in `login.json`; a second login replaces a pending one, whose CLI ends with `login_cancelled`; `internal/hub/hubtest` is the one hub package wdx's tests import; the package is `internal/hub/node`. The daemon is the only user of `internal/hublink`, which uses the hub's API alone.
+
+## Settled in step 6, 2026-11-08
+
+The wdx doc HUB_DOCS_PUSH, built: batches over `POST /v1/docs/changes` in place of a stream; logout clears the outbox and a login enqueues every synced project; a moved remote moves docs as they change; a removed project leaves its docs on the hub; the new columns `projects.hub_pushed_at` and `hub_outbox.project_id`; `revision_gap` refused for good as the doc's own; the package is `internal/hub/docsync`.
 
 ## Running the hub locally, until the public one
 
