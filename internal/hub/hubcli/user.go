@@ -297,8 +297,9 @@ func newUserRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove --username <name> [--yes]",
 		Short: "Remove a user, keeping their username taken",
-		Long: "Their password, authenticator, recovery codes, browser sessions, resets and\n" +
-			"nodes are deleted, their nodes cut off, and the username is never given again.\n" +
+		Long: "Their password, authenticator, recovery codes, browser sessions, resets,\n" +
+			"nodes and docs are deleted, their nodes cut off, and the username is never\n" +
+			"given again.\n" +
 			"You are asked first, as nothing brings it back; --yes answers in advance, and\n" +
 			"with --json, or without a terminal, it is required.",
 		Example: clikit.Examples(

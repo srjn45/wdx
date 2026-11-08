@@ -19,6 +19,7 @@ var committed = []string{
 	"2dd7fb8b56a1e9034e56639afd054ff676cad79ea236026a282943d01fdb6167", // 0001_schema_readers.sql
 	"6b205d67bcd817a5c21a700691a1cb31ce6387bb06738255924b3140d25faa43", // 0002_accounts.sql
 	"c462764ec552e45e9faeee4dc8412d02e53a789227ef5a2e82b0ea63d49929f4", // 0003_nodes.sql
+	"8c98ea6935da271ba5f8126e703fe4ab839d04f5eaad59f0bc9c9d8a7620b953", // 0004_docs.sql
 }
 
 func TestOpenMigrates(t *testing.T) {

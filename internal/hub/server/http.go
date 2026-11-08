@@ -51,10 +51,10 @@ func (s *Server) handler(e endpoint) http.Handler {
 		BaseRouter:       http.NewServeMux(),
 		ErrorHandlerFunc: badRequest,
 	})
-	next := ownOnly(sp.validate(routes))
+	next := ownOnly(refuseTooLarge(sp.validate(routes)))
 	switch e {
 	case endpointAdmin:
-		next = ownOnly(sp.validate(s.oneChangeAtATime(routes)))
+		next = ownOnly(refuseTooLarge(sp.validate(s.oneChangeAtATime(routes))))
 	case endpointNodes:
 		// Before anything else, even a 404: the endpoint tells a node it
 		// does not know nothing.
@@ -179,6 +179,7 @@ func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *ht
 type (
 	debugIDKey   struct{}
 	operationKey struct{}
+	tooLargeKey  struct{}
 )
 
 // debugID is the id the request in ctx is logged under.
@@ -194,6 +195,19 @@ func ownOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if op, _ := r.Context().Value(operationKey{}).(string); op == "" {
 			failed(w, r, &noEndpointError{method: r.Method, path: r.URL.Path})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// refuseTooLarge refuses whole a request whose body is over its operation's
+// limit, which logRequests read no further than.
+func refuseTooLarge(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tooLarge, _ := r.Context().Value(tooLargeKey{}).(bool); tooLarge {
+			op, _ := r.Context().Value(operationKey{}).(string)
+			failed(w, r, &requestError{err: fmt.Errorf("the body is over %d bytes, the most %s takes", bodyLimits[op], op)})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -236,17 +250,18 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 		if r.Header.Get(hubapi.LogLevelHeader) == hubapi.LogLevelDebug {
 			log = logging.Quiet(log)
 		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Error("request body unreadable", "err", err)
-		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
 		// Only an operation of this endpoint is one.
 		var operation string
 		if route, _, err := sp.router.FindRoute(r); err == nil && sp.endpoints[route.Operation.OperationID] == e {
 			operation = route.Operation.OperationID
 		}
+		body, tooLarge, err := readBody(r.Body, bodyLimits[operation])
+		if err != nil {
+			log.Error("request body unreadable", "err", err)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		ctx := context.WithValue(context.WithValue(r.Context(), debugIDKey{}, id), operationKey{}, operation)
+		ctx = context.WithValue(ctx, tooLargeKey{}, tooLarge)
 		ctx = context.WithValue(ctx, addressKey{}, s.pages.Address(r))
 		r = r.WithContext(logging.NewContext(ctx, log))
 		log.Info("request received",
@@ -255,7 +270,8 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
 			"client_version", r.Header.Get(hubapi.VersionHeader),
-			"body", requestLogged(operation, body))
+			"body", requestLogged(operation, body),
+			"body_too_large", tooLarge)
 
 		w.Header().Set(hubapi.DebugIDHeader, id)
 		w.Header().Set(hubapi.VersionHeader, identity.Version)
@@ -288,6 +304,27 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// bodyLimits are the most a request's body may hold, by operation id; the
+// others' are not limited.
+var bodyLimits = map[string]int64{
+	"pushDocChanges": maxDocChangesBody,
+}
+
+// readBody reads body whole, or up to limit bytes and one more when limit is
+// not 0; tooLarge says there was more than limit, and what was read is then
+// dropped.
+func readBody(body io.Reader, limit int64) (b []byte, tooLarge bool, err error) {
+	if limit == 0 {
+		b, err = io.ReadAll(body)
+		return b, false, err
+	}
+	b, err = io.ReadAll(io.LimitReader(body, limit+1))
+	if int64(len(b)) > limit {
+		return nil, true, err
+	}
+	return b, false, err
 }
 
 // requestLogged is a request's body as logged: a setting's value can be a

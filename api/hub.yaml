@@ -426,6 +426,38 @@ paths:
               schema: { $ref: "#/components/schemas/AccountNodeResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/docs/changes:
+    post:
+      operationId: pushDocChanges
+      tags: [nodes]
+      summary: Apply changes of the calling node's docs, in order
+      description: |
+        Each change is applied once, in a transaction of its own, by the
+        doc's id and revision: a change already applied is acknowledged
+        again and nothing is written, so a batch sent again after a lost
+        answer does nothing twice. A doc's revisions are sealed at rest
+        under a data key of its own, which master_key seals. A body over
+        8 MiB is refused whole with usage.
+
+        Each change is answered applied or refused with its code:
+        revision_gap, a revision that is not the doc's next; doc_too_large,
+        content that unpacks to more than 2 MiB; doc_name_taken, a name
+        another of the user's docs in that repository has; not_found, a doc
+        the hub does not have, or another user's; invalid_argument, a change
+        that lacks what its kind needs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocChanges" }
+      responses:
+        "200":
+          description: One result per change, in the order sent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocChangeResults" }
+        default: { $ref: "#/components/responses/Problem" }
+
 components:
   parameters:
     Username:
@@ -732,6 +764,67 @@ components:
       properties:
         type: { type: string }
 
+    DocChanges:
+      type: object
+      required: [changes]
+      additionalProperties: false
+      properties:
+        changes:
+          type: array
+          items: { $ref: "#/components/schemas/DocChange" }
+
+    DocChange:
+      type: object
+      description: |
+        One change of a doc, as the node's outbox has it. revision and
+        metadata carry the doc's metadata as it is when pushed, removed only
+        its id.
+      required: [seq, doc_id, change]
+      additionalProperties: false
+      properties:
+        seq: { type: integer, format: int64, description: "The outbox row's number, echoed in its result." }
+        doc_id: { type: string, minLength: 1 }
+        change: { $ref: "#/components/schemas/DocChangeType" }
+        repo_key: { type: string, description: "The project's repository key now; the doc moves to it." }
+        kind: { $ref: "#/components/schemas/DocKind" }
+        name: { type: string }
+        folder: { type: string }
+        format: { type: string }
+        labels: { type: array, items: { type: string } }
+        status: { type: string }
+        revision: { type: integer, description: "revision only: the revision the content is, 1 for a new doc." }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        content: { type: string, format: byte, description: "revision only: the revision's text gzipped, in base64; at most 2 MiB once unpacked." }
+
+    DocChangeType:
+      type: string
+      enum: [revision, metadata, removed]
+
+    DocKind:
+      type: string
+      enum: [doc, plan]
+
+    DocChangeResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/DocChangeResult" }
+
+    DocChangeResult:
+      type: object
+      required: [seq, status, code]
+      properties:
+        seq: { type: integer, format: int64 }
+        status: { type: string, enum: [applied, refused] }
+        code:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ErrorCode"
+          description: "Why it was refused; null when applied."
+
     User:
       type: object
       required: [username, created_at, last_login_at, disabled, second_factor, nodes]
@@ -832,6 +925,9 @@ components:
         - slow_down
         - access_denied
         - expired_token
+        - revision_gap
+        - doc_too_large
+        - doc_name_taken
 
     Problem:
       type: object

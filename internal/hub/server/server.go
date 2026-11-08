@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/account"
 	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/ca"
+	"github.com/srjn45/wdx/internal/hub/docsync"
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/node"
@@ -146,6 +147,7 @@ type Server struct {
 	ca       *ca.CA
 	accounts *account.Store
 	nodes    *node.Store
+	docs     *docsync.Store
 	pages    *pages.Pages // the sign-in pages, on the web endpoint
 	// nodesURL is where nodes reach the node endpoint, as they are told.
 	nodesURL string
@@ -219,6 +221,9 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		return nil, err
 	}
 	s.nodes = node.New(s.db, node.Options{Now: opts.Now})
+	if s.docs, err = docsync.New(s.db, docsync.Options{MasterKey: cfg.MasterKey, Now: opts.Now}); err != nil {
+		return nil, err
+	}
 	s.registration.Store(cfg.Registration)
 	if s.pages, err = pages.New(pages.Options{
 		Accounts:       s.accounts,
@@ -331,6 +336,9 @@ func (s *Server) Accounts() *account.Store { return s.accounts }
 
 // Nodes is the hub's store of nodes.
 func (s *Server) Nodes() *node.Store { return s.nodes }
+
+// Docs is the hub's store of the docs nodes push.
+func (s *Server) Docs() *docsync.Store { return s.docs }
 
 // NodesURL is where nodes reach the node endpoint, as they are told at
 // login.

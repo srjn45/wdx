@@ -119,6 +119,63 @@ func (e ControlWelcomeType) Valid() bool {
 	}
 }
 
+// Defines values for DocChangeResultStatus.
+const (
+	DocChangeResultStatusApplied DocChangeResultStatus = "applied"
+	DocChangeResultStatusRefused DocChangeResultStatus = "refused"
+)
+
+// Valid indicates whether the value is a known member of the DocChangeResultStatus enum.
+func (e DocChangeResultStatus) Valid() bool {
+	switch e {
+	case DocChangeResultStatusApplied:
+		return true
+	case DocChangeResultStatusRefused:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DocChangeType.
+const (
+	DocChangeTypeMetadata DocChangeType = "metadata"
+	DocChangeTypeRemoved  DocChangeType = "removed"
+	DocChangeTypeRevision DocChangeType = "revision"
+)
+
+// Valid indicates whether the value is a known member of the DocChangeType enum.
+func (e DocChangeType) Valid() bool {
+	switch e {
+	case DocChangeTypeMetadata:
+		return true
+	case DocChangeTypeRemoved:
+		return true
+	case DocChangeTypeRevision:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DocKind.
+const (
+	DocKindDoc  DocKind = "doc"
+	DocKindPlan DocKind = "plan"
+)
+
+// Valid indicates whether the value is a known member of the DocKind enum.
+func (e DocKind) Valid() bool {
+	switch e {
+	case DocKindDoc:
+		return true
+	case DocKindPlan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAccessDenied          ErrorCode = "access_denied"
@@ -127,6 +184,8 @@ const (
 	ErrorCodeAuditBroken           ErrorCode = "audit_broken"
 	ErrorCodeAuthorizationPending  ErrorCode = "authorization_pending"
 	ErrorCodeCancelled             ErrorCode = "cancelled"
+	ErrorCodeDocNameTaken          ErrorCode = "doc_name_taken"
+	ErrorCodeDocTooLarge           ErrorCode = "doc_too_large"
 	ErrorCodeExpiredToken          ErrorCode = "expired_token"
 	ErrorCodeHubUnavailable        ErrorCode = "hub_unavailable"
 	ErrorCodeHubVersionUnsupported ErrorCode = "hub_version_unsupported"
@@ -140,6 +199,7 @@ const (
 	ErrorCodePathExists            ErrorCode = "path_exists"
 	ErrorCodeRateLimited           ErrorCode = "rate_limited"
 	ErrorCodeReloadFailed          ErrorCode = "reload_failed"
+	ErrorCodeRevisionGap           ErrorCode = "revision_gap"
 	ErrorCodeSlowDown              ErrorCode = "slow_down"
 	ErrorCodeUsage                 ErrorCode = "usage"
 )
@@ -158,6 +218,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeAuthorizationPending:
 		return true
 	case ErrorCodeCancelled:
+		return true
+	case ErrorCodeDocNameTaken:
+		return true
+	case ErrorCodeDocTooLarge:
 		return true
 	case ErrorCodeExpiredToken:
 		return true
@@ -184,6 +248,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeRateLimited:
 		return true
 	case ErrorCodeReloadFailed:
+		return true
+	case ErrorCodeRevisionGap:
 		return true
 	case ErrorCodeSlowDown:
 		return true
@@ -415,6 +481,61 @@ type CreateReset struct {
 	// SecondFactor Also remove the user's authenticator and recovery codes; false when left out.
 	SecondFactor *bool `json:"second_factor,omitempty"`
 }
+
+// DocChange One change of a doc, as the node's outbox has it. revision and
+// metadata carry the doc's metadata as it is when pushed, removed only
+// its id.
+type DocChange struct {
+	Change DocChangeType `json:"change"`
+
+	// Content revision only: the revision's text gzipped, in base64; at most 2 MiB once unpacked.
+	Content   *[]byte    `json:"content,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	DocId     string     `json:"doc_id"`
+	Folder    *string    `json:"folder,omitempty"`
+	Format    *string    `json:"format,omitempty"`
+	Kind      *DocKind   `json:"kind,omitempty"`
+	Labels    *[]string  `json:"labels,omitempty"`
+	Name      *string    `json:"name,omitempty"`
+
+	// RepoKey The project's repository key now; the doc moves to it.
+	RepoKey *string `json:"repo_key,omitempty"`
+
+	// Revision revision only: the revision the content is, 1 for a new doc.
+	Revision *int `json:"revision,omitempty"`
+
+	// Seq The outbox row's number, echoed in its result.
+	Seq       int64      `json:"seq"`
+	Status    *string    `json:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// DocChangeResult defines model for DocChangeResult.
+type DocChangeResult struct {
+	// Code Why it was refused; null when applied.
+	Code   *ErrorCode            `json:"code"`
+	Seq    int64                 `json:"seq"`
+	Status DocChangeResultStatus `json:"status"`
+}
+
+// DocChangeResultStatus defines model for DocChangeResult.Status.
+type DocChangeResultStatus string
+
+// DocChangeResults defines model for DocChangeResults.
+type DocChangeResults struct {
+	Results []DocChangeResult `json:"results"`
+}
+
+// DocChangeType defines model for DocChangeType.
+type DocChangeType string
+
+// DocChanges defines model for DocChanges.
+type DocChanges struct {
+	Changes []DocChange `json:"changes"`
+}
+
+// DocKind defines model for DocKind.
+type DocKind string
 
 // ErrorCode Stable error code; never changed or reused. already_running,
 // hub_unavailable and cancelled are reported by the CLI, never by the
@@ -711,6 +832,9 @@ type Username = string
 // BackupJSONRequestBody defines body for Backup for application/json ContentType.
 type BackupJSONRequestBody = Backup
 
+// PushDocChangesJSONRequestBody defines body for PushDocChanges for application/json ContentType.
+type PushDocChangesJSONRequestBody = DocChanges
+
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody = CreateInvite
 
@@ -860,6 +984,48 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/control (the `OpenControl` operationId).
 	OpenControl(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PushDocChangesWithBody Apply changes of the calling node's docs, in order
+	//
+	// Each change is applied once, in a transaction of its own, by the
+	// doc's id and revision: a change already applied is acknowledged
+	// again and nothing is written, so a batch sent again after a lost
+	// answer does nothing twice. A doc's revisions are sealed at rest
+	// under a data key of its own, which master_key seals. A body over
+	// 8 MiB is refused whole with usage.
+	//
+	// Each change is answered applied or refused with its code:
+	// revision_gap, a revision that is not the doc's next; doc_too_large,
+	// content that unpacks to more than 2 MiB; doc_name_taken, a name
+	// another of the user's docs in that repository has; not_found, a doc
+	// the hub does not have, or another user's; invalid_argument, a change
+	// that lacks what its kind needs.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+	PushDocChangesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PushDocChanges Apply changes of the calling node's docs, in order
+	//
+	// Each change is applied once, in a transaction of its own, by the
+	// doc's id and revision: a change already applied is acknowledged
+	// again and nothing is written, so a batch sent again after a lost
+	// answer does nothing twice. A doc's revisions are sealed at rest
+	// under a data key of its own, which master_key seals. A body over
+	// 8 MiB is refused whole with usage.
+	//
+	// Each change is answered applied or refused with its code:
+	// revision_gap, a revision that is not the doc's next; doc_too_large,
+	// content that unpacks to more than 2 MiB; doc_name_taken, a name
+	// another of the user's docs in that repository has; not_found, a doc
+	// the hub does not have, or another user's; invalid_argument, a change
+	// that lacks what its kind needs.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+	PushDocChanges(ctx context.Context, body PushDocChangesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateInviteWithBody Make an invite, a link that lets one person sign up
 	//
@@ -1234,6 +1400,68 @@ func (c *Client) Backup(ctx context.Context, body BackupJSONRequestBody, reqEdit
 // Corresponds with GET /v1/control (the `OpenControl` operationId).
 func (c *Client) OpenControl(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewOpenControlRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PushDocChangesWithBody Apply changes of the calling node's docs, in order
+//
+// Each change is applied once, in a transaction of its own, by the
+// doc's id and revision: a change already applied is acknowledged
+// again and nothing is written, so a batch sent again after a lost
+// answer does nothing twice. A doc's revisions are sealed at rest
+// under a data key of its own, which master_key seals. A body over
+// 8 MiB is refused whole with usage.
+//
+// Each change is answered applied or refused with its code:
+// revision_gap, a revision that is not the doc's next; doc_too_large,
+// content that unpacks to more than 2 MiB; doc_name_taken, a name
+// another of the user's docs in that repository has; not_found, a doc
+// the hub does not have, or another user's; invalid_argument, a change
+// that lacks what its kind needs.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+func (c *Client) PushDocChangesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPushDocChangesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PushDocChanges Apply changes of the calling node's docs, in order
+//
+// Each change is applied once, in a transaction of its own, by the
+// doc's id and revision: a change already applied is acknowledged
+// again and nothing is written, so a batch sent again after a lost
+// answer does nothing twice. A doc's revisions are sealed at rest
+// under a data key of its own, which master_key seals. A body over
+// 8 MiB is refused whole with usage.
+//
+// Each change is answered applied or refused with its code:
+// revision_gap, a revision that is not the doc's next; doc_too_large,
+// content that unpacks to more than 2 MiB; doc_name_taken, a name
+// another of the user's docs in that repository has; not_found, a doc
+// the hub does not have, or another user's; invalid_argument, a change
+// that lacks what its kind needs.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+func (c *Client) PushDocChanges(ctx context.Context, body PushDocChangesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPushDocChangesRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1878,6 +2106,46 @@ func NewOpenControlRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewPushDocChangesRequest calls the generic PushDocChanges builder with application/json body
+func NewPushDocChangesRequest(server string, body PushDocChangesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPushDocChangesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPushDocChangesRequestWithBody constructs an http.Request for the PushDocChanges method, with any body, and a specified content type
+func NewPushDocChangesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/docs/changes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2586,6 +2854,48 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/control (the `OpenControl` operationId).
 	OpenControlWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OpenControlResponse, error)
 
+	// PushDocChangesWithBodyWithResponse Apply changes of the calling node's docs, in order
+	//
+	// Each change is applied once, in a transaction of its own, by the
+	// doc's id and revision: a change already applied is acknowledged
+	// again and nothing is written, so a batch sent again after a lost
+	// answer does nothing twice. A doc's revisions are sealed at rest
+	// under a data key of its own, which master_key seals. A body over
+	// 8 MiB is refused whole with usage.
+	//
+	// Each change is answered applied or refused with its code:
+	// revision_gap, a revision that is not the doc's next; doc_too_large,
+	// content that unpacks to more than 2 MiB; doc_name_taken, a name
+	// another of the user's docs in that repository has; not_found, a doc
+	// the hub does not have, or another user's; invalid_argument, a change
+	// that lacks what its kind needs.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+	PushDocChangesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PushDocChangesResponse, error)
+
+	// PushDocChangesWithResponse Apply changes of the calling node's docs, in order
+	//
+	// Each change is applied once, in a transaction of its own, by the
+	// doc's id and revision: a change already applied is acknowledged
+	// again and nothing is written, so a batch sent again after a lost
+	// answer does nothing twice. A doc's revisions are sealed at rest
+	// under a data key of its own, which master_key seals. A body over
+	// 8 MiB is refused whole with usage.
+	//
+	// Each change is answered applied or refused with its code:
+	// revision_gap, a revision that is not the doc's next; doc_too_large,
+	// content that unpacks to more than 2 MiB; doc_name_taken, a name
+	// another of the user's docs in that repository has; not_found, a doc
+	// the hub does not have, or another user's; invalid_argument, a change
+	// that lacks what its kind needs.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+	PushDocChangesWithResponse(ctx context.Context, body PushDocChangesJSONRequestBody, reqEditors ...RequestEditorFn) (*PushDocChangesResponse, error)
+
 	// CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
 	//
 	// The link holds the invite's token: whoever has it can make an account
@@ -3063,6 +3373,54 @@ func (r OpenControlResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r OpenControlResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PushDocChangesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DocChangeResults
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PushDocChangesResponse) GetJSON200() *DocChangeResults {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PushDocChangesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PushDocChangesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PushDocChangesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PushDocChangesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PushDocChangesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3976,6 +4334,60 @@ func (c *ClientWithResponses) OpenControlWithResponse(ctx context.Context, reqEd
 	return ParseOpenControlResponse(rsp)
 }
 
+// PushDocChangesWithBodyWithResponse Apply changes of the calling node's docs, in order
+//
+// Each change is applied once, in a transaction of its own, by the
+// doc's id and revision: a change already applied is acknowledged
+// again and nothing is written, so a batch sent again after a lost
+// answer does nothing twice. A doc's revisions are sealed at rest
+// under a data key of its own, which master_key seals. A body over
+// 8 MiB is refused whole with usage.
+//
+// Each change is answered applied or refused with its code:
+// revision_gap, a revision that is not the doc's next; doc_too_large,
+// content that unpacks to more than 2 MiB; doc_name_taken, a name
+// another of the user's docs in that repository has; not_found, a doc
+// the hub does not have, or another user's; invalid_argument, a change
+// that lacks what its kind needs.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+func (c *ClientWithResponses) PushDocChangesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PushDocChangesResponse, error) {
+	rsp, err := c.PushDocChangesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePushDocChangesResponse(rsp)
+}
+
+// PushDocChangesWithResponse Apply changes of the calling node's docs, in order
+//
+// Each change is applied once, in a transaction of its own, by the
+// doc's id and revision: a change already applied is acknowledged
+// again and nothing is written, so a batch sent again after a lost
+// answer does nothing twice. A doc's revisions are sealed at rest
+// under a data key of its own, which master_key seals. A body over
+// 8 MiB is refused whole with usage.
+//
+// Each change is answered applied or refused with its code:
+// revision_gap, a revision that is not the doc's next; doc_too_large,
+// content that unpacks to more than 2 MiB; doc_name_taken, a name
+// another of the user's docs in that repository has; not_found, a doc
+// the hub does not have, or another user's; invalid_argument, a change
+// that lacks what its kind needs.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/docs/changes (the `PushDocChanges` operationId).
+func (c *ClientWithResponses) PushDocChangesWithResponse(ctx context.Context, body PushDocChangesJSONRequestBody, reqEditors ...RequestEditorFn) (*PushDocChangesResponse, error) {
+	rsp, err := c.PushDocChanges(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePushDocChangesResponse(rsp)
+}
+
 // CreateInviteWithBodyWithResponse Make an invite, a link that lets one person sign up
 //
 // The link holds the invite's token: whoever has it can make an account
@@ -4532,6 +4944,39 @@ func ParseOpenControlResponse(rsp *http.Response) (*OpenControlResponse, error) 
 	switch {
 	case rsp.StatusCode == 101:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePushDocChangesResponse parses an HTTP response from a PushDocChangesWithResponse call
+func ParsePushDocChangesResponse(rsp *http.Response) (*PushDocChangesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PushDocChangesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DocChangeResults
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
@@ -5120,6 +5565,9 @@ type ServerInterface interface {
 	// OpenControl The node's control WebSocket
 	// (GET /v1/control)
 	OpenControl(w http.ResponseWriter, r *http.Request)
+	// PushDocChanges Apply changes of the calling node's docs, in order
+	// (POST /v1/docs/changes)
+	PushDocChanges(w http.ResponseWriter, r *http.Request)
 	// CreateInvite Make an invite, a link that lets one person sign up
 	// (POST /v1/invites)
 	CreateInvite(w http.ResponseWriter, r *http.Request)
@@ -5229,6 +5677,20 @@ func (siw *ServerInterfaceWrapper) OpenControl(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenControl(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PushDocChanges operation middleware
+func (siw *ServerInterfaceWrapper) PushDocChanges(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PushDocChanges(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5701,6 +6163,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes", wrapper.ListNodes)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.RemoveNode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/nodes/{node}", wrapper.GetNode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/docs/changes", wrapper.PushDocChanges)
 
 	return m
 }
@@ -5845,6 +6308,45 @@ type OpenControldefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response OpenControldefaultApplicationProblemPlusJSONResponse) VisitOpenControlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PushDocChangesRequestObject struct {
+	Body *PushDocChangesJSONRequestBody
+}
+
+type PushDocChangesResponseObject interface {
+	VisitPushDocChangesResponse(w http.ResponseWriter) error
+}
+
+type PushDocChanges200JSONResponse DocChangeResults
+
+func (response PushDocChanges200JSONResponse) VisitPushDocChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PushDocChangesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response PushDocChangesdefaultApplicationProblemPlusJSONResponse) VisitPushDocChangesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6530,6 +7032,9 @@ type StrictServerInterface interface {
 	// OpenControl The node's control WebSocket
 	// (GET /v1/control)
 	OpenControl(ctx context.Context, request OpenControlRequestObject) (OpenControlResponseObject, error)
+	// PushDocChanges Apply changes of the calling node's docs, in order
+	// (POST /v1/docs/changes)
+	PushDocChanges(ctx context.Context, request PushDocChangesRequestObject) (PushDocChangesResponseObject, error)
 	// CreateInvite Make an invite, a link that lets one person sign up
 	// (POST /v1/invites)
 	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
@@ -6718,6 +7223,37 @@ func (sh *strictHandler) OpenControl(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OpenControlResponseObject); ok {
 		if err := validResponse.VisitOpenControlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PushDocChanges operation middleware
+func (sh *strictHandler) PushDocChanges(w http.ResponseWriter, r *http.Request) {
+	var request PushDocChangesRequestObject
+
+	var body PushDocChangesJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PushDocChanges(ctx, request.(PushDocChangesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PushDocChanges")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PushDocChangesResponseObject); ok {
+		if err := validResponse.VisitPushDocChangesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7201,112 +7737,125 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"5F39bhvJkX+VBu8AJbgxJXu9TkLhECheL9aX3Y1vHccHhAuhOVPkdDTTPdfdI4pn6N0PVdU9H5wZkrIl",
-	"X4D7y5I47K6uqq7PX40/zVJTVkaD9m62+DSrpJUleLD02wcHVssS8OcMXGpV5ZXRs8XsrzmI2oE9c/QP",
-	"PpSIbS493IIVyjuRSgfzWTJT+HglfT5LZrzWLH5jlsws/HetLGSzhbc1JDOX5lBK3M/vKnzWeav0ZnZ/",
-	"f48Pu8poB0TbO2tWBZT4Y2q0B+3xR1lVhUolUnle8RP/9g+HJH/qrP2vFtazxexfztvDn/On7jyuSzsO",
-	"D40Eg/NiLVUB2Xx2n8z+BtYp3mKCkodRENeboIB5fcsPCakzkZqyVF74HERer8RWOrGqVeHF2poyoUfw",
-	"s/gVsxY+V05cvXs7n+EeYWOk6ypNTa39zyYjocui+Mt6tvj7YYLp6fvk06yypgLrFUsINxlqzsccfE46",
-	"IpQjurTJQEh3o/QGFSYIfmVMAVLPWPBRS/7Oq/7aPGZW/4DUz+5/vU+6xH8HXqri9CN0zz08yVrpDdjK",
-	"KhZt/0Dvf7h68e2rRcPmG9idOfH+h6tnL759JZQWK+ng1UuxVT43tReVzLL+UaOOJ7OqXhUqvb6B3XCf",
-	"t96JN9mLb799/gfBz+FWSbsDrrg2tpQe2bfzMNxhj5ed7ZLeIY/y942+hcJUpCR9XumgOidyOwhqnzJa",
-	"ZUhFj4YflfPj+9MPykPpHkAJrh62k9bK3ShN7hhRv4CrC//FbJmxuQtLHfpS2HCf2PDl5AAn60yNEJqD",
-	"zMbtfSGdF9Zsz5zIpctJ83K4uxS6LgqxNlZILaCs/E6kuVQa9RE/kqsCon0faLw12xEj8YPZilLqHW7H",
-	"RoJWxH0790ZpDxuww7PjmgmfZPLk0xosI2MOyooe2t+Zvzq2559kelNXtHyWKTymLN51tl3LwkGyRwm5",
-	"zQFzrlbOFLUHgR+zNQeRmmqXCKOjFzhzYq0KcDvnobwU2vhc6Y0o5U6sAB+y5J1LpX8EvcFtnh+1FkjN",
-	"9NmmND8eYij6R9HvSapeG+2tKf60gzEntGvcZVoYB0HJjNaQ4jOXwsKtuYGMzHqmHCpxJkqQmjR9Y0yG",
-	"/Osf1YIMnh50XTKZtMosmcU1ZsnM5bX3Sm+uM7PVHdpb1vAf2mVWOxh5bt8z4qdJJOIAS14jxWsMTkZY",
-	"cyU0bEXaPhI1DA1JQofH8O4GdsPzp4cWfqvFuzc/jbo9uKuUBXctSRsaH5ZJD8+8KmF2Aou6e5/Kqu53",
-	"elScxrz38hYmbCXFNFtrPLBiddi5zY0DQZvtMArCeM4NefnIPLl2ROypnDmNFz9AUZhpBpANss6LEpyT",
-	"G4jmKeVvi4+wem/SG/DD08tKXd+2cfVwfaXXZt6LaOk2z3eyLNqosg2FMfoa1T3jRo3TPitzOurYXd1m",
-	"d11ST2Jv93j9FYigAyz/iVk5ZtKkF5h97Rr+Rrbn0iXCG+GhKMQ2V2nO0feQ7fHUJxziAI0foUjNVNbI",
-	"vklqtwWLRElBrEWKUqmFA3sLj6cPZyHNGZFbXq8OyC05KWLjiG89pjDbwIRTb1yXnH0FmYzhXluQHt7q",
-	"W8UW9wGxRbzhDlKjs4kYrDB6Q6xUtIXYGnvjKPALX0uE9KI0zotvLkQmd+5SvHgpclNbJ7Y5aFHA2gtT",
-	"+15yorR/9XI8jps44i/gwD/whEzi9Vqm3tgRR1c4IyyU5pZtdChnyNrnoD0aTYpoM2EhNeFeZeAuBW02",
-	"PN1I3jo4zBtrjX0dFGsvjfQYHgjAJ2inS6GpmJLmUm8gE8YKC7WDbC5kYUFmu2tba630Jllq1J5ay1up",
-	"KNzmsoDUKRQYtkgLwkJlrIdMrDj0ef3j2yTswH+hReZL1LeowzWZmoQEZLUsSBX99drUOqM/38pCZdfS",
-	"buoSdIzGruFOOe86DzigeIeCk8JIlIniUGjvJOEedE6Cz2BQfb2y5gaQuOZYoaB07SV/YNHNFapUnj8z",
-	"GVy38Zfk5Oq6E4d1rtx1rV1dMYc6hG+spGOhUhir/ofKOdcV6IyJdYXZchRHG4Bz1xloRWvwBcuuPdE9",
-	"5jne3LFsKZk1G6UfqODpqCKhNezRS9pEMl9hZoQCt6be5J58AvpjWRQrmd6MlyRuUkAuqbUCe9w3EE37",
-	"3xozXa3R+vK4p1D6ZsiIZX1x8U0aahy1Leh3OHdqo+vqj2zR/p0fIhnx5wsh0bhZ8BzsIoMqsM7oYAQz",
-	"YXSxmx8trhBRRyMpZsNU7qQaJh3yQoGVj5ZShV3HyI2FwT1FJBudPUhmKhv1uoV0/toB6LBYX6Q/1xTB",
-	"gKbAmc0j52yQ9TxMd+ujNYhY4h7GhrpQGg7WMHPphGwirjaBFNpsx7zCZMB5MLrZZndN+VZ5rsQ0B5+K",
-	"bffEq6LB5Biz3THpym9PAg0PppThtYUM3aUs3IheyOuDKWEbD76+wqDi3ZufErpweMOE0dBG8qCzyijN",
-	"RWNbO/Zkoxbr6JYhN+kmZXHz5sY3BVb6tUDrLJyXNvI7EeQhhBQ7kHaUjgcGkFReRDt1IKOMXEhE7n3l",
-	"FufnbL9y43wwX8HqGRv+MEoaxjoTnoPdZKevc1yzNNt8WnQ/qd5Tge4xp1SKXOH3hdn2KiDsumbJLINb",
-	"lcKoQ22+/Z4lNdRI/vL1uOfkDxckcXYBrf5VpigcSb5T7wxEnVTo/By/tg5MOKZBLcfuQ7B2K4uj58P4",
-	"XazAbwG08FvDZ3zQ8ZrIPZnRFRlX37AObyyryppbWYgKU9OGv6YC3d2baT2Js6h3J0i0iYKCN8d1XCJc",
-	"neZCOvHxu/969vL73/352R/+893VZ8qYAx5u+o2zoktQw4AuQWjejU5Cmh5cnLRW0UefRdfebSWl6ulj",
-	"V3hJ74p0mTtyvI6yTV1mNG7DsGbc90/44Uk/Nr6nv6qqQk0V5m5g52J9IKQlTe13rTZUNA8pF/5dsgkI",
-	"6Qk6q6Wmzi44dlLSUzlUw51n/9BqVKGcBz3fworSsTYQvVxqbpPESIZXpPZhKWRRcBbWNLAmilOxTZXM",
-	"3pmi+NwkYs8iHuZ99+Ex7nea8nvJtg6ZrXQiPCS49efEb375/rX4w8tvf/fbkYryCT60TaqpX76qN9dq",
-	"RPrfK7R3vu3hnzn06wLDGzfqJbOmiTxSatuC9mJruUCCQYkq4cAqblosfGmHqnorixpvvb41xS1krWJ1",
-	"dPfA9W+lko/2rekU3ojMCLkyNerxSUbOeenrrl52nIBXvpiqTTY2uASpxxkea2j9b9dWL7bZ3YIUqO2z",
-	"41rHY5NQXWPCGuIb2SYxYSUetcLqKNKYnv9CZYzpXq+/lq0ROuy9G3P1iB3fdvtx4kMt7Ssn3hb3/SOl",
-	"2qel3eh7ppLtZFjeOwIcGebj+2tMMmtK0DZy8oi4wD+edHnPCVLD+kNbQiVapzaaHLjG26jIcklMYasK",
-	"NCfQTeWvQrmjp611KEA21Tv6cSXTG8iu66qpF+w1OUHHn5hi/Lc04z2oZPY+VAiHKWRuVApu/FTBQnoj",
-	"0twYB0KWRm+Sxq96eQOYnq/VHWRoMkP8tPe53gmP/ttYoetyxUHVtPedsJCNN85gLYMgRpxB5wwjn0Om",
-	"PK89cF9t1ZmhU9p4YUFmhPLaD2ES4WJLBZ9bkcMQses/LErgGqN1DsshKnFapKYER/txBBtOyjk7RU5o",
-	"nNGhJiLc4VtpFR5o9ApP4pwy4zHRJnxTE06ZzbyAWyhGlyICjwcwDHXih1tJ9eUSuJE0utcRy9i9C7o7",
-	"DkeKMebJiKR4E46hkZqFD5D0f+ygkkjkyWeeMnptA+GYc6PM/7ML6qEQPpnCkjda4C20/Yr6xlBCkHYy",
-	"WuVCrouhW+59tTg/f/7id/OL+cX8+aBMEwo5lfT5gbrNZxUEphG8oRCGDwjFvflQ/1mI52hWX70UBXgP",
-	"1iUiUxvlXSLmibime/4s4YwHHclW+VzI8DDefXr6QMN9khiUh6Q1GbtEW0mb5spD6msL3QRL13fnsswY",
-	"+1jKu4hlevVyqpOR5rIoQI910PsyRma8f/HtK9F8owuEOXPi3Z9fvxGxxdGBYda2+GKsZ4cfY5DPb16I",
-	"1c5TbnA69nOAVDjMr/GqQbd+3IctdI4zdi8/UEDRcfMPuJaNbR86Cg1b9k2XAXkYY8dObi/Z0dNPxxMG",
-	"3mz6CB9C6fQhKXaMioZytjVEdJlrYt4ktJg5hKK/lycgo5ttRokPZH9546Z7mmEgQd0DLicdbuD4HHah",
-	"vlWYzQYywYjRz2zhRNTv4B4pSzcpxksUgo5hSJNjeAFeix8S/NBCeOOrhANHxtYUeHE1WX/Q1hQF73ZS",
-	"EfO0+ldnemLYt2k43wcc9k6WHEAyo5o8FDtPqjUEzVP/vQhB0UliScRqJ2LL4aRgaRy3jQd2aJYmNSKa",
-	"+vhcTIRugegBnY0rySAGC9skndOOY+eRSdOQ49iPOcbmCbQ8fX1KnONxKX7l9KA0iPhwRMpLTpFxIId+",
-	"UEj5haxqQspJnnXGeZ4cg8aTOw8phvcaxUfacmwkOm1e3q2PLhuy4J6aSOsJYOfVu7d4tm129yyvVwkD",
-	"9jKGdlpoW5RuIbawSrq9CpcIo5e6rYtfsg3gh7bZncgklEa7hOPJsva1LMRff3yPy4evaQZhSZ0ttcxK",
-	"pZtvP2Nem62miShJ8DSDDgYF8UGrO+EIbrrUsWtaQoi+w9fn+MBcvJFpHgNRo5v+CzWk5QZNlAq4uHja",
-	"pSYLQszgRo3UhjACTeOaIY/U4KHTvbx4OV/qpb5qZspKuRMOMNwVH7O7Z9/Bqt48e5uJHGQGVvwmW22e",
-	"UTj8/IXI4S5E5L/FQB1NF9LAkPbCbHCbWmd0eOmFyi5D6ZtH6ASkuQkhh8q6VXGxlW6pg0umFebiiuj5",
-	"0Wye/YgJeCTIrAVVSQkE0d2b0GRxPenDU5S8J9QuWUtV1BacgLsUKo+mXzqO3eQKpVcVgKx3l0st9U4w",
-	"K7kIoZxQG20sZMQ+qv47grhNNxZifuIYZLekqu9ydilApvlSt6JGJXNNedlFVKoFX1stVuAU/pVwcSSJ",
-	"iIzjjk0of8+CNuFd6VzAxew55T8VaFmp2WL2zfxi/k0AzZGFOb99fk46fd655BsuMTY0vs1mC/zjFT74",
-	"t+Zy94YjX1xcTNnI5rl2zrBXsjr8nXY6Mpm5uiyl3c0W0WR2bB7hjWkMNNxE5I7cOBqSQcJnv+ISdOA6",
-	"U/6821vsnLpvf1jWC9FFBAZbwRUoyxNKAWOfS5eLzIQgo5Q+zYXSS410hUI/y63PWyJlxwM+43x9lDHP",
-	"/hTSyLDnGwKdWhqF8mkObv4IovooixtO9HF7HqtKRJpDeoM2DeKeYchrWmyrZqCpMhMxHg0l4X3dWuU9",
-	"6KnxJAIRSx5nImtV1s6jzJaaoKSde74QHYQpJt19BCpPoXVWCnVSGUamxsQdDsK+E5z/k8l2jybkMPZ1",
-	"3/fNmAPcD1Tr+SPv2nQSRseISTZb2Qgn3COOj0RT3n8MnXuNW1G9WHq5kg4SkRrtyJ/7JGRN0X/YWh8w",
-	"FgFoN2khPlQbKzPIeLKgGTBBy/Qf7//yM9f5w1yES8j8C6kFhz7BSyw1BkSLtpKHPtmJ7swLm5p2tBoJ",
-	"D/59qftTEJQdhhkzWp9bkOLlxcXzppwf4gZt0GUs9V4MyZUg9pw83dUNQdAliRXkSmdJwNJYwnKL30wA",
-	"nH87FwF5hwtoPl9D9+verFKABvlc2cztVcA6wK4zJwq1hqWmHKqSzpFP565vGIXgUTqpil2Et7TT3yE2",
-	"QgaNEUKTVlxfVT7MVanA/3bOT6xgbSx+stSjU33zjkZUVB26AagIgVGoW+jZmS58PBH76HGKV4yO9jKE",
-	"OmGyfqlj0Ddmb9D/B5r33ctztgF7gwFbhdY/i2jtztTUl1/NLhxyfyqrcwtDwSDeQm74ucPGv1D6RuSm",
-	"CKAL/s6ZE9T0XaCLpuIPxo4hyirlDapCZPZS19qrAj8NTVu8SoqQiVmrwoXZOLoaBRUz41CDDyT0hDrh",
-	"L1B1UXgXuEFpqLYvdRxpGRNi2h28eRrX0Zvt+coOpIdKn3AgcSRIOlHKDPr+I7SEH0NFfwpawUsmJC59",
-	"w+69AM9pWYDQObXRgpz5hP9ARX5GRbJD2rs1Yl2YrZuLHnQxbEJQRdFA5mJUU8o0p84nKuRSK343R2gB",
-	"tW+6uGwcRmt78cdOVcqbpY6tqGgqKSRa0Qjlfi8pcD5lQ5qRg4GEkzCi8swJlbXOipHEdy3ILeBypF/q",
-	"PR6dx8d4C7xlvbbHXPQAjcQfdp+MHyakGNK8Dx1MuGuNuV04dZ++pWbA7T49ZDyYmA4WLZjhCEaM4Nb5",
-	"Ur9RnIQH+/H8QpRK1x6ckGvPCP6A6p6L97GZxXuhpbHSIxN5pgjPJ2SWWXCOrEqXAiS+PTFmo4xmcYtu",
-	"ZhwlzabqoGlKRHeeacwGuX6r82ms0F4/9SvboQGge8IW9fD5j2F0aD90SKgPMt5tMjVm3fFRZ45LWB2L",
-	"s4XVqL1p7tKxnCkLc5YU7+z5OfJqpDztix+C9vHvFDyGlmTjCMu9yCaM8CXB/QVkNKdLtb7RZqsT8rLo",
-	"D8Mc2yWatM5UXPxy3K6Xb4U3dnDf9IyqOHsB1JhCw2Ae7ml0ejh3d5JaXzyqWncHZ6be9BQCs/bJx1Dt",
-	"eHohG4cTvcTI2GDspw5pOUXlefZxUt/fUX9swnqLJvrrZgesWi0VyVLjNaEsa01VP07i9I4Rbqvai9Hp",
-	"Ta4gNwOcI/eMzTux4Ww/ulT9osToDgmXHgIGROzAX4pmv4SmLSBb6rV0nq+PbngwSJAoVrBSYU6z2olv",
-	"I5P4ZrVzp5eiN3Z6ObzsnVPFu77UxtJ1vxSnXNOqhzZ/mivaR7T/f7qeV+4G024KWxppsX/DULuFFEkn",
-	"fvn+tfj9qxe/D0nUoRt5SkUZz/1PXVCWIoyaTeSlDQpg9ISFcnRE96RV3b33kx3QHfeYCXxTm8HEAc1b",
-	"0M5woZvW+hHmnX/Cf+7ZVBdwbIKyqaxwAyatqd1DdRrqjnBe3xvUXWq5kUpf8tgMIc+cWFuA8AYxbvXg",
-	"BuNBy5hFYvzAz6wbX0O0hzNjflMS1zW20vUz4waC8uWy/4WqU+FWHJN//AzNShle61GOaENyuPXSymEg",
-	"hWBBvpIIDnVOohAeg8l/0XACf0cZ2X2Z6t+P4C9H3p5KMY3KFuEqYRI/8UJVHdl+6stUfw13ngH90wFa",
-	"g7luknPjoeiA6+QNCFivIW0u/mWovDkPGoM2CrPaWZBYE24H5ubiY8CD9WfwGuR6TbXk+IYSKtm6FpTu",
-	"mil8gmU1EWDvTSPjRoPO/oTa2psSmlDThpVbsBAHAfctBk9dJBTMckBuHCGVIhSa+9aPY1Nk1gdQkrmO",
-	"taxit2839gpsXbz7QUPSk0/SYAIP6MDQ4uCp38cNn1CQXYT/ETkmEUhtbIBIcMXH8xDEI6RvlCyF7ZK2",
-	"LhfAEUMmagLuHhHX+afw0/3+W6BHDVd4+OyESY0Rc9V9HdDJFotgEml+YBAIAwlqZNOsJHWMhuxIOJWK",
-	"90a6pWZNFHGsV/kEM1LdnbXZxgFG4mguHaeL9JtySx0b3FLDlkZvUlOWKE5UAJSO2WqKkFCdb6Dyo6W/",
-	"RqidpG3qmvCJCavDR0Xb0LzSku9Nc1+J0DEbWPdQ2U+TyvWR3185lesPwhy+u32rGybgyAk3M3At/3na",
-	"id9eJXKZ0fTsI7TKY2km0NSxu6pxsdPXuUF1TiZAH+iJJ+R4AzmdYDaR+HiGkGZE9zHEHYj0IUadf4oP",
-	"Hk14wsvhKunc1li0L10ceLL3jrhkADBO0Mw4CJgV5Tk/4sQN7QLvzWFOA43GdMqs15cc+0RaqcZKgeJG",
-	"oZki//zQXOkDv0vlSbXg8KXjQQcGDu4o+nnCPIle8ifDnhhABvCEso2uiPgauX2N+aKE6Gvw+VgmVNNr",
-	"Qh4nE2IOxkLsGJKe0qHw3uSOMo8ydi/OGCOqfeS8+d8oDgQD31HdkpBsOnOhsrxHY8zk+Cxp7V2X0KU2",
-	"63USXvy4rgOIRNnYFdw7V6hSkxLjRQ5jz6ffx7qdKnpK/8sI/q/rfE81At1r3wJsAicnHDCbDAy1ghN+",
-	"DA1n7WkthbGBivBmFrS0p/sUfuGBGwmoH6TohwE23CnEpLB57ypq6K1RmaP38UtbKBpq5OCTsTMfCWfV",
-	"GwtKRO3w3hAYqnkzqjv4alR0an2/50zz0hy8IZjkc+2ahqGckDSxZ3Tb1ySMgmvgOmcn4XgO3ijG5gTl",
-	"C28eeCp4Tni5w9ftinffSTH539Q48BPYHPrs8ZA5TVDEC/cBOngBwnXqhE/Td+iELsU/a4di2H25b/4y",
-	"wPR1hmZAbGHVebOfN828zLzNmXHJ++TwOnuvCPSmO1MTRyC6bz2M+aJyrg5zim1B0R3dj2QXZmridmEI",
-	"J8L+O2uypO9/vf/fAAAA//8=",
+	"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",
+	"0/e/3f/fAAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

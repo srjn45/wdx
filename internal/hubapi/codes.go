@@ -30,6 +30,10 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeSlowDown:              codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "polled faster than the login's interval"),
 	ErrorCodeAccessDenied:          codeInfo(http.StatusForbidden, clikit.ExitRejected, "the person denied the login"),
 	ErrorCodeExpiredToken:          codeInfo(http.StatusGone, clikit.ExitRejected, "the login expired before it was approved and finished"),
+
+	ErrorCodeRevisionGap:  codeInfo(http.StatusConflict, clikit.ExitRejected, "the revision is not the doc's next on the hub: a bug in the node"),
+	ErrorCodeDocTooLarge:  codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the doc's content is more than a doc can hold"),
+	ErrorCodeDocNameTaken: codeInfo(http.StatusConflict, clikit.ExitRejected, "another of the user's docs in the repository has that name on the hub"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

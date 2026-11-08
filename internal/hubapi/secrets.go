@@ -1,6 +1,9 @@
 package hubapi
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // LinkResponseLogged is a response holding an invite or a reset as logged, by
 // the hub and its commands: the link holds a token that lets whoever has it
@@ -22,15 +25,18 @@ func LinkResponseLogged(b []byte) any {
 	return v
 }
 
-// The fields of the node logins' requests and responses that are secrets:
-// whoever has one of them can finish the login, and so make a node of the
-// account. Each is measured, never logged, by the hub and by the node.
+// The fields of the requests and responses that are never logged, only
+// measured, by the hub and by the node: the node logins' secrets, which let
+// whoever has one finish the login and so make a node of the account, and a
+// doc's content. A field named list[].key is key in each object of the array
+// list.
 var (
 	// requestSecrets are the secret fields of a request's body, by
 	// operation id.
 	requestSecrets = map[string][]string{
 		"exchangeNodeLogin": {"code", "pkce_verifier"},
 		"pollNodeLogin":     {"device_code"},
+		"pushDocChanges":    {"changes[].content"},
 	}
 	// responseSecrets are the secret fields of a response's body, by
 	// operation id.
@@ -58,8 +64,9 @@ func HasSecrets(operation string) bool {
 }
 
 // measured is the JSON object b with each of keys that holds a string
-// replaced by <key>_bytes, its length. A body that is no object is measured
-// whole when keys has any, since it cannot be told what it holds.
+// replaced by <key>_bytes, its length, and each list[].key so in every
+// object of list. A body that is no object is measured whole when keys has
+// any, since it cannot be told what it holds.
 func measured(b []byte, keys []string) any {
 	if len(keys) == 0 {
 		if json.Valid(b) {
@@ -72,10 +79,26 @@ func measured(b []byte, keys []string) any {
 		return map[string]any{"body_bytes": len(b)}
 	}
 	for _, key := range keys {
-		if s, ok := v[key].(string); ok {
-			delete(v, key)
-			v[key+"_bytes"] = len(s)
+		list, inner, nested := strings.Cut(key, "[].")
+		if !nested {
+			measure(v, key)
+			continue
+		}
+		items, _ := v[list].([]any)
+		for _, item := range items {
+			if m, ok := item.(map[string]any); ok {
+				measure(m, inner)
+			}
 		}
 	}
 	return v
+}
+
+// measure replaces key in v, when it holds a string, by <key>_bytes, its
+// length.
+func measure(v map[string]any, key string) {
+	if s, ok := v[key].(string); ok {
+		delete(v, key)
+		v[key+"_bytes"] = len(s)
+	}
 }

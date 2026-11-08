@@ -112,11 +112,13 @@ func (a *api) StartNodeLogin(ctx context.Context, req hubapi.StartNodeLoginReque
 	return r, nil
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
+// deref is *p, or the zero value when p is nil.
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
 	}
-	return *s
+	return *p
 }
 
 // issue issues a node its certificate.

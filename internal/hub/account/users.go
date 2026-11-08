@@ -316,8 +316,9 @@ func (s *Store) setDisabled(ctx context.Context, by By, userID string, disable b
 
 // Remove marks userID removed, keeping the row so that the username is never
 // given again, and deletes their password hash, factor, recovery codes,
-// sessions, resets, the invite they used, their node logins and their nodes;
-// cutting off the nodes' connections is the caller's.
+// sessions, resets, the invite they used, their node logins, their nodes and
+// their docs, with every revision; cutting off the nodes' connections is the
+// caller's.
 func (s *Store) Remove(ctx context.Context, by By, userID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		n, err := sqlite.Exec(ctx, tx, "UPDATE users SET removed_at = ?, password_hash = NULL WHERE id = ? AND removed_at IS NULL", ms(s.now()), userID)
@@ -335,6 +336,7 @@ func (s *Store) Remove(ctx context.Context, by By, userID string) error {
 			"DELETE FROM invites WHERE used_by = ?",
 			"DELETE FROM node_logins WHERE user_id = ?",
 			"DELETE FROM nodes WHERE user_id = ?",
+			"DELETE FROM docs WHERE owner_id = ?",
 		} {
 			if _, err := sqlite.Exec(ctx, tx, q, userID); err != nil {
 				return err

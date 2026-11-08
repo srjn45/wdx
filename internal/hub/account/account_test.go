@@ -807,6 +807,9 @@ func TestRemove(t *testing.T) {
 	f.exec(t, "INSERT INTO nodes (id, user_id, name, public_key, os, version, created_at) VALUES ('node-1', ?, 'desktop', x'00', 'linux/amd64', '0.5.0', 0)", u.ID)
 	f.exec(t, "INSERT INTO node_logins (id, flow, name, os, version, public_key, status, user_id, node_id, address, created_at, expires_at) "+
 		"VALUES ('nl-1', 'device', 'desktop', 'linux/amd64', '0.5.0', x'00', 'approved', ?, 'node-1', '192.0.2.1', 0, 1)", u.ID)
+	f.exec(t, "INSERT INTO docs (id, owner_id, repo_key, kind, name, folder, format, labels, status, revision, data_key, created_at, updated_at) "+
+		"VALUES ('doc-1', ?, 'github.com/a/b', 'doc', 'PLAN', '/', 'md', '[]', 'wip', 1, x'00', 0, 0)", u.ID)
+	f.exec(t, "INSERT INTO doc_revisions (doc_id, revision, content, size, created_at) VALUES ('doc-1', 1, x'00', 1, 0)")
 	if got, err := f.User(f.ctx, u.ID); err != nil || got.Nodes != 1 {
 		t.Fatalf("want 1 node counted, got %+v, %v", got, err)
 	}
@@ -816,10 +819,13 @@ func TestRemove(t *testing.T) {
 	if got := f.lastAction(t); got != ActionRemoved {
 		t.Errorf("last action %s", got)
 	}
-	for table, where := range map[string]string{"totp_factors": "user_id", "recovery_codes": "user_id", "web_sessions": "user_id", "password_resets": "user_id", "invites": "used_by", "nodes": "user_id", "node_logins": "user_id"} {
+	for table, where := range map[string]string{"totp_factors": "user_id", "recovery_codes": "user_id", "web_sessions": "user_id", "password_resets": "user_id", "invites": "used_by", "nodes": "user_id", "node_logins": "user_id", "docs": "owner_id"} {
 		if n := f.count(t, "SELECT COUNT(*) FROM "+table+" WHERE "+where+" = ?", u.ID); n != 0 {
 			t.Errorf("%d rows of %s left", n, table)
 		}
+	}
+	if n := f.count(t, "SELECT COUNT(*) FROM doc_revisions WHERE doc_id = 'doc-1'"); n != 0 {
+		t.Errorf("%d revisions of the doc left", n)
 	}
 	if n := f.count(t, "SELECT COUNT(*) FROM users WHERE id = ? AND username = 'alice' AND password_hash IS NULL AND removed_at IS NOT NULL", u.ID); n != 1 {
 		t.Error("want the row kept with its name, without its password hash")

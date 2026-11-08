@@ -116,6 +116,9 @@ func classify(err error) (hubapi.ErrorCode, map[string]any) {
 		}
 		return code, nil
 	}
+	if code, details, ok := docCode(err); ok {
+		return code, details
+	}
 	if e, ok := errors.AsType[*AuditBrokenError](err); ok {
 		return hubapi.ErrorCodeAuditBroken, map[string]any{"id": e.Broken.ID, "at": e.Broken.At.Format(time.RFC3339Nano)}
 	}
