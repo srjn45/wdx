@@ -1,0 +1,84 @@
+---
+title: Scripting with --json
+description: Every wdx command returns one JSON object with a stable error code and never prompts, for scripts and AIs.
+---
+
+## What it is
+
+Every command serves people and scripts alike. Add `--json` and stdout holds exactly one JSON object and nothing else, the same the daemon's API returns: the result, or an error with a stable `code`. Nothing prompts, so a script never hangs on a question. Exit codes tell the kinds of failure apart. This is also how the agents wdx runs drive it ([Working with AI agents](/wdx/docs/guides/ai-agents/)).
+
+## Try it
+
+A command that reads returns the entity under its own key:
+
+```console
+$ wdx terminal get --name server --json
+{
+  "terminal": {
+    "created_at": "2026-11-08T00:47:57.523Z",
+    "dir": "/home/you/code/app",
+    "ended_at": null,
+    "error": null,
+    "exit_code": null,
+    "id": "term-d69a3fb4",
+    "name": "server",
+    "pid": 2878833,
+    "project_id": "proj-22ca285c",
+    "project_name": "app",
+    "shell": "/usr/bin/zsh",
+    "started_at": "2026-11-08T01:05:22.046Z",
+    "state": "running",
+    "updated_at": "2026-11-08T01:05:22.046Z"
+  }
+}
+```
+
+One that changes something says what happened in `result`, such as `created`, `removed` or `queued`. A failure is Problem Details (RFC 9457), with exit code 1 when it was rejected:
+
+```console
+$ wdx terminal get --name nope --json; echo "exit $?"
+{
+  "code": "not_found",
+  "debug_id": "dbg-c99cc82c372f",
+  "detail": "terminal not found: \"nope\"",
+  "details": null,
+  "hint": "names are unique within a project: run it in the terminal's project, or pass --project-name or --project-id",
+  "status": 404,
+  "title": "nothing has this name or id",
+  "type": "urn:wdx:error:not_found"
+}
+exit 1
+```
+
+A command that would ask a question needs its answer up front:
+
+```console
+$ wdx project remove --name app --json
+{
+  "code": "usage",
+  "debug_id": "dbg-b02f732e2f55",
+  "detail": "--json requires --stop-running or --cancel",
+  "details": null,
+  "hint": "pass --stop-running or --cancel; see 'wdx project remove --help'",
+  "status": 400,
+  "title": "the request, command line or a setting is invalid",
+  "type": "urn:wdx:error:usage"
+}
+```
+
+With `jq`, the agents waiting for you, for instance:
+
+```sh
+wdx agent list --json | jq -r '.agents[] | select(.activity == "waiting") | .name'
+```
+
+## How it behaves
+
+- **One object, nothing else,** on stdout, success or failure. Warnings and progress go to stderr, never in the way of the JSON.
+- **`result`** names the most significant thing that happened. Commands that change nothing have none; they return the entity (`project`) or a list (`projects`).
+- **Errors** carry a `code` from a fixed list, the same in every version, plus a `hint` and a `debug_id` that finds the run in the logs ([Observability](/wdx/docs/guides/observability/)). [Errors and exit codes](/wdx/docs/reference/errors/) lists every code.
+- **Exit codes:** 0 ok; 1 rejected (a conflict, not found, cancelled); 2 usage (the command line or a setting is invalid); 3 a system failure, such as `daemon_unavailable` when the daemon does not run.
+- **No prompts.** With `--json`, with `--no-input`, with the `no_input` setting or with no terminal, nothing is asked: a command that would ask fails with a hint naming the flags that answer it. Each command's help lists them.
+- **Keys** are snake_case, absent values `null`, timestamps RFC 3339. Everything in the JSON is a contract: a change to it is a breaking change, said so in the [changelog](/wdx/docs/reference/changelog/).
+- **The help is JSON too.** `wdx <command> --help --json` gives a command's flags, the rules between them, examples, results and error codes, which is how this site's [reference](/wdx/docs/reference/cli/) is made. `wdx help json` says the rest, and [JSON output](/wdx/docs/reference/json/) has it.
+- **The one exception** is `wdx tide`, interactive by nature, which fails with `usage` under `--json`.

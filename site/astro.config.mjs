@@ -37,6 +37,10 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Scripts and AI agents',
+          items: ['docs/guides/scripting', 'docs/guides/ai-agents'],
+        },
+        {
           label: 'Running wdx',
           items: [
             'docs/guides/daemon',

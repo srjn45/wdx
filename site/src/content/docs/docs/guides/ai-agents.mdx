@@ -1,0 +1,51 @@
+---
+title: Working with AI agents
+description: What wdx tells every agent it runs, so that agents use wdx for child agents, messages, worktrees, docs and plans, and you see all the work in one place.
+---
+
+## What it is
+
+The agents wdx runs know about wdx. Each is told, when it starts, that it runs under wdx and that wdx comes first: child agents rather than its own subagents, wdx worktrees rather than its own, `wdx agent send` to reach another agent, and `wdx doc` and `wdx plan` for the project's docs and plans. So the work of every agent shows in one place, whichever AI CLI runs it, and you can see, attach to and steer all of it. The how is a help topic, `wdx help agents`, which an agent reads before it starts any of this.
+
+## Try it
+
+Ask an agent for work that splits, and it does it through wdx:
+
+```sh
+wdx agent create --name lead --prompt "add rate limiting to the API: split it into a child agent for the middleware and one for the tests, each in its own worktree, and review what they do"
+```
+
+`wdx agent list` then shows `lead` with its children under it, each in a worktree you can read with `wdx worktree diff`. What the agent reads is the topic itself:
+
+```console
+$ wdx help agents
+wdx help agents: how an AI agent wdx runs works through wdx: child agents, messages, worktrees, docs, plans
+
+How an AI coding agent that wdx runs works through it. Run each command with
+--json; wdx <command> --help --json says the rest.
+
+You
+  wdx sets WDX_AGENT_ID in your environment.
+    wdx agent get --id $WDX_AGENT_ID  your project, worktree, parent and children
+
+wdx comes first
+  Use wdx rather than your own means for what it has, so that the person sees
+  all the work in one place, whichever AI runs it: child agents for subagents,
+  their worktrees for yours, wdx agent send to talk to another agent, and
+  wdx doc for docs. If wdx fails, use your own means and say so.
+...
+```
+
+## In TIDE
+
+Nothing is different: the children an agent creates appear under it in the Agents list, its worktrees in the Worktrees section, its docs and plans in theirs, as they are created.
+
+## How it behaves
+
+- **What an agent is told.** At every start, a launch note, given as its AI CLI takes one (Claude Code its system prompt, Codex its developer instructions, Cursor a session hook, Antigravity a workspace rule): that it runs under wdx, that `WDX_AGENT_ID` is its id, that wdx comes first for child agents, worktrees, messages, docs and plans, to run `wdx help agents` before any of them, and to report its result through wdx to an agent that gave it its task.
+- **Its id.** `WDX_AGENT_ID` is in the environment of every agent, at every start. It names the agent as a parent (`--parent-id`), as the one landing or rebasing a worktree (`--agent-id`), and as the one saying its plan task is done.
+- **Every command with `--json`.** Agents are told to, so they read results and error codes rather than text meant for people ([Scripting with --json](/wdx/docs/guides/scripting/)).
+- **What stays yours.** Landing and removing worktrees, approving or rejecting docs, and running plans are the person's, unless an agent is asked to. The topic says so.
+- **Children report back.** A parent puts its id in a child's task and asks it to answer with `wdx agent send` when done ([Child agents](/wdx/docs/guides/child-agents/)).
+- **The same on every AI CLI.** Claude Code, Codex, Cursor and Antigravity are all told the same, and wdx's features come before an AI CLI's own, so agents behave alike whichever runs them.
+- **When wdx fails** an agent is told to use its own means and say so, rather than stop.
