@@ -90,7 +90,8 @@ func TestStoreUsage(t *testing.T) {
 }
 
 // TestStoreUsageByACA: one ACA's rows leave another's alone, a bucket is a row of its
-// own, and a window without a reset is dropped as soon as it is not told.
+// own, listed with its other windows so that the groups a reader sees are whole, and
+// a window without a reset is dropped as soon as it is not told.
 func TestStoreUsageByACA(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -108,17 +109,31 @@ func TestStoreUsageByACA(t *testing.T) {
 		t.Fatal(err)
 	}
 	list, err := s.Usage(ctx)
-	if err != nil || usageText(list) != "claude_code seven_day/ 37; claude_code seven_day/Fable 35; claude_code spend_limit/ 63; codex weekly/ 20; " {
+	if err != nil || usageText(list) != "claude_code seven_day/ 37; claude_code spend_limit/ 63; claude_code seven_day/Fable 35; codex weekly/ 20; " {
 		t.Fatalf("both ACAs: %s, %v", usageText(list), err)
 	}
-	if !list[2].ResetsAt.IsZero() {
-		t.Errorf("spend_limit resets at %v", list[2].ResetsAt)
+	if !list[1].ResetsAt.IsZero() {
+		t.Errorf("spend_limit resets at %v", list[1].ResetsAt)
 	}
 	if _, err := s.setUsage(ctx, "claude_code", "", rows[:2], now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if list, err = s.Usage(ctx); err != nil || usageText(list) != "claude_code seven_day/ 37; claude_code seven_day/Fable 35; codex weekly/ 20; " {
 		t.Errorf("spend_limit no longer told: %s, %v", usageText(list), err)
+	}
+	// Two buckets sharing two windows, as Antigravity's: each bucket's windows stay
+	// together, where an order by window would cut each bucket at every window.
+	shared := []aca.Usage{
+		{Window: "5h", Bucket: "3p", UsedPercent: 1, ResetsAt: now.Add(5 * time.Hour), ObservedAt: now},
+		{Window: "5h", Bucket: "gemini", UsedPercent: 2, ResetsAt: now.Add(5 * time.Hour), ObservedAt: now},
+		{Window: "weekly", Bucket: "3p", UsedPercent: 3, ResetsAt: now.Add(100 * time.Hour), ObservedAt: now},
+		{Window: "weekly", Bucket: "gemini", UsedPercent: 4, ResetsAt: now.Add(100 * time.Hour), ObservedAt: now},
+	}
+	if _, err := s.setUsage(ctx, "antigravity", "", shared, now); err != nil {
+		t.Fatal(err)
+	}
+	if list, err = s.Usage(ctx); err != nil || usageText(list) != "antigravity 5h/3p 1; antigravity weekly/3p 3; antigravity 5h/gemini 2; antigravity weekly/gemini 4; claude_code seven_day/ 37; claude_code seven_day/Fable 35; codex weekly/ 20; " {
+		t.Errorf("two buckets over two windows: %s, %v", usageText(list), err)
 	}
 }
 

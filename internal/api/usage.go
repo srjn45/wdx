@@ -23,6 +23,8 @@ type UsageBucket struct {
 
 // UsageBuckets groups rows, as listUsage returns them, by ACA and bucket, in their
 // order: the one every model draws on first for each ACA, as its name sorts first.
+// The store lists a bucket's windows together, so a bucket is one group however
+// many windows it shares with another, as Antigravity's share a session and a week.
 func UsageBuckets(rows []UsageWindow) []UsageBucket {
 	var buckets []UsageBucket
 	for _, w := range rows {

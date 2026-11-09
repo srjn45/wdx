@@ -24,9 +24,10 @@ type Usage struct {
 	AgentID string // the agent it was read from, for the log; "" once that agent is gone
 }
 
-// Usage returns every row, by ACA, window and bucket.
+// Usage returns every row, by ACA, bucket and window, so that the rows of one bucket
+// are together, the bucket every model draws on first as its name is empty.
 func (s *Store) Usage(ctx context.Context) ([]Usage, error) {
-	rows, err := s.queries.Query(ctx, "SELECT aca, window, bucket, used_percent, resets_at, limited, observed_at, agent_id FROM aca_usage ORDER BY aca, window, bucket")
+	rows, err := s.queries.Query(ctx, "SELECT aca, window, bucket, used_percent, resets_at, limited, observed_at, agent_id FROM aca_usage ORDER BY aca, bucket, window")
 	if err != nil {
 		return nil, err
 	}
