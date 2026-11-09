@@ -181,7 +181,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Settings of the host | refused with `--node`: `setting` has no such flag | not offered in a remote TIDE: the menu says `settings are changed on <name> itself` | Same | No session changes a setting, so that no `hub.*` setting can be loosened from afar |
 | A new project from a directory on the host | `project open --local <path> --node`, the host's absolute path | a field for the host's absolute path, in place of the directory browser | Same | The browser reads this machine's files; listing the host's would let a session read its directories anywhere |
 | Keep what tide showed across runs, remotely | none | none: a remote TIDE keeps its view in memory, `C-q r` keeps it through `--resume` | Later | The host's TIDE state is its own TIDE's (docs/TIDE_STATE.md, "A remote tide"); keeping it per node in the client's daemon waits for a need |
-| See the sessions open into this node | `hub session list` | `remote: <node>, ...` at the start of the bar, while any is open | Same | tide follows `GET /v1/hub/sessions/events`; the CLI lists them when asked, with the outgoing ones too |
+| See and close the sessions open into this node | `hub session list`, `hub session close`, `hub node remove` | `remote: <node>, ...` at the start of the bar, while any is open, and the Sessions dialog (`C-q H`, or a click on `remote:`): `x` closes one, `X` every incoming one, `D` removes the node | Same | tide follows `GET /v1/hub/sessions/events`; the CLI lists them when asked, and lists and closes the outgoing ones too; TIDE's dialog does not, as it is about who is in this machine |
 
 ## Only on one side
 
@@ -193,9 +193,9 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
 | Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
 | Pushing a project's docs to the hub, and what waits or was refused (`project sync`, `--on`, `--off`) | CLI | Later (tide) | Not in tide in the MVP (the wdx doc HUB_DOCS_PUSH): it is set once per project, and its state, a count and the docs refused, can come to tide with the hub's |
-| Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's bar shows the sessions open into this node since step 9 of the hub, and the hub's state can come to it later |
+| Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's bar shows the sessions open into this node since step 9 of the hub, and its Sessions dialog removes a node from the account (`D`); the hub's state can come to it later |
 | The host's authenticator code (`hub code setup`, `--replace`, `recover`) and its audit chain (`hub audit verify`) | CLI | By design | The secret and the recovery key are shown once, and must never reach a screen an AI reads: tide's panes show agents' terminals. Setting up a code is done once per node, which a terminal command does best; both commands are interactive only (the wdx doc HUB_TUNNEL) |
-| Listing and closing sessions between one's own nodes (`hub session list`, `close`) | CLI | Later (tide) | Since step 9 of the hub tide shows the sessions open into this node and opens one for a remote TIDE (Another of one's nodes); listing the outgoing ones and closing one are the CLI's |
+| Listing and closing the outgoing sessions (`hub session list`, `close`) | CLI | Later (tide) | tide shows and closes the sessions open into this node (Another of one's nodes) and opens one for a remote TIDE; listing and closing the outgoing ones are the CLI's |
 
 ## `wdx project open`
 
