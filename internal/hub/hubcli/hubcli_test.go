@@ -244,6 +244,44 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+// TestUserLogged checks a run logs once who it runs as, from Env.User,
+// before command started: as main says it, root's run gone on as the hub's
+// user (the wdx doc HUB_INSTALL, Decided 8).
+func TestUserLogged(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	const as = "wdx-hub, become from root"
+	hubWith(t, home, func(env *Env) { env.User = as }, "version")
+	files, err := filepath.Glob(filepath.Join(hubconfig.LogsDir(home), "*.log"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("log files %v: %v", files, err)
+	}
+	b, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msgs []string
+	started := false
+	for l := range strings.Lines(string(b)) {
+		var line map[string]any
+		if err := json.Unmarshal([]byte(l), &line); err != nil {
+			t.Fatal(err)
+		}
+		if line["msg"] == "command started" {
+			started = true
+		}
+		if user, ok := line["user"]; ok {
+			if started || user != as {
+				t.Errorf("logged user %v in %v, want %q before command started", user, line["msg"], as)
+			}
+			msgs = append(msgs, line["msg"].(string))
+		}
+	}
+	if len(msgs) != 1 {
+		t.Errorf("the user logged in %v, want one line", msgs)
+	}
+}
+
 func TestVersionWithoutHub(t *testing.T) {
 	t.Parallel()
 	v, exit := hubJSON(t, newHome(t), "version")
