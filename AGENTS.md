@@ -73,6 +73,7 @@ site/          the website on GitHub Pages (Astro): the landing page and its tid
 scripts/sitegen/ writes the website's reference pages and site/src/data/commands.json from wdx's help, settings, error codes and CHANGELOG.md (make site-ref); TestReferenceCurrent fails when they are stale, TestGuideCoverage when a command is in no docs page (an MDX page's frontmatter commands:), TestComponentsImported when an MDX page uses a component it does not import
 scripts/install.sh installs the binary and the service; docs/DAEMON.md explains both
 scripts/install-hub.sh installs wdx-hub on Linux as a system service under a wdx-hub user, from the same releases, or runs the installed wdx-hub update --apply; it also uninstalls it; the wdx doc HUB_INSTALL
+scripts/hub-fly-deploy.sh deploys wdx-hub on Fly.io from a clean checkout of a release tag, after snapshotting its volume, and waits for the new version (make hub-fly-deploy APP=<name>); it needs flyctl and a Fly account, so it is run by hand, never in CI; the wdx doc HUB_FLY
 scripts/release.sh tags releases, builds them and pushes them; cliff.toml and docs/RELEASING.md explain the versions
 scripts/test-changed.sh repeats the tests of the test files changed that a change can reach, on a machine kept busy (make test-changed, by hand now and then)
 scripts/changedtests/ picks those tests, from the diff and what each test uses
@@ -118,7 +119,7 @@ internal/hublink/  the node's link to a hub: its login files in <home>/hub/, bot
 internal/remote/  remote access between one's own nodes: TLS 1.3 between their node keys, each pinning the other's, CPace with the host's code, the sessions both ways, their idle timeout and the slowing of wrong codes; only the daemon uses it; the wdx doc HUB_TUNNEL
 internal/authcode/  the host's authenticator code in <home>/hub/: the TOTP secret, the last step accepted, the recovery key's hash, and the checks on them
 internal/nodeaudit/  the node's tamper-evident audit chain (hub_audit) of what matters about access to this machine: Append inside the act's transaction, Verify
-deploy/hub/     runs wdx-hub in a container (Dockerfile, compose.yaml) or as a systemd service (wdx-hub.service, which `wdx-hub service unit` prints and a test keeps equal); its README says how, install-hub.sh first
+deploy/hub/     runs wdx-hub in a container (Dockerfile, compose.yaml), as a systemd service (wdx-hub.service, which `wdx-hub service unit` prints and a test keeps equal) or on Fly.io (fly.toml, whose ports, mount and health check a test keeps in line with the hub's defaults); its README says how, install-hub.sh first
 internal/doc/   a project's docs and plans, their revisions and their copies on disk (docs/DOCS.md); for a synced project the store writes each change to the hub outbox inside the change's own transaction, and its Outbox reads it for hublink
 internal/<domain>/  one package per feature (e.g. project, terminal, agent): types, Store, tests
 ```
