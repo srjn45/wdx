@@ -1073,7 +1073,9 @@ func TestWorktreeNamedRefuses(t *testing.T) {
 		t.Fatalf("adopted: %q, %v, %v", path, created, err)
 	}
 
-	// git refusing says why: a repository with no commit has no HEAD to start from.
+	// A repository with no commit has no HEAD to start from: refused before
+	// git is asked, with nothing written to the repository, the same for a
+	// plan's slot.
 	empty := filepath.Join(t.TempDir(), "empty")
 	if err := os.MkdirAll(empty, 0o755); err != nil {
 		t.Fatal(err)
@@ -1084,8 +1086,15 @@ func TestWorktreeNamedRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = s.WorktreeNamed(ctx, e.Project, "x", empty)
-	if werr, ok := errors.AsType[*git.WorktreeError](err); !ok || werr.Output == "" {
+	if nerr, ok := errors.AsType[*NoCommitError](err); !ok || nerr.Path != filepath.Join(empty, ".worktrees", "x") {
 		t.Errorf("no commit: %v", err)
+	}
+	slot := filepath.Join(empty, ".worktrees", "slot")
+	if _, err := s.AddWorktreeOn(ctx, e.Project, slot, "plan/x"); !isType[*NoCommitError](err) {
+		t.Errorf("a slot with no commit: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(empty, ".git", "info", "exclude")); strings.Contains(string(b), ".worktrees") {
+		t.Errorf("refused, yet .worktrees was excluded:\n%s", b)
 	}
 }
 

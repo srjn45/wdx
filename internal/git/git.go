@@ -317,6 +317,12 @@ func BranchExists(ctx context.Context, dir, branch string) (bool, error) {
 	return answered(run(ctx, dir, "show-ref", "--verify", "--quiet", "refs/heads/"+branch))
 }
 
+// HasCommit reports whether the HEAD of the checkout holding dir is a commit:
+// false in a repository with none yet.
+func HasCommit(ctx context.Context, dir string) (bool, error) {
+	return answered(run(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"))
+}
+
 // ValidBranch reports whether name can be a branch's name.
 func ValidBranch(ctx context.Context, dir, name string) (bool, error) {
 	return answered(run(ctx, dir, "check-ref-format", "--branch", name))

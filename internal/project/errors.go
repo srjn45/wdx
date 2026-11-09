@@ -75,6 +75,16 @@ func (e *BranchExistsError) Error() string {
 	return fmt.Sprintf("branch %s already exists", e.Branch)
 }
 
+// NoCommitError is returned for a worktree of a repository with no commit
+// yet: a worktree starts from one.
+type NoCommitError struct {
+	Path string // the worktree's
+}
+
+func (e *NoCommitError) Error() string {
+	return fmt.Sprintf("worktree %s not added: the repository has no commit yet", e.Path)
+}
+
 // InvalidPathError is returned for a path that cannot be used as asked.
 type InvalidPathError struct {
 	Path   string

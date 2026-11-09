@@ -781,6 +781,12 @@ func TestAgentCreateWorktreeNoCommit(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	v, exit := wdxJSONWith(t, home, in(app), "agent", "create", "--worktree", "fix")
 	wantError(t, v, exit, api.ErrorCodeWorktreeFailed, clikit.ExitRejected)
+	if v.Details["reason"] != "no_commit" || v.Details["path"] != filepath.Join(app, ".worktrees", "fix") {
+		t.Errorf("details %v, want the reason no_commit and the worktree's path", v.Details)
+	}
+	if v.Hint == nil || *v.Hint != "commit once in the project, then create the worktree" {
+		t.Errorf("hint %v, want what to do", v.Hint)
+	}
 }
 
 // claudeAtRest is a run file for the test ACA: a program drawing Claude Code's

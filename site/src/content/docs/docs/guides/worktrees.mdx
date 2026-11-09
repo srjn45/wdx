@@ -79,6 +79,7 @@ The Worktrees section of the left pane lists them, kept up to date as files chan
 ## How it behaves
 
 - **Making one.** `agent create --worktree <name>` uses the worktree of that name, `main` for the clone, or creates it in `<project>/.worktrees/<name>` on a new branch from the checkout the agent would otherwise start in. `.worktrees` is kept out of git's status. Removing the agent never removes its worktree, which may hold work not landed.
+- **A first commit first.** A worktree starts from a commit, so in a repository with none yet creating one fails with `worktree_failed`, its details saying `no_commit`: commit once, then create it.
 - **Reading never locks.** `worktree list`, `diff` and `comments` only read, so they run beside any git command, an agent's included.
 - **The base** is the default branch, or for a stacked plan the plan below's branch.
 - **Landing by rebase** rebases the worktree if its base moved on, undoing that on a conflict; runs the project's check in a terminal named `land-<worktree>`, which stays if the check fails; and moves the base forward to the commit checked, pushing it if the project says `--push`. On any failure the base stays where it was. Uncommitted files refuse it (`not_committed`), as nothing is stashed. Landing waits for the end, and leaving does not stop it.

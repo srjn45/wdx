@@ -109,6 +109,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*project.BranchExistsError](err); ok {
 		return api.ErrorCodeBranchExists, map[string]any{"branch": e.Branch}
 	}
+	if e, ok := errors.AsType[*project.NoCommitError](err); ok {
+		return api.ErrorCodeWorktreeFailed, map[string]any{"path": e.Path, "reason": "no_commit"}
+	}
 	if e, ok := errors.AsType[*git.WorktreeError](err); ok {
 		return api.ErrorCodeWorktreeFailed, map[string]any{"path": e.Path, "output": e.Output}
 	}

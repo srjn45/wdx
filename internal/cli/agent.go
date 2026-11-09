@@ -713,6 +713,10 @@ func agentHint(err error) error {
 		return &clikit.Hinted{Err: err, Hint: "a new worktree gets a new branch: choose another --worktree, or delete the branch"}
 	case api.ErrorCodePathExists:
 		return &clikit.Hinted{Err: err, Hint: "something else is in the worktree's place: choose another --worktree"}
+	case api.ErrorCodeWorktreeFailed:
+		if detail(err, "reason") == "no_commit" {
+			return &clikit.Hinted{Err: err, Hint: "commit once in the project, then create the worktree"}
+		}
 	case api.ErrorCodeProjectClosed:
 		return &clikit.Hinted{Err: err, Hint: "open the project first with " + identity.Name + " project open"}
 	case api.ErrorCodeAgentRemoved:

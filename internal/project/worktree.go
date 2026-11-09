@@ -52,6 +52,9 @@ func (s *Store) WorktreeNamed(ctx context.Context, p Project, name, from string)
 	if exists {
 		return "", false, &BranchExistsError{Branch: name}
 	}
+	if err := hasCommit(ctx, from, path); err != nil {
+		return "", false, err
+	}
 	if err := excludeWorktrees(ctx, root); err != nil {
 		return "", false, err
 	}
@@ -62,6 +65,17 @@ func (s *Store) WorktreeNamed(ctx context.Context, p Project, name, from string)
 		return "", false, err
 	}
 	return path, true, nil
+}
+
+// hasCommit refuses a worktree at path of the repository holding dir when it
+// has no commit yet, which git would fail on with "invalid reference: HEAD".
+func hasCommit(ctx context.Context, dir, path string) error {
+	ok, err := git.HasCommit(ctx, dir)
+	if err != nil || ok {
+		return err
+	}
+	logging.FromContext(ctx).Info("worktree refused", "reason", "no commit yet", "dir", dir, "path", path)
+	return &NoCommitError{Path: path}
 }
 
 // checkWorktreeName refuses what cannot name a worktree and its branch. One
@@ -200,6 +214,9 @@ func (p Project) WorktreesDir() string {
 // checkout has, and records it, as a plan's slot is made.
 func (s *Store) AddWorktreeOn(ctx context.Context, p Project, path, branch string) (string, error) {
 	root := p.root()
+	if err := hasCommit(ctx, root, path); err != nil {
+		return "", err
+	}
 	if err := excludeWorktrees(ctx, root); err != nil {
 		return "", err
 	}
