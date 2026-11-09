@@ -77,7 +77,11 @@ func (s *server) detail(ctx context.Context, p project.Project) (api.Project, er
 	if err != nil {
 		return api.Project{}, err
 	}
-	tree := agentTree(agents)
+	limits, err := s.limits(ctx)
+	if err != nil {
+		return api.Project{}, err
+	}
+	tree := agentTree(agents, limits)
 	v.Agents = &tree
 	editors, err := s.terminals.Store().Editors(ctx, p.ID)
 	if err != nil {

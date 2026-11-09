@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -112,4 +113,20 @@ func AvailabilityText(b UsageBucket, now time.Time) string {
 		return "limited"
 	}
 	return "limited, resets " + ResetText(b.AvailableAt, now)
+}
+
+// LimitedText is what a person reads of the limit of an agent of aca: the bucket
+// by its label, but for the one every model draws on, and when it resets.
+func LimitedText(aca string, l AgentLimited, now time.Time) string {
+	var parts []string
+	if label := UsageBucketLabel(aca, l.Bucket); label != "" {
+		parts = append(parts, label)
+	}
+	if l.ResetsAt != nil {
+		parts = append(parts, "resets "+ResetText(*l.ResetsAt, now))
+	}
+	if len(parts) == 0 {
+		return "no reset told"
+	}
+	return strings.Join(parts, ", ")
 }

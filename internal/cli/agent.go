@@ -386,7 +386,7 @@ func newAgentGetCmd() *cobra.Command {
 			if err != nil {
 				return ref.notFoundHint(err)
 			}
-			return clikit.PrintResult(cmd, agentDetail{a, contextThresholdsOf(cmd)})
+			return clikit.PrintResult(cmd, agentDetail{a, contextThresholdsOf(cmd), time.Now()})
 		},
 	}
 	ref.addFlags(cmd)
@@ -868,6 +868,7 @@ func agentChildRows(list []api.Agent, lead string, nested bool) []agentTreeRow {
 type agentDetail struct {
 	api.AgentEnvelope
 	thresholds contextThresholds
+	now        time.Time // what the limit's reset is told from
 }
 
 // LogValue keeps the prompt's text out of the log.
@@ -895,6 +896,9 @@ func (d agentDetail) Text(w io.Writer, st style.Style) {
 	field("state", agentStateText(st, a))
 	if a.Activity != nil {
 		field("activity", agentActivityText(st, a))
+	}
+	if a.Limited != nil {
+		field("limited", st.Failure(api.LimitedText(a.Aca, *a.Limited, d.now)))
 	}
 	if a.Prompt != nil {
 		p := *a.Prompt
@@ -1011,9 +1015,13 @@ func contextThresholdsOf(cmd *cobra.Command) contextThresholds {
 
 // agentActivityText is what a is doing, which a human may have to answer when it
 // is waiting, then the kind of the prompt when it is read; nothing when it is not
-// running.
+// running. One limited by its account reads limited unless it is working, as a turn
+// under way goes on (the wdx doc AGENT_LIMITED).
 func agentActivityText(st style.Style, a api.Agent) string {
+	working := a.Activity != nil && *a.Activity == api.AgentActivityWorking
 	switch {
+	case a.Limited != nil && !working:
+		return st.Failure("limited")
 	case a.Activity == nil:
 		return ""
 	case a.Prompt != nil:

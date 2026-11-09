@@ -31,7 +31,11 @@ func (s *server) ListAgents(ctx context.Context, req api.ListAgentsRequestObject
 	if err != nil {
 		return nil, err
 	}
-	return api.ListAgents200JSONResponse{Agents: agentTree(list)}, nil
+	limits, err := s.limits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.ListAgents200JSONResponse{Agents: agentTree(list, limits)}, nil
 }
 
 func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObject) (api.CreateAgentResponseObject, error) {
@@ -156,7 +160,11 @@ func (s *server) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (a
 	if err != nil {
 		return nil, err
 	}
-	return api.GetAgent200JSONResponse{Agent: agentNode(a, childrenOf(list))}, nil
+	limits, err := s.limits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetAgent200JSONResponse{Agent: agentNode(a, childrenOf(list), limits)}, nil
 }
 
 func (s *server) UpdateAgent(ctx context.Context, req api.UpdateAgentRequestObject) (api.UpdateAgentResponseObject, error) {
@@ -344,22 +352,24 @@ func childrenOf(list []agent.Agent) map[string][]agent.Agent {
 	return children
 }
 
-// agentTree is the agents in list at the top level, with their children.
-func agentTree(list []agent.Agent) []api.Agent {
+// agentTree is the agents in list at the top level, with their children and
+// their limits.
+func agentTree(list []agent.Agent, limits agentLimits) []api.Agent {
 	children := childrenOf(list)
 	views := make([]api.Agent, 0, len(children[""]))
 	for _, a := range children[""] {
-		views = append(views, agentNode(a, children))
+		views = append(views, agentNode(a, children, limits))
 	}
 	return views
 }
 
-// agentNode is a with its children, as childrenOf returned them.
-func agentNode(a agent.Agent, children map[string][]agent.Agent) api.Agent {
+// agentNode is a with its children, as childrenOf returned them, and their limits.
+func agentNode(a agent.Agent, children map[string][]agent.Agent, limits agentLimits) api.Agent {
 	v := agentView(a)
+	v.Limited = limits.of(a)
 	nodes := make([]api.Agent, 0, len(children[a.ID]))
 	for _, c := range children[a.ID] {
-		nodes = append(nodes, agentNode(c, children))
+		nodes = append(nodes, agentNode(c, children, limits))
 	}
 	v.Children = &nodes
 	return v

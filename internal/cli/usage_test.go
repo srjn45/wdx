@@ -60,3 +60,37 @@ func TestUsage(t *testing.T) {
 		t.Fatalf("unexpected text: %+v", out)
 	}
 }
+
+// TestAgentLimited: an agent whose account is limited for every model reads limited
+// in agent list's ACTIVITY column, and agent get says until when.
+func TestAgentLimited(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	app := newProjectDir(t, home, "app")
+	a := newAgent(t, home, app, "helper")
+	resets := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+	rows := []aca.Usage{{Window: "seven_day", UsedPercent: 100, ResetsAt: resets, ObservedAt: time.Now()}}
+	if err := acatest.WriteUsage(identity.AgentDir(home, a.Id), rows); err != nil {
+		t.Fatal(err)
+	}
+	var v jsonOutput
+	if !eventually(t, func() bool {
+		var exit int
+		v, exit = wdxJSON(t, home, "agent", "get", "--id", a.Id)
+		return exit == clikit.ExitOK && v.Agent != nil && v.Agent.Limited != nil
+	}) {
+		t.Fatalf("agent not limited: %+v", v)
+	}
+	if l := v.Agent.Limited; l.Bucket != "" || l.ResetsAt == nil || !l.ResetsAt.Equal(resets) {
+		t.Errorf("limited = %+v", l)
+	}
+	out := wdx(t, home, "agent", "list", "--project-name", "app")
+	lines := strings.Split(strings.TrimSuffix(out.Stdout, "\n"), "\n")
+	if out.Exit != clikit.ExitOK || len(lines) != 2 || !strings.Contains(lines[0], "ACTIVITY") || !strings.Contains(lines[1], " limited ") {
+		t.Fatalf("unexpected list: %+v", out)
+	}
+	out = wdx(t, home, "agent", "get", "--id", a.Id)
+	if out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "\n  limited     resets in 1 h ") {
+		t.Fatalf("unexpected get: %+v", out)
+	}
+}

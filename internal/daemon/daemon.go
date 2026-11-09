@@ -254,8 +254,10 @@ type Daemon struct {
 	nodeStreams    *nodeStreams
 	sessionStreams *sessionStreams
 	sessionServer  *http.Server
-	// clock is the time the hub's link and the sessions go by.
+	// clock is the time the hub's link, the sessions and the agents' limits go by.
 	clock hublink.Clock
+	// limitResets tells the streams when a limited usage bucket resets.
+	limitResets *limitResets
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -348,7 +350,10 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.backups.OnChange = d.notices.notify
 	d.watcher = fswatch.New(logged)
 	statusReads := agent.NewStatusReads(logged, agents, opts.Home, acas, d.watcher, opts.StatusInterval, opts.UsageFetchInterval)
-	statusReads.OnChange = d.notices.notify
+	statusReads.OnChange = func() {
+		d.notices.notify()
+		d.limitResets.woken() // usage may have changed, and the next reset with it
+	}
 	d.backups.OnSessionChange = statusReads.SessionChanged
 	d.terminals = terminal.NewSupervisor(logged, terminals, terminal.Options{
 		Executable:    opts.Executable,
@@ -424,6 +429,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	d.hubStreams = serveHubStreams(context.WithoutCancel(logged), opts.Log, d.hub, d.remote)
 	sendHubState(logged, d.hub, d.access)
 	d.startTracker()
+	d.startLimitResets()
 	if err := d.terminals.Reconcile(logged); err != nil {
 		return nil, err
 	}
@@ -689,6 +695,9 @@ func (d *Daemon) close() {
 	}
 	if d.pullRequests != nil {
 		d.pullRequests.Close()
+	}
+	if d.limitResets != nil {
+		d.limitResets.close() // it reads the database
 	}
 	if d.tracker != nil {
 		d.stopTracker()

@@ -20,7 +20,8 @@ import (
 // shorten; zero values take hublink's defaults.
 type HubOptions struct {
 	// Clock is the time the link goes by: when logins expire, how long it
-	// waits between polls and reconnections. The real time when nil.
+	// waits between polls and reconnections; the agents' limits go by it too,
+	// when a reset passes. The real time when nil.
 	Clock interface {
 		Now() time.Time
 		After(d time.Duration) <-chan time.Time

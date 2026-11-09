@@ -113,3 +113,24 @@ func TestResetText(t *testing.T) {
 		t.Errorf("days ahead = %q", got)
 	}
 }
+
+// TestLimitedText: an agent's limit reads as its bucket's label, but for the bucket
+// every model draws on, and when it resets.
+func TestLimitedText(t *testing.T) {
+	t.Parallel()
+	now := *at(12)
+	for _, tc := range []struct {
+		aca  string
+		l    AgentLimited
+		want string
+	}{
+		{"antigravity", AgentLimited{Bucket: "3p", ResetsAt: at(14)}, "Claude and GPT models, resets in 2 h"},
+		{"claude_code", AgentLimited{Bucket: "", ResetsAt: at(14)}, "resets in 2 h"},
+		{"cursor", AgentLimited{Bucket: "auto"}, "Auto"},
+		{"codex", AgentLimited{Bucket: ""}, "no reset told"},
+	} {
+		if got := LimitedText(tc.aca, tc.l, now); got != tc.want {
+			t.Errorf("LimitedText(%s, %+v) = %q, want %q", tc.aca, tc.l, got, tc.want)
+		}
+	}
+}

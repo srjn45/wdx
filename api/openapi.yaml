@@ -3774,7 +3774,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, prompt, draft, queued, model, requested_model, permissions, context, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
+      required: [id, name, project_id, project_name, parent_agent_id, parent_agent_name, terminal_id, aca, session_id, dir, current_dir, held, worktree, task, state, activity, prompt, draft, queued, model, requested_model, permissions, context, limited, pid, exit_code, error, created_at, updated_at, started_at, ended_at, removed_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -3813,6 +3813,10 @@ components:
           allOf: [{ $ref: "#/components/schemas/AgentContext" }]
           nullable: true
           description: How full its context is, as its AI coding agent last told; null until it has, and again once a restart begins a new session. It stays once its terminal ends.
+        limited:
+          allOf: [{ $ref: "#/components/schemas/AgentLimited" }]
+          nullable: true
+          description: The usage bucket its model draws on that is limited now, as its AI coding agent last told of its account (the wdx doc AGENT_LIMITED); null when none is, when its AI coding agent has told no usage and while it is not running. A model wdx does not know is limited only while every bucket of its AI coding agent is. Worked out from the usage each time agents are listed, got or sent on the project stream, and null in the result of a change.
         pid: { type: integer, nullable: true, description: "The AI coding agent's, while it has one." }
         exit_code:
           type: integer
@@ -3852,6 +3856,13 @@ components:
       properties:
         tokens: { type: integer, format: int64, description: "The tokens in its context now." }
         window: { type: integer, format: int64, nullable: true, description: "Its model's context window, in tokens; null when its AI coding agent does not tell." }
+
+    AgentLimited:
+      type: object
+      required: [bucket, resets_at]
+      properties:
+        bucket: { type: string, description: "The bucket, as its AI coding agent names it; empty for the one every model draws on. When several are limited, the one that resets last." }
+        resets_at: { type: string, format: date-time, nullable: true, description: "When the bucket is available again; null when its AI coding agent does not tell." }
 
     AgentList:
       type: object
