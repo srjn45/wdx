@@ -25,6 +25,11 @@ type ScreenState struct {
 	// or a missing box has none. A box in a mode where a message would not be a
 	// prompt has one, as Claude Code's bash mode: what it runs is the human's.
 	Draft bool
+	// DraftText is the box's text as shown, without its prompt mark and what the
+	// ACA dims there itself, each line trimmed and the lines joined with \n; ""
+	// when Draft is false. A long paste reads as the ACA renders it, as Claude
+	// Code's "[Pasted text #1 +58 lines]", so it is compared, never parsed.
+	DraftText string
 	// InTurn is true when the ACA says it is in a turn its interrupt would stop,
 	// not only running something in the background. A footer cut off before it
 	// says so reads false, so a turn is never interrupted on a guess.

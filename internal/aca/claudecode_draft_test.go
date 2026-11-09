@@ -152,7 +152,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "typed text, footer cut off",
 			lines:    []string{rule, "❯ hello", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "❯ hello", rule, "  ⏸ manual mode on"},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "hello"},
 		},
 		{
 			name:     "a past message above an empty box",
@@ -164,25 +164,25 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "text only on a later row of the box",
 			lines:    []string{rule, "❯ ", "  two", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "❯ ", "  two", rule, ""},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "two"},
 		},
 		{
 			name:     "working, typed text",
 			lines:    []string{rule, "❯ abc", rule, "  ⏸ manual mode on · 1 shell"},
 			undimmed: []string{rule, "❯ abc", rule, "  ⏸ manual mode on · 1 shell"},
-			want:     screen.ScreenState{Activity: working, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: working, InputBox: true, Draft: true, DraftText: "abc"},
 		},
 		{
 			name:     "bash mode, nothing typed",
 			lines:    []string{rule, "! ", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "! ", rule, ""},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "!"},
 		},
 		{
 			name:     "bash mode, typed",
 			lines:    []string{rule, "! ls", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "! ls", rule, ""},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "! ls"},
 		},
 		{
 			name:     "an open prompt has none",
@@ -201,7 +201,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "a draft that starts with a number",
 			lines:    []string{rule, "❯ 1. buy milk", rule, "  ⏸ manual mode on"},
 			undimmed: []string{rule, "❯ 1. buy milk", rule, ""},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "1. buy milk"},
 		},
 		{
 			name:     "a draft taller than the classic screen: its box is gone, so unknown, never waiting",
@@ -225,7 +225,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 			name:     "a footer without the veto's words",
 			lines:    []string{rule, "❯\u00a0text", rule, "  ⏵⏵ auto mode on (shift+tab to cycle)"},
 			undimmed: []string{rule, "❯\u00a0text", rule, "  ⏵⏵ auto mode on (shift+tab to cycle)"},
-			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true},
+			want:     screen.ScreenState{Activity: unknown, InputBox: true, Draft: true, DraftText: "text"},
 		},
 		{
 			name:     "no box has none",

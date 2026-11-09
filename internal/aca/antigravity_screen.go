@@ -103,6 +103,9 @@ func (AntigravityScreenParser) Parse(lines, undimmed []string) screen.ScreenStat
 			state.Draft = true
 		}
 	}
+	if state.Draft {
+		state.DraftText = draftText(undimmed[top:min(end, len(undimmed))], strings.TrimSpace(antigravityBox))
+	}
 	return state
 }
 

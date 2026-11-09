@@ -82,6 +82,7 @@ func (CodexScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 	// Shell mode runs what the box holds, so it is never a place for a message.
 	if strings.HasPrefix(lines[top], strings.TrimSpace(codexShell)) {
 		state.Draft = true
+		state.DraftText = draftText(undimmed[min(top, len(undimmed)):min(end, len(undimmed))], "")
 		return state
 	}
 	// The placeholder is dim, so the undimmed box is blank unless a human typed.
@@ -94,6 +95,9 @@ func (CodexScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 		if strings.TrimSpace(text) != "" {
 			state.Draft = true
 		}
+	}
+	if state.Draft {
+		state.DraftText = draftText(undimmed[top:min(end, len(undimmed))], strings.TrimSpace(codexBox))
 	}
 	return state
 }

@@ -92,6 +92,7 @@ func (CursorScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 	// typed, and the mark with it, is not.
 	if top < len(undimmed) && cursorBoxLine(undimmed[top]) {
 		state.Draft = true
+		state.DraftText = draftText(undimmed[top:min(top+len(box), len(undimmed))], cursorBoxMarks[0])
 	}
 	return state
 }

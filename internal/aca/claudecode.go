@@ -160,7 +160,9 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 	}
 	inTurn := strings.Contains(box.footer, "esc to interrupt")
 	state := screen.ScreenState{Activity: screen.ActivityUnknown, InputBox: true, Draft: box.hasDraft(undimmed), InTurn: inTurn}
-	if !state.Draft {
+	if state.Draft {
+		state.DraftText = box.text(undimmed)
+	} else {
 		state.Model = claudeCodeModel(lines[:box.first])
 	}
 	switch {
@@ -248,6 +250,12 @@ func (b claudeCodeBox) hasDraft(undimmed []string) bool {
 		}
 	}
 	return false
+}
+
+// text is what the box shows that is not dim, without the ❯. The ! of bash mode
+// stays, as it is part of what would run.
+func (b claudeCodeBox) text(undimmed []string) string {
+	return draftText(undimmed[min(b.first, len(undimmed)):min(b.last+1, len(undimmed))], "❯")
 }
 
 // claudeCodeInputBox finds the input box nearest the bottom, a line starting ❯,
