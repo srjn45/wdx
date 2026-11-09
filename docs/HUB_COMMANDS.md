@@ -167,6 +167,7 @@ Agreed on 2026-11-03.
 ### The admin is whoever can reach the socket
 
 - The admin commands talk to the running hub through a Unix socket in its home, mode 0600, as `wdx` talks to its daemon; never over the network. On Fly: `fly ssh console -C "wdx-hub user list"`.
+- Installed by `install-hub.sh` (the wdx doc HUB_INSTALL), the hub runs as the static user `wdx-hub`, home `/var/lib/wdx-hub`, and `sudo wdx-hub <command>` is the admin form: run as root on a machine with the installed layout, every command goes on as `wdx-hub` (its uid, gid, groups and `HOME`), so it reaches the socket and writes nothing root owns in the hub's home; `update --apply` and `--rollback` alone keep root, and run every step that writes in the hub's home as the hub's user. The `command received` line logs which user it ran as.
 - Reaching the socket is the admin's authority, and the MVP has no admin role. It gives nothing new: whoever has a shell on the server as the hub's user, or root, can already read its database and its CA's key. Every admin command is in the audit log.
 - Later, when someone must administer the hub without a shell on its server (support staff, a web page for admins), admin becomes a role of an account, with its second factor, over the API. The socket stays for the server's own operator.
 - There is no setup token and no `wdx-hub setup`: `wdx-hub user invite` makes the first account as it makes any other. One way rather than two, a link made when asked rather than a secret printed in logs that a log service keeps, and no race to be the first to register.
@@ -194,6 +195,18 @@ An invite or reset link is a secret: printed on a line of its own, since the adm
 
 `wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's, with settings marked secret shown as `[secret]`; `wdx-hub audit verify`, which walks the audit chain: `{"audit": {"rows", "head"}}`, `head` the last row's hash or `null` for an empty chain, or `audit_broken` (exit 1) with the first broken row's `id` and `at` in `details`; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
 
+### `wdx-hub update`
+
+wdx update's, on the same `internal/update`, with the same flags, results and JSON (the wdx doc HUB_INSTALL):
+
+| Command | | Results | Errors |
+|---|---|---|---|
+| `update [--channel <channel>]` | the check: `{"update": {"current", "latest", "channel", "available"}}`, the channel `update.channel` or `--channel` | | `download_failed` |
+| `update --apply [--version <version>] [--channel <channel>]` | as root on the installed layout: downloads and checks the release, runs its `settings write` and `version` as the hub's user, backs the database up through the running hub to `<home>/backups/hub-<old version>.db` (the last 3 kept), stops the hub with `systemctl`, keeps the previous version in `/usr/local/lib/wdx-hub/previous/`, installs the binary and config file, writes the unit from the new binary's `service unit` with `daemon-reload`, starts it and waits on the socket for the new version; a failed step puts back all of it and starts the old hub again: `{"result", "update": {"from", "to", "channel", "schema_from", "schema_to", "data_restored", "settings": {"added", "dropped"}}, "warnings"}` | `updated`, `up_to_date` | `root_required` (2), `not_installed` (2), `download_failed`, `checksum_mismatch`, `older_version`, `settings_invalid`, `update_running`, `update_failed` |
+| `update --rollback [--discard-changes \| --cancel]` | as root: the version the last update replaced, with its config file, keeping the database when it can use it, or restoring the backup taken at the update when asked to; `--json` needs one of the two flags | `rolled_back` | `root_required`, `not_installed`, `no_previous_version`, `restore_required`, `update_running`, `update_failed` |
+
+`update.channel` (`stable` or `dev`) and `update.base_url` (GitHub Releases by default, `file://<repo>/dist` for local builds) are the hub's settings for it. The hidden `wdx-hub service unit [--privileged-port]` prints the systemd unit that `install-hub.sh` and the update write, which `deploy/hub/wdx-hub.service` equals.
+
 ### The hub's settings
 
 Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at startup with `usage`, but `setting set` and `write`, so that a new hub can be given one.
@@ -208,4 +221,5 @@ Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at star
 | `registration` | `closed` | `closed` or `open`; invites work either way |
 | `trusted_proxies` | empty | addresses or CIDR ranges, comma-separated, whose `X-Forwarded-For` gives the client's address, as Fly's proxy |
 | `master_key` | required | 32 bytes as base64, secret; seals the TOTP secrets and, in step 6, the docs' data keys. `serve` refuses to start without it, hinting `make one with: head -c 32 /dev/urandom | base64` |
+| `update.channel`, `update.base_url` | `stable`, GitHub Releases | what `wdx-hub update` installs and where it downloads it |
 | `log.level`, `otel.endpoint` | `info`, empty | |

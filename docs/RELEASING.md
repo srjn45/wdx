@@ -24,7 +24,7 @@ wdx_<version>_<os>_<arch>.tar.gz       wdx
 wdx-hub_<version>_<os>_<arch>.tar.gz   wdx-hub, the hub (docs/HUB_ARCH.md; deploy/hub runs it)
 ```
 
-Both binaries carry the same version and commit, and each archive the same `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md`. `scripts/install.sh`, `make install` and `wdx update` install wdx only: the hub is run from its archive, its container image or its systemd unit (`deploy/hub/README.md`).
+Both binaries carry the same version and commit, and each archive the same `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md`. `scripts/install.sh`, `make install` and `wdx update` install wdx only. `scripts/install-hub.sh` installs the hub, on Linux with systemd, from the same releases: the same `checksums.txt`, `LATEST`/`LATEST-dev` and `WDX_CHANNEL`, `WDX_VERSION` and `WDX_DOWNLOAD_BASE`, so a release holds both programs and nothing is published for the hub alone; `wdx-hub update` updates it. The hub also runs from its archive, its container image or its systemd unit by hand (`deploy/hub/README.md`).
 
 `dist/` keeps every release built here: `make install` installs from it, and `update.base_url: file://<repo>/dist` makes `wdx update` read it instead of GitHub.
 
@@ -59,7 +59,13 @@ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh 
 curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install.sh | WDX_CHANNEL=dev sh   # dev
 ```
 
-The script comes from `main` rather than from a release, since GitHub's `releases/latest/download/` answers 404 until there is a stable release.
+The script comes from `main` rather than from a release, since GitHub's `releases/latest/download/` answers 404 until there is a stable release. The hub's comes from `main` too, and is run as root:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh
+```
+
+The stable channel's latest release may have no `wdx-hub` archive yet; the script then says to use `WDX_CHANNEL=dev`. It saves the channel as the hub's `update.channel`, and `WDX_DOWNLOAD_BASE` as its `update.base_url`.
 
 `WDX_VERSION` installs one release, whatever the channel. `WDX_CHANNEL=dev` also saves `update.channel: dev` in the config file, so `wdx update` goes on following dev; an install without it leaves the setting as it is. `wdx setting set --name update.channel --value dev` does the same for a wdx already installed.
 
@@ -86,6 +92,18 @@ Only one previous version is kept, replaced by each update and removed by a roll
 
 `make install` and `scripts/install.sh` install without keeping a previous version.
 
+### The hub
+
+An installed hub updates itself in the same way, on the same `internal/update`, with the same flags, results and JSON:
+
+```
+wdx-hub update                        the check, as wdx update
+sudo wdx-hub update --apply           install the newest release on the hub's update.channel
+sudo wdx-hub update --rollback        install the version the last update replaced
+```
+
+`--apply` and `--rollback` need root (`root_required`) and the layout `install-hub.sh` makes (`not_installed`), both exit 2. What differs from wdx's: the database is backed up through the running hub (`POST /v1/backup`) to `<home>/backups/hub-<old version>.db`, the last 3 kept, before the hub stops; the hub is stopped and started with `systemctl`, after its unit is written anew from the new binary's `service unit` and `daemon-reload`, and a start waits on the socket for the new version; the previous version is kept in `/usr/local/lib/wdx-hub/previous/`, beside the staging directories, so nothing is renamed across filesystems. Run as root, every other `wdx-hub` command goes on as the hub's user, `wdx-hub`; `update --apply` and `--rollback` keep root and run the new binary as that user. Running `install-hub.sh` again on an installed hub runs the installed `wdx-hub update --apply`.
+
 ## Licenses
 
 wdx is licensed under Apache 2.0 (`LICENSE`, `NOTICE`). Every archive carries `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md` next to the binary: the full license and notice files of Go and of every module linked into wdx, as their licenses ask of a binary release. `scripts/notices.sh` writes it from `go list`, so it changes with the dependencies; a release refuses to run while it is out of date, and the script fails on a license it does not know, so a new dependency's license is looked at before it ships.
@@ -103,6 +121,11 @@ make cover         on Linux: the tests, as make test runs them, with coverage: b
                    summary per package; under the same 3 GB memory cap, in a user systemd CI starts
 make test-update   on Linux: a wdx built from the tree updated to a release dist.sh builds of it, and
                    rolled back
+make test-hub-install
+                   on Linux, as root through sudo with systemd: wdx-hub installed by install-hub.sh
+                   from releases dist.sh builds, updated, a release that never serves put back, rolled
+                   back, updated by the script again and uninstalled; CI only, never on a developer's
+                   machine
 make check         on Linux: golangci-lint (.golangci.yml), shellcheck and actionlint; a tidy and verified
                    go.mod; current notices; govulncheck; go vet for macOS and Linux arm64; the commit
                    messages in RANGE

@@ -205,6 +205,7 @@ Each operation has one tag, `web`, `nodes` or `admin`, saying which endpoint ser
 - **Secrets** (`WDX_HUB_MASTER_KEY`, Tigris's credentials) are Fly secrets.
 - **Shipping:** `scripts/dist.sh` builds `wdx-hub` into release archives of its own beside `wdx`'s (step 3), and `deploy/hub` has the Dockerfile, but nothing builds or signs images in a release; the multi-arch image on GHCR, cosign and the SBOM come with the Fly deployment, after the first release. (Decided 2026-11-07.)
 - Self-hosted, the same image runs with a volume and the same settings; `web.tls` decides who terminates TLS on the web endpoint, and the node endpoint is always the hub's.
+- **Installed on a Linux server** (the wdx doc HUB_INSTALL): `curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh` reads the same release archives and `checksums.txt` as `install.sh`, makes the static user `wdx-hub` (home `/var/lib/wdx-hub`, the hub's home `~/.wdx-hub`), asks only `public_url` and the web endpoint's TLS (a proxy in front, or certificate files), makes the master key, and installs `/usr/local/bin/wdx-hub` and `/etc/systemd/system/wdx-hub.service`, the unit `wdx-hub service unit` prints (`User=wdx-hub`, hardened, `CAP_NET_BIND_SERVICE` only for a port below 1024); `/usr/local/lib/wdx-hub/` keeps the previous version and the update's staging. It ends with an invite for the first user. `wdx-hub update --apply` updates it after, with a database backup, putting everything back when the new release does not answer; run again, the script does the same. `sudo wdx-hub <command>` runs as the hub's user.
 
 ## The sign-in pages
 
@@ -265,7 +266,7 @@ The design was checked against main at 3369a87, 151 commits after it was written
 - A remote tide keeps its view in memory and never touches the host's tide state; one tide per machine, through the client's `tide.lock`.
 - The doc store writes `hub_outbox` inside its own transaction; `hublink` reads and deletes.
 - Every stream the daemon serves is an Upgrade, exempt from the changes lock.
-- The MVP ships `wdx-hub` in the archives only; image, cosign and SBOM come with Fly.
+- The MVP ships `wdx-hub` in the archives only; image, cosign and SBOM come with Fly. `install-hub.sh` and `wdx-hub update` install and update it from those archives (the wdx doc HUB_INSTALL, built 2026-11-09).
 
 Shapes found, no decision needed: the settings table already has a per-row `fromEnv`, so `WDX_HUB_<KEY>` for every hub setting is a table-wide switch, but `set` and `get` are closures over wdx's `Config`, so `internal/settings` is the engine made generic over the config type, and a `secret` attribute is new; `db.Open` embeds its own migrations, so `internal/sqlite` takes a migrations filesystem, with `Backup` and `Restore` moving as they are; `remote_not_for_agents` holds for every ACA, since the holder sets `WDX_AGENT_ID` for each agent terminal; projects already carry the repository key (`origin_key`, `git.RepoKey` of the remote, NULL for `no_remote`); `wdx deps` gets the browser opener; `daemon.Settings` gets the two `hub.*` settings for reload. docs/IDE.md's content hash per revision was never built; pushes are idempotent by id and revision and need none.
 

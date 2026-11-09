@@ -308,6 +308,16 @@ linters:
             - github.com/srjn45/wdx/internal/sqlite
             - github.com/srjn45/wdx/internal/identity
             - github.com/srjn45/wdx/internal/logging
+        # update serves wdx and wdx-hub alike: each describes itself in an
+        # update.Program, so update knows neither's names, paths or database.
+        update-knows-no-program:
+          files: ["**/internal/update/*.go", "!$test"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/srjn45/wdx/internal/atomicfile
+            - github.com/srjn45/wdx/internal/logging
+            - github.com/srjn45/wdx/internal/sqlite
         # hublink speaks to the hub through its API alone.
         hublink-not-hub:
           files: ["**/internal/hublink/*.go", "!$test"]
