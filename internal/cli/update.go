@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/codesign"
 	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/service"
 	"github.com/srjn45/wdx/internal/style"
@@ -129,11 +131,10 @@ func updateOptions(cmd *cobra.Command) update.Options {
 		progress = cmd.ErrOrStderr()
 	}
 	return update.Options{
+		Program:   wdxProgram(env.Config.Home, env.Executable, env.Environ),
 		Home:      env.Config.Home,
-		Binary:    env.Executable,
 		Current:   identity.Version,
 		BaseURL:   env.Config.UpdateBaseURL,
-		Environ:   env.Environ,
 		Preflight: env.Timeouts.UpdatePreflight,
 		Daemon: update.Daemon{
 			Stop: func(context.Context) error {
@@ -147,6 +148,25 @@ func updateOptions(cmd *cobra.Command) update.Options {
 		},
 		Progress: progress,
 		Sign:     signer(env.Config.Home),
+	}
+}
+
+// wdxProgram is wdx as an update sees it: the binary installed at binary,
+// with its database and config file in home, its new binary run in environ.
+func wdxProgram(home, binary string, environ []string) update.Program {
+	return update.Program{
+		Name:     identity.Name,
+		Binary:   binary,
+		DB:       identity.DBPath(home),
+		Config:   identity.ConfigPath(home),
+		Previous: identity.PreviousDir(home),
+		Known:    db.Known(),
+		Command: func(ctx context.Context, binary, home string, args ...string) *exec.Cmd {
+			c := exec.CommandContext(ctx, binary, args...)
+			c.Env = append(slices.Clip(environ), identity.Env("HOME")+"="+home)
+			return c
+		},
+		GitHub: update.GitHub{Releases: identity.ReleasesURL, API: identity.ReleasesAPI, DevLatest: identity.DevLatestURL},
 	}
 }
 

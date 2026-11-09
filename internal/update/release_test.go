@@ -11,27 +11,25 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/srjn45/wdx/internal/identity"
 )
 
 func TestChecksum(t *testing.T) {
 	t.Parallel()
-	sums := []byte("aaa  wdx_0.2.0_linux_amd64.tar.gz\nbbb  wdx_0.2.0_darwin_arm64.tar.gz\n")
+	sums := []byte("aaa  tool_0.2.0_linux_amd64.tar.gz\nbbb  tool_0.2.0_darwin_arm64.tar.gz\n")
 	for _, tc := range []struct {
 		file, want string
 		ok         bool
 	}{
-		{"wdx_0.2.0_linux_amd64.tar.gz", "aaa", true},
-		{"wdx_0.2.0_darwin_arm64.tar.gz", "bbb", true},
-		{"wdx_0.2.0_linux_arm64.tar.gz", "", false},
-		{"wdx_0.2.0_linux_amd64", "", false},
+		{"tool_0.2.0_linux_amd64.tar.gz", "aaa", true},
+		{"tool_0.2.0_darwin_arm64.tar.gz", "bbb", true},
+		{"tool_0.2.0_linux_arm64.tar.gz", "", false},
+		{"tool_0.2.0_linux_amd64", "", false},
 	} {
 		if got, ok := checksum(sums, tc.file); got != tc.want || ok != tc.ok {
 			t.Errorf("%s: got %q, %v; want %q, %v", tc.file, got, ok, tc.want, tc.ok)
 		}
 	}
-	if _, ok := checksum([]byte("aaa wdx.tar.gz\n"), "wdx.tar.gz"); ok {
+	if _, ok := checksum([]byte("aaa tool.tar.gz\n"), "tool.tar.gz"); ok {
 		t.Error("want a line with one space, which sha256sum never writes, not matched")
 	}
 }
@@ -61,9 +59,9 @@ func archiveOf(t *testing.T, files map[string]string) []byte {
 
 func TestExtract(t *testing.T) {
 	t.Parallel()
-	dest := filepath.Join(t.TempDir(), "wdx")
-	archive := archiveOf(t, map[string]string{"LICENSE": "license", "wdx": "binary"})
-	if err := extract(bytes.NewReader(archive), "wdx", dest); err != nil {
+	dest := filepath.Join(t.TempDir(), "tool")
+	archive := archiveOf(t, map[string]string{"LICENSE": "license", "tool": "binary"})
+	if err := extract(bytes.NewReader(archive), "tool", dest); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(dest)
@@ -78,10 +76,10 @@ func TestExtract(t *testing.T) {
 		t.Fatalf("got %q, %v; want the binary, executable", b, info.Mode().Perm())
 	}
 
-	if err := extract(bytes.NewReader(archiveOf(t, map[string]string{"LICENSE": "license"})), "wdx", dest); err == nil {
+	if err := extract(bytes.NewReader(archiveOf(t, map[string]string{"LICENSE": "license"})), "tool", dest); err == nil {
 		t.Error("want an archive without the binary refused")
 	}
-	if err := extract(bytes.NewReader([]byte("not gzip")), "wdx", dest); err == nil {
+	if err := extract(bytes.NewReader([]byte("not gzip")), "tool", dest); err == nil {
 		t.Error("want what is not a tar.gz refused")
 	}
 }
@@ -132,7 +130,8 @@ func TestLatestGitHub(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	github := func(api, devLatest string) releases {
-		return releases{base: identity.ReleasesURL, api: srv.URL + api, devLatest: srv.URL + devLatest, http: srv.Client()}
+		const github = "https://example.invalid/tool/releases"
+		return releases{base: github, github: github, api: srv.URL + api, devLatest: srv.URL + devLatest, http: srv.Client()}
 	}
 
 	r := github("/releases", "/channels/LATEST-dev")

@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -47,18 +46,22 @@ func (e *ChecksumError) Error() string {
 // Releases: <base>/v<version>/<archive> and checksums.txt.
 type releases struct {
 	base      string
+	name      string // the program, the archive's prefix and the binary in it
+	github    string // the program's releases on GitHub
 	api       string // GitHub's answer to the latest stable release, when base is GitHub's
 	devLatest string // the file naming the newest of either kind, when base is GitHub's
 	http      *http.Client
 }
 
-func newReleases(base string) releases {
+func newReleases(p Program, base string) releases {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
 	return releases{
 		base:      base,
-		api:       identity.ReleasesAPI,
-		devLatest: identity.DevLatestURL,
+		name:      p.Name,
+		github:    p.GitHub.Releases,
+		api:       p.GitHub.API,
+		devLatest: p.GitHub.DevLatest,
 		http:      &http.Client{Transport: transport, Timeout: downloadTimeout},
 	}
 }
@@ -71,7 +74,7 @@ func (r releases) latest(ctx context.Context, channel string) (string, error) {
 	var url, tag string
 	var err error
 	switch {
-	case r.base != identity.ReleasesURL:
+	case r.base != r.github:
 		url = r.base + "/LATEST"
 		if channel == "dev" {
 			url += "-dev"
@@ -119,8 +122,8 @@ func (r releases) getLatestAPI(ctx context.Context, url string) (string, error) 
 }
 
 // archive is the name of the release archive of version for this machine.
-func archive(version string) string {
-	return fmt.Sprintf("%s_%s_%s_%s.tar.gz", identity.Name, version, runtime.GOOS, runtime.GOARCH)
+func (r releases) archive(version string) string {
+	return fmt.Sprintf("%s_%s_%s_%s.tar.gz", r.name, version, runtime.GOOS, runtime.GOARCH)
 }
 
 // exists fails when version has no checksums.txt, so no release.
@@ -129,10 +132,10 @@ func (r releases) exists(ctx context.Context, version string) error {
 	return err
 }
 
-// download writes the binary of release version to dir/wdx, once its
+// download writes the binary of release version to dir/<name>, once its
 // archive matches its checksum, and returns its path.
 func (r releases) download(ctx context.Context, version, dir string) (string, error) {
-	name := archive(version)
+	name := r.archive(version)
 	sums, err := r.get(ctx, r.base+"/v"+version+"/checksums.txt")
 	if err != nil {
 		return "", err
@@ -156,8 +159,8 @@ func (r releases) download(ctx context.Context, version, dir string) (string, er
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, identity.Name)
-	if err := extract(f, identity.Name, path); err != nil {
+	path := filepath.Join(dir, r.name)
+	if err := extract(f, r.name, path); err != nil {
 		return "", fmt.Errorf("extract %s: %w", name, err)
 	}
 	logging.FromContext(ctx).Info("release downloaded", "version", version, "archive", url, "path", path)
