@@ -1,7 +1,6 @@
 package holder
 
 import (
-	"io"
 	"slices"
 	"sync"
 	"time"
@@ -234,7 +233,7 @@ func (h *holder) inboxReader() {
 		}
 		next, reason := actionDeliver, ""
 		if h.watch != nil {
-			next, reason = nextAction(h.watch.state(), m.instant, h.steerTo != nil)
+			next, reason = nextAction(h.watch.state(), m.instant, h.sendNow != nil)
 			if next != actionHold && h.readsLines() {
 				next, reason = actionHold, notReadingKeys
 			}
@@ -320,27 +319,6 @@ func (h *holder) waitForInbox() bool {
 	}
 }
 
-// deliver puts one message into the shell or the ACA, or steers it into the ACA's
-// running turn.
-func (h *holder) deliver(m message, steer bool) {
-	put, done := h.deliverTo, "message delivered"
-	if steer {
-		put, done = h.steerTo, "message steered"
-	}
-	if err := put(ptyInput{h}, m.text); err != nil {
-		h.log.Info("message not delivered", "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant, "steered", steer, "err", err)
-		if m.id != "" {
-			h.inbox.notTyped(m.id)
-		}
-		return
-	}
-	h.log.Info(done, "message_id", m.id, "prompt_bytes", len(m.text), "instant", m.instant)
-	if m.id != "" {
-		h.inbox.typed(m.id)
-		h.reportDelivered(m.id)
-	}
-}
-
 // reportDelivered tells the daemon the message went in. With none there, or a write
 // that fails, the next one's hello says it: typed is remembered first.
 func (h *holder) reportDelivered(id string) {
@@ -355,13 +333,6 @@ func (h *holder) reportDelivered(id string) {
 		// daemon gets it in the hello.
 		h.conn.Close()
 	}
-}
-
-// typeMessage delivers to a shell: the text, then the carriage return the
-// Enter key sends.
-func typeMessage(w io.Writer, text string) error {
-	_, err := io.WriteString(w, text+"\r")
-	return err
 }
 
 func (h *holder) interruptTurn() {

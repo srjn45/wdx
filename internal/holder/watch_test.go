@@ -60,7 +60,9 @@ func testParser(dir string) ParseScreen {
 }
 
 // claudeScreens draw real footers of Claude Code, whose parser reads them, under
-// first as the screen's first line. wait waits for the file named.
+// first as the screen's first line. boxed draws a box holding a draft, its text
+// and footer given. wait_for waits for the file named, got_bytes for the program
+// to have read so many bytes into got.
 const claudeScreens = `
 rule=────────────────
 draw() { printf '\033[2J\033[H%s\r\n%s\r\n❯ \r\n%s\r\n%s' "$1" "$rule" "$rule" "$2"; }
@@ -71,7 +73,9 @@ moved() { printf '\033[2J\033[H%s\r\n Do you want to proceed?\r\n   1. Yes\r\n �
 cutoff() { draw "$1" '  ⏸ manual mode on · /tasks to see su…'; }
 background() { draw "$1" '  ⏸ manual mode on · 1 shell · ← 1 agent'; }
 drafted() { printf '\033[2J\033[H%s\r\n%s\r\n❯ typed\r\n%s\r\n%s' "$1" "$rule" "$rule" '  ⏸ manual mode on'; }
+boxed() { printf '\033[2J\033[H%s\r\n%s\r\n❯ %s\r\n%s\r\n%s' "$1" "$rule" "$2" "$rule" "$3"; }
 wait_for() { until [ -f "$1" ]; do sleep 0.01; done; }
+got_bytes() { until [ "$( (wc -c < got) 2>/dev/null || echo 0)" -ge "$1" ]; do sleep 0.01; done; }
 stty raw -echo
 `
 

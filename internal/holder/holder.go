@@ -52,14 +52,18 @@ type Options struct {
 	// ParseScreen, when given, reads what the program in the terminal is doing
 	// from its screen; see watchScreen.
 	ParseScreen ParseScreen
-	// Deliver, when given, puts a message into the program in place of typing it
-	// and pressing Enter, and Interrupt stops its turn. They come from the cli,
-	// as ParseScreen does.
-	Deliver   func(w io.Writer, message string) error
+	// Paste and Submit, when given, put a message into the program and submit it,
+	// in place of typing it and pressing Enter, and Interrupt stops its turn. They
+	// come from the cli, as ParseScreen does, and write keys only: when is the
+	// holder's, from the screen and SendTimes (the wdx doc SEND_CONFIRMED).
+	Paste     func(w io.Writer, message string) error
+	Submit    func(w io.Writer, settle func()) error
 	Interrupt []byte
-	// Steer, when given, gives an instant message to the running turn without
-	// stopping it, so Interrupt is never pressed for one.
-	Steer func(w io.Writer, message string) error
+	// SendNow, when given, gives a submitted instant message to the running turn
+	// without stopping it, so Interrupt is never pressed for one.
+	SendNow func(w io.Writer) error
+	// SendTimes are the waits of typing a message; zero ones are the defaults.
+	SendTimes SendTimes
 	// Home is wdx's, which the shell gets as WDX_HOME so that wdx run in it
 	// reaches the daemon that owns it.
 	Home   string
@@ -166,9 +170,11 @@ type holder struct {
 	spoolErr   bool          // a failed append is logged once
 
 	inbox      *inbox
-	deliverTo  func(w io.Writer, message string) error
+	paste      func(w io.Writer, message string) error
+	submit     func(w io.Writer, settle func()) error
 	interrupt  []byte
-	steerTo    func(w io.Writer, message string) error
+	sendNow    func(w io.Writer) error
+	sendTimes  SendTimes
 	readerDone chan struct{} // closed once the inboxReader returns
 }
 
@@ -225,17 +231,19 @@ func start(ctx context.Context, o Options) (*holder, error) {
 		clients:      map[*client]bool{},
 		left:         make(chan struct{}),
 		inbox:        newInbox(),
-		deliverTo:    o.Deliver,
+		paste:        o.Paste,
+		submit:       o.Submit,
 		interrupt:    o.Interrupt,
-		steerTo:      o.Steer,
+		sendNow:      o.SendNow,
+		sendTimes:    o.SendTimes.orDefaults(),
 		readerDone:   make(chan struct{}),
 		vtDelay:      o.vtDelay,
 		screenHold:   o.screenHold,
 		writeTimeout: cmp.Or(o.WriteTimeout, writeTimeout),
 	}
 	h.vtMoved.L = &h.screenMu
-	if h.deliverTo == nil {
-		h.deliverTo = typeMessage
+	if h.paste == nil || h.submit == nil {
+		h.paste, h.submit = typeText, pressEnter
 	}
 	if o.ParseScreen != nil {
 		h.watch = newScreenWatch(log, o.ParseScreen, h.readScreen, o.watchTimes)

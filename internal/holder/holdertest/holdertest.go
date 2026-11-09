@@ -55,7 +55,11 @@ func RunIfHolder() {
 	log := logging.New(logs, slog.LevelDebug).With("pid", os.Getpid(), "process", "holder")
 	if known, ok := aca.ByID(acaID); ok {
 		o.ParseScreen = known.ScreenParser().Parse
-		o.Deliver, o.Steer = aca.Typed(known)
+		o.Paste, o.Submit = known.Paste, known.Submit
+		if aca.CanSteer(known) {
+			o.SendNow = known.SendNow
+		}
+		o.SendTimes = sendTimes
 		o.Interrupt = known.Interrupt()
 	}
 	err := holder.Run(logging.NewContext(context.Background(), log), o)
@@ -65,6 +69,11 @@ func RunIfHolder() {
 	}
 	os.Exit(0)
 }
+
+// sendTimes keep the waits of typing a message short: a test's program draws no
+// draft for most, which would hold each message up to the ceiling. The settle is
+// left as wdx's, so a program slow to clear a draft gets no second Enter.
+var sendTimes = holder.SendTimes{PasteFloor: 10 * time.Millisecond, PasteCeiling: 100 * time.Millisecond}
 
 // Limits are limits a loaded machine does not reach: a test fails on what it
 // checks, or at its deadline, not because a process was held back.

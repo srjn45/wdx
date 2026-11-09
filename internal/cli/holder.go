@@ -37,7 +37,10 @@ func newHolderCmd() *cobra.Command {
 				// may be older than the daemon that named the ACA.
 				if known, ok := aca.ByID(acaID); ok {
 					o.ParseScreen = known.ScreenParser().Parse
-					o.Deliver, o.Steer = aca.Typed(known)
+					o.Paste, o.Submit = known.Paste, known.Submit
+					if aca.CanSteer(known) {
+						o.SendNow = known.SendNow
+					}
 					o.Interrupt = known.Interrupt()
 				} else {
 					logging.FromContext(ctx).Warn("screen not read: this holder does not know the aca", "terminal_id", o.ID, "aca", acaID)

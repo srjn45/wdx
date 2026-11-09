@@ -56,11 +56,12 @@ func runHolder(args []string) int {
 	o.screenHold = os.Getenv(screenHoldVar)                  //nolint:forbidigo // as the home above
 	if dir := os.Getenv(parserDirVar); dir != "" {           //nolint:forbidigo // as the home above
 		o.ParseScreen = testParser(dir)
-		o.Deliver, _ = aca.Typed(aca.ClaudeCode{})
+		o.Paste, o.Submit = aca.ClaudeCode{}.Paste, aca.ClaudeCode{}.Submit
 		o.Interrupt = aca.ClaudeCode{}.Interrupt()
 		if os.Getenv(steerVar) != "" { //nolint:forbidigo // as the home above
-			o.Steer = testSteer
+			o.SendNow = aca.ClaudeCode{}.SendNow
 		}
+		o.SendTimes = testSendTimes()
 	}
 	o.watchTimes.rules.Still, _ = time.ParseDuration(os.Getenv(stillVar)) //nolint:forbidigo // as the home above
 	// It logs where a holder wdx starts does: the home's log files.

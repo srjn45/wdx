@@ -3,7 +3,6 @@ package holder
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -236,16 +235,12 @@ func TestInboxOrder(t *testing.T) {
 // paste is what a message is on Claude Code's input.
 func paste(message string) string { return "\x1b[200~" + message + "\x1b[201~\r" }
 
-// steerVar, set on a test holder, gives it testSteer, as an ACA that can steer.
+// steerVar, set on a test holder, gives it Claude Code's SendNow, as an ACA that
+// can steer.
 const steerVar = "TEST_STEER"
 
-// testSteer writes what a test tells from Deliver's paste and the interrupt key.
-func testSteer(w io.Writer, message string) error {
-	_, err := io.WriteString(w, steered(message))
-	return err
-}
-
-func steered(message string) string { return "steer:" + message + "\r" }
+// sendNow is what Claude Code's SendNow writes.
+const sendNow = "\x18\x13"
 
 // acaProgram runs a program that draws first, then what follows each named step,
 // and records all its input in the file got of the directory watched returns.
@@ -416,7 +411,7 @@ func TestSendAgentInstantSteers(t *testing.T) {
 	if err := conn.SendAgent("general", false); err != nil {
 		t.Fatal(err)
 	}
-	waitGot(t, dir, steered("instant")+paste("general"))
+	waitGot(t, dir, paste("instant")+sendNow+paste("general"))
 }
 
 // TestSendAgentInstantGoesFirst queues both while a prompt is open.
