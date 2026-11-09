@@ -2,6 +2,7 @@ package tide
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -77,6 +78,15 @@ func (m *Model) resumed() (tea.Cmd, bool) {
 	m.resume = nil
 	if r == nil || !m.isOpen(r.Project) {
 		return nil, false
+	}
+	if m.node != "" {
+		// No settings through a session.
+		kept := *r
+		r = &kept
+		r.Tabs = slices.DeleteFunc(slices.Clone(r.Tabs), func(tab string) bool { return tab == settingsTab })
+		if r.Agent == settingsTab {
+			r.Agent = ""
+		}
 	}
 	if r.ProjectID != "" {
 		if r.Terminal != "" {

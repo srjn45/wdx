@@ -10,8 +10,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/holder"
-	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/termview"
 )
 
@@ -127,10 +127,13 @@ func (m *Model) tryAttach(a *attachment) tea.Cmd {
 	cols, rows := m.paneArea(a.where, a.live)
 	gen := a.gen
 	if a.live {
-		socket := identity.HolderSocket(m.home, a.id)
-		m.log.Info("terminal attaching", "terminal_id", a.id, "cols", cols, "rows", rows)
+		m.log.Info("terminal attaching", "terminal_id", a.id, "cols", cols, "rows", rows, "node", m.node)
 		return func() tea.Msg {
-			s, err := holder.Attach(a.ctx, socket, a.id, holder.Size{Cols: cols, Rows: rows}, 0)
+			conn, err := m.dialTerminal(a.ctx, a.id)
+			if err != nil {
+				return attachedMsg{gen: gen, err: err}
+			}
+			s, err := holder.AttachConn(a.ctx, conn, a.id, holder.Size{Cols: cols, Rows: rows}, 0)
 			return attachedMsg{gen: gen, session: s, err: err}
 		}
 	}
@@ -197,7 +200,7 @@ func fetcher(a *attachment) termview.FetchFunc {
 // stream does, unless its holder is too old to attach to.
 func (m *Model) attachFailed(a *attachment, err error) tea.Cmd {
 	a.err = err
-	if errors.Is(err, holder.ErrAttachUnsupported) {
+	if e, ok := errors.AsType[*client.ProblemError](err); errors.Is(err, holder.ErrAttachUnsupported) || ok && e.Problem.Code == api.ErrorCodeHolderVersionUnsupported {
 		a.tooOld = true
 		m.log.Info("terminal not attached: its holder is too old", "terminal_id", a.id)
 		return nil

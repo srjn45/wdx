@@ -106,6 +106,24 @@ func TestBar(t *testing.T) {
 	}
 }
 
+// TestRemoteBar: every theme paints a remote TIDE's bar in a cyan of its own,
+// and reverse video stands for it without color.
+func TestRemoteBar(t *testing.T) {
+	t.Parallel()
+	for _, name := range ThemeNames() {
+		on := New(true).WithTheme(name)
+		if on.theme.remote == "" {
+			t.Errorf("theme %s has no remote bar", name)
+		}
+		if got := on.Bar(" desktop ", StatusRemote); got != "\x1b["+on.theme.remote+"m desktop \x1b[0m" {
+			t.Errorf("theme %s: got %q", name, got)
+		}
+	}
+	if got := New(false).Bar(" desktop ", StatusRemote); got != "\x1b[7m desktop \x1b[0m" {
+		t.Errorf("without color: got %q", got)
+	}
+}
+
 func TestTable(t *testing.T) {
 	t.Parallel()
 	for _, on := range []bool{false, true} {

@@ -15,7 +15,7 @@ func (m *Model) View() tea.View {
 	view := tea.NewView(m.render())
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
-	view.WindowTitle = "TIDE"
+	view.WindowTitle = m.windowTitle()
 	view.Cursor = m.paneCursor()
 	return view
 }
@@ -99,6 +99,12 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 		m.drawPopup(buf, m.menuPopup())
 	}
 	uv.NewStyledString(m.statusLine()).Draw(buf, uv.Rect(0, m.height-1, m.width, 1))
+	if m.remote.ended != nil {
+		// The session ended: its message takes the whole window.
+		buf.Clear()
+		m.drawEnded(buf)
+		uv.NewStyledString(m.endedBar()).Draw(buf, uv.Rect(0, m.height-1, m.width, 1))
+	}
 	// What was drawn over the panes takes the base all over, not the focused
 	// pane's background where it lies over it.
 	paintBackground(buf, func(uv.Position) color.Color { return m.st.Base() })
@@ -476,6 +482,10 @@ func (m *Model) statusLine() string {
 		left += " · zoomed"
 	}
 	state := style.StatusLive
+	if m.node != "" {
+		state = style.StatusRemote
+		left = " " + m.st.BarName(m.node) + " ›" + left
+	}
 	right := m.st.BarMuted(defaultHint)
 	if h, ok := m.root.(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
@@ -489,6 +499,9 @@ func (m *Model) statusLine() string {
 	}
 	if m.statusNotice != "" {
 		right = m.statusNotice
+	}
+	if m.node != "" && !m.remote.lostSince.IsZero() {
+		right = "reconnecting to " + m.node + "…"
 	}
 	switch {
 	case m.menu:
@@ -524,7 +537,7 @@ func (m *Model) statusLine() string {
 	}
 	// Versions that differ matter more than the keys, but not than what the
 	// bar is saying now.
-	if state == style.StatusLive && m.statusNotice == "" && style.VersionsDiffer(m.daemonVersion) {
+	if (state == style.StatusLive || state == style.StatusRemote) && m.statusNotice == "" && style.VersionsDiffer(m.daemonVersion) {
 		right = ""
 	}
 	return m.st.Bar(style.BarLine(m.width, left, right, m.st.BarVersion(m.daemonVersion)), state)

@@ -5,6 +5,7 @@ commands: [tide]
 ---
 import Commands from '../../../../components/Commands.astro';
 import TideScreen from '../../../../components/TideScreen.astro';
+import Since from '../../../../components/Since.astro';
 
 `wdx tide` is the Terminal IDE: one window per project, in your own terminal, with every agent, worktree, doc, plan and file of the project on the left, what you open on the right, and the project's terminals below. It is a client of the daemon, as the CLI is: quit it and everything keeps running, and it comes back as you left it.
 
@@ -50,6 +51,25 @@ In the project pane, the menu's letters work without `C-q`: `a` new agent, `t` n
 - **In your terminal.** It runs in GNOME Terminal, Konsole, xterm and macOS Terminal.app, among others. On macOS, Terminal.app sends `Alt` only with "Use Option as Meta key" turned on.
 - **Colors** come from the `tide.theme` setting, its own dark palette; with color off it paints none.
 - **No JSON.** `wdx tide` is interactive by nature, so `--json` fails with `usage`: scripts use the other commands.
+
+## On another node
+
+`wdx tide --node <name>` <Since v="0.5.0" /> opens TIDE on another node of your account, through a session into it ([Hub](/wdx/docs/guides/hub/#tide-on-another-node)): that node's projects, agents and terminals, which you type into as if you sat at it.
+
+```sh
+wdx tide --node desk
+```
+
+- **Never taken for a local one:** the status line is cyan and starts with the node's name, `desk › app · project`, and the window's title is `wdx tide · desk`.
+- **The code is asked first,** in the terminal before the window opens, when no session into the node is open. Where `WDX_AGENT_ID` is set, as for an agent wdx runs, it fails with `remote_not_for_agents`.
+- **Only that node:** its terminals are shells there, where `wdx` is its own. What runs on this machine goes on, untouched.
+- **Its view is kept in memory,** not by either daemon: it starts on the switcher each time, and the node's own TIDE keeps its view and tabs as they were.
+- **No settings tab:** the menu says settings are changed on the node itself, since a session reaches none of them.
+- **A new project** takes an absolute path on the node, typed, in place of the directory browser, which shows this machine's files.
+- **Copying a selection** still goes to this machine's clipboard, where you are; editing a file runs the editor on the node.
+- **One TIDE per machine,** whichever node it shows: a second is refused with `tide_running`.
+
+When the session ends, closed on either node, by the node's daemon restarting, idle, or remote access turned off there, a message takes the whole window and says why. Type the code to open a new session, and TIDE goes on with what it showed; or `C-q` to quit. A network that drops for a moment shows `reconnecting to desk…` in the status line first; after 30 seconds without reaching the node, the message comes.
 
 ## Commands
 

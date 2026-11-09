@@ -14,13 +14,22 @@ Work in the terminal IDE: a project, an agent and terminals in one window.
 wdx tide [flags]
 ```
 
-TIDE takes the whole window: the project on the left, an agent on the right and the project's terminals below. Alt and an arrow move the focus between them, C-] zooms the focused pane or leaves the zoom, C-\ shows or hides the terminals and C-q opens the menu: what acts on the thing selected first, such as r to rename an agent, then on the left pane's list, then on TIDE and the project, such as a new agent or terminal, p for the Project submenu (open, switch, close, remove) and q to quit; \, ] and C-q send C-\, C-] and C-q to the program in the focused pane, so C-q \ d detaches a wdx attach running there, and C-q then Alt and an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to the previous or next open project. In the left pane's list Enter opens the row's tab and stays in the list; Shift+Enter, or o where the terminal sends that as Enter, opens it and goes to it; - closes the row's tab when it is open. z, or a click on a section's heading, collapses the section or expands it. The mouse focuses a pane, switches tabs and zooms with the [⤢] button; dragging selects text in a pane and copies it on release. The Code section lists a worktree's files: Enter shows one read-only and highlighted, e edits it in the editor the editor setting names, and closing that tab asks to save or discard. There n and N create a file or directory, r renames and x deletes, each in a popup. / filters the left pane's list as you type: Enter goes back to the list, Esc clears it. Projects open from a local repository, are cloned or created, or reopen when closed. The terminal pane has a tab for each of the project's terminals, kept up to date as they change, and the agent pane a tab for each agent opened, each live in its pane. TIDE needs the daemon running, runs in the terminal it was started from and has no `--json`. One TIDE runs per home: another is refused.
+TIDE takes the whole window: the project on the left, an agent on the right and the project's terminals below. Alt and an arrow move the focus between them, C-] zooms the focused pane or leaves the zoom, C-\ shows or hides the terminals and C-q opens the menu: what acts on the thing selected first, such as r to rename an agent, then on the left pane's list, then on TIDE and the project, such as a new agent or terminal, p for the Project submenu (open, switch, close, remove) and q to quit; \, ] and C-q send C-\, C-] and C-q to the program in the focused pane, so C-q \ d detaches a wdx attach running there, and C-q then Alt and an arrow, with or without Shift, sends that. Alt+Shift and ← or → switch to the previous or next open project. In the left pane's list Enter opens the row's tab and stays in the list; Shift+Enter, or o where the terminal sends that as Enter, opens it and goes to it; - closes the row's tab when it is open. z, or a click on a section's heading, collapses the section or expands it. The mouse focuses a pane, switches tabs and zooms with the [⤢] button; dragging selects text in a pane and copies it on release. The Code section lists a worktree's files: Enter shows one read-only and highlighted, e edits it in the editor the editor setting names, and closing that tab asks to save or discard. There n and N create a file or directory, r renames and x deletes, each in a popup. / filters the left pane's list as you type: Enter goes back to the list, Esc clears it. Projects open from a local repository, are cloned or created, or reopen when closed. The terminal pane has a tab for each of the project's terminals, kept up to date as they change, and the agent pane a tab for each agent opened, each live in its pane. TIDE needs the daemon running, runs in the terminal it was started from and has no `--json`. One TIDE runs per home: another is refused. With `--node`, TIDE shows that node of your account through a session, asking for its code first when none is open: its projects, agents and terminals, under a cyan bar. It keeps its view in memory, offers no settings, and takes a path on that node where a local TIDE browses this machine's directories. When the session ends, or the node stays unreachable for 30 seconds, a code opens another and TIDE goes on as it was.
+
+## Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--node <name>` |  | run the command on the node of this name, another of your account, through a session |
 
 ## Examples
 
 ```sh
 # Open TIDE
 wdx tide
+
+# Open TIDE on the node desktop
+wdx tide --node desktop
 ```
 
 ## Output
@@ -36,4 +45,6 @@ With `--json`, `result` is one of: `closed`.
 | [`tide_running`](/wdx/docs/reference/errors/#tide_running) | 1 | a TIDE is already running for this home |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
+
+With `--node`, also: [`code_not_set_up`](/wdx/docs/reference/errors/#code_not_set_up), [`code_wrong`](/wdx/docs/reference/errors/#code_wrong), [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable), [`hub_unreachable`](/wdx/docs/reference/errors/#hub_unreachable), [`hub_version_unsupported`](/wdx/docs/reference/errors/#hub_version_unsupported), [`node_key_mismatch`](/wdx/docs/reference/errors/#node_key_mismatch), [`node_not_found`](/wdx/docs/reference/errors/#node_not_found), [`node_offline`](/wdx/docs/reference/errors/#node_offline), [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported), [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in), [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off), [`remote_not_for_agents`](/wdx/docs/reference/errors/#remote_not_for_agents), [`route_not_allowed`](/wdx/docs/reference/errors/#route_not_allowed), [`session_closed`](/wdx/docs/reference/errors/#session_closed), [`session_required`](/wdx/docs/reference/errors/#session_required), [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams).
 

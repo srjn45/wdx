@@ -62,6 +62,7 @@ type theme struct {
 	shown             string // the row of the tab shown
 	open              string // the row of a tab open
 	cursor            string // the row under the cursor
+	remote            string // the status line of a TIDE on another node, as SGR colors
 }
 
 // themes are tide's themes, the default first.
@@ -73,6 +74,7 @@ var themes = []theme{{
 	shown:       "48;2;54;61;78",
 	open:        "48;2;43;49;63",
 	cursor:      "48;2;38;79;120",
+	remote:      "30;46", // black on cyan, as Remote is cyan
 }}
 
 // ThemeNames are the names of tide's themes, the default first.
@@ -250,6 +252,7 @@ const (
 	StatusPrefix                    // a prefix key was pressed: black on yellow
 	StatusScrolled                  // scrolled back through history: black on cyan
 	StatusFailed                    // something failed: white on red
+	StatusRemote                    // nothing going on, in a TIDE on another node: the theme's cyan
 )
 
 var statusColors = map[StatusBar]string{
@@ -265,7 +268,10 @@ var statusColors = map[StatusBar]string{
 // would end the bar too.
 func (s Style) Bar(text string, state StatusBar) string {
 	codes := "7"
-	if s.on {
+	switch {
+	case s.on && state == StatusRemote:
+		codes = s.theme.remote
+	case s.on:
 		codes = statusColors[state]
 	}
 	return "\x1b[" + codes + "m" + text + "\x1b[0m"

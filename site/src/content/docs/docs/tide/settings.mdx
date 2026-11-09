@@ -5,6 +5,7 @@ sidebar:
   label: Settings
 ---
 import TideScreen from '../../../../components/TideScreen.astro';
+import Since from '../../../../components/Since.astro';
 
 `C-q s` opens the settings tab: every setting wdx has, its value and, under the list, what the one under the cursor does. It is `wdx setting list` and `wdx setting set` in one screen. The CLI side, and where settings live, is in [Settings](/wdx/docs/guides/settings/).
 
@@ -29,3 +30,4 @@ import TideScreen from '../../../../components/TideScreen.astro';
 - **When it takes effect** is the setting's: `color` once TIDE is reopened, `terminal.shell` and `terminal.history_lines` for new terminals.
 - **The same file.** A change made with `wdx setting set` or in the file shows when the tab is next shown.
 - **Turning off an AI CLI** with `aca.<id>.enabled` takes it out of the new agent form; agents already running it go on.
+- **Not on another node** <Since v="0.5.0" />. A TIDE opened with `--node` has no settings tab: its menu says settings are changed on that node itself, as a session reaches none of them, the `hub.*` settings among them.

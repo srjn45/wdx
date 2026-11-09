@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -53,9 +54,16 @@ func newTideCmd() *cobra.Command {
 			"terminals, kept up to date as they change, and the agent pane a tab for each\n" +
 			"agent opened, each live in its pane. TIDE needs the daemon running, runs in\n" +
 			"the terminal it was started from and has no --json. One TIDE runs per home:\n" +
-			"another is refused.",
+			"another is refused.\n" +
+			"With --node, TIDE shows that node of your account through a session, asking\n" +
+			"for its code first when none is open: its projects, agents and terminals,\n" +
+			"under a cyan bar. It keeps its view in memory, offers no settings, and takes\n" +
+			"a path on that node where a local TIDE browses this machine's directories.\n" +
+			"When the session ends, or the node stays unreachable for 30 seconds, a code\n" +
+			"opens another and TIDE goes on as it was.",
 		Example: clikit.Examples(
 			"Open TIDE", identity.Name+" tide",
+			"Open TIDE on the node desktop", identity.Name+" tide --node desktop",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -130,14 +138,24 @@ func runTide(cmd *cobra.Command, _ []string) error {
 		}
 		resume = r
 	}
-	// The status line says when the daemon is of another version, and the
-	// warning, which would land in the window, waits until tide gives it back.
-	c := client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.DebugID})
+	opts := tide.Options{Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
+		Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
+		SectionOrder: env.Config.TideSectionOrder, ContextWarning: env.Config.ContextWarning, ContextCritical: env.Config.ContextCritical}
+	var c *client.Client
+	if node := nodeOf(cmd); node != "" {
+		c, err = remoteTide(cmd, node, &opts)
+		if err != nil {
+			return err
+		}
+	} else {
+		// The status line says when the daemon is of another version, and the
+		// warning, which would land in the window, waits until tide gives it back.
+		c = client.New(client.Options{Socket: identity.SocketPath(env.Config.Home), DebugID: inv.DebugID})
+		opts.DaemonVersion = daemonVersionCheck(cmd)
+	}
+	opts.Client = c
 	_, _ = io.WriteString(tty, titlePush)
 	defer func() { _, _ = io.WriteString(tty, titlePop) }()
-	opts := tide.Options{Client: c, Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
-		DaemonVersion: daemonVersionCheck(cmd), Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
-		SectionOrder: env.Config.TideSectionOrder, ContextWarning: env.Config.ContextWarning, ContextCritical: env.Config.ContextCritical}
 	// Tide's requests end with it: those it left in flight are cancelled once it
 	// quits, and waited for, so that each is logged as answered or given up.
 	requests, cancelRequests := context.WithCancel(ctx)
@@ -149,6 +167,12 @@ func runTide(cmd *cobra.Command, _ []string) error {
 	_, err = p.Run()
 	cancelRequests()
 	c.Wait()
+	if nodeOf(cmd) != "" {
+		// A request given up on may leave its stream's connect going on, on
+		// the local daemon, which the transport keeps for the next request.
+		localClientOf(cmd).Wait()
+	}
+	c.Close()                                                          // the streams into another node kept open between requests
 	killed := errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil // the command is ending
 	if v := model.DaemonVersion(); style.VersionsDiffer(v) {
 		warnTideVersion(cmd, v)
@@ -157,6 +181,28 @@ func runTide(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	return clikit.PrintResult(cmd, tideResult{Result: api.ResultClosed})
+}
+
+// remoteTide makes opts those of a TIDE on node, through a session: the
+// client of node's daemon, attaching through it, and the link that follows
+// the session. It reaches node before the window opens, asking for the code
+// when no session is open, so that a failure is told as any command's.
+func remoteTide(cmd *cobra.Command, node string, opts *tide.Options) (*client.Client, error) {
+	ctx := cmd.Context()
+	local := localClientOf(cmd)
+	opts.Node = node
+	opts.SessionLost = envOf(cmd).Timeouts.TideSessionLost
+	opts.Link = tide.NewLink(func(ctx context.Context, code string) error {
+		_, err := local.OpenHubSession(ctx, node, code)
+		return sessionHint(err, node)
+	})
+	c := remoteClient(cmd, node, opts.Link.Dialed)
+	if _, err := c.Version(ctx); err != nil {
+		return nil, err
+	}
+	opts.DialTerminal = func(ctx context.Context, id string) (net.Conn, error) { return c.AttachStream(ctx, id) }
+	logging.FromContext(ctx).Info("tide on another node", "node", node, "api_version", c.APIVersion())
+	return c, nil
 }
 
 // tideResult is how tide ended.

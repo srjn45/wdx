@@ -125,8 +125,9 @@ func nodeHint(err error, node string) error {
 
 // remoteClient is the client of node's daemon, through the session this
 // node's daemon has open into it. A connection opens with the code, asked
-// for on a terminal, when no session is open.
-func remoteClient(cmd *cobra.Command, node string) *client.Client {
+// for on a terminal, when no session is open. dialed, unless nil, is told
+// what each stream into node met.
+func remoteClient(cmd *cobra.Command, node string, dialed func(error)) *client.Client {
 	inv := clikit.InvocationOf(cmd)
 	local := localClientOf(cmd)
 	var opened atomic.Bool
@@ -138,6 +139,9 @@ func remoteClient(cmd *cobra.Command, node string) *client.Client {
 			conn, err := dialNode(ctx, cmd, local, node, opened.Load())
 			if err == nil {
 				opened.Store(true)
+			}
+			if dialed != nil {
+				dialed(err)
 			}
 			return conn, err
 		},
@@ -160,7 +164,13 @@ func dialNode(ctx context.Context, cmd *cobra.Command, local *client.Client, nod
 	if opened {
 		log.Info("session ended while the command ran", "node", node)
 		p := api.NewProblem(api.ErrorCodeSessionClosed, "the session into node "+node+" ended while the command ran")
-		p.Details = &map[string]any{"node": node}
+		details := map[string]any{"node": node}
+		if e, ok := errors.AsType[*client.ProblemError](err); ok && e.Problem.Details != nil {
+			if reason, ok := (*e.Problem.Details)["reason"].(string); ok {
+				details["reason"] = reason // as the host said, when it just closed it
+			}
+		}
+		p.Details = &details
 		return nil, &client.ProblemError{Problem: p}
 	}
 	if clikit.InvocationOf(cmd).Quiet || !clikit.CanPrompt(cmd) {

@@ -105,7 +105,9 @@ func nodeLeaves() []*cobra.Command {
 // working directory, and a relative path the host's daemon would receive.
 var nodeRefusals = []string{"pass --project-id or --project-name with --node", "path must be absolute on node desktop",
 	// project open with no flag, which is refused without --node too.
-	"nothing to open"}
+	"nothing to open",
+	// tide with no terminal to run in, which it needs before it reaches any node.
+	"no terminal to run TIDE in"}
 
 // TestNodeExamples runs every example of every command with --node on the
 // desktop, from the laptop: each reaches the desktop's daemon under the
@@ -155,6 +157,9 @@ func TestNodeExamples(t *testing.T) {
 				t.Errorf("%v: refused, yet it asked the laptop's daemon", args)
 			}
 			// Refused for the working directory, the project named reaches it.
+			if strings.Contains(refusal, "no terminal to run TIDE in") {
+				reachedOnce = true // TestNodeTide reaches the desktop from a terminal
+			}
 			if strings.Contains(refusal, nodeRefusals[0]) && cmd.Flag("project-name") != nil {
 				args = append(args, "--project-name", "app")
 				if cmd.Flag("yes") != nil && !slices.Contains(args, "--yes") {

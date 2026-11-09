@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"log/slog"
+	"net"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/termview"
@@ -48,6 +50,11 @@ type Model struct {
 	tick   func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd // tea.Tick, which tests replace
 
 	workDir, userHome, projectsDir, home string // from Options
+	// node is the node TIDE shows through a session, "" for this one; remote
+	// what it knows of the session.
+	node         string
+	remote       remoteState
+	dialTerminal func(ctx context.Context, id string) (net.Conn, error) // from Options, or the holder's socket under home
 
 	width, height  int
 	layout         layout
@@ -131,6 +138,20 @@ type Options struct {
 	ProjectsDir string
 	// Home is wdx's home, where the terminals' holders listen.
 	Home string
+	// Node is the node TIDE shows, another of the account's, through a
+	// session; "" is this one. With it TIDE keeps its view in memory, offers
+	// no settings, asks for paths on the node rather than browse this
+	// machine's, and says so in its bar and title.
+	Node string
+	// DialTerminal connects to the holder of the terminal id, every
+	// attach's start: nil dials its socket under Home, which a terminal on
+	// another node has none of.
+	DialTerminal func(ctx context.Context, id string) (net.Conn, error)
+	// Link follows the session into Node, and opens another once it ended.
+	Link *Link
+	// SessionLost is how long Node may be unreachable before the session
+	// counts as ended; zero is 30 seconds.
+	SessionLost time.Duration
 	// DaemonVersion asks the daemon its version, which the status line
 	// shows when it differs; nil asks nothing.
 	DaemonVersion func(ctx context.Context) (string, error)
@@ -164,39 +185,55 @@ type click struct {
 func New(ctx context.Context, opts Options) *Model {
 	projects := &projectList{}
 	m := &Model{
-		ctx:         ctx,
-		log:         logging.FromContext(ctx),
-		st:          opts.Style,
-		client:      opts.Client,
-		workDir:     opts.WorkDir,
-		userHome:    opts.UserHome,
-		projectsDir: opts.ProjectsDir,
-		home:        opts.Home,
-		now:         time.Now,
-		tick:        tea.Tick,
-		layout:      newLayout(),
-		projects:    projects,
-		root:        noProjectScreen{},
-		openStream:  opts.Client.ProjectEventsWithWorktrees,
-		selectedTab: map[string]string{},
-		createdTab:  map[string]string{},
-		agentLists:  map[string]*agentList{},
-		versionOf:   opts.DaemonVersion,
-		resume:      opts.Resume,
-		stripLinger: cmp.Or(opts.StripLinger, defaultStripLinger),
-		sections:    sectionOrder(opts.SectionOrder),
-		thresholds:  newContextThresholds(opts.ContextWarning, opts.ContextCritical),
-		view:        viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
+		ctx:          ctx,
+		log:          logging.FromContext(ctx),
+		st:           opts.Style,
+		client:       opts.Client,
+		workDir:      opts.WorkDir,
+		userHome:     opts.UserHome,
+		projectsDir:  opts.ProjectsDir,
+		home:         opts.Home,
+		node:         opts.Node,
+		remote:       remoteState{link: opts.Link, lostAfter: sessionLostAfter(opts.SessionLost)},
+		dialTerminal: opts.DialTerminal,
+		now:          time.Now,
+		tick:         tea.Tick,
+		layout:       newLayout(),
+		projects:     projects,
+		root:         noProjectScreen{},
+		openStream:   opts.Client.ProjectEventsWithWorktrees,
+		selectedTab:  map[string]string{},
+		createdTab:   map[string]string{},
+		agentLists:   map[string]*agentList{},
+		versionOf:    opts.DaemonVersion,
+		resume:       opts.Resume,
+		stripLinger:  cmp.Or(opts.StripLinger, defaultStripLinger),
+		sections:     sectionOrder(opts.SectionOrder),
+		thresholds:   newContextThresholds(opts.ContextWarning, opts.ContextCritical),
+		view:         viewState{settle: cmp.Or(opts.ViewSettle, defaultViewSettle), flush: cmp.Or(opts.ViewFlush, defaultViewFlush), sentProject: map[string][]byte{}},
 	}
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
 	m.copy = m.copyToClipboard
+	if m.dialTerminal == nil {
+		m.dialTerminal = func(ctx context.Context, id string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", identity.HolderSocket(m.home, id))
+		}
+	}
 	m.layout.setFocus(project)
 	m.layout.terminalOpen = false
 	return m
 }
 
-func (m *Model) Init() tea.Cmd { return tea.Batch(m.readTideView(), m.checkDaemonVersion()) }
+// Init reads the view the daemon kept and asks it its version; a remote TIDE
+// does neither, keeping its view in memory and trusting the API version the
+// nodes agreed on, but follows its session.
+func (m *Model) Init() tea.Cmd {
+	if m.node != "" {
+		return tea.Batch(m.listProjects(), m.watchLink())
+	}
+	return tea.Batch(m.readTideView(), m.checkDaemonVersion())
+}
 
 // Update handles msg, then attaches the terminal of the tab selected and the
 // active agent if they are not, and gives them their panes' sizes.
@@ -218,6 +255,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.remote.ended != nil {
+		if cmd, ok := m.endedInput(msg); ok {
+			return m, cmd
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -242,6 +284,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.tick(VersionCheckEvery, func(time.Time) tea.Msg { return checkDaemonVersion{} })
 	case checkDaemonVersion:
 		return m, m.checkDaemonVersion()
+	case linkChanged:
+		return m, m.linkWasChanged(msg)
+	case sessionLostFor:
+		m.sessionLostWaited(msg)
+	case sessionOpened:
+		return m, m.sessionWasOpened(msg)
 	case popScreen:
 		if n := len(m.opening); n > 0 {
 			m.log.Debug("screen popped", "screen", m.opening[n-1].title())
@@ -492,6 +540,10 @@ func (m *Model) push(s screen) {
 // tide's working directory, or to create a project, from where projects
 // are created when it exists.
 func (m *Model) browse(create bool) tea.Cmd {
+	if m.node != "" {
+		m.push(m.hostPathField(create))
+		return nil
+	}
 	dir := cmp.Or(m.workDir, m.userHome)
 	if create {
 		dir = cmp.Or(existing(m.projectsDir), dir)

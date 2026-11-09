@@ -175,7 +175,7 @@ func (m *Model) applyProjectView(projectID string, l *agentList, v projectView) 
 // readProjectView reads what the daemon kept of the project ref; nil when it
 // kept nothing, or the read failed, which leaves tide as it would be.
 func (m *Model) readProjectView(ctx context.Context, ref string) *projectView {
-	if m.client == nil {
+	if m.client == nil || m.node != "" { // a remote TIDE keeps its view in memory
 		return nil
 	}
 	b, err := m.client.ProjectView(ctx, ref)

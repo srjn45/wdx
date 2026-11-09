@@ -316,7 +316,9 @@ func (m *Model) globalPart() menuPart {
 		m.openMenu(true)
 		return nil
 	}})
-	if m.settingsOffered() {
+	if m.node != "" {
+		items = append(items, m.settingsElsewhere())
+	} else if m.settingsOffered() {
 		items = append(items, menuItem{settingsKey, "settings", "settings", func() tea.Cmd {
 			m.switcher, m.opening = nil, nil
 			m.openSettings()
@@ -383,6 +385,9 @@ func shownKey(key string) string {
 func (m *Model) menuHint() string {
 	var keys []string
 	for _, it := range m.menuItems() {
+		if it.do == nil {
+			continue // it does nothing, which the menu says
+		}
 		keys = append(keys, shownKey(it.key)+" "+it.short)
 	}
 	return "menu: " + strings.Join(keys, "  ") + "  Esc close"

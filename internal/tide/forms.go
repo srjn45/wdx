@@ -20,6 +20,8 @@ type fieldScreen struct {
 	empty   string // the notice when enter is pressed with nothing typed
 	working string // what it says while it waits for the answer, "cloning…"
 	submit  func(value string) tea.Msg
+	check   func(value string) error // nil takes any value but none
+	leads   bool                     // submit opens the next screen: the field waits for no answer
 	value   string
 	busy    bool
 	failure string // why the last submit failed
@@ -45,8 +47,10 @@ func (s *fieldScreen) update(msg tea.Msg) tea.Cmd {
 			return pop
 		case key == "enter" && strings.TrimSpace(s.value) == "":
 			s.failure = s.empty
+		case key == "enter" && s.check != nil && s.check(strings.TrimSpace(s.value)) != nil:
+			s.failure = s.check(strings.TrimSpace(s.value)).Error()
 		case key == "enter":
-			s.busy = true
+			s.busy = !s.leads
 			return send(s.submit(strings.TrimSpace(s.value)))
 		case key == "backspace" && s.value != "":
 			r := []rune(s.value)

@@ -100,6 +100,9 @@ type Timeouts struct {
 	Holder holder.Limits
 	// ProjectStrip is how long tide shows the project strip after a switch.
 	ProjectStrip time.Duration
+	// TideSessionLost is how long a TIDE on another node waits out the node
+	// unreachable before it says the session ended; zero is TIDE's 30 seconds.
+	TideSessionLost time.Duration
 	// UpdatePreflight is how long wdx update gives the new binary to run on
 	// the settings before installing it: update's preflightTimeout.
 	UpdatePreflight time.Duration
@@ -217,7 +220,7 @@ func clientOf(cmd *cobra.Command) *client.Client {
 	env := envOf(cmd)
 	if env.client == nil {
 		if node := nodeOf(cmd); node != "" {
-			env.client = remoteClient(cmd, node)
+			env.client = remoteClient(cmd, node, nil)
 		} else {
 			env.client = localClientOf(cmd)
 		}
@@ -271,7 +274,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 		Color:   cfg.Color,
 		Topics:  topics,
 	}, addNodeFlag(newVersionCmd()), addNodeFlag(newProjectCmd(cfg.Home)), addNodeFlag(newTerminalCmd()), addNodeFlag(newAgentCmd()),
-		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), newTideCmd(), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), newUsageCmd())
+		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), addNodeFlag(newTideCmd()), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), newUsageCmd())
 	wrapNode(root)
 	return root
 }
