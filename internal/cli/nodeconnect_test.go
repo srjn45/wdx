@@ -202,6 +202,31 @@ func logLines(t *testing.T, home, debugID string) []map[string]any {
 	return lines
 }
 
+// rawLines are the lines logged in home that hold text, as written.
+func rawLines(t *testing.T, home, text string) []string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(identity.LogsDir(home), "*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, f := range files {
+		file, err := os.Open(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := bufio.NewScanner(file)
+		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
+		for s.Scan() {
+			if strings.Contains(s.Text(), text) {
+				lines = append(lines, s.Text())
+			}
+		}
+		file.Close()
+	}
+	return lines
+}
+
 // lineOf is the first line of lines with msg whose keys have the values in
 // want, nil when there is none.
 func lineOf(lines []map[string]any, msg string, want map[string]any) map[string]any {
@@ -264,6 +289,17 @@ func TestNodeConnectServesTheHost(t *testing.T) {
 	}
 	if lineOf(host, "request returned", map[string]any{"status": 201, "session_id": id}) == nil {
 		t.Errorf("the desktop logged no createProject returned: %v", host)
+	}
+	// Each of the host's lines of a stream carries one debug id, the
+	// stream's: JSON tools keep one of two under the same key.
+	served := rawLines(t, p.desktop.home, `"msg":"session stream served"`)
+	if len(served) == 0 {
+		t.Error("the desktop logged no session stream served")
+	}
+	for _, l := range served {
+		if n := strings.Count(l, `"debug_id":`); n != 1 {
+			t.Errorf("the desktop logged a stream's line with %d debug ids, want 1: %s", n, l)
+		}
 	}
 	waitLogged(t, p.laptop.home, c.debugID, "stream closed")
 	client := logLines(t, p.laptop.home, c.debugID)

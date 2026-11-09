@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -73,9 +74,10 @@ type hubStreams struct {
 	serving sync.WaitGroup
 }
 
-// serveHubStreams starts answering the link's streams with r, logging as
-// ctx does.
-func serveHubStreams(ctx context.Context, link *hublink.Link, r *remote.Remote) *hubStreams {
+// serveHubStreams starts answering the link's streams with r, each logged
+// with base and a debug id of its own: base is the daemon's logger before
+// its run's debug id, which a stream's line would carry besides its own.
+func serveHubStreams(ctx context.Context, base *slog.Logger, link *hublink.Link, r *remote.Remote) *hubStreams {
 	ctx, stop := context.WithCancel(ctx)
 	h := &hubStreams{stop: stop}
 	h.serving.Go(func() {
@@ -83,7 +85,7 @@ func serveHubStreams(ctx context.Context, link *hublink.Link, r *remote.Remote) 
 			select {
 			case s := <-link.Streams():
 				h.serving.Go(func() {
-					r.Serve(logging.NewContext(ctx, logging.FromContext(ctx).With("debug_id", logging.NewDebugID())), s)
+					r.Serve(logging.NewContext(ctx, base.With("debug_id", logging.NewDebugID())), s)
 				})
 			case <-ctx.Done():
 				return

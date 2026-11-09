@@ -415,7 +415,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		return nil, err
 	}
 	gone.start(d.remote)
-	d.hubStreams = serveHubStreams(context.WithoutCancel(logged), d.hub, d.remote)
+	d.hubStreams = serveHubStreams(context.WithoutCancel(logged), opts.Log, d.hub, d.remote)
 	sendHubState(logged, d.hub, d.access)
 	d.startTracker()
 	if err := d.terminals.Reconcile(logged); err != nil {
