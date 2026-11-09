@@ -38,6 +38,7 @@ export default defineConfig({
             'docs/guides/plans',
             'docs/guides/running-plans',
             'docs/guides/hub',
+            'docs/guides/running-a-hub',
           ],
         },
         {

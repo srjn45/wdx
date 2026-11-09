@@ -4,6 +4,20 @@
 
 The other `wdx-hub` commands (`version`, `setting`, `backup`) talk to the running hub over the admin socket, so they run where the socket is, with the same home.
 
+## With the install script
+
+On Linux with systemd, amd64 or arm64:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh
+```
+
+It makes the system user `wdx-hub` with its home in `/var/lib/wdx-hub` (the hub's home is the default in it, `/var/lib/wdx-hub/.wdx-hub`), asks `public_url` and how the web endpoint gets its TLS (a proxy in front, or certificate files), makes the master key, installs the binary at `/usr/local/bin/wdx-hub` and the unit `wdx-hub service unit` prints at `/etc/systemd/system/wdx-hub.service`, starts it and prints an invite for the first user. Without a terminal it takes `WDX_HUB_PUBLIC_URL`, `WDX_HUB_WEB_TLS` (`off` or `files`), `WDX_HUB_WEB_TLS_CERT` and `WDX_HUB_WEB_TLS_KEY`; `WDX_CHANNEL`, `WDX_VERSION` and `WDX_DOWNLOAD_BASE` choose the release, as for wdx's `install.sh`.
+
+Admin commands run with sudo, which makes `wdx-hub` run as its user: `sudo wdx-hub user invite`. `sudo wdx-hub update` shows whether a newer release is out, `sudo wdx-hub update --apply` installs it with a backup of the database, putting everything back when it does not start, and `sudo wdx-hub update --rollback` goes back. The script run again updates the installed hub the same way; `sh -s -- --uninstall` removes the service and the binary and keeps the user and its home, and `--purge` (with `--yes` when there is no terminal) removes them too.
+
+The website's [Running a hub](https://srjn45.github.io/wdx/docs/guides/running-a-hub/) says it all at length, with a Caddy example for the proxy and the ports to open. The container and the unit by hand, below, are for those who want them; `wdx-hub update` updates only a hub the script installed.
+
 ## In a container
 
 From the repository's root:
@@ -27,28 +41,21 @@ docker compose -f deploy/hub/compose.yaml exec hub wdx-hub backup --out /data/ba
 
 A setting given in `compose.yaml` wins over one `wdx-hub setting set` writes to the volume's config file; change it in `compose.yaml` and run `up -d` again.
 
-## As a systemd service
+## As a systemd service, by hand
 
-The unit runs the hub as a user systemd allocates for it (`DynamicUser=yes`), its home in `/var/lib/wdx-hub` (`StateDirectory=wdx-hub`), which only that user can reach. So `wdx-hub`'s other commands run as that same user, in a unit of their own with the same `User=`, which systemd gives the same user while the service runs:
-
-```sh
-hub() {
-	sudo systemd-run --pipe --wait --quiet \
-		-p DynamicUser=yes -p User=wdx-hub -p StateDirectory=wdx-hub \
-		-p Environment=WDX_HUB_HOME=/var/lib/wdx-hub \
-		/usr/local/bin/wdx-hub "$@"
-}
-```
-
-Install the binary from its release archive, `wdx-hub_<version>_linux_<arch>.tar.gz`, and the unit; set `public_url` and `master_key`, then start it:
+`wdx-hub.service` is the unit the script installs, kept equal by a test to what `wdx-hub service unit` prints. It runs the hub as the system user `wdx-hub`, whose home is `/var/lib/wdx-hub`, so the hub's home is the default, `/var/lib/wdx-hub/.wdx-hub`. Make the user, install the binary from its release archive, `wdx-hub_<version>_linux_<arch>.tar.gz`, and the unit; set `public_url` and `master_key` as that user, then start it:
 
 ```sh
+sudo useradd --system --user-group --home-dir /var/lib/wdx-hub --create-home --shell /usr/sbin/nologin wdx-hub
+sudo chmod 0700 /var/lib/wdx-hub
 sudo install -m 0755 wdx-hub /usr/local/bin/wdx-hub
 sudo install -m 0644 deploy/hub/wdx-hub.service /etc/systemd/system/wdx-hub.service
 sudo systemctl daemon-reload
-hub setting set --name public_url --value https://hub.example.com
-hub setting set --name master_key --value "$(head -c 32 /dev/urandom | base64)"
+sudo wdx-hub setting set --name public_url --value https://hub.example.com
+sudo wdx-hub setting set --name master_key --value "$(head -c 32 /dev/urandom | base64)"
 sudo systemctl enable --now wdx-hub
 journalctl -u wdx-hub
-hub version
+sudo wdx-hub version
 ```
+
+`sudo wdx-hub …` runs as the `wdx-hub` user once the binary and the unit are in place, as `sudo -u wdx-hub -H wdx-hub …` does anywhere. A web endpoint on a port below 1024 needs the capability to bind it: `wdx-hub service unit --privileged-port` prints the unit with it.

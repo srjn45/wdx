@@ -1,0 +1,160 @@
+---
+title: Running a hub
+description: Install wdx-hub on a Linux server with one command, give its web endpoint TLS, invite its users, run its admin commands, update it and roll it back, back it up, and uninstall it.
+since: 0.5.0
+---
+
+## What it is
+
+A hub is the server your machines log in to, `wdx-hub`, which keeps accounts: it knows your nodes and which are online, keeps the docs your projects push, and passes the sessions between your nodes, end to end encrypted ([Hub](/wdx/docs/guides/hub/)). One person runs it, for themselves or a team, on a server every node can reach. wdx works the same without one.
+
+The hub is a program of its own, with its own home, database and settings, released beside wdx with the same version. It need not run the version its nodes run: they agree on the API, and `wdx hub status` says when they no longer do.
+
+## Install it
+
+On Linux with systemd, amd64 or arm64, as root:
+
+```console
+$ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh
+==> downloading wdx-hub 0.5.0 (linux/amd64)
+public url, where browsers and nodes reach this hub (such as https://hub.example.com): https://hub.acme.dev
+how does the web endpoint get its TLS?
+  1) a proxy in front of it terminates TLS (Caddy, nginx, a load balancer)
+  2) certificate files on this machine
+choice: 1
+==> made the master key
+==> the settings in /var/lib/wdx-hub/.wdx-hub/config.yaml list every setting of this version
+==> installed wdx-hub 0.5.0 -> /usr/local/bin/wdx-hub, the service wdx-hub.service
+==> wdx-hub answers: hub 0.5.0 (1a2b3c4) api 1
+==> point the proxy at 127.0.0.1:8080, the web endpoint
+==> the node endpoint listens on :8443 and must be reachable from the nodes, untouched by the proxy
+==> invite the first user with this link, which works once, until 2026-11-10 15:42:
+    https://hub.acme.dev/signup?invite=…
+==> back up /var/lib/wdx-hub/.wdx-hub/config.yaml: it holds the master key, without which the hub's secrets are lost
+==> run admin commands with sudo: sudo wdx-hub user list
+```
+
+- **What it makes:** the system user `wdx-hub`, with no login shell, its home in `/var/lib/wdx-hub` that only it can read, and the hub's own home in it, `/var/lib/wdx-hub/.wdx-hub`: the config file, the database `hub.db`, the certificate authority, the admin socket, the logs and the backups. The binary goes to `/usr/local/bin/wdx-hub` and the service to `/etc/systemd/system/wdx-hub.service`, started at once and at every boot.
+- **It asks two things,** the only settings without a default: the public url, where browsers and nodes reach the hub (`http://` only for `localhost` and `127.0.0.1`, which skips the TLS question), and how the web endpoint gets its TLS ([below](#tls)). A value the config file has already is not asked, so the script also installs over a hub set up by hand.
+- **Unattended,** with no terminal, it takes them from the environment and fails naming the one missing: `WDX_HUB_PUBLIC_URL`, `WDX_HUB_WEB_TLS` (`off` for a proxy, or `files`), and with `files` `WDX_HUB_WEB_TLS_CERT` and `WDX_HUB_WEB_TLS_KEY`. These reach only the script, never the running hub. Pass them through sudo: `curl … | sudo WDX_HUB_PUBLIC_URL=https://hub.acme.dev WDX_HUB_WEB_TLS=off sh`.
+- **Which release:** the newest stable one; `WDX_CHANNEL=dev` the newest of either kind, and `WDX_VERSION=0.5.0` that one. The channel is kept as the hub's `update.channel`, which `wdx-hub update` follows. Until a stable release has the hub, the stable channel says to use `WDX_CHANNEL=dev`. `WDX_DOWNLOAD_BASE` takes the releases from elsewhere, laid out as GitHub's, and is kept as `update.base_url`.
+- **Run again** on a machine with the hub installed, the script does not install over it: it updates it, through the installed `wdx-hub update --apply` ([below](#updating)).
+- **Every other setting** has a default; `sudo wdx-hub help settings` lists them, and `sudo wdx-hub setting set` changes one, having the running hub read it again or saying it takes effect at the next start (`sudo systemctl restart wdx-hub`).
+
+Not on macOS, and not as a user service: to try a hub on a laptop, run `wdx-hub serve` in a terminal ([deploy/hub](https://github.com/srjn45/wdx/tree/main/deploy/hub) says how, and how to run it in a container).
+
+## TLS
+
+The hub has two endpoints: the **web endpoint**, for browsers and the nodes' logins, and the **node endpoint**, `:8443`, where the nodes keep their connection. The node endpoint always serves TLS itself, with a certificate from the hub's own authority, which the nodes check: a proxy must never terminate it. The web endpoint gets its TLS one of two ways.
+
+**A proxy in front of it** (choice 1, `web.tls off`): the hub listens on `127.0.0.1:8080` in plain HTTP, which only the proxy on the same machine reaches, and the proxy serves `https://`. [Caddy](https://caddyserver.com) gets and renews its certificate from Let's Encrypt on its own; its whole `/etc/caddy/Caddyfile`:
+
+```txt
+hub.acme.dev {
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+Then tell the hub to believe the address the proxy forwards, which its rate limits and audit chain use:
+
+```console
+$ sudo wdx-hub setting set --name trusted_proxies --value 127.0.0.1
+```
+
+**Certificate files on this machine** (choice 2, `web.tls files`): the hub serves TLS itself on `:443`, with a certificate (PEM, with its chain) and a key at the absolute paths you give, which the `wdx-hub` user must be able to read: `sudo chgrp wdx-hub key.pem && sudo chmod g+r key.pem`. The service then gets the one capability it needs to listen on a port below 1024. Renewing the files is up to you; the hub reads them at its start.
+
+There is no third way: the hub does not get certificates itself. A public hub uses a proxy that does.
+
+## Ports to open
+
+| Port | What | From |
+|---|---|---|
+| 443 | the web endpoint: the proxy's, or the hub's with certificate files | browsers and nodes |
+| 8443 | the node endpoint, TLS of the hub's own, never through the proxy | nodes |
+
+With a proxy, `127.0.0.1:8080` stays closed to everyone else. The node endpoint's port is `listen.nodes`; when the nodes reach it at another address than the public url's host with that port, set `nodes_url`.
+
+## Users
+
+The hub's registration is closed: a person joins with an invite, a link that works once, for 24 hours. The install prints the first; make others with:
+
+```console
+$ sudo wdx-hub user invite
+invited: the link works once, until 2026-11-10 16:05
+https://hub.acme.dev/signup?invite=…
+```
+
+They sign up on that page, set up their second factor, and from then on log their machines in with `wdx hub login --url https://hub.acme.dev`. `--expires 72h` gives an invite longer; the setting `registration`, `open`, lets anyone sign up.
+
+## Admin commands
+
+The hub's commands talk to the running hub over its admin socket, which only root and the `wdx-hub` user reach. Run them with `sudo`: as root on a machine with the hub installed, `wdx-hub` becomes the `wdx-hub` user before anything else, so that it reads the hub's home and every file it writes there stays the hub's.
+
+```console
+$ sudo wdx-hub version
+$ sudo wdx-hub user list
+$ sudo wdx-hub user disable --username bob
+$ sudo wdx-hub user reset --username bob --second-factor
+$ sudo wdx-hub setting set --name log.level --value debug
+$ sudo wdx-hub audit verify
+$ journalctl -u wdx-hub
+```
+
+`sudo -u wdx-hub -H wdx-hub …` works too. Each has `--help`, and `--json` as wdx's commands do.
+
+## Updating
+
+`wdx-hub update` works as [`wdx update`](/wdx/docs/guides/updating/) does. Without a flag it only looks:
+
+```console
+$ sudo wdx-hub update
+update available: wdx-hub 0.5.0 -> 0.5.1 (stable channel)
+  run sudo wdx-hub update --apply
+
+$ sudo wdx-hub update --apply
+==> downloading wdx-hub 0.5.1
+==> checking that it runs on the settings
+==> backing up the database to /var/lib/wdx-hub/.wdx-hub/backups/hub-0.5.0.db
+==> stopping the daemon
+==> backing up wdx-hub 0.5.0, the database and the settings
+==> installing wdx-hub 0.5.1
+==> starting the daemon
+updated wdx-hub 0.5.0 -> 0.5.1
+  schema:   7 -> 8
+  rollback: sudo wdx-hub update --rollback goes back to 0.5.0
+```
+
+- **`--apply` needs root,** as it replaces the binary and the service: `root_required` otherwise. It updates only a hub the script installed; one in a container or copied by hand is `not_installed`, and is updated the way it was installed.
+- **Before anything changes,** the new release runs on the settings and writes the config file anew in a staging home: one that refuses them is `settings_invalid`, and nothing changed.
+- **It keeps** the old binary, a copy of the database and the config file in `/usr/local/lib/wdx-hub/previous/`, then stops the service, installs the new binary and the unit it prints, and starts it.
+- **If the new release does not answer** within 30 seconds, everything is put back and the old one started: `update_failed`, naming the step, and `journalctl -u wdx-hub` says why.
+- **Restarting** closes every node's connection and every session's stream through the hub. The nodes connect again on their own, waiting longer each time up to 5 minutes; an open attach or remote TIDE sees the connection lost, as for a network drop.
+- `--channel dev` or `--version 0.5.1` choose another release this once.
+
+Changed your mind:
+
+```console
+$ sudo wdx-hub update --rollback
+```
+
+It puts the kept version back, with the config file as it was. The database stays when that version can use it. When a migration since the update changed it in a way the older release cannot read, the copy taken at the update must be restored, losing every signup, login and doc pushed since: it asks first on a terminal, and from a script `--discard-changes` agrees and `--cancel` refuses (`restore_required`). Only one previous version is kept.
+
+## Backups and the master key
+
+- **The master key,** in the config file, seals the secrets the hub keeps: its users' authenticator secrets and the keys of their docs. The install made it and never printed it. Without it they are lost for good, with any backup of the database. Keep a copy of `/var/lib/wdx-hub/.wdx-hub/config.yaml` somewhere safe, apart from the database's backups.
+- **Each update** backs the database up to `/var/lib/wdx-hub/.wdx-hub/backups/hub-<version>.db`, and keeps the last 3.
+- **Any time,** back it up while the hub runs, to a path the `wdx-hub` user can write:
+
+```console
+$ sudo wdx-hub backup --out /var/lib/wdx-hub/.wdx-hub/backups/nightly.db
+```
+
+To move the hub to another machine, install it there, stop both (`sudo systemctl stop wdx-hub`), copy the old home, `/var/lib/wdx-hub/.wdx-hub`, over the new one, owned by `wdx-hub`, and start it: the database, the certificate authority the nodes trust and the master key go together.
+
+## Uninstalling
+
+```console
+$ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh -s -- --uninstall
+```
+
+It stops and removes the service, the binary and `/usr/local/lib/wdx-hub/`. The `wdx-hub` user and its home stay, with the database, the certificate authority, the master key and the backups, so that installing again goes on where it was. `--purge` removes them too, after asking on the terminal, since every account and doc of the hub goes with them; `--purge --yes` does it without asking.

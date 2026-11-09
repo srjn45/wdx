@@ -6,6 +6,8 @@ since: 0.5.0
 ---
 import Commands from '../../../../components/Commands.astro';
 
+This page is about using a hub from your machines. To run one, for yourself or a team, see [Running a hub](/wdx/docs/guides/running-a-hub/).
+
 ## What it is
 
 A hub is a server, `wdx-hub`, that keeps accounts. Logging in makes this machine one of your account's **nodes**: wdx makes a key on it, the hub's certificate authority gives it a certificate, and the daemon keeps a connection to the hub from then on, so the hub knows which of your nodes are online. `wdx hub node list` shows them all, and `wdx hub node remove` cuts one off at once.
