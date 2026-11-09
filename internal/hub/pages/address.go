@@ -12,15 +12,10 @@ import (
 // X-Forwarded-For that is not, since each proxy appends the address it was
 // reached from and only the trusted ones can be believed.
 func clientAddress(r *http.Request, trusted []netip.Prefix) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
+	conn, ok := peer(r)
+	if !ok {
+		return Peer(r)
 	}
-	conn, err := netip.ParseAddr(host)
-	if err != nil {
-		return host
-	}
-	conn = conn.Unmap()
 	if !isTrusted(conn, trusted) {
 		return conn.String()
 	}
@@ -50,4 +45,27 @@ func isTrusted(a netip.Addr, trusted []netip.Prefix) bool {
 		}
 	}
 	return false
+}
+
+// Peer is the address of r's connection, without its port: a proxy's when
+// the client came through one.
+func Peer(r *http.Request) string {
+	if a, ok := peer(r); ok {
+		return a.String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// peer is the address of r's connection, false when it is no IP address.
+func peer(r *http.Request) (netip.Addr, bool) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	a, err := netip.ParseAddr(host)
+	return a.Unmap(), err == nil
 }

@@ -226,7 +226,7 @@ You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a chec
    $ wdx hub login --url https://<name>.fly.dev
    ```
 
-Then tell the hub which address is Fly's proxy. Every request comes to it from the proxy, so until then the page that approves a login shows the proxy's address under **From**, not yours, and the rate limits and the audit chain see the same. Take that address from the first approval page and set it, once:
+Then tell the hub which address is Fly's proxy. Every request comes to it from the proxy, so until then the page that approves a login shows the proxy's address under **From**, not yours, and the rate limits and the audit chain see the same. Take that address from the first approval page, or from the hub's log, where each request on the web endpoint says the client's `address`, as the hub believes it, and the connection's `peer` when it differs, and set it, once:
 
 ```console
 $ fly secrets set --app <name> WDX_HUB_TRUSTED_PROXIES=<the proxy's address>

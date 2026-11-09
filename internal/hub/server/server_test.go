@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -391,6 +392,54 @@ func TestRequestsLoggedUnderTheClientsDebugID(t *testing.T) {
 		}
 		if !logged(t, th.home, "request received", id) || !logged(t, th.home, "request returned", id) {
 			t.Errorf("%s: not logged received and returned under %s", tc.url, id)
+		}
+	}
+}
+
+func TestRequestsLoggedWithTheirAddress(t *testing.T) {
+	t.Parallel()
+	th := start(t, func(o *Options) {
+		o.Config.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	})
+	nodes := th.nodes(th.nodeCert(t))
+	forwarded := http.Header{"X-Forwarded-For": {"203.0.113.7"}}
+	for i, tc := range []struct {
+		hc     *http.Client
+		url    string
+		header http.Header
+		want   map[string]any
+	}{
+		// Through the proxy the hub trusts, the client's and the proxy's.
+		{th.web, "http://" + th.addrs.Web + "/v1/version", forwarded, map[string]any{"address": "203.0.113.7", "peer": "127.0.0.1"}},
+		{th.web, "http://" + th.addrs.Web + "/v1/version", nil, map[string]any{"address": "127.0.0.1", "peer": nil}},
+		{th.web, "http://" + th.addrs.Web + "/sign-in", forwarded, map[string]any{"address": "203.0.113.7", "peer": "127.0.0.1"}},
+		{nodes, "https://" + th.addrs.Nodes + "/v1/node/version", forwarded, map[string]any{"address": nil, "peer": "127.0.0.1"}},
+		{th.admin, "http://wdx-hub/v1/admin/version", forwarded, map[string]any{"address": nil, "peer": nil}},
+	} {
+		id := "dbg-00000000001" + string(rune('a'+i))
+		header := http.Header{hubapi.DebugIDHeader: {id}}
+		for k, v := range tc.header {
+			header[k] = v
+		}
+		resp, _ := do(t, tc.hc, http.MethodGet, tc.url, "", header)
+		// A page's lines are under an id of their own.
+		id = resp.Header.Get(hubapi.DebugIDHeader)
+		for _, msg := range []string{"request received", "request returned"} {
+			var line map[string]any
+			for _, l := range logLines(t, th.home) {
+				if l["msg"] == msg && l["debug_id"] == id {
+					line = l
+				}
+			}
+			if line == nil {
+				t.Errorf("%s: no %s under %s", tc.url, msg, id)
+				continue
+			}
+			for k, v := range tc.want {
+				if line[k] != v {
+					t.Errorf("%s %v: %s has %s %v, want %v", tc.url, tc.header, msg, k, line[k], v)
+				}
+			}
 		}
 	}
 }

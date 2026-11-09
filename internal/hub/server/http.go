@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/srjn45/wdx/internal/hub/pages"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -82,11 +83,12 @@ func (s *Server) logPages(next http.Handler) http.Handler {
 		id := logging.NewDebugID()
 		log := s.opts.Log.With("debug_id", id, "endpoint", string(endpointWeb))
 		r = r.WithContext(logging.NewContext(context.WithValue(r.Context(), debugIDKey{}, id), log))
-		log.Info("request received", "page", true, "method", r.Method, "path", r.URL.Path)
+		origin := s.origin(endpointWeb, r)
+		log.Info("request received", append([]any{"page", true, "method", r.Method, "path", r.URL.Path}, origin...)...)
 		w.Header().Set(hubapi.DebugIDHeader, id)
 		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
-			attrs := []any{"page", true, "method", r.Method, "path", r.URL.Path}
+			attrs := append([]any{"page", true, "method", r.Method, "path", r.URL.Path}, origin...)
 			level := slog.LevelInfo
 			if v := recover(); v != nil {
 				level = slog.LevelError
@@ -265,14 +267,15 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, tooLargeKey{}, tooLarge)
 		ctx = context.WithValue(ctx, addressKey{}, s.pages.Address(r))
 		r = r.WithContext(logging.NewContext(ctx, log))
-		log.Info("request received",
+		origin := s.origin(e, r)
+		log.Info("request received", append([]any{
 			"operation", operation,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
 			"client_version", r.Header.Get(hubapi.VersionHeader),
 			"body", requestLogged(operation, body),
-			"body_too_large", tooLarge)
+			"body_too_large", tooLarge}, origin...)...)
 
 		w.Header().Set(hubapi.DebugIDHeader, id)
 		w.Header().Set(hubapi.VersionHeader, s.version())
@@ -285,7 +288,7 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 					failed(rec, r, fmt.Errorf("panic: %v", v))
 				}
 			}
-			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status, logging.Duration(start)}
+			attrs := append([]any{"method", r.Method, "path", r.URL.Path, "status", rec.status, logging.Duration(start)}, origin...)
 			measured := []attribute.KeyValue{attribute.String("endpoint", string(e)), attribute.Int("status", rec.status)}
 			if operation != "" {
 				measured = append(measured, attribute.String("operation", operation))
@@ -305,6 +308,25 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// origin is what the lines of r, a request on e, say of where it came
+// from: on the web endpoint the client's address, as the pages know it with
+// the trusted proxies, and the connection's, as peer, when it differs, so
+// that a proxy's shows; on the node endpoint the connection's; nothing on
+// the admin socket, whose clients have no address.
+func (s *Server) origin(e endpoint, r *http.Request) []any {
+	switch e {
+	case endpointWeb:
+		address, peer := s.pages.Address(r), pages.Peer(r)
+		if address != peer {
+			return []any{"address", address, "peer", peer}
+		}
+		return []any{"address", address}
+	case endpointNodes:
+		return []any{"peer", pages.Peer(r)}
+	}
+	return nil
 }
 
 // bodyLimits are the most a request's body may hold, by operation id; the
