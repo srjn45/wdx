@@ -81,6 +81,7 @@ type Config struct {
 	// address as a prefix of its full length.
 	TrustedProxies []netip.Prefix
 	UpdateChannel  string // one of UpdateChannels
+	UpdateBaseURL  string // where update downloads releases, without a trailing /
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -328,6 +329,20 @@ var rows = []settings.Row[Config]{
 			return nil
 		},
 		Get: func(c Config) string { return c.UpdateChannel },
+	},
+	{
+		Key:         "update.base_url",
+		Description: "where " + Name + " update downloads releases, laid out as GitHub Releases; file://<repo>/dist for local builds",
+		Default:     ReleasesURL,
+		Set: func(c *Config, v string) error {
+			u, err := url.Parse(v)
+			if err != nil || !slices.Contains([]string{"http", "https", "file"}, u.Scheme) || (u.Scheme == "file") != (u.Host == "") || (u.Scheme == "file" && u.Path == "") {
+				return fmt.Errorf("%q is not an http, https or file URL", v)
+			}
+			c.UpdateBaseURL = strings.TrimSuffix(v, "/")
+			return nil
+		},
+		Get: func(c Config) string { return c.UpdateBaseURL },
 	},
 }
 

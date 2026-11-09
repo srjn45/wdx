@@ -54,6 +54,19 @@ jobs:
             bin/cover.out
             bin/cover.html
 
+  # install-hub.sh and wdx-hub update on a real systemd as root, which the
+  # runner gives through sudo without a password: never on a developer's
+  # machine.
+  hub-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make test-hub-install
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15

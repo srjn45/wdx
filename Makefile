@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 IDENTITY := github.com/srjn45/wdx/internal/identity
 LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-contention test-changed test-update cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
+.PHONY: build generate test test-stress test-contention test-changed test-update test-hub-install cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
 
 # Build wdx and wdx-hub for this machine only.
 build:
@@ -71,6 +71,11 @@ test-changed:
 # roll it back, in a temporary home.
 test-update:
 	scripts/test-update.sh
+
+# Install wdx-hub as a system service with install-hub.sh, update it, roll it
+# back and uninstall it. Needs root through sudo and systemd: in CI only.
+test-hub-install:
+	scripts/test-hub-install.sh
 
 # Run the tests once with coverage: bin/cover.out, bin/cover.html and the
 # per-package summary.

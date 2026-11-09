@@ -62,7 +62,7 @@ func TestDefaults(t *testing.T) {
 	want := Config{
 		Home: home, PublicURL: "http://localhost:8080", ListenWeb: ":8080", ListenNodes: ":8443", WebTLS: TLSOff,
 		LogLevel: slog.LevelInfo, LogRetentionDays: 7, OtelInterval: 15 * time.Second, Registration: RegistrationClosed,
-		UpdateChannel: "stable",
+		UpdateChannel: "stable", UpdateBaseURL: ReleasesURL,
 	}
 	c.From = nil
 	if !reflect.DeepEqual(c, want) {
@@ -112,6 +112,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		"WDX_HUB_OTEL_ENDPOINT": "https://env:4318", "WDX_HUB_OTEL_INTERVAL_SECONDS": "6",
 		"WDX_HUB_MASTER_KEY": testKey, "WDX_HUB_REGISTRATION": "open", "WDX_HUB_TRUSTED_PROXIES": "10.0.0.1",
 		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/", "WDX_HUB_UPDATE_CHANNEL": "dev",
+		"WDX_HUB_UPDATE_BASE_URL": "file:///srv/dist/",
 	}
 	maps.Copy(e, vars)
 	c, err := Load(e.getenv)
@@ -123,7 +124,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		WebTLS: TLSOff, WebTLSCert: "/env/cert", WebTLSKey: "/env/key", LogLevel: slog.LevelWarn, LogRetentionDays: 9,
 		OtelEndpoint: "https://env:4318", OtelInterval: 6 * time.Second,
 		MasterKey: testKeyBytes, Registration: RegistrationOpen, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
-		NodesURL: "https://nodes.example.com:9443", UpdateChannel: "dev",
+		NodesURL: "https://nodes.example.com:9443", UpdateChannel: "dev", UpdateBaseURL: "file:///srv/dist",
 	}
 	from := c.From
 	c.From = nil
@@ -378,5 +379,15 @@ func TestLayoutPresent(t *testing.T) {
 	}
 	if l.Previous() != filepath.Join(dir, "lib", "previous") {
 		t.Fatalf("unexpected previous version's directory %s", l.Previous())
+	}
+}
+
+func TestUpdateBaseURL(t *testing.T) {
+	t.Parallel()
+	url := "public_url: http://localhost\n"
+	for _, bad := range []string{"ftp://example.com", "file://host/dist", "file://", "not a url"} {
+		if got := problems(t, url+"update:\n  base_url: "+bad+"\n", nil); got["update.base_url"] == "" {
+			t.Errorf("%q: want refused, got %v", bad, got)
+		}
 	}
 }
